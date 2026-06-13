@@ -91,23 +91,26 @@ func TestExampleConfigDefaultIncludesKimiAndMiniMaxTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"moonshot": "kimi-k2",
-		"kimi":     "kimi-k2",
-		"minimax":  "MiniMax-Text-01",
+		"moonshot:kimi-k2":        "kimi-k2",
+		"moonshot:kimi-k2.7-code": "kimi-k2.7-code",
+		"kimi:kimi-k2":            "kimi-k2",
+		"kimi:kimi-k2.7-code":     "kimi-k2.7-code",
+		"minimax:MiniMax-Text-01": "MiniMax-Text-01",
+		"minimax:MiniMax-M3":      "MiniMax-M3",
 	}
-	for provider, model := range want {
+	for name, model := range want {
 		found := false
 		for _, target := range defaultGroup.Targets {
-			if target.Provider == provider && target.Model == model {
+			if target.Provider+":"+target.Model == name && target.Model == model {
 				found = true
 				if target.Weight <= 0 {
-					t.Fatalf("%s target resolved with non-positive weight: %#v", provider, target)
+					t.Fatalf("%s target resolved with non-positive weight: %#v", name, target)
 				}
 				break
 			}
 		}
 		if !found {
-			t.Fatalf("default group missing resolved target %s:%s; targets=%#v", provider, model, defaultGroup.Targets)
+			t.Fatalf("default group missing resolved target %s; targets=%#v", name, defaultGroup.Targets)
 		}
 	}
 }

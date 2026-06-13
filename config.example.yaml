@@ -30,6 +30,10 @@ providers:
     api_key_env: MOONSHOT_API_KEY
     key_id: moonshot-default
     models:
+      kimi-k2.7-code:
+        model: kimi-k2.7-code
+        tier: heavy
+        weight: 4
       kimi-k2:
         model: kimi-k2
         tier: cheap
@@ -41,6 +45,10 @@ providers:
     api_key_env: KIMI_API_KEY
     key_id: kimi-default
     models:
+      kimi-k2.7-code:
+        model: kimi-k2.7-code
+        tier: heavy
+        weight: 4
       kimi-k2:
         model: kimi-k2
         tier: cheap
@@ -63,6 +71,10 @@ providers:
     api_key_env: MINIMAX_API_KEY
     key_id: minimax-default
     models:
+      m3:
+        model: MiniMax-M3
+        tier: heavy
+        weight: 3
       text-01:
         model: MiniMax-Text-01
         tier: cheap
@@ -127,9 +139,12 @@ models:
     targets:
       - { provider: openai, model_ref: gpt55 }
       - { provider: openai, model_ref: gpt54mini }
+      - { provider: moonshot, model_ref: kimi-k2.7-code }
       - { provider: moonshot, model_ref: kimi-k2 }
+      - { provider: kimi, model_ref: kimi-k2.7-code }
       - { provider: kimi, model_ref: kimi-k2 }
       - { provider: qwen, model_ref: qwen3-max }
+      - { provider: minimax, model_ref: m3 }
       - { provider: minimax, model_ref: text-01 }
       - { provider: xai, model_ref: grok-3 }
       - { provider: openrouter, model_ref: claude-opus }
@@ -139,8 +154,11 @@ models:
     strategy: weighted
     targets:
       - { provider: moonshot, model_ref: kimi-k2 }
+      - { provider: moonshot, model_ref: kimi-k2.7-code }
       - { provider: kimi, model_ref: kimi-k2 }
+      - { provider: kimi, model_ref: kimi-k2.7-code }
       - { provider: qwen, model_ref: qwen3-max }
+      - { provider: minimax, model_ref: m3 }
       - { provider: minimax, model_ref: text-01 }
       - { provider: openai, model_ref: gpt54mini, weight: 4 }
   big-coder:
