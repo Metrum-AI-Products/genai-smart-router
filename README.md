@@ -165,54 +165,147 @@ To run one live case:
 LIVE_E2E_CASE_REGEX=or-kimi-k27 make e2e-live-c
 ```
 
-## Live Claude Code Gate
+## CLI Smoke Tests
 
-Installed version observed locally: `Claude Code 2.1.165`.
+The following commands were tested locally with `Claude Code 2.1.165`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `qwen/qwen3.7-max:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
+
+Create a temporary router config and caller token:
 
 ```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:8080"
-export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
-export ANTHROPIC_MODEL="default"
+make build
 
-claude --bare --print --model default \
+export WORK=/tmp/smart-llmrouter-readme-smoke
+rm -rf "$WORK"
+mkdir -p "$WORK"
+
+./router-token-gen generate \
+  --user readme \
+  --project metrum-insights \
+  --env dev \
+  --allow cli-smoke \
+  --format json > "$WORK/token.json"
+
+python3 - <<'PY'
+import json
+import os
+import shlex
+from pathlib import Path
+
+work = Path(os.environ["WORK"])
+generated = json.loads((work / "token.json").read_text())
+(work / "token.env").write_text(
+    f"ROUTER_TOKEN={shlex.quote(generated['token'])}\n"
+    f"ROUTER_MODEL=cli-smoke\n"
+)
+(work / "config.yaml").write_text(f"""server:
+  listen: ":18081"
+  cache: {{ enabled: false }}
+  logging:
+    path: {work}/requests.jsonl
+state_path: {work}/state.json
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-chat
+    api_key: ${{OPENROUTER_API_KEY}}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-readme-smoke
+models:
+  cli-smoke:
+    strategy: static
+    targets:
+      - {{ provider: openrouter, model: "qwen/qwen3.7-max:nitro" }}
+callers:
+  - id: readme-metrum-insights-dev
+    user: readme
+    project: metrum-insights
+    environment: dev
+    token_sha256: "{generated['token_sha256']}"
+    token_id: "{generated['token_id']}"
+    allow: ["cli-smoke"]
+    rate: {{ rpm: 120, tpm: 200000, concurrent: 4 }}
+    quota:
+      day: {{ requests: 1000, tokens: 2000000 }}
+      month: {{ tokens: 10000000 }}
+      soft_pct: 80
+    key: {{ lifetime_tokens: 10000000, soft_pct: 90, on_exhaust: disable }}
+""")
+PY
+```
+
+Start the router in one terminal. This form intentionally reads the project `env.json` for the smoke test, so a stale shell variable does not override the tested provider key:
+
+```bash
+export WORK=/tmp/smart-llmrouter-readme-smoke
+
+OPENROUTER_API_KEY=$(python3 - <<'PY'
+import json
+from pathlib import Path
+print(json.loads(Path("env.json").read_text())["OPENROUTER_API_KEY"])
+PY
+) ./router --config "$WORK/config.yaml"
+```
+
+Then run the CLI checks in another terminal:
+
+```bash
+export WORK=/tmp/smart-llmrouter-readme-smoke
+
+set -a
+. "$WORK/token.env"
+set +a
+```
+
+### Claude Code
+
+Claude Code uses Anthropic-style requests. Set both token variables so installations that prefer either `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` send the router caller token.
+
+```bash
+export ANTHROPIC_BASE_URL="http://127.0.0.1:18081"
+export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
+export ANTHROPIC_API_KEY="$ROUTER_TOKEN"
+export ANTHROPIC_MODEL="$ROUTER_MODEL"
+
+claude --bare --print --model "$ROUTER_MODEL" \
   "Reply with exactly: router claude ok"
 ```
 
-Expected log fields: `client=claude-code`, `inbound_dialect=anthropic`, `requested_model=default`, and a concrete target provider/model. Provider keys must not appear in output or logs.
+Expected output:
 
-## Live Codex Gates
+```text
+router claude ok
+```
 
-Installed version observed locally: `codex-cli 0.139.0`.
+Expected log fields include `client=claude-code`, `inbound_dialect=anthropic`, `requested_model=cli-smoke`, and a concrete target provider/model. Provider keys must not appear in output or logs.
 
-Responses API:
+### Codex CLI
+
+Codex is configured with ephemeral provider settings and the OpenAI Responses wire API:
 
 ```bash
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+mkdir -p "$WORK/codex-work"
 
 codex exec --ignore-user-config --ephemeral \
-  -c 'model="default"' \
+  --ignore-rules \
+  --skip-git-repo-check \
+  -C "$WORK/codex-work" \
+  -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:8080/v1"' \
+  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Reply with exactly: router codex responses ok"
+  "Reply with exactly: router codex ok" </dev/null
 ```
 
-Chat Completions API:
+Expected final assistant output:
 
-```bash
-codex exec --ignore-user-config --ephemeral \
-  -c 'model="default"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:8080/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="chat"' \
-  "Reply with exactly: router codex chat ok"
+```text
+router codex ok
 ```
 
-Expected log fields: `client=codex`, `inbound_dialect=openai-responses` or `openai-chat`, `requested_model=default`, and no leaked credentials.
+Expected log fields include `client=codex`, `inbound_dialect=openai-responses`, `requested_model=cli-smoke`, and no leaked credentials. A local Codex installation may print a bubblewrap/user-namespace warning; that is separate from the router request and does not indicate provider failure.
 
 ## Test
 

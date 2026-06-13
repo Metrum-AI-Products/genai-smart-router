@@ -124,10 +124,48 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 	defer s.finish(rc, http.StatusOK, nil)
 	data := []map[string]any{}
 	for name := range rc.caller.allow {
-		data = append(data, map[string]any{"id": name, "object": "model", "created": 0, "owned_by": "smart-llmrouter"})
+		data = append(data, map[string]any{
+			"id":                               name,
+			"slug":                             name,
+			"name":                             name,
+			"display_name":                     name,
+			"description":                      "Smart LLM Router model group " + name,
+			"mode":                             "default",
+			"base_instructions":                "You are Codex, a coding agent using Smart LLM Router.",
+			"context_window":                   131072,
+			"max_context_window":               131072,
+			"effective_context_window_percent": 95,
+			"default_reasoning_level":          "none",
+			"default_reasoning_summary":        "none",
+			"default_verbosity":                "low",
+			"supported_reasoning_levels":       []string{},
+			"supports_reasoning_summaries":     false,
+			"supports_parallel_tool_calls":     false,
+			"supports_search_tool":             false,
+			"supports_image_detail_original":   false,
+			"support_verbosity":                true,
+			"apply_patch_tool_type":            "freeform",
+			"web_search_tool_type":             "text_and_image",
+			"additional_speed_tiers":           []string{},
+			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
+			"experimental_supported_tools":     []string{},
+			"input_modalities":                 []string{"text"},
+			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
+			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
+			"shell_type":                       "shell_command",
+			"visibility":                       "list",
+			"minimal_client_version":           "0.0.0",
+			"supported_in_api":                 true,
+			"availability_nux":                 nil,
+			"upgrade":                          nil,
+			"priority":                         1000,
+			"object":                           "model",
+			"created":                          0,
+			"owned_by":                         "smart-llmrouter",
+		})
 	}
 	sort.Slice(data, func(i, j int) bool { return data[i]["id"].(string) < data[j]["id"].(string) })
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "mode": "default", "data": data, "models": data})
 }
 
 func (s *Service) handleUsage(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +318,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) (*requestContext, bool) {
 	id := requestID()
 	w.Header().Set("X-Request-Id", id)
-	caller, tokenID, err := s.authenticate(r.Header.Get("Authorization"))
+	caller, tokenID, err := s.authenticate(r.Header.Get("Authorization"), r.Header.Get("X-API-Key"))
 	rc := &requestContext{
 		id:      id,
 		start:   time.Now(),
@@ -326,12 +364,17 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.logger.Emit(rc.rec)
 }
 
-func (s *Service) authenticate(header string) (*callerRuntime, string, error) {
+func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, error) {
 	const prefix = "Bearer "
-	if !strings.HasPrefix(header, prefix) {
+	var token string
+	if strings.HasPrefix(header, prefix) {
+		token = strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	} else if strings.TrimSpace(apiKey) != "" {
+		token = strings.TrimSpace(apiKey)
+	}
+	if token == "" {
 		return nil, "", errors.New("missing bearer token")
 	}
-	token := strings.TrimSpace(strings.TrimPrefix(header, prefix))
 	sum := sha256.Sum256([]byte(token))
 	sumHex := hex.EncodeToString(sum[:])
 	tokenID := tokenPrefix(token, sumHex)

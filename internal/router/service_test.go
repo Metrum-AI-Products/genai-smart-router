@@ -80,6 +80,59 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestAuthAcceptsXAPIKeyForAnthropicStyleClients(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_x_api_key",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "x-api-key ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("X-API-Key", testToken)
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "x-api-key ok") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
+	}
+}
+
+func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["data"].([]any); !ok {
+		t.Fatalf("missing OpenAI data field: %#v", body)
+	}
+	if models, ok := body["models"].([]any); !ok || len(models) == 0 {
+		t.Fatalf("missing Codex models field: %#v", body)
+	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["supported_reasoning_levels"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
+		t.Fatalf("missing Codex model compatibility fields: %#v", body)
+	}
+}
+
 func TestCacheHitAcrossDialectsAndTargetIsolation(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
