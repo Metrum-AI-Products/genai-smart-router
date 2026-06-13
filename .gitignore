@@ -1,0 +1,11 @@
+.env
+env.json
+*.log
+*.jsonl
+router-state.json
+requests.jsonl
+smart-llmrouter
+/router
+examples/cli-e2e-c/cli-e2e
+dist/
+tmp/

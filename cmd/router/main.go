@@ -1,0 +1,62 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"smart-llmrouter/internal/router"
+)
+
+func main() {
+	configPath := flag.String("config", "config.yaml", "path to router YAML config")
+	flag.Parse()
+
+	cfg, err := router.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+
+	svc, err := router.New(cfg)
+	if err != nil {
+		log.Fatalf("initialize router: %v", err)
+	}
+	defer svc.Close()
+
+	srv := &http.Server{
+		Addr:              cfg.Server.Listen,
+		Handler:           svc.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	errs := make(chan error, 1)
+	go func() {
+		log.Printf("smart-llmrouter listening on %s", cfg.Server.Listen)
+		errs <- srv.ListenAndServe()
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-stop:
+		log.Printf("received %s, shutting down", sig)
+	case err := <-errs:
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server: %v", err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
+		os.Exit(1)
+	}
+}

@@ -1,0 +1,162 @@
+server:
+  listen: ":8080"
+  cache:
+    enabled: true
+    max_bytes: 134217728
+    default_ttl: 15m
+  logging:
+    path: requests.jsonl
+    rotate_mb: 256
+    keep: 14
+
+state_path: router-state.json
+
+providers:
+  anthropic:
+    base_url: https://api.anthropic.com
+    dialect: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+    api_key_env: ANTHROPIC_API_KEY
+    key_id: anthropic-default
+    models:
+      opus:
+        model: claude-opus-4-8
+        tier: heavy
+        weight: 1
+  moonshot:
+    base_url: https://api.moonshot.ai/v1
+    dialect: openai-chat
+    api_key: ${MOONSHOT_API_KEY}
+    api_key_env: MOONSHOT_API_KEY
+    key_id: moonshot-default
+    models:
+      kimi-k2:
+        model: kimi-k2
+        tier: cheap
+        weight: 3
+  kimi:
+    base_url: https://api.moonshot.ai/v1
+    dialect: openai-chat
+    api_key: ${KIMI_API_KEY}
+    api_key_env: KIMI_API_KEY
+    key_id: kimi-default
+    models:
+      kimi-k2:
+        model: kimi-k2
+        tier: cheap
+        weight: 3
+  qwen:
+    base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    dialect: openai-chat
+    api_key: ${QWEN_API_KEY}
+    api_key_env: QWEN_API_KEY
+    key_id: qwen-default
+    models:
+      qwen3-max:
+        model: qwen3-max
+        tier: cheap
+        weight: 1
+  minimax:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-chat
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-default
+    models:
+      text-01:
+        model: MiniMax-Text-01
+        tier: cheap
+        weight: 1
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-chat
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-default
+    models:
+      claude-opus:
+        model: anthropic/claude-opus-4
+        tier: heavy
+        weight: 1
+  xai:
+    base_url: https://api.x.ai/v1
+    dialect: openai-chat
+    api_key: ${XAI_API_KEY}
+    api_key_env: XAI_API_KEY
+    key_id: xai-default
+    models:
+      grok-3:
+        model: grok-3
+        tier: heavy
+        weight: 1
+  replicate:
+    base_url: https://api.replicate.com
+    dialect: replicate
+    api_key: ${REPLICATE_API_KEY}
+    api_key_env: REPLICATE_API_KEY
+    key_id: replicate-default
+    models:
+      llama-3-70b:
+        model: meta/meta-llama-3-70b-instruct
+        tier: cheap
+        weight: 1
+  openai:
+    base_url: https://api.openai.com/v1
+    dialect: openai-responses
+    api_key: ${OPENAI_API_KEY}
+    api_key_env: OPENAI_API_KEY
+    key_id: openai-default
+    models:
+      gpt55:
+        model: gpt-5.5
+        tier: heavy
+        weight: 3
+      gpt54:
+        model: gpt-5.4
+        tier: balanced
+        weight: 2
+      gpt54mini:
+        model: gpt-5.4-mini
+        tier: cheap
+        weight: 2
+
+models:
+  default:
+    strategy: script
+    script: scripts/router.ts
+    targets:
+      - { provider: openai, model_ref: gpt55 }
+      - { provider: openai, model_ref: gpt54mini }
+      - { provider: moonshot, model_ref: kimi-k2 }
+      - { provider: kimi, model_ref: kimi-k2 }
+      - { provider: qwen, model_ref: qwen3-max }
+      - { provider: minimax, model_ref: text-01 }
+      - { provider: xai, model_ref: grok-3 }
+      - { provider: openrouter, model_ref: claude-opus }
+      - { provider: replicate, model_ref: llama-3-70b }
+      - { provider: anthropic, model_ref: opus }
+  fast:
+    strategy: weighted
+    targets:
+      - { provider: moonshot, model_ref: kimi-k2 }
+      - { provider: kimi, model_ref: kimi-k2 }
+      - { provider: qwen, model_ref: qwen3-max }
+      - { provider: minimax, model_ref: text-01 }
+      - { provider: openai, model_ref: gpt54mini, weight: 4 }
+  big-coder:
+    strategy: failover
+    targets:
+      - { provider: anthropic, model_ref: opus }
+      - { provider: openrouter, model_ref: claude-opus }
+
+callers:
+  - id: alice
+    token_sha256: "REPLACE_WITH_SHA256_HEX_OF_ROUTER_TOKEN"
+    token_id: "rtr_alice_replace"
+    allow: ["default", "fast", "big-coder"]
+    rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+    quota:
+      day: { requests: 5000, tokens: 20000000 }
+      month: { tokens: 400000000 }
+      soft_pct: 80
+    key: { lifetime_tokens: 2000000000, soft_pct: 90, on_exhaust: disable }
