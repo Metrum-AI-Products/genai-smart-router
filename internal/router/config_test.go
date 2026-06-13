@@ -71,7 +71,7 @@ func TestMissingProviderModelRefFailsValidation(t *testing.T) {
 	}
 }
 
-func TestExampleConfigDefaultIncludesKimiAndMiniMaxTargets(t *testing.T) {
+func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	raw, err := os.ReadFile("../../config.example.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -91,12 +91,17 @@ func TestExampleConfigDefaultIncludesKimiAndMiniMaxTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"moonshot:kimi-k2":        "kimi-k2",
-		"moonshot:kimi-k2.7-code": "kimi-k2.7-code",
-		"kimi:kimi-k2":            "kimi-k2",
-		"kimi:kimi-k2.7-code":     "kimi-k2.7-code",
-		"minimax:MiniMax-Text-01": "MiniMax-Text-01",
-		"minimax:MiniMax-M3":      "MiniMax-M3",
+		"moonshot:kimi-k2":                                       "kimi-k2",
+		"moonshot:kimi-k2.7-code":                                "kimi-k2.7-code",
+		"kimi:kimi-k2":                                           "kimi-k2",
+		"kimi:kimi-k2.7-code":                                    "kimi-k2.7-code",
+		"minimax:MiniMax-Text-01":                                "MiniMax-Text-01",
+		"minimax:MiniMax-M3":                                     "MiniMax-M3",
+		"openrouter:openrouter/pareto-code:nitro":                "openrouter/pareto-code:nitro",
+		"openrouter:moonshotai/kimi-k2.7-code:nitro":             "moonshotai/kimi-k2.7-code:nitro",
+		"openrouter:minimax/minimax-m3:nitro":                    "minimax/minimax-m3:nitro",
+		"openrouter:qwen/qwen3.7-max:nitro":                      "qwen/qwen3.7-max:nitro",
+		"openrouter_anthropic:anthropic/claude-sonnet-4.6:nitro": "anthropic/claude-sonnet-4.6:nitro",
 	}
 	for name, model := range want {
 		found := false
@@ -112,6 +117,10 @@ func TestExampleConfigDefaultIncludesKimiAndMiniMaxTargets(t *testing.T) {
 		if !found {
 			t.Fatalf("default group missing resolved target %s; targets=%#v", name, defaultGroup.Targets)
 		}
+	}
+	openRouterAnthropic := cfg.Provider["openrouter_anthropic"]
+	if openRouterAnthropic.Dialect != "anthropic" || normalizeAuthScheme(openRouterAnthropic.AuthScheme) != "bearer" {
+		t.Fatalf("openrouter_anthropic provider not configured for Anthropic bearer skin: %#v", openRouterAnthropic)
 	}
 }
 

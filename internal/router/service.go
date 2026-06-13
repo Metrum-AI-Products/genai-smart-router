@@ -415,8 +415,8 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if provider.APIKey != "" {
-		switch outDialect {
-		case "anthropic":
+		switch upstreamAuthScheme(provider, outDialect) {
+		case "x-api-key":
 			httpReq.Header.Set("X-API-Key", provider.APIKey)
 			httpReq.Header.Set("Anthropic-Version", "2023-06-01")
 		case "replicate":
@@ -424,6 +424,9 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 			httpReq.Header.Set("Prefer", "wait=60")
 		default:
 			httpReq.Header.Set("Authorization", "Bearer "+provider.APIKey)
+			if outDialect == "anthropic" {
+				httpReq.Header.Set("Anthropic-Version", "2023-06-01")
+			}
 		}
 	}
 	httpResp, err := s.httpClient.Do(httpReq)
@@ -574,6 +577,20 @@ func targetDialect(provider ProviderConfig, target Target) string {
 		return d
 	}
 	return normalizeDialect(provider.Dialect)
+}
+
+func upstreamAuthScheme(provider ProviderConfig, dialect string) string {
+	if scheme := normalizeAuthScheme(provider.AuthScheme); scheme != "" && scheme != "default" {
+		return scheme
+	}
+	switch dialect {
+	case "anthropic":
+		return "x-api-key"
+	case "replicate":
+		return "replicate"
+	default:
+		return "bearer"
+	}
 }
 
 func upstreamEndpoint(base, dialect string, target Target) string {

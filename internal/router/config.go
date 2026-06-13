@@ -41,12 +41,13 @@ type LoggingConfig struct {
 }
 
 type ProviderConfig struct {
-	BaseURL   string                   `yaml:"base_url"`
-	Dialect   string                   `yaml:"dialect"`
-	APIKey    string                   `yaml:"api_key"`
-	APIKeyEnv string                   `yaml:"api_key_env"`
-	KeyID     string                   `yaml:"key_id"`
-	Models    map[string]ProviderModel `yaml:"models"`
+	BaseURL    string                   `yaml:"base_url"`
+	Dialect    string                   `yaml:"dialect"`
+	APIKey     string                   `yaml:"api_key"`
+	APIKeyEnv  string                   `yaml:"api_key_env"`
+	KeyID      string                   `yaml:"key_id"`
+	AuthScheme string                   `yaml:"auth_scheme"`
+	Models     map[string]ProviderModel `yaml:"models"`
 }
 
 type ProviderModel struct {
@@ -204,6 +205,9 @@ func (c *Config) Validate() error {
 		if normalizeDialect(p.Dialect) == "" {
 			return fmt.Errorf("provider %s has unsupported dialect %q", name, p.Dialect)
 		}
+		if p.AuthScheme != "" && normalizeAuthScheme(p.AuthScheme) == "" {
+			return fmt.Errorf("provider %s has unsupported auth_scheme %q", name, p.AuthScheme)
+		}
 		for ref, model := range p.Models {
 			if model.Model == "" {
 				return fmt.Errorf("provider %s model %s missing model", name, ref)
@@ -255,6 +259,19 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func normalizeAuthScheme(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "default":
+		return "default"
+	case "bearer", "authorization-bearer":
+		return "bearer"
+	case "x-api-key", "anthropic":
+		return "x-api-key"
+	default:
+		return ""
+	}
 }
 
 func (c *Config) resolveTarget(group string, target Target) (Target, error) {

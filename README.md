@@ -54,7 +54,8 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code` and MiniMax `MiniMax-M3` entries alongside lower-cost fallback models.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, and OpenRouter coding `:nitro` entries alongside lower-cost fallback models.
+- OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
 ## Provider Model Catalogs
@@ -83,6 +84,19 @@ models:
 ```
 
 `model_ref` is local to its provider. Target-local fields override catalog defaults, so the second target above uses the same external model as `gpt54mini` but overrides its weight to `5`. Direct `{ provider, model }` targets are still supported.
+
+For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
+
+```yaml
+providers:
+  openrouter_anthropic:
+    base_url: https://openrouter.ai/api
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${OPENROUTER_API_KEY}
+    models:
+      claude-sonnet-46-nitro: { model: anthropic/claude-sonnet-4.6:nitro, tier: heavy, weight: 2 }
+```
 
 ## TypeScript Routing
 
@@ -124,6 +138,27 @@ Health checks:
 ```bash
 curl http://127.0.0.1:8080/healthz
 curl http://127.0.0.1:8080/readyz
+```
+
+## Make Targets
+
+```bash
+make test       # Go unit tests
+make build      # build ./router
+make e2e-mock   # local mock Claude/Codex C harness
+make e2e-live-c # live OpenRouter :nitro C-generation e2e through Claude Code and Codex
+```
+
+`make e2e-live-c` starts the router once per OpenRouter sample target, runs both local CLIs, extracts the generated C source, compiles it with `cc -std=c11 -Wall -Wextra -Werror`, and runs the binary. It reads the project `env.json` before invoking the router. To keep logs and generated C files:
+
+```bash
+KEEP_LIVE_E2E_WORKDIR=1 make e2e-live-c
+```
+
+To run one live case:
+
+```bash
+LIVE_E2E_CASE_REGEX=or-kimi-k27 make e2e-live-c
 ```
 
 ## Live Claude Code Gate

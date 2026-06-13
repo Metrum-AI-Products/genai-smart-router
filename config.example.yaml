@@ -86,10 +86,34 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-default
     models:
-      claude-opus:
-        model: anthropic/claude-opus-4
+      pareto-code-nitro:
+        model: openrouter/pareto-code:nitro
         tier: heavy
-        weight: 1
+        weight: 3
+      kimi-k27-code-nitro:
+        model: moonshotai/kimi-k2.7-code:nitro
+        tier: heavy
+        weight: 4
+      minimax-m3-nitro:
+        model: minimax/minimax-m3:nitro
+        tier: heavy
+        weight: 3
+      qwen37-max-nitro:
+        model: qwen/qwen3.7-max:nitro
+        tier: balanced
+        weight: 2
+  openrouter_anthropic:
+    base_url: https://openrouter.ai/api
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-anthropic-default
+    models:
+      claude-sonnet-46-nitro:
+        model: anthropic/claude-sonnet-4.6:nitro
+        tier: heavy
+        weight: 2
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat
@@ -147,7 +171,11 @@ models:
       - { provider: minimax, model_ref: m3 }
       - { provider: minimax, model_ref: text-01 }
       - { provider: xai, model_ref: grok-3 }
-      - { provider: openrouter, model_ref: claude-opus }
+      - { provider: openrouter, model_ref: pareto-code-nitro }
+      - { provider: openrouter, model_ref: kimi-k27-code-nitro }
+      - { provider: openrouter, model_ref: minimax-m3-nitro }
+      - { provider: openrouter, model_ref: qwen37-max-nitro }
+      - { provider: openrouter_anthropic, model_ref: claude-sonnet-46-nitro }
       - { provider: replicate, model_ref: llama-3-70b }
       - { provider: anthropic, model_ref: opus }
   fast:
@@ -160,12 +188,15 @@ models:
       - { provider: qwen, model_ref: qwen3-max }
       - { provider: minimax, model_ref: m3 }
       - { provider: minimax, model_ref: text-01 }
+      - { provider: openrouter, model_ref: kimi-k27-code-nitro }
       - { provider: openai, model_ref: gpt54mini, weight: 4 }
   big-coder:
     strategy: failover
     targets:
+      - { provider: openrouter_anthropic, model_ref: claude-sonnet-46-nitro }
+      - { provider: openrouter, model_ref: pareto-code-nitro }
+      - { provider: openrouter, model_ref: kimi-k27-code-nitro }
       - { provider: anthropic, model_ref: opus }
-      - { provider: openrouter, model_ref: claude-opus }
 
 callers:
   - id: alice

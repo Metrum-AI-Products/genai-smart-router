@@ -390,6 +390,73 @@ func TestModelRefTargetUsesResolvedExternalModel(t *testing.T) {
 	}
 }
 
+func TestOpenRouterAnthropicSkinUsesBearerAuthAndMessagesPath(t *testing.T) {
+	var gotPath, gotAuth, gotAPIKey, gotVersion, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotVersion = r.Header.Get("Anthropic-Version")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":            "msg_openrouter",
+			"type":          "message",
+			"role":          "assistant",
+			"model":         gotModel,
+			"content":       []map[string]any{{"type": "text", "text": "openrouter anthropic ok"}},
+			"stop_reason":   "end_turn",
+			"stop_sequence": nil,
+			"usage":         map[string]any{"input_tokens": 1, "output_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
+	cfg.Provider["openrouter_anthropic"] = ProviderConfig{
+		BaseURL:    upstream.URL + "/api",
+		Dialect:    "anthropic",
+		AuthScheme: "bearer",
+		APIKey:     "openrouter-key",
+		Models: map[string]ProviderModel{
+			"claude-sonnet-46-nitro": {Model: "anthropic/claude-sonnet-4.6:nitro", Weight: 1},
+		},
+	}
+	cfg.Models["openrouter-anthropic"] = ModelGroup{
+		Strategy: "static",
+		Targets:  []Target{{Provider: "openrouter_anthropic", ModelRef: "claude-sonnet-46-nitro"}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "openrouter-anthropic")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"openrouter-anthropic","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/api/v1/messages" {
+		t.Fatalf("unexpected path %s", gotPath)
+	}
+	if gotAuth != "Bearer openrouter-key" || gotAPIKey != "" {
+		t.Fatalf("unexpected auth headers Authorization=%q X-API-Key=%q", gotAuth, gotAPIKey)
+	}
+	if gotVersion != "2023-06-01" {
+		t.Fatalf("missing Anthropic-Version, got %q", gotVersion)
+	}
+	if gotModel != "anthropic/claude-sonnet-4.6:nitro" {
+		t.Fatalf("upstream model=%q", gotModel)
+	}
+}
+
 const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {
