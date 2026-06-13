@@ -29,6 +29,7 @@ type Service struct {
 	quota        *quotaStore
 	cache        *responseCache
 	logger       *requestLogger
+	metrics      *metricsStore
 	scripts      map[string]*scriptStrategy
 }
 
@@ -71,6 +72,7 @@ func New(cfg *Config) (*Service, error) {
 		quota:        quota,
 		cache:        newCache(cfg.Server.Cache),
 		logger:       logger,
+		metrics:      newMetricsStore(),
 		scripts:      map[string]*scriptStrategy{},
 	}
 	if err := s.loadScripts(); err != nil {
@@ -107,6 +109,7 @@ func (s *Service) routes() {
 	})
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
+	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
 	s.mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })
@@ -134,6 +137,17 @@ func (s *Service) handleUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.finish(rc, http.StatusOK, nil)
 	writeJSON(w, http.StatusOK, s.quota.Usage(rc.caller))
+}
+
+func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	rc, ok := s.begin(w, r, "metrics")
+	if !ok {
+		return
+	}
+	defer s.finish(rc, http.StatusOK, nil)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, s.metrics.Prometheus())
 }
 
 func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
@@ -290,6 +304,9 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 		return nil, false
 	}
 	rc.rec.CallerID = caller.cfg.ID
+	rc.rec.CallerUser = callerUser(caller.cfg)
+	rc.rec.CallerProject = callerProject(caller.cfg)
+	rc.rec.CallerEnvironment = callerEnvironment(caller.cfg)
 	rc.rec.TokenID = tokenID
 	return rc, true
 }
@@ -305,6 +322,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		rc.rec.Error = code
 	}
 	rc.rec.LatencyMS = time.Since(rc.start).Milliseconds()
+	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 }
 

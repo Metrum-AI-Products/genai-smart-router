@@ -186,6 +186,112 @@ func TestCountTokensEndpoint(t *testing.T) {
 	}
 }
 
+func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_meta",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "metadata"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	usageReq := httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+	usageReq.Header.Set("Authorization", "Bearer "+testToken)
+	usageRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(usageRR, usageReq)
+	if usageRR.Code != http.StatusOK {
+		t.Fatalf("usage status=%d body=%s", usageRR.Code, usageRR.Body.String())
+	}
+	var usage map[string]any
+	if err := json.Unmarshal(usageRR.Body.Bytes(), &usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage["caller_user"] != "alice" || usage["caller_project"] != "metrum-insights" || usage["caller_environment"] != "test" {
+		t.Fatalf("usage metadata missing: %#v", usage)
+	}
+	svc.Close()
+
+	raw, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"caller_user":"alice"`) || !strings.Contains(string(raw), `"caller_project":"metrum-insights"`) || !strings.Contains(string(raw), `"caller_environment":"test"`) {
+		t.Fatalf("log metadata missing: %s", raw)
+	}
+}
+
+func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_metrics",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "metrics"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	unauth := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	unauthRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(unauthRR, unauth)
+	if unauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth metrics status=%d body=%s", unauthRR.Code, unauthRR.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsReq.Header.Set("Authorization", "Bearer "+testToken)
+	metricsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(metricsRR, metricsReq)
+	if metricsRR.Code != http.StatusOK {
+		t.Fatalf("metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
+	}
+	body := metricsRR.Body.String()
+	for _, want := range []string{
+		`smart_llmrouter_requests_total`,
+		`caller_id="alice"`,
+		`caller_user="alice"`,
+		`caller_project="metrum-insights"`,
+		`caller_environment="test"`,
+		`token_id="rtr_alice_test"`,
+		`model_group="default"`,
+		`target_provider="mock"`,
+		`target_model="mock-model"`,
+		`smart_llmrouter_tokens_total`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestReplicateProviderAdapter(t *testing.T) {
 	var gotPath, gotAuth string
 	var gotBody map[string]any
@@ -489,6 +595,9 @@ func testConfig(t *testing.T, upstreamURL, providerKey, dir string) *Config {
 		},
 		Callers: []CallerConfig{{
 			ID:          "alice",
+			User:        "alice",
+			Project:     "metrum-insights",
+			Environment: "test",
 			TokenSHA256: hex.EncodeToString(sum[:]),
 			TokenID:     "rtr_alice_test",
 			Allow:       []string{"default", "other"},

@@ -79,36 +79,39 @@ type Target struct {
 }
 
 type CallerConfig struct {
-	ID          string      `yaml:"id"`
-	TokenSHA256 string      `yaml:"token_sha256"`
-	TokenID     string      `yaml:"token_id"`
-	Allow       []string    `yaml:"allow"`
-	Rate        RateConfig  `yaml:"rate"`
-	Quota       QuotaConfig `yaml:"quota"`
-	Key         KeyConfig   `yaml:"key"`
+	ID          string      `yaml:"id" json:"id"`
+	User        string      `yaml:"user" json:"user"`
+	Project     string      `yaml:"project" json:"project"`
+	Environment string      `yaml:"environment" json:"environment"`
+	TokenSHA256 string      `yaml:"token_sha256" json:"token_sha256"`
+	TokenID     string      `yaml:"token_id" json:"token_id"`
+	Allow       []string    `yaml:"allow" json:"allow"`
+	Rate        RateConfig  `yaml:"rate" json:"rate"`
+	Quota       QuotaConfig `yaml:"quota" json:"quota"`
+	Key         KeyConfig   `yaml:"key" json:"key"`
 }
 
 type RateConfig struct {
-	RPM        int `yaml:"rpm"`
-	TPM        int `yaml:"tpm"`
-	Concurrent int `yaml:"concurrent"`
+	RPM        int `yaml:"rpm" json:"rpm"`
+	TPM        int `yaml:"tpm" json:"tpm"`
+	Concurrent int `yaml:"concurrent" json:"concurrent"`
 }
 
 type QuotaConfig struct {
-	Day     BudgetConfig `yaml:"day"`
-	Month   BudgetConfig `yaml:"month"`
-	SoftPct int          `yaml:"soft_pct"`
+	Day     BudgetConfig `yaml:"day" json:"day"`
+	Month   BudgetConfig `yaml:"month" json:"month"`
+	SoftPct int          `yaml:"soft_pct" json:"soft_pct"`
 }
 
 type BudgetConfig struct {
-	Requests int64 `yaml:"requests"`
-	Tokens   int64 `yaml:"tokens"`
+	Requests int64 `yaml:"requests" json:"requests"`
+	Tokens   int64 `yaml:"tokens" json:"tokens"`
 }
 
 type KeyConfig struct {
-	LifetimeTokens int64  `yaml:"lifetime_tokens"`
-	SoftPct        int    `yaml:"soft_pct"`
-	OnExhaust      string `yaml:"on_exhaust"`
+	LifetimeTokens int64  `yaml:"lifetime_tokens" json:"lifetime_tokens"`
+	SoftPct        int    `yaml:"soft_pct" json:"soft_pct"`
+	OnExhaust      string `yaml:"on_exhaust" json:"on_exhaust"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -245,6 +248,15 @@ func (c *Config) Validate() error {
 	for _, caller := range c.Callers {
 		if caller.ID == "" {
 			return fmt.Errorf("caller missing id")
+		}
+		if caller.User != "" && slugify(caller.User) == "" {
+			return fmt.Errorf("caller %s has invalid user", caller.ID)
+		}
+		if caller.Project != "" && slugify(caller.Project) == "" {
+			return fmt.Errorf("caller %s has invalid project", caller.ID)
+		}
+		if caller.Environment != "" && slugify(caller.Environment) == "" {
+			return fmt.Errorf("caller %s has invalid environment", caller.ID)
 		}
 		if caller.TokenSHA256 == "" || len(caller.TokenSHA256) != sha256.Size*2 {
 			return fmt.Errorf("caller %s has invalid token_sha256", caller.ID)

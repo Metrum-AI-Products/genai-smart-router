@@ -16,6 +16,7 @@ Current MVP capabilities:
 - Per-caller RPM, TPM, concurrency, rolling quota, and lifetime key budget enforcement.
 - Disk-persisted quota/key state.
 - JSONL request logs using the SRS schema.
+- Authenticated Prometheus-compatible `/metrics` with caller/user/project labels.
 
 ## Run
 
@@ -23,14 +24,16 @@ Create a config from the example:
 
 ```bash
 cp config.example.yaml config.yaml
-export ROUTER_TOKEN="rtr_alice_local_replace"
-python3 - <<'PY'
-import hashlib, os
-print(hashlib.sha256(os.environ["ROUTER_TOKEN"].encode()).hexdigest())
-PY
+go run ./cmd/router-token-gen generate \
+  --user chetan \
+  --project metrum-insights \
+  --env dev \
+  --allow default,fast,big-coder
 ```
 
-Put the printed hash in `callers[0].token_sha256`. Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the template.
+Save the printed `token` value as the caller's bearer token, and copy the generated `callers:` entry into `config.yaml`. Tokens use the traceable prefix `rtr_metrum_<user>_<project>_<env>_<key>_<secret>`, while the router stores only `token_sha256` and logs/exports only `token_id`.
+
+Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the template.
 
 ```bash
 go run ./cmd/router --config config.yaml
@@ -138,13 +141,14 @@ Health checks:
 ```bash
 curl http://127.0.0.1:8080/healthz
 curl http://127.0.0.1:8080/readyz
+curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```
 
 ## Make Targets
 
 ```bash
 make test       # Go unit tests
-make build      # build ./router
+make build      # build ./router and ./router-token-gen
 make e2e-mock   # local mock Claude/Codex C harness
 make e2e-live-c # live OpenRouter :nitro C-generation e2e through Claude Code and Codex
 ```

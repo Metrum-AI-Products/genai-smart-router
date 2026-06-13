@@ -151,7 +151,10 @@ func (q *quotaStore) Usage(c *callerRuntime) map[string]any {
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
 	return map[string]any{
-		"caller_id": c.cfg.ID,
+		"caller_id":          c.cfg.ID,
+		"caller_user":        callerUser(c.cfg),
+		"caller_project":     callerProject(c.cfg),
+		"caller_environment": callerEnvironment(c.cfg),
 		"day": map[string]any{
 			"requests": st.DayRequests,
 			"tokens":   st.DayTokens,

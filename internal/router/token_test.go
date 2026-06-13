@@ -1,0 +1,61 @@
+package router
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
+	generated, err := GenerateCallerToken(TokenGenerateOptions{
+		User:        "Chetan",
+		Project:     "Metrum Insights",
+		Environment: "Dev",
+		KeySlug:     "Key 1",
+		Allow:       []string{"default", "fast"},
+		Reader:      strings.NewReader(strings.Repeat("a", 64)),
+		Now:         time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(generated.Token, "rtr_metrum_chetan_metrum-insights_dev_key-1_") {
+		t.Fatalf("unexpected token prefix: %s", generated.Token)
+	}
+	if generated.TokenID != "rtr_metrum_chetan_metrum-insights_dev_key-1" {
+		t.Fatalf("token id=%q", generated.TokenID)
+	}
+	if strings.Contains(generated.TokenID, generated.Token[strings.LastIndex(generated.Token, "_")+1:]) {
+		t.Fatal("token id contains secret")
+	}
+	sum := sha256.Sum256([]byte(generated.Token))
+	if generated.TokenSHA256 != hex.EncodeToString(sum[:]) || generated.Caller.TokenSHA256 != generated.TokenSHA256 {
+		t.Fatalf("hash mismatch: %#v", generated)
+	}
+	if generated.Caller.ID != "chetan-metrum-insights-dev" || generated.Caller.User != "chetan" || generated.Caller.Project != "metrum-insights" || generated.Caller.Environment != "dev" {
+		t.Fatalf("caller metadata not normalized: %#v", generated.Caller)
+	}
+	if len(generated.Caller.Allow) != 2 || generated.Caller.Allow[0] != "default" || generated.Caller.Allow[1] != "fast" {
+		t.Fatalf("allow list mismatch: %#v", generated.Caller.Allow)
+	}
+}
+
+func TestGenerateCallerTokenDefaults(t *testing.T) {
+	generated, err := GenerateCallerToken(TokenGenerateOptions{
+		User:    "alice",
+		Project: "metrum-insights",
+		Reader:  strings.NewReader(strings.Repeat("b", 64)),
+		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated.TokenID != "rtr_metrum_alice_metrum-insights_dev_k20260613" {
+		t.Fatalf("default token id=%q", generated.TokenID)
+	}
+	if len(generated.Caller.Allow) != 1 || generated.Caller.Allow[0] != "default" {
+		t.Fatalf("default allow=%#v", generated.Caller.Allow)
+	}
+}

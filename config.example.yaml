@@ -200,8 +200,11 @@ models:
 
 callers:
   - id: alice
+    user: alice
+    project: metrum-insights
+    environment: dev
     token_sha256: "REPLACE_WITH_SHA256_HEX_OF_ROUTER_TOKEN"
-    token_id: "rtr_alice_replace"
+    token_id: "rtr_metrum_alice_metrum-insights_dev_kreplace"
     allow: ["default", "fast", "big-coder"]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
     quota:

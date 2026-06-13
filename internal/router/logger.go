@@ -15,31 +15,34 @@ type requestLogger struct {
 }
 
 type logRecord struct {
-	TS             string   `json:"ts"`
-	RequestID      string   `json:"request_id"`
-	CallerID       string   `json:"caller_id"`
-	TokenID        string   `json:"token_id"`
-	Client         string   `json:"client"`
-	InboundDialect string   `json:"inbound_dialect"`
-	RequestedModel string   `json:"requested_model"`
-	ResolvedGroup  string   `json:"resolved_group"`
-	Strategy       string   `json:"strategy"`
-	ClassLabel     *string  `json:"class_label"`
-	TargetProvider string   `json:"target_provider"`
-	TargetModel    string   `json:"target_model"`
-	TargetDialect  string   `json:"target_dialect"`
-	Stream         bool     `json:"stream"`
-	Cache          string   `json:"cache"`
-	Status         int      `json:"status"`
-	Attempts       int      `json:"attempts"`
-	FallbackUsed   bool     `json:"fallback_used"`
-	LatencyMS      int64    `json:"latency_ms"`
-	TTFBMS         *int64   `json:"ttfb_ms"`
-	Usage          Usage    `json:"usage"`
-	QuotaState     string   `json:"quota_state"`
-	KeyState       string   `json:"key_state"`
-	Warnings       []string `json:"warnings"`
-	Error          *string  `json:"error"`
+	TS                string   `json:"ts"`
+	RequestID         string   `json:"request_id"`
+	CallerID          string   `json:"caller_id"`
+	CallerUser        string   `json:"caller_user"`
+	CallerProject     string   `json:"caller_project"`
+	CallerEnvironment string   `json:"caller_environment"`
+	TokenID           string   `json:"token_id"`
+	Client            string   `json:"client"`
+	InboundDialect    string   `json:"inbound_dialect"`
+	RequestedModel    string   `json:"requested_model"`
+	ResolvedGroup     string   `json:"resolved_group"`
+	Strategy          string   `json:"strategy"`
+	ClassLabel        *string  `json:"class_label"`
+	TargetProvider    string   `json:"target_provider"`
+	TargetModel       string   `json:"target_model"`
+	TargetDialect     string   `json:"target_dialect"`
+	Stream            bool     `json:"stream"`
+	Cache             string   `json:"cache"`
+	Status            int      `json:"status"`
+	Attempts          int      `json:"attempts"`
+	FallbackUsed      bool     `json:"fallback_used"`
+	LatencyMS         int64    `json:"latency_ms"`
+	TTFBMS            *int64   `json:"ttfb_ms"`
+	Usage             Usage    `json:"usage"`
+	QuotaState        string   `json:"quota_state"`
+	KeyState          string   `json:"key_state"`
+	Warnings          []string `json:"warnings"`
+	Error             *string  `json:"error"`
 }
 
 func newRequestLogger(path string) (*requestLogger, error) {
