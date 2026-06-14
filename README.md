@@ -18,7 +18,38 @@ Current MVP capabilities:
 - JSONL request logs using the SRS schema.
 - Authenticated Prometheus-compatible `/metrics` with caller/user/project labels.
 
-## Run
+## Build And Package
+
+The deployment artifact is a binary package. Operators should not need this source tree on the deployment host.
+
+```bash
+make build        # local router and router-token-gen binaries
+make package      # dist/smart-llmrouter-<version>-linux-<arch>.tar.gz
+make package-all  # linux amd64 and linux arm64 tarballs
+```
+
+Each tarball contains:
+
+```text
+bin/router
+bin/router-token-gen
+config/config.example.yaml
+config/env.example.json
+config/scripts/router.ts
+docs/README.md
+docs/DEPLOYMENT.md
+caddy/Caddyfile
+```
+
+The packaged config expects the routing script at `config/scripts/router.ts`, so the standard packaged run command is:
+
+```bash
+bin/router --config config/config.yaml
+```
+
+See `docs/DEPLOYMENT.md` for the `llm-api-engg.metrum.ai` deployment plan with Caddy TLS termination.
+
+## Run From Source
 
 Create a config from the example:
 
@@ -40,6 +71,8 @@ go run ./cmd/router --config config.yaml
 ```
 
 If a variable is already set in the shell, the shell value wins over `env.json`. This lets CI or one-off live tests override local secrets without editing files.
+
+In a packaged deployment, put provider keys in `config/env.json` beside `config/config.yaml`. The same loading rule applies: shell environment values win over `env.json`.
 
 Expected provider env vars in `config.example.yaml`:
 
@@ -190,6 +223,9 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```bash
 make test       # Go unit tests
 make build      # build ./router and ./router-token-gen
+make build-all  # build linux amd64 and linux arm64 binaries under dist/build
+make package    # build one tarball with binaries, config, docs, tools, and Caddyfile
+make package-all # build linux amd64 and linux arm64 tarballs
 make e2e-mock   # local mock Claude/Codex C harness
 make e2e-live-c # live OpenRouter :nitro C-generation e2e through Claude Code and Codex
 ```
