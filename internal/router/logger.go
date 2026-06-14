@@ -21,6 +21,7 @@ type logRecord struct {
 	CallerUser          string   `json:"caller_user"`
 	CallerProject       string   `json:"caller_project"`
 	CallerEnvironment   string   `json:"caller_environment"`
+	CallerIP            string   `json:"caller_ip"`
 	TokenID             string   `json:"token_id"`
 	Client              string   `json:"client"`
 	InboundDialect      string   `json:"inbound_dialect"`

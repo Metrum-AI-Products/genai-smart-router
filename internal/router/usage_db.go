@@ -38,6 +38,7 @@ type usageRow struct {
 	CallerUser          string
 	CallerProject       string
 	CallerEnvironment   string
+	CallerIP            string
 	TokenID             string
 	Client              string
 	InboundDialect      string
@@ -80,6 +81,7 @@ type usageRecord struct {
 	CallerUser          string   `gorm:"column:caller_user;type:text;not null"`
 	CallerProject       string   `gorm:"column:caller_project;type:text;not null"`
 	CallerEnvironment   string   `gorm:"column:caller_environment;type:text;not null"`
+	CallerIP            string   `gorm:"column:caller_ip;type:text;index:idx_request_usage_caller_ip,priority:1"`
 	TokenID             string   `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
 	Client              string   `gorm:"column:client;type:text;not null"`
 	InboundDialect      string   `gorm:"column:inbound_dialect;type:text;not null"`
@@ -301,6 +303,7 @@ func rowFromRecord(rec logRecord) usageRow {
 		CallerUser:          rec.CallerUser,
 		CallerProject:       rec.CallerProject,
 		CallerEnvironment:   rec.CallerEnvironment,
+		CallerIP:            rec.CallerIP,
 		TokenID:             tokenID,
 		Client:              rec.Client,
 		InboundDialect:      rec.InboundDialect,
@@ -345,6 +348,7 @@ func recordFromRow(row usageRow) *usageRecord {
 		CallerUser:          row.CallerUser,
 		CallerProject:       row.CallerProject,
 		CallerEnvironment:   row.CallerEnvironment,
+		CallerIP:            row.CallerIP,
 		TokenID:             row.TokenID,
 		Client:              row.Client,
 		InboundDialect:      row.InboundDialect,
@@ -393,6 +397,7 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		CallerUser:          record.CallerUser,
 		CallerProject:       record.CallerProject,
 		CallerEnvironment:   record.CallerEnvironment,
+		CallerIP:            record.CallerIP,
 		TokenID:             record.TokenID,
 		Client:              record.Client,
 		InboundDialect:      record.InboundDialect,
@@ -526,8 +531,10 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 	byModel := map[string]*agg{}
 	byGroup := map[string]*agg{}
 	byClient := map[string]*agg{}
+	byCallerIP := map[string]*agg{}
 	byStatus := map[string]*agg{}
 	byHour := map[string]*agg{}
+	byHourIP := map[string]*agg{}
 	byDay := map[string]*agg{}
 
 	for _, row := range rows {
@@ -545,12 +552,18 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 		clientKey := defaultString(row.Client, "unknown")
 		byClient[clientKey] = getAgg(byClient, clientKey)
 		byClient[clientKey].add(row)
+		ipKey := defaultString(row.CallerIP, "unknown")
+		byCallerIP[ipKey] = getAgg(byCallerIP, ipKey)
+		byCallerIP[ipKey].add(row)
 		statusKey := fmt.Sprint(row.Status)
 		byStatus[statusKey] = getAgg(byStatus, statusKey)
 		byStatus[statusKey].add(row)
 		hourKey := row.TS.UTC().Truncate(time.Hour).Format("2006-01-02 15:00")
 		byHour[hourKey] = getAgg(byHour, hourKey)
 		byHour[hourKey].add(row)
+		hourIPKey := joinKey(hourKey, ipKey)
+		byHourIP[hourIPKey] = getAgg(byHourIP, hourIPKey)
+		byHourIP[hourIPKey].add(row)
 		dayKey := row.TS.UTC().Format("2006-01-02")
 		byDay[dayKey] = getAgg(byDay, dayKey)
 		byDay[dayKey].add(row)
@@ -579,8 +592,10 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 	writeAggTable(&b, "Usage By External Model", []string{"Provider", "Model"}, byModel, splitKey2)
 	writeAggTable(&b, "Usage By Router Model Group", []string{"Model Group"}, byGroup, splitKey1)
 	writeAggTable(&b, "Usage By Client", []string{"Client"}, byClient, splitKey1)
+	writeAggTable(&b, "Usage By Caller IP", []string{"Caller IP"}, byCallerIP, splitKey1)
 	writeAggTable(&b, "Usage By Status", []string{"Status"}, byStatus, splitKey1)
 	writeAggTable(&b, "Hourly Usage", []string{"Hour UTC"}, byHour, splitKey1)
+	writeAggTable(&b, "Hourly Usage By Caller IP", []string{"Hour UTC", "Caller IP"}, byHourIP, splitKey2)
 	writeAggTable(&b, "Daily Usage", []string{"Day UTC"}, byDay, splitKey1)
 	return b.String()
 }
@@ -724,17 +739,17 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
 	fmt.Fprintln(b, "## Per-Request Throughput")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Time UTC | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output | Total | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Output tok/s | Downstream Total tok/s |")
-	fmt.Fprintln(b, "|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output | Total | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Output tok/s | Downstream Total tok/s |")
+	fmt.Fprintln(b, "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, row := range rows {
-		fmt.Fprintf(b, "| %s | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | %s | %s | %s | %s | %s | %s |\n",
-			formatUsageTime(row.TS), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
+		fmt.Fprintf(b, "| %s | `%s` | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | %s | %s | %s | %s | %s | %s |\n",
+			formatUsageTime(row.TS), esc(defaultString(row.CallerIP, "unknown")), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
 			esc(row.TargetProvider), esc(row.TargetModel), row.Status, esc(row.Cache), row.OutputTokens, totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
 			fmtIntPtr(row.UpstreamMS), fmtIntPtr(row.DownstreamMS), fmtFloatPtr(row.UpstreamOutputTPS), fmtFloatPtr(row.UpstreamTotalTPS),
 			fmtFloatPtr(row.DownstreamOutputTPS), fmtFloatPtr(row.DownstreamTotalTPS))
 	}
 	if len(rows) == 0 {
-		fmt.Fprintln(b, "| _none_ |  |  |  |  |  | 0 |  | 0 | 0 | n/a | n/a | n/a | n/a | n/a | n/a |")
+		fmt.Fprintln(b, "| _none_ |  |  |  |  |  |  | 0 |  | 0 | 0 | n/a | n/a | n/a | n/a | n/a | n/a |")
 	}
 	fmt.Fprintln(b)
 }

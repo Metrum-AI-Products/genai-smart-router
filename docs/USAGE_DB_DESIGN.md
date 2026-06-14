@@ -24,6 +24,7 @@ The entire usage DB schema must remain relational-only:
 Each request row stores:
 
 - caller, token, client, requested model group, resolved target provider/model, status, cache state, attempts, fallback state, and token counts.
+- `caller_ip`: source IP derived from `X-Forwarded-For`, `X-Real-IP`, or the direct remote address.
 - `upstream_duration_ms`: router-observed upstream provider/fallback call duration.
 - `downstream_duration_ms`: router-to-caller response write duration.
 - upstream/downstream output-token/sec and total-token/sec.

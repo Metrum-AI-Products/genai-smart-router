@@ -45,7 +45,7 @@ Smart LLM Router addresses the controllable layer of that problem:
 - Apply per-caller allow lists, rate limits, quotas, and lifetime token budgets before any upstream provider call is made.
 - Use weighted routing and fallback to balance cost, latency, quality, and provider availability without client changes.
 - Cache eligible deterministic responses so repeated requests do not create repeated provider charges.
-- Produce usage reports by internal key, user, project, provider, model, hour, day, status, cache behavior, and token throughput.
+- Produce usage reports by internal key, user, project, caller IP, provider, model, hour, day, status, cache behavior, and token throughput.
 - Give platform and finance teams the evidence needed to compare spend against adoption, workload class, and business value.
 
 ## What It Provides
@@ -332,6 +332,7 @@ Reports include:
 - Usage by external provider/model.
 - Usage by router model group.
 - Usage by client type.
+- Usage by caller IP, including hourly activity by IP.
 - Status-code distribution.
 - Cache hit, miss, and bypass counts.
 - Cache occupancy snapshots, hit rate, and bypass rate.

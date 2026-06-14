@@ -322,7 +322,7 @@ docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --out /app/logs/usage-24h.md
 ```
 
-Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, hourly usage, daily usage, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
+Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
 
 Durability:
 

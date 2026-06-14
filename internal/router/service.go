@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -335,6 +336,7 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 		rec: logRecord{
 			RequestID:      id,
 			Client:         inferClient(r),
+			CallerIP:       callerIP(r),
 			InboundDialect: dialect,
 			Cache:          "bypass",
 			QuotaState:     "ok",
@@ -697,6 +699,35 @@ func inferClient(r *http.Request) string {
 	default:
 		return "unknown"
 	}
+}
+
+func callerIP(r *http.Request) string {
+	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
+		for _, value := range r.Header.Values(header) {
+			for _, part := range strings.Split(value, ",") {
+				host := strings.TrimSpace(part)
+				if host == "" {
+					continue
+				}
+				if ip := net.ParseIP(host); ip != nil {
+					return ip.String()
+				}
+				if h, _, err := net.SplitHostPort(host); err == nil {
+					if ip := net.ParseIP(h); ip != nil {
+						return ip.String()
+					}
+				}
+			}
+		}
+	}
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		host = h
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
 }
 
 func targetDialect(provider ProviderConfig, target Target) string {

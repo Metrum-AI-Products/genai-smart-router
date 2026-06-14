@@ -428,6 +428,7 @@ func TestLifetimeKeyExhaustionReturns403AndPersists(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Forwarded-For", "203.0.113.10, 10.0.0.2")
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -494,6 +495,7 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Forwarded-For", "203.0.113.10, 10.0.0.2")
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -549,6 +551,9 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	}
 	if !rec.CacheEnabled || rec.CacheMaxBytes <= 0 {
 		t.Fatalf("cache snapshot missing: enabled=%v max=%d", rec.CacheEnabled, rec.CacheMaxBytes)
+	}
+	if rec.CallerIP != "203.0.113.10" {
+		t.Fatalf("caller ip = %q", rec.CallerIP)
 	}
 }
 

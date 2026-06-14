@@ -16,8 +16,8 @@ Last deployed: 2026-06-14
 
 ## Deployed Version
 
-- Router package/image version: `usage-tps-postgres-20260614-linux-amd64`
-- Source commit: local working tree deployment image with usage TPS reporting, cache snapshots, and Postgres usage DB
+- Router package/image version: `usage-caller-ip-20260614-linux-amd64`
+- Source commit: local working tree deployment image with usage TPS reporting, cache snapshots, caller IP reporting, and Postgres usage DB
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:usage-tps-postgres-20260614-linux-amd64
+compose-router-1   smart-llmrouter:usage-caller-ip-20260614-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -83,6 +83,13 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Added `postgres:18-bookworm` as the usage DB service with the `compose_postgres_data` volume.
 - Moved old SQLite usage files under `compose/state/usage-sqlite-backup-<timestamp>/`.
 - Verified `https://llm-api-engg.metrum.ai/readyz`, an authenticated `fast` chat completion, Postgres `request_usage` table creation, `/metrics` throughput/cache series, and a Postgres-backed usage report at `logs/usage-postgres-smoke.md`.
+
+## 2026-06-14 Caller IP Reporting Update
+
+- Deployed image: `smart-llmrouter:usage-caller-ip-20260614-linux-amd64`.
+- Added scalar `caller_ip` capture from `X-Forwarded-For`, `X-Real-IP`, or direct remote address.
+- Reset the production Postgres usage DB volume after backing it up, so new production reports start clean with caller IP fields from the first row.
+- Reports now include `Usage By Caller IP`, `Hourly Usage By Caller IP`, and caller IP in the per-request throughput table.
 
 ## Operations
 
