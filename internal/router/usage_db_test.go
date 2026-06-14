@@ -104,6 +104,54 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 	}
 }
 
+func TestUsageReportFiltersRows(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	raw := strings.Join([]string{
+		`{"ts":"2026-06-14T01:00:00.000Z","request_id":"req_codex_small","caller_id":"codex-small","caller_user":"codex-small","caller_project":"harbor-algotune-pca","caller_environment":"case-1","caller_ip":"203.0.113.10","token_id":"rtr_metrum_codex-small_harbor-algotune-pca_case-1_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"openrouter","target_model":"deepseek/deepseek-v4-flash:nitro","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1200,"usage":{"input_tokens":100,"output_tokens":40,"total_tokens":140},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_claude_small","caller_id":"claude-small","caller_user":"claude-small","caller_project":"harbor-algotune-pca","caller_environment":"case-1","caller_ip":"203.0.113.11","token_id":"rtr_metrum_claude-small_harbor-algotune-pca_case-1_k20260614","client":"claude-code","inbound_dialect":"anthropic","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"minimax","target_model":"MiniMax-M3","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":900,"usage":{"input_tokens":80,"output_tokens":20,"total_tokens":100},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		`{"ts":"2026-06-14T01:30:00.000Z","request_id":"req_other","caller_id":"other","caller_user":"other","caller_project":"metrum-insights","caller_environment":"prod","caller_ip":"203.0.113.12","token_id":"rtr_metrum_other_metrum-insights_prod_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"high","resolved_group":"high","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.5","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1500,"usage":{"input_tokens":300,"output_tokens":100,"total_tokens":400},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	md, err := GenerateUsageMarkdown(UsageReportOptions{
+		DBPath:            dbPath,
+		LogPath:           logPath,
+		From:              time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:                time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		CallerProject:     "harbor-algotune-pca",
+		CallerEnvironment: "case-1",
+		ResolvedGroup:     "small",
+		Client:            "codex",
+		TokenIDPrefix:     "rtr_metrum_codex",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Requests: `1`",
+		"Tokens: `140` total, `100` input, `40` output",
+		"rtr_metrum_codex-small_harbor-algotune-pca_case-1_k20260614",
+		"| openrouter | deepseek/deepseek-v4-flash:nitro | 1 | 0 | 140 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("filtered report missing %q:\n%s", want, md)
+		}
+	}
+	for _, notWant := range []string{
+		"rtr_metrum_claude-small_harbor-algotune-pca_case-1_k20260614",
+		"rtr_metrum_other_metrum-insights_prod_k20260614",
+		"gpt-5.5",
+	} {
+		if strings.Contains(md, notWant) {
+			t.Fatalf("filtered report unexpectedly contains %q:\n%s", notWant, md)
+		}
+	}
+}
+
 func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

@@ -1,0 +1,9 @@
+[project]
+name = "smart-llmrouter-harbor-agentic"
+version = "0.1.0"
+description = "Harbor agentic coding case-study helpers for Smart LLM Router model-group comparisons."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false

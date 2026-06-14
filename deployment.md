@@ -190,6 +190,15 @@ sudo docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --out /app/logs/usage-24h.md
 ```
 
+For a scoped report, add filters such as:
+
+```bash
+  --caller-project harbor-algotune-pca \
+  --caller-environment case-20260614T120000Z \
+  --resolved-group big-coder \
+  --client codex
+```
+
 Authenticated models:
 
 ```bash
@@ -209,6 +218,7 @@ curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions \
 Claude Code:
 
 ```bash
+unset ANTHROPIC_API_KEY
 ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai \
 ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
 claude --bare --print --model big-coder "Reply with exactly: router prod claude ok"

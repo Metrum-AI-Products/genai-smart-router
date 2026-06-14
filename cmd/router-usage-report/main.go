@@ -18,6 +18,12 @@ func main() {
 	toText := flag.String("to", "", "report end time, RFC3339 or 2006-01-02T15:04:05Z; defaults to now")
 	sinceText := flag.String("since", "24h", "relative report duration when --from is omitted, such as 24h, 7d, 30d")
 	outPath := flag.String("out", "", "optional markdown output path; defaults to stdout")
+	tokenID := flag.String("token-id", "", "filter report to one public router token id")
+	tokenIDPrefix := flag.String("token-id-prefix", "", "filter report to public router token ids with this prefix")
+	callerProject := flag.String("caller-project", "", "filter report to one caller project")
+	callerEnvironment := flag.String("caller-environment", "", "filter report to one caller environment")
+	resolvedGroup := flag.String("resolved-group", "", "filter report to one resolved router model group")
+	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
 	flag.Parse()
 
 	to := time.Now().UTC()
@@ -44,12 +50,18 @@ func main() {
 	}
 
 	md, err := router.GenerateUsageMarkdown(router.UsageReportOptions{
-		Driver:  *driver,
-		DBPath:  *dbPath,
-		DSN:     *dsn,
-		LogPath: *logPath,
-		From:    from,
-		To:      to,
+		Driver:            *driver,
+		DBPath:            *dbPath,
+		DSN:               *dsn,
+		LogPath:           *logPath,
+		From:              from,
+		To:                to,
+		TokenID:           *tokenID,
+		TokenIDPrefix:     *tokenIDPrefix,
+		CallerProject:     *callerProject,
+		CallerEnvironment: *callerEnvironment,
+		ResolvedGroup:     *resolvedGroup,
+		Client:            *client,
 	})
 	if err != nil {
 		die("generate report: %v", err)

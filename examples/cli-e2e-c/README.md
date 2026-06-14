@@ -40,4 +40,4 @@ export ROUTER_MODEL="claude-opus-4-8"
 export CODEX_WIRE_API="responses"
 ```
 
-The harness does not print provider keys. Claude is configured via `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; Codex is configured with ephemeral `-c` overrides and `METRUM_ROUTER_KEY`.
+The harness does not print provider keys. Claude is configured via `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` and explicitly unsets `ANTHROPIC_API_KEY` so Claude Code sends router bearer auth instead of a direct Anthropic `X-Api-Key`. Codex is configured with ephemeral `-c` overrides and `METRUM_ROUTER_KEY`.

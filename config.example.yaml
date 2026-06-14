@@ -246,6 +246,12 @@ models:
     - provider: openrouter
       model_ref: gpt-oss-120b-nitro
       weight: 3
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
   fast:
     strategy: weighted
     targets:
@@ -288,6 +294,12 @@ models:
     - provider: openrouter
       model_ref: gpt-oss-120b-nitro
       weight: 3
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
   big-coder:
     strategy: weighted
     targets:
@@ -300,6 +312,12 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 20
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
   small:
     strategy: weighted
     targets:
@@ -333,6 +351,12 @@ models:
     - provider: openrouter
       model_ref: gpt-oss-120b-nitro
       weight: 3
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
   medium:
     strategy: weighted
     targets:
@@ -375,6 +399,12 @@ models:
     - provider: openrouter
       model_ref: gpt-oss-120b-nitro
       weight: 3
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
   high:
     strategy: weighted
     targets:
@@ -420,6 +450,22 @@ models:
     - provider: openrouter
       model_ref: gpt-oss-120b-nitro
       weight: 3
+    - provider: openai
+      model_ref: gpt55
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
+      tool_only: true
+  agent-tools-smoke:
+    strategy: static
+    targets:
+    - provider: openai
+      model_ref: gpt55
+  claude-tools-smoke:
+    strategy: static
+    targets:
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46-nitro
 callers:
 - id: standard-dev
   user: standard

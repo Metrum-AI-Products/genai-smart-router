@@ -146,6 +146,31 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 	}
 }
 
+func encodeResponsesPassthrough(model string, req *IRRequest) ([]byte, error) {
+	body := map[string]any{}
+	for key, value := range req.Raw {
+		body[key] = value
+	}
+	body["model"] = model
+	// The router's first tool-capable path is unary. Codex accepts non-streaming
+	// Responses payloads and this keeps usage accounting deterministic.
+	body["stream"] = false
+	return json.Marshal(body)
+}
+
+func encodeAnthropicPassthrough(model string, req *IRRequest) ([]byte, error) {
+	body := map[string]any{}
+	for key, value := range req.Raw {
+		body[key] = value
+	}
+	body["model"] = model
+	body["stream"] = false
+	if _, ok := body["max_tokens"]; !ok {
+		body["max_tokens"] = max(req.MaxTokens, 1024)
+	}
+	return json.Marshal(body)
+}
+
 func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRResponse, error) {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -190,6 +215,40 @@ func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRRespon
 	return resp, nil
 }
 
+func decodeResponsesPassthrough(raw []byte, model string) (*IRResponse, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	resp := &IRResponse{Model: model, Raw: m, RawResponse: true}
+	resp.ID = stringValue(m["id"])
+	resp.Text = stringValue(m["output_text"])
+	if resp.Text == "" {
+		resp.Text = textFromResponsesOutput(m["output"])
+	}
+	resp.Usage = usageFromMap(m["usage"])
+	if resp.Usage.TotalTokens == 0 {
+		resp.Usage.TotalTokens = resp.Usage.InputTokens + resp.Usage.OutputTokens
+	}
+	return resp, nil
+}
+
+func decodeAnthropicPassthrough(raw []byte, model string) (*IRResponse, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	resp := &IRResponse{Model: model, Raw: m, RawResponse: true}
+	resp.ID = stringValue(m["id"])
+	resp.Text = textFromContentParts(valueAsSlice(m["content"]))
+	resp.StopReason = stringValue(m["stop_reason"])
+	resp.Usage = usageFromMap(m["usage"])
+	if resp.Usage.TotalTokens == 0 {
+		resp.Usage.TotalTokens = resp.Usage.InputTokens + resp.Usage.OutputTokens
+	}
+	return resp, nil
+}
+
 func replicateOutputText(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -212,6 +271,9 @@ func replicateOutputText(v any) string {
 }
 
 func encodeAnthropicResponse(resp *IRResponse) map[string]any {
+	if resp.RawResponse && resp.Raw != nil {
+		return resp.Raw
+	}
 	return map[string]any{
 		"id":            resp.ID,
 		"type":          "message",
@@ -247,6 +309,9 @@ func encodeChatResponse(resp *IRResponse) map[string]any {
 }
 
 func encodeResponsesResponse(resp *IRResponse) map[string]any {
+	if resp.RawResponse && resp.Raw != nil {
+		return resp.Raw
+	}
 	return map[string]any{
 		"id":          resp.ID,
 		"object":      "response",
@@ -376,6 +441,13 @@ func textFromResponsesOutput(v any) string {
 		}
 	}
 	return strings.Join(out, "")
+}
+
+func valueAsSlice(v any) []any {
+	if arr, ok := v.([]any); ok {
+		return arr
+	}
+	return nil
 }
 
 func usageFromMap(v any) Usage {

@@ -23,12 +23,18 @@ type usageStore struct {
 }
 
 type UsageReportOptions struct {
-	Driver  string
-	DBPath  string
-	DSN     string
-	LogPath string
-	From    time.Time
-	To      time.Time
+	Driver            string
+	DBPath            string
+	DSN               string
+	LogPath           string
+	From              time.Time
+	To                time.Time
+	TokenID           string
+	TokenIDPrefix     string
+	CallerProject     string
+	CallerEnvironment string
+	ResolvedGroup     string
+	Client            string
 }
 
 type usageRow struct {
@@ -499,18 +505,35 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	}
 	defer store.Close()
 
-	rows, err := store.rows(opts.From, opts.To)
+	rows, err := store.rows(opts)
 	if err != nil {
 		return "", err
 	}
 	return renderUsageMarkdown(opts.From, opts.To, rows), nil
 }
 
-func (s *usageStore) rows(from, to time.Time) ([]usageRow, error) {
+func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	var records []usageRecord
-	if err := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(from), formatUsageTime(to)).
-		Order("ts ASC").
-		Find(&records).Error; err != nil {
+	q := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
+	if opts.TokenID != "" {
+		q = q.Where("token_id = ?", opts.TokenID)
+	}
+	if opts.TokenIDPrefix != "" {
+		q = q.Where("token_id LIKE ?", opts.TokenIDPrefix+"%")
+	}
+	if opts.CallerProject != "" {
+		q = q.Where("caller_project = ?", opts.CallerProject)
+	}
+	if opts.CallerEnvironment != "" {
+		q = q.Where("caller_environment = ?", opts.CallerEnvironment)
+	}
+	if opts.ResolvedGroup != "" {
+		q = q.Where("resolved_group = ?", opts.ResolvedGroup)
+	}
+	if opts.Client != "" {
+		q = q.Where("client = ?", opts.Client)
+	}
+	if err := q.Order("ts ASC").Find(&records).Error; err != nil {
 		return nil, err
 	}
 	out := make([]usageRow, 0, len(records))

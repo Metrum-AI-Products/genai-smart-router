@@ -140,6 +140,289 @@ func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	}
 }
 
+func TestModelsEndpointMarksAgentToolsSmokeAsToolCapable(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "tool-model", Dialect: "openai-responses"}}}
+	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	models := body["models"].([]any)
+	first := models[0].(map[string]any)
+	if first["supports_parallel_tool_calls"] != true {
+		t.Fatalf("agent-tools-smoke not marked tool capable: %#v", first)
+	}
+	tools := first["experimental_supported_tools"].([]any)
+	if len(tools) == 0 {
+		t.Fatalf("agent-tools-smoke missing supported tools: %#v", first)
+	}
+}
+
+func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_upstream_tool",
+			"object": "response",
+			"status": "requires_action",
+			"model":  "gpt-tool",
+			"output": []map[string]any{{
+				"id":        "call_1",
+				"type":      "function_call",
+				"name":      "shell",
+				"call_id":   "call_1",
+				"arguments": `{"cmd":"cat > /app/solver.py"}`,
+				"status":    "completed",
+			}},
+			"usage": map[string]any{"input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["openai"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool"}}}
+	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
+		"model":"agent-tools-smoke",
+		"input":"write solver",
+		"stream":true,
+		"tools":[{"type":"function","name":"shell","description":"run shell","parameters":{"type":"object"}}]
+	}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "codex-test")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "gpt-tool" {
+		t.Fatalf("upstream model=%q", upstreamBody["model"])
+	}
+	if upstreamBody["stream"] != false {
+		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	}
+	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
+		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("content-type=%q, want event stream; body=%s", ct, rr.Body.String())
+	}
+	events := parseSSEEvents(t, rr.Body.String())
+	itemDone, ok := events["response.output_item.done"]
+	if !ok {
+		t.Fatalf("tool output SSE missing: %#v", events)
+	}
+	item := itemDone["item"].(map[string]any)
+	if item["type"] != "function_call" || item["call_id"] != "call_1" {
+		t.Fatalf("function call not preserved in SSE: %#v", item)
+	}
+	completed, ok := events["response.completed"]
+	if !ok {
+		t.Fatalf("completed SSE missing: %#v", events)
+	}
+	response := completed["response"].(map[string]any)
+	if response["id"] != "resp_upstream_tool" || response["status"] != "requires_action" {
+		t.Fatalf("raw response not preserved in completed event: %#v", response)
+	}
+}
+
+func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":            "msg_tool_1",
+			"type":          "message",
+			"role":          "assistant",
+			"model":         "claude-tool",
+			"stop_reason":   "tool_use",
+			"stop_sequence": nil,
+			"content": []map[string]any{{
+				"type":  "tool_use",
+				"id":    "toolu_1",
+				"name":  "Bash",
+				"input": map[string]any{"command": "cat > /app/solver.py"},
+			}},
+			"usage": map[string]any{"input_tokens": 13, "output_tokens": 9},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["anthropic_passthrough"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+	cfg.Models["claude-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "anthropic_passthrough", Model: "claude-tool"}}}
+	cfg.Callers[0].Allow = []string{"claude-tools-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
+		"model":"claude-tools-smoke",
+		"max_tokens":256,
+		"stream":true,
+		"messages":[{"role":"user","content":"write solver"}],
+		"tools":[{"name":"Bash","description":"run shell","input_schema":{"type":"object"}}]
+	}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "claude-code-test")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "claude-tool" {
+		t.Fatalf("upstream model=%q", upstreamBody["model"])
+	}
+	if upstreamBody["stream"] != false {
+		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	}
+	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
+		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
+	}
+	events := parseSSEEvents(t, rr.Body.String())
+	start, ok := events["content_block_start"]
+	if !ok {
+		t.Fatalf("content block start missing: %#v", events)
+	}
+	block := start["content_block"].(map[string]any)
+	if block["type"] != "tool_use" || block["name"] != "Bash" || block["id"] != "toolu_1" {
+		t.Fatalf("tool_use block not preserved: %#v", block)
+	}
+	delta, ok := events["content_block_delta"]
+	if !ok {
+		t.Fatalf("content block delta missing: %#v", events)
+	}
+	inputDelta := delta["delta"].(map[string]any)
+	if inputDelta["type"] != "input_json_delta" {
+		t.Fatalf("tool input delta not emitted: %#v", inputDelta)
+	}
+	messageDelta := events["message_delta"]
+	stop := messageDelta["delta"].(map[string]any)
+	if stop["stop_reason"] != "tool_use" {
+		t.Fatalf("stop reason not preserved: %#v", stop)
+	}
+}
+
+func TestToolRequestsBypassCache(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_tool_cache",
+			"object":      "response",
+			"status":      "completed",
+			"model":       "gpt-tool",
+			"output_text": "ok",
+			"output": []map[string]any{{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]any{{
+					"type": "output_text",
+					"text": "ok",
+				}},
+			}},
+			"usage": map[string]any{"input_tokens": 3, "output_tokens": 1, "total_tokens": 4},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.Cache.Enabled = true
+	cfg.Provider["openai"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool"}}}
+	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"agent-tools-smoke","input":"write file","tools":[{"type":"function","name":"shell","parameters":{"type":"object"}}]}`
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("request %d status=%d body=%s", i+1, rr.Code, rr.Body.String())
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("tool requests should bypass cache; upstream calls=%d", calls.Load())
+	}
+}
+
+func parseSSEEvents(t *testing.T, body string) map[string]map[string]any {
+	t.Helper()
+	events := map[string]map[string]any{}
+	for _, frame := range strings.Split(body, "\n\n") {
+		frame = strings.TrimSpace(frame)
+		if frame == "" {
+			continue
+		}
+		var event string
+		var dataLines []string
+		for _, line := range strings.Split(frame, "\n") {
+			switch {
+			case strings.HasPrefix(line, "event:"):
+				event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			case strings.HasPrefix(line, "data:"):
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					continue
+				}
+				dataLines = append(dataLines, data)
+			}
+		}
+		if event == "" || len(dataLines) == 0 {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(strings.Join(dataLines, "\n")), &payload); err != nil {
+			t.Fatalf("invalid JSON payload for SSE event %q: %v\nframe:\n%s", event, err, frame)
+		}
+		events[event] = payload
+	}
+	return events
+}
+
 func TestCallerAllowListRestrictsModelGroups(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -713,7 +996,7 @@ export function route(ctx: Ctx) {
 	dec, err := svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
 		Model:    "scripted",
 		Messages: []IRMessage{{Role: "user", Content: "architecture question"}},
-	}, svc.quota.callers["alice"], "rtr_alice_test")
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
 	if err != nil {
 		t.Fatalf("script pick: %v", err)
 	}

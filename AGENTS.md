@@ -126,10 +126,17 @@ Use `high` for deterministic failover-first checks, and use repeated calls for w
   - `ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai`
   - `ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN`
   - Do not set `ANTHROPIC_API_KEY` for router traffic.
+  - In scripts, use `env -u ANTHROPIC_API_KEY ... claude ...` so a developer shell cannot accidentally force direct Anthropic `X-Api-Key` auth.
 - Codex CLI should use an OpenAI-compatible provider config pointing at:
   - `https://llm-api-engg.metrum.ai/v1`
   - env key such as `METRUM_ROUTER_KEY`
+  - `model_providers.<name>.wire_api="responses"`
 - For CLI-generated C program tests, the CLI must generate the C program. Do not replace that with a static harness.
+- For agent-tool validation, use real tool calls:
+  - Claude Code via Anthropic Messages API and `claude-tools-smoke`.
+  - Codex via OpenAI Responses API and `agent-tools-smoke`.
+  - Assert the created file contents, not only text printed by the assistant.
+- Requests with tools must bypass response caching; keep regression coverage for this.
 
 ## Documentation Expectations
 
@@ -155,3 +162,5 @@ rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not y
 
 - Codex AGENTS.md guidance: https://developers.openai.com/codex/guides/agents-md
 - Codex best practices: https://developers.openai.com/codex/learn/best-practices
+- Codex CLI install/update: https://developers.openai.com/codex/cli
+- Claude Code auth precedence/env vars: https://code.claude.com/docs/en/authentication

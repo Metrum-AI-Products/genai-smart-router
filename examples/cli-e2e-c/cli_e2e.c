@@ -100,7 +100,7 @@ static int test_claude(const char *expect) {
 
     char cmd[CMD_CAP];
     snprintf(cmd, sizeof(cmd),
-             "ANTHROPIC_BASE_URL=%s ANTHROPIC_AUTH_TOKEN=%s ANTHROPIC_MODEL=%s timeout %s %s --bare --print --model %s %s 2>&1",
+             "env -u ANTHROPIC_API_KEY ANTHROPIC_BASE_URL=%s ANTHROPIC_AUTH_TOKEN=%s ANTHROPIC_MODEL=%s timeout %s %s --bare --print --model %s %s 2>&1",
              q_base, q_token, q_model, timeout, q_bin, q_model, q_prompt);
     free(q_base);
     free(q_token);

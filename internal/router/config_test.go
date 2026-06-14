@@ -154,6 +154,18 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 	}
 	for name, group := range cfg.Models {
+		if name == "agent-tools-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openai" || group.Targets[0].Model != "gpt-5.5" {
+				t.Fatalf("example config agent-tools-smoke=%#v, want static openai gpt-5.5", group)
+			}
+			continue
+		}
+		if name == "claude-tools-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "anthropic/claude-sonnet-4.6:nitro" {
+				t.Fatalf("example config claude-tools-smoke=%#v, want static openrouter anthropic claude sonnet nitro", group)
+			}
+			continue
+		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
@@ -161,7 +173,20 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		m3Weight := 0
 		deepSeekWeight := 0
 		kimiWeight := 0
+		normalTargets := 0
+		openAIToolTarget := false
+		anthropicToolTarget := false
 		for _, target := range group.Targets {
+			if target.ToolOnly {
+				if target.Provider == "openai" && target.Model == "gpt-5.5" {
+					openAIToolTarget = true
+				}
+				if target.Provider == "openrouter_anthropic" && target.Model == "anthropic/claude-sonnet-4.6:nitro" {
+					anthropicToolTarget = true
+				}
+				continue
+			}
+			normalTargets++
 			totalWeight += target.Weight
 			if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
 				m3Weight += target.Weight
@@ -173,9 +198,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 				kimiWeight += target.Weight
 			}
 		}
+		if !openAIToolTarget || !anthropicToolTarget {
+			t.Fatalf("example config group %s missing tool-only targets openai=%v anthropic=%v", name, openAIToolTarget, anthropicToolTarget)
+		}
 		if name == "big-coder" {
-			if len(group.Targets) != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
-				t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d targets=%d, want 50/30/20 over 3 targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, len(group.Targets))
+			if normalTargets != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
+				t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d normal_targets=%d, want 50/30/20 over 3 normal targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, normalTargets)
 			}
 			continue
 		}

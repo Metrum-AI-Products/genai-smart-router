@@ -225,7 +225,8 @@ PY
 run_claude() {
   local group="$1"
   local prompt="$2"
-  ANTHROPIC_BASE_URL="$BASE_URL" \
+  env -u ANTHROPIC_API_KEY \
+    ANTHROPIC_BASE_URL="$BASE_URL" \
     ANTHROPIC_AUTH_TOKEN="$TOKEN" \
     ANTHROPIC_MODEL="$group" \
     timeout "$TIMEOUT_SECONDS" "$CLAUDE_BIN" --bare --print --model "$group" "$prompt" </dev/null

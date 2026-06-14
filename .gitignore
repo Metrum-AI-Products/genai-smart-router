@@ -15,3 +15,7 @@ usage.sqlite
 examples/cli-e2e-c/cli-e2e
 dist/
 tmp/
+jobs/
+examples/harbor-algotune-pca/generated/
+examples/harbor-algotune-pca/runs/
+examples/harbor-algotune-pca/reports/

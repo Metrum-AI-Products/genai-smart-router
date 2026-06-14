@@ -327,6 +327,19 @@ router-usage-report \
   --out /app/logs/usage-24h.md
 ```
 
+Reports can also be filtered to one benchmark, caller cohort, model group, or client:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-project harbor-algotune-pca \
+  --caller-environment case-20260614t120000z \
+  --resolved-group big-coder \
+  --client codex \
+  --out /app/logs/harbor-agentic-big-coder-codex.md
+```
+
 Reports include:
 
 - Total calls, errors, input tokens, output tokens, and total tokens.
@@ -342,6 +355,8 @@ Reports include:
 - Upstream and downstream output-token/sec and total-token/sec, including per-request rows.
 - Average and maximum latency.
 - Hourly and daily usage tables.
+
+For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The recorded production run is available in `docs/harbor-case-study.md`: 12/12 trials passed with reward `1.0`, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
 
 ## Deployment Options
 
@@ -449,6 +464,37 @@ codex \
 ```
 
 For a different route, change `ROUTER_MODEL` to another allowed model group such as `small`, `medium`, `high`, `default`, or `fast`. The router decides the concrete upstream provider and model behind that group.
+
+Agentic tool validation should include real file and shell activity. The hosted deployment exposes dedicated smoke groups for that purpose:
+
+```bash
+# Claude Code uses the Anthropic Messages API contract.
+unset ANTHROPIC_API_KEY
+export ANTHROPIC_BASE_URL="https://llm-api-engg.metrum.ai"
+export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
+claude --bare --print --model claude-tools-smoke \
+  --permission-mode bypassPermissions \
+  --allowedTools "Write,Bash" \
+  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+```
+
+```bash
+# Codex uses the OpenAI Responses contract.
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -c 'model="agent-tools-smoke"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+```
+
+Requests that include agent tools bypass the response cache so the router never replays stale filesystem, shell, or tool-call outcomes.
 
 The caller token must allow the selected `ROUTER_MODEL`. Standard keys can be limited to `default`, `fast`, and `small`; coding or premium keys can additionally allow `medium`, `high`, and `big-coder`. Hosted `/v1/models` responses are filtered to the model groups allowed for the caller token.
 

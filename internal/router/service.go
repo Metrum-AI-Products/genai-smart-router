@@ -151,7 +151,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"default_verbosity":                "low",
 			"supported_reasoning_levels":       []string{},
 			"supports_reasoning_summaries":     false,
-			"supports_parallel_tool_calls":     false,
+			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
 			"supports_search_tool":             false,
 			"supports_image_detail_original":   false,
 			"support_verbosity":                true,
@@ -159,7 +159,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"web_search_tool_type":             "text_and_image",
 			"additional_speed_tiers":           []string{},
 			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
-			"experimental_supported_tools":     []string{},
+			"experimental_supported_tools":     s.supportedToolsForGroup(name),
 			"input_modalities":                 []string{"text"},
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
 			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
@@ -270,7 +270,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
-	dec, err := s.pick(req.Model, group, req, rc.caller, rc.rec.TokenID)
+	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadGateway, "routing-failed")
 		return
@@ -413,8 +413,9 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 	return nil, "invalid-token", errors.New("unknown token")
 }
 
-func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, caller *callerRuntime, tokenID string) (decision, error) {
+func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, tokenID string) (decision, error) {
 	targets := append([]Target(nil), group.Targets...)
+	targets = s.targetsForRequest(targets, req, callerDialect)
 	if len(targets) == 0 {
 		return decision{}, errors.New("no targets")
 	}
@@ -489,7 +490,14 @@ func (s *Service) callUpstreams(ctx context.Context, w http.ResponseWriter, call
 func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequest, target Target) (*IRResponse, error) {
 	provider := s.cfg.Provider[target.Provider]
 	outDialect := targetDialect(provider, target)
-	upReqBody, err := encodeUpstream(outDialect, target.Model, req)
+	passthrough := toolPassthrough(callerDialect, outDialect, req)
+	var upReqBody []byte
+	var err error
+	if passthrough {
+		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req)
+	} else {
+		upReqBody, err = encodeUpstream(outDialect, target.Model, req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +539,62 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	if err != nil {
 		return nil, err
 	}
+	if passthrough {
+		return decodeToolPassthrough(outDialect, raw, target.Model)
+	}
 	return decodeUpstreamResponse(outDialect, raw, target.Model)
+}
+
+func toolPassthrough(callerDialect, outDialect string, req *IRRequest) bool {
+	return callerDialect == outDialect && len(req.Tools) > 0 && (outDialect == "openai-responses" || outDialect == "anthropic")
+}
+
+func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDialect string) []Target {
+	if len(req.Tools) == 0 {
+		out := make([]Target, 0, len(targets))
+		for _, target := range targets {
+			if !target.ToolOnly {
+				out = append(out, target)
+			}
+		}
+		return out
+	}
+	out := make([]Target, 0, len(targets))
+	for _, target := range targets {
+		provider := s.cfg.Provider[target.Provider]
+		if toolPassthrough(callerDialect, targetDialect(provider, target), req) {
+			out = append(out, target)
+		}
+	}
+	return out
+}
+
+func encodeToolPassthrough(dialect, model string, req *IRRequest) ([]byte, error) {
+	if dialect == "anthropic" {
+		return encodeAnthropicPassthrough(model, req)
+	}
+	return encodeResponsesPassthrough(model, req)
+}
+
+func decodeToolPassthrough(dialect string, raw []byte, model string) (*IRResponse, error) {
+	if dialect == "anthropic" {
+		return decodeAnthropicPassthrough(raw, model)
+	}
+	return decodeResponsesPassthrough(raw, model)
+}
+
+func (s *Service) supportedToolsForGroup(name string) []string {
+	group, ok := s.cfg.Models[name]
+	if !ok {
+		return []string{}
+	}
+	req := &IRRequest{Tools: []map[string]any{{"type": "local_shell"}}}
+	if len(s.targetsForRequest(group.Targets, req, "openai-responses")) == 0 {
+		if len(s.targetsForRequest(group.Targets, req, "anthropic")) == 0 {
+			return []string{}
+		}
+	}
+	return []string{"local_shell", "apply_patch"}
 }
 
 func (s *Service) writeIR(w http.ResponseWriter, dialect string, resp *IRResponse, stream bool, rc *requestContext) {
@@ -578,6 +641,10 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 	}
 	switch dialect {
 	case "anthropic":
+		if resp.RawResponse && resp.Raw != nil {
+			writeRawAnthropicSSE(writeSSE, resp)
+			break
+		}
 		writeSSE("message_start", map[string]any{"type": "message_start", "message": encodeAnthropicResponse(resp)})
 		writeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}})
 		writeSSE("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": resp.Text}})
@@ -585,6 +652,10 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 		writeSSE("message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": defaultString(resp.StopReason, "end_turn")}, "usage": map[string]any{"output_tokens": resp.Usage.OutputTokens}})
 		writeSSE("message_stop", map[string]any{"type": "message_stop"})
 	case "openai-responses":
+		if resp.RawResponse && resp.Raw != nil {
+			writeRawResponsesSSE(writeSSE, resp)
+			break
+		}
 		itemID := "msg_" + strings.TrimPrefix(resp.ID, "resp_")
 		writeSSE("response.created", map[string]any{"type": "response.created", "sequence_number": 1, "response": map[string]any{"id": resp.ID, "object": "response", "status": "in_progress", "model": resp.Model, "output": []any{}}})
 		writeSSE("response.in_progress", map[string]any{"type": "response.in_progress", "sequence_number": 2, "response": map[string]any{"id": resp.ID, "object": "response", "status": "in_progress", "model": resp.Model, "output": []any{}}})
@@ -606,6 +677,109 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+func writeRawAnthropicSSE(writeSSE func(string, any), resp *IRResponse) {
+	raw := resp.Raw
+	message := cloneMap(raw)
+	content := valueAsSlice(raw["content"])
+	message["content"] = []any{}
+	message["stop_reason"] = nil
+	writeSSE("message_start", map[string]any{"type": "message_start", "message": message})
+	for idx, item := range content {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		blockType := stringValue(block["type"])
+		startBlock := cloneMap(block)
+		switch blockType {
+		case "tool_use":
+			input := startBlock["input"]
+			startBlock["input"] = map[string]any{}
+			writeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": idx, "content_block": startBlock})
+			if input != nil {
+				rawInput, _ := json.Marshal(input)
+				writeSSE("content_block_delta", map[string]any{
+					"type":  "content_block_delta",
+					"index": idx,
+					"delta": map[string]any{"type": "input_json_delta", "partial_json": string(rawInput)},
+				})
+			}
+		default:
+			text := stringValue(block["text"])
+			startBlock["text"] = ""
+			writeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": idx, "content_block": startBlock})
+			if text != "" {
+				writeSSE("content_block_delta", map[string]any{
+					"type":  "content_block_delta",
+					"index": idx,
+					"delta": map[string]any{"type": "text_delta", "text": text},
+				})
+			}
+		}
+		writeSSE("content_block_stop", map[string]any{"type": "content_block_stop", "index": idx})
+	}
+	writeSSE("message_delta", map[string]any{
+		"type":  "message_delta",
+		"delta": map[string]any{"stop_reason": defaultString(resp.StopReason, "end_turn"), "stop_sequence": nil},
+		"usage": map[string]any{"output_tokens": resp.Usage.OutputTokens},
+	})
+	writeSSE("message_stop", map[string]any{"type": "message_stop"})
+}
+
+func writeRawResponsesSSE(writeSSE func(string, any), resp *IRResponse) {
+	raw := resp.Raw
+	if raw["id"] == nil {
+		raw["id"] = resp.ID
+	}
+	if raw["object"] == nil {
+		raw["object"] = "response"
+	}
+	if raw["model"] == nil {
+		raw["model"] = resp.Model
+	}
+	created := cloneMap(raw)
+	created["status"] = "in_progress"
+	created["output"] = []any{}
+	writeSSE("response.created", map[string]any{"type": "response.created", "sequence_number": 1, "response": created})
+	writeSSE("response.in_progress", map[string]any{"type": "response.in_progress", "sequence_number": 2, "response": created})
+	seq := 3
+	if outputs, ok := raw["output"].([]any); ok {
+		for idx, item := range outputs {
+			itemMap, _ := item.(map[string]any)
+			if itemMap == nil {
+				continue
+			}
+			writeSSE("response.output_item.added", map[string]any{
+				"type":            "response.output_item.added",
+				"sequence_number": seq,
+				"output_index":    idx,
+				"item":            itemMap,
+			})
+			seq++
+			writeSSE("response.output_item.done", map[string]any{
+				"type":            "response.output_item.done",
+				"sequence_number": seq,
+				"output_index":    idx,
+				"item":            itemMap,
+			})
+			seq++
+		}
+	}
+	completed := cloneMap(raw)
+	if completed["status"] == nil {
+		completed["status"] = "completed"
+	}
+	writeSSE("response.completed", map[string]any{"type": "response.completed", "sequence_number": seq, "response": completed})
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func populateThroughput(rec *logRecord) {

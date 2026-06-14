@@ -153,6 +153,8 @@ docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --out /app/logs/usage-24h.md
 ```
 
+Add `--caller-project`, `--caller-environment`, `--token-id`, `--token-id-prefix`, `--resolved-group`, or `--client` to narrow a report to one benchmark, caller cohort, model group, or CLI client.
+
 The report includes internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, external provider/model calls, token totals, cache hit/miss/bypass, cache occupancy, attempts, fallbacks, status codes, latency, hourly usage, daily usage, and per-request upstream/downstream tokens/sec. It does not include raw router tokens or provider API keys.
 
 Usage rows, throughput fields, and cache snapshots are durable across restarts when the Postgres volume is preserved. The in-memory response cache and `/metrics` process counters reset when the router restarts.
@@ -184,6 +186,7 @@ Caller tokens are restricted by `callers[].allow`. Standard access is `default`,
 Claude Code:
 
 ```bash
+unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 claude --bare --print --model default "Reply with exactly: router claude ok"
@@ -218,6 +221,43 @@ codex \
   -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
+Tool-capable acceptance checks should exercise the real agent tool paths, not just text echo. Use `claude-tools-smoke` with Claude Code over the Anthropic Messages API and `agent-tools-smoke` with Codex over OpenAI Responses. Tool-bearing requests are not cacheable, because their results depend on shell/filesystem/tool state.
+
+Claude Code tool smoke:
+
+```bash
+unset ANTHROPIC_API_KEY
+mkdir -p /tmp/router-claude-tool-smoke
+cd /tmp/router-claude-tool-smoke
+ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai \
+ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
+claude --bare --print --model claude-tools-smoke \
+  --permission-mode bypassPermissions \
+  --allowedTools "Write,Bash" \
+  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+test "$(cat claude_tool_smoke.txt)" = "claude-tool-ok"
+```
+
+Codex tool smoke:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+mkdir -p /tmp/router-codex-tool-smoke
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -C /tmp/router-codex-tool-smoke \
+  -c 'model="agent-tools-smoke"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+test "$(cat /tmp/router-codex-tool-smoke/codex_tool_smoke.txt)" = "codex-tool-ok"
 ```
 
 ## Local Compose E2E

@@ -82,6 +82,7 @@ type Target struct {
 	ModelRef    string `yaml:"model_ref" json:"modelRef,omitempty"`
 	Dialect     string `yaml:"dialect" json:"dialect"`
 	DisplayName string `yaml:"display_name" json:"displayName,omitempty"`
+	ToolOnly    bool   `yaml:"tool_only" json:"toolOnly,omitempty"`
 	Weight      int    `yaml:"weight" json:"weight"`
 	RPM         int    `yaml:"rpm" json:"rpm"`
 	Tier        string `yaml:"tier" json:"tier"`

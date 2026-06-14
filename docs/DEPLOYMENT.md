@@ -191,6 +191,7 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/
 Use the same base URL for local CLIs:
 
 ```bash
+unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 

@@ -22,14 +22,15 @@ type IRMessage struct {
 }
 
 type IRResponse struct {
-	ID         string            `json:"id"`
-	Model      string            `json:"model"`
-	Text       string            `json:"text"`
-	StopReason string            `json:"stop_reason"`
-	Usage      Usage             `json:"usage"`
-	Raw        map[string]any    `json:"raw,omitempty"`
-	Warnings   []string          `json:"warnings,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"`
+	ID          string            `json:"id"`
+	Model       string            `json:"model"`
+	Text        string            `json:"text"`
+	StopReason  string            `json:"stop_reason"`
+	Usage       Usage             `json:"usage"`
+	Raw         map[string]any    `json:"raw,omitempty"`
+	RawResponse bool              `json:"raw_response,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
 }
 
 type Usage struct {

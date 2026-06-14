@@ -282,6 +282,16 @@ The JSONL file is useful for raw audit/debugging. The relational DB is the sourc
 --from TIME     Start time, RFC3339, YYYY-MM-DD HH:MM:SS, or YYYY-MM-DD.
 --to TIME       End time; defaults to now.
 --out PATH      Markdown output path; defaults to stdout.
+--token-id ID   Filter to one public router token id.
+--token-id-prefix PREFIX
+                Filter to public router token ids with this prefix.
+--caller-project PROJECT
+                Filter to one caller project.
+--caller-environment ENV
+                Filter to one caller environment.
+--resolved-group GROUP
+                Filter to one resolved router model group.
+--client CLIENT Filter to one client, such as codex or claude-code.
 ```
 
 Generate a markdown report for the last 24 hours:
@@ -322,6 +332,17 @@ docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --out /app/logs/usage-24h.md
 ```
 
+Generate a report for one benchmark or case study by caller project/environment:
+
+```bash
+./router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-project harbor-algotune-pca \
+  --caller-environment case-20260614t120000z \
+  --out harbor-agentic-usage.md
+```
+
 Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
 
 Durability:
@@ -346,6 +367,8 @@ make e2e-live-full # live provider HTTP cache checks plus live CLI C e2e
 make e2e-compose-live # live provider + Claude/Codex checks through docker compose and Caddy
 ```
 
+The Harbor agentic coding case-study example in `examples/harbor-algotune-pca/` uses `uv tool install harbor`, generates one router token per `{agent, model_group}`, runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code, and emits a markdown usage comparison report. The recorded production run is checked in at `docs/harbor-case-study.md`.
+
 `make e2e-live-c` starts the router once per OpenRouter sample target, runs both local CLIs, extracts the generated C source, compiles it with `cc -std=c11 -Wall -Wextra -Werror`, and runs the binary. It reads the project `env.json` before invoking the router. To keep logs and generated C files:
 
 ```bash
@@ -360,7 +383,22 @@ LIVE_E2E_CASE_REGEX=or-kimi-k27 make e2e-live-c
 
 ## CLI Smoke Tests
 
-The following commands were tested locally with `Claude Code 2.1.165`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `qwen/qwen3.7-max:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
+The following commands were tested locally with `Claude Code 2.1.177`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `qwen/qwen3.7-max:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
+
+CLI install/update references:
+
+```bash
+# Codex CLI, official standalone installer/update path:
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+
+# Codex CLI, npm install/update path:
+npm install -g @openai/codex@latest
+
+# Claude Code, npm install/update path:
+npm install -g @anthropic-ai/claude-code@latest
+```
+
+On 2026-06-14, the local installs matched the latest npm registry versions: `@openai/codex` `0.139.0` and `@anthropic-ai/claude-code` `2.1.177`.
 
 Create a temporary router config and caller token:
 
@@ -467,6 +505,7 @@ The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard 
 Claude Code uses Anthropic-style requests. For this router, set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` only. Do not set `ANTHROPIC_API_KEY` for router traffic; Claude Code uses that variable for direct Anthropic Console API keys via `X-Api-Key`, while this router expects a bearer token.
 
 ```bash
+unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL="http://127.0.0.1:18081"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 export ANTHROPIC_MODEL="$ROUTER_MODEL"
@@ -482,6 +521,24 @@ router claude ok
 ```
 
 Expected log fields include `client=claude-code`, `inbound_dialect=anthropic`, `requested_model=cli-smoke`, and a concrete target provider/model. Provider keys must not appear in output or logs.
+
+Tool-capable smoke for Claude Code:
+
+```bash
+unset ANTHROPIC_API_KEY
+mkdir -p "$WORK/claude-tool-work"
+cd "$WORK/claude-tool-work"
+
+ANTHROPIC_BASE_URL="http://127.0.0.1:18081" \
+ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
+ANTHROPIC_MODEL="claude-tools-smoke" \
+claude --bare --print --model claude-tools-smoke \
+  --permission-mode bypassPermissions \
+  --allowedTools "Write,Bash" \
+  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+
+test "$(cat claude_tool_smoke.txt)" = "claude-tool-ok"
+```
 
 ### Codex CLI
 
@@ -527,6 +584,30 @@ router codex ok
 ```
 
 Expected log fields include `client=codex`, `inbound_dialect=openai-responses`, `requested_model=cli-smoke`, and no leaked credentials. A local Codex installation may print a bubblewrap/user-namespace warning; that is separate from the router request and does not indicate provider failure.
+
+Tool-capable smoke for Codex:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+mkdir -p "$WORK/codex-tool-work"
+
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -C "$WORK/codex-tool-work" \
+  -c 'model="agent-tools-smoke"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+
+test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
+```
+
+Tool-bearing requests bypass the router response cache. They are intentionally routed to the provider every time because tool calls depend on external filesystem, shell, and agent state.
 
 ## Test
 
