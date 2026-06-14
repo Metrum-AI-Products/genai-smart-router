@@ -134,6 +134,17 @@ curl https://llm-api-engg.metrum.ai/healthz
 curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
 ```
 
+Supported router model groups:
+
+```text
+small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
+medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
+high       OpenAI GPT-5.4 full-first route for complex coding and professional work.
+default    General-purpose weighted routing across configured providers.
+fast       Lower-latency/cost weighted routing for everyday work.
+big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
+```
+
 Claude Code:
 
 ```bash

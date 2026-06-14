@@ -121,12 +121,15 @@ sudo docker compose up -d
 Supported production router model groups:
 
 ```text
-default    General-purpose weighted routing across configured providers.
+small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
+medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
+high       OpenAI GPT-5.4 full-first route for complex coding and professional work.
+default    General-purpose weighted routing across configured providers, biased toward smaller OpenAI GPT-5-era models.
 fast       Lower-latency/cost weighted routing for everyday work.
 big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 ```
 
-Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group.
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active OpenAI targets currently use `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`, with higher weights on smaller models for default and fast routing. Direct validation showed the current OpenAI project does not yet have access to `gpt-5.5` or `gpt-5.5-pro`, so those models are intentionally not active to avoid random runtime failures.
 
 Unauthenticated health:
 
@@ -160,7 +163,7 @@ claude --bare --print --model big-coder "Reply with exactly: router prod claude 
 
 Do not set `ANTHROPIC_API_KEY` for router traffic. Claude Code uses `ANTHROPIC_AUTH_TOKEN` as a bearer token for gateways/proxies, while `ANTHROPIC_API_KEY` is for direct Anthropic API keys.
 
-For Claude Code, change `--model big-coder` to `--model default` or `--model fast` to use another route.
+For Claude Code, change `--model big-coder` to `--model small`, `medium`, `high`, `default`, or `fast` to use another route.
 
 Codex:
 
@@ -191,7 +194,7 @@ METRUM_ROUTER_KEY="$ROUTER_TOKEN" codex \
   -c 'model_providers.metrum-router.wire_api="responses"'
 ```
 
-For Codex, change `-c 'model="big-coder"'` to `default` or `fast` to use another route.
+For Codex, change `-c 'model="big-coder"'` to `small`, `medium`, `high`, `default`, or `fast` to use another route.
 
 Validated during deployment:
 

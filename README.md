@@ -153,16 +153,18 @@ providers:
     api_key_env: OPENAI_API_KEY
     key_id: openai-default
     models:
-      gpt55: { model: gpt-5.5, tier: heavy, weight: 3 }
-      gpt54mini: { model: gpt-5.4-mini, tier: cheap, weight: 2 }
+      gpt54-nano: { model: gpt-5.4-nano, tier: cheap, weight: 12 }
+      gpt54-mini: { model: gpt-5.4-mini, tier: balanced, weight: 8 }
+      gpt54: { model: gpt-5.4, tier: heavy, weight: 3 }
 
 models:
   default:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openai, model_ref: gpt55 }
-      - { provider: openai, model_ref: gpt54mini, weight: 5 }
+      - { provider: openai, model_ref: gpt54-nano, weight: 12 }
+      - { provider: openai, model_ref: gpt54-mini, weight: 8 }
+      - { provider: openai, model_ref: gpt54, weight: 3 }
 ```
 
 `model_ref` is local to its provider. Target-local fields override catalog defaults, so the second target above uses the same external model as `gpt54mini` but overrides its weight to `5`. Direct `{ provider, model }` targets are still supported.
@@ -373,6 +375,17 @@ export WORK=/tmp/smart-llmrouter-readme-smoke
 set -a
 . "$WORK/token.env"
 set +a
+```
+
+Supported router model groups:
+
+```text
+small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
+medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
+high       OpenAI GPT-5.4 full-first route for complex coding and professional work.
+default    General-purpose weighted routing across configured providers.
+fast       Lower-latency/cost weighted routing for everyday work.
+big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 ```
 
 ### Claude Code

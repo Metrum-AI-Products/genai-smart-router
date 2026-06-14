@@ -91,17 +91,11 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"moonshot:kimi-k2":                                       "kimi-k2",
-		"moonshot:kimi-k2.7-code":                                "kimi-k2.7-code",
-		"kimi:kimi-k2":                                           "kimi-k2",
-		"kimi:kimi-k2.7-code":                                    "kimi-k2.7-code",
-		"minimax:MiniMax-Text-01":                                "MiniMax-Text-01",
-		"minimax:MiniMax-M3":                                     "MiniMax-M3",
-		"openrouter:openrouter/pareto-code:nitro":                "openrouter/pareto-code:nitro",
-		"openrouter:moonshotai/kimi-k2.7-code:nitro":             "moonshotai/kimi-k2.7-code:nitro",
-		"openrouter:minimax/minimax-m3:nitro":                    "minimax/minimax-m3:nitro",
-		"openrouter:qwen/qwen3.7-max:nitro":                      "qwen/qwen3.7-max:nitro",
-		"openrouter_anthropic:anthropic/claude-sonnet-4.6:nitro": "anthropic/claude-sonnet-4.6:nitro",
+		"openai:gpt-5.4-nano":    "gpt-5.4-nano",
+		"openai:gpt-5.4-mini":    "gpt-5.4-mini",
+		"openai:gpt-5.4":         "gpt-5.4",
+		"minimax:MiniMax-Text-01": "MiniMax-Text-01",
+		"minimax:MiniMax-M3":      "MiniMax-M3",
 	}
 	for name, model := range want {
 		found := false
@@ -121,6 +115,15 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	openRouterAnthropic := cfg.Provider["openrouter_anthropic"]
 	if openRouterAnthropic.Dialect != "anthropic" || normalizeAuthScheme(openRouterAnthropic.AuthScheme) != "bearer" {
 		t.Fatalf("openrouter_anthropic provider not configured for Anthropic bearer skin: %#v", openRouterAnthropic)
+	}
+	for _, name := range []string{"small", "medium", "high"} {
+		group, ok := cfg.Models[name]
+		if !ok {
+			t.Fatalf("example config missing %s model group", name)
+		}
+		if len(group.Targets) == 0 {
+			t.Fatalf("example config %s model group has no targets", name)
+		}
 	}
 }
 
