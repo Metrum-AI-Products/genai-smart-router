@@ -131,7 +131,7 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, OpenAI GPT-5.5 catalog refs, Groq-hosted fast models, and OpenRouter coding `:nitro` entries such as KAT-Coder-Pro V2 alongside lower-cost fallback models.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, OpenAI GPT-5.5 catalog refs, Groq-hosted fast models, and OpenRouter entries such as KAT-Coder-Pro V2 and NVIDIA Nemotron 3 Nano alongside lower-cost fallback models.
 - OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 

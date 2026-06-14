@@ -112,6 +112,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		"minimax:MiniMax-M3":                          "MiniMax-M3",
 		"minimax:MiniMax-M2.7-highspeed":              "MiniMax-M2.7-highspeed",
 		"openrouter:kwaipilot/kat-coder-pro-v2:nitro": "kwaipilot/kat-coder-pro-v2:nitro",
+		"openrouter:nvidia/nemotron-3-nano-30b-a3b":   "nvidia/nemotron-3-nano-30b-a3b",
 		"groq:qwen/qwen3-32b":                         "qwen/qwen3-32b",
 		"groq:llama-3.3-70b-versatile":                "llama-3.3-70b-versatile",
 	}
