@@ -77,7 +77,7 @@ func TestGenerateCallerTokenPreservesAllowedModelGroups(t *testing.T) {
 }
 
 func TestPublicTokenIDStripsSecretSuffix(t *testing.T) {
-	full := "rtr_metrum_sudarshan_metrum-insights_prod_k20260614_gcfnCbZBLeUGj52A_hhs5P2GfuutJ60G--qticAFw9g"
+	full := "rtr_metrum_sudarshan_metrum-insights_prod_k20260614_SYNTHETIC_PUBLIC_FIXTURE_PART_SYNTHETIC_SECRET_SUFFIX"
 	if got, want := publicTokenID(full), "rtr_metrum_sudarshan_metrum-insights_prod_k20260614"; got != want {
 		t.Fatalf("public token id=%q want %q", got, want)
 	}
