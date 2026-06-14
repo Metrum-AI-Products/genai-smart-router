@@ -109,6 +109,12 @@ providers:
       nemotron-3-nano-30b-a3b:
         model: nvidia/nemotron-3-nano-30b-a3b
         tier: cheap
+      mercury-2:
+        model: inception/mercury-2
+        tier: balanced
+      ling-26-flash:
+        model: inclusionai/ling-2.6-flash
+        tier: balanced
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -205,7 +211,13 @@ models:
       weight: 3
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 3
+      weight: 8
+    - provider: openrouter
+      model_ref: mercury-2
+      weight: 4
+    - provider: openrouter
+      model_ref: ling-26-flash
+      weight: 4
     - provider: openai
       model_ref: gpt54
       weight: 3
@@ -241,6 +253,12 @@ models:
       weight: 4
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
+      weight: 8
+    - provider: openrouter
+      model_ref: mercury-2
+      weight: 4
+    - provider: openrouter
+      model_ref: ling-26-flash
       weight: 4
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
@@ -283,7 +301,13 @@ models:
       weight: 4
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 3
+      weight: 8
+    - provider: openrouter
+      model_ref: mercury-2
+      weight: 4
+    - provider: openrouter
+      model_ref: ling-26-flash
+      weight: 4
     - provider: openrouter
       model_ref: qwen36-flash-nitro
       weight: 3
@@ -307,7 +331,13 @@ models:
       weight: 3
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 3
+      weight: 8
+    - provider: openrouter
+      model_ref: mercury-2
+      weight: 4
+    - provider: openrouter
+      model_ref: ling-26-flash
+      weight: 4
     - provider: openai
       model_ref: gpt54-nano
       weight: 2
@@ -330,6 +360,10 @@ models:
       model_ref: kat-coder-pro-v2-nitro
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
+    - provider: openrouter
+      model_ref: mercury-2
+    - provider: openrouter
+      model_ref: ling-26-flash
     - provider: openrouter
       model_ref: glm51-nitro
     - provider: openrouter
