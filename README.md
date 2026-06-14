@@ -263,7 +263,20 @@ curl http://127.0.0.1:8080/readyz
 curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```
 
+## Usage Reports
+
 Usage is written to both JSONL and SQLite. The JSONL file is useful for raw audit/debugging; the SQLite DB is the source for periodic reports. In container deployments, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`.
+
+`router-usage-report` flags:
+
+```text
+--db PATH       SQLite usage DB path; defaults to usage.sqlite.
+--log PATH      Optional JSONL request log to import before reporting.
+--since DUR     Relative period when --from is omitted, such as 24h, 7d, or 30d.
+--from TIME     Start time, RFC3339, YYYY-MM-DD HH:MM:SS, or YYYY-MM-DD.
+--to TIME       End time; defaults to now.
+--out PATH      Markdown output path; defaults to stdout.
+```
 
 Generate a markdown report for the last 24 hours:
 
@@ -271,7 +284,7 @@ Generate a markdown report for the last 24 hours:
 ./router-usage-report --db usage.sqlite --since 24h --out usage-24h.md
 ```
 
-Generate a report for an explicit period and import existing JSONL first:
+Generate a report for an explicit period and import existing JSONL first. Imports are duplicate-safe by router `request_id`:
 
 ```bash
 ./router-usage-report \
@@ -280,6 +293,16 @@ Generate a report for an explicit period and import existing JSONL first:
   --from 2026-06-14T00:00:00Z \
   --to 2026-06-15T00:00:00Z \
   --out usage-2026-06-14.md
+```
+
+Generate a report from a Docker Compose deployment:
+
+```bash
+docker compose run --rm --entrypoint /app/bin/router-usage-report router \
+  --db /app/state/usage.sqlite \
+  --log /app/logs/requests.jsonl \
+  --since 24h \
+  --out /app/logs/usage-24h.md
 ```
 
 Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, hourly usage, and daily usage. Raw router tokens and provider API keys are never written to the report.
