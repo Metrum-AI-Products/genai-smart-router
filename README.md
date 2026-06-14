@@ -68,7 +68,7 @@ The router uses two different classes of keys:
 - Caller tokens authenticate clients that call this router. A caller sends `Authorization: Bearer <router-token>` or `X-API-Key: <router-token>`. The router hashes the presented token with SHA-256, compares it to configured `callers[].token_sha256`, checks `allow`, rate limits, quotas, and lifetime token budget, then logs/exports only caller metadata and `token_id`.
 - Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
 
-Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`.
+Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`. This is enough to route by caller key prefix or by the configured provider key name without making secrets available to script code.
 
 ## Provider Model Catalogs
 
@@ -124,22 +124,26 @@ models:
       - { provider: anthropic, model_ref: opus }
 ```
 
-The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. The default script uses target weights as relative probabilities:
+The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. The default `scripts/router.ts` does three things:
+
+- Removes targets whose provider key is not configured or whose target weight is zero.
+- Applies named regex rules against safe caller-key metadata and safe target-key metadata.
+- Falls back to weighted random routing across eligible targets, using configured target weights as relative probabilities.
+
+Minimal weighted example:
 
 ```ts
 export function route(ctx) {
-  const total = ctx.targets.reduce((sum, target) => sum + target.weight, 0);
-  const heavy = ctx.text.toLowerCase().includes("architecture") && total > 0;
-  return {
-    targetIndex: heavy ? 1 : 0,
-    classLabel: heavy ? "script:heavy" : "script:cheap",
-  };
+  const eligible = ctx.targets
+    .map((target, index) => ({ target, index, weight: Math.max(0, target.weight || 1) }))
+    .filter((entry) => entry.weight > 0 && entry.target.keyConfigured);
+  return { targetIndex: eligible[0]?.index || 0, classLabel: "script:minimal" };
 }
 ```
 
 The router transpiles TypeScript with embedded esbuild and evaluates it with an embedded JS runtime. Scripts receive request metadata/text, safe caller metadata, and configured target metadata including provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list.
 
-Caller metadata enables key-specific routing with regular expressions over the generated router-token prefix:
+Caller metadata enables key-specific routing with regular expressions over the generated router-token prefix. Target metadata also lets the script route to targets backed by a specific configured provider key identifier or environment variable name:
 
 ```ts
 export function route(ctx) {
@@ -147,7 +151,12 @@ export function route(ctx) {
     /^rtr_metrum_chetan_metrum-insights_prod_/.test(ctx.caller?.tokenId || "") &&
     /^metrum-insights$/.test(ctx.caller?.project || "")
   ) {
-    const heavyIndex = ctx.targets.findIndex((target) => target.tier === "heavy" && target.keyConfigured);
+    const heavyIndex = ctx.targets.findIndex((target) =>
+      target.tier === "heavy" &&
+      /^openrouter-default$/.test(target.keyId || "") &&
+      /^OPENROUTER_API_KEY$/.test(target.apiKeyEnv || "") &&
+      target.keyConfigured
+    );
     if (heavyIndex >= 0) {
       return { targetIndex: heavyIndex, classLabel: "key-regex:prod-heavy" };
     }
@@ -155,6 +164,8 @@ export function route(ctx) {
   return { targetIndex: 0, classLabel: "default" };
 }
 ```
+
+`ctx.caller.tokenId` is the generated token prefix without the secret suffix, for example `rtr_metrum_chetan_metrum-insights_prod_key1`. Use it for traceable key classes. Do not route on raw token secrets; the router never passes them to scripts.
 
 Check which names are present without printing secret values:
 

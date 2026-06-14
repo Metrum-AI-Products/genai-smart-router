@@ -14,6 +14,25 @@ type Target = {
   keyConfigured: boolean;
 };
 
+type WeightedTarget = {
+  target: Target;
+  index: number;
+  weight: number;
+};
+
+type KeyRule = {
+  name: string;
+  tokenId?: RegExp;
+  user?: RegExp;
+  project?: RegExp;
+  environment?: RegExp;
+  provider?: RegExp;
+  model?: RegExp;
+  tier?: RegExp;
+  keyId?: RegExp;
+  apiKeyEnv?: RegExp;
+};
+
 type RouteContext = {
   group: string;
   text: string;
@@ -33,6 +52,22 @@ type RouteContext = {
   };
 };
 
+const keyRules: KeyRule[] = [
+  {
+    name: "metrum-prod-heavy",
+    tokenId: /^rtr_metrum_chetan_metrum-insights_prod_/,
+    project: /^metrum-insights$/,
+    environment: /^prod$/,
+    tier: /^heavy$/,
+  },
+  {
+    name: "readme-dev-openrouter",
+    tokenId: /^rtr_metrum_readme_metrum-insights_dev_/,
+    provider: /^openrouter/,
+    apiKeyEnv: /^OPENROUTER_API_KEY$/,
+  },
+];
+
 export function route(ctx: RouteContext) {
   const eligible = ctx.targets
     .map((target, index) => ({
@@ -49,38 +84,18 @@ export function route(ctx: RouteContext) {
     };
   }
 
-  const keyRules: Array<{
-    tokenId?: RegExp;
-    user?: RegExp;
-    project?: RegExp;
-    environment?: RegExp;
-    provider?: RegExp;
-    model?: RegExp;
-    tier?: RegExp;
-  }> = [
-    // Example: route one project's production keys to heavy coding targets.
-    // { tokenId: /^rtr_metrum_chetan_metrum-insights_prod_/, tier: /^heavy$/ },
-  ];
-
   for (const rule of keyRules) {
     if (!matchesRule(ctx, rule)) continue;
-    const preferred = eligible.filter((entry) => {
-      const target = entry.target;
-      return (
-        (!rule.provider || rule.provider.test(target.provider)) &&
-        (!rule.model || rule.model.test(target.model)) &&
-        (!rule.tier || rule.tier.test(target.tier || ""))
-      );
-    });
+    const preferred = eligible.filter((entry) => matchesTargetRule(entry.target, rule));
     if (preferred.length > 0) {
-      return weightedPick(preferred, eligible, `key-regex:${ctx.caller?.tokenId || ctx.caller?.id || "anonymous"}`);
+      return weightedPick(preferred, eligible, `key-regex:${rule.name}`);
     }
   }
 
   return weightedPick(eligible, eligible, "weighted");
 }
 
-function matchesRule(ctx: RouteContext, rule: { tokenId?: RegExp; user?: RegExp; project?: RegExp; environment?: RegExp }) {
+function matchesRule(ctx: RouteContext, rule: KeyRule) {
   const caller = ctx.caller;
   if (!caller) return false;
   return (
@@ -91,9 +106,19 @@ function matchesRule(ctx: RouteContext, rule: { tokenId?: RegExp; user?: RegExp;
   );
 }
 
+function matchesTargetRule(target: Target, rule: KeyRule) {
+  return (
+    (!rule.provider || rule.provider.test(target.provider)) &&
+    (!rule.model || rule.model.test(target.model)) &&
+    (!rule.tier || rule.tier.test(target.tier || "")) &&
+    (!rule.keyId || rule.keyId.test(target.keyId || "")) &&
+    (!rule.apiKeyEnv || rule.apiKeyEnv.test(target.apiKeyEnv || ""))
+  );
+}
+
 function weightedPick(
-  candidates: Array<{ target: Target; index: number; weight: number }>,
-  fallbackPool: Array<{ target: Target; index: number; weight: number }>,
+  candidates: WeightedTarget[],
+  fallbackPool: WeightedTarget[],
   labelPrefix: string,
 ) {
   const totalWeight = candidates.reduce((sum, entry) => sum + entry.weight, 0);
