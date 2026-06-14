@@ -155,9 +155,10 @@ Claude Code:
 ```bash
 ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai \
 ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
-ANTHROPIC_API_KEY="$ROUTER_TOKEN" \
 claude --bare --print --model big-coder "Reply with exactly: router prod claude ok"
 ```
+
+Do not set `ANTHROPIC_API_KEY` for router traffic. Claude Code uses `ANTHROPIC_AUTH_TOKEN` as a bearer token for gateways/proxies, while `ANTHROPIC_API_KEY` is for direct Anthropic API keys.
 
 For Claude Code, change `--model big-coder` to `--model default` or `--model fast` to use another route.
 

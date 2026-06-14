@@ -174,7 +174,6 @@ Use the same base URL for local CLIs:
 ```bash
 export ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
-export ANTHROPIC_API_KEY="$ROUTER_TOKEN"
 
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 ```

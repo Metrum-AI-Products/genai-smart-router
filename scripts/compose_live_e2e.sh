@@ -140,7 +140,6 @@ curl -fsS "$BASE_URL/v1/chat/completions" \
 
 ANTHROPIC_BASE_URL="$BASE_URL" \
   ANTHROPIC_AUTH_TOKEN="$TOKEN" \
-  ANTHROPIC_API_KEY="$TOKEN" \
   ANTHROPIC_MODEL="$GROUP" \
   timeout 180 claude --bare --print --model "$GROUP" "Reply with exactly: router compose claude ok" \
   | grep -qx "router compose claude ok"

@@ -377,12 +377,11 @@ set +a
 
 ### Claude Code
 
-Claude Code uses Anthropic-style requests. Set both token variables so installations that prefer either `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` send the router caller token.
+Claude Code uses Anthropic-style requests. For this router, set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` only. Do not set `ANTHROPIC_API_KEY` for router traffic; Claude Code uses that variable for direct Anthropic Console API keys via `X-Api-Key`, while this router expects a bearer token.
 
 ```bash
 export ANTHROPIC_BASE_URL="http://127.0.0.1:18081"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
-export ANTHROPIC_API_KEY="$ROUTER_TOKEN"
 export ANTHROPIC_MODEL="$ROUTER_MODEL"
 
 claude --bare --print --model "$ROUTER_MODEL" \
