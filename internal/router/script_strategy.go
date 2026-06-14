@@ -21,8 +21,18 @@ type scriptInput struct {
 	Group   string         `json:"group"`
 	Request *IRRequest     `json:"request"`
 	Targets []scriptTarget `json:"targets"`
+	Caller  *scriptCaller  `json:"caller,omitempty"`
 	Text    string         `json:"text"`
 	Now     string         `json:"now"`
+}
+
+type scriptCaller struct {
+	ID          string   `json:"id"`
+	User        string   `json:"user"`
+	Project     string   `json:"project"`
+	Environment string   `json:"environment"`
+	TokenID     string   `json:"tokenId"`
+	Allow       []string `json:"allow"`
 }
 
 type scriptTarget struct {
@@ -91,7 +101,7 @@ func loadScriptStrategy(baseDir, scriptPath string) (*scriptStrategy, error) {
 	return &scriptStrategy{path: resolved, program: program}, nil
 }
 
-func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, providers map[string]ProviderConfig) (decision, error) {
+func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
 	vm := goja.New()
 	timer := time.AfterFunc(50*time.Millisecond, func() {
 		vm.Interrupt("script routing timed out")
@@ -109,6 +119,7 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, pr
 		Group:   group,
 		Request: req,
 		Targets: buildScriptTargets(targets, providers),
+		Caller:  buildScriptCaller(caller, tokenID),
 		Text:    requestText(req),
 		Now:     time.Now().UTC().Format(time.RFC3339),
 	}
@@ -143,6 +154,21 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, pr
 		Strategy:   "script",
 		GroupName:  group,
 	}, nil
+}
+
+func buildScriptCaller(caller *callerRuntime, tokenID string) *scriptCaller {
+	if caller == nil {
+		return nil
+	}
+	allow := append([]string(nil), caller.cfg.Allow...)
+	return &scriptCaller{
+		ID:          caller.cfg.ID,
+		User:        callerUser(caller.cfg),
+		Project:     callerProject(caller.cfg),
+		Environment: callerEnvironment(caller.cfg),
+		TokenID:     tokenID,
+		Allow:       allow,
+	}
 }
 
 func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) []scriptTarget {

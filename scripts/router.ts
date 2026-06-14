@@ -18,6 +18,14 @@ type RouteContext = {
   group: string;
   text: string;
   targets: Target[];
+  caller?: {
+    id: string;
+    user: string;
+    project: string;
+    environment: string;
+    tokenId: string;
+    allow: string[];
+  };
   request: {
     model: string;
     max_tokens?: number;
@@ -41,10 +49,57 @@ export function route(ctx: RouteContext) {
     };
   }
 
-  const totalWeight = eligible.reduce((sum, entry) => sum + entry.weight, 0);
+  const keyRules: Array<{
+    tokenId?: RegExp;
+    user?: RegExp;
+    project?: RegExp;
+    environment?: RegExp;
+    provider?: RegExp;
+    model?: RegExp;
+    tier?: RegExp;
+  }> = [
+    // Example: route one project's production keys to heavy coding targets.
+    // { tokenId: /^rtr_metrum_chetan_metrum-insights_prod_/, tier: /^heavy$/ },
+  ];
+
+  for (const rule of keyRules) {
+    if (!matchesRule(ctx, rule)) continue;
+    const preferred = eligible.filter((entry) => {
+      const target = entry.target;
+      return (
+        (!rule.provider || rule.provider.test(target.provider)) &&
+        (!rule.model || rule.model.test(target.model)) &&
+        (!rule.tier || rule.tier.test(target.tier || ""))
+      );
+    });
+    if (preferred.length > 0) {
+      return weightedPick(preferred, eligible, `key-regex:${ctx.caller?.tokenId || ctx.caller?.id || "anonymous"}`);
+    }
+  }
+
+  return weightedPick(eligible, eligible, "weighted");
+}
+
+function matchesRule(ctx: RouteContext, rule: { tokenId?: RegExp; user?: RegExp; project?: RegExp; environment?: RegExp }) {
+  const caller = ctx.caller;
+  if (!caller) return false;
+  return (
+    (!rule.tokenId || rule.tokenId.test(caller.tokenId)) &&
+    (!rule.user || rule.user.test(caller.user)) &&
+    (!rule.project || rule.project.test(caller.project)) &&
+    (!rule.environment || rule.environment.test(caller.environment))
+  );
+}
+
+function weightedPick(
+  candidates: Array<{ target: Target; index: number; weight: number }>,
+  fallbackPool: Array<{ target: Target; index: number; weight: number }>,
+  labelPrefix: string,
+) {
+  const totalWeight = candidates.reduce((sum, entry) => sum + entry.weight, 0);
   let pick = Math.random() * totalWeight;
-  let selected = eligible[0];
-  for (const entry of eligible) {
+  let selected = candidates[0];
+  for (const entry of candidates) {
     if (pick < entry.weight) {
       selected = entry;
       break;
@@ -52,7 +107,7 @@ export function route(ctx: RouteContext) {
     pick -= entry.weight;
   }
 
-  const fallbackIndexes = eligible
+  const fallbackIndexes = fallbackPool
     .filter((entry) => entry.index !== selected.index)
     .sort((a, b) => b.weight - a.weight)
     .map((entry) => entry.index);
@@ -60,6 +115,6 @@ export function route(ctx: RouteContext) {
   return {
     targetIndex: selected.index,
     fallbackIndexes,
-    classLabel: `weighted:${selected.target.provider}:${selected.target.model}`,
+    classLabel: `${labelPrefix}:${selected.target.provider}:${selected.target.model}`,
   };
 }

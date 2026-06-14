@@ -61,6 +61,15 @@ Provider adapter notes:
 - OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
+## API Key Flow
+
+The router uses two different classes of keys:
+
+- Caller tokens authenticate clients that call this router. A caller sends `Authorization: Bearer <router-token>` or `X-API-Key: <router-token>`. The router hashes the presented token with SHA-256, compares it to configured `callers[].token_sha256`, checks `allow`, rate limits, quotas, and lifetime token budget, then logs/exports only caller metadata and `token_id`.
+- Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
+
+Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`.
+
 ## Provider Model Catalogs
 
 A provider can serve many locally configured models without repeating its base URL or credentials:
@@ -128,7 +137,24 @@ export function route(ctx) {
 }
 ```
 
-The router transpiles TypeScript with embedded esbuild and evaluates it with an embedded JS runtime. Scripts receive request metadata/text and configured target metadata including provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys are never passed to scripts; returned targets are validated against the configured list.
+The router transpiles TypeScript with embedded esbuild and evaluates it with an embedded JS runtime. Scripts receive request metadata/text, safe caller metadata, and configured target metadata including provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list.
+
+Caller metadata enables key-specific routing with regular expressions over the generated router-token prefix:
+
+```ts
+export function route(ctx) {
+  if (
+    /^rtr_metrum_chetan_metrum-insights_prod_/.test(ctx.caller?.tokenId || "") &&
+    /^metrum-insights$/.test(ctx.caller?.project || "")
+  ) {
+    const heavyIndex = ctx.targets.findIndex((target) => target.tier === "heavy" && target.keyConfigured);
+    if (heavyIndex >= 0) {
+      return { targetIndex: heavyIndex, classLabel: "key-regex:prod-heavy" };
+    }
+  }
+  return { targetIndex: 0, classLabel: "default" };
+}
+```
 
 Check which names are present without printing secret values:
 

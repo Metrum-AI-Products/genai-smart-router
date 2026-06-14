@@ -442,7 +442,7 @@ export function route(ctx: Ctx) {
 	dec, err := svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
 		Model:    "scripted",
 		Messages: []IRMessage{{Role: "user", Content: "architecture question"}},
-	})
+	}, svc.quota.callers["alice"], "rtr_alice_test")
 	if err != nil {
 		t.Fatalf("script pick: %v", err)
 	}
@@ -458,6 +458,66 @@ export function route(ctx: Ctx) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if gotModel != "heavy-model" {
+		t.Fatalf("script selected model %q", gotModel)
+	}
+}
+
+func TestTypeScriptRoutingCanUseCallerTokenRegex(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "script_key_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "script key routed"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "router.ts")
+	if err := os.WriteFile(scriptPath, []byte(`
+type Ctx = { caller?: { tokenId: string; user: string; project: string }; targets: Array<{ model: string }> };
+export function route(ctx: Ctx) {
+  if (/^rtr_alice_/.test(ctx.caller?.tokenId || "") && /^metrum-/.test(ctx.caller?.project || "")) {
+    return { targetIndex: 1, classLabel: "key-regex:" + ctx.caller?.user };
+  }
+  return { targetIndex: 0, classLabel: "key-regex:fallback" };
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["keyed"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		Targets: []Target{
+			{Provider: "mock", Model: "default-key-model"},
+			{Provider: "mock", Model: "alice-key-model"},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "keyed")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"keyed","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "alice-key-model" {
 		t.Fatalf("script selected model %q", gotModel)
 	}
 }
@@ -500,6 +560,31 @@ func TestScriptTargetsIncludeProviderMetadataWithoutRawKeys(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "raw-secret-key") {
 		t.Fatalf("raw API key leaked into script context: %s", raw)
+	}
+}
+
+func TestScriptCallerMetadataExcludesSecrets(t *testing.T) {
+	sum := sha256.Sum256([]byte(testToken))
+	caller := &callerRuntime{cfg: CallerConfig{
+		ID:          "alice",
+		User:        "Alice",
+		Project:     "Metrum Insights",
+		Environment: "Prod",
+		TokenSHA256: hex.EncodeToString(sum[:]),
+		TokenID:     "rtr_metrum_alice_metrum-insights_prod_key1",
+		Allow:       []string{"default"},
+	}}
+
+	scriptCaller := buildScriptCaller(caller, caller.cfg.TokenID)
+	if scriptCaller == nil || scriptCaller.TokenID != caller.cfg.TokenID || scriptCaller.User != "alice" || scriptCaller.Project != "metrum-insights" || scriptCaller.Environment != "prod" {
+		t.Fatalf("caller metadata not populated: %#v", scriptCaller)
+	}
+	raw, err := json.Marshal(scriptCaller)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), testToken) || strings.Contains(string(raw), caller.cfg.TokenSHA256) {
+		t.Fatalf("caller secret leaked into script context: %s", raw)
 	}
 }
 

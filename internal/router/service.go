@@ -259,7 +259,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
-	dec, err := s.pick(req.Model, group, req)
+	dec, err := s.pick(req.Model, group, req, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadGateway, "routing-failed")
 		return
@@ -389,7 +389,7 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 	return nil, tokenID, errors.New("unknown token")
 }
 
-func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest) (decision, error) {
+func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, caller *callerRuntime, tokenID string) (decision, error) {
 	targets := append([]Target(nil), group.Targets...)
 	if len(targets) == 0 {
 		return decision{}, errors.New("no targets")
@@ -423,7 +423,7 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest) (deci
 		if strat == nil {
 			return decision{}, fmt.Errorf("script strategy %s not loaded", groupName)
 		}
-		return strat.Pick(groupName, req, targets, s.cfg.Provider)
+		return strat.Pick(groupName, req, targets, s.cfg.Provider, caller, tokenID)
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
 	}
