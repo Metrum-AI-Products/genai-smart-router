@@ -152,7 +152,7 @@ Model groups decouple client intent from provider implementation:
 - `big-coder`: coding-oriented weighted path for agentic coding tools.
 - `default`: general-purpose routing policy for common workloads.
 
-In the reference deployment, MiniMax-M3 is configured as the 50% weighted anchor across model groups, with the remaining weight distributed across provider fallbacks for resilience and optionality.
+In the reference deployment, general model groups weight OpenRouter DeepSeek V4 Flash Nitro at 60% and MiniMax-M3 at 30%, with remaining provider fallbacks sharing 10%. The code-heavy group uses MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%.
 
 ```mermaid
 flowchart LR

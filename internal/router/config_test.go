@@ -158,14 +158,28 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 		totalWeight := 0
 		m3Weight := 0
+		deepSeekWeight := 0
+		kimiWeight := 0
 		for _, target := range group.Targets {
 			totalWeight += target.Weight
 			if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
 				m3Weight += target.Weight
 			}
+			if target.Provider == "openrouter" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+				deepSeekWeight += target.Weight
+			}
+			if target.Provider == "kimi" && target.Model == "kimi-k2.7-code" {
+				kimiWeight += target.Weight
+			}
 		}
-		if totalWeight == 0 || m3Weight*2 != totalWeight {
-			t.Fatalf("example config group %s MiniMax-M3 weight=%d total=%d, want exactly 50%%", name, m3Weight, totalWeight)
+		if name == "big-coder" {
+			if len(group.Targets) != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
+				t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d targets=%d, want 50/30/20 over 3 targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, len(group.Targets))
+			}
+			continue
+		}
+		if totalWeight == 0 || m3Weight*10 != totalWeight*3 || deepSeekWeight*10 != totalWeight*6 {
+			t.Fatalf("example config group %s weights m3=%d deepseek=%d total=%d, want 30%%/60%%", name, m3Weight, deepSeekWeight, totalWeight)
 		}
 	}
 	wantAllows := map[string][]string{

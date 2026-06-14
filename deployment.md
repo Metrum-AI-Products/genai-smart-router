@@ -93,10 +93,18 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 
 ## 2026-06-14 MiniMax-M3 Weight Update
 
-- Updated production and reference configs so every router model group is `weighted` with MiniMax `MiniMax-M3` at exactly 50% of total configured target weight.
+- Updated production and reference configs so general router model groups are `weighted` with OpenRouter DeepSeek V4 Flash Nitro at 60% and MiniMax `MiniMax-M3` at 30%; `big-coder` is limited to MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%.
 - Verified MiniMax-M3 direct provider smoke returned HTTP 200.
 - Restarted the production router after backing up `config/config.yaml`.
-- Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for `default`, `fast`, `small`, `medium`, `high`, and `big-coder`; all six smoke requests selected `MiniMax-M3`.
+- Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for `default`, `fast`, `small`, `medium`, `high`, and `big-coder`; production smoke requests completed after the weighting update.
+
+## 2026-06-14 DeepSeek/MiniMax/Kimi Weight Update
+
+- Updated production and reference configs so `default`, `fast`, `small`, `medium`, and `high` route 60% to OpenRouter `deepseek/deepseek-v4-flash:nitro`, 30% to MiniMax `MiniMax-M3`, and 10% across remaining fallback targets.
+- Updated `big-coder` to exactly three targets: MiniMax-M3 50%, Kimi `kimi-k2.7-code` 30%, and OpenRouter `deepseek/deepseek-v4-flash:nitro` 20%.
+- Verified direct provider smokes: MiniMax-M3 HTTP 200, Kimi `kimi-k2.7-code` HTTP 200, and production OpenRouter DeepSeek V4 Flash Nitro HTTP 200.
+- Restarted the production router after backing up `config/config.yaml`.
+- Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for all six router model groups.
 
 ## Operations
 
@@ -144,12 +152,12 @@ sudo docker compose up -d
 Supported production router model groups:
 
 ```text
-small      MiniMax-M3 50% weighted, with low-latency fallback targets for routine work.
-medium     MiniMax-M3 50% weighted, with balanced fallback targets for general work.
-high       MiniMax-M3 50% weighted, with premium fallback targets for complex work.
-default    MiniMax-M3 50% weighted, with broad configured provider fallbacks.
-fast       MiniMax-M3 50% weighted, with lower-latency fallback targets for everyday work.
-big-coder  MiniMax-M3 50% weighted coding route; recommended for Claude Code and Codex.
+small      DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with low-latency fallback targets for routine work.
+medium     DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with balanced fallback targets for general work.
+high       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with premium fallback targets for complex work.
+default    DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with broad configured provider fallbacks.
+fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fallback targets for everyday work.
+big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
 ```
 
 Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.5`, `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`; Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`; and configured OpenRouter Nitro targets. Direct validation showed production has access to `gpt-5.5`; `gpt-5.5-pro` remains catalog-only until the OpenAI project is entitled for it.

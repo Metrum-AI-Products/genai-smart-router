@@ -171,12 +171,12 @@ docker compose up -d
 Supported router model groups:
 
 ```text
-small      MiniMax-M3 50% weighted, with low-latency fallback targets for routine work.
-medium     MiniMax-M3 50% weighted, with balanced fallback targets for general work.
-high       MiniMax-M3 50% weighted, with premium fallback targets for complex work.
-default    MiniMax-M3 50% weighted, with broad configured provider fallbacks.
-fast       MiniMax-M3 50% weighted, with lower-latency fallback targets for everyday work.
-big-coder  MiniMax-M3 50% weighted coding route; recommended for Claude Code and Codex.
+small      DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with low-latency fallback targets for routine work.
+medium     DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with balanced fallback targets for general work.
+high       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with premium fallback targets for complex work.
+default    DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with broad configured provider fallbacks.
+fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fallback targets for everyday work.
+big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.

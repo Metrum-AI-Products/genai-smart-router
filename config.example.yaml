@@ -197,7 +197,10 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 14
+      weight: 39
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 78
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -206,9 +209,6 @@ models:
       weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
       weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
@@ -245,7 +245,10 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 11
+      weight: 30
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 60
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -264,9 +267,6 @@ models:
     - provider: openrouter
       model_ref: ling-26-flash
       weight: 1
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 1
     - provider: minimax
       model_ref: m27-highspeed
       weight: 1
@@ -284,19 +284,22 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 2
-    - provider: openai
-      model_ref: gpt55
-      weight: 1
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46
-      weight: 1
+      weight: 50
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 30
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 20
   small:
     strategy: weighted
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 7
+      weight: 21
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 42
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -323,7 +326,10 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 11
+      weight: 30
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 60
     - provider: openai
       model_ref: gpt54-mini
       weight: 1
@@ -332,9 +338,6 @@ models:
       weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
       weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
@@ -362,15 +365,15 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 12
+      weight: 33
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 66
     - provider: openai
       model_ref: gpt55
       weight: 1
     - provider: openai
       model_ref: gpt54
-      weight: 1
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
       weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
