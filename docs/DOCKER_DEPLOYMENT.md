@@ -158,6 +158,21 @@ codex exec --ignore-user-config --ephemeral \
   "Reply with exactly: router codex ok" </dev/null
 ```
 
+The `exec` subcommand is required for `--ignore-user-config`, `--ephemeral`, `--ignore-rules`, and `--skip-git-repo-check`; those flags are not accepted by the top-level interactive `codex` command.
+
+Interactive Codex uses top-level `codex`, without the `exec`-only flags:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+codex \
+  -c 'model="default"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
 ## Local Compose E2E
 
 For local e2e, run Caddy on plain HTTP by setting:

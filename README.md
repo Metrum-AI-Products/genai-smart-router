@@ -417,6 +417,22 @@ codex exec --ignore-user-config --ephemeral \
   "Reply with exactly: router codex ok" </dev/null
 ```
 
+The `exec` subcommand is required for `--ignore-user-config`, `--ephemeral`, `--ignore-rules`, and `--skip-git-repo-check`; those flags are not accepted by the top-level interactive `codex` command.
+
+For interactive Codex, omit the `exec`-only flags and run top-level `codex` with the same provider settings:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+
+codex \
+  -c "model=\"$ROUTER_MODEL\"" \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
 Expected final assistant output:
 
 ```text

@@ -177,6 +177,20 @@ METRUM_ROUTER_KEY="$ROUTER_TOKEN" codex exec --ignore-user-config --ephemeral \
   "Reply with exactly: router prod codex ok" </dev/null
 ```
 
+The `exec` subcommand is required for `--ignore-user-config`, `--ephemeral`, `--ignore-rules`, and `--skip-git-repo-check`; those flags are not accepted by the top-level interactive `codex` command.
+
+Interactive Codex uses top-level `codex`, without the `exec`-only flags:
+
+```bash
+METRUM_ROUTER_KEY="$ROUTER_TOKEN" codex \
+  -c 'model="big-coder"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
 For Codex, change `-c 'model="big-coder"'` to `default` or `fast` to use another route.
 
 Validated during deployment:
