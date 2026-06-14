@@ -321,6 +321,95 @@ flowchart TB
   Router --> Providers[External providers]
 ```
 
+## Hosted Developer CLI Examples
+
+For a hosted deployment, developers use a router-issued caller token and request one of the exposed router model groups. The hosted endpoint below is an example deployment:
+
+```bash
+export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+export ROUTER_BASE_URL="https://llm-api-engg.metrum.ai"
+export ROUTER_MODEL="big-coder"
+```
+
+Recommended model groups for CLI use:
+
+```text
+big-coder  Coding-oriented route for agentic development tools.
+high       Stronger route for complex work.
+medium     Balanced route for everyday development tasks.
+small      Lower-cost route for quick edits and simple questions.
+```
+
+### Claude Code
+
+Claude Code uses Anthropic-style requests. For router traffic, set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`. Do not set `ANTHROPIC_API_KEY` for this gateway path; that variable is for direct Anthropic API keys, while the router expects a bearer token.
+
+One-shot check:
+
+```bash
+unset ANTHROPIC_API_KEY
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
+
+claude --bare --print --model "$ROUTER_MODEL" \
+  "Reply with exactly: router claude ok"
+```
+
+Expected output:
+
+```text
+router claude ok
+```
+
+Interactive usage:
+
+```bash
+unset ANTHROPIC_API_KEY
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
+
+claude --model "$ROUTER_MODEL"
+```
+
+### Codex CLI
+
+Codex can use the router through the OpenAI Responses wire API. Keep the router token in an environment variable and configure a provider entry for the current invocation.
+
+One-shot check:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  -c "model=\"$ROUTER_MODEL\"" \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Reply with exactly: router codex ok" </dev/null
+```
+
+The `exec` subcommand is required for `--ignore-user-config`, `--ephemeral`, `--ignore-rules`, and `--skip-git-repo-check`. Those flags are not accepted by the top-level interactive `codex` command.
+
+Interactive usage:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+
+codex \
+  -c "model=\"$ROUTER_MODEL\"" \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
+For a different route, change `ROUTER_MODEL` to another allowed model group such as `small`, `medium`, `high`, `default`, or `fast`. The router decides the concrete upstream provider and model behind that group.
+
 ## Security And Governance Posture
 
 Smart LLM Router is intended to support enterprise control over LLM access:
@@ -356,4 +445,3 @@ When evaluating the router for a deployment, confirm:
 - Where logs, usage DB, and metrics will be retained.
 - Which reverse proxy and TLS termination model will be used.
 - How provider key rotation and caller token rotation will be handled.
-
