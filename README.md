@@ -153,8 +153,12 @@ export function route(ctx) {
   ) {
     const heavyIndex = ctx.targets.findIndex((target) =>
       target.tier === "heavy" &&
-      /^openrouter-default$/.test(target.keyId || "") &&
-      /^OPENROUTER_API_KEY$/.test(target.apiKeyEnv || "") &&
+      (
+        (/^openrouter-default$/.test(target.keyId || "") &&
+          /^OPENROUTER_API_KEY$/.test(target.apiKeyEnv || "")) ||
+        (/^openai-default$/.test(target.keyId || "") &&
+          /^OPENAI_API_KEY$/.test(target.apiKeyEnv || ""))
+      ) &&
       target.keyConfigured
     );
     if (heavyIndex >= 0) {
