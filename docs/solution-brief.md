@@ -29,7 +29,7 @@ Smart LLM Router is designed for platform teams that need a controlled, observab
 Core capabilities:
 
 - One gateway endpoint for OpenAI-compatible and Anthropic-compatible clients.
-- Provider abstraction for OpenAI-style providers, Anthropic-style providers, OpenRouter-compatible routing, Replicate-style prediction APIs, and other compatible upstreams.
+- Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, and other compatible upstreams.
 - Server-side provider key injection, keeping upstream credentials out of client machines and application code.
 - Caller API tokens with traceable public prefixes, hashed token storage, per-caller allow lists, rate limits, quotas, and lifetime token budgets.
 - Configurable model groups such as `small`, `medium`, `high`, `default`, `fast`, or `big-coder`.

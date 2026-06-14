@@ -130,7 +130,7 @@ fast       Lower-latency/cost weighted routing for everyday work.
 big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 ```
 
-Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active OpenAI targets currently use `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`, with higher weights on smaller models for default and fast routing. Direct validation showed the current OpenAI project does not yet have access to `gpt-5.5` or `gpt-5.5-pro`, so those models are intentionally not active to avoid random runtime failures.
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-Text-01` and `MiniMax-M3`; and Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`. Direct validation showed the current OpenAI project does not yet have access to `gpt-5.5` or `gpt-5.5-pro`, so those models are intentionally not active to avoid random runtime failures.
 
 Production caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists the groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 

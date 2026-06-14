@@ -124,13 +124,14 @@ KIMI_API_KEY
 QWEN_API_KEY
 MINIMAX_API_KEY
 OPENROUTER_API_KEY
+GROQ_API_KEY
 REPLICATE_API_KEY
 XAI_API_KEY
 ```
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, and OpenRouter coding `:nitro` entries alongside lower-cost fallback models.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, Groq-hosted fast models, and OpenRouter coding `:nitro` entries alongside lower-cost fallback models.
 - OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
@@ -139,7 +140,7 @@ Provider adapter notes:
 The router uses two different classes of keys:
 
 - Caller tokens authenticate clients that call this router. A caller sends `Authorization: Bearer <router-token>` or `X-API-Key: <router-token>`. The router hashes the presented token with SHA-256, compares it to configured `callers[].token_sha256`, checks `allow`, rate limits, quotas, and lifetime token budget, then logs/exports only caller metadata and `token_id`.
-- Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
+- Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${GROQ_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
 
 `callers[].allow` is the per-key allow list for internal router model group names. A standard key can be limited to `default`, `fast`, and `small`, while a coding/premium key can additionally allow `medium`, `high`, and `big-coder`. Disallowed model requests return `403 model-not-allowed` before provider routing and before any provider API key is used. The authenticated `/v1/models` response is filtered to the caller token's allowed groups.
 

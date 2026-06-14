@@ -93,11 +93,13 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"openai:gpt-5.4-nano":     "gpt-5.4-nano",
-		"openai:gpt-5.4-mini":     "gpt-5.4-mini",
-		"openai:gpt-5.4":          "gpt-5.4",
-		"minimax:MiniMax-Text-01": "MiniMax-Text-01",
-		"minimax:MiniMax-M3":      "MiniMax-M3",
+		"openai:gpt-5.4-nano":          "gpt-5.4-nano",
+		"openai:gpt-5.4-mini":          "gpt-5.4-mini",
+		"openai:gpt-5.4":               "gpt-5.4",
+		"minimax:MiniMax-Text-01":      "MiniMax-Text-01",
+		"minimax:MiniMax-M3":           "MiniMax-M3",
+		"groq:qwen/qwen3-32b":          "qwen/qwen3-32b",
+		"groq:llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
 	}
 	for name, model := range want {
 		found := false
