@@ -1,5 +1,7 @@
 .env
 env.json
+ROUTER_TOKENS_*.txt
+ROUTER_TOKEN*.txt
 *.log
 *.jsonl
 router-state.json

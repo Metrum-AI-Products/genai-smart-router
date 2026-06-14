@@ -118,6 +118,16 @@ sudo docker compose up -d
 
 ## Smoke Tests
 
+Supported production router model groups:
+
+```text
+default    General-purpose weighted routing across configured providers.
+fast       Lower-latency/cost weighted routing for everyday work.
+big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
+```
+
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group.
+
 Unauthenticated health:
 
 ```bash
@@ -131,6 +141,15 @@ ROUTER_TOKEN="$(ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cat /opt
 curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
 ```
 
+Direct OpenAI-compatible chat:
+
+```bash
+curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"big-coder","messages":[{"role":"user","content":"Reply with exactly: router ok"}]}'
+```
+
 Claude Code:
 
 ```bash
@@ -139,6 +158,8 @@ ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
 ANTHROPIC_API_KEY="$ROUTER_TOKEN" \
 claude --bare --print --model big-coder "Reply with exactly: router prod claude ok"
 ```
+
+For Claude Code, change `--model big-coder` to `--model default` or `--model fast` to use another route.
 
 Codex:
 
@@ -155,6 +176,8 @@ METRUM_ROUTER_KEY="$ROUTER_TOKEN" codex exec --ignore-user-config --ephemeral \
   "Reply with exactly: router prod codex ok" </dev/null
 ```
 
+For Codex, change `-c 'model="big-coder"'` to `default` or `fast` to use another route.
+
 Validated during deployment:
 
 ```text
@@ -163,4 +186,3 @@ healthz: 200
 Claude Code: router prod claude ok
 Codex: router prod codex ok
 ```
-
