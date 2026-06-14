@@ -257,11 +257,32 @@ curl http://127.0.0.1:8080/readyz
 curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```
 
+Usage is written to both JSONL and SQLite. The JSONL file is useful for raw audit/debugging; the SQLite DB is the source for periodic reports. In container deployments, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`.
+
+Generate a markdown report for the last 24 hours:
+
+```bash
+./router-usage-report --db usage.sqlite --since 24h --out usage-24h.md
+```
+
+Generate a report for an explicit period and import existing JSONL first:
+
+```bash
+./router-usage-report \
+  --db usage.sqlite \
+  --log requests.jsonl \
+  --from 2026-06-14T00:00:00Z \
+  --to 2026-06-15T00:00:00Z \
+  --out usage-2026-06-14.md
+```
+
+Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, hourly usage, and daily usage. Raw router tokens and provider API keys are never written to the report.
+
 ## Make Targets
 
 ```bash
 make test       # Go unit tests
-make build      # build ./router and ./router-token-gen
+make build      # build ./router, ./router-token-gen, and ./router-usage-report
 make build-all  # build linux amd64 and linux arm64 binaries under dist/build
 make package    # build one tarball with binaries, config, docs, tools, and Caddyfile
 make package-all # build linux amd64 and linux arm64 tarballs

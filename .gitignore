@@ -8,6 +8,9 @@ router-state.json
 requests.jsonl
 smart-llmrouter
 /router
+/router-token-gen
+/router-usage-report
+usage.sqlite
 examples/cli-e2e-c/cli-e2e
 dist/
 tmp/

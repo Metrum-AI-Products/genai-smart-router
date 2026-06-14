@@ -92,6 +92,9 @@ server:
   listen: "127.0.0.1:8080"
   logging:
     path: /var/log/smart-llmrouter/requests.jsonl
+  usage_db:
+    enabled: true
+    path: /var/lib/smart-llmrouter/usage.sqlite
 
 state_path: /var/lib/smart-llmrouter/router-state.json
 ```

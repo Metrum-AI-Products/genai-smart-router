@@ -29,6 +29,7 @@ type Service struct {
 	quota        *quotaStore
 	cache        *responseCache
 	logger       *requestLogger
+	usage        *usageStore
 	metrics      *metricsStore
 	scripts      map[string]*scriptStrategy
 }
@@ -64,6 +65,12 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	usage, err := newUsageStore(cfg.Server.UsageDB)
+	if err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		return nil, err
+	}
 	s := &Service{
 		cfg:          cfg,
 		mux:          http.NewServeMux(),
@@ -72,12 +79,14 @@ func New(cfg *Config) (*Service, error) {
 		quota:        quota,
 		cache:        newCache(cfg.Server.Cache),
 		logger:       logger,
+		usage:        usage,
 		metrics:      newMetricsStore(),
 		scripts:      map[string]*scriptStrategy{},
 	}
 	if err := s.loadScripts(); err != nil {
 		_ = quota.Close()
 		_ = logger.Close()
+		_ = usage.Close()
 		return nil, err
 	}
 	for _, rt := range quota.callers {
@@ -94,6 +103,7 @@ func (s *Service) Handler() http.Handler {
 func (s *Service) Close() {
 	_ = s.quota.Close()
 	_ = s.logger.Close()
+	_ = s.usage.Close()
 }
 
 func (s *Service) routes() {
@@ -364,6 +374,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	rc.rec.LatencyMS = time.Since(rc.start).Milliseconds()
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
+	s.usage.Emit(rc.rec)
 }
 
 func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, error) {

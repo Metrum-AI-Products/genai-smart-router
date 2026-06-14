@@ -26,6 +26,7 @@ type ServerConfig struct {
 	Listen  string        `yaml:"listen"`
 	Cache   CacheConfig   `yaml:"cache"`
 	Logging LoggingConfig `yaml:"logging"`
+	UsageDB UsageDBConfig `yaml:"usage_db"`
 }
 
 type CacheConfig struct {
@@ -38,6 +39,11 @@ type LoggingConfig struct {
 	Path     string `yaml:"path"`
 	RotateMB int64  `yaml:"rotate_mb"`
 	Keep     int    `yaml:"keep"`
+}
+
+type UsageDBConfig struct {
+	Path   string `yaml:"path"`
+	Enable *bool  `yaml:"enabled"`
 }
 
 type ProviderConfig struct {
@@ -194,6 +200,14 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.Logging.Keep == 0 {
 		c.Server.Logging.Keep = 14
+	}
+	if c.Server.UsageDB.Path == "" {
+		dir := filepath.Dir(c.StatePath)
+		if dir == "." {
+			c.Server.UsageDB.Path = "usage.sqlite"
+		} else {
+			c.Server.UsageDB.Path = filepath.Join(dir, "usage.sqlite")
+		}
 	}
 }
 

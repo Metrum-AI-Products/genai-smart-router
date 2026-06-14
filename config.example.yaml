@@ -8,6 +8,9 @@ server:
     path: requests.jsonl
     rotate_mb: 256
     keep: 14
+  usage_db:
+    enabled: true
+    path: usage.sqlite
 state_path: router-state.json
 providers:
   anthropic:

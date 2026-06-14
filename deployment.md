@@ -24,6 +24,7 @@ Last deployed: 2026-06-14
 - Provider key file: `/opt/smart-llmrouter/compose/config/env.json`
 - Routing script: `/opt/smart-llmrouter/compose/config/scripts/router.ts`
 - Request log: `/opt/smart-llmrouter/compose/logs/requests.jsonl`
+- Usage DB: `/opt/smart-llmrouter/compose/state/usage.sqlite`
 - State file: `/opt/smart-llmrouter/compose/state/router-state.json`
 - Production caller token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN.txt`
 
@@ -135,6 +136,17 @@ Unauthenticated health:
 
 ```bash
 curl -fsS https://llm-api-engg.metrum.ai/healthz
+```
+
+Generate a production usage report on the instance:
+
+```bash
+cd /opt/smart-llmrouter/compose
+sudo docker compose run --rm --entrypoint /app/bin/router-usage-report router \
+  --db /app/state/usage.sqlite \
+  --log /app/logs/requests.jsonl \
+  --since 24h \
+  --out /app/logs/usage-24h.md
 ```
 
 Authenticated models:

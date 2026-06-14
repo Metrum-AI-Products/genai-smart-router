@@ -86,6 +86,9 @@ server:
   listen: ":8080"
   logging:
     path: /app/logs/requests.jsonl
+  usage_db:
+    enabled: true
+    path: /app/state/usage.sqlite
 
 state_path: /app/state/router-state.json
 ```
@@ -111,7 +114,7 @@ Review `compose/.env`:
 ```bash
 SMART_LLMROUTER_VERSION=<version>-linux-amd64
 ROUTER_HOSTNAME=llm-api-engg.metrum.ai
-CADDY_EMAIL=engg@metrum.ai
+CADDY_EMAIL=chetan@metrum.ai
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
 ```
@@ -133,6 +136,18 @@ From outside the instance:
 curl https://llm-api-engg.metrum.ai/healthz
 curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
 ```
+
+Generate a markdown usage report on the host from the running compose data:
+
+```bash
+docker compose run --rm --entrypoint /app/bin/router-usage-report router \
+  --db /app/state/usage.sqlite \
+  --log /app/logs/requests.jsonl \
+  --since 24h \
+  --out /app/logs/usage-24h.md
+```
+
+The report includes internal router API key usage by `token_id`/user/project/environment, external provider/model calls, token totals, cache hit/miss/bypass, attempts, fallbacks, status codes, latency, hourly usage, and daily usage. It does not include raw router tokens or provider API keys.
 
 Supported router model groups:
 

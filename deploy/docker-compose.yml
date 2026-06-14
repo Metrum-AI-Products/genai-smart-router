@@ -20,7 +20,7 @@ services:
       - "${CADDY_HTTPS_PORT:-443}:443"
     environment:
       ROUTER_HOSTNAME: ${ROUTER_HOSTNAME:-llm-api-engg.metrum.ai}
-      CADDY_EMAIL: ${CADDY_EMAIL:-engg@metrum.ai}
+      CADDY_EMAIL: ${CADDY_EMAIL:-chetan@metrum.ai}
     volumes:
       - ./Caddyfile.compose:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
