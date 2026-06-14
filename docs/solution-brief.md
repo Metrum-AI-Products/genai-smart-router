@@ -123,7 +123,7 @@ Model groups decouple client intent from provider implementation:
 - `medium`: balanced quality, latency, and cost.
 - `high`: heavier model path for complex work.
 - `fast`: optimized for lower latency and budget-aware operation.
-- `big-coder`: coding-oriented failover path for agentic coding tools.
+- `big-coder`: coding-oriented weighted path for agentic coding tools.
 - `default`: general-purpose routing policy for common workloads.
 
 ```mermaid
@@ -142,7 +142,7 @@ Routing targets can include metadata such as:
 - Provider name.
 - Concrete provider model.
 - Provider-specific dialect.
-- Weight.
+- Group-local routing weight.
 - Tier.
 - Cost class.
 - Rate hints.
@@ -182,11 +182,9 @@ providers:
       fast-model:
         model: example-fast-model
         tier: cheap
-        weight: 10
       strong-model:
         model: example-strong-model
         tier: heavy
-        weight: 3
 
 models:
   default:

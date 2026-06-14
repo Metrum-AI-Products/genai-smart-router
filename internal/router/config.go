@@ -60,10 +60,12 @@ type ProviderModel struct {
 	Model       string `yaml:"model" json:"model"`
 	Dialect     string `yaml:"dialect" json:"dialect,omitempty"`
 	DisplayName string `yaml:"display_name" json:"displayName,omitempty"`
-	Weight      int    `yaml:"weight" json:"weight,omitempty"`
-	RPM         int    `yaml:"rpm" json:"rpm,omitempty"`
-	Tier        string `yaml:"tier" json:"tier,omitempty"`
-	Cost        int    `yaml:"cost" json:"cost,omitempty"`
+	// Weight is accepted for legacy configs but intentionally ignored.
+	// Routing weights are group-local and belong on ModelGroup targets.
+	Weight int    `yaml:"weight" json:"weight,omitempty"`
+	RPM    int    `yaml:"rpm" json:"rpm,omitempty"`
+	Tier   string `yaml:"tier" json:"tier,omitempty"`
+	Cost   int    `yaml:"cost" json:"cost,omitempty"`
 }
 
 type ModelGroup struct {
@@ -323,9 +325,6 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	if target.DisplayName == "" {
 		target.DisplayName = catalog.DisplayName
-	}
-	if target.Weight == 0 {
-		target.Weight = catalog.Weight
 	}
 	if target.RPM == 0 {
 		target.RPM = catalog.RPM

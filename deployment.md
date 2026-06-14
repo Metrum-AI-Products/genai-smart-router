@@ -16,8 +16,8 @@ Last deployed: 2026-06-14
 
 ## Deployed Version
 
-- Router package/image version: `0459560-linux-amd64`
-- Source commit: `0459560 Sanitize router token IDs in usage labels`
+- Router package/image version: `group-local-weights-20260614-linux-amd64`
+- Source commit: local working tree deployment image with group-local weights and GPT-5.5 config updates
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:9063ebe-linux-amd64
+compose-router-1   smart-llmrouter:group-local-weights-20260614-linux-amd64
 compose-caddy-1    caddy:2-alpine
 ```
 
@@ -124,13 +124,13 @@ Supported production router model groups:
 ```text
 small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
 medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
-high       OpenAI GPT-5.4 full-first route for complex coding and professional work.
+high       OpenAI GPT-5.5 first route for complex coding and professional work.
 default    General-purpose weighted routing across configured providers, biased toward smaller OpenAI GPT-5-era models.
 fast       Lower-latency/cost weighted routing for everyday work.
-big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
+big-coder  Coding-focused weighted route; recommended for Claude Code and Codex.
 ```
 
-Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-Text-01` and `MiniMax-M3`; and Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`. Direct validation showed the current OpenAI project does not yet have access to `gpt-5.5` or `gpt-5.5-pro`, so those models are intentionally not active to avoid random runtime failures.
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.5`, `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`; Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`; and configured OpenRouter Nitro targets. Direct validation showed production has access to `gpt-5.5`; `gpt-5.5-pro` remains catalog-only until the OpenAI project is entitled for it.
 
 Production caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists the groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
@@ -218,5 +218,7 @@ Validated during deployment:
 healthz: 200
 /v1/models: 200 with default, fast, big-coder
 Claude Code: router prod claude ok
+high: 200 with gpt-5.5
+big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3
 Codex: router prod codex ok
 ```

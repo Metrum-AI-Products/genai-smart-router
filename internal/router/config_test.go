@@ -33,8 +33,8 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	cfg := minimalConfig(t)
 	provider := cfg.Provider["mock"]
 	provider.Models = map[string]ProviderModel{
-		"small": {Model: "mock-small", Weight: 2, Tier: "cheap", RPM: 10},
-		"large": {Model: "mock-large", Weight: 5, Tier: "heavy"},
+		"small": {Model: "mock-small", Weight: 99, Tier: "cheap", RPM: 10},
+		"large": {Model: "mock-large", Weight: 99, Tier: "heavy"},
 	}
 	cfg.Provider["mock"] = provider
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
@@ -42,11 +42,14 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 		{Provider: "mock", ModelRef: "large", Weight: 9},
 		{Provider: "mock", Model: "direct-model", Weight: 1},
 	}}
+	cfg.Models["fast"] = ModelGroup{Strategy: "weighted", Targets: []Target{
+		{Provider: "mock", ModelRef: "small", Weight: 3},
+	}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	targets := cfg.Models["default"].Targets
-	if targets[0].Model != "mock-small" || targets[0].Weight != 2 || targets[0].Tier != "cheap" || targets[0].RPM != 10 {
+	if targets[0].Model != "mock-small" || targets[0].Weight != 0 || targets[0].Tier != "cheap" || targets[0].RPM != 10 {
 		t.Fatalf("small ref not resolved: %#v", targets[0])
 	}
 	if targets[1].Model != "mock-large" || targets[1].Weight != 9 || targets[1].Tier != "heavy" {
@@ -54,6 +57,9 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	}
 	if targets[2].Model != "direct-model" {
 		t.Fatalf("direct model target changed: %#v", targets[2])
+	}
+	if got := cfg.Models["fast"].Targets[0].Weight; got != 3 {
+		t.Fatalf("group-local target weight = %d, want 3", got)
 	}
 }
 
@@ -68,6 +74,13 @@ func TestMissingProviderModelRefFailsValidation(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "unknown model_ref missing") {
 		t.Fatalf("expected missing model_ref error, got %v", err)
+	}
+}
+
+func TestWeightedOrderTreatsOmittedTargetWeightAsOne(t *testing.T) {
+	targets := weightedOrder([]Target{{Provider: "mock", Model: "only"}})
+	if len(targets) != 1 || targets[0].Provider != "mock" || targets[0].Model != "only" {
+		t.Fatalf("weighted order with omitted weight = %#v", targets)
 	}
 }
 
@@ -93,13 +106,14 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"openai:gpt-5.4-nano":          "gpt-5.4-nano",
-		"openai:gpt-5.4-mini":          "gpt-5.4-mini",
-		"openai:gpt-5.4":               "gpt-5.4",
-		"minimax:MiniMax-Text-01":      "MiniMax-Text-01",
-		"minimax:MiniMax-M3":           "MiniMax-M3",
-		"groq:qwen/qwen3-32b":          "qwen/qwen3-32b",
-		"groq:llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
+		"openai:gpt-5.4-nano":                         "gpt-5.4-nano",
+		"openai:gpt-5.4-mini":                         "gpt-5.4-mini",
+		"openai:gpt-5.4":                              "gpt-5.4",
+		"minimax:MiniMax-M3":                          "MiniMax-M3",
+		"minimax:MiniMax-M2.7-highspeed":              "MiniMax-M2.7-highspeed",
+		"openrouter:kwaipilot/kat-coder-pro-v2:nitro": "kwaipilot/kat-coder-pro-v2:nitro",
+		"groq:qwen/qwen3-32b":                         "qwen/qwen3-32b",
+		"groq:llama-3.3-70b-versatile":                "llama-3.3-70b-versatile",
 	}
 	for name, model := range want {
 		found := false
@@ -119,6 +133,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	openRouterAnthropic := cfg.Provider["openrouter_anthropic"]
 	if openRouterAnthropic.Dialect != "anthropic" || normalizeAuthScheme(openRouterAnthropic.AuthScheme) != "bearer" {
 		t.Fatalf("openrouter_anthropic provider not configured for Anthropic bearer skin: %#v", openRouterAnthropic)
+	}
+	openAIModels := cfg.Provider["openai"].Models
+	for ref, want := range map[string]string{"gpt55": "gpt-5.5", "gpt55-pro": "gpt-5.5-pro"} {
+		if got := openAIModels[ref].Model; got != want {
+			t.Fatalf("openai model ref %s=%q want %q", ref, got, want)
+		}
 	}
 	for _, name := range []string{"small", "medium", "high"} {
 		group, ok := cfg.Models[name]

@@ -131,7 +131,7 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, Groq-hosted fast models, and OpenRouter coding `:nitro` entries alongside lower-cost fallback models.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, OpenAI GPT-5.5 catalog refs, Groq-hosted fast models, and OpenRouter coding `:nitro` entries such as KAT-Coder-Pro V2 alongside lower-cost fallback models.
 - OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
@@ -159,9 +159,9 @@ providers:
     api_key_env: OPENAI_API_KEY
     key_id: openai-default
     models:
-      gpt54-nano: { model: gpt-5.4-nano, tier: cheap, weight: 12 }
-      gpt54-mini: { model: gpt-5.4-mini, tier: balanced, weight: 8 }
-      gpt54: { model: gpt-5.4, tier: heavy, weight: 3 }
+      gpt54-nano: { model: gpt-5.4-nano, tier: cheap }
+      gpt54-mini: { model: gpt-5.4-mini, tier: balanced }
+      gpt54: { model: gpt-5.4, tier: heavy }
 
 models:
   default:
@@ -173,7 +173,9 @@ models:
       - { provider: openai, model_ref: gpt54, weight: 3 }
 ```
 
-`model_ref` is local to its provider. Target-local fields override catalog defaults, so the second target above uses the same external model as `gpt54mini` but overrides its weight to `5`. Direct `{ provider, model }` targets are still supported.
+`model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
+
+Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access; for example, this config routes to `gpt-5.5` where enabled while keeping `gpt-5.5-pro` catalog-only until the OpenAI project is entitled for it.
 
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 
@@ -185,7 +187,7 @@ providers:
     auth_scheme: bearer
     api_key: ${OPENROUTER_API_KEY}
     models:
-      claude-sonnet-46-nitro: { model: anthropic/claude-sonnet-4.6:nitro, tier: heavy, weight: 2 }
+      claude-sonnet-46-nitro: { model: anthropic/claude-sonnet-4.6:nitro, tier: heavy }
 ```
 
 ## TypeScript Routing
@@ -206,7 +208,7 @@ The script must export `route(ctx)` and return one configured target by index or
 
 - Removes targets whose provider key is not configured or whose target weight is zero.
 - Applies named regex rules against safe caller-key metadata and safe target-key metadata.
-- Falls back to weighted random routing across eligible targets, using configured target weights as relative probabilities.
+- Falls back to weighted random routing across eligible targets, using group target weights as relative probabilities.
 
 Minimal weighted example:
 
@@ -432,10 +434,10 @@ Supported router model groups:
 ```text
 small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
 medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
-high       OpenAI GPT-5.4 full-first route for complex coding and professional work.
+high       OpenAI GPT-5.5 first route for complex coding and professional work.
 default    General-purpose weighted routing across configured providers.
 fast       Lower-latency/cost weighted routing for everyday work.
-big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
+big-coder  Coding-focused weighted route; recommended for Claude Code and Codex.
 ```
 
 The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard keys are typically limited to `default`, `fast`, and `small`; coding/premium keys can additionally use `medium`, `high`, and `big-coder`.

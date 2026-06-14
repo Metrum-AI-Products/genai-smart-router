@@ -1,5 +1,6 @@
 .env
 env.json
+config.production.yaml
 ROUTER_TOKENS_*.txt
 ROUTER_TOKEN*.txt
 *.log

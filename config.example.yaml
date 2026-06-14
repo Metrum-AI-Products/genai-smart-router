@@ -23,7 +23,6 @@ providers:
       opus:
         model: claude-opus-4-8
         tier: heavy
-        weight: 1
   moonshot:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
@@ -34,11 +33,9 @@ providers:
       kimi-k2.7-code:
         model: kimi-k2.7-code
         tier: heavy
-        weight: 4
       kimi-k2:
         model: kimi-k2
         tier: cheap
-        weight: 3
   kimi:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
@@ -49,11 +46,9 @@ providers:
       kimi-k2.7-code:
         model: kimi-k2.7-code
         tier: heavy
-        weight: 4
       kimi-k2:
         model: kimi-k2
         tier: cheap
-        weight: 3
   qwen:
     base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
     dialect: openai-chat
@@ -64,7 +59,6 @@ providers:
       qwen3-max:
         model: qwen3-max
         tier: cheap
-        weight: 1
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -75,11 +69,9 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
-        weight: 3
-      text-01:
-        model: MiniMax-Text-01
-        tier: cheap
-        weight: 1
+      m27-highspeed:
+        model: MiniMax-M2.7-highspeed
+        tier: balanced
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -90,19 +82,30 @@ providers:
       pareto-code-nitro:
         model: openrouter/pareto-code:nitro
         tier: heavy
-        weight: 3
       kimi-k27-code-nitro:
         model: moonshotai/kimi-k2.7-code:nitro
         tier: heavy
-        weight: 4
       minimax-m3-nitro:
         model: minimax/minimax-m3:nitro
         tier: heavy
-        weight: 3
       qwen37-max-nitro:
         model: qwen/qwen3.7-max:nitro
         tier: balanced
-        weight: 2
+      deepseek-v4-flash-nitro:
+        model: deepseek/deepseek-v4-flash:nitro
+        tier: balanced
+      glm51-nitro:
+        model: z-ai/glm-5.1:nitro
+        tier: balanced
+      qwen36-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: cheap
+      hy3-preview-nitro:
+        model: tencent/hy3-preview:nitro
+        tier: balanced
+      kat-coder-pro-v2-nitro:
+        model: kwaipilot/kat-coder-pro-v2:nitro
+        tier: balanced
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -111,10 +114,12 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-anthropic-default
     models:
+      claude-sonnet-46:
+        model: anthropic/claude-sonnet-4.6
+        tier: heavy
       claude-sonnet-46-nitro:
         model: anthropic/claude-sonnet-4.6:nitro
         tier: heavy
-        weight: 2
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat
@@ -125,7 +130,6 @@ providers:
       grok-3:
         model: grok-3
         tier: heavy
-        weight: 1
   groq:
     base_url: https://api.groq.com/openai/v1
     dialect: openai-chat
@@ -136,19 +140,15 @@ providers:
       compound-mini:
         model: groq/compound-mini
         tier: cheap
-        weight: 3
       llama-31-8b-instant:
         model: llama-3.1-8b-instant
         tier: cheap
-        weight: 4
       qwen3-32b:
         model: qwen/qwen3-32b
         tier: balanced
-        weight: 2
       llama-33-70b:
         model: llama-3.3-70b-versatile
         tier: heavy
-        weight: 1
   replicate:
     base_url: https://api.replicate.com
     dialect: replicate
@@ -159,7 +159,6 @@ providers:
       llama-3-70b:
         model: meta/meta-llama-3-70b-instruct
         tier: cheap
-        weight: 1
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -170,15 +169,18 @@ providers:
       gpt54-nano:
         model: gpt-5.4-nano
         tier: cheap
-        weight: 12
       gpt54-mini:
         model: gpt-5.4-mini
         tier: balanced
-        weight: 8
       gpt54:
         model: gpt-5.4
         tier: heavy
-        weight: 3
+      gpt55:
+        model: gpt-5.5
+        tier: heavy
+      gpt55-pro:
+        model: gpt-5.5-pro
+        tier: heavy
 models:
   default:
     strategy: weighted
@@ -189,8 +191,14 @@ models:
     - provider: openai
       model_ref: gpt54-mini
       weight: 8
-    - provider: minimax
-      model_ref: text-01
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 4
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 3
+    - provider: openrouter
+      model_ref: kat-coder-pro-v2-nitro
       weight: 3
     - provider: openai
       model_ref: gpt54
@@ -198,11 +206,20 @@ models:
     - provider: minimax
       model_ref: m3
       weight: 2
+    - provider: minimax
+      model_ref: m27-highspeed
+      weight: 2
+    - provider: openrouter
+      model_ref: glm51-nitro
+      weight: 2
     - provider: groq
       model_ref: qwen3-32b
       weight: 2
     - provider: groq
       model_ref: llama-33-70b
+      weight: 1
+    - provider: openrouter
+      model_ref: hy3-preview-nitro
       weight: 1
   fast:
     strategy: weighted
@@ -213,9 +230,15 @@ models:
     - provider: openai
       model_ref: gpt54-mini
       weight: 8
-    - provider: minimax
-      model_ref: text-01
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 4
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
       weight: 3
+    - provider: minimax
+      model_ref: m27-highspeed
+      weight: 4
     - provider: openai
       model_ref: gpt54
       weight: 2
@@ -226,16 +249,17 @@ models:
       model_ref: compound-mini
       weight: 3
   big-coder:
-    strategy: failover
+    strategy: weighted
     targets:
-    - provider: openai
-      model_ref: gpt54
-    - provider: openai
-      model_ref: gpt54-mini
     - provider: minimax
       model_ref: m3
+      weight: 8
     - provider: openai
-      model_ref: gpt54-nano
+      model_ref: gpt55
+      weight: 4
+    - provider: openrouter_anthropic
+      model_ref: claude-sonnet-46
+      weight: 1
   small:
     strategy: weighted
     targets:
@@ -248,6 +272,9 @@ models:
     - provider: groq
       model_ref: llama-31-8b-instant
       weight: 4
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 3
   medium:
     strategy: weighted
     targets:
@@ -257,8 +284,20 @@ models:
     - provider: openai
       model_ref: gpt54
       weight: 3
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 3
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 3
+    - provider: openrouter
+      model_ref: kat-coder-pro-v2-nitro
+      weight: 3
     - provider: openai
       model_ref: gpt54-nano
+      weight: 2
+    - provider: openrouter
+      model_ref: glm51-nitro
       weight: 2
     - provider: groq
       model_ref: qwen3-32b
@@ -267,7 +306,19 @@ models:
     strategy: failover
     targets:
     - provider: openai
+      model_ref: gpt55
+    - provider: openai
       model_ref: gpt54
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+    - provider: openrouter
+      model_ref: kat-coder-pro-v2-nitro
+    - provider: openrouter
+      model_ref: glm51-nitro
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+    - provider: openrouter
+      model_ref: hy3-preview-nitro
     - provider: openai
       model_ref: gpt54-mini
     - provider: openai
