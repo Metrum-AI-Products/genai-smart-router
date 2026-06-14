@@ -16,6 +16,7 @@ These instructions apply to the whole repository.
 - Do not print provider API keys, router tokens, token hashes, or full production config contents.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
+- Usage persistence uses GORM. Keep the entire usage DB schema purely relational: no JSON/JSONB columns, no array columns, no serialized blobs for structured data, and no packed multi-value text fields. If one request needs multiple related rows, add a child table with scalar columns and a foreign key to `request_usage`.
 - Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
@@ -140,6 +141,7 @@ Update docs whenever changing:
 - production deployment commands or image tags
 - Codex CLI or Claude Code usage examples
 - usage reporting, caching, telemetry, or auth behavior
+- DB driver/schema behavior, including SQLite/Postgres config, usage report fields, or durability expectations
 
 Keep docs concrete and tested. Include working commands, but redact secrets.
 

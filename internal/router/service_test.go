@@ -523,6 +523,33 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	if !strings.Contains(string(raw), `"caller_user":"alice"`) || !strings.Contains(string(raw), `"caller_project":"metrum-insights"`) || !strings.Contains(string(raw), `"caller_environment":"test"`) {
 		t.Fatalf("log metadata missing: %s", raw)
 	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	var rec logRecord
+	for _, line := range lines {
+		var candidate logRecord
+		if err := json.Unmarshal([]byte(line), &candidate); err != nil {
+			t.Fatal(err)
+		}
+		if candidate.TargetModel == "mock-model" {
+			rec = candidate
+			break
+		}
+	}
+	if rec.RequestID == "" {
+		t.Fatalf("chat completion record not found: %s", raw)
+	}
+	if rec.UpstreamMS == nil || *rec.UpstreamMS <= 0 {
+		t.Fatalf("upstream duration missing: %#v", rec.UpstreamMS)
+	}
+	if rec.DownstreamMS == nil || *rec.DownstreamMS <= 0 {
+		t.Fatalf("downstream duration missing: %#v", rec.DownstreamMS)
+	}
+	if rec.UpstreamOutputTPS == nil || rec.DownstreamOutputTPS == nil {
+		t.Fatalf("throughput missing: upstream=%#v downstream=%#v", rec.UpstreamOutputTPS, rec.DownstreamOutputTPS)
+	}
+	if !rec.CacheEnabled || rec.CacheMaxBytes <= 0 {
+		t.Fatalf("cache snapshot missing: enabled=%v max=%d", rec.CacheEnabled, rec.CacheMaxBytes)
+	}
 }
 
 func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
@@ -573,6 +600,10 @@ func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
 		`target_provider="mock"`,
 		`target_model="mock-model"`,
 		`smart_llmrouter_tokens_total`,
+		`smart_llmrouter_cache_bypass_total`,
+		`smart_llmrouter_cache_entries`,
+		`smart_llmrouter_upstream_output_tokens_per_second_sum`,
+		`smart_llmrouter_downstream_output_tokens_per_second_sum`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)

@@ -22,6 +22,32 @@ flowchart LR
   Policy --> P3[Provider C]
 ```
 
+## Buyer Value
+
+Smart LLM Router is useful when an organization wants the flexibility of multiple LLM providers without distributing provider credentials, rewriting every client, or losing cost and usage visibility.
+
+Technical buyers typically evaluate it for:
+
+- **Provider optionality:** adopt new models or aggregators centrally while applications keep using stable internal model names.
+- **Cost control:** steer routine traffic to lower-cost targets, reserve premium models for approved keys or workloads, and report usage by person, project, provider, and model.
+- **Security:** keep upstream provider keys server-side, authenticate callers with revocable router tokens, and restrict each token to approved model groups.
+- **Reliability:** use weighted routing, ordered fallback, and provider abstraction to reduce blast radius from model outages or entitlement changes.
+- **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one managed endpoint.
+- **Operational visibility:** expose request logs, metrics, per-request throughput, cache effectiveness, latency, and hourly/daily usage reports.
+
+## Cost Governance Context
+
+Enterprise AI spend is moving from predictable software licensing toward variable inference consumption. This is especially visible in agentic workflows, where one user action can trigger planning, retrieval, tool calls, retries, subagents, and multiple model invocations. EY describes token costs as a visible signal of changing agentic AI economics and argues that leaders need broader Agent FinOps discipline to manage total cost, value, and risk. See EY, ["Unlocking agentic value: a new investment discipline for the agentic era"](https://www.ey.com/en_us/insights/ai/agentic-ai-token-costs), June 1, 2026.
+
+Smart LLM Router addresses the controllable layer of that problem:
+
+- Route routine traffic toward lower-cost model groups while reserving premium routes for approved users, projects, or workloads.
+- Apply per-caller allow lists, rate limits, quotas, and lifetime token budgets before any upstream provider call is made.
+- Use weighted routing and fallback to balance cost, latency, quality, and provider availability without client changes.
+- Cache eligible deterministic responses so repeated requests do not create repeated provider charges.
+- Produce usage reports by internal key, user, project, provider, model, hour, day, status, cache behavior, and token throughput.
+- Give platform and finance teams the evidence needed to compare spend against adoption, workload class, and business value.
+
 ## What It Provides
 
 Smart LLM Router is designed for platform teams that need a controlled, observable, multi-provider LLM layer.
@@ -35,8 +61,8 @@ Core capabilities:
 - Configurable model groups such as `small`, `medium`, `high`, `default`, `fast`, or `big-coder`.
 - Routing strategies including static, weighted, failover, latency-oriented, cost-oriented, semantic stub classification, and TypeScript-driven custom policy.
 - In-process LRU plus TTL cache for eligible unary responses.
-- Structured request logs, Prometheus-compatible metrics, and SQLite-backed usage reporting.
-- Markdown usage reports by time period with per-key, per-model, hourly, and daily summaries.
+- Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting.
+- Markdown usage reports by time period with per-key, per-model, hourly, daily, throughput, and cache summaries.
 - Docker Compose and binary packaging for controlled deployment without shipping the source tree.
 
 ## High-Level Architecture
@@ -169,7 +195,8 @@ server:
     path: /app/logs/requests.jsonl
   usage_db:
     enabled: true
-    path: /app/state/usage.sqlite
+    driver: postgres
+    dsn: ${ROUTER_USAGE_DB_DSN}
 
 providers:
   openai:
@@ -286,14 +313,14 @@ Smart LLM Router produces operational data at three levels:
 
 - Structured JSONL request logs for audit/debugging.
 - Prometheus-compatible `/metrics` for dashboards and alerting.
-- SQLite-backed usage DB for periodic reporting.
+- Durable relational usage store for periodic reporting.
 
 The `router-usage-report` tool generates markdown reports for a selected time period:
 
 ```bash
 router-usage-report \
-  --db /app/state/usage.sqlite \
-  --log /app/logs/requests.jsonl \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```
@@ -307,7 +334,9 @@ Reports include:
 - Usage by client type.
 - Status-code distribution.
 - Cache hit, miss, and bypass counts.
+- Cache occupancy snapshots, hit rate, and bypass rate.
 - Upstream attempts and fallback counts.
+- Upstream and downstream output-token/sec and total-token/sec, including per-request rows.
 - Average and maximum latency.
 - Hourly and daily usage tables.
 

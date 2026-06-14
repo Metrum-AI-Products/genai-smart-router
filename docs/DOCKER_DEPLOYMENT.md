@@ -32,6 +32,7 @@ docs/README.md
 docs/DEPLOYMENT.md
 docs/DOCKER_DEPLOYMENT.md
 docs/solution-brief.md
+docs/USAGE_DB_DESIGN.md
 ```
 
 ## AWS EC2 Host Setup
@@ -89,14 +90,17 @@ server:
     path: /app/logs/requests.jsonl
   usage_db:
     enabled: true
-    path: /app/state/usage.sqlite
+    driver: postgres
+    dsn: ${ROUTER_USAGE_DB_DSN}
 
 state_path: /app/state/router-state.json
 ```
 
 Edit `compose/config/env.json` with provider keys. Do not commit or publish this file.
 
-The response cache is in-memory inside the router container. Restarting the container clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota.
+The packaged compose file includes `postgres:18-bookworm` for the usage DB. It listens inside Docker on `postgres:5432` and publishes host port `${POSTGRES_HOST_PORT:-15432}` for admin access. Use a strong `POSTGRES_PASSWORD` and keep `ROUTER_USAGE_DB_DSN` in `compose/.env`.
+
+The response cache is in-memory inside the router container. Restarting the container clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage are persisted per request in the usage DB.
 
 Generate a caller token:
 
@@ -141,14 +145,28 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/
 Generate a markdown usage report on the host from the running compose data:
 
 ```bash
+set -a; . ./.env; set +a
 docker compose run --rm --entrypoint /app/bin/router-usage-report router \
-  --db /app/state/usage.sqlite \
-  --log /app/logs/requests.jsonl \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```
 
-The report includes internal router API key usage by `token_id`/user/project/environment, external provider/model calls, token totals, cache hit/miss/bypass, attempts, fallbacks, status codes, latency, hourly usage, and daily usage. It does not include raw router tokens or provider API keys.
+The report includes internal router API key usage by `token_id`/user/project/environment, external provider/model calls, token totals, cache hit/miss/bypass, cache occupancy, attempts, fallbacks, status codes, latency, hourly usage, daily usage, and per-request upstream/downstream tokens/sec. It does not include raw router tokens or provider API keys.
+
+Usage rows, throughput fields, and cache snapshots are durable across restarts when the Postgres volume is preserved. The in-memory response cache and `/metrics` process counters reset when the router restarts.
+
+To intentionally start production reporting clean after a schema change, stop the stack, back up the Postgres volume or database, remove the Postgres data volume, and start the stack again:
+
+```bash
+docker compose down
+POSTGRES_VOLUME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}_postgres_data"
+docker run --rm -v "$POSTGRES_VOLUME":/var/lib/postgresql -v "$PWD":/backup alpine \
+  tar -C /var/lib -czf /backup/postgres-data-backup-$(date -u +%Y%m%d%H%M%S).tar.gz postgresql
+docker volume rm "$POSTGRES_VOLUME"
+docker compose up -d
+```
 
 Supported router model groups:
 

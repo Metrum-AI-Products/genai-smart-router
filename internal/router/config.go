@@ -42,7 +42,9 @@ type LoggingConfig struct {
 }
 
 type UsageDBConfig struct {
+	Driver string `yaml:"driver"`
 	Path   string `yaml:"path"`
+	DSN    string `yaml:"dsn"`
 	Enable *bool  `yaml:"enabled"`
 }
 
@@ -203,7 +205,10 @@ func (c *Config) setDefaults() {
 	if c.Server.Logging.Keep == 0 {
 		c.Server.Logging.Keep = 14
 	}
-	if c.Server.UsageDB.Path == "" {
+	if c.Server.UsageDB.Driver == "" {
+		c.Server.UsageDB.Driver = "sqlite"
+	}
+	if c.Server.UsageDB.Path == "" && c.Server.UsageDB.DSN == "" && strings.EqualFold(c.Server.UsageDB.Driver, "sqlite") {
 		dir := filepath.Dir(c.StatePath)
 		if dir == "." {
 			c.Server.UsageDB.Path = "usage.sqlite"

@@ -71,7 +71,7 @@ Recommended paths:
 
 Use `env.json` for provider API keys on the deployment host. Keep it mode `0600` and do not place it in a web-served path.
 
-The response cache is process-local. Restarting the router clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota.
+The response cache is process-local. Restarting the router clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache telemetry is durable because each usage row stores cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage.
 
 ## Install
 
@@ -95,10 +95,23 @@ server:
     path: /var/log/smart-llmrouter/requests.jsonl
   usage_db:
     enabled: true
+    driver: sqlite
     path: /var/lib/smart-llmrouter/usage.sqlite
 
 state_path: /var/lib/smart-llmrouter/router-state.json
 ```
+
+For Docker Compose production, use the packaged `postgres:18-bookworm` service instead:
+
+```yaml
+server:
+  usage_db:
+    enabled: true
+    driver: postgres
+    dsn: ${ROUTER_USAGE_DB_DSN}
+```
+
+The compose Postgres service listens on `postgres:5432` internally and publishes host port `15432` by default for admin access.
 
 Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, and `XAI_API_KEY`.
 

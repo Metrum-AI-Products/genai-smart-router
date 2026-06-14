@@ -38,7 +38,7 @@ The cache key is based on normalized request semantics and selected target: mode
 
 Cached payloads are sanitized before storage. The router caches text, model, stop reason, usage, and warnings, but not upstream `id`, raw provider payloads, or provider-specific metadata. Every caller-facing response gets a fresh router-owned `resp_...` ID, including cache hits.
 
-Cache hits are logged with `cache=hit` and cached usage for telemetry. They do not call providers and do not increment persisted quota/lifetime token counters.
+Cache hits are logged with `cache=hit` and cached usage for telemetry. They do not call providers and do not increment persisted quota/lifetime token counters. Each request also records a cache snapshot with enabled state, item count, occupied bytes, max bytes, and occupancy percentage so usage reports can show cache hit rate and occupancy over time.
 
 ## Build And Package
 
@@ -267,12 +267,16 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 
 ## Usage Reports
 
-Usage is written to both JSONL and SQLite. The JSONL file is useful for raw audit/debugging; the SQLite DB is the source for periodic reports. In container deployments, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`.
+Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
+
+The JSONL file is useful for raw audit/debugging. The relational DB is the source for periodic reports. In container deployments using SQLite, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`. In Postgres deployments, the report tool reads from the configured DSN.
 
 `router-usage-report` flags:
 
 ```text
+--driver NAME   Usage DB driver: sqlite or postgres; defaults to sqlite.
 --db PATH       SQLite usage DB path; defaults to usage.sqlite.
+--dsn DSN       Postgres DSN when --driver=postgres.
 --log PATH      Optional JSONL request log to import before reporting.
 --since DUR     Relative period when --from is omitted, such as 24h, 7d, or 30d.
 --from TIME     Start time, RFC3339, YYYY-MM-DD HH:MM:SS, or YYYY-MM-DD.
@@ -284,6 +288,16 @@ Generate a markdown report for the last 24 hours:
 
 ```bash
 ./router-usage-report --db usage.sqlite --since 24h --out usage-24h.md
+```
+
+Generate a report from Postgres:
+
+```bash
+./router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --out usage-24h.md
 ```
 
 Generate a report for an explicit period and import existing JSONL first. Imports are duplicate-safe by router `request_id`:
@@ -300,14 +314,20 @@ Generate a report for an explicit period and import existing JSONL first. Import
 Generate a report from a Docker Compose deployment:
 
 ```bash
+set -a; . ./.env; set +a
 docker compose run --rm --entrypoint /app/bin/router-usage-report router \
-  --db /app/state/usage.sqlite \
-  --log /app/logs/requests.jsonl \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```
 
-Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, hourly usage, and daily usage. Raw router tokens and provider API keys are never written to the report.
+Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, hourly usage, daily usage, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
+
+Durability:
+
+- Durable across container restarts when volumes are preserved: JSONL request logs, relational usage DB rows, per-request throughput fields, and per-request cache snapshots.
+- Not durable across container restarts: in-memory response cache contents and in-process Prometheus counters/gauges.
 
 ## Make Targets
 

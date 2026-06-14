@@ -19,6 +19,14 @@ type responseCache struct {
 	items    map[string]*list.Element
 }
 
+type cacheStats struct {
+	Enabled      bool
+	Items        int64
+	Bytes        int64
+	MaxBytes     int64
+	OccupancyPct float64
+}
+
 type cacheEntry struct {
 	key       string
 	resp      *IRResponse
@@ -113,6 +121,37 @@ func (c *responseCache) Put(key string, resp *IRResponse) {
 	c.bytes += size
 	for c.bytes > c.maxBytes && c.ll.Len() > 0 {
 		c.remove(c.ll.Back())
+	}
+}
+
+func (c *responseCache) Stats() cacheStats {
+	if c == nil {
+		return cacheStats{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	c.removeExpiredLocked(now)
+	stats := cacheStats{
+		Enabled:  c.enabled,
+		Items:    int64(len(c.items)),
+		Bytes:    c.bytes,
+		MaxBytes: c.maxBytes,
+	}
+	if stats.MaxBytes > 0 {
+		stats.OccupancyPct = float64(stats.Bytes) * 100 / float64(stats.MaxBytes)
+	}
+	return stats
+}
+
+func (c *responseCache) removeExpiredLocked(now time.Time) {
+	for el := c.ll.Back(); el != nil; {
+		prev := el.Prev()
+		ent := el.Value.(*cacheEntry)
+		if now.After(ent.expiresAt) {
+			c.remove(el)
+		}
+		el = prev
 	}
 }
 

@@ -288,11 +288,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			rc.rec.Cache = "hit"
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
-			if req.Stream {
-				s.writeIRStream(w, dialect, cached, rc)
-			} else {
-				s.writeIRResponse(w, dialect, cached)
-			}
+			s.writeIR(w, dialect, cached, req.Stream, rc)
 			s.finish(rc, http.StatusOK, nil)
 			return
 		}
@@ -301,7 +297,10 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.Cache = "bypass"
 	}
 
+	upstreamStart := time.Now()
 	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), w, dialect, req, dec)
+	upstreamMS := durationMillis(time.Since(upstreamStart))
+	rc.rec.UpstreamMS = &upstreamMS
 	rc.rec.Attempts = attempts
 	rc.rec.FallbackUsed = fallbackUsed
 	if err != nil {
@@ -318,11 +317,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.KeyState = keyState
 		rc.rec.Usage = resp.Usage
 		rc.rec.Warnings = append(rc.rec.Warnings, resp.Warnings...)
-		if req.Stream {
-			s.writeIRStream(w, dialect, resp, rc)
-		} else {
-			s.writeIRResponse(w, dialect, resp)
-		}
+		s.writeIR(w, dialect, resp, req.Stream, rc)
 		s.finish(rc, http.StatusOK, nil)
 	}
 }
@@ -365,6 +360,8 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	if rc == nil {
 		return
 	}
+	s.recordCacheStats(rc)
+	populateThroughput(&rc.rec)
 	if rc.rec.Status == 0 {
 		rc.rec.Status = status
 	}
@@ -375,6 +372,18 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
+}
+
+func (s *Service) recordCacheStats(rc *requestContext) {
+	if s == nil || rc == nil {
+		return
+	}
+	stats := s.cache.Stats()
+	rc.rec.CacheEnabled = stats.Enabled
+	rc.rec.CacheItems = stats.Items
+	rc.rec.CacheBytes = stats.Bytes
+	rc.rec.CacheMaxBytes = stats.MaxBytes
+	rc.rec.CacheOccupancyPct = stats.OccupancyPct
 }
 
 func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, error) {
@@ -523,6 +532,17 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	return decodeUpstreamResponse(outDialect, raw, target.Model)
 }
 
+func (s *Service) writeIR(w http.ResponseWriter, dialect string, resp *IRResponse, stream bool, rc *requestContext) {
+	start := time.Now()
+	if stream {
+		s.writeIRStream(w, dialect, resp, rc)
+	} else {
+		s.writeIRResponse(w, dialect, resp)
+	}
+	downstreamMS := durationMillis(time.Since(start))
+	rc.rec.DownstreamMS = &downstreamMS
+}
+
 func (s *Service) writeIRResponse(w http.ResponseWriter, dialect string, resp *IRResponse) {
 	switch dialect {
 	case "anthropic":
@@ -584,6 +604,39 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+func populateThroughput(rec *logRecord) {
+	if rec == nil {
+		return
+	}
+	rec.UpstreamOutputTPS = tokensPerSecond(rec.Usage.OutputTokens, rec.UpstreamMS)
+	rec.UpstreamTotalTPS = tokensPerSecond(totalTokens(rec.Usage), rec.UpstreamMS)
+	rec.DownstreamOutputTPS = tokensPerSecond(rec.Usage.OutputTokens, rec.DownstreamMS)
+	rec.DownstreamTotalTPS = tokensPerSecond(totalTokens(rec.Usage), rec.DownstreamMS)
+}
+
+func totalTokens(usage Usage) int {
+	if usage.TotalTokens != 0 {
+		return usage.TotalTokens
+	}
+	return usage.InputTokens + usage.OutputTokens
+}
+
+func tokensPerSecond(tokens int, durationMS *int64) *float64 {
+	if tokens <= 0 || durationMS == nil || *durationMS <= 0 {
+		return nil
+	}
+	v := float64(tokens) * 1000 / float64(*durationMS)
+	return &v
+}
+
+func durationMillis(d time.Duration) int64 {
+	ms := d.Milliseconds()
+	if ms == 0 && d > 0 {
+		return 1
+	}
+	return ms
 }
 
 func (s *Service) writeAdmissionError(w http.ResponseWriter, rc *requestContext, ad admission) {

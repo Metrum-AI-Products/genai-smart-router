@@ -40,6 +40,8 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"| openai | gpt-5.4 | 1 | 0 | 140 |",
 		"| minimax | MiniMax-M3 | 1 | 1 | 20 |",
 		"| 2026-06-14 02:00 | 2 | 1 | 38 |",
+		"## Cache Summary",
+		"## Per-Request Throughput",
 	} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("report missing %q:\n%s", want, md)
@@ -63,5 +65,62 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(md, "Requests: `3`") {
 		t.Fatalf("duplicate import changed request count:\n%s", md)
+	}
+}
+
+func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	raw := strings.Join([]string{
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_tps","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-responses","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"openai","target_model":"gpt-5.5","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":250,"upstream_duration_ms":200,"downstream_duration_ms":25,"upstream_output_tokens_per_sec":50,"upstream_total_tokens_per_sec":75,"downstream_output_tokens_per_sec":400,"downstream_total_tokens_per_sec":600,"usage":{"input_tokens":5,"output_tokens":10,"total_tokens":15},"cache_enabled":true,"cache_items":2,"cache_bytes":1024,"cache_max_bytes":4096,"cache_occupancy_pct":25,"quota_state":"ok","key_state":"active","warnings":[]}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	md, err := GenerateUsageMarkdown(UsageReportOptions{
+		DBPath:  dbPath,
+		LogPath: logPath,
+		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"upstream `50.00` output tok/s / `75.00` total tok/s",
+		"downstream `400.00` output tok/s / `600.00` total tok/s",
+		"| 1 | 1 | 0 | 1 | 0 | 0.00% | 0.00% | 2 | 1024 | 4096 | 25.00% | 25.00% | 25.00% |",
+		"| 2026-06-14T01:15:00.000Z | `req_tps` | `rtr_alice_test` | default | openai | gpt-5.5 | 200 | miss | 10 | 15 | 200 | 25 | 50.00 | 75.00 | 400.00 | 600.00 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("report missing %q:\n%s", want, md)
+		}
+	}
+}
+
+func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	type col struct {
+		Name string
+		Type string
+	}
+	var cols []col
+	if err := store.db.Raw(`SELECT name, type FROM pragma_table_info('request_usage')`).Scan(&cols).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(cols) == 0 {
+		t.Fatal("request_usage schema not found")
+	}
+	for _, c := range cols {
+		typ := strings.ToLower(c.Type)
+		if strings.Contains(typ, "json") || strings.Contains(typ, "array") || strings.HasSuffix(typ, "[]") {
+			t.Fatalf("non-relational column %s type %s", c.Name, c.Type)
+		}
 	}
 }

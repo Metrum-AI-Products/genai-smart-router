@@ -2,7 +2,6 @@ package router
 
 import (
 	"bufio"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,153 +11,258 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/glebarez/sqlite"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
 type usageStore struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 type UsageReportOptions struct {
+	Driver  string
 	DBPath  string
+	DSN     string
 	LogPath string
 	From    time.Time
 	To      time.Time
 }
 
 type usageRow struct {
-	TS                time.Time
-	RequestID         string
-	CallerID          string
-	CallerUser        string
-	CallerProject     string
-	CallerEnvironment string
-	TokenID           string
-	Client            string
-	InboundDialect    string
-	RequestedModel    string
-	ResolvedGroup     string
-	Strategy          string
-	TargetProvider    string
-	TargetModel       string
-	TargetDialect     string
-	Stream            bool
-	Cache             string
-	Status            int
-	Attempts          int
-	FallbackUsed      bool
-	LatencyMS         int64
-	TTFBMS            *int64
-	InputTokens       int
-	OutputTokens      int
-	TotalTokens       int
-	QuotaState        string
-	KeyState          string
-	Error             string
+	TS                  time.Time
+	RequestID           string
+	CallerID            string
+	CallerUser          string
+	CallerProject       string
+	CallerEnvironment   string
+	TokenID             string
+	Client              string
+	InboundDialect      string
+	RequestedModel      string
+	ResolvedGroup       string
+	Strategy            string
+	TargetProvider      string
+	TargetModel         string
+	TargetDialect       string
+	Stream              bool
+	Cache               string
+	Status              int
+	Attempts            int
+	FallbackUsed        bool
+	LatencyMS           int64
+	TTFBMS              *int64
+	UpstreamMS          *int64
+	DownstreamMS        *int64
+	UpstreamOutputTPS   *float64
+	UpstreamTotalTPS    *float64
+	DownstreamOutputTPS *float64
+	DownstreamTotalTPS  *float64
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
+	CacheEnabled        bool
+	CacheItems          int64
+	CacheBytes          int64
+	CacheMaxBytes       int64
+	CacheOccupancyPct   float64
+	QuotaState          string
+	KeyState            string
+	Error               string
+}
+
+type usageRecord struct {
+	RequestID           string   `gorm:"column:request_id;primaryKey;type:text"`
+	TS                  string   `gorm:"column:ts;type:text;not null;index:idx_request_usage_ts"`
+	CallerID            string   `gorm:"column:caller_id;type:text;not null"`
+	CallerUser          string   `gorm:"column:caller_user;type:text;not null"`
+	CallerProject       string   `gorm:"column:caller_project;type:text;not null"`
+	CallerEnvironment   string   `gorm:"column:caller_environment;type:text;not null"`
+	TokenID             string   `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
+	Client              string   `gorm:"column:client;type:text;not null"`
+	InboundDialect      string   `gorm:"column:inbound_dialect;type:text;not null"`
+	RequestedModel      string   `gorm:"column:requested_model;type:text;not null"`
+	ResolvedGroup       string   `gorm:"column:resolved_group;type:text;not null;index:idx_request_usage_group,priority:1"`
+	Strategy            string   `gorm:"column:strategy;type:text;not null"`
+	TargetProvider      string   `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
+	TargetModel         string   `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
+	TargetDialect       string   `gorm:"column:target_dialect;type:text;not null"`
+	Stream              bool     `gorm:"column:stream;not null"`
+	Cache               string   `gorm:"column:cache;type:text;not null"`
+	Status              int      `gorm:"column:status;not null"`
+	Attempts            int      `gorm:"column:attempts;not null"`
+	FallbackUsed        bool     `gorm:"column:fallback_used;not null"`
+	LatencyMS           int64    `gorm:"column:latency_ms;not null"`
+	TTFBMS              *int64   `gorm:"column:ttfb_ms"`
+	UpstreamMS          *int64   `gorm:"column:upstream_duration_ms"`
+	DownstreamMS        *int64   `gorm:"column:downstream_duration_ms"`
+	UpstreamOutputTPS   *float64 `gorm:"column:upstream_output_tokens_per_sec"`
+	UpstreamTotalTPS    *float64 `gorm:"column:upstream_total_tokens_per_sec"`
+	DownstreamOutputTPS *float64 `gorm:"column:downstream_output_tokens_per_sec"`
+	DownstreamTotalTPS  *float64 `gorm:"column:downstream_total_tokens_per_sec"`
+	InputTokens         int      `gorm:"column:input_tokens;not null"`
+	OutputTokens        int      `gorm:"column:output_tokens;not null"`
+	TotalTokens         int      `gorm:"column:total_tokens;not null"`
+	CacheEnabled        bool     `gorm:"column:cache_enabled;not null"`
+	CacheItems          int64    `gorm:"column:cache_items;not null"`
+	CacheBytes          int64    `gorm:"column:cache_bytes;not null"`
+	CacheMaxBytes       int64    `gorm:"column:cache_max_bytes;not null"`
+	CacheOccupancyPct   float64  `gorm:"column:cache_occupancy_pct;not null"`
+	QuotaState          string   `gorm:"column:quota_state;type:text;not null"`
+	KeyState            string   `gorm:"column:key_state;type:text;not null"`
+	Error               string   `gorm:"column:error;type:text;not null"`
+}
+
+func (usageRecord) TableName() string {
+	return "request_usage"
 }
 
 type agg struct {
-	Calls        int64
-	Errors       int64
-	Streams      int64
-	CacheHits    int64
-	CacheMisses  int64
-	CacheBypass  int64
-	Fallbacks    int64
-	Attempts     int64
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
-	LatencyMS    int64
-	MaxLatencyMS int64
-	TTFBMS       int64
-	TTFBCount    int64
-	MaxTTFBMS    int64
+	Calls                    int64
+	Errors                   int64
+	Streams                  int64
+	CacheHits                int64
+	CacheMisses              int64
+	CacheBypass              int64
+	Fallbacks                int64
+	Attempts                 int64
+	InputTokens              int64
+	OutputTokens             int64
+	TotalTokens              int64
+	LatencyMS                int64
+	MaxLatencyMS             int64
+	TTFBMS                   int64
+	TTFBCount                int64
+	MaxTTFBMS                int64
+	UpstreamMS               int64
+	UpstreamMSCount          int64
+	DownstreamMS             int64
+	DownstreamMSCount        int64
+	UpstreamOutputTPS        float64
+	UpstreamOutputTPSCount   int64
+	UpstreamTotalTPS         float64
+	UpstreamTotalTPSCount    int64
+	DownstreamOutputTPS      float64
+	DownstreamOutputTPSCount int64
+	DownstreamTotalTPS       float64
+	DownstreamTotalTPSCount  int64
+	CacheItemsLatest         int64
+	CacheBytesLatest         int64
+	CacheMaxBytesLatest      int64
+	CacheOccupancyLatest     float64
+	CacheItemsMax            int64
+	CacheBytesMax            int64
+	CacheOccupancyMax        float64
+	CacheBytesSum            int64
+	CacheOccupancySum        float64
+	CacheSnapshotCount       int64
 }
 
 func newUsageStore(cfg UsageDBConfig) (*usageStore, error) {
 	if cfg.Enable != nil && !*cfg.Enable {
 		return nil, nil
 	}
-	if cfg.Path == "" {
+	driver := strings.ToLower(defaultString(cfg.Driver, "sqlite"))
+	if driver == "postgres" && cfg.DSN == "" {
+		return nil, errors.New("usage_db.dsn is required for postgres")
+	}
+	if driver == "sqlite" && cfg.Path == "" {
 		return nil, nil
 	}
-	store, err := OpenUsageStore(cfg.Path)
+	store, err := OpenUsageStore(cfg)
 	if err != nil {
 		return nil, err
 	}
 	return store, nil
 }
 
-func OpenUsageStore(path string) (*usageStore, error) {
-	if path == "" {
-		return nil, errors.New("usage db path is required")
-	}
-	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			return nil, err
-		}
-	}
-	db, err := sql.Open("sqlite", path)
+func OpenUsageStore(cfg UsageDBConfig) (*usageStore, error) {
+	db, err := openUsageDB(cfg)
 	if err != nil {
 		return nil, err
 	}
 	store := &usageStore{db: db}
 	if err := store.migrate(); err != nil {
-		_ = db.Close()
+		_ = store.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+func OpenUsageStorePath(path string) (*usageStore, error) {
+	return OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path})
+}
+
+func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
+	driver := strings.ToLower(defaultString(cfg.Driver, "sqlite"))
+	switch driver {
+	case "sqlite":
+		if cfg.Path == "" {
+			return nil, errors.New("usage db path is required")
+		}
+		if dir := filepath.Dir(cfg.Path); dir != "." {
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return nil, err
+			}
+		}
+		return gorm.Open(sqlite.Open(cfg.Path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	case "postgres", "postgresql":
+		if cfg.DSN == "" {
+			return nil, errors.New("usage db dsn is required")
+		}
+		return gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	default:
+		return nil, fmt.Errorf("unsupported usage db driver %q", cfg.Driver)
+	}
 }
 
 func (s *usageStore) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	return s.db.Close()
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
 func (s *usageStore) migrate() error {
-	stmts := []string{
-		`PRAGMA journal_mode=WAL`,
-		`CREATE TABLE IF NOT EXISTS request_usage (
-			request_id TEXT PRIMARY KEY,
-			ts TEXT NOT NULL,
-			caller_id TEXT NOT NULL,
-			caller_user TEXT NOT NULL,
-			caller_project TEXT NOT NULL,
-			caller_environment TEXT NOT NULL,
-			token_id TEXT NOT NULL,
-			client TEXT NOT NULL,
-			inbound_dialect TEXT NOT NULL,
-			requested_model TEXT NOT NULL,
-			resolved_group TEXT NOT NULL,
-			strategy TEXT NOT NULL,
-			target_provider TEXT NOT NULL,
-			target_model TEXT NOT NULL,
-			target_dialect TEXT NOT NULL,
-			stream INTEGER NOT NULL,
-			cache TEXT NOT NULL,
-			status INTEGER NOT NULL,
-			attempts INTEGER NOT NULL,
-			fallback_used INTEGER NOT NULL,
-			latency_ms INTEGER NOT NULL,
-			ttfb_ms INTEGER,
-			input_tokens INTEGER NOT NULL,
-			output_tokens INTEGER NOT NULL,
-			total_tokens INTEGER NOT NULL,
-			quota_state TEXT NOT NULL,
-			key_state TEXT NOT NULL,
-			error TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_request_usage_ts ON request_usage(ts)`,
-		`CREATE INDEX IF NOT EXISTS idx_request_usage_token ON request_usage(token_id, ts)`,
-		`CREATE INDEX IF NOT EXISTS idx_request_usage_provider_model ON request_usage(target_provider, target_model, ts)`,
-		`CREATE INDEX IF NOT EXISTS idx_request_usage_group ON request_usage(resolved_group, ts)`,
-	}
-	for _, stmt := range stmts {
-		if _, err := s.db.Exec(stmt); err != nil {
+	if s.db.Dialector.Name() == "sqlite" {
+		if err := s.db.Exec("PRAGMA journal_mode=WAL").Error; err != nil {
 			return err
+		}
+	}
+	if err := s.db.AutoMigrate(&usageRecord{}); err != nil {
+		return err
+	}
+	return ensureUsageRelationalSchema(s.db)
+}
+
+func ensureUsageRelationalSchema(db *gorm.DB) error {
+	type columnInfo struct {
+		Name string
+		Type string
+	}
+	var columns []columnInfo
+	switch db.Dialector.Name() {
+	case "sqlite":
+		if err := db.Raw(`SELECT name, type FROM pragma_table_info('request_usage')`).Scan(&columns).Error; err != nil {
+			return err
+		}
+	default:
+		if err := db.Raw(`SELECT column_name AS name, data_type AS type
+			FROM information_schema.columns
+			WHERE table_name = 'request_usage'`).Scan(&columns).Error; err != nil {
+			return err
+		}
+	}
+	for _, col := range columns {
+		t := strings.ToLower(col.Type)
+		if strings.Contains(t, "json") || strings.Contains(t, "array") || strings.HasSuffix(t, "[]") {
+			return fmt.Errorf("request_usage.%s uses forbidden non-relational type %q", col.Name, col.Type)
 		}
 	}
 	return nil
@@ -169,18 +273,7 @@ func (s *usageStore) Emit(rec logRecord) {
 		return
 	}
 	row := rowFromRecord(rec)
-	_, _ = s.db.Exec(`INSERT OR IGNORE INTO request_usage (
-		request_id, ts, caller_id, caller_user, caller_project, caller_environment, token_id,
-		client, inbound_dialect, requested_model, resolved_group, strategy, target_provider,
-		target_model, target_dialect, stream, cache, status, attempts, fallback_used,
-		latency_ms, ttfb_ms, input_tokens, output_tokens, total_tokens, quota_state, key_state, error
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		row.RequestID, formatUsageTime(row.TS), row.CallerID, row.CallerUser, row.CallerProject,
-		row.CallerEnvironment, row.TokenID, row.Client, row.InboundDialect, row.RequestedModel,
-		row.ResolvedGroup, row.Strategy, row.TargetProvider, row.TargetModel, row.TargetDialect,
-		boolInt(row.Stream), row.Cache, row.Status, row.Attempts, boolInt(row.FallbackUsed),
-		row.LatencyMS, row.TTFBMS, row.InputTokens, row.OutputTokens, row.TotalTokens,
-		row.QuotaState, row.KeyState, row.Error)
+	_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(recordFromRow(row)).Error
 }
 
 func rowFromRecord(rec logRecord) usageRow {
@@ -202,39 +295,146 @@ func rowFromRecord(rec logRecord) usageRow {
 		tokenID = publicTokenID(tokenID)
 	}
 	return usageRow{
-		TS:                ts,
-		RequestID:         rec.RequestID,
-		CallerID:          rec.CallerID,
-		CallerUser:        rec.CallerUser,
-		CallerProject:     rec.CallerProject,
-		CallerEnvironment: rec.CallerEnvironment,
-		TokenID:           tokenID,
-		Client:            rec.Client,
-		InboundDialect:    rec.InboundDialect,
-		RequestedModel:    rec.RequestedModel,
-		ResolvedGroup:     defaultString(rec.ResolvedGroup, rec.RequestedModel),
-		Strategy:          rec.Strategy,
-		TargetProvider:    rec.TargetProvider,
-		TargetModel:       rec.TargetModel,
-		TargetDialect:     rec.TargetDialect,
-		Stream:            rec.Stream,
-		Cache:             defaultString(rec.Cache, "bypass"),
-		Status:            rec.Status,
-		Attempts:          rec.Attempts,
-		FallbackUsed:      rec.FallbackUsed,
-		LatencyMS:         rec.LatencyMS,
-		TTFBMS:            rec.TTFBMS,
-		InputTokens:       rec.Usage.InputTokens,
-		OutputTokens:      rec.Usage.OutputTokens,
-		TotalTokens:       rec.Usage.TotalTokens,
-		QuotaState:        rec.QuotaState,
-		KeyState:          rec.KeyState,
-		Error:             errText,
+		TS:                  ts,
+		RequestID:           rec.RequestID,
+		CallerID:            rec.CallerID,
+		CallerUser:          rec.CallerUser,
+		CallerProject:       rec.CallerProject,
+		CallerEnvironment:   rec.CallerEnvironment,
+		TokenID:             tokenID,
+		Client:              rec.Client,
+		InboundDialect:      rec.InboundDialect,
+		RequestedModel:      rec.RequestedModel,
+		ResolvedGroup:       defaultString(rec.ResolvedGroup, rec.RequestedModel),
+		Strategy:            rec.Strategy,
+		TargetProvider:      rec.TargetProvider,
+		TargetModel:         rec.TargetModel,
+		TargetDialect:       rec.TargetDialect,
+		Stream:              rec.Stream,
+		Cache:               defaultString(rec.Cache, "bypass"),
+		Status:              rec.Status,
+		Attempts:            rec.Attempts,
+		FallbackUsed:        rec.FallbackUsed,
+		LatencyMS:           rec.LatencyMS,
+		TTFBMS:              rec.TTFBMS,
+		UpstreamMS:          rec.UpstreamMS,
+		DownstreamMS:        rec.DownstreamMS,
+		UpstreamOutputTPS:   rec.UpstreamOutputTPS,
+		UpstreamTotalTPS:    rec.UpstreamTotalTPS,
+		DownstreamOutputTPS: rec.DownstreamOutputTPS,
+		DownstreamTotalTPS:  rec.DownstreamTotalTPS,
+		InputTokens:         rec.Usage.InputTokens,
+		OutputTokens:        rec.Usage.OutputTokens,
+		TotalTokens:         rec.Usage.TotalTokens,
+		CacheEnabled:        rec.CacheEnabled,
+		CacheItems:          rec.CacheItems,
+		CacheBytes:          rec.CacheBytes,
+		CacheMaxBytes:       rec.CacheMaxBytes,
+		CacheOccupancyPct:   rec.CacheOccupancyPct,
+		QuotaState:          rec.QuotaState,
+		KeyState:            rec.KeyState,
+		Error:               errText,
 	}
 }
 
+func recordFromRow(row usageRow) *usageRecord {
+	return &usageRecord{
+		RequestID:           row.RequestID,
+		TS:                  formatUsageTime(row.TS),
+		CallerID:            row.CallerID,
+		CallerUser:          row.CallerUser,
+		CallerProject:       row.CallerProject,
+		CallerEnvironment:   row.CallerEnvironment,
+		TokenID:             row.TokenID,
+		Client:              row.Client,
+		InboundDialect:      row.InboundDialect,
+		RequestedModel:      row.RequestedModel,
+		ResolvedGroup:       row.ResolvedGroup,
+		Strategy:            row.Strategy,
+		TargetProvider:      row.TargetProvider,
+		TargetModel:         row.TargetModel,
+		TargetDialect:       row.TargetDialect,
+		Stream:              row.Stream,
+		Cache:               row.Cache,
+		Status:              row.Status,
+		Attempts:            row.Attempts,
+		FallbackUsed:        row.FallbackUsed,
+		LatencyMS:           row.LatencyMS,
+		TTFBMS:              row.TTFBMS,
+		UpstreamMS:          row.UpstreamMS,
+		DownstreamMS:        row.DownstreamMS,
+		UpstreamOutputTPS:   row.UpstreamOutputTPS,
+		UpstreamTotalTPS:    row.UpstreamTotalTPS,
+		DownstreamOutputTPS: row.DownstreamOutputTPS,
+		DownstreamTotalTPS:  row.DownstreamTotalTPS,
+		InputTokens:         row.InputTokens,
+		OutputTokens:        row.OutputTokens,
+		TotalTokens:         row.TotalTokens,
+		CacheEnabled:        row.CacheEnabled,
+		CacheItems:          row.CacheItems,
+		CacheBytes:          row.CacheBytes,
+		CacheMaxBytes:       row.CacheMaxBytes,
+		CacheOccupancyPct:   row.CacheOccupancyPct,
+		QuotaState:          row.QuotaState,
+		KeyState:            row.KeyState,
+		Error:               row.Error,
+	}
+}
+
+func rowFromUsageRecord(record usageRecord) (usageRow, error) {
+	ts, err := parseUsageTime(record.TS)
+	if err != nil {
+		return usageRow{}, err
+	}
+	return usageRow{
+		TS:                  ts,
+		RequestID:           record.RequestID,
+		CallerID:            record.CallerID,
+		CallerUser:          record.CallerUser,
+		CallerProject:       record.CallerProject,
+		CallerEnvironment:   record.CallerEnvironment,
+		TokenID:             record.TokenID,
+		Client:              record.Client,
+		InboundDialect:      record.InboundDialect,
+		RequestedModel:      record.RequestedModel,
+		ResolvedGroup:       record.ResolvedGroup,
+		Strategy:            record.Strategy,
+		TargetProvider:      record.TargetProvider,
+		TargetModel:         record.TargetModel,
+		TargetDialect:       record.TargetDialect,
+		Stream:              record.Stream,
+		Cache:               record.Cache,
+		Status:              record.Status,
+		Attempts:            record.Attempts,
+		FallbackUsed:        record.FallbackUsed,
+		LatencyMS:           record.LatencyMS,
+		TTFBMS:              record.TTFBMS,
+		UpstreamMS:          record.UpstreamMS,
+		DownstreamMS:        record.DownstreamMS,
+		UpstreamOutputTPS:   record.UpstreamOutputTPS,
+		UpstreamTotalTPS:    record.UpstreamTotalTPS,
+		DownstreamOutputTPS: record.DownstreamOutputTPS,
+		DownstreamTotalTPS:  record.DownstreamTotalTPS,
+		InputTokens:         record.InputTokens,
+		OutputTokens:        record.OutputTokens,
+		TotalTokens:         record.TotalTokens,
+		CacheEnabled:        record.CacheEnabled,
+		CacheItems:          record.CacheItems,
+		CacheBytes:          record.CacheBytes,
+		CacheMaxBytes:       record.CacheMaxBytes,
+		CacheOccupancyPct:   record.CacheOccupancyPct,
+		QuotaState:          record.QuotaState,
+		KeyState:            record.KeyState,
+		Error:               record.Error,
+	}, nil
+}
+
 func ImportUsageJSONL(dbPath, logPath string) (int, error) {
-	store, err := OpenUsageStore(dbPath)
+	return ImportUsageJSONLTo(UsageDBConfig{Driver: "sqlite", Path: dbPath}, logPath)
+}
+
+func ImportUsageJSONLTo(cfg UsageDBConfig, logPath string) (int, error) {
+	store, err := OpenUsageStore(cfg)
 	if err != nil {
 		return 0, err
 	}
@@ -266,8 +466,12 @@ func ImportUsageJSONL(dbPath, logPath string) (int, error) {
 }
 
 func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
-	if opts.DBPath == "" {
+	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
+	if driver == "sqlite" && opts.DBPath == "" {
 		return "", errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
+		return "", errors.New("usage db dsn is required")
 	}
 	if opts.To.IsZero() {
 		opts.To = time.Now().UTC()
@@ -278,12 +482,13 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	if !opts.From.Before(opts.To) {
 		return "", errors.New("from must be before to")
 	}
+	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN}
 	if opts.LogPath != "" {
-		if _, err := ImportUsageJSONL(opts.DBPath, opts.LogPath); err != nil {
+		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
 			return "", err
 		}
 	}
-	store, err := OpenUsageStore(opts.DBPath)
+	store, err := OpenUsageStore(cfg)
 	if err != nil {
 		return "", err
 	}
@@ -297,46 +502,21 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 }
 
 func (s *usageStore) rows(from, to time.Time) ([]usageRow, error) {
-	rs, err := s.db.Query(`SELECT
-		ts, request_id, caller_id, caller_user, caller_project, caller_environment, token_id,
-		client, inbound_dialect, requested_model, resolved_group, strategy, target_provider,
-		target_model, target_dialect, stream, cache, status, attempts, fallback_used,
-		latency_ms, ttfb_ms, input_tokens, output_tokens, total_tokens, quota_state, key_state, error
-		FROM request_usage
-		WHERE ts >= ? AND ts < ?
-		ORDER BY ts ASC`, formatUsageTime(from), formatUsageTime(to))
-	if err != nil {
+	var records []usageRecord
+	if err := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(from), formatUsageTime(to)).
+		Order("ts ASC").
+		Find(&records).Error; err != nil {
 		return nil, err
 	}
-	defer rs.Close()
-
-	var out []usageRow
-	for rs.Next() {
-		var row usageRow
-		var ts string
-		var stream, fallback int
-		var ttfb sql.NullInt64
-		if err := rs.Scan(&ts, &row.RequestID, &row.CallerID, &row.CallerUser, &row.CallerProject,
-			&row.CallerEnvironment, &row.TokenID, &row.Client, &row.InboundDialect, &row.RequestedModel,
-			&row.ResolvedGroup, &row.Strategy, &row.TargetProvider, &row.TargetModel, &row.TargetDialect,
-			&stream, &row.Cache, &row.Status, &row.Attempts, &fallback, &row.LatencyMS, &ttfb,
-			&row.InputTokens, &row.OutputTokens, &row.TotalTokens, &row.QuotaState, &row.KeyState, &row.Error); err != nil {
-			return nil, err
-		}
-		parsed, err := parseUsageTime(ts)
+	out := make([]usageRow, 0, len(records))
+	for _, record := range records {
+		row, err := rowFromUsageRecord(record)
 		if err != nil {
 			return nil, err
 		}
-		row.TS = parsed
-		row.Stream = stream != 0
-		row.FallbackUsed = fallback != 0
-		if ttfb.Valid {
-			v := ttfb.Int64
-			row.TTFBMS = &v
-		}
 		out = append(out, row)
 	}
-	return out, rs.Err()
+	return out, nil
 }
 
 func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
@@ -384,8 +564,17 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 	fmt.Fprintf(&b, "- Tokens: `%d` total, `%d` input, `%d` output\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
 	fmt.Fprintf(&b, "- Cache: `%d` hits, `%d` misses, `%d` bypass\n", total.CacheHits, total.CacheMisses, total.CacheBypass)
 	fmt.Fprintf(&b, "- Upstream attempts: `%d`; fallbacks: `%d`; streaming requests: `%d`\n", total.Attempts, total.Fallbacks, total.Streams)
-	fmt.Fprintf(&b, "- Latency: `%d ms` avg, `%d ms` max\n\n", avg(total.LatencyMS, total.Calls), total.MaxLatencyMS)
+	fmt.Fprintf(&b, "- Latency: `%d ms` avg, `%d ms` max\n", avg(total.LatencyMS, total.Calls), total.MaxLatencyMS)
+	fmt.Fprintf(&b, "- Throughput: upstream `%s` output tok/s / `%s` total tok/s; downstream `%s` output tok/s / `%s` total tok/s\n",
+		fmtFloat(avgFloat(total.UpstreamOutputTPS, total.UpstreamOutputTPSCount)),
+		fmtFloat(avgFloat(total.UpstreamTotalTPS, total.UpstreamTotalTPSCount)),
+		fmtFloat(avgFloat(total.DownstreamOutputTPS, total.DownstreamOutputTPSCount)),
+		fmtFloat(avgFloat(total.DownstreamTotalTPS, total.DownstreamTotalTPSCount)))
+	fmt.Fprintf(&b, "- Cache occupancy: latest `%s`, avg `%s`, max `%s`\n\n",
+		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
 
+	writeCacheSummary(&b, total)
+	writeRequestThroughputTable(&b, rows)
 	writeTokenTable(&b, "Usage By Internal API Key", byToken, byTokenMeta)
 	writeAggTable(&b, "Usage By External Model", []string{"Provider", "Model"}, byModel, splitKey2)
 	writeAggTable(&b, "Usage By Router Model Group", []string{"Model Group"}, byGroup, splitKey1)
@@ -434,22 +623,53 @@ func (a *agg) add(row usageRow) {
 			a.MaxTTFBMS = *row.TTFBMS
 		}
 	}
+	if row.UpstreamMS != nil {
+		a.UpstreamMS += *row.UpstreamMS
+		a.UpstreamMSCount++
+	}
+	if row.DownstreamMS != nil {
+		a.DownstreamMS += *row.DownstreamMS
+		a.DownstreamMSCount++
+	}
+	addFloat(row.UpstreamOutputTPS, &a.UpstreamOutputTPS, &a.UpstreamOutputTPSCount)
+	addFloat(row.UpstreamTotalTPS, &a.UpstreamTotalTPS, &a.UpstreamTotalTPSCount)
+	addFloat(row.DownstreamOutputTPS, &a.DownstreamOutputTPS, &a.DownstreamOutputTPSCount)
+	addFloat(row.DownstreamTotalTPS, &a.DownstreamTotalTPS, &a.DownstreamTotalTPSCount)
+	if row.CacheEnabled || row.CacheMaxBytes > 0 {
+		a.CacheSnapshotCount++
+		a.CacheItemsLatest = row.CacheItems
+		a.CacheBytesLatest = row.CacheBytes
+		a.CacheMaxBytesLatest = row.CacheMaxBytes
+		a.CacheOccupancyLatest = row.CacheOccupancyPct
+		a.CacheBytesSum += row.CacheBytes
+		a.CacheOccupancySum += row.CacheOccupancyPct
+		if row.CacheItems > a.CacheItemsMax {
+			a.CacheItemsMax = row.CacheItems
+		}
+		if row.CacheBytes > a.CacheBytesMax {
+			a.CacheBytesMax = row.CacheBytes
+		}
+		if row.CacheOccupancyPct > a.CacheOccupancyMax {
+			a.CacheOccupancyMax = row.CacheOccupancyPct
+		}
+	}
 }
 
 func writeTokenTable(b *strings.Builder, title string, data map[string]*agg, meta map[string]usageRow) {
 	fmt.Fprintf(b, "## %s\n\n", title)
-	fmt.Fprintln(b, "| Token ID | User | Project | Env | Caller ID | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Latency ms | Max Latency ms |")
-	fmt.Fprintln(b, "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintln(b, "| Token ID | User | Project | Env | Caller ID | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Output tok/s | Avg Latency ms | Max Latency ms |")
+	fmt.Fprintln(b, "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeys(data) {
 		row := meta[key]
 		a := data[key]
-		fmt.Fprintf(b, "| `%s` | %s | %s | %s | `%s` | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+		fmt.Fprintf(b, "| `%s` | %s | %s | %s | `%s` | %d | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s | %d | %d |\n",
 			esc(row.TokenID), esc(row.CallerUser), esc(row.CallerProject), esc(row.CallerEnvironment), esc(row.CallerID),
 			a.Calls, a.Errors, a.TotalTokens, a.InputTokens, a.OutputTokens, a.CacheHits, a.CacheMisses, a.Attempts,
-			a.Fallbacks, avg(a.LatencyMS, a.Calls), a.MaxLatencyMS)
+			a.Fallbacks, fmtFloat(avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount)),
+			fmtFloat(avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount)), avg(a.LatencyMS, a.Calls), a.MaxLatencyMS)
 	}
 	if len(data) == 0 {
-		fmt.Fprintln(b, "| _none_ |  |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+		fmt.Fprintln(b, "| _none_ |  |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | 0 | 0 |")
 	}
 	fmt.Fprintln(b)
 }
@@ -459,26 +679,62 @@ func writeAggTable(b *strings.Builder, title string, keyHeaders []string, data m
 	for _, h := range keyHeaders {
 		fmt.Fprintf(b, "| %s ", h)
 	}
-	fmt.Fprintln(b, "| Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
+	fmt.Fprintln(b, "| Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
 	for range keyHeaders {
 		fmt.Fprint(b, "|---")
 	}
-	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeys(data) {
 		parts := split(key)
 		for _, part := range parts {
 			fmt.Fprintf(b, "| %s ", esc(part))
 		}
 		a := data[key]
-		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s | %s | %s | %d | %d | %d | %d |\n",
 			a.Calls, a.Errors, a.TotalTokens, a.InputTokens, a.OutputTokens, a.CacheHits, a.CacheMisses, a.CacheBypass,
-			a.Attempts, a.Fallbacks, a.Streams, avg(a.LatencyMS, a.Calls), a.MaxLatencyMS, avg(a.TTFBMS, a.TTFBCount), a.MaxTTFBMS)
+			a.Attempts, a.Fallbacks, a.Streams,
+			fmtFloat(avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount)),
+			fmtFloat(avgFloat(a.UpstreamTotalTPS, a.UpstreamTotalTPSCount)),
+			fmtFloat(avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount)),
+			fmtFloat(avgFloat(a.DownstreamTotalTPS, a.DownstreamTotalTPSCount)),
+			avg(a.LatencyMS, a.Calls), a.MaxLatencyMS, avg(a.TTFBMS, a.TTFBCount), a.MaxTTFBMS)
 	}
 	if len(data) == 0 {
 		for range keyHeaders {
 			fmt.Fprint(b, "| _none_ ")
 		}
-		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | n/a | n/a | 0 | 0 | 0 | 0 |")
+	}
+	fmt.Fprintln(b)
+}
+
+func writeCacheSummary(b *strings.Builder, total *agg) {
+	cacheable := total.CacheHits + total.CacheMisses
+	fmt.Fprintln(b, "## Cache Summary")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| Requests | Cacheable | Hits | Misses | Bypass | Hit Rate | Bypass Rate | Latest Items | Latest Bytes | Max Bytes | Latest Occupancy | Avg Occupancy | Max Occupancy |")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %s | %s | %d | %d | %d | %s | %s | %s |\n\n",
+		total.Calls, cacheable, total.CacheHits, total.CacheMisses, total.CacheBypass,
+		fmtPct(ratioPct(total.CacheHits, cacheable)), fmtPct(ratioPct(total.CacheBypass, total.Calls)),
+		total.CacheItemsLatest, total.CacheBytesLatest, total.CacheMaxBytesLatest,
+		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
+}
+
+func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
+	fmt.Fprintln(b, "## Per-Request Throughput")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| Time UTC | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output | Total | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Output tok/s | Downstream Total tok/s |")
+	fmt.Fprintln(b, "|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+	for _, row := range rows {
+		fmt.Fprintf(b, "| %s | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | %s | %s | %s | %s | %s | %s |\n",
+			formatUsageTime(row.TS), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
+			esc(row.TargetProvider), esc(row.TargetModel), row.Status, esc(row.Cache), row.OutputTokens, totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+			fmtIntPtr(row.UpstreamMS), fmtIntPtr(row.DownstreamMS), fmtFloatPtr(row.UpstreamOutputTPS), fmtFloatPtr(row.UpstreamTotalTPS),
+			fmtFloatPtr(row.DownstreamOutputTPS), fmtFloatPtr(row.DownstreamTotalTPS))
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(b, "| _none_ |  |  |  |  |  | 0 |  | 0 | 0 | n/a | n/a | n/a | n/a | n/a | n/a |")
 	}
 	fmt.Fprintln(b)
 }
@@ -538,6 +794,56 @@ func avg(sum, n int64) int64 {
 		return 0
 	}
 	return sum / n
+}
+
+func addFloat(v *float64, sum *float64, count *int64) {
+	if v == nil {
+		return
+	}
+	*sum += *v
+	*count++
+}
+
+func avgFloat(sum float64, n int64) float64 {
+	if n <= 0 {
+		return -1
+	}
+	return sum / float64(n)
+}
+
+func ratioPct(part, total int64) float64 {
+	if total <= 0 {
+		return -1
+	}
+	return float64(part) * 100 / float64(total)
+}
+
+func fmtIntPtr(v *int64) string {
+	if v == nil {
+		return "n/a"
+	}
+	return fmt.Sprint(*v)
+}
+
+func fmtFloatPtr(v *float64) string {
+	if v == nil {
+		return "n/a"
+	}
+	return fmtFloat(*v)
+}
+
+func fmtFloat(v float64) string {
+	if v < 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.2f", v)
+}
+
+func fmtPct(v float64) string {
+	if v < 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.2f%%", v)
 }
 
 func boolInt(v bool) int {

@@ -25,16 +25,25 @@ type metricLabels struct {
 }
 
 type metricValues struct {
-	Requests     int64
-	Errors       int64
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
-	LatencyMS    int64
-	CacheHits    int64
-	CacheMisses  int64
-	Attempts     int64
-	Fallbacks    int64
+	Requests                 int64
+	Errors                   int64
+	InputTokens              int64
+	OutputTokens             int64
+	TotalTokens              int64
+	LatencyMS                int64
+	CacheHits                int64
+	CacheMisses              int64
+	CacheBypass              int64
+	Attempts                 int64
+	Fallbacks                int64
+	UpstreamOutputTPSSum     float64
+	UpstreamOutputTPSCount   int64
+	DownstreamOutputTPSSum   float64
+	DownstreamOutputTPSCount int64
+	CacheEntries             int64
+	CacheBytes               int64
+	CacheMaxBytes            int64
+	CacheOccupancyRatio      float64
 }
 
 func newMetricsStore() *metricsStore {
@@ -76,11 +85,25 @@ func (m *metricsStore) Observe(rec logRecord) {
 		values.CacheHits++
 	case "miss":
 		values.CacheMisses++
+	default:
+		values.CacheBypass++
 	}
 	values.Attempts += int64(rec.Attempts)
 	if rec.FallbackUsed {
 		values.Fallbacks++
 	}
+	if rec.UpstreamOutputTPS != nil {
+		values.UpstreamOutputTPSSum += *rec.UpstreamOutputTPS
+		values.UpstreamOutputTPSCount++
+	}
+	if rec.DownstreamOutputTPS != nil {
+		values.DownstreamOutputTPSSum += *rec.DownstreamOutputTPS
+		values.DownstreamOutputTPSCount++
+	}
+	values.CacheEntries = rec.CacheItems
+	values.CacheBytes = rec.CacheBytes
+	values.CacheMaxBytes = rec.CacheMaxBytes
+	values.CacheOccupancyRatio = rec.CacheOccupancyPct / 100
 }
 
 func (m *metricsStore) Prometheus() string {
@@ -105,8 +128,17 @@ func (m *metricsStore) Prometheus() string {
 	writeHelp(&b, "smart_llmrouter_latency_ms_sum", "Sum of request latency in milliseconds.")
 	writeHelp(&b, "smart_llmrouter_cache_hits_total", "Total cache hits.")
 	writeHelp(&b, "smart_llmrouter_cache_misses_total", "Total cache misses.")
+	writeHelp(&b, "smart_llmrouter_cache_bypass_total", "Total requests bypassing cache.")
 	writeHelp(&b, "smart_llmrouter_upstream_attempts_total", "Total upstream attempts.")
 	writeHelp(&b, "smart_llmrouter_fallbacks_total", "Total requests that used fallback targets.")
+	writeHelp(&b, "smart_llmrouter_upstream_output_tokens_per_second_sum", "Sum of per-request upstream output token throughput.")
+	writeHelp(&b, "smart_llmrouter_upstream_output_tokens_per_second_count", "Count of requests with upstream output token throughput.")
+	writeHelp(&b, "smart_llmrouter_downstream_output_tokens_per_second_sum", "Sum of per-request downstream output token throughput.")
+	writeHelp(&b, "smart_llmrouter_downstream_output_tokens_per_second_count", "Count of requests with downstream output token throughput.")
+	writeHelpType(&b, "smart_llmrouter_cache_entries", "Latest observed cache entry count.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_cache_bytes", "Latest observed cache occupied bytes.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_cache_max_bytes", "Configured cache maximum bytes.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_cache_occupancy_ratio", "Latest observed cache occupancy ratio.", "gauge")
 	for _, labels := range keys {
 		values := m.series[labels]
 		labelText := prometheusLabels(labels)
@@ -118,18 +150,35 @@ func (m *metricsStore) Prometheus() string {
 		writeMetric(&b, "smart_llmrouter_latency_ms_sum", labelText, values.LatencyMS)
 		writeMetric(&b, "smart_llmrouter_cache_hits_total", labelText, values.CacheHits)
 		writeMetric(&b, "smart_llmrouter_cache_misses_total", labelText, values.CacheMisses)
+		writeMetric(&b, "smart_llmrouter_cache_bypass_total", labelText, values.CacheBypass)
 		writeMetric(&b, "smart_llmrouter_upstream_attempts_total", labelText, values.Attempts)
 		writeMetric(&b, "smart_llmrouter_fallbacks_total", labelText, values.Fallbacks)
+		writeFloatMetric(&b, "smart_llmrouter_upstream_output_tokens_per_second_sum", labelText, values.UpstreamOutputTPSSum)
+		writeMetric(&b, "smart_llmrouter_upstream_output_tokens_per_second_count", labelText, values.UpstreamOutputTPSCount)
+		writeFloatMetric(&b, "smart_llmrouter_downstream_output_tokens_per_second_sum", labelText, values.DownstreamOutputTPSSum)
+		writeMetric(&b, "smart_llmrouter_downstream_output_tokens_per_second_count", labelText, values.DownstreamOutputTPSCount)
+		writeMetric(&b, "smart_llmrouter_cache_entries", labelText, values.CacheEntries)
+		writeMetric(&b, "smart_llmrouter_cache_bytes", labelText, values.CacheBytes)
+		writeMetric(&b, "smart_llmrouter_cache_max_bytes", labelText, values.CacheMaxBytes)
+		writeFloatMetric(&b, "smart_llmrouter_cache_occupancy_ratio", labelText, values.CacheOccupancyRatio)
 	}
 	return b.String()
 }
 
 func writeHelp(b *strings.Builder, name, help string) {
-	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s counter\n", name, help, name)
+	writeHelpType(b, name, help, "counter")
+}
+
+func writeHelpType(b *strings.Builder, name, help, typ string) {
+	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, typ)
 }
 
 func writeMetric(b *strings.Builder, name, labels string, value int64) {
 	fmt.Fprintf(b, "%s{%s} %d\n", name, labels, value)
+}
+
+func writeFloatMetric(b *strings.Builder, name, labels string, value float64) {
+	fmt.Fprintf(b, "%s{%s} %.6f\n", name, labels, value)
 }
 
 func prometheusLabels(labels metricLabels) string {

@@ -44,6 +44,7 @@ package:
 	cp docs/DEPLOYMENT.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/DEPLOYMENT.md
 	cp docs/DOCKER_DEPLOYMENT.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/DOCKER_DEPLOYMENT.md
 	cp docs/solution-brief.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/solution-brief.md
+	cp docs/USAGE_DB_DESIGN.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/USAGE_DB_DESIGN.md
 	cp deploy/Caddyfile $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/caddy/Caddyfile
 	find $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH) -type d -exec chmod 0755 {} \;
 	find $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH) -type f -exec chmod 0644 {} \;
@@ -76,6 +77,7 @@ package-docker:
 	cp docs/DEPLOYMENT.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/DEPLOYMENT.md
 	cp docs/DOCKER_DEPLOYMENT.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/DOCKER_DEPLOYMENT.md
 	cp docs/solution-brief.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/solution-brief.md
+	cp docs/USAGE_DB_DESIGN.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/USAGE_DB_DESIGN.md
 	find $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH) -type d -exec chmod 0755 {} \;
 	find $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH) -type f -exec chmod 0644 {} \;
 	tar --owner=0 --group=0 --numeric-owner -C $(DIST_DIR)/docker -czf $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH).tar.gz $(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)

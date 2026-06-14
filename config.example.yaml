@@ -10,7 +10,11 @@ server:
     keep: 14
   usage_db:
     enabled: true
+    driver: sqlite
     path: usage.sqlite
+    # For Docker Compose/Postgres:
+    # driver: postgres
+    # dsn: ${ROUTER_USAGE_DB_DSN}
 state_path: router-state.json
 providers:
   anthropic:

@@ -10,7 +10,9 @@ import (
 )
 
 func main() {
+	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
+	dsn := flag.String("dsn", "", "Postgres DSN when --driver=postgres")
 	logPath := flag.String("log", "", "optional JSONL request log to import before reporting")
 	fromText := flag.String("from", "", "report start time, RFC3339 or 2006-01-02T15:04:05Z")
 	toText := flag.String("to", "", "report end time, RFC3339 or 2006-01-02T15:04:05Z; defaults to now")
@@ -42,7 +44,9 @@ func main() {
 	}
 
 	md, err := router.GenerateUsageMarkdown(router.UsageReportOptions{
+		Driver:  *driver,
 		DBPath:  *dbPath,
+		DSN:     *dsn,
 		LogPath: *logPath,
 		From:    from,
 		To:      to,

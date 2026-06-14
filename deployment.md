@@ -16,15 +16,15 @@ Last deployed: 2026-06-14
 
 ## Deployed Version
 
-- Router package/image version: `group-local-weights-20260614-linux-amd64`
-- Source commit: local working tree deployment image with group-local weights and GPT-5.5 config updates
+- Router package/image version: `usage-tps-postgres-20260614-linux-amd64`
+- Source commit: local working tree deployment image with usage TPS reporting, cache snapshots, and Postgres usage DB
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
 - Provider key file: `/opt/smart-llmrouter/compose/config/env.json`
 - Routing script: `/opt/smart-llmrouter/compose/config/scripts/router.ts`
 - Request log: `/opt/smart-llmrouter/compose/logs/requests.jsonl`
-- Usage DB: `/opt/smart-llmrouter/compose/state/usage.sqlite`
+- Usage DB: Postgres compose service (`postgres:18-bookworm`), configured by `ROUTER_USAGE_DB_DSN` in `/opt/smart-llmrouter/compose/.env`
 - State file: `/opt/smart-llmrouter/compose/state/router-state.json`
 - Production caller token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN.txt`
 
@@ -54,7 +54,8 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:group-local-weights-20260614-linux-amd64
+compose-router-1   smart-llmrouter:usage-tps-postgres-20260614-linux-amd64
+compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
 
@@ -75,6 +76,13 @@ Port `80` is required for Caddy automatic HTTPS redirects and HTTP-01 fallback. 
 Caddy stores ACME account/cert state in the persistent Docker volume `compose_caddy_data`. Do not remove that volume during normal restarts.
 
 Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs instead of `0.0.0.0/0`.
+
+## 2026-06-14 Usage Reporting Update
+
+- Deployed image: `smart-llmrouter:usage-tps-postgres-20260614-linux-amd64`.
+- Added `postgres:18-bookworm` as the usage DB service with the `compose_postgres_data` volume.
+- Moved old SQLite usage files under `compose/state/usage-sqlite-backup-<timestamp>/`.
+- Verified `https://llm-api-engg.metrum.ai/readyz`, an authenticated `fast` chat completion, Postgres `request_usage` table creation, `/metrics` throughput/cache series, and a Postgres-backed usage report at `logs/usage-postgres-smoke.md`.
 
 ## Operations
 
@@ -144,9 +152,10 @@ Generate a production usage report on the instance:
 
 ```bash
 cd /opt/smart-llmrouter/compose
+set -a; . ./.env; set +a
 sudo docker compose run --rm --entrypoint /app/bin/router-usage-report router \
-  --db /app/state/usage.sqlite \
-  --log /app/logs/requests.jsonl \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```

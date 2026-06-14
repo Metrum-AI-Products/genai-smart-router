@@ -3,12 +3,34 @@ services:
     image: smart-llmrouter:${SMART_LLMROUTER_VERSION:-latest}
     restart: unless-stopped
     command: ["--config", "/app/config/config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     expose:
       - "8080"
+    environment:
+      ROUTER_USAGE_DB_DSN: ${ROUTER_USAGE_DB_DSN:-host=postgres port=5432 user=llmrouter password=llmrouter dbname=llmrouter sslmode=disable TimeZone=UTC}
     volumes:
       - ./config:/app/config:ro
       - ./state:/app/state
       - ./logs:/app/logs
+
+  postgres:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-llmrouter}
+      POSTGRES_USER: ${POSTGRES_USER:-llmrouter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llmrouter}
+    ports:
+      - "${POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   caddy:
     image: caddy:2-alpine
@@ -29,3 +51,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  postgres_data:
