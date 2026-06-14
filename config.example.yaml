@@ -251,6 +251,7 @@ callers:
       requests: 5000
       tokens: 20000000
     month:
+      requests: 0
       tokens: 400000000
     soft_pct: 80
   key:
@@ -266,10 +267,10 @@ callers:
   allow:
   - default
   - fast
+  - big-coder
   - small
   - medium
   - high
-  - big-coder
   rate:
     rpm: 120
     tpm: 200000
@@ -279,6 +280,7 @@ callers:
       requests: 5000
       tokens: 20000000
     month:
+      requests: 0
       tokens: 400000000
     soft_pct: 80
   key:

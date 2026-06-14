@@ -129,7 +129,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small"},
-		"coding-dev":   {"default", "fast", "small", "medium", "high", "big-coder"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
