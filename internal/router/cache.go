@@ -89,15 +89,15 @@ func (c *responseCache) Get(key string) (*IRResponse, bool) {
 		return nil, false
 	}
 	c.ll.MoveToFront(el)
-	cp := *ent.resp
-	return &cp, true
+	return cloneCachedResponse(ent.resp), true
 }
 
 func (c *responseCache) Put(key string, resp *IRResponse) {
 	if c == nil || !c.enabled || resp == nil {
 		return
 	}
-	raw, _ := json.Marshal(resp)
+	cached := sanitizeCachedResponse(resp)
+	raw, _ := json.Marshal(cached)
 	size := int64(len(raw))
 	if size > c.maxBytes {
 		return
@@ -107,13 +107,43 @@ func (c *responseCache) Put(key string, resp *IRResponse) {
 	if el, ok := c.items[key]; ok {
 		c.remove(el)
 	}
-	ent := &cacheEntry{key: key, resp: resp, size: size, expiresAt: time.Now().Add(c.ttl)}
+	ent := &cacheEntry{key: key, resp: cached, size: size, expiresAt: time.Now().Add(c.ttl)}
 	el := c.ll.PushFront(ent)
 	c.items[key] = el
 	c.bytes += size
 	for c.bytes > c.maxBytes && c.ll.Len() > 0 {
 		c.remove(c.ll.Back())
 	}
+}
+
+func sanitizeCachedResponse(resp *IRResponse) *IRResponse {
+	if resp == nil {
+		return nil
+	}
+	out := &IRResponse{
+		Model:      resp.Model,
+		Text:       resp.Text,
+		StopReason: resp.StopReason,
+		Usage:      resp.Usage,
+	}
+	if len(resp.Warnings) > 0 {
+		out.Warnings = append([]string(nil), resp.Warnings...)
+	}
+	return out
+}
+
+func cloneCachedResponse(resp *IRResponse) *IRResponse {
+	if resp == nil {
+		return nil
+	}
+	out := *resp
+	if len(resp.Warnings) > 0 {
+		out.Warnings = append([]string(nil), resp.Warnings...)
+	}
+	out.ID = ""
+	out.Raw = nil
+	out.Headers = nil
+	return &out
 }
 
 func (c *responseCache) remove(el *list.Element) {

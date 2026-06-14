@@ -1,0 +1,12 @@
+.git
+dist
+tmp
+env.json
+router
+router-token
+router-token-gen
+examples/cli-e2e-c/cli-e2e
+*.log
+*.jsonl
+router-state.json
+requests.jsonl

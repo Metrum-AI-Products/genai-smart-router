@@ -21,6 +21,7 @@ config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
+docs/DOCKER_DEPLOYMENT.md
 caddy/Caddyfile
 ```
 
@@ -31,6 +32,14 @@ bin/router --config config/config.yaml
 ```
 
 `config/config.yaml` can keep `script: scripts/router.ts` because script paths are resolved relative to the config file.
+
+Docker Compose packages are built separately:
+
+```bash
+make package-docker-all
+```
+
+Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host.
 
 ## Internal Development Host
 
@@ -60,6 +69,8 @@ Recommended paths:
 ```
 
 Use `env.json` for provider API keys on the deployment host. Keep it mode `0600` and do not place it in a web-served path.
+
+The response cache is process-local. Restarting the router clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota.
 
 ## Install
 
@@ -173,3 +184,14 @@ Codex provider base URL:
 ```text
 https://llm-api-engg.metrum.ai/v1
 ```
+
+## Release E2E
+
+Full release e2e is live and credit-consuming:
+
+```bash
+make e2e-live-full
+make e2e-compose-live
+```
+
+These checks require live provider keys, actual local Claude Code and Codex CLIs, Docker, and Docker Compose. They verify real provider calls, CLI traffic through the router, Docker Compose startup, and Caddy proxying.

@@ -18,6 +18,26 @@ Current MVP capabilities:
 - JSONL request logs using the SRS schema.
 - Authenticated Prometheus-compatible `/metrics` with caller/user/project labels.
 
+## Cache Behavior
+
+The response cache is in-process and not persistent. Configure it with:
+
+```yaml
+server:
+  cache:
+    enabled: true
+    max_bytes: 134217728
+    default_ttl: 15m
+```
+
+`default_ttl` is the maximum duration for an entry. `max_bytes` is the total LRU byte budget. Entries are evicted when expired or when the cache exceeds `max_bytes`.
+
+The cache key is based on normalized request semantics and selected target: model group, system/input/messages, max tokens, temperature, stop sequences, provider, and target model. It does not use the raw request body, caller request IDs, router request IDs, caller tokens, caller project/user, or provider response IDs.
+
+Cached payloads are sanitized before storage. The router caches text, model, stop reason, usage, and warnings, but not upstream `id`, raw provider payloads, or provider-specific metadata. Every caller-facing response gets a fresh router-owned `resp_...` ID, including cache hits.
+
+Cache hits are logged with `cache=hit` and cached usage for telemetry. They do not call providers and do not increment persisted quota/lifetime token counters.
+
 ## Build And Package
 
 The deployment artifact is a binary package. Operators should not need this source tree on the deployment host.
@@ -26,6 +46,7 @@ The deployment artifact is a binary package. Operators should not need this sour
 make build        # local router and router-token-gen binaries
 make package      # dist/smart-llmrouter-<version>-linux-<arch>.tar.gz
 make package-all  # linux amd64 and linux arm64 tarballs
+make package-docker-all # docker image tarballs plus compose/caddy/config/docs
 ```
 
 Each tarball contains:
@@ -41,6 +62,20 @@ docs/DEPLOYMENT.md
 caddy/Caddyfile
 ```
 
+Docker packages contain prebuilt image tarballs plus compose deployment assets:
+
+```text
+images/smart-llmrouter-<version>-linux-<arch>.tar
+compose/docker-compose.yml
+compose/Caddyfile.compose
+compose/.env
+compose/.env.example
+config/config.example.yaml
+config/env.example.json
+config/scripts/router.ts
+docs/*.md
+```
+
 The packaged config expects the routing script at `config/scripts/router.ts`, so the standard packaged run command is:
 
 ```bash
@@ -48,6 +83,8 @@ bin/router --config config/config.yaml
 ```
 
 See `docs/DEPLOYMENT.md` for the `llm-api-engg.metrum.ai` deployment plan with Caddy TLS termination.
+
+For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker-all` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs, `docker-compose.yml`, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
 
 ## Run From Source
 
@@ -226,8 +263,13 @@ make build      # build ./router and ./router-token-gen
 make build-all  # build linux amd64 and linux arm64 binaries under dist/build
 make package    # build one tarball with binaries, config, docs, tools, and Caddyfile
 make package-all # build linux amd64 and linux arm64 tarballs
+make docker-image # build smart-llmrouter docker image for GOOS/GOARCH
+make package-docker # build one docker-image tarball package with compose/caddy/config/docs
+make package-docker-all # build linux amd64 and linux arm64 docker packages
 make e2e-mock   # local mock Claude/Codex C harness
 make e2e-live-c # live OpenRouter :nitro C-generation e2e through Claude Code and Codex
+make e2e-live-full # live provider HTTP cache checks plus live CLI C e2e
+make e2e-compose-live # live provider + Claude/Codex checks through docker compose and Caddy
 ```
 
 `make e2e-live-c` starts the router once per OpenRouter sample target, runs both local CLIs, extracts the generated C source, compiles it with `cc -std=c11 -Wall -Wextra -Werror`, and runs the binary. It reads the project `env.json` before invoking the router. To keep logs and generated C files:
@@ -392,3 +434,12 @@ go build ./cmd/router
 ```
 
 The automated suite uses deterministic mock upstreams. The Claude Code and Codex commands above are the live provider acceptance gates.
+
+Full release validation is live and credit-consuming:
+
+```bash
+make e2e-live-full
+make e2e-compose-live
+```
+
+These require live provider keys in `env.json` or the shell plus locally installed `claude`, `codex`, Docker, and Docker Compose.

@@ -151,10 +151,7 @@ func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRRespon
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, err
 	}
-	resp := &IRResponse{ID: stringValue(m["id"]), Model: model, Raw: m}
-	if resp.ID == "" {
-		resp.ID = "resp_" + time.Now().UTC().Format("20060102150405")
-	}
+	resp := &IRResponse{Model: model, Raw: m}
 	switch dialect {
 	case "anthropic":
 		if parts, ok := m["content"].([]any); ok {

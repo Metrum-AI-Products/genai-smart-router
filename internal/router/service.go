@@ -274,6 +274,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	key := cacheKey(req, dec.Target)
 	if cacheable(req) {
 		if cached, ok := s.cache.Get(key); ok {
+			ensureResponseID(cached)
 			rc.rec.Cache = "hit"
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
@@ -298,6 +299,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		return
 	}
 	if resp != nil {
+		ensureResponseID(resp)
 		if cacheable(req) {
 			s.cache.Put(key, resp)
 		}
@@ -604,6 +606,16 @@ func requestID() string {
 		return fmt.Sprintf("req_%d", time.Now().UnixNano())
 	}
 	return "req_" + hex.EncodeToString(b[:])
+}
+
+func responseID() string {
+	return "resp_" + strings.TrimPrefix(requestID(), "req_")
+}
+
+func ensureResponseID(resp *IRResponse) {
+	if resp != nil && resp.ID == "" {
+		resp.ID = responseID()
+	}
 }
 
 func tokenPrefix(token, sum string) string {

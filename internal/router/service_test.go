@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAnthropicIngressUnaryHappyPath(t *testing.T) {
@@ -169,6 +170,149 @@ func TestCacheHitAcrossDialectsAndTargetIsolation(t *testing.T) {
 	post("/v1/messages", `{"model":"other","messages":[{"role":"user","content":"same"}]}`)
 	if calls.Load() != 2 {
 		t.Fatalf("expected separate cache entry for different target, upstream calls=%d", calls.Load())
+	}
+}
+
+func TestCacheHitSanitizesProviderIDAndRawPayload(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":              "provider-secret-response-id",
+			"provider_secret": "raw-provider-metadata",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "cached sanitized"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": int(n), "total_tokens": int(n) + 3},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	post := func() map[string]any {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"caller-specific-id","model":"default","messages":[{"role":"user","content":"same cache prompt"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		raw := rr.Body.String()
+		if strings.Contains(raw, "provider-secret-response-id") || strings.Contains(raw, "raw-provider-metadata") {
+			t.Fatalf("provider raw data leaked: %s", raw)
+		}
+		return body
+	}
+
+	first := post()
+	second := post()
+	if calls.Load() != 1 {
+		t.Fatalf("expected cache hit, upstream calls=%d", calls.Load())
+	}
+	if first["id"] == "" || second["id"] == "" || first["id"] == second["id"] {
+		t.Fatalf("expected fresh router IDs, first=%q second=%q", first["id"], second["id"])
+	}
+	if !strings.HasPrefix(first["id"].(string), "resp_") || !strings.HasPrefix(second["id"].(string), "resp_") {
+		t.Fatalf("expected router response IDs, first=%q second=%q", first["id"], second["id"])
+	}
+}
+
+func TestCacheKeyIgnoresRawRequestID(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "provider-id",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "same"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	for _, id := range []string{"caller-id-1", "caller-id-2"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"id":"`+id+`","model":"default","messages":[{"role":"user","content":"raw id ignored"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("expected second request to hit cache despite different raw id, calls=%d", calls.Load())
+	}
+}
+
+func TestCacheTTLAndLRUEviction(t *testing.T) {
+	resp := &IRResponse{ID: "provider-id", Model: "m", Text: "cached", Usage: Usage{TotalTokens: 1}, Raw: map[string]any{"id": "provider-id"}}
+	short := newCache(CacheConfig{Enabled: true, MaxBytes: 1024, DefaultTTL: time.Nanosecond})
+	short.Put("a", resp)
+	time.Sleep(time.Millisecond)
+	if _, ok := short.Get("a"); ok {
+		t.Fatal("expected expired cache entry to miss")
+	}
+
+	lru := newCache(CacheConfig{Enabled: true, MaxBytes: 150, DefaultTTL: time.Minute})
+	lru.Put("a", &IRResponse{Model: "m", Text: strings.Repeat("a", 40)})
+	lru.Put("b", &IRResponse{Model: "m", Text: strings.Repeat("b", 40)})
+	if _, ok := lru.Get("a"); ok {
+		t.Fatal("expected oldest entry to be evicted")
+	}
+	if _, ok := lru.Get("b"); !ok {
+		t.Fatal("expected newest entry to remain")
+	}
+}
+
+func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "quota-cache",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "quota cache"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Callers[0].Key.LifetimeTokens = 6
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	post := func() {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"quota cache prompt"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+	post()
+	post()
+	if calls.Load() != 1 {
+		t.Fatalf("expected second request from cache, calls=%d", calls.Load())
+	}
+	usage := svc.quota.Usage(svc.quota.callers["alice"])
+	keyUsage := usage["key"].(map[string]any)
+	if keyUsage["lifetime_tokens"] != int64(5) {
+		t.Fatalf("expected only upstream request to count against lifetime quota: %#v", keyUsage)
 	}
 }
 

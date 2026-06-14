@@ -181,21 +181,44 @@ PY
   fi
 }
 
-extract_c() {
+extract_c_candidates() {
   local input="$1"
-  local output="$2"
-  python3 - "$input" "$output" <<'PY'
+  local output_dir="$2"
+  rm -rf "$output_dir"
+  mkdir -p "$output_dir"
+  python3 - "$input" "$output_dir" <<'PY'
 import re
 import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text(errors="replace")
-match = re.search(r"```(?:c|C)?\s*(.*?)```", text, re.S)
-code = match.group(1) if match else text
-start = code.find("#include")
-if start >= 0:
-    code = code[start:]
-Path(sys.argv[2]).write_text(code.strip() + "\n")
+out = Path(sys.argv[2])
+blocks = re.findall(r"```(?:c|C)?\s*(.*?)```", text, re.S)
+sources = blocks + [text]
+seen = set()
+idx = 0
+for source in sources:
+    starts = [m.start() for m in re.finditer(r"#\s*include\b", source)]
+    if not starts:
+        starts = [source.find("#include")] if "#include" in source else [0]
+    for pos_i, start in enumerate(starts):
+        if start < 0:
+            continue
+        ends = starts[pos_i + 1:] + [len(source)]
+        for end in ends:
+            candidate = source[start:end].strip()
+            if not candidate or "main" not in candidate:
+                continue
+            key = re.sub(r"\s+", " ", candidate)
+            if key in seen:
+                continue
+            seen.add(key)
+            idx += 1
+            (out / f"candidate-{idx}.c").write_text(candidate + "\n")
+if idx == 0:
+    cleaned = text.strip()
+    if cleaned:
+        (out / "candidate-1.c").write_text(cleaned + "\n")
 PY
 }
 
@@ -234,12 +257,24 @@ compile_and_run() {
   local tool="$1"
   local group="$2"
   local output="$3"
-  local c_file="$WORKDIR/${group}-${tool}.c"
-  local bin_file="$WORKDIR/${group}-${tool}"
-  extract_c "$output" "$c_file"
-  cc -std=c11 -Wall -Wextra -Werror -O2 "$c_file" -o "$bin_file"
-  "$bin_file" | tee "$WORKDIR/${group}-${tool}.run.txt"
-  grep -qi "router c e2e" "$WORKDIR/${group}-${tool}.run.txt"
+  local candidates_dir="$WORKDIR/${group}-${tool}-candidates"
+  local run_file="$WORKDIR/${group}-${tool}.run.txt"
+  extract_c_candidates "$output" "$candidates_dir"
+  : >"$run_file"
+  local c_file
+  for c_file in "$candidates_dir"/*.c; do
+    [[ -f "$c_file" ]] || continue
+    local bin_file="${c_file%.c}"
+    if cc -std=c11 -Wall -Wextra -Werror -O2 "$c_file" -o "$bin_file" 2>"${c_file}.compile.err"; then
+      if "$bin_file" >"$run_file" 2>"${c_file}.run.err" && grep -qi "router c e2e" "$run_file"; then
+        cp "$c_file" "$WORKDIR/${group}-${tool}.c"
+        cat "$run_file"
+        return 0
+      fi
+    fi
+  done
+  echo "${group}/${tool}: no extracted C candidate compiled and printed expected output" >&2
+  return 1
 }
 
 run_case() {

@@ -1,0 +1,31 @@
+services:
+  router:
+    image: smart-llmrouter:${SMART_LLMROUTER_VERSION:-latest}
+    restart: unless-stopped
+    command: ["--config", "/app/config/config.yaml"]
+    expose:
+      - "8080"
+    volumes:
+      - ./config:/app/config:ro
+      - ./state:/app/state
+      - ./logs:/app/logs
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - router
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    environment:
+      ROUTER_HOSTNAME: ${ROUTER_HOSTNAME:-llm-api-engg.metrum.ai}
+      CADDY_EMAIL: ${CADDY_EMAIL:-engg@metrum.ai}
+    volumes:
+      - ./Caddyfile.compose:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
