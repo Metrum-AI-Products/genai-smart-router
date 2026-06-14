@@ -16,8 +16,8 @@ Last deployed: 2026-06-14
 
 ## Deployed Version
 
-- Router package/image version: `9063ebe-linux-amd64`
-- Source commit: `9063ebe Add cache-safe response IDs and docker e2e packaging`
+- Router package/image version: `0459560-linux-amd64`
+- Source commit: `0459560 Sanitize router token IDs in usage labels`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
