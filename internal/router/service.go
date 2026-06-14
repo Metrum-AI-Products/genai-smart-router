@@ -394,7 +394,7 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 		if subtle.ConstantTimeCompare([]byte(configured), []byte(sumHex)) == 1 {
 			tokenID := "sha256:" + sumHex[:12]
 			if caller.cfg.TokenID != "" {
-				tokenID = caller.cfg.TokenID
+				tokenID = publicTokenID(caller.cfg.TokenID)
 			}
 			return caller, tokenID, nil
 		}

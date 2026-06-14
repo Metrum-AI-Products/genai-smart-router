@@ -83,6 +83,18 @@ func GenerateCallerToken(opts TokenGenerateOptions) (GeneratedToken, error) {
 	return GeneratedToken{Token: token, TokenID: tokenID, TokenSHA256: caller.TokenSHA256, Caller: caller}, nil
 }
 
+func publicTokenID(v string) string {
+	v = strings.TrimSpace(v)
+	if !strings.HasPrefix(v, tokenPrefixName+"_") {
+		return v
+	}
+	parts := strings.Split(v, "_")
+	if len(parts) <= 6 {
+		return v
+	}
+	return strings.Join(parts[:6], "_")
+}
+
 func slugify(in string) string {
 	in = strings.ToLower(strings.TrimSpace(in))
 	var b strings.Builder

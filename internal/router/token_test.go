@@ -59,3 +59,17 @@ func TestGenerateCallerTokenDefaults(t *testing.T) {
 		t.Fatalf("default allow=%#v", generated.Caller.Allow)
 	}
 }
+
+func TestPublicTokenIDStripsSecretSuffix(t *testing.T) {
+	full := "rtr_metrum_sudarshan_metrum-insights_prod_k20260614_gcfnCbZBLeUGj52A_hhs5P2GfuutJ60G--qticAFw9g"
+	if got, want := publicTokenID(full), "rtr_metrum_sudarshan_metrum-insights_prod_k20260614"; got != want {
+		t.Fatalf("public token id=%q want %q", got, want)
+	}
+	clean := "rtr_metrum_clay_metrum-insights_prod_k20260614"
+	if got := publicTokenID(clean); got != clean {
+		t.Fatalf("clean token id changed: %q", got)
+	}
+	if got := publicTokenID("sha256:abcdef123456"); got != "sha256:abcdef123456" {
+		t.Fatalf("non-router token id changed: %q", got)
+	}
+}

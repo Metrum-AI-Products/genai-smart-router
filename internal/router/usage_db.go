@@ -198,6 +198,8 @@ func rowFromRecord(rec logRecord) usageRow {
 		if tokenID != "missing-token" {
 			tokenID = "invalid-token"
 		}
+	} else {
+		tokenID = publicTokenID(tokenID)
 	}
 	return usageRow{
 		TS:                ts,
