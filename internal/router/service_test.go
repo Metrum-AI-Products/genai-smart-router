@@ -79,6 +79,12 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("upstream was called for unauthorized request")
 	}
+	if _, tokenID, err := svc.authenticate("", ""); err == nil || tokenID != "missing-token" {
+		t.Fatalf("missing token id=%q err=%v", tokenID, err)
+	}
+	if _, tokenID, err := svc.authenticate("Bearer bogus-secret-token", ""); err == nil || tokenID != "invalid-token" {
+		t.Fatalf("invalid token id=%q err=%v", tokenID, err)
+	}
 }
 
 func TestAuthAcceptsXAPIKeyForAnthropicStyleClients(t *testing.T) {

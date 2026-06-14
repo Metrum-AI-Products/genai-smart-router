@@ -192,6 +192,13 @@ func rowFromRecord(rec logRecord) usageRow {
 	if rec.Error != nil {
 		errText = *rec.Error
 	}
+	tokenID := rec.TokenID
+	if rec.CallerID == "" {
+		tokenID = defaultString(rec.TokenID, "unauthorized")
+		if tokenID != "missing-token" {
+			tokenID = "invalid-token"
+		}
+	}
 	return usageRow{
 		TS:                ts,
 		RequestID:         rec.RequestID,
@@ -199,7 +206,7 @@ func rowFromRecord(rec logRecord) usageRow {
 		CallerUser:        rec.CallerUser,
 		CallerProject:     rec.CallerProject,
 		CallerEnvironment: rec.CallerEnvironment,
-		TokenID:           rec.TokenID,
+		TokenID:           tokenID,
 		Client:            rec.Client,
 		InboundDialect:    rec.InboundDialect,
 		RequestedModel:    rec.RequestedModel,

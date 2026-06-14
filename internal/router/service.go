@@ -386,20 +386,20 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 		token = strings.TrimSpace(apiKey)
 	}
 	if token == "" {
-		return nil, "", errors.New("missing bearer token")
+		return nil, "missing-token", errors.New("missing bearer token")
 	}
 	sum := sha256.Sum256([]byte(token))
 	sumHex := hex.EncodeToString(sum[:])
-	tokenID := tokenPrefix(token, sumHex)
 	for configured, caller := range s.callersBySum {
 		if subtle.ConstantTimeCompare([]byte(configured), []byte(sumHex)) == 1 {
+			tokenID := "sha256:" + sumHex[:12]
 			if caller.cfg.TokenID != "" {
 				tokenID = caller.cfg.TokenID
 			}
 			return caller, tokenID, nil
 		}
 	}
-	return nil, tokenID, errors.New("unknown token")
+	return nil, "invalid-token", errors.New("unknown token")
 }
 
 func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, caller *callerRuntime, tokenID string) (decision, error) {
@@ -627,16 +627,6 @@ func ensureResponseID(resp *IRResponse) {
 	if resp != nil && resp.ID == "" {
 		resp.ID = responseID()
 	}
-}
-
-func tokenPrefix(token, sum string) string {
-	if len(token) >= 12 {
-		return token[:12]
-	}
-	if len(sum) >= 12 {
-		return sum[:12]
-	}
-	return sum
 }
 
 func inferClient(r *http.Request) string {
