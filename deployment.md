@@ -106,6 +106,14 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Restarted the production router after backing up `config/config.yaml`.
 - Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for all six router model groups.
 
+## 2026-06-14 OpenRouter GPT-OSS 120B Update
+
+- Added OpenRouter `openai/gpt-oss-120b:nitro` to production and reference configs.
+- Activated it in `default`, `fast`, `small`, `medium`, and `high` with medium fallback weight while preserving 60% DeepSeek V4 Flash Nitro and 30% MiniMax-M3 anchor weights.
+- Verified production OpenRouter direct smoke returned HTTP 200 for `openai/gpt-oss-120b:nitro`.
+- Restarted the production router after backing up `config/config.yaml`.
+- Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for `default`, `fast`, `small`, `medium`, and `high`.
+
 ## Operations
 
 Restart:

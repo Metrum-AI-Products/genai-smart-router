@@ -116,6 +116,9 @@ providers:
       ling-26-flash:
         model: inclusionai/ling-2.6-flash
         tier: balanced
+      gpt-oss-120b-nitro:
+        model: openai/gpt-oss-120b:nitro
+        tier: balanced
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -197,10 +200,10 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 39
+      weight: 48
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 78
+      weight: 96
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -240,15 +243,18 @@ models:
     - provider: openrouter
       model_ref: hy3-preview-nitro
       weight: 1
+    - provider: openrouter
+      model_ref: gpt-oss-120b-nitro
+      weight: 3
   fast:
     strategy: weighted
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 30
+      weight: 39
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 60
+      weight: 78
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -279,6 +285,9 @@ models:
     - provider: groq
       model_ref: compound-mini
       weight: 1
+    - provider: openrouter
+      model_ref: gpt-oss-120b-nitro
+      weight: 3
   big-coder:
     strategy: weighted
     targets:
@@ -296,10 +305,10 @@ models:
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 21
+      weight: 30
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 42
+      weight: 60
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
@@ -321,15 +330,18 @@ models:
     - provider: openrouter
       model_ref: qwen36-flash-nitro
       weight: 1
+    - provider: openrouter
+      model_ref: gpt-oss-120b-nitro
+      weight: 3
   medium:
     strategy: weighted
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 30
+      weight: 39
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 60
+      weight: 78
     - provider: openai
       model_ref: gpt54-mini
       weight: 1
@@ -360,15 +372,18 @@ models:
     - provider: groq
       model_ref: qwen3-32b
       weight: 1
+    - provider: openrouter
+      model_ref: gpt-oss-120b-nitro
+      weight: 3
   high:
     strategy: weighted
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 33
+      weight: 42
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 66
+      weight: 84
     - provider: openai
       model_ref: gpt55
       weight: 1
@@ -402,6 +417,9 @@ models:
     - provider: openai
       model_ref: gpt54-nano
       weight: 1
+    - provider: openrouter
+      model_ref: gpt-oss-120b-nitro
+      weight: 3
 callers:
 - id: standard-dev
   user: standard
