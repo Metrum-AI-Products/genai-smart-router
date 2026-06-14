@@ -141,6 +141,8 @@ The router uses two different classes of keys:
 - Caller tokens authenticate clients that call this router. A caller sends `Authorization: Bearer <router-token>` or `X-API-Key: <router-token>`. The router hashes the presented token with SHA-256, compares it to configured `callers[].token_sha256`, checks `allow`, rate limits, quotas, and lifetime token budget, then logs/exports only caller metadata and `token_id`.
 - Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
 
+`callers[].allow` is the per-key allow list for internal router model group names. A standard key can be limited to `default`, `fast`, and `small`, while a coding/premium key can additionally allow `medium`, `high`, and `big-coder`. Disallowed model requests return `403 model-not-allowed` before provider routing and before any provider API key is used. The authenticated `/v1/models` response is filtered to the caller token's allowed groups.
+
 Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`. This is enough to route by caller key prefix or by the configured provider key name without making secrets available to script code.
 
 ## Provider Model Catalogs
@@ -411,6 +413,8 @@ default    General-purpose weighted routing across configured providers.
 fast       Lower-latency/cost weighted routing for everyday work.
 big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 ```
+
+The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard keys are typically limited to `default`, `fast`, and `small`; coding/premium keys can additionally use `medium`, `high`, and `big-coder`.
 
 ### Claude Code
 

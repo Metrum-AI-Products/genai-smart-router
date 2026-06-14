@@ -114,6 +114,8 @@ Generate a caller token and append the generated caller block to `config.yaml`:
 
 Save the printed `token` value for the client. The router config stores only `token_sha256` and `token_id`.
 
+Use `--allow` to restrict each generated key to specific internal model groups. Standard access is typically `default,fast,small`; coding/premium access can additionally include `medium,high,big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
+
 ## systemd
 
 Create `/etc/systemd/system/smart-llmrouter.service`:

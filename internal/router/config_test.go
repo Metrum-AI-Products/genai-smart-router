@@ -76,8 +76,10 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256([]byte("rtr_example_test"))
-	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_ROUTER_TOKEN", hex.EncodeToString(sum[:]))
+	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
+	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
+	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
 	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
 
 	dir := t.TempDir()
@@ -91,9 +93,9 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	defaultGroup := cfg.Models["default"]
 	want := map[string]string{
-		"openai:gpt-5.4-nano":    "gpt-5.4-nano",
-		"openai:gpt-5.4-mini":    "gpt-5.4-mini",
-		"openai:gpt-5.4":         "gpt-5.4",
+		"openai:gpt-5.4-nano":     "gpt-5.4-nano",
+		"openai:gpt-5.4-mini":     "gpt-5.4-mini",
+		"openai:gpt-5.4":          "gpt-5.4",
 		"minimax:MiniMax-Text-01": "MiniMax-Text-01",
 		"minimax:MiniMax-M3":      "MiniMax-M3",
 	}
@@ -124,6 +126,23 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		if len(group.Targets) == 0 {
 			t.Fatalf("example config %s model group has no targets", name)
 		}
+	}
+	wantAllows := map[string][]string{
+		"standard-dev": {"default", "fast", "small"},
+		"coding-dev":   {"default", "fast", "small", "medium", "high", "big-coder"},
+	}
+	for _, caller := range cfg.Callers {
+		want, ok := wantAllows[caller.ID]
+		if !ok {
+			continue
+		}
+		if strings.Join(caller.Allow, ",") != strings.Join(want, ",") {
+			t.Fatalf("caller %s allow=%v want %v", caller.ID, caller.Allow, want)
+		}
+		delete(wantAllows, caller.ID)
+	}
+	if len(wantAllows) != 0 {
+		t.Fatalf("example config missing caller profiles: %#v", wantAllows)
 	}
 }
 

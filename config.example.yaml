@@ -232,19 +232,44 @@ models:
     - provider: openai
       model_ref: gpt54-nano
 callers:
-- id: alice
-  user: alice
+- id: standard-dev
+  user: standard
   project: metrum-insights
   environment: dev
-  token_sha256: REPLACE_WITH_SHA256_HEX_OF_ROUTER_TOKEN
-  token_id: rtr_metrum_alice_metrum-insights_dev_kreplace
+  token_sha256: REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
+  token_id: rtr_metrum_standard_metrum-insights_dev_kreplace
   allow:
   - default
   - fast
-  - big-coder
+  - small
+  rate:
+    rpm: 120
+    tpm: 200000
+    concurrent: 8
+  quota:
+    day:
+      requests: 5000
+      tokens: 20000000
+    month:
+      tokens: 400000000
+    soft_pct: 80
+  key:
+    lifetime_tokens: 2000000000
+    soft_pct: 90
+    on_exhaust: disable
+- id: coding-dev
+  user: coding
+  project: metrum-insights
+  environment: dev
+  token_sha256: REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN
+  token_id: rtr_metrum_coding_metrum-insights_dev_kreplace
+  allow:
+  - default
+  - fast
   - small
   - medium
   - high
+  - big-coder
   rate:
     rpm: 120
     tpm: 200000

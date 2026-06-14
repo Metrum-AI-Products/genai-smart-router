@@ -60,6 +60,22 @@ func TestGenerateCallerTokenDefaults(t *testing.T) {
 	}
 }
 
+func TestGenerateCallerTokenPreservesAllowedModelGroups(t *testing.T) {
+	generated, err := GenerateCallerToken(TokenGenerateOptions{
+		User:    "coder",
+		Project: "metrum-insights",
+		Allow:   []string{"default", "big-coder", "high"},
+		Reader:  strings.NewReader(strings.Repeat("c", 64)),
+		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(generated.Caller.Allow, ","), "default,big-coder,high"; got != want {
+		t.Fatalf("allow=%q want %q", got, want)
+	}
+}
+
 func TestPublicTokenIDStripsSecretSuffix(t *testing.T) {
 	full := "rtr_metrum_sudarshan_metrum-insights_prod_k20260614_gcfnCbZBLeUGj52A_hhs5P2GfuutJ60G--qticAFw9g"
 	if got, want := publicTokenID(full), "rtr_metrum_sudarshan_metrum-insights_prod_k20260614"; got != want {

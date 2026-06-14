@@ -161,6 +161,8 @@ fast       Lower-latency/cost weighted routing for everyday work.
 big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 ```
 
+Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
+
 Claude Code:
 
 ```bash

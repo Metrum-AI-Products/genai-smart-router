@@ -196,15 +196,25 @@ models:
       - { provider: openai, model_ref: strong-model, weight: 3 }
 
 callers:
-  - id: example-team-prod
-    user: example-team
+  - id: example-standard-prod
+    user: example-standard
     project: example-project
     environment: prod
-    token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
-    token_id: rtr_metrum_example-team_example-project_prod_k20260614
-    allow: [default]
+    token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
+    token_id: rtr_metrum_example-standard_example-project_prod_k20260614
+    allow: [default, fast, small]
+    rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+  - id: example-coding-prod
+    user: example-coding
+    project: example-project
+    environment: prod
+    token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
+    token_id: rtr_metrum_example-coding_example-project_prod_k20260614
+    allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 ```
+
+The `allow` list is the model-group authorization boundary for each router key. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used.
 
 ## Custom TypeScript Routing
 
@@ -409,6 +419,8 @@ codex \
 ```
 
 For a different route, change `ROUTER_MODEL` to another allowed model group such as `small`, `medium`, `high`, `default`, or `fast`. The router decides the concrete upstream provider and model behind that group.
+
+The caller token must allow the selected `ROUTER_MODEL`. Standard keys can be limited to `default`, `fast`, and `small`; coding or premium keys can additionally allow `medium`, `high`, and `big-coder`. Hosted `/v1/models` responses are filtered to the model groups allowed for the caller token.
 
 ## Security And Governance Posture
 

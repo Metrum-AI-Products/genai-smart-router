@@ -140,6 +140,91 @@ func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	}
 }
 
+func TestCallerAllowListRestrictsModelGroups(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_allow",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "allowed"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["big-coder"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "big-model"}}}
+	cfg.Models["high"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "high-model"}}}
+	cfg.Callers[0].Allow = []string{"default"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	allowed := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	allowed.Header.Set("Authorization", "Bearer "+testToken)
+	allowedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(allowedRR, allowed)
+	if allowedRR.Code != http.StatusOK {
+		t.Fatalf("allowed status=%d body=%s", allowedRR.Code, allowedRR.Body.String())
+	}
+
+	for _, model := range []string{"big-coder", "high"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("%s status=%d body=%s", model, rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), "model-not-allowed") {
+			t.Fatalf("%s missing model-not-allowed: %s", model, rr.Body.String())
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("disallowed model groups should not call upstream, calls=%d", calls.Load())
+	}
+}
+
+func TestModelsEndpointOnlyListsAllowedModelGroups(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Models["big-coder"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "big-model"}}}
+	cfg.Models["high"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "high-model"}}}
+	cfg.Callers[0].Allow = []string{"default"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, model := range body.Data {
+		got = append(got, model.ID)
+	}
+	if strings.Join(got, ",") != "default" {
+		t.Fatalf("models=%v, want only default", got)
+	}
+}
+
 func TestCacheHitAcrossDialectsAndTargetIsolation(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -132,6 +132,8 @@ big-coder  Coding-focused failover route; recommended for Claude Code and Codex.
 
 Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active OpenAI targets currently use `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`, with higher weights on smaller models for default and fast routing. Direct validation showed the current OpenAI project does not yet have access to `gpt-5.5` or `gpt-5.5-pro`, so those models are intentionally not active to avoid random runtime failures.
 
+Production caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists the groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
+
 Unauthenticated health:
 
 ```bash
@@ -176,6 +178,8 @@ claude --bare --print --model big-coder "Reply with exactly: router prod claude 
 Do not set `ANTHROPIC_API_KEY` for router traffic. Claude Code uses `ANTHROPIC_AUTH_TOKEN` as a bearer token for gateways/proxies, while `ANTHROPIC_API_KEY` is for direct Anthropic API keys.
 
 For Claude Code, change `--model big-coder` to `--model small`, `medium`, `high`, `default`, or `fast` to use another route.
+
+The caller token must allow the selected model group.
 
 Codex:
 

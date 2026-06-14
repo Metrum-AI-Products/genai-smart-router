@@ -22,7 +22,7 @@ func main() {
 	project := fs.String("project", "", "caller project name")
 	environment := fs.String("env", "dev", "caller environment")
 	keySlug := fs.String("key", "", "visible key slug; defaults to kYYYYMMDD")
-	allowRaw := fs.String("allow", "default", "comma-separated allowed model groups")
+	allowRaw := fs.String("allow", "default", "comma-separated allowed internal model groups")
 	format := fs.String("format", "yaml", "output format: yaml, json, or env")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -53,7 +53,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: router-token-gen generate --user USER --project PROJECT [--env ENV] [--key KEY] [--allow default,fast] [--format yaml|json|env]")
+	fmt.Fprintln(os.Stderr, "usage: router-token-gen generate --user USER --project PROJECT [--env ENV] [--key KEY] [--allow default,fast,small] [--format yaml|json|env]")
 }
 
 func splitCSV(raw string) []string {
