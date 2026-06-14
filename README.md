@@ -2,6 +2,8 @@
 
 Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
+For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md).
+
 Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
 - Anthropic token-count estimate endpoint for Claude Code startup.
@@ -59,6 +61,7 @@ config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
+docs/solution-brief.md
 caddy/Caddyfile
 ```
 

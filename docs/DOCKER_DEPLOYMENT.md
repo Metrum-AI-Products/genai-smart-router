@@ -31,6 +31,7 @@ config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
 docs/DOCKER_DEPLOYMENT.md
+docs/solution-brief.md
 ```
 
 ## AWS EC2 Host Setup
