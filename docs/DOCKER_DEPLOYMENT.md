@@ -171,12 +171,12 @@ docker compose up -d
 Supported router model groups:
 
 ```text
-small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
-medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
-high       OpenAI GPT-5.5 first route for complex coding and professional work.
-default    General-purpose weighted routing across configured providers.
-fast       Lower-latency/cost weighted routing for everyday work.
-big-coder  Coding-focused weighted route; recommended for Claude Code and Codex.
+small      MiniMax-M3 50% weighted, with low-latency fallback targets for routine work.
+medium     MiniMax-M3 50% weighted, with balanced fallback targets for general work.
+high       MiniMax-M3 50% weighted, with premium fallback targets for complex work.
+default    MiniMax-M3 50% weighted, with broad configured provider fallbacks.
+fast       MiniMax-M3 50% weighted, with lower-latency fallback targets for everyday work.
+big-coder  MiniMax-M3 50% weighted coding route; recommended for Claude Code and Codex.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.

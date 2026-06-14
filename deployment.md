@@ -91,6 +91,13 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Reset the production Postgres usage DB volume after backing it up, so new production reports start clean with caller IP fields from the first row.
 - Reports now include `Usage By Caller IP`, `Hourly Usage By Caller IP`, and caller IP in the per-request throughput table.
 
+## 2026-06-14 MiniMax-M3 Weight Update
+
+- Updated production and reference configs so every router model group is `weighted` with MiniMax `MiniMax-M3` at exactly 50% of total configured target weight.
+- Verified MiniMax-M3 direct provider smoke returned HTTP 200.
+- Restarted the production router after backing up `config/config.yaml`.
+- Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for `default`, `fast`, `small`, `medium`, `high`, and `big-coder`; all six smoke requests selected `MiniMax-M3`.
+
 ## Operations
 
 Restart:
@@ -137,12 +144,12 @@ sudo docker compose up -d
 Supported production router model groups:
 
 ```text
-small      OpenAI GPT-5.4 nano/mini weighted toward nano for lowest cost and latency.
-medium     OpenAI GPT-5.4 mini/full weighted toward mini for balanced work.
-high       OpenAI GPT-5.5 first route for complex coding and professional work.
-default    General-purpose weighted routing across configured providers, biased toward smaller OpenAI GPT-5-era models.
-fast       Lower-latency/cost weighted routing for everyday work.
-big-coder  Coding-focused weighted route; recommended for Claude Code and Codex.
+small      MiniMax-M3 50% weighted, with low-latency fallback targets for routine work.
+medium     MiniMax-M3 50% weighted, with balanced fallback targets for general work.
+high       MiniMax-M3 50% weighted, with premium fallback targets for complex work.
+default    MiniMax-M3 50% weighted, with broad configured provider fallbacks.
+fast       MiniMax-M3 50% weighted, with lower-latency fallback targets for everyday work.
+big-coder  MiniMax-M3 50% weighted coding route; recommended for Claude Code and Codex.
 ```
 
 Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.5`, `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`; Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`; and configured OpenRouter Nitro targets. Direct validation showed production has access to `gpt-5.5`; `gpt-5.5-pro` remains catalog-only until the OpenAI project is entitled for it.
@@ -228,13 +235,13 @@ METRUM_ROUTER_KEY="$ROUTER_TOKEN" codex \
 
 For Codex, change `-c 'model="big-coder"'` to `small`, `medium`, `high`, `default`, or `fast` to use another route.
 
-Validated during deployment:
+Historical validation during the initial deployment:
 
 ```text
 healthz: 200
 /v1/models: 200 with default, fast, big-coder
 Claude Code: router prod claude ok
-high: 200 with gpt-5.5
-big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3
+high: 200 with gpt-5.5 at that time
+big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time
 Codex: router prod codex ok
 ```

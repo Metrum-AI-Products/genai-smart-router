@@ -12,9 +12,6 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
-    # For Docker Compose/Postgres:
-    # driver: postgres
-    # dsn: ${ROUTER_USAGE_DB_DSN}
 state_path: router-state.json
 providers:
   anthropic:
@@ -198,45 +195,45 @@ models:
   default:
     strategy: weighted
     targets:
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 12
-    - provider: openai
-      model_ref: gpt54-mini
-      weight: 8
-    - provider: openrouter
-      model_ref: qwen36-flash-nitro
-      weight: 4
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 3
-    - provider: openrouter
-      model_ref: kat-coder-pro-v2-nitro
-      weight: 3
-    - provider: openrouter
-      model_ref: nemotron-3-nano-30b-a3b
-      weight: 8
-    - provider: openrouter
-      model_ref: mercury-2
-      weight: 4
-    - provider: openrouter
-      model_ref: ling-26-flash
-      weight: 4
-    - provider: openai
-      model_ref: gpt54
-      weight: 3
     - provider: minimax
       model_ref: m3
-      weight: 2
+      weight: 14
+    - provider: openai
+      model_ref: gpt54-nano
+      weight: 1
+    - provider: openai
+      model_ref: gpt54-mini
+      weight: 1
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 1
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      weight: 1
+    - provider: openrouter
+      model_ref: kat-coder-pro-v2-nitro
+      weight: 1
+    - provider: openrouter
+      model_ref: nemotron-3-nano-30b-a3b
+      weight: 1
+    - provider: openrouter
+      model_ref: mercury-2
+      weight: 1
+    - provider: openrouter
+      model_ref: ling-26-flash
+      weight: 1
+    - provider: openai
+      model_ref: gpt54
+      weight: 1
     - provider: minimax
       model_ref: m27-highspeed
-      weight: 2
+      weight: 1
     - provider: openrouter
       model_ref: glm51-nitro
-      weight: 2
+      weight: 1
     - provider: groq
       model_ref: qwen3-32b
-      weight: 2
+      weight: 1
     - provider: groq
       model_ref: llama-33-70b
       weight: 1
@@ -246,138 +243,162 @@ models:
   fast:
     strategy: weighted
     targets:
+    - provider: minimax
+      model_ref: m3
+      weight: 11
     - provider: openai
       model_ref: gpt54-nano
-      weight: 12
+      weight: 1
     - provider: openai
       model_ref: gpt54-mini
-      weight: 8
+      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 8
+      weight: 1
     - provider: openrouter
       model_ref: mercury-2
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 3
+      weight: 1
     - provider: minimax
       model_ref: m27-highspeed
-      weight: 4
+      weight: 1
     - provider: openai
       model_ref: gpt54
-      weight: 2
+      weight: 1
     - provider: groq
       model_ref: llama-31-8b-instant
-      weight: 4
+      weight: 1
     - provider: groq
       model_ref: compound-mini
-      weight: 3
+      weight: 1
   big-coder:
     strategy: weighted
     targets:
     - provider: minimax
       model_ref: m3
-      weight: 8
+      weight: 2
     - provider: openai
       model_ref: gpt55
-      weight: 4
+      weight: 1
     - provider: openrouter_anthropic
       model_ref: claude-sonnet-46
       weight: 1
   small:
     strategy: weighted
     targets:
+    - provider: minimax
+      model_ref: m3
+      weight: 7
     - provider: openai
       model_ref: gpt54-nano
-      weight: 12
+      weight: 1
     - provider: openai
       model_ref: gpt54-mini
-      weight: 4
+      weight: 1
     - provider: groq
       model_ref: llama-31-8b-instant
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 8
+      weight: 1
     - provider: openrouter
       model_ref: mercury-2
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 3
+      weight: 1
   medium:
     strategy: weighted
     targets:
+    - provider: minimax
+      model_ref: m3
+      weight: 11
     - provider: openai
       model_ref: gpt54-mini
-      weight: 8
+      weight: 1
     - provider: openai
       model_ref: gpt54
-      weight: 3
+      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 3
+      weight: 1
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 3
+      weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
-      weight: 3
+      weight: 1
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 8
+      weight: 1
     - provider: openrouter
       model_ref: mercury-2
-      weight: 4
+      weight: 1
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 4
+      weight: 1
     - provider: openai
       model_ref: gpt54-nano
-      weight: 2
+      weight: 1
     - provider: openrouter
       model_ref: glm51-nitro
-      weight: 2
+      weight: 1
     - provider: groq
       model_ref: qwen3-32b
-      weight: 2
+      weight: 1
   high:
-    strategy: failover
+    strategy: weighted
     targets:
+    - provider: minimax
+      model_ref: m3
+      weight: 12
     - provider: openai
       model_ref: gpt55
+      weight: 1
     - provider: openai
       model_ref: gpt54
+      weight: 1
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
+      weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
+      weight: 1
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
+      weight: 1
     - provider: openrouter
       model_ref: mercury-2
+      weight: 1
     - provider: openrouter
       model_ref: ling-26-flash
+      weight: 1
     - provider: openrouter
       model_ref: glm51-nitro
+      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
+      weight: 1
     - provider: openrouter
       model_ref: hy3-preview-nitro
+      weight: 1
     - provider: openai
       model_ref: gpt54-mini
+      weight: 1
     - provider: openai
       model_ref: gpt54-nano
+      weight: 1
 callers:
 - id: standard-dev
   user: standard

@@ -152,6 +152,8 @@ Model groups decouple client intent from provider implementation:
 - `big-coder`: coding-oriented weighted path for agentic coding tools.
 - `default`: general-purpose routing policy for common workloads.
 
+In the reference deployment, MiniMax-M3 is configured as the 50% weighted anchor across model groups, with the remaining weight distributed across provider fallbacks for resilience and optionality.
+
 ```mermaid
 flowchart LR
   Req[Client requests model group] --> Group{Model group}

@@ -152,6 +152,22 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			t.Fatalf("example config %s model group has no targets", name)
 		}
 	}
+	for name, group := range cfg.Models {
+		if group.Strategy != "weighted" {
+			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
+		}
+		totalWeight := 0
+		m3Weight := 0
+		for _, target := range group.Targets {
+			totalWeight += target.Weight
+			if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
+				m3Weight += target.Weight
+			}
+		}
+		if totalWeight == 0 || m3Weight*2 != totalWeight {
+			t.Fatalf("example config group %s MiniMax-M3 weight=%d total=%d, want exactly 50%%", name, m3Weight, totalWeight)
+		}
+	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small"},
 		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high"},
