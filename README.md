@@ -177,6 +177,22 @@ models:
 
 Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access; for example, this config routes to `gpt-5.5` where enabled while keeping `gpt-5.5-pro` catalog-only until the OpenAI project is entitled for it.
 
+Agentic tool-call traffic can use a separate target set from ordinary text traffic. Mark a target with `tool_only: true` when it should only be considered for requests that include supported tools, such as Codex OpenAI Responses tool calls or Claude Code Anthropic tool calls:
+
+```yaml
+models:
+  big-coder:
+    strategy: weighted
+    targets:
+      - { provider: minimax, model_ref: m3, weight: 50 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 30 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: openai, model_ref: gpt55, tool_only: true }
+      - { provider: openrouter_anthropic, model_ref: claude-sonnet-46-nitro, tool_only: true }
+```
+
+Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
+
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 
 ```yaml
@@ -324,10 +340,10 @@ Generate a report for an explicit period and import existing JSONL first. Import
 Generate a report from a Docker Compose deployment:
 
 ```bash
-set -a; . ./.env; set +a
+dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
 docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --dsn "$dsn" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```

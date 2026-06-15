@@ -145,10 +145,10 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/
 Generate a markdown usage report on the host from the running compose data:
 
 ```bash
-set -a; . ./.env; set +a
+dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
 docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --dsn "$dsn" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```

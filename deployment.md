@@ -182,10 +182,10 @@ Generate a production usage report on the instance:
 
 ```bash
 cd /opt/smart-llmrouter/compose
-set -a; . ./.env; set +a
+dsn="$(sudo sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
 sudo docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --driver postgres \
-  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --dsn "$dsn" \
   --since 24h \
   --out /app/logs/usage-24h.md
 ```
@@ -194,7 +194,7 @@ For a scoped report, add filters such as:
 
 ```bash
   --caller-project harbor-algotune-pca \
-  --caller-environment case-20260614T120000Z \
+  --caller-environment case-20260614t120000z \
   --resolved-group big-coder \
   --client codex
 ```

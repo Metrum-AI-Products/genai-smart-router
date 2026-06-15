@@ -24,7 +24,8 @@ DSN="${ROUTER_USAGE_DB_DSN:-}"
 FROM="${FROM:-}"
 TO="${TO:-}"
 SINCE="${SINCE:-24h}"
-ENVIRONMENT="${CALLER_ENVIRONMENT:-$CASE_ID}"
+case_environment="$(printf '%s' "$CASE_ID" | tr '[:upper:]' '[:lower:]')"
+ENVIRONMENT="${CALLER_ENVIRONMENT:-$case_environment}"
 
 if [[ ! -x "$REPORT_BIN" ]]; then
   if command -v go >/dev/null 2>&1; then

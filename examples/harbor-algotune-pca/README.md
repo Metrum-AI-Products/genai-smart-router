@@ -81,13 +81,12 @@ export ROUTER_BASE_URL="http://127.0.0.1:18080"
 Useful overrides:
 
 ```bash
-export HARBOR_TASK="algotune/pca"
-export HARBOR_ARTIFACTS="/app/solver.py"
-export EXTRA_INSTRUCTION_PATHS=""
 export AGENTS="codex,claude-code"
 export MODEL_GROUPS="small,big-coder"
 export DRY_RUN=1
 ```
+
+For a different Harbor task, override `HARBOR_TASK`, `HARBOR_ARTIFACTS`, and `EXTRA_INSTRUCTION_PATHS` together so the captured artifact and task-specific self-check instructions match the task being evaluated.
 
 The tested default is:
 

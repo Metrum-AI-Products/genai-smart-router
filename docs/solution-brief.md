@@ -175,6 +175,9 @@ Routing targets can include metadata such as:
 - Cost class.
 - Rate hints.
 - Provider key identifier.
+- Tool-call eligibility.
+
+For agentic developer tools, a model group can carry tool-only targets that are used only when the incoming request includes compatible tools. Ordinary text requests continue to use the group's normal weighted targets, while Codex and Claude Code tool-call requests can route to providers that preserve the required tool protocol. Tool-bearing requests bypass the response cache because their output depends on live filesystem, shell, and tool state.
 
 ## Configuration Overview
 
