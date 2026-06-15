@@ -16,8 +16,8 @@ Last deployed: 2026-06-15
 
 ## Deployed Version
 
-- Router package/image version: `docs-dynamic-origin-20260615-linux-amd64`
-- Source commit: `b0ed36c`
+- Router package/image version: `harbor-go-sublist-docs-20260615-linux-amd64`
+- Source commit: `a2cb540`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:docs-dynamic-origin-20260615-linux-amd64
+compose-router-1   smart-llmrouter:harbor-go-sublist-docs-20260615-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -175,6 +175,15 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Embedded docs now explain that they are served from each customer's hosted router instance and that examples render using the browser origin for that deployment.
 - Raw prerendered HTML still contains the neutral fallback `https://your-router.example.com`; hydrated browser pages replace it with `window.location.origin`.
 - Verified production `/readyz`, docs page delivery for Codex CLI and hosted quickstart pages, and `/v1/unknown` remains `404`.
+
+## 2026-06-15 Harbor Go Sublist Case Study Docs Update
+
+- Deployed image `smart-llmrouter:harbor-go-sublist-docs-20260615-linux-amd64` from source commit `a2cb540`.
+- Ran Harbor task `aider/polyglot_go_sublist` through hosted production using both Codex CLI and Claude Code CLI on the `default` model group.
+- Final clean case `harbor-go-sublist-default-20260615T063200Z` passed for both agents with reward `1.0` and zero Harbor exceptions.
+- Scoped production usage report: 19 requests, 0 errors, 189,764 total router-tracked tokens, 146,229 input tokens, 4,879 output tokens, 16 upstream attempts, 0 fallbacks, and 19 cache bypasses.
+- Updated hosted Docusaurus Harbor case study with the Go sublist task, results, provider usage, tokenomics, cache behavior, caller IP, and GPT 5.5 / Opus 4.8 / Metrum cost comparison.
+- Verified production `/readyz`, hosted Harbor case-study page content, chart canvases for Case Study #2, and `/v1/unknown` remains `404`.
 
 ## Operations
 
