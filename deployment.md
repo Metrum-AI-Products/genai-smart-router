@@ -16,8 +16,8 @@ Last deployed: 2026-06-15
 
 ## Deployed Version
 
-- Router package/image version: `docs-charts-routing-20260615-linux-amd64`
-- Source commit: `43e1658`
+- Router package/image version: `docs-dynamic-origin-20260615-linux-amd64`
+- Source commit: `b0ed36c`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:docs-charts-routing-20260615-linux-amd64
+compose-router-1   smart-llmrouter:docs-dynamic-origin-20260615-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -167,6 +167,14 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Expanded the Harbor case study with models used, tokenomics, GPT 5.5 and Opus 4.8 comparison pricing, and cost-savings calculations for all runs, Codex CLI, and Claude Code CLI.
 - Fixed embedded docs serving so extensionless Docusaurus pages such as `/docs/solution-brief` and `/docs/evaluation/harbor-case-study` resolve to their generated `.html` pages before SPA fallback.
 - Verified production `/readyz`, Harbor case-study HTML with cost tables and chart canvases, solution brief page routing, and `/v1/unknown` remains `404`.
+
+## 2026-06-15 Dynamic Deployment-Origin Docs Update
+
+- Deployed image `smart-llmrouter:docs-dynamic-origin-20260615-linux-amd64` from source commit `b0ed36c`.
+- Customer-facing Docusaurus pages no longer hardcode the Metrum internal production host in Codex CLI, Claude Code CLI, or hosted quickstart examples.
+- Embedded docs now explain that they are served from each customer's hosted router instance and that examples render using the browser origin for that deployment.
+- Raw prerendered HTML still contains the neutral fallback `https://your-router.example.com`; hydrated browser pages replace it with `window.location.origin`.
+- Verified production `/readyz`, docs page delivery for Codex CLI and hosted quickstart pages, and `/v1/unknown` remains `404`.
 
 ## Operations
 
