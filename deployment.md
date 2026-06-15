@@ -203,6 +203,14 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Tool-only routing weights were not changed.
 - Verified production `/readyz` and pulled the live remote config back to confirm the updated weights.
 
+## 2026-06-15 Caller Allow-List Expansion
+
+- Updated all 92 production caller records so each key can access `fast`, `small`, `medium`, `high`, and `big-coder`.
+- Existing allowed groups such as `default` and tool smoke groups were preserved.
+- Local production reference config was updated to match the live production config.
+- Restarted the production router after backing up `config/config.yaml`.
+- Verified production `/readyz` and pulled the live remote config back to confirm zero callers are missing the requested groups.
+
 ## Operations
 
 Restart:
