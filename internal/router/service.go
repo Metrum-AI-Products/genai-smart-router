@@ -125,6 +125,7 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })
 	s.mux.HandleFunc("POST /v1/responses", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-responses") })
+	s.mux.Handle("GET /", docsHandler())
 }
 
 func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {

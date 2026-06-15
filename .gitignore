@@ -19,3 +19,8 @@ jobs/
 examples/harbor-algotune-pca/generated/
 examples/harbor-algotune-pca/runs/
 examples/harbor-algotune-pca/reports/
+docs-site/build/
+docs-site/.docusaurus/
+docs-site/node_modules/
+internal/router/docsdist/*
+!internal/router/docsdist/.keep

@@ -1,6 +1,6 @@
 # Docker Compose Deployment
 
-Docker packages are intended for AWS EC2 or similar hosts where the source tree is not present and no image registry is required.
+Docker packages are intended for AWS EC2 or similar hosts where the source tree is not present and no image registry is required. The router image embeds the customer-facing Docusaurus documentation and serves it under `/docs/`; browser requests to `/` redirect there.
 
 ## Build Package
 

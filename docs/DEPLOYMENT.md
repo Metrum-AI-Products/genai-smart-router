@@ -1,6 +1,6 @@
 # Smart LLM Router Deployment
 
-This project is packaged as a binary distribution. A deployment host does not need the Go toolchain or source tree.
+This project is packaged as a binary distribution. A deployment host does not need the Go toolchain, Node.js, Docusaurus, or source tree. Release binaries embed the customer-facing Docusaurus documentation and serve it under `/docs/`; browser requests to `/` redirect there.
 
 ## Package Contents
 

@@ -2,7 +2,7 @@
 
 Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
-For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md).
+For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there.
 
 Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
@@ -45,7 +45,8 @@ Cache hits are logged with `cache=hit` and cached usage for telemetry. They do n
 The deployment artifact is a binary package. Operators should not need this source tree on the deployment host.
 
 ```bash
-make build        # local router and router-token-gen binaries
+make build        # build Docusaurus docs, then local router/tool binaries with embedded docs
+make build-go-only # local router/tool binaries without rebuilding docs
 make package      # dist/smart-llmrouter-<version>-linux-<arch>.tar.gz
 make package-all  # linux amd64 and linux arm64 tarballs
 make package-docker-all # docker image tarballs plus compose/caddy/config/docs
@@ -56,6 +57,7 @@ Each tarball contains:
 ```text
 bin/router
 bin/router-token-gen
+bin/router-usage-report
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
@@ -64,6 +66,8 @@ docs/DEPLOYMENT.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
+
+The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/healthz`, and `/readyz` keep precedence.
 
 Docker packages contain prebuilt image tarballs plus compose deployment assets:
 
@@ -435,8 +439,11 @@ Durability:
 
 ```bash
 make test       # Go unit tests
-make build      # build ./router, ./router-token-gen, and ./router-usage-report
-make build-all  # build linux amd64 and linux arm64 binaries under dist/build
+make docs-build # build customer-facing Docusaurus docs into the Go embed directory
+make docs-dev   # run the Docusaurus development server
+make build      # build docs, then ./router, ./router-token-gen, and ./router-usage-report
+make build-go-only # build Go binaries without refreshing embedded docs
+make build-all  # build docs, then linux amd64 and linux arm64 binaries under dist/build
 make package    # build one tarball with binaries, config, docs, tools, and Caddyfile
 make package-all # build linux amd64 and linux arm64 tarballs
 make docker-image # build smart-llmrouter docker image for GOOS/GOARCH

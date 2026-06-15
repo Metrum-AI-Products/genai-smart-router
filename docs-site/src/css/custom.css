@@ -1,0 +1,144 @@
+@font-face {
+  font-family: "MetrumDisplay";
+  src: url("@site/static/fonts/797e433ab948586e-s.p.29207c2f.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MetrumSans";
+  src: url("@site/static/fonts/47fe1b7cd6e6ed85-s.p.855a563b.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MetrumMono";
+  src: url("@site/static/fonts/e2334d715941921e-s.p.d82a9aff.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --metrum-red: #ff3132;
+  --metrum-pink: #fe005f;
+  --metrum-magenta: #ee0089;
+  --metrum-purple: #cc28af;
+  --metrum-violet: #9948cb;
+  --metrum-blue: #465cda;
+  --metrum-panel: #f7f7f8;
+  --metrum-border: rgba(0, 0, 0, 0.12);
+  --metrum-text-muted: #555b67;
+  --ifm-color-primary: #cc28af;
+  --ifm-color-primary-dark: #b8249d;
+  --ifm-color-primary-darker: #a92191;
+  --ifm-color-primary-darkest: #861a72;
+  --ifm-color-primary-light: #de35bf;
+  --ifm-color-primary-lighter: #ee45cf;
+  --ifm-color-primary-lightest: #ff64df;
+  --ifm-font-family-base: "MetrumSans", Inter, system-ui, sans-serif;
+  --ifm-heading-font-family: "MetrumDisplay", "MetrumSans", Inter, system-ui, sans-serif;
+  --ifm-font-family-monospace: "MetrumMono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-global-radius: 0;
+  --ifm-button-border-radius: 0;
+  --ifm-navbar-height: 72px;
+}
+
+html[data-theme="dark"] {
+  --ifm-background-color: #000;
+  --ifm-background-surface-color: #08080a;
+  --ifm-navbar-background-color: rgba(0, 0, 0, 0.92);
+  --ifm-footer-background-color: #000;
+  --ifm-color-content: #fff;
+  --ifm-color-content-secondary: #b8bcc7;
+  --metrum-panel: rgba(255, 255, 255, 0.045);
+  --metrum-border: rgba(255, 255, 255, 0.13);
+  --metrum-text-muted: #b8bcc7;
+}
+
+html[data-theme="light"] {
+  --ifm-background-color: #fff;
+  --ifm-background-surface-color: #f7f7f8;
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.94);
+  --ifm-footer-background-color: #050505;
+}
+
+body {
+  letter-spacing: 0;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--metrum-border);
+  backdrop-filter: blur(16px);
+}
+
+.navbar__logo img {
+  height: 24px;
+}
+
+.navbar__title,
+.navbar__link,
+.menu__link,
+.footer__title {
+  font-family: var(--ifm-font-family-monospace);
+  letter-spacing: 0;
+}
+
+.navbar__title,
+.navbar__link {
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3 {
+  letter-spacing: 0;
+}
+
+.theme-doc-markdown a[href^="mailto:"] {
+  font-weight: 700;
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
+}
+
+.theme-doc-markdown th,
+.theme-doc-markdown td {
+  border-color: var(--metrum-border);
+}
+
+.theme-doc-markdown code {
+  border-radius: 0;
+}
+
+.theme-doc-markdown pre {
+  border-radius: 0;
+  border: 1px solid var(--metrum-border);
+}
+
+.alert {
+  border-radius: 0;
+}
+
+.button {
+  border-radius: 0;
+}
+
+.contactBanner {
+  border: 1px solid var(--metrum-border);
+  background:
+    linear-gradient(90deg, rgba(255, 49, 50, 0.12), rgba(204, 40, 175, 0.12), rgba(70, 92, 218, 0.12)),
+    var(--metrum-panel);
+  padding: 18px 20px;
+  margin: 24px 0;
+}
+
+.contactBanner p {
+  margin: 0;
+}

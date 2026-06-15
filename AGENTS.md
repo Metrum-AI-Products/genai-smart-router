@@ -22,6 +22,7 @@ These instructions apply to the whole repository.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
+- Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep public docs free of raw provider keys, real router tokens, private host paths, SSH details, and internal-only deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
 
 ## Development Workflow
 

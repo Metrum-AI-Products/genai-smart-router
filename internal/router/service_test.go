@@ -140,6 +140,62 @@ func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	}
 }
 
+func TestEmbeddedDocsRootRedirectsToDocs(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Location"); got != "/docs/" {
+		t.Fatalf("location=%q", got)
+	}
+}
+
+func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Metrum Smart LLM Router") {
+		t.Fatalf("root did not serve docs HTML: %s", rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type=%q", ct)
+	}
+}
+
+func TestEmbeddedDocsFallbackDoesNotMaskAPIRoutes(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	for _, path := range []string{"/v1/unknown", "/v1", "/metrics/extra"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Accept", "text/html")
+		rr := httptest.NewRecorder()
+
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("%s status=%d body=%s", path, rr.Code, rr.Body.String())
+		}
+		if strings.Contains(rr.Body.String(), "Metrum Smart LLM Router Docs") {
+			t.Fatalf("%s unexpectedly served docs fallback", path)
+		}
+	}
+}
+
 func TestModelsEndpointMarksAgentToolsSmokeAsToolCapable(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)

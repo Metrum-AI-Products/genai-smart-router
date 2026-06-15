@@ -8,18 +8,37 @@ DOCKER ?= docker
 DOCKER_PLATFORM ?= linux/$(GOARCH)
 IMAGE_NAME ?= smart-llmrouter
 IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
+DOCS_SITE_DIR ?= docs-site
+DOCS_EMBED_DIR ?= internal/router/docsdist
 
-.PHONY: test build build-all package package-all docker-image package-docker package-docker-all e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test docs-build docs-dev docs-clean build build-go-only build-all package package-all docker-image package-docker package-docker-all e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test:
 	go test ./...
 
-build:
+docs-build:
+	cd $(DOCS_SITE_DIR) && npm ci && npm run build
+	find $(DOCS_EMBED_DIR) -mindepth 1 ! -name .keep -exec rm -rf {} +
+	cp -R $(DOCS_SITE_DIR)/build/. $(DOCS_EMBED_DIR)/
+
+docs-dev:
+	cd $(DOCS_SITE_DIR) && npm install && npm run start
+
+docs-clean:
+	rm -rf $(DOCS_SITE_DIR)/build $(DOCS_SITE_DIR)/.docusaurus
+	find $(DOCS_EMBED_DIR) -mindepth 1 ! -name .keep -exec rm -rf {} +
+
+build: docs-build
 	go build -o router ./cmd/router
 	go build -o router-token-gen ./cmd/router-token-gen
 	go build -o router-usage-report ./cmd/router-usage-report
 
-build-all:
+build-go-only:
+	go build -o router ./cmd/router
+	go build -o router-token-gen ./cmd/router-token-gen
+	go build -o router-usage-report ./cmd/router-usage-report
+
+build-all: docs-build
 	mkdir -p $(DIST_DIR)/build/linux-amd64 $(DIST_DIR)/build/linux-arm64
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(DIST_DIR)/build/linux-amd64/router ./cmd/router
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(DIST_DIR)/build/linux-amd64/router-token-gen ./cmd/router-token-gen
@@ -28,7 +47,7 @@ build-all:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(DIST_DIR)/build/linux-arm64/router-token-gen ./cmd/router-token-gen
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(DIST_DIR)/build/linux-arm64/router-usage-report ./cmd/router-usage-report
 
-package:
+package: docs-build
 	rm -rf $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)
 	mkdir -p $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/bin
 	mkdir -p $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/config/scripts
@@ -55,7 +74,7 @@ package-all:
 	$(MAKE) package GOOS=linux GOARCH=amd64
 	$(MAKE) package GOOS=linux GOARCH=arm64
 
-docker-image:
+docker-image: docs-build
 	$(DOCKER) build --platform $(DOCKER_PLATFORM) -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 package-docker:
@@ -99,4 +118,6 @@ e2e-compose-live:
 	bash scripts/compose_live_e2e.sh
 
 clean:
-	rm -rf router router-token router-token-gen examples/cli-e2e-c/cli-e2e $(DIST_DIR)
+	rm -rf router router-token router-token-gen router-usage-report examples/cli-e2e-c/cli-e2e $(DIST_DIR)
+	rm -rf $(DOCS_SITE_DIR)/build $(DOCS_SITE_DIR)/.docusaurus
+	find $(DOCS_EMBED_DIR) -mindepth 1 ! -name .keep -exec rm -rf {} +

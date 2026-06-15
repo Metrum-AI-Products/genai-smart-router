@@ -1,0 +1,62 @@
+---
+title: Codex CLI
+---
+
+# Codex CLI
+
+Codex CLI can call Smart LLM Router through the OpenAI Responses-compatible API. Use a router-issued caller token in an environment variable.
+
+<div class="contactBanner">
+  <p>For Codex CLI deployment access, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+</div>
+
+## One-Shot Check
+
+```bash
+export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  -c 'model="big-coder"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Reply with exactly: router codex ok" </dev/null
+```
+
+`exec` is required for these non-interactive flags. The top-level interactive `codex` command does not accept every `codex exec` flag.
+
+## Interactive Usage
+
+```bash
+export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+
+codex \
+  -c 'model="big-coder"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"'
+```
+
+## Tool Smoke
+
+Agentic tool calls should be tested with real file and shell activity. Tool-bearing requests bypass response caching because the filesystem and shell state are part of the result.
+
+```bash
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -c 'model="big-coder"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+```
