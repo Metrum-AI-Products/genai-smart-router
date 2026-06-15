@@ -177,6 +177,23 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	}
 }
 
+func TestEmbeddedDocsServeExtensionlessDocusaurusPages(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/solution-brief", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Solution Brief") {
+		t.Fatalf("extensionless doc page did not serve page HTML: %s", rr.Body.String())
+	}
+}
+
 func TestEmbeddedDocsFallbackDoesNotMaskAPIRoutes(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()

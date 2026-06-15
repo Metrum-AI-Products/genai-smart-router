@@ -43,6 +43,9 @@ func docsHandler() http.Handler {
 		if serveEmbeddedDoc(w, r, sub, name) {
 			return
 		}
+		if !strings.Contains(path.Base(name), ".") && serveEmbeddedDoc(w, r, sub, name+".html") {
+			return
+		}
 		if strings.Contains(r.Header.Get("Accept"), "text/html") || !strings.Contains(path.Base(name), ".") {
 			if serveEmbeddedDoc(w, r, sub, "index.html") {
 				return
