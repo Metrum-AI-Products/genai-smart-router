@@ -185,6 +185,15 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Updated hosted Docusaurus Harbor case study with the Go sublist task, results, provider usage, tokenomics, cache behavior, caller IP, and GPT 5.5 / Opus 4.8 / Metrum cost comparison.
 - Verified production `/readyz`, hosted Harbor case-study page content, chart canvases for Case Study #2, and `/v1/unknown` remains `404`.
 
+## 2026-06-15 Lucas Project Caller Tokens
+
+- Created and registered two new production caller tokens for user `lucas`.
+- Projects: `growth_stack` and `openfang_daily_reports`.
+- Allowed model groups for both keys: `default`, `fast`, and `small`.
+- Raw tokens were saved locally in `ROUTER_TOKENS_LUCAS_PROJECTS_20260615.txt`; this file is ignored by git and must be shared only through a secure channel.
+- Production router was restarted after the caller config update.
+- Verified production `/readyz` and `/v1/models` for both new tokens; both tokens returned only `default`, `fast`, and `small`.
+
 ## Operations
 
 Restart:
