@@ -8,7 +8,7 @@ const config = {
   title: "Metrum Smart LLM Router",
   tagline: "A governed, multi-provider LLM gateway for applications and coding agents.",
   favicon: "img/favicon/favicon.ico",
-  url: "https://llm-api-engg.metrum.ai",
+  url: process.env.DOCS_SITE_URL || "https://your-router.example.com",
   baseUrl: "/docs/",
   organizationName: "metrum-ai",
   projectName: "smart-llmrouter",

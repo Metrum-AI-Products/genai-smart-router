@@ -4,9 +4,13 @@ title: Overview
 slug: /overview
 ---
 
+import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/RouterEndpoint";
+
 # Metrum Smart LLM Router
 
 Metrum Smart LLM Router is a governed, multi-provider gateway for LLM traffic. Applications and developer tools call one stable endpoint while routing policy, provider credentials, model selection, quotas, caching, and usage telemetry stay server-side.
+
+<DeploymentSpecificNote />
 
 <div class="contactBanner">
   <p>Interested in deploying Smart LLM Router for your organization? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -62,10 +66,12 @@ The router supports the common LLM API surfaces used by modern tools:
 
 ## Hosted Endpoint Example
 
-```bash
-export ROUTER_BASE_URL="https://llm-api-engg.metrum.ai"
+<RouterCodeBlock>
+{`
+export ROUTER_BASE_URL="{{origin}}"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 export ROUTER_MODEL="big-coder"
-```
+`}
+</RouterCodeBlock>
 
 Router-issued tokens are customer-specific. For deployment access or an evaluation environment, contact [contact@metrum.ai](mailto:contact@metrum.ai).

@@ -2,9 +2,13 @@
 title: Hosted Quickstart
 ---
 
+import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/RouterEndpoint";
+
 # Hosted Quickstart
 
 Use the hosted router endpoint with a router-issued caller token. The token authenticates the caller to Metrum Smart LLM Router; provider keys stay server-side.
+
+<DeploymentSpecificNote />
 
 <div class="contactBanner">
   <p>Need a hosted evaluation or deployment? Email <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -12,15 +16,18 @@ Use the hosted router endpoint with a router-issued caller token. The token auth
 
 ## Environment
 
-```bash
-export ROUTER_BASE_URL="https://llm-api-engg.metrum.ai"
+<RouterCodeBlock>
+{`
+export ROUTER_BASE_URL="{{origin}}"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 export ROUTER_MODEL="default"
-```
+`}
+</RouterCodeBlock>
 
 ## OpenAI-Compatible Chat
 
-```bash
+<RouterCodeBlock>
+{`
 curl "$ROUTER_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
@@ -30,11 +37,13 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
       {"role": "user", "content": "Reply with exactly: router ok"}
     ]
   }'
-```
+`}
+</RouterCodeBlock>
 
 ## Anthropic-Compatible Messages
 
-```bash
+<RouterCodeBlock>
+{`
 curl "$ROUTER_BASE_URL/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
@@ -45,15 +54,18 @@ curl "$ROUTER_BASE_URL/v1/messages" \
       {"role": "user", "content": "Reply with exactly: router ok"}
     ]
   }'
-```
+`}
+</RouterCodeBlock>
 
 ## Model Discovery
 
 `/v1/models` is filtered by the caller token allow list.
 
-```bash
+<RouterCodeBlock>
+{`
 curl "$ROUTER_BASE_URL/v1/models" \
   -H "Authorization: Bearer $ROUTER_TOKEN"
-```
+`}
+</RouterCodeBlock>
 
 If a caller token is limited to `default`, `fast`, and `small`, premium groups such as `high` or `big-coder` will not be listed and cannot be requested.

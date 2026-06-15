@@ -1,0 +1,8 @@
+.codeBlock {
+  border: 1px solid var(--metrum-border);
+  border-radius: 0;
+  background: #08080a;
+  color: #f6f7fb;
+  padding: 16px;
+  overflow-x: auto;
+}
