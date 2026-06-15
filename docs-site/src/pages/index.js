@@ -9,6 +9,7 @@ const features = [
   ["One endpoint", "OpenAI-compatible and Anthropic-compatible clients integrate once while routing policy stays server-side."],
   ["Governed access", "Caller tokens, model-group allow lists, quotas, rate limits, cache policy, and telemetry are enforced before provider calls."],
   ["Provider optionality", "Route across validated OpenRouter, MiniMax, Moonshot/Kimi, OpenAI-compatible, and Anthropic-compatible targets without client rewrites."],
+  ["Measured evaluation", "The Harbor case study compares model groups with reward score, tokens, latency, throughput, cache behavior, and agent results."],
 ];
 
 export default function Home() {
@@ -33,6 +34,9 @@ export default function Home() {
               </Link>
               <Link className={clsx("button", styles.secondary)} to="/solution-brief">
                 Read Solution Brief
+              </Link>
+              <Link className={clsx("button", styles.secondary)} to="/evaluation/harbor-case-study">
+                View Case Study
               </Link>
               <Link className={clsx("button", styles.secondary)} href="mailto:contact@metrum.ai">
                 Contact Metrum

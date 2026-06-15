@@ -14,6 +14,7 @@ const config = {
   projectName: "smart-llmrouter",
   onBrokenLinks: "throw",
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: "warn",
     },
@@ -42,6 +43,7 @@ const config = {
       }),
     ],
   ],
+  themes: ["@docusaurus/theme-mermaid"],
 
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
@@ -92,6 +94,20 @@ const config = {
         theme: lightCodeTheme,
         darkTheme: darkCodeTheme,
         additionalLanguages: ["bash", "go", "typescript", "yaml"],
+      },
+      mermaid: {
+        theme: { light: "neutral", dark: "dark" },
+        options: {
+          themeVariables: {
+            primaryColor: "#0b0b0d",
+            primaryTextColor: "#ffffff",
+            primaryBorderColor: "#cc28af",
+            lineColor: "#fe005f",
+            secondaryColor: "#16161a",
+            tertiaryColor: "#465cda",
+            fontFamily: "MetrumSans, Inter, system-ui, sans-serif",
+          },
+        },
       },
     }),
 };

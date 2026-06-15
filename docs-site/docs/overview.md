@@ -41,6 +41,12 @@ flowchart LR
 
 This lets teams change the provider mix centrally without rewriting Codex, Claude Code, applications, or agents.
 
+## Evaluation Evidence
+
+The hosted docs include a Harbor agentic coding case study that compares Codex CLI and Claude Code CLI across router model groups. It includes the task goal, reward-score definition, models used, tokenomics, cache behavior, latency, throughput, and provider/model usage.
+
+[Read the Harbor case study](/docs/evaluation/harbor-case-study).
+
 ## API Surfaces
 
 The router supports the common LLM API surfaces used by modern tools:

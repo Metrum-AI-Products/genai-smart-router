@@ -1,0 +1,151 @@
+---
+title: Harbor Case Study
+---
+
+import HarborCharts from "@site/src/components/HarborCharts";
+
+# Harbor Agentic Coding Case Study
+
+This case study evaluates model groups behind Smart LLM Router using Harbor and real coding agents. Each run used a router token scoped to one `{agent, model_group}` pair so usage and cost signals could be compared cleanly.
+
+<div class="contactBanner">
+  <p>For a benchmark tailored to your workloads, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+</div>
+
+## Task
+
+- Dataset/task: `aider/polyglot_python_two-bucket`
+- Goal: implement `two_bucket.py` so the verifier accepts the bucket-measuring algorithm and required `ValueError` behavior.
+- Agents: Codex CLI and Claude Code CLI.
+- Hosted router endpoint: Metrum Smart LLM Router.
+
+## Reward Score
+
+Harbor reports `1.0` when the submitted artifact passes the verifier for the task. A score of `0.0` means the verifier rejected the artifact. Agent runtime exceptions are tracked separately because an agent can produce a passing artifact but still exit nonzero.
+
+## Model Groups Evaluated
+
+| Group | Intended use |
+|---|---|
+| `default` | General-purpose route |
+| `fast` | Lower-latency, budget-aware route |
+| `small` | Lower-cost route for simple work |
+| `medium` | Balanced development route |
+| `high` | Stronger route for complex work |
+| `big-coder` | Coding-oriented agent route |
+
+The evaluated routing policy used validated tool-capable targets from OpenRouter, MiniMax, Moonshot/Kimi, and low-weight compatible fallback paths where configured.
+
+## Models Used
+
+| Provider route | Provider model | Role in study |
+|---|---|---|
+| MiniMax | `MiniMax-M3` | High-weight coding-capable target and tool-compatible route |
+| Moonshot AI / Kimi | `kimi-k2.7-code` | Direct coding target for Claude Code-compatible tool flows |
+| OpenRouter | `deepseek/deepseek-v4-flash:nitro` | High-throughput Nitro target used across general and tool-capable groups |
+| OpenRouter | `google/gemma-4-26b-a4b-it:nitro` | Validated secondary Nitro target in general/tool-capable routes |
+| OpenAI-compatible fallback | `gpt-5.5` | Low-weight non-tool fallback path where configured |
+
+The point of the benchmark is not just "which model passed." It measures whether model groups can hide provider complexity while still exposing the numerical signals needed for routing and cost decisions: pass rate, latency, token volume, upstream attempts, fallback count, cache behavior, and token throughput.
+
+## Tokenomics Snapshot
+
+| Dimension | Value |
+|---|---:|
+| Router-tracked total tokens | 1,457,139 |
+| Input tokens | 1,149,320 |
+| Output tokens | 178,283 |
+| Output share of tracked tokens | 12.24% |
+| Requests | 89 |
+| Average tokens per request | 16,372 |
+| Upstream attempts | 86 |
+| Fallbacks | 5 |
+| Cache bypasses | 89 |
+
+Agentic coding workloads are token-heavy because the agent repeatedly reads context, reasons about files, calls tools, observes output, and updates artifacts. The router's tokenomics view is therefore central to cost governance: the same task can pass across model groups while consuming materially different token budgets and wall-clock time.
+
+## Cost Savings Using Actual Agents
+
+This benchmark compares endpoint economics on the same agentic coding task. Both OpenAI-priced comparison endpoints and Metrum-routed endpoints are treated as successful at completing the Harbor task; the comparison below applies pricing assumptions to the actual recorded agent token counts.
+
+Pricing assumptions:
+
+| Endpoint pricing assumption | Input price | Output price |
+|---|---:|---:|
+| GPT 5.5 comparison | $5.00 / 1M input tokens | $30.00 / 1M output tokens |
+| Opus 4.8 comparison | $5.00 / 1M input tokens | $25.00 / 1M output tokens |
+| Metrum routed benchmark | $0.10 / 1M input tokens | $0.20 / 1M output tokens |
+
+Estimated benchmark cost:
+
+| Scope | Input tokens | Output tokens | GPT 5.5 cost | Opus 4.8 cost | Metrum routed cost | Savings vs GPT 5.5 | Savings vs Opus 4.8 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| All runs | 1,149,320 | 178,283 | $11.10 | $10.20 | $0.15 | $10.94 / 98.64% | $10.05 / 98.52% |
+| Codex CLI | 716,391 | 88,837 | $6.25 | $5.80 | $0.09 | $6.16 / 98.57% | $5.71 / 98.46% |
+| Claude Code CLI | 432,929 | 89,446 | $4.85 | $4.40 | $0.06 | $4.79 / 98.74% | $4.34 / 98.61% |
+
+The absolute dollar values are for this single benchmark run, but the percentage deltas illustrate the operational lever: once task success is maintained, routing policy and provider mix become major cost-control tools for agentic development workloads.
+
+<HarborCharts />
+
+## Results
+
+| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor input | Harbor cache | Harbor output |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Codex | `default` | ok | 1 | 0 | 139 | 130360 | 80169 | 11314 |
+| Codex | `fast` | ok | 1 | 0 | 358 | 122024 | 45589 | 23731 |
+| Codex | `small` | ok | 1 | 0 | 156 | 145340 | 110951 | 8734 |
+| Codex | `medium` | ok | 1 | 0 | 116 | 49735 | 34133 | 10382 |
+| Codex | `high` | ok | 1 | 0 | 119 | 52790 | 7196 | 6519 |
+| Codex | `big-coder` | ok | 1 | 0 | 91 | 38315 | 9650 | 4630 |
+| Claude Code | `default` | ok | 1 | 0 | 405 | 134173 | 18162 | 25070 |
+| Claude Code | `fast` | ok | 1 | 0 | 128 | 86152 | 37888 | 9236 |
+| Claude Code | `small` | ok | 1 | 0 | 96 | 108230 | 39268 | 4887 |
+| Claude Code | `medium` | ok | 1 | 0 | 131 | 85710 | 38656 | 11781 |
+| Claude Code | `high` | ok | 1 | 0 | 267 | 85477 | 114 | 22646 |
+| Claude Code | `big-coder` | ok | 1 | 0 | 171 | 85437 | 18162 | 15826 |
+
+## Router Usage Summary
+
+| Metric | Value |
+|---|---:|
+| Requests | 89 |
+| Errors | 1 |
+| Total tokens | 1,457,139 |
+| Input tokens | 1,149,320 |
+| Output tokens | 178,283 |
+| Attempts | 86 |
+| Fallbacks | 5 |
+| Streaming requests | 82 |
+| Average upstream output throughput | 68.86 tok/s |
+| Average upstream total throughput | 2,889.24 tok/s |
+| Average latency | 21,493 ms |
+| Max latency | 278,090 ms |
+
+## Usage By External Model
+
+| Provider route | Model | Calls | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Kimi Anthropic-compatible | `kimi-k2.7-code` | 8 | 172,326 | 39,300 | 3,490 | 9 | 1 | 26.37 | 12,642 |
+| MiniMax OpenAI-compatible | `MiniMax-M3` | 22 | 456,843 | 452,073 | 4,770 | 22 | 0 | 35.06 | 4,929 |
+| MiniMax Anthropic-compatible | `MiniMax-M3` | 4 | 93,049 | 64,476 | 28,573 | 4 | 0 | 55.31 | 95,888 |
+| OpenAI-compatible fallback | `gpt-5.5` | 5 | 82,268 | 58,764 | 23,504 | 9 | 4 | 50.56 | 60,010 |
+| OpenRouter Anthropic-compatible | `deepseek/deepseek-v4-flash:nitro` | 9 | 235,221 | 196,113 | 39,108 | 9 | 0 | 107.16 | 32,928 |
+| OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 6 | 151,315 | 133,040 | 18,275 | 6 | 0 | 79.37 | 30,973 |
+| OpenRouter Responses-compatible | `deepseek/deepseek-v4-flash:nitro` | 27 | 266,117 | 205,554 | 60,563 | 27 | 0 | 99.28 | 19,905 |
+
+This table is the tokenomics core of the case study: it shows which external models actually served the benchmark, how much token volume they carried, whether fallback was used, and how fast each route returned output tokens.
+
+## Cache Behavior
+
+| Requests | Cacheable | Hits | Misses | Bypass | Hit rate | Latest occupancy |
+|---:|---:|---:|---:|---:|---:|---:|
+| 89 | 0 | 0 | 0 | 89 | n/a | 0.00% |
+
+All Harbor requests in this run were agent/tool-bearing Codex or Claude Code requests. Tool calls can read and write files, run shell commands, and depend on container state, so the router bypassed response caching by design.
+
+## Interpretation
+
+Every final run passed with reward `1.0`, which means the routed model groups were able to complete the coding task under both Codex CLI and Claude Code CLI. The report also shows why model-group evaluation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, and throughput vary materially by agent and group.
+
+For production buyers, the key result is that Smart LLM Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.

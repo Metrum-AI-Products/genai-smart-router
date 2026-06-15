@@ -1,0 +1,55 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 28px 0;
+}
+
+.panel,
+.panelWide {
+  border: 1px solid var(--metrum-border);
+  background:
+    linear-gradient(140deg, rgba(255, 49, 50, 0.08), rgba(204, 40, 175, 0.08), rgba(70, 92, 218, 0.08)),
+    var(--metrum-panel);
+  padding: 20px;
+}
+
+.panelWide {
+  grid-column: 1 / -1;
+}
+
+.heading {
+  margin-bottom: 14px;
+}
+
+.heading p {
+  margin: 0 0 4px;
+  color: var(--metrum-red);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.heading h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.note {
+  margin: 0 0 16px;
+  color: var(--metrum-text-muted);
+}
+
+.chart {
+  height: 320px;
+}
+
+.chartSmall {
+  height: 250px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -6,6 +6,8 @@ title: Usage Reporting
 
 Smart LLM Router records durable usage data for cost management, auditability, and model-group evaluation.
 
+`router-usage-report` is an Enterprise Edition administrative CLI. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation with access to the usage database. It is not exposed through the public browser documentation site as an interactive tool.
+
 <div class="contactBanner">
   <p>For dashboards, reports, or evaluation design, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>

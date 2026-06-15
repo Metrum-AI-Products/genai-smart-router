@@ -49,6 +49,8 @@ Smart LLM Router addresses the controllable layer:
 - Compare provider/model usage using durable reports.
 - Track usage by caller key, project, environment, model group, provider, model, hour, and IP.
 
+The Harbor case study in these docs shows the same principle numerically: successful agentic coding runs can differ substantially in token volume, latency, fallback use, and output throughput even when final reward score is identical. Those tokenomics are the operational signal that turns model routing from guesswork into policy.
+
 ## Routing And Governance
 
 ```mermaid
