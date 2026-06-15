@@ -324,14 +324,8 @@ if [[ ! -f "$ROOT/env.json" && -z "${OPENROUTER_API_KEY:-}" ]]; then
 fi
 
 CASES=(
-  "or-pareto-code openrouter openrouter/pareto-code:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-kimi-k27 openrouter moonshotai/kimi-k2.7-code:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-minimax-m3 openrouter minimax/minimax-m3:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-qwen37-max openrouter qwen/qwen3.7-max:nitro openai-chat https://openrouter.ai/api/v1"
   "or-deepseek-v4-flash openrouter deepseek/deepseek-v4-flash:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-glm51 openrouter z-ai/glm-5.1:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-qwen36-flash openrouter qwen/qwen3.6-flash:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-hy3-preview openrouter tencent/hy3-preview:nitro openai-chat https://openrouter.ai/api/v1"
+  "or-gemma-4-26b openrouter google/gemma-4-26b-a4b-it:nitro openai-chat https://openrouter.ai/api/v1"
 )
 
 for case_line in "${CASES[@]}"; do

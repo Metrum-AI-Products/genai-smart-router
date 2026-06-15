@@ -131,8 +131,8 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes intentionally use only OpenRouter, MiniMax, and Kimi/Moonshot upstream models. Active entries include Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, and OpenRouter entries such as DeepSeek V4 Flash Nitro, KAT-Coder-Pro V2, NVIDIA Nemotron 3 Nano, Mercury 2, and Ling 2.6 Flash.
-- MiniMax and Kimi can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and original OpenAI `gpt-5.5` at low non-tool weight.
+- MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
 ## API Key Flow
@@ -160,7 +160,6 @@ providers:
     key_id: minimax-default
     models:
       m3: { model: MiniMax-M3, tier: heavy }
-      m27-highspeed: { model: MiniMax-M2.7-highspeed, tier: balanced }
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -169,6 +168,33 @@ providers:
     key_id: openrouter-default
     models:
       deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
+      gemma-4-26b-a4b-it-nitro: { model: google/gemma-4-26b-a4b-it:nitro, tier: balanced }
+  openai:
+    base_url: https://api.openai.com/v1
+    dialect: openai-responses
+    api_key: ${OPENAI_API_KEY}
+    api_key_env: OPENAI_API_KEY
+    key_id: openai-default
+    models:
+      gpt-5.5: { model: gpt-5.5, tier: heavy }
+  openrouter_responses:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-responses
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-responses-default
+    models:
+      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
+  openrouter_anthropic:
+    base_url: https://openrouter.ai/api
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-anthropic-default
+    models:
+      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
+      gemma-4-26b-a4b-it-nitro: { model: google/gemma-4-26b-a4b-it:nitro, tier: balanced }
   kimi:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
@@ -183,14 +209,16 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
-      - { provider: minimax, model_ref: m3, weight: 30 }
-      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 56 }
+      - { provider: minimax, model_ref: m3, weight: 28 }
+      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 8 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 7 }
+      - { provider: openai, model_ref: gpt-5.5, weight: 1 }
 ```
 
 `model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
 
-Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI and Anthropic model IDs out of active groups.
+Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps original OpenAI at a low non-tool weight. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
 
 Agentic tool-call traffic can use a separate target set from ordinary text traffic. Mark a target with `tool_only: true` when it should only be considered for requests that include supported tools, such as Codex OpenAI Responses tool calls or Claude Code Anthropic tool calls:
 
@@ -199,12 +227,16 @@ models:
   big-coder:
     strategy: weighted
     targets:
-      - { provider: minimax, model_ref: m3, weight: 50 }
+      - { provider: minimax, model_ref: m3, weight: 49 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 30 }
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: openai, model_ref: gpt-5.5, weight: 1 }
       - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true }
+      - { provider: openrouter_responses, model_ref: deepseek-v4-flash-nitro, tool_only: true, weight: 5 }
       - { provider: minimax_anthropic, model_ref: m3, tool_only: true }
       - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, default_thinking: { type: enabled, budget_tokens: 512 } }
+      - { provider: openrouter_anthropic, model_ref: deepseek-v4-flash-nitro, tool_only: true, weight: 4 }
+      - { provider: openrouter_anthropic, model_ref: gemma-4-26b-a4b-it-nitro, tool_only: true, weight: 2 }
 ```
 
 Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
@@ -229,6 +261,13 @@ providers:
     api_key_env: MOONSHOT_API_KEY
     models:
       kimi-k2.7-code: { model: kimi-k2.7-code, tier: heavy }
+  openrouter_anthropic:
+    base_url: https://openrouter.ai/api
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    models:
 ```
 
 ## TypeScript Routing
@@ -420,12 +459,12 @@ KEEP_LIVE_E2E_WORKDIR=1 make e2e-live-c
 To run one live case:
 
 ```bash
-LIVE_E2E_CASE_REGEX=or-kimi-k27 make e2e-live-c
+LIVE_E2E_CASE_REGEX=or-deepseek-v4-flash make e2e-live-c
 ```
 
 ## CLI Smoke Tests
 
-The following commands were tested locally with `Claude Code 2.1.177`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `qwen/qwen3.7-max:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
+The following commands were tested locally with `Claude Code 2.1.177`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `deepseek/deepseek-v4-flash:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
 
 CLI install/update references:
 
@@ -487,7 +526,7 @@ models:
   cli-smoke:
     strategy: static
     targets:
-      - {{ provider: openrouter, model: "qwen/qwen3.7-max:nitro" }}
+      - {{ provider: openrouter, model: "deepseek/deepseek-v4-flash:nitro" }}
 callers:
   - id: readme-metrum-insights-dev
     user: readme
@@ -532,12 +571,12 @@ set +a
 Supported router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with low-latency fallback targets for routine work.
-medium     DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with balanced fallback targets for general work.
-high       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with premium fallback targets for complex work.
-default    DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with broad configured provider fallbacks.
-fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fallback targets for everyday work.
-big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
+small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.5 1% non-tool.
+medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.5 1% non-tool.
+high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
+default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
+fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
+big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.5 1% non-tool.
 ```
 
 The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard keys are typically limited to `default`, `fast`, and `small`; coding/premium keys can additionally use `medium`, `high`, and `big-coder`.
@@ -580,6 +619,24 @@ claude --bare --print --model claude-tools-smoke \
   "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
 
 test "$(cat claude_tool_smoke.txt)" = "claude-tool-ok"
+```
+
+OpenRouter-specific Claude Code tool smoke:
+
+```bash
+unset ANTHROPIC_API_KEY
+mkdir -p "$WORK/claude-openrouter-tool-work"
+cd "$WORK/claude-openrouter-tool-work"
+
+ANTHROPIC_BASE_URL="http://127.0.0.1:18081" \
+ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
+ANTHROPIC_MODEL="claude-tools-smoke-openrouter" \
+claude --bare --print --model claude-tools-smoke-openrouter \
+  --permission-mode bypassPermissions \
+  --allowedTools "Write,Bash" \
+  "Create claude_openrouter_tool_smoke.txt containing exactly claude-openrouter-tool-ok, run cat claude_openrouter_tool_smoke.txt, then finish with claude-openrouter-tool-ok."
+
+test "$(cat claude_openrouter_tool_smoke.txt)" = "claude-openrouter-tool-ok"
 ```
 
 ### Codex CLI
@@ -647,6 +704,28 @@ codex exec --ignore-user-config --ephemeral \
   "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 
 test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
+```
+
+OpenRouter-specific Codex tool smoke:
+
+```bash
+export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+mkdir -p "$WORK/codex-openrouter-tool-work"
+
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -C "$WORK/codex-openrouter-tool-work" \
+  -c 'model="agent-tools-smoke-openrouter"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_openrouter_tool_smoke.txt containing exactly codex-openrouter-tool-ok, run cat codex_openrouter_tool_smoke.txt, then finish with codex-openrouter-tool-ok." </dev/null
+
+test "$(cat "$WORK/codex-openrouter-tool-work/codex_openrouter_tool_smoke.txt")" = "codex-openrouter-tool-ok"
 ```
 
 Tool-bearing requests bypass the router response cache. They are intentionally routed to the provider every time because tool calls depend on external filesystem, shell, and agent state.

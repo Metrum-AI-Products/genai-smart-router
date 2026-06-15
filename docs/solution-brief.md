@@ -152,7 +152,7 @@ Model groups decouple client intent from provider implementation:
 - `big-coder`: coding-oriented weighted path for agentic coding tools.
 - `default`: general-purpose routing policy for common workloads.
 
-In the reference deployment, general model groups weight OpenRouter DeepSeek V4 Flash Nitro at 60% and MiniMax-M3 at 30%, with remaining provider fallbacks sharing 10%. The code-heavy group uses MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%.
+In the reference deployment, active groups are deliberately limited to models that have passed live agentic validation. General groups favor OpenRouter DeepSeek V4 Flash Nitro and MiniMax-M3, with smaller weights for OpenRouter Gemma 4 26B Nitro, direct Moonshot Kimi K2.7 Code, and a 1% non-tool original OpenAI path. The code-heavy group uses MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and the same 1% non-tool OpenAI path. Tool-bearing Codex and Claude Code traffic use only tool-validated targets, so tool use is not pinned to a single upstream vendor.
 
 ```mermaid
 flowchart LR
@@ -377,7 +377,7 @@ Reports include:
 - Average and maximum latency.
 - Hourly and daily usage tables.
 
-For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The current recorded production run is available in `docs/harbor-case-study.md`: 12/12 trials passed with reward `1.0` on June 15, 2026, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder` under the OpenRouter/MiniMax/Kimi-only upstream policy.
+For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The current recorded production run is available in `docs/harbor-case-study.md`: all final cells passed with reward `1.0` on June 15, 2026, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder` after pruning unvalidated OpenRouter candidates.
 
 ## Deployment Options
 
@@ -497,6 +497,12 @@ claude --bare --print --model claude-tools-smoke \
   --permission-mode bypassPermissions \
   --allowedTools "Write,Bash" \
   "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+
+# OpenRouter Anthropic-compatible tool route:
+claude --bare --print --model claude-tools-smoke-openrouter \
+  --permission-mode bypassPermissions \
+  --allowedTools "Write,Bash" \
+  "Create claude_openrouter_tool_smoke.txt containing exactly claude-openrouter-tool-ok, run cat claude_openrouter_tool_smoke.txt, then finish with claude-openrouter-tool-ok."
 ```
 
 ```bash
@@ -513,6 +519,19 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+
+# OpenRouter Responses-compatible tool route:
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
+  -c 'model="agent-tools-smoke-openrouter"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Create codex_openrouter_tool_smoke.txt containing exactly codex-openrouter-tool-ok, run cat codex_openrouter_tool_smoke.txt, then finish with codex-openrouter-tool-ok." </dev/null
 ```
 
 Requests that include agent tools bypass the response cache so the router never replays stale filesystem, shell, or tool-call outcomes.

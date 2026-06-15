@@ -107,6 +107,9 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	assertDefaultGroupTargets(t, cfg.Models["default"])
 	assertAnthropicCompatibleProvider(t, cfg.Provider["minimax_anthropic"], "m3", "MiniMax-M3")
 	assertAnthropicCompatibleProvider(t, cfg.Provider["kimi_anthropic"], "kimi-k2.7-code", "kimi-k2.7-code")
+	assertResponsesCompatibleProvider(t, cfg.Provider["openrouter_responses"], "deepseek-v4-flash-nitro", "deepseek/deepseek-v4-flash:nitro")
+	assertAnthropicCompatibleProvider(t, cfg.Provider["openrouter_anthropic"], "deepseek-v4-flash-nitro", "deepseek/deepseek-v4-flash:nitro")
+	assertAnthropicCompatibleProvider(t, cfg.Provider["openrouter_anthropic"], "gemma-4-26b-a4b-it-nitro", "google/gemma-4-26b-a4b-it:nitro")
 	for _, name := range []string{"small", "medium", "high"} {
 		group, ok := cfg.Models[name]
 		if !ok {
@@ -129,6 +132,24 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "agent-tools-smoke-openrouter" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "deepseek/deepseek-v4-flash:nitro" {
+				t.Fatalf("example config agent-tools-smoke-openrouter=%#v, want static OpenRouter DeepSeek V4 Flash responses", group)
+			}
+			continue
+		}
+		if name == "claude-tools-smoke-openrouter" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "deepseek/deepseek-v4-flash:nitro" {
+				t.Fatalf("example config claude-tools-smoke-openrouter=%#v, want static OpenRouter DeepSeek V4 Flash Anthropic-compatible target", group)
+			}
+			continue
+		}
+		if name == "claude-tools-smoke-openrouter-gemma" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "google/gemma-4-26b-a4b-it:nitro" {
+				t.Fatalf("example config claude-tools-smoke-openrouter-gemma=%#v, want static OpenRouter Gemma Anthropic-compatible target", group)
+			}
+			continue
+		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
@@ -136,7 +157,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "agent-tools-smoke", "claude-tools-smoke"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -157,12 +178,10 @@ func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
 		"minimax:MiniMax-M3":                          "MiniMax-M3",
-		"minimax:MiniMax-M2.7-highspeed":              "MiniMax-M2.7-highspeed",
 		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
-		"openrouter:kwaipilot/kat-coder-pro-v2:nitro": "kwaipilot/kat-coder-pro-v2:nitro",
-		"openrouter:nvidia/nemotron-3-nano-30b-a3b":   "nvidia/nemotron-3-nano-30b-a3b",
-		"openrouter:inception/mercury-2":              "inception/mercury-2",
-		"openrouter:inclusionai/ling-2.6-flash":       "inclusionai/ling-2.6-flash",
+		"openrouter:deepseek/deepseek-v4-flash:nitro": "deepseek/deepseek-v4-flash:nitro",
+		"openrouter:google/gemma-4-26b-a4b-it:nitro":  "google/gemma-4-26b-a4b-it:nitro",
+		"openai:gpt-5.5":                              "gpt-5.5",
 	}
 	for name, model := range want {
 		found := false
@@ -188,29 +207,50 @@ func assertAnthropicCompatibleProvider(t *testing.T, provider ProviderConfig, re
 	}
 }
 
+func assertResponsesCompatibleProvider(t *testing.T, provider ProviderConfig, ref, model string) {
+	t.Helper()
+	if provider.Dialect != "openai-responses" || provider.Models[ref].Model != model {
+		t.Fatalf("provider not configured for OpenAI Responses-compatible skin: %#v", provider)
+	}
+}
+
 func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	t.Helper()
 	totalWeight := 0
 	m3Weight := 0
 	deepSeekWeight := 0
 	kimiWeight := 0
+	gemmaWeight := 0
+	openAIWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
+	codexOpenRouterToolTarget := false
 	claudeMiniMaxToolTarget := false
 	claudeKimiToolTarget := false
+	claudeOpenRouterToolTarget := false
+	claudeGemmaToolTarget := false
 	for _, target := range group.Targets {
-		if activeTargetUsesDisallowedModel(target) {
-			t.Fatalf("example config group %s has disallowed active target %#v", name, target)
+		if violatesCurrentRoutingPolicy(target) {
+			t.Fatalf("example config group %s has routing-policy violation %#v", name, target)
 		}
 		if target.ToolOnly {
 			if target.Provider == "minimax" && target.Model == "MiniMax-M3" && target.Dialect == "openai-responses" {
 				codexToolTarget = true
+			}
+			if target.Provider == "openrouter_responses" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+				codexOpenRouterToolTarget = true
 			}
 			if target.Provider == "minimax_anthropic" && target.Model == "MiniMax-M3" {
 				claudeMiniMaxToolTarget = true
 			}
 			if target.Provider == "kimi_anthropic" && target.Model == "kimi-k2.7-code" && target.DefaultThinking["type"] == "enabled" {
 				claudeKimiToolTarget = true
+			}
+			if target.Provider == "openrouter_anthropic" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+				claudeOpenRouterToolTarget = true
+			}
+			if target.Provider == "openrouter_anthropic" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
+				claudeGemmaToolTarget = true
 			}
 			continue
 		}
@@ -225,30 +265,50 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "kimi" && target.Model == "kimi-k2.7-code" {
 			kimiWeight += target.Weight
 		}
-	}
-	if !codexToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget {
-		t.Fatalf("example config group %s missing tool-only targets codex=%v minimax=%v kimi=%v", name, codexToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget)
-	}
-	if name == "big-coder" {
-		if normalTargets != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
-			t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d normal_targets=%d, want 50/30/20 over 3 normal targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, normalTargets)
+		if target.Provider == "openrouter" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
+			gemmaWeight += target.Weight
 		}
-		return
+		if target.Provider == "openai" && target.Model == "gpt-5.5" {
+			openAIWeight += target.Weight
+		}
 	}
-	if totalWeight == 0 || m3Weight*10 != totalWeight*3 || deepSeekWeight*10 != totalWeight*6 {
-		t.Fatalf("example config group %s weights m3=%d deepseek=%d total=%d, want 30%%/60%%", name, m3Weight, deepSeekWeight, totalWeight)
+	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
+		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
+	}
+	want := map[string]struct {
+		deepSeek, m3, gemma, kimi, openAI, targets int
+	}{
+		"default":   {56, 28, 8, 7, 1, 5},
+		"fast":      {61, 28, 5, 5, 1, 5},
+		"small":     {61, 30, 4, 4, 1, 5},
+		"medium":    {56, 27, 8, 8, 1, 5},
+		"high":      {51, 28, 10, 10, 1, 5},
+		"big-coder": {20, 49, 0, 30, 1, 4},
+	}
+	expect, ok := want[name]
+	if !ok {
+		t.Fatalf("example config group %s has no expected weight policy", name)
+	}
+	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI {
+		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d kimi=%d openai=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, totalWeight, normalTargets, expect)
 	}
 }
 
-func activeTargetUsesDisallowedModel(target Target) bool {
-	if target.Provider == "openai" || target.Provider == "anthropic" {
+func violatesCurrentRoutingPolicy(target Target) bool {
+	needle := strings.ToLower(target.Provider + "/" + target.Model + "/" + target.ModelRef)
+	if strings.Contains(needle, "moonshotai/kimi") {
 		return true
 	}
-	needle := strings.ToLower(target.Model + "/" + target.ModelRef)
-	for _, bad := range []string{"anthropic/", "claude", "gpt-5", "gpt54", "gpt55", "openai/gpt"} {
+	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
 			return true
 		}
+	}
+	if target.ToolOnly && (target.Provider == "openai" || target.Provider == "anthropic") {
+		return true
+	}
+	if (target.Provider == "openai" || target.Provider == "anthropic") && target.Weight > 1 {
+		return true
 	}
 	return false
 }

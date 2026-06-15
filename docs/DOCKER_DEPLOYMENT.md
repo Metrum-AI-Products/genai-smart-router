@@ -173,12 +173,12 @@ docker compose up -d
 Supported router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with low-latency fallback targets for routine work.
-medium     DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with balanced fallback targets for general work.
-high       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with premium fallback targets for complex work.
-default    DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with broad configured provider fallbacks.
-fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fallback targets for everyday work.
-big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
+small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.5 1% non-tool.
+medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.5 1% non-tool.
+high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
+default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
+fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
+big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.5 1% non-tool.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
@@ -224,6 +224,7 @@ codex \
 ```
 
 Tool-capable acceptance checks should exercise the real agent tool paths, not just text echo. Use `claude-tools-smoke` with Claude Code over the Anthropic Messages API and `agent-tools-smoke` with Codex over OpenAI Responses. Tool-bearing requests are not cacheable, because their results depend on shell/filesystem/tool state.
+Use `claude-tools-smoke-openrouter` and `agent-tools-smoke-openrouter` when the acceptance gate must specifically validate OpenRouter's Anthropic-compatible and Responses-compatible tool routes.
 
 Claude Code tool smoke:
 

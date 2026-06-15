@@ -1220,12 +1220,12 @@ func TestOpenRouterAnthropicSkinUsesBearerAuthAndMessagesPath(t *testing.T) {
 		AuthScheme: "bearer",
 		APIKey:     "openrouter-key",
 		Models: map[string]ProviderModel{
-			"claude-sonnet-46-nitro": {Model: "anthropic/claude-sonnet-4.6:nitro", Weight: 1},
+			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1},
 		},
 	}
 	cfg.Models["openrouter-anthropic"] = ModelGroup{
 		Strategy: "static",
-		Targets:  []Target{{Provider: "openrouter_anthropic", ModelRef: "claude-sonnet-46-nitro"}},
+		Targets:  []Target{{Provider: "openrouter_anthropic", ModelRef: "qwen3-coder-30b-nitro"}},
 	}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "openrouter-anthropic")
 	svc, err := New(cfg)
@@ -1250,7 +1250,7 @@ func TestOpenRouterAnthropicSkinUsesBearerAuthAndMessagesPath(t *testing.T) {
 	if gotVersion != "2023-06-01" {
 		t.Fatalf("missing Anthropic-Version, got %q", gotVersion)
 	}
-	if gotModel != "anthropic/claude-sonnet-4.6:nitro" {
+	if gotModel != "qwen/qwen3-coder-30b-a3b-instruct:nitro" {
 		t.Fatalf("upstream model=%q", gotModel)
 	}
 }
@@ -1348,6 +1348,127 @@ func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
 	}
 	if gotPath != "/v1/responses" || gotModel != "MiniMax-M3" {
 		t.Fatalf("path/model=%s/%s, want /v1/responses MiniMax-M3", gotPath, gotModel)
+	}
+}
+
+func TestResponsesToolPassthroughCanUseOpenRouterResponsesTarget(t *testing.T) {
+	var gotPath, gotAuth, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_openrouter",
+			"object":      "response",
+			"status":      "completed",
+			"model":       gotModel,
+			"output_text": "ok",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
+	cfg.Provider["openrouter_responses"] = ProviderConfig{
+		BaseURL: upstream.URL + "/api/v1",
+		Dialect: "openai-responses",
+		APIKey:  "openrouter-key",
+		Models: map[string]ProviderModel{
+			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1},
+		},
+	}
+	cfg.Models["agent-tools-smoke-openrouter"] = ModelGroup{
+		Strategy: "static",
+		Targets:  []Target{{Provider: "openrouter_responses", ModelRef: "qwen3-coder-30b-nitro", Dialect: "openai-responses"}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "agent-tools-smoke-openrouter")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"agent-tools-smoke-openrouter","input":"hi","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/api/v1/responses" || gotModel != "qwen/qwen3-coder-30b-a3b-instruct:nitro" {
+		t.Fatalf("path/model=%s/%s, want /api/v1/responses qwen/qwen3-coder-30b-a3b-instruct:nitro", gotPath, gotModel)
+	}
+	if gotAuth != "Bearer openrouter-key" {
+		t.Fatalf("unexpected auth header %q", gotAuth)
+	}
+}
+
+func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
+	var gotPath, gotAuth, gotAPIKey, gotVersion, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotVersion = r.Header.Get("Anthropic-Version")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_openrouter_tool",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       gotModel,
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
+	cfg.Provider["openrouter_anthropic"] = ProviderConfig{
+		BaseURL:    upstream.URL + "/api",
+		Dialect:    "anthropic",
+		AuthScheme: "bearer",
+		APIKey:     "openrouter-key",
+		Models: map[string]ProviderModel{
+			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1},
+		},
+	}
+	cfg.Models["claude-tools-smoke-openrouter"] = ModelGroup{
+		Strategy: "static",
+		Targets:  []Target{{Provider: "openrouter_anthropic", ModelRef: "qwen3-coder-30b-nitro"}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "claude-tools-smoke-openrouter")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"claude-tools-smoke-openrouter","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"echo","input_schema":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/api/v1/messages" || gotModel != "qwen/qwen3-coder-30b-a3b-instruct:nitro" {
+		t.Fatalf("path/model=%s/%s, want /api/v1/messages qwen/qwen3-coder-30b-a3b-instruct:nitro", gotPath, gotModel)
+	}
+	if gotAuth != "Bearer openrouter-key" || gotAPIKey != "" {
+		t.Fatalf("unexpected auth headers Authorization=%q X-API-Key=%q", gotAuth, gotAPIKey)
+	}
+	if gotVersion != "2023-06-01" {
+		t.Fatalf("missing Anthropic-Version, got %q", gotVersion)
 	}
 }
 

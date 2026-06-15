@@ -1,104 +1,123 @@
-# Harbor Agentic Coding Case Study
+# Harbor Cleaned-Model Case Study
 
-This case study records a production-hosted Smart LLM Router evaluation using Harbor with both Codex CLI and Claude Code CLI after the 2026-06-15 routing-policy update. The run validates that the router can serve OpenAI Responses-style Codex traffic and Anthropic Messages-style Claude Code traffic through the same hosted endpoint while active upstream model IDs remain limited to OpenRouter, MiniMax, and Kimi/Moonshot.
-
-## Run Summary
-
-- Run ID: `case-current-policy-20260615T004637Z`
+- Case ID: `harbor-cleaned-20260615T031649Z`
+- Task: `aider/polyglot_python_two-bucket`
 - Hosted router: `https://llm-api-engg.metrum.ai`
-- Harbor task: `aider/polyglot_python_two-bucket`
-- Caller token case/environment: `case-current-policy-20260615t004637z`
 - Agents: `codex`, `claude-code`
-- Model groups: `default`, `fast`, `small`, `medium`, `high`, `big-coder`
-- Matrix size: 12 cells, one Harbor trial per `{agent, model_group}`
-- Result: 12/12 cells passed with Harbor reward `1.0` and zero Harbor exceptions
-- Wall-clock agent time recorded by runner: 2694 seconds across all cells
-- Production usage report: `examples/harbor-algotune-pca/reports/case-current-policy-20260615T004637Z/usage.md`
+- Goal: implement `two_bucket.py` so Harbor verifier accepts the bucket-measuring algorithm and required `ValueError` behavior.
+- Reward score: Harbor reports `1.0` when the submitted artifact passes the verifier for the task; `0.0` means the verifier rejected the artifact. Exceptions are tracked separately because an agent can produce a passing artifact but still exit nonzero.
 
-## Task And Goal
+## Cleaned Routing Policy
 
-The Harbor task asked each agent to modify `two_bucket.py` for the classic two-bucket measuring problem. Given two bucket sizes, a target volume, and the bucket that must be filled first, the implementation must return the number of actions needed, which bucket contains the target volume, and the remaining volume in the other bucket. Impossible inputs must raise `ValueError` with a message. Harbor verified the solution with the task test suite and reported reward `1.0` when the generated implementation passed.
+OpenRouter `moonshotai/kimi-k2.7-code:nitro` and unvalidated candidate models were removed from local and production configs. Kimi K2.7 Code remains through the direct Moonshot AI endpoint. Active tool-capable routes use MiniMax M3, direct Moonshot Kimi, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro where validated. Original OpenAI is retained as a 1% non-tool target; original Anthropic is not active because no Anthropic key is currently present in local or production env.
 
-## Current Model Groups
-
-Non-tool requests use the weighted targets. Tool-bearing Codex requests use the Responses-compatible tool target, and tool-bearing Claude Code requests use Anthropic-compatible MiniMax/Kimi targets. Tool requests bypass the response cache by design.
-
-| Group | Weighted Non-Tool Targets | Tool-Compatible Targets |
+| Model Group | Normal Target Weights | Tool-Capable Targets |
 |---|---|---|
-| `default` | `minimax/MiniMax-M3` 48 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 96 (60.0%)<br>`openrouter/qwen/qwen3.6-flash:nitro` 2 (1.2%)<br>`openrouter/kwaipilot/kat-coder-pro-v2:nitro` 2 (1.2%)<br>`openrouter/nvidia/nemotron-3-nano-30b-a3b` 2 (1.2%)<br>`openrouter/inception/mercury-2` 2 (1.2%)<br>`openrouter/inclusionai/ling-2.6-flash` 2 (1.2%)<br>`openrouter/z-ai/glm-5.1:nitro` 2 (1.2%)<br>`openrouter/tencent/hy3-preview:nitro` 2 (1.2%)<br>`minimax/MiniMax-M2.7-highspeed` 1 (0.6%)<br>`kimi/kimi-k2.7-code` 1 (0.6%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
-| `fast` | `minimax/MiniMax-M3` 39 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 78 (60.0%)<br>`openrouter/qwen/qwen3.6-flash:nitro` 2 (1.5%)<br>`openrouter/nvidia/nemotron-3-nano-30b-a3b` 2 (1.5%)<br>`openrouter/inception/mercury-2` 2 (1.5%)<br>`openrouter/inclusionai/ling-2.6-flash` 2 (1.5%)<br>`minimax/MiniMax-M2.7-highspeed` 3 (2.3%)<br>`kimi/kimi-k2.7-code` 2 (1.5%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
-| `small` | `minimax/MiniMax-M3` 30 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 60 (60.0%)<br>`openrouter/qwen/qwen3.6-flash:nitro` 2 (2.0%)<br>`openrouter/nvidia/nemotron-3-nano-30b-a3b` 2 (2.0%)<br>`openrouter/inception/mercury-2` 2 (2.0%)<br>`openrouter/inclusionai/ling-2.6-flash` 1 (1.0%)<br>`minimax/MiniMax-M2.7-highspeed` 2 (2.0%)<br>`kimi/kimi-k2.7-code` 1 (1.0%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
-| `medium` | `minimax/MiniMax-M3` 39 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 78 (60.0%)<br>`openrouter/qwen/qwen3.6-flash:nitro` 2 (1.5%)<br>`openrouter/kwaipilot/kat-coder-pro-v2:nitro` 2 (1.5%)<br>`openrouter/nvidia/nemotron-3-nano-30b-a3b` 2 (1.5%)<br>`openrouter/inception/mercury-2` 2 (1.5%)<br>`openrouter/inclusionai/ling-2.6-flash` 1 (0.8%)<br>`openrouter/z-ai/glm-5.1:nitro` 2 (1.5%)<br>`kimi/kimi-k2.7-code` 2 (1.5%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
-| `high` | `minimax/MiniMax-M3` 42 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 84 (60.0%)<br>`openrouter/kwaipilot/kat-coder-pro-v2:nitro` 2 (1.4%)<br>`openrouter/nvidia/nemotron-3-nano-30b-a3b` 2 (1.4%)<br>`openrouter/inception/mercury-2` 2 (1.4%)<br>`openrouter/inclusionai/ling-2.6-flash` 2 (1.4%)<br>`openrouter/z-ai/glm-5.1:nitro` 2 (1.4%)<br>`openrouter/qwen/qwen3.6-flash:nitro` 2 (1.4%)<br>`openrouter/tencent/hy3-preview:nitro` 1 (0.7%)<br>`kimi/kimi-k2.7-code` 1 (0.7%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
-| `big-coder` | `minimax/MiniMax-M3` 50 (50.0%)<br>`kimi/kimi-k2.7-code` 30 (30.0%)<br>`openrouter/deepseek/deepseek-v4-flash:nitro` 20 (20.0%) | `minimax/MiniMax-M3` (openai-responses)<br>`minimax_anthropic/MiniMax-M3` (anthropic)<br>`kimi_anthropic/kimi-k2.7-code` (anthropic) |
+| `default` | DeepSeek 56%, MiniMax-M3 28%, Gemma 8%, direct Kimi 7%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `fast` | DeepSeek 61%, MiniMax-M3 28%, Gemma 5%, direct Kimi 5%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `small` | DeepSeek 61%, MiniMax-M3 30%, Gemma 4%, direct Kimi 4%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `medium` | DeepSeek 56%, MiniMax-M3 27%, Gemma 8%, direct Kimi 8%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `high` | DeepSeek 51%, MiniMax-M3 28%, Gemma 10%, direct Kimi 10%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `big-coder` | DeepSeek 20%, MiniMax-M3 49%, direct Kimi 30%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
 
 ## Harbor Results
 
-| Agent | Model Group | Status | Elapsed Seconds | Reward | Errors | Job Result |
-|---|---|---|---:|---:|---:|---|
-| `codex` | `default` | ok | 165 | 1 | 0 | `jobs/2026-06-15__00-47-31/result.json` |
-| `codex` | `fast` | ok | 125 | 1 | 0 | `jobs/2026-06-15__00-50-16/result.json` |
-| `codex` | `small` | ok | 210 | 1 | 0 | `jobs/2026-06-15__00-52-20/result.json` |
-| `codex` | `medium` | ok | 79 | 1 | 0 | `jobs/2026-06-15__00-55-50/result.json` |
-| `codex` | `high` | ok | 89 | 1 | 0 | `jobs/2026-06-15__00-57-10/result.json` |
-| `codex` | `big-coder` | ok | 201 | 1 | 0 | `jobs/2026-06-15__00-58-39/result.json` |
-| `claude-code` | `default` | ok | 313 | 1 | 0 | `jobs/2026-06-15__01-01-59/result.json` |
-| `claude-code` | `fast` | ok | 440 | 1 | 0 | `jobs/2026-06-15__01-07-12/result.json` |
-| `claude-code` | `small` | ok | 278 | 1 | 0 | `jobs/2026-06-15__01-14-33/result.json` |
-| `claude-code` | `medium` | ok | 108 | 1 | 0 | `jobs/2026-06-15__01-19-11/result.json` |
-| `claude-code` | `high` | ok | 433 | 1 | 0 | `jobs/2026-06-15__01-20-59/result.json` |
-| `claude-code` | `big-coder` | ok | 253 | 1 | 0 | `jobs/2026-06-15__01-28-11/result.json` |
+| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor Input | Harbor Cache | Harbor Output | Job | Notes |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| `codex` | `default` | ok | 1 | 0 | 139 | 130360 | 80169 | 11314 | `jobs/2026-06-15__03-17-15/result.json` |  |
+| `codex` | `fast` | ok | 1 | 0 | 358 | 122024 | 45589 | 23731 | `jobs/2026-06-15__03-19-35/result.json` |  |
+| `codex` | `small` | ok | 1 | 0 | 156 | 145340 | 110951 | 8734 | `jobs/2026-06-15__03-25-32/result.json` |  |
+| `codex` | `medium` | ok | 1 | 0 | 116 | 49735 | 34133 | 10382 | `jobs/2026-06-15__03-56-49/result.json` | clean rerun after original reward 1.0 / NonZeroAgentExitCodeError |
+| `codex` | `high` | ok | 1 | 0 | 119 | 52790 | 7196 | 6519 | `jobs/2026-06-15__03-32-50/result.json` |  |
+| `codex` | `big-coder` | ok | 1 | 0 | 91 | 38315 | 9650 | 4630 | `jobs/2026-06-15__03-34-48/result.json` |  |
+| `claude-code` | `default` | ok | 1 | 0 | 405 | 134173 | 18162 | 25070 | `jobs/2026-06-15__03-36-20/result.json` |  |
+| `claude-code` | `fast` | ok | 1 | 0 | 128 | 86152 | 37888 | 9236 | `jobs/2026-06-15__03-43-04/result.json` |  |
+| `claude-code` | `small` | ok | 1 | 0 | 96 | 108230 | 39268 | 4887 | `jobs/2026-06-15__03-45-13/result.json` |  |
+| `claude-code` | `medium` | ok | 1 | 0 | 131 | 85710 | 38656 | 11781 | `jobs/2026-06-15__03-46-50/result.json` |  |
+| `claude-code` | `high` | ok | 1 | 0 | 267 | 85477 | 114 | 22646 | `jobs/2026-06-15__03-49-01/result.json` |  |
+| `claude-code` | `big-coder` | ok | 1 | 0 | 171 | 85437 | 18162 | 15826 | `jobs/2026-06-15__03-53-28/result.json` |  |
 
-## Measurement Highlights
+## Scoped Router Usage
 
-- Requests: `121`
+- Requests: `89`
 - Errors: `1`
-- Tokens: `1682613` total, `1105777` input, `111172` output
-- Cache: `0` hits, `0` misses, `121` bypass
-- Upstream attempts: `115`; fallbacks: `1`; streaming requests: `114`
-- Latency: `15727 ms` avg, `264658 ms` max
-- Throughput: upstream `54.26` output tok/s / `3080.14` total tok/s; downstream `790700.29` output tok/s / `11954589.23` total tok/s
-- One upstream `502` occurred during `claude-code/high` on `minimax_anthropic/MiniMax-M3`; the router logged one fallback and the Harbor cell still passed with reward `1.0`.
-- Cache hits and misses are zero because all agent/tool-bearing requests bypass the response cache.
+- Tokens: `1457139` total, `1149320` input, `178283` output
+- Attempts: `86`; fallbacks: `5`; streaming requests: `82`
+- Cache: `0` hits, `0` misses, `89` bypass
+- Avg upstream throughput: `68.86` output tok/s, `2889.24` total tok/s
+- Avg latency: `21493 ms`; max latency: `278090 ms`
+
+### Cache Stats
+
+| Requests | Cacheable | Hits | Misses | Bypass | Hit Rate | Bypass Rate | Latest Items | Latest Bytes | Max Bytes | Latest Occupancy | Avg Occupancy | Max Occupancy |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 89 | 0 | 0 | 0 | 89 | n/a | 100.00% | 0 | 0 | 134217728 | 0.00% | 0.00% | 0.00% |
+
+All Harbor requests in this run were agent/tool-bearing Codex or Claude Code requests, so the router bypassed response caching by design. Tool calls can read and write files, run shell commands, and depend on container state, so reusing a cached assistant response would be unsafe even when prompts look similar.
 
 ### Usage By External Model
 
-| Provider | Model | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| minimax | MiniMax-M3 | 67 | 0 | 894058 | 852511 | 41547 | 0 | 0 | 67 | 67 | 0 | 67 | 61.19 | 3112.19 | 304240.80 | 8403135.57 | 8220 | 83368 | 8217 | 83365 |
-| kimi_anthropic | kimi-k2.7-code | 22 | 0 | 527309 | 38071 | 23574 | 0 | 0 | 22 | 22 | 0 | 22 | 36.01 | 4891.11 | 1071545.45 | 23968590.91 | 22241 | 113653 | 22240 | 113652 |
-| minimax_anthropic | MiniMax-M3 | 25 | 1 | 261246 | 215195 | 46051 | 0 | 0 | 25 | 26 | 1 | 25 | 51.66 | 1330.63 | 1891291.67 | 10856229.17 | 34520 | 264658 | 24930 | 254254 |
-|  |  | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 0 | 0 | n/a | n/a | n/a | n/a | 0 | 0 | 0 | 0 |
+|Provider|Model|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|(router)|(metadata)|8|1|0|0|0|0|0|1|n/a|n/a|10|84|
+|kimi_anthropic|kimi-k2.7-code|8|0|172326|39300|3490|9|1|8|26.37|3957.61|12642|55614|
+|minimax|MiniMax-M3|22|0|456843|452073|4770|22|0|22|35.06|4915.38|4929|14942|
+|minimax_anthropic|MiniMax-M3|4|0|93049|64476|28573|4|0|4|55.31|889.89|95888|276137|
+|openai|gpt-5.5|5|0|82268|58764|23504|9|4|5|50.56|2335.98|60010|278090|
+|openrouter_anthropic|deepseek/deepseek-v4-flash:nitro|9|0|235221|196113|39108|9|0|9|107.16|2932.31|32928|74085|
+|openrouter_anthropic|google/gemma-4-26b-a4b-it:nitro|6|0|151315|133040|18275|6|0|6|79.37|1832.87|30973|81864|
+|openrouter_responses|deepseek/deepseek-v4-flash:nitro|27|0|266117|205554|60563|27|0|27|99.28|1540.81|19905|73196|
 
-### Usage By Router Model Group
+### Usage By Model Group
 
-| Model Group | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| fast | 30 | 0 | 460173 | 231644 | 15281 | 0 | 0 | 30 | 30 | 0 | 30 | 57.60 | 3078.20 | 394104.44 | 13899950.00 | 7911 | 25727 | 7910 | 25726 |
-| small | 28 | 0 | 427687 | 358430 | 30089 | 0 | 0 | 28 | 28 | 0 | 28 | 61.20 | 3301.11 | 829375.00 | 10572630.95 | 14021 | 157768 | 14019 | 157767 |
-| big-coder | 16 | 0 | 288516 | 187456 | 21956 | 0 | 0 | 16 | 16 | 0 | 16 | 53.58 | 3144.74 | 1001218.75 | 14402937.50 | 22879 | 113653 | 22877 | 113652 |
-| default | 17 | 0 | 204324 | 157612 | 29048 | 0 | 0 | 17 | 17 | 0 | 17 | 50.66 | 2266.17 | 1561200.98 | 9285323.53 | 21308 | 254256 | 21306 | 254254 |
-| high | 11 | 1 | 151001 | 82999 | 9890 | 0 | 0 | 11 | 12 | 1 | 11 | 54.61 | 2940.23 | 775491.67 | 11150158.33 | 40070 | 264658 | 17610 | 86080 |
-| medium | 12 | 0 | 150912 | 87636 | 4908 | 0 | 0 | 12 | 12 | 0 | 12 | 35.50 | 3753.00 | 332388.89 | 11503111.11 | 8670 | 54256 | 8668 | 54255 |
-|  | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 0 | 0 | n/a | n/a | n/a | n/a | 0 | 0 | 0 | 0 |
+|Group|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|(metadata)|7|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|big-coder|8|0|143710|105590|20456|9|1|8|73.68|1930.38|22925|63119|
+|default|18|0|300419|246371|36384|18|0|18|62.51|3569.96|25354|276137|
+|fast|11|0|241143|170288|32967|12|1|11|50.94|3366.08|36587|278090|
+|high|10|0|167318|138153|29165|10|0|10|84.13|1588.67|30481|94882|
+|medium|19|1|358962|274616|45690|19|1|19|88.56|2763.33|20986|73196|
+|small|16|0|245587|214302|13621|18|2|16|54.21|3229.55|10443|39477|
 
-### Usage By Client
+### Usage By Agent Client
 
-| Client | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| codex | 73 | 0 | 894058 | 852511 | 41547 | 0 | 0 | 73 | 67 | 0 | 67 | 61.19 | 3112.19 | 304240.80 | 8403135.57 | 7544 | 83368 | 8217 | 83365 |
-| claude-code | 47 | 1 | 788555 | 253266 | 69625 | 0 | 0 | 47 | 48 | 1 | 47 | 44.18 | 3033.47 | 1499239.13 | 17127358.70 | 28772 | 264658 | 23644 | 254254 |
-| curl/8.5.0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | n/a | n/a | n/a | n/a | 0 | 0 | 0 | 0 |
+|Client|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|claude-code|27|0|651911|432929|89446|28|1|27|69.36|2689.20|35810|276137|
+|codex|62|1|805228|716391|88837|58|4|55|68.61|2989.26|15258|278090|
 
-### Usage By Status
+### Usage By Internal Case Token
 
-| Status | Calls | Errors | Tokens | Input | Output | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 200 | 120 | 0 | 1682613 | 1105777 | 111172 | 0 | 0 | 120 | 113 | 0 | 113 | 54.26 | 3080.14 | 790700.29 | 11954589.23 | 13653 | 254256 | 14497 | 254254 |
-| 502 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 2 | 1 | 1 | n/a | n/a | n/a | n/a | 264658 | 264658 | 0 | 0 |
+|User|Requested Model|Token ID|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|claude-code-big-coder|big-coder|rtr_metrum_claude-code-big-coder_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-big-coder|4|0|100765|67275|15826|4|0|4|83.51|1760.73|33218|63119|
+|claude-code-default|default|rtr_metrum_claude-code-default_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-default|6|0|158745|116011|25070|6|0|6|50.26|3000.21|60997|276137|
+|claude-code-fast|fast|rtr_metrum_claude-code-fast_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-fast|4|0|95388|48264|9236|4|0|4|65.28|4019.25|22404|74085|
+|claude-code-high|high|rtr_metrum_claude-code-high_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-high|4|0|108009|85363|22646|4|0|4|105.16|961.79|57179|94882|
+|claude-code-medium|medium|rtr_metrum_claude-code-medium_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-medium|4|0|97491|47054|11781|4|0|4|84.19|3266.55|22821|47087|
+|claude-code-small|small|rtr_metrum_claude-code-small_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-small|5|0|91513|68962|4887|6|1|5|43.75|2914.78|11682|32670|
+|codex-big-coder||rtr_metrum_codex-big-coder_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-big-coder|1|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-big-coder|big-coder|rtr_metrum_codex-big-coder_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-big-coder|4|0|42945|38315|4630|5|1|4|63.84|2100.03|12632|33283|
+|codex-default||rtr_metrum_codex-default_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-default|1|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-default|default|rtr_metrum_codex-default_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-default|12|0|141674|130360|11314|12|0|12|68.63|3854.83|7533|41253|
+|codex-fast||rtr_metrum_codex-fast_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-fast|1|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-fast|fast|rtr_metrum_codex-fast_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-fast|7|0|145755|122024|23731|8|1|7|42.74|2992.84|44692|278090|
+|codex-high||rtr_metrum_codex-high_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-high|1|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-high|high|rtr_metrum_codex-high_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-high|6|0|59309|52790|6519|6|0|6|70.10|2006.58|12682|55450|
+|codex-medium||rtr_metrum_codex-medium_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-medium|2|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-medium|medium|rtr_metrum_codex-medium_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-medium|15|1|261471|227562|33909|15|1|15|89.81|2619.55|20497|73196|
+|codex-small||rtr_metrum_codex-small_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-small|1|0|0|0|0|0|0|0|n/a|n/a|0|0|
+|codex-small|small|rtr_metrum_codex-small_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-codex-small|11|0|154074|145340|8734|12|1|11|58.96|3372.63|9880|39477|
 
-## Artifacts
+### Usage By Caller IP
 
-- Runner results: `examples/harbor-algotune-pca/runs/case-current-policy-20260615T004637Z/results.tsv`
-- Production usage report: `examples/harbor-algotune-pca/reports/case-current-policy-20260615T004637Z/usage.md`
-- Raw Harbor job outputs live under the local Harbor `jobs/` directory and are not committed.
+|Caller IP|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|69.212.113.95|89|1|1457139|1149320|178283|86|5|82|68.86|2889.24|21493|278090|
+
+### Hourly Usage
+
+|Hour UTC|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|2026-06-15T03:00Z|89|1|1457139|1149320|178283|86|5|82|68.86|2889.24|21493|278090|

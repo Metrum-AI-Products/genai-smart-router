@@ -117,13 +117,32 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 
 ## 2026-06-15 OpenRouter/MiniMax/Kimi-Only Routing Policy
 
-- Deployed image `smart-llmrouter:no-openai-anthropic-20260615-linux-amd64`.
+- Previous deployed image `smart-llmrouter:no-openai-anthropic-20260615-linux-amd64`.
 - Updated production and reference configs so active groups use only OpenRouter, MiniMax, and Kimi/Moonshot upstream models. OpenAI and Anthropic model IDs are not active.
 - Kept caller API compatibility for both Codex/OpenAI Responses and Claude Code/Anthropic Messages. Dedicated tool smoke groups now route to MiniMax-M3: `agent-tools-smoke` over Responses and `claude-tools-smoke` over Anthropic-compatible Messages.
 - Added Kimi Anthropic-compatible default thinking injection for tool-capable requests and stripped forced Anthropic `tool_choice` when needed for Kimi compatibility.
 - Expanded the `chetan` production caller token to all configured groups: `default`, `fast`, `small`, `medium`, `high`, `big-coder`, `agent-tools-smoke`, and `claude-tools-smoke`.
 - Verified direct provider smokes: MiniMax Responses tool request HTTP 200, MiniMax Anthropic-compatible tool request HTTP 200, and Kimi Anthropic-compatible thinking/tool request HTTP 200.
 - Verified production `/readyz`, local/remote production config SHA-256 parity, `/v1/models` for the `chetan` token, authenticated `big-coder` chat, authenticated `agent-tools-smoke` Responses tool request, and authenticated `claude-tools-smoke` Messages tool request.
+
+## 2026-06-15 OpenRouter Tool-Compatible Routes
+
+- Added OpenRouter as both an OpenAI Responses-compatible provider (`openrouter_responses`) and an Anthropic Messages-compatible bearer-auth provider (`openrouter_anthropic`).
+- Validated OpenRouter Nitro model refs in production/reference configs and dropped Qwen from active routes after direct Harbor/Claude Code showed malformed blank tool names. This was a routing decision from the first OpenRouter tool-validation pass, not a permanent provider policy.
+- Added dedicated smoke groups `agent-tools-smoke-openrouter` and `claude-tools-smoke-openrouter` for Codex and Claude Code file/tool validation against OpenRouter DeepSeek V4 Flash Nitro.
+- Historical direct OpenRouter Harbor checks without the router: Qwen3 Coder 30B Nitro returned blank Claude Code tool names and scored reward `0.0`; OpenRouter Kimi K2.7 Code Nitro scored reward `1.0`; OpenRouter DeepSeek V4 Flash Nitro scored reward `1.0`.
+- Deployed production config SHA-256 `5ee667ba6e71677ddcb6d9a263206299b58eeeb01713552c8e08d24bfd4fc62c`; hosted API smokes for `agent-tools-smoke-openrouter` and `claude-tools-smoke-openrouter` both resolved to DeepSeek V4 Flash Nitro.
+- Verified local Codex CLI and Claude Code CLI file-write smokes against hosted DeepSeek OpenRouter smoke groups after deployment.
+
+## 2026-06-15 Cleaned Harbor-Validated Routing
+
+- Removed OpenRouter Kimi K2.7 Code Nitro from local and production active configs. Direct Moonshot AI `kimi-k2.7-code` remains active.
+- Removed unvalidated OpenRouter candidate models from local and production active configs. The cleaned active set is MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and low-weight original OpenAI GPT-5.5 for non-tool traffic.
+- Original Anthropic remains supported by the adapter, but it is not active because no `ANTHROPIC_API_KEY` is present in local or production `env.json`.
+- Deployed production config SHA-256 `929af45877e905414d893c8c5ba91369123a6b3b0cd61c8f2a0aafbc5050baf6` with 12 Harbor caller tokens for case `harbor-cleaned-20260615t031649z`.
+- Ran Harbor `aider/polyglot_python_two-bucket` through Codex CLI and Claude Code across `default`, `fast`, `small`, `medium`, `high`, and `big-coder`. All final cells passed with reward `1.0`; Codex `medium` required a clean rerun after the first attempt produced a passing artifact but exited nonzero.
+- Scoped production usage for the cleaned run: 89 requests, 1,457,139 total router-tracked tokens, 1,149,320 input tokens, 178,283 output tokens, 86 upstream attempts, 5 fallbacks, and 82 streaming requests.
+- Rebuilt and deployed image `smart-llmrouter:cleaned-harbor-20260615-linux-amd64`; production `/readyz` passed and deployed config SHA-256 stayed `929af45877e905414d893c8c5ba91369123a6b3b0cd61c8f2a0aafbc5050baf6`.
 
 ## 2026-06-15 Harbor Current-Policy Validation
 
@@ -180,15 +199,15 @@ sudo docker compose up -d
 Supported production router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with low-latency fallback targets for routine work.
-medium     DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with balanced fallback targets for general work.
-high       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with premium fallback targets for complex work.
-default    DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with broad configured provider fallbacks.
-fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fallback targets for everyday work.
-big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
+small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.5 1% non-tool.
+medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.5 1% non-tool.
+high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
+default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
+fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
+big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.5 1% non-tool.
 ```
 
-Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Current active production/reference targets are limited to OpenRouter, MiniMax, and Kimi/Moonshot models. General groups route 60% to OpenRouter DeepSeek V4 Flash Nitro, 30% to MiniMax-M3, and 10% to lower-weight OpenRouter/MiniMax/Kimi fallback targets. `big-coder` is exactly MiniMax-M3 50%, Kimi `kimi-k2.7-code` 30%, and OpenRouter DeepSeek V4 Flash Nitro 20%. OpenAI and Anthropic model IDs are intentionally not active.
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Current active production/reference targets are limited to Harbor-validated OpenRouter, MiniMax, Kimi/Moonshot, and low-weight original OpenAI non-tool targets. Anthropic original-provider routing is supported but inactive until an Anthropic key is present and validated.
 
 Production caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists the groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
