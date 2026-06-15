@@ -24,6 +24,11 @@ const costLabels = ["All runs", "Codex", "Claude Code"];
 const gptCosts = [11.09509, 6.247065, 4.848025];
 const opusCosts = [10.203675, 5.80288, 4.400795];
 const metrumCosts = [0.1505886, 0.0894065, 0.0611821];
+const goSublistCostLabels = ["All", "Codex", "Claude Code"];
+const goSublistGptCosts = [0.877515, 0.45513, 0.422385];
+const goSublistOpusCosts = [0.85312, 0.44418, 0.40894];
+const goSublistMetrumCosts = [0.0155987, 0.0082266, 0.0073721];
+const goSublistTokens = [189764, 80076, 109688];
 
 const gridColor = "rgba(255,255,255,0.11)";
 const textColor = "#d7d9e0";
@@ -142,6 +147,44 @@ export default function HarborCharts() {
                 { label: "GPT 5.5 assumed", data: gptCosts, backgroundColor: "#ff3132" },
                 { label: "Opus 4.8 assumed", data: opusCosts, backgroundColor: "#9948cb" },
                 { label: "Metrum routed assumed", data: metrumCosts, backgroundColor: "#465cda" },
+              ],
+            }}
+          />
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.heading}>
+          <p>Case Study #2</p>
+          <h3>Go sublist tokens by agent</h3>
+        </div>
+        <div className={styles.chart}>
+          <Bar
+            options={baseOptions("Go sublist tokens by agent", "router-tracked tokens")}
+            data={{
+              labels: goSublistCostLabels,
+              datasets: [
+                { label: "Tokens", data: goSublistTokens, backgroundColor: "#cc28af" },
+              ],
+            }}
+          />
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.heading}>
+          <p>Case Study #2 Cost</p>
+          <h3>Default route endpoint economics</h3>
+        </div>
+        <div className={styles.chart}>
+          <Bar
+            options={baseOptions("Go sublist cost comparison", "estimated USD")}
+            data={{
+              labels: goSublistCostLabels,
+              datasets: [
+                { label: "GPT 5.5 assumed", data: goSublistGptCosts, backgroundColor: "#ff3132" },
+                { label: "Opus 4.8 assumed", data: goSublistOpusCosts, backgroundColor: "#9948cb" },
+                { label: "Metrum routed assumed", data: goSublistMetrumCosts, backgroundColor: "#465cda" },
               ],
             }}
           />

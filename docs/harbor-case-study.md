@@ -121,3 +121,68 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 |Hour UTC|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |2026-06-15T03:00Z|89|1|1457139|1149320|178283|86|5|82|68.86|2889.24|21493|278090|
+
+# Case Study #2: Go Sublist On Hosted Default Route
+
+- Case ID: `harbor-go-sublist-default-20260615T063200Z`
+- Task: `aider/polyglot_go_sublist`
+- Hosted router: `https://llm-api-engg.metrum.ai`
+- Agents: `codex`, `claude-code`
+- Model group: `default`
+- Goal: implement `/app/sublist.go` so Harbor verifier accepts `Sublist(l1, l2 []int) Relation`.
+- Reward score: Harbor reports `1.0` when the submitted artifact passes the verifier.
+
+## Go Sublist Results
+
+| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor Input | Harbor Cache | Harbor Output | Job |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| `codex` | `default` | ok | 1 | 0 | 100 | 77886 | 50807 | 2190 | `jobs/2026-06-15__06-32-23/result.json` |
+| `claude-code` | `default` | ok | 1 | 0 | 116 | 172354 | 104011 | 2689 | `jobs/2026-06-15__06-34-04/result.json` |
+
+Both final trials passed with reward `1.0` and zero Harbor exceptions.
+
+## Go Sublist Scoped Router Usage
+
+- Requests: `19`
+- Errors: `0`
+- Tokens: `189764` total, `146229` input, `4879` output
+- Attempts: `16`; fallbacks: `0`; streaming requests: `16`
+- Cache: `0` hits, `0` misses, `19` bypass
+- Avg upstream throughput: `37.11` output tok/s, `3185.94` total tok/s
+- Avg latency: `5350 ms`; max latency: `19578 ms`
+- Caller IP: `69.212.113.95`
+
+### Go Sublist Usage By Agent Token
+
+|User|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|codex-default|10|0|80076|77886|2190|8|0|41.80|4087|
+|claude-code-default|9|0|109688|68343|2689|8|0|32.42|6753|
+
+### Go Sublist Usage By External Model
+
+|Provider|Model|Calls|Tokens|Input|Output|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|minimax|MiniMax-M3|6|53584|52034|1550|6|0|39.48|5057|
+|minimax_anthropic|MiniMax-M3|5|46770|44272|2498|5|0|38.26|10408|
+|kimi_anthropic|kimi-k2.7-code|2|41042|2302|84|2|0|14.65|2965|
+|openai|gpt-5.5|2|26492|25852|640|2|0|48.76|5265|
+|openrouter_anthropic|google/gemma-4-26b-a4b-it:nitro|1|21876|21769|107|1|0|38.74|2805|
+
+### Go Sublist Cost Comparison
+
+Pricing assumptions: GPT 5.5 at `$5.00 / 1M input` and `$30.00 / 1M output`, Opus 4.8 at `$5.00 / 1M input` and `$25.00 / 1M output`, and Metrum routed benchmark at `$0.10 / 1M input` and `$0.20 / 1M output`.
+
+| Scope | Input tokens | Output tokens | GPT 5.5 cost | Opus 4.8 cost | Metrum routed cost | Savings vs GPT 5.5 | Savings vs Opus 4.8 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| All runs | 146229 | 4879 | $0.88 | $0.85 | $0.016 | $0.86 / 98.22% | $0.84 / 98.17% |
+| Codex CLI | 77886 | 2190 | $0.46 | $0.44 | $0.008 | $0.45 / 98.19% | $0.44 / 98.15% |
+| Claude Code CLI | 68343 | 2689 | $0.42 | $0.41 | $0.007 | $0.42 / 98.25% | $0.40 / 98.20% |
+
+### Go Sublist Cache Stats
+
+| Requests | Cacheable | Hits | Misses | Bypass | Hit Rate | Bypass Rate | Latest Occupancy |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 19 | 0 | 0 | 0 | 19 | n/a | 100.00% | 0.00% |
+
+The Go sublist benchmark used tool-bearing agent requests, so response caching was bypassed by design.

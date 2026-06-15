@@ -144,8 +144,86 @@ This table is the tokenomics core of the case study: it shows which external mod
 
 All Harbor requests in this run were agent/tool-bearing Codex or Claude Code requests. Tool calls can read and write files, run shell commands, and depend on container state, so the router bypassed response caching by design.
 
+## Case Study #2: Go Sublist On Hosted Default Route
+
+The second benchmark used the same hosted Metrum endpoint and the same pricing assumptions, but narrowed the routing policy under test to the `default` model group. Each agent used a separate one-use case-study router token so production usage could be attributed by internal key, client, model group, provider model, and caller IP.
+
+### Task
+
+- Dataset/task: `aider/polyglot_go_sublist`
+- Goal: implement `/app/sublist.go` so the Go verifier accepts `Sublist(l1, l2 []int) Relation`.
+- Required behavior: return `equal`, `sublist`, `superlist`, or `unequal` for two integer lists, treating sublists as contiguous sub-sequences.
+- Agents: Codex CLI and Claude Code CLI.
+- Router model group: `default`.
+- Case ID: `harbor-go-sublist-default-20260615T063200Z`.
+
+### Results
+
+| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor input | Harbor cache | Harbor output |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Codex CLI | `default` | ok | 1 | 0 | 100 | 77,886 | 50,807 | 2,190 |
+| Claude Code CLI | `default` | ok | 1 | 0 | 116 | 172,354 | 104,011 | 2,689 |
+
+Both final trials scored reward `1.0`. A reward score of `1.0` means Harbor's verifier accepted the generated `sublist.go`; the exported artifacts passed the Go tests supplied by the task.
+
+### Router Usage Summary
+
+| Metric | Value |
+|---|---:|
+| Production report period | `2026-06-14T06:36:19.835Z` to `2026-06-15T06:36:19.835Z` |
+| Scoped router requests | 19 |
+| Router errors | 0 |
+| Router-tracked total tokens | 189,764 |
+| Input tokens | 146,229 |
+| Output tokens | 4,879 |
+| Upstream attempts | 16 |
+| Fallbacks | 0 |
+| Streaming requests | 16 |
+| Average upstream output throughput | 37.11 tok/s |
+| Average upstream total throughput | 3,185.94 tok/s |
+| Average latency | 5,350 ms |
+| Max latency | 19,578 ms |
+| Caller IP | `69.212.113.95` |
+
+The three zero-token requests in the scoped report were setup/model-discovery calls, including `/v1/models`, and did not create upstream model attempts.
+
+### Usage By Agent Token
+
+| Agent token | Calls | Errors | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Codex CLI / `default` | 10 | 0 | 80,076 | 77,886 | 2,190 | 8 | 0 | 41.80 | 4,087 |
+| Claude Code CLI / `default` | 9 | 0 | 109,688 | 68,343 | 2,689 | 8 | 0 | 32.42 | 6,753 |
+
+### Usage By External Model
+
+| Provider route | Model | Calls | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| MiniMax OpenAI-compatible | `MiniMax-M3` | 6 | 53,584 | 52,034 | 1,550 | 6 | 0 | 39.48 | 5,057 |
+| MiniMax Anthropic-compatible | `MiniMax-M3` | 5 | 46,770 | 44,272 | 2,498 | 5 | 0 | 38.26 | 10,408 |
+| Moonshot/Kimi Anthropic-compatible | `kimi-k2.7-code` | 2 | 41,042 | 2,302 | 84 | 2 | 0 | 14.65 | 2,965 |
+| OpenAI-compatible fallback | `gpt-5.5` | 2 | 26,492 | 25,852 | 640 | 2 | 0 | 48.76 | 5,265 |
+| OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 1 | 21,876 | 21,769 | 107 | 1 | 0 | 38.74 | 2,805 |
+
+### Cost Savings Using Actual Agents
+
+The same pricing assumptions are applied to the router-tracked provider token counts from this Go benchmark.
+
+| Scope | Input tokens | Output tokens | GPT 5.5 cost | Opus 4.8 cost | Metrum routed cost | Savings vs GPT 5.5 | Savings vs Opus 4.8 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| All runs | 146,229 | 4,879 | $0.88 | $0.85 | $0.016 | $0.86 / 98.22% | $0.84 / 98.17% |
+| Codex CLI | 77,886 | 2,190 | $0.46 | $0.44 | $0.008 | $0.45 / 98.19% | $0.44 / 98.15% |
+| Claude Code CLI | 68,343 | 2,689 | $0.42 | $0.41 | $0.007 | $0.42 / 98.25% | $0.40 / 98.20% |
+
+### Cache Behavior
+
+| Requests | Cacheable | Hits | Misses | Bypass | Hit rate | Latest occupancy |
+|---:|---:|---:|---:|---:|---:|---:|
+| 19 | 0 | 0 | 0 | 19 | n/a | 0.00% |
+
+As in the first case study, these were tool-bearing agent requests that read and wrote files inside Harbor containers. The router bypassed response caching by design.
+
 ## Interpretation
 
-Every final run passed with reward `1.0`, which means the routed model groups were able to complete the coding task under both Codex CLI and Claude Code CLI. The report also shows why model-group evaluation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, and throughput vary materially by agent and group.
+Every final published run passed with reward `1.0`, which means the routed model groups were able to complete the coding tasks under both Codex CLI and Claude Code CLI. The report also shows why model-group evaluation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, cache eligibility, caller IP, and throughput vary materially by task, agent, and group.
 
 For production buyers, the key result is that Smart LLM Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.
