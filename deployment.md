@@ -16,8 +16,8 @@ Last deployed: 2026-06-15
 
 ## Deployed Version
 
-- Router package/image version: `metrum-docs-20260615-linux-amd64`
-- Source commit: `34e26b3`
+- Router package/image version: `docs-charts-routing-20260615-linux-amd64`
+- Source commit: `43e1658`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:metrum-docs-20260615-linux-amd64
+compose-router-1   smart-llmrouter:docs-charts-routing-20260615-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -159,6 +159,14 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - The router binary embeds the Metrum-themed Docusaurus docs site. Browser requests to `/` return `307` to `/docs/`.
 - Verified production `/readyz`, `/docs/` branded HTML, Metrum logo/static asset serving, `/v1/unknown` remains `404`, and authenticated `/v1/models` still returns API JSON.
 - Production config was not changed; only `SMART_LLMROUTER_VERSION` in compose `.env` was updated after backing up the previous `.env`.
+
+## 2026-06-15 Customer Docs Charts And Case Study Update
+
+- Deployed image `smart-llmrouter:docs-charts-routing-20260615-linux-amd64` from source commit `43e1658`.
+- Added Docusaurus Mermaid support and Metrum-themed Chart.js case-study charts.
+- Expanded the Harbor case study with models used, tokenomics, GPT 5.5 and Opus 4.8 comparison pricing, and cost-savings calculations for all runs, Codex CLI, and Claude Code CLI.
+- Fixed embedded docs serving so extensionless Docusaurus pages such as `/docs/solution-brief` and `/docs/evaluation/harbor-case-study` resolve to their generated `.html` pages before SPA fallback.
+- Verified production `/readyz`, Harbor case-study HTML with cost tables and chart canvases, solution brief page routing, and `/v1/unknown` remains `404`.
 
 ## Operations
 
