@@ -1,10 +1,16 @@
 .git
 dist
 tmp
+docs-site/.docusaurus
+docs-site/build
+docs-site/node_modules
+internal/router/docsdist/*
+!internal/router/docsdist/.keep
 env.json
 router
 router-token
 router-token-gen
+router-usage-report
 examples/cli-e2e-c/cli-e2e
 *.log
 *.jsonl
