@@ -158,7 +158,7 @@ func encodeResponsesPassthrough(model string, req *IRRequest) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-func encodeAnthropicPassthrough(model string, req *IRRequest) ([]byte, error) {
+func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking map[string]any) ([]byte, error) {
 	body := map[string]any{}
 	for key, value := range req.Raw {
 		body[key] = value
@@ -167,6 +167,18 @@ func encodeAnthropicPassthrough(model string, req *IRRequest) ([]byte, error) {
 	body["stream"] = false
 	if _, ok := body["max_tokens"]; !ok {
 		body["max_tokens"] = max(req.MaxTokens, 1024)
+	}
+	injectedThinking := false
+	if len(defaultThinking) > 0 {
+		if _, ok := body["thinking"]; !ok {
+			body["thinking"] = defaultThinking
+			injectedThinking = true
+		}
+	}
+	if injectedThinking {
+		if toolChoice, ok := body["tool_choice"].(map[string]any); ok && stringValue(toolChoice["type"]) == "tool" {
+			delete(body, "tool_choice")
+		}
 	}
 	return json.Marshal(body)
 }

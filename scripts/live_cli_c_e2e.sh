@@ -332,7 +332,6 @@ CASES=(
   "or-glm51 openrouter z-ai/glm-5.1:nitro openai-chat https://openrouter.ai/api/v1"
   "or-qwen36-flash openrouter qwen/qwen3.6-flash:nitro openai-chat https://openrouter.ai/api/v1"
   "or-hy3-preview openrouter tencent/hy3-preview:nitro openai-chat https://openrouter.ai/api/v1"
-  "or-claude-sonnet46 openrouter_anthropic anthropic/claude-sonnet-4.6:nitro anthropic https://openrouter.ai/api bearer"
 )
 
 for case_line in "${CASES[@]}"; do

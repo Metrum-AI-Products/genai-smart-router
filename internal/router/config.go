@@ -77,16 +77,17 @@ type ModelGroup struct {
 }
 
 type Target struct {
-	Provider    string `yaml:"provider" json:"provider"`
-	Model       string `yaml:"model" json:"model"`
-	ModelRef    string `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect     string `yaml:"dialect" json:"dialect"`
-	DisplayName string `yaml:"display_name" json:"displayName,omitempty"`
-	ToolOnly    bool   `yaml:"tool_only" json:"toolOnly,omitempty"`
-	Weight      int    `yaml:"weight" json:"weight"`
-	RPM         int    `yaml:"rpm" json:"rpm"`
-	Tier        string `yaml:"tier" json:"tier"`
-	Cost        int    `yaml:"cost" json:"cost"`
+	Provider        string         `yaml:"provider" json:"provider"`
+	Model           string         `yaml:"model" json:"model"`
+	ModelRef        string         `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect         string         `yaml:"dialect" json:"dialect"`
+	DisplayName     string         `yaml:"display_name" json:"displayName,omitempty"`
+	ToolOnly        bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
+	DefaultThinking map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Weight          int            `yaml:"weight" json:"weight"`
+	RPM             int            `yaml:"rpm" json:"rpm"`
+	Tier            string         `yaml:"tier" json:"tier"`
+	Cost            int            `yaml:"cost" json:"cost"`
 }
 
 type CallerConfig struct {

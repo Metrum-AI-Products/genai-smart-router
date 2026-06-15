@@ -108,11 +108,22 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 
 ## 2026-06-14 OpenRouter GPT-OSS 120B Update
 
-- Added OpenRouter `openai/gpt-oss-120b:nitro` to production and reference configs.
-- Activated it in `default`, `fast`, `small`, `medium`, and `high` with medium fallback weight while preserving 60% DeepSeek V4 Flash Nitro and 30% MiniMax-M3 anchor weights.
+- Historical note: OpenRouter `openai/gpt-oss-120b:nitro` was briefly added to production and reference configs.
+- It is no longer active in the 2026-06-15 routing policy because current production/reference groups intentionally exclude OpenAI and Anthropic model IDs.
+- At the time, it was activated in `default`, `fast`, `small`, `medium`, and `high` with medium fallback weight while preserving 60% DeepSeek V4 Flash Nitro and 30% MiniMax-M3 anchor weights.
 - Verified production OpenRouter direct smoke returned HTTP 200 for `openai/gpt-oss-120b:nitro`.
 - Restarted the production router after backing up `config/config.yaml`.
 - Verified `/readyz`, local/remote production config SHA-256 parity, and authenticated smokes for `default`, `fast`, `small`, `medium`, and `high`.
+
+## 2026-06-15 OpenRouter/MiniMax/Kimi-Only Routing Policy
+
+- Deployed image `smart-llmrouter:no-openai-anthropic-20260615-linux-amd64`.
+- Updated production and reference configs so active groups use only OpenRouter, MiniMax, and Kimi/Moonshot upstream models. OpenAI and Anthropic model IDs are not active.
+- Kept caller API compatibility for both Codex/OpenAI Responses and Claude Code/Anthropic Messages. Dedicated tool smoke groups now route to MiniMax-M3: `agent-tools-smoke` over Responses and `claude-tools-smoke` over Anthropic-compatible Messages.
+- Added Kimi Anthropic-compatible default thinking injection for tool-capable requests and stripped forced Anthropic `tool_choice` when needed for Kimi compatibility.
+- Expanded the `chetan` production caller token to all configured groups: `default`, `fast`, `small`, `medium`, `high`, `big-coder`, `agent-tools-smoke`, and `claude-tools-smoke`.
+- Verified direct provider smokes: MiniMax Responses tool request HTTP 200, MiniMax Anthropic-compatible tool request HTTP 200, and Kimi Anthropic-compatible thinking/tool request HTTP 200.
+- Verified production `/readyz`, local/remote production config SHA-256 parity, `/v1/models` for the `chetan` token, authenticated `big-coder` chat, authenticated `agent-tools-smoke` Responses tool request, and authenticated `claude-tools-smoke` Messages tool request.
 
 ## Operations
 
@@ -168,7 +179,7 @@ fast       DeepSeek V4 Flash Nitro 60% and MiniMax-M3 30%, with lower-latency fa
 big-coder  Code-heavy route: MiniMax-M3 50%, Kimi 30%, and DeepSeek V4 Flash Nitro 20%; recommended for Claude Code and Codex.
 ```
 
-Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Active validated targets include OpenAI `gpt-5.5`, `gpt-5.4-nano`, `gpt-5.4-mini`, and `gpt-5.4`; MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`; Groq `llama-3.1-8b-instant`, `groq/compound-mini`, `qwen/qwen3-32b`, and `llama-3.3-70b-versatile`; and configured OpenRouter Nitro targets. Direct validation showed production has access to `gpt-5.5`; `gpt-5.5-pro` remains catalog-only until the OpenAI project is entitled for it.
+Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Current active production/reference targets are limited to OpenRouter, MiniMax, and Kimi/Moonshot models. General groups route 60% to OpenRouter DeepSeek V4 Flash Nitro, 30% to MiniMax-M3, and 10% to lower-weight OpenRouter/MiniMax/Kimi fallback targets. `big-coder` is exactly MiniMax-M3 50%, Kimi `kimi-k2.7-code` 30%, and OpenRouter DeepSeek V4 Flash Nitro 20%. OpenAI and Anthropic model IDs are intentionally not active.
 
 Production caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists the groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
@@ -267,7 +278,7 @@ Historical validation during the initial deployment:
 healthz: 200
 /v1/models: 200 with default, fast, big-coder
 Claude Code: router prod claude ok
-high: 200 with gpt-5.5 at that time
-big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time
+high: 200 with gpt-5.5 at that time; this is no longer an active route under the 2026-06-15 policy
+big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time; current big-coder excludes OpenAI and Anthropic model IDs
 Codex: router prod codex ok
 ```

@@ -494,7 +494,7 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	var upReqBody []byte
 	var err error
 	if passthrough {
-		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req)
+		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
 	} else {
 		upReqBody, err = encodeUpstream(outDialect, target.Model, req)
 	}
@@ -569,9 +569,9 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 	return out
 }
 
-func encodeToolPassthrough(dialect, model string, req *IRRequest) ([]byte, error) {
+func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
 	if dialect == "anthropic" {
-		return encodeAnthropicPassthrough(model, req)
+		return encodeAnthropicPassthrough(model, req, target.DefaultThinking)
 	}
 	return encodeResponsesPassthrough(model, req)
 }

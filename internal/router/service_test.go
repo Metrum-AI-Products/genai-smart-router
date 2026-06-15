@@ -1255,6 +1255,102 @@ func TestOpenRouterAnthropicSkinUsesBearerAuthAndMessagesPath(t *testing.T) {
 	}
 }
 
+func TestAnthropicToolPassthroughAppliesDefaultThinking(t *testing.T) {
+	var gotThinking map[string]any
+	var gotToolChoice any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotThinking, _ = body["thinking"].(map[string]any)
+		gotToolChoice = body["tool_choice"]
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_kimi",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       body["model"],
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
+	cfg.Provider["kimi_anthropic"] = ProviderConfig{BaseURL: upstream.URL + "/anthropic", Dialect: "anthropic", AuthScheme: "bearer", APIKey: "kimi-key"}
+	cfg.Models["kimi-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "kimi_anthropic",
+		Model:           "kimi-k2.7-code",
+		ToolOnly:        true,
+		DefaultThinking: map[string]any{"type": "enabled", "budget_tokens": 512},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "kimi-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"kimi-tools","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"echo","input_schema":{"type":"object"}}],"tool_choice":{"type":"tool","name":"echo"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotThinking["type"] != "enabled" || gotThinking["budget_tokens"].(float64) != 512 {
+		t.Fatalf("thinking=%#v, want enabled budget 512", gotThinking)
+	}
+	if gotToolChoice != nil {
+		t.Fatalf("tool_choice=%#v, want omitted for Kimi thinking compatibility", gotToolChoice)
+	}
+}
+
+func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
+	var gotPath, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_minimax",
+			"object":      "response",
+			"status":      "completed",
+			"model":       gotModel,
+			"output_text": "ok",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
+	cfg.Provider["minimax"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "minimax-key"}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "minimax", Model: "MiniMax-M3", Dialect: "openai-responses"}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "agent-tools-smoke")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"agent-tools-smoke","input":"hi","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/v1/responses" || gotModel != "MiniMax-M3" {
+		t.Fatalf("path/model=%s/%s, want /v1/responses MiniMax-M3", gotPath, gotModel)
+	}
+}
+
 const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {

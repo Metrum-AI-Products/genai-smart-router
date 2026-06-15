@@ -14,51 +14,18 @@ server:
     path: usage.sqlite
 state_path: router-state.json
 providers:
-  anthropic:
-    base_url: https://api.anthropic.com
-    dialect: anthropic
-    api_key: ${ANTHROPIC_API_KEY}
-    api_key_env: ANTHROPIC_API_KEY
-    key_id: anthropic-default
-    models:
-      opus:
-        model: claude-opus-4-8
-        tier: heavy
-  moonshot:
+  kimi:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
     api_key: ${MOONSHOT_API_KEY}
     api_key_env: MOONSHOT_API_KEY
-    key_id: moonshot-default
+    key_id: moonshot-kimi-default
     models:
       kimi-k2.7-code:
         model: kimi-k2.7-code
         tier: heavy
       kimi-k2:
         model: kimi-k2
-        tier: cheap
-  kimi:
-    base_url: https://api.moonshot.ai/v1
-    dialect: openai-chat
-    api_key: ${KIMI_API_KEY}
-    api_key_env: KIMI_API_KEY
-    key_id: kimi-default
-    models:
-      kimi-k2.7-code:
-        model: kimi-k2.7-code
-        tier: heavy
-      kimi-k2:
-        model: kimi-k2
-        tier: cheap
-  qwen:
-    base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-    dialect: openai-chat
-    api_key: ${QWEN_API_KEY}
-    api_key_env: QWEN_API_KEY
-    key_id: qwen-default
-    models:
-      qwen3-max:
-        model: qwen3-max
         tier: cheap
   minimax:
     base_url: https://api.minimax.io/v1
@@ -116,83 +83,27 @@ providers:
       ling-26-flash:
         model: inclusionai/ling-2.6-flash
         tier: balanced
-      gpt-oss-120b-nitro:
-        model: openai/gpt-oss-120b:nitro
-        tier: balanced
-  openrouter_anthropic:
-    base_url: https://openrouter.ai/api
+  minimax_anthropic:
+    base_url: https://api.minimax.io/anthropic
     dialect: anthropic
     auth_scheme: bearer
-    api_key: ${OPENROUTER_API_KEY}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-anthropic-default
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-anthropic-default
     models:
-      claude-sonnet-46:
-        model: anthropic/claude-sonnet-4.6
+      m3:
+        model: MiniMax-M3
         tier: heavy
-      claude-sonnet-46-nitro:
-        model: anthropic/claude-sonnet-4.6:nitro
-        tier: heavy
-  xai:
-    base_url: https://api.x.ai/v1
-    dialect: openai-chat
-    api_key: ${XAI_API_KEY}
-    api_key_env: XAI_API_KEY
-    key_id: xai-default
+  kimi_anthropic:
+    base_url: https://api.moonshot.ai/anthropic
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${MOONSHOT_API_KEY}
+    api_key_env: MOONSHOT_API_KEY
+    key_id: moonshot-kimi-anthropic-default
     models:
-      grok-3:
-        model: grok-3
-        tier: heavy
-  groq:
-    base_url: https://api.groq.com/openai/v1
-    dialect: openai-chat
-    api_key: ${GROQ_API_KEY}
-    api_key_env: GROQ_API_KEY
-    key_id: groq-default
-    models:
-      compound-mini:
-        model: groq/compound-mini
-        tier: cheap
-      llama-31-8b-instant:
-        model: llama-3.1-8b-instant
-        tier: cheap
-      qwen3-32b:
-        model: qwen/qwen3-32b
-        tier: balanced
-      llama-33-70b:
-        model: llama-3.3-70b-versatile
-        tier: heavy
-  replicate:
-    base_url: https://api.replicate.com
-    dialect: replicate
-    api_key: ${REPLICATE_API_KEY}
-    api_key_env: REPLICATE_API_KEY
-    key_id: replicate-default
-    models:
-      llama-3-70b:
-        model: meta/meta-llama-3-70b-instruct
-        tier: cheap
-  openai:
-    base_url: https://api.openai.com/v1
-    dialect: openai-responses
-    api_key: ${OPENAI_API_KEY}
-    api_key_env: OPENAI_API_KEY
-    key_id: openai-default
-    models:
-      gpt54-nano:
-        model: gpt-5.4-nano
-        tier: cheap
-      gpt54-mini:
-        model: gpt-5.4-mini
-        tier: balanced
-      gpt54:
-        model: gpt-5.4
-        tier: heavy
-      gpt55:
-        model: gpt-5.5
-        tier: heavy
-      gpt55-pro:
-        model: gpt-5.5-pro
+      kimi-k2.7-code:
+        model: kimi-k2.7-code
         tier: heavy
 models:
   default:
@@ -204,54 +115,46 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 96
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 1
-    - provider: openai
-      model_ref: gpt54-mini
-      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: mercury-2
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 1
-    - provider: openai
-      model_ref: gpt54
-      weight: 1
+      weight: 2
+    - provider: openrouter
+      model_ref: glm51-nitro
+      weight: 2
+    - provider: openrouter
+      model_ref: hy3-preview-nitro
+      weight: 2
     - provider: minimax
       model_ref: m27-highspeed
       weight: 1
-    - provider: openrouter
-      model_ref: glm51-nitro
+    - provider: kimi
+      model_ref: kimi-k2.7-code
       weight: 1
-    - provider: groq
-      model_ref: qwen3-32b
-      weight: 1
-    - provider: groq
-      model_ref: llama-33-70b
-      weight: 1
-    - provider: openrouter
-      model_ref: hy3-preview-nitro
-      weight: 1
-    - provider: openrouter
-      model_ref: gpt-oss-120b-nitro
-      weight: 3
-    - provider: openai
-      model_ref: gpt55
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   fast:
     strategy: weighted
     targets:
@@ -261,45 +164,37 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 78
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 1
-    - provider: openai
-      model_ref: gpt54-mini
-      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: mercury-2
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 1
+      weight: 2
     - provider: minimax
       model_ref: m27-highspeed
-      weight: 1
-    - provider: openai
-      model_ref: gpt54
-      weight: 1
-    - provider: groq
-      model_ref: llama-31-8b-instant
-      weight: 1
-    - provider: groq
-      model_ref: compound-mini
-      weight: 1
-    - provider: openrouter
-      model_ref: gpt-oss-120b-nitro
       weight: 3
-    - provider: openai
-      model_ref: gpt55
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 2
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   big-coder:
     strategy: weighted
     targets:
@@ -312,12 +207,19 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 20
-    - provider: openai
-      model_ref: gpt55
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   small:
     strategy: weighted
     targets:
@@ -327,36 +229,37 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 60
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 1
-    - provider: openai
-      model_ref: gpt54-mini
-      weight: 1
-    - provider: groq
-      model_ref: llama-31-8b-instant
-      weight: 1
+    - provider: openrouter
+      model_ref: qwen36-flash-nitro
+      weight: 2
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: mercury-2
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: ling-26-flash
       weight: 1
-    - provider: openrouter
-      model_ref: qwen36-flash-nitro
+    - provider: minimax
+      model_ref: m27-highspeed
+      weight: 2
+    - provider: kimi
+      model_ref: kimi-k2.7-code
       weight: 1
-    - provider: openrouter
-      model_ref: gpt-oss-120b-nitro
-      weight: 3
-    - provider: openai
-      model_ref: gpt55
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   medium:
     strategy: weighted
     targets:
@@ -366,45 +269,40 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 78
-    - provider: openai
-      model_ref: gpt54-mini
-      weight: 1
-    - provider: openai
-      model_ref: gpt54
-      weight: 1
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: mercury-2
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: ling-26-flash
       weight: 1
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 1
     - provider: openrouter
       model_ref: glm51-nitro
-      weight: 1
-    - provider: groq
-      model_ref: qwen3-32b
-      weight: 1
-    - provider: openrouter
-      model_ref: gpt-oss-120b-nitro
-      weight: 3
-    - provider: openai
-      model_ref: gpt55
+      weight: 2
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 2
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   high:
     strategy: weighted
     targets:
@@ -414,58 +312,54 @@ models:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
       weight: 84
-    - provider: openai
-      model_ref: gpt55
-      weight: 1
-    - provider: openai
-      model_ref: gpt54
-      weight: 1
     - provider: openrouter
       model_ref: kat-coder-pro-v2-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: nemotron-3-nano-30b-a3b
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: mercury-2
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: ling-26-flash
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: glm51-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: qwen36-flash-nitro
-      weight: 1
+      weight: 2
     - provider: openrouter
       model_ref: hy3-preview-nitro
       weight: 1
-    - provider: openai
-      model_ref: gpt54-mini
+    - provider: kimi
+      model_ref: kimi-k2.7-code
       weight: 1
-    - provider: openai
-      model_ref: gpt54-nano
-      weight: 1
-    - provider: openrouter
-      model_ref: gpt-oss-120b-nitro
-      weight: 3
-    - provider: openai
-      model_ref: gpt55
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
       tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   agent-tools-smoke:
     strategy: static
     targets:
-    - provider: openai
-      model_ref: gpt55
+    - provider: minimax
+      model_ref: m3
+      dialect: openai-responses
   claude-tools-smoke:
     strategy: static
     targets:
-    - provider: openrouter_anthropic
-      model_ref: claude-sonnet-46-nitro
+    - provider: minimax_anthropic
+      model_ref: m3
 callers:
 - id: standard-dev
   user: standard
@@ -506,6 +400,8 @@ callers:
   - small
   - medium
   - high
+  - agent-tools-smoke
+  - claude-tools-smoke
   rate:
     rpm: 120
     tpm: 200000

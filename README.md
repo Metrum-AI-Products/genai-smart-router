@@ -131,8 +131,8 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible providers such as OpenAI, Moonshot/Kimi, Qwen, MiniMax, OpenRouter, Groq, and xAI. The example catalog includes newer Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, OpenAI GPT-5.5 catalog refs, Groq-hosted fast models, and OpenRouter entries such as OpenAI GPT-OSS 120B Nitro, KAT-Coder-Pro V2, NVIDIA Nemotron 3 Nano, Mercury 2, and Ling 2.6 Flash alongside lower-cost fallback models.
-- OpenRouter can also be configured through its Anthropic-compatible skin with `base_url: https://openrouter.ai/api`, `dialect: anthropic`, and `auth_scheme: bearer`.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes intentionally use only OpenRouter, MiniMax, and Kimi/Moonshot upstream models. Active entries include Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3` and `MiniMax-M2.7-highspeed`, and OpenRouter entries such as DeepSeek V4 Flash Nitro, KAT-Coder-Pro V2, NVIDIA Nemotron 3 Nano, Mercury 2, and Ling 2.6 Flash.
+- MiniMax and Kimi can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
 ## API Key Flow
@@ -152,30 +152,45 @@ A provider can serve many locally configured models without repeating its base U
 
 ```yaml
 providers:
-  openai:
-    base_url: https://api.openai.com/v1
-    dialect: openai-responses
-    api_key: ${OPENAI_API_KEY}
-    api_key_env: OPENAI_API_KEY
-    key_id: openai-default
+  minimax:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-chat
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-default
     models:
-      gpt54-nano: { model: gpt-5.4-nano, tier: cheap }
-      gpt54-mini: { model: gpt-5.4-mini, tier: balanced }
-      gpt54: { model: gpt-5.4, tier: heavy }
+      m3: { model: MiniMax-M3, tier: heavy }
+      m27-highspeed: { model: MiniMax-M2.7-highspeed, tier: balanced }
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-chat
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-default
+    models:
+      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
+  kimi:
+    base_url: https://api.moonshot.ai/v1
+    dialect: openai-chat
+    api_key: ${MOONSHOT_API_KEY}
+    api_key_env: MOONSHOT_API_KEY
+    key_id: moonshot-kimi-default
+    models:
+      kimi-k2.7-code: { model: kimi-k2.7-code, tier: heavy }
 
 models:
   default:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openai, model_ref: gpt54-nano, weight: 12 }
-      - { provider: openai, model_ref: gpt54-mini, weight: 8 }
-      - { provider: openai, model_ref: gpt54, weight: 3 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
+      - { provider: minimax, model_ref: m3, weight: 30 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 ```
 
 `model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
 
-Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access; for example, this config routes to `gpt-5.5` where enabled while keeping `gpt-5.5-pro` catalog-only until the OpenAI project is entitled for it.
+Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI and Anthropic model IDs out of active groups.
 
 Agentic tool-call traffic can use a separate target set from ordinary text traffic. Mark a target with `tool_only: true` when it should only be considered for requests that include supported tools, such as Codex OpenAI Responses tool calls or Claude Code Anthropic tool calls:
 
@@ -187,8 +202,9 @@ models:
       - { provider: minimax, model_ref: m3, weight: 50 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 30 }
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
-      - { provider: openai, model_ref: gpt55, tool_only: true }
-      - { provider: openrouter_anthropic, model_ref: claude-sonnet-46-nitro, tool_only: true }
+      - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true }
+      - { provider: minimax_anthropic, model_ref: m3, tool_only: true }
+      - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, default_thinking: { type: enabled, budget_tokens: 512 } }
 ```
 
 Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
@@ -197,13 +213,22 @@ For providers that use Anthropic Messages shape but bearer-token authentication,
 
 ```yaml
 providers:
-  openrouter_anthropic:
-    base_url: https://openrouter.ai/api
+  minimax_anthropic:
+    base_url: https://api.minimax.io/anthropic
     dialect: anthropic
     auth_scheme: bearer
-    api_key: ${OPENROUTER_API_KEY}
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
     models:
-      claude-sonnet-46-nitro: { model: anthropic/claude-sonnet-4.6:nitro, tier: heavy }
+      m3: { model: MiniMax-M3, tier: heavy }
+  kimi_anthropic:
+    base_url: https://api.moonshot.ai/anthropic
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${MOONSHOT_API_KEY}
+    api_key_env: MOONSHOT_API_KEY
+    models:
+      kimi-k2.7-code: { model: kimi-k2.7-code, tier: heavy }
 ```
 
 ## TypeScript Routing
@@ -216,8 +241,9 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openai, model_ref: gpt55 }
-      - { provider: anthropic, model_ref: opus }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
+      - { provider: minimax, model_ref: m3, weight: 30 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 ```
 
 The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. The default `scripts/router.ts` does three things:

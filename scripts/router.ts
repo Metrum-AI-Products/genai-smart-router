@@ -66,13 +66,6 @@ const keyRules: KeyRule[] = [
     provider: /^openrouter/,
     apiKeyEnv: /^OPENROUTER_API_KEY$/,
   },
-  {
-    name: "metrum-dev-openai",
-    tokenId: /^rtr_metrum_.*_metrum-insights_dev_/,
-    provider: /^openai$/,
-    keyId: /^openai-default$/,
-    apiKeyEnv: /^OPENAI_API_KEY$/,
-  },
 ];
 
 export function route(ctx: RouteContext) {

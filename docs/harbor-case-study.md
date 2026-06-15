@@ -2,6 +2,8 @@
 
 This case study records a production-hosted Smart LLM Router evaluation using Harbor with both Codex CLI and Claude Code CLI. The run validates that the router can serve OpenAI Responses-style agent traffic and Anthropic-style Claude Code traffic through the same hosted endpoint while preserving per-key attribution, model-group controls, tool calls, and usage reporting.
 
+Historical note: this run was captured on 2026-06-14 before the 2026-06-15 provider policy change. Tables below may include OpenAI and Anthropic upstream model IDs from that run. Current active production/reference groups intentionally use only OpenRouter, MiniMax, and Kimi/Moonshot upstream models while preserving OpenAI Responses and Anthropic Messages API compatibility for callers.
+
 ## Run Summary
 
 - Run ID: `case-study-full-20260614T233205Z`

@@ -18,6 +18,7 @@ These instructions apply to the whole repository.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
 - Usage persistence uses GORM. Keep the entire usage DB schema purely relational: no JSON/JSONB columns, no array columns, no serialized blobs for structured data, and no packed multi-value text fields. If one request needs multiple related rows, add a child table with scalar columns and a foreign key to `request_usage`.
 - Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
+- Do not put OpenAI or Anthropic model IDs into active routing unless the user explicitly re-enables them. The 2026-06-15 production policy keeps active groups on OpenRouter, MiniMax, and Kimi/Moonshot upstream models only; OpenAI Responses and Anthropic Messages remain supported as caller-facing API dialects.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
@@ -38,7 +39,7 @@ These instructions apply to the whole repository.
 7. Update docs for any user-facing config, model, deployment, CLI, or operational change.
 8. Run a stale-doc search for changed concepts before final response. Examples:
    - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
-   - `rtk rg -n "MiniMax-Text-01|text-01|gpt-5\\.5.*not active|big-coder.*failover" README.md docs deployment.md internal scripts`
+   - `rtk rg -n "MiniMax-Text-01|text-01|gpt-5\\.5.*not active|openai/gpt|anthropic/claude|claude-sonnet|big-coder.*failover" README.md docs deployment.md internal scripts`
 
 ## Live Provider Testing
 
@@ -49,6 +50,7 @@ These instructions apply to the whole repository.
   - `POST <base_url>/chat/completions`
   - body: `{"model":"<model>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}`
 - OpenRouter Nitro variants may not appear as separate IDs in `/models`; validate by making a real completion call with the `:nitro` suffix.
+- MiniMax Codex smoke should use MiniMax-M3 through a Responses-compatible endpoint and Codex `wire_api="responses"`.
 - If a direct provider smoke returns 403 or model-not-found, do not add that model to active route targets.
 
 ## Production Host
@@ -156,6 +158,7 @@ Before finalizing, check at minimum:
 
 ```bash
 rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not yet have access|not active|gpt-5\\.5.*not active|old image" README.md docs deployment.md internal scripts || true
+rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet" config.example.yaml README.md docs deployment.md scripts || true
 ```
 
 ## References

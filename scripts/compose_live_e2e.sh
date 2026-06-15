@@ -9,9 +9,9 @@ TOKEN="${ROUTER_TOKEN:-rtr_compose_live_e2e_local}"
 GROUP="${COMPOSE_E2E_GROUP:-compose-live}"
 MODEL="${COMPOSE_E2E_MODEL:-qwen/qwen3.7-max:nitro}"
 CODEX_TOOL_GROUP="${COMPOSE_E2E_CODEX_TOOL_GROUP:-agent-tools-smoke}"
-CODEX_TOOL_MODEL="${COMPOSE_E2E_CODEX_TOOL_MODEL:-gpt-5.5}"
+CODEX_TOOL_MODEL="${COMPOSE_E2E_CODEX_TOOL_MODEL:-MiniMax-M3}"
 CLAUDE_TOOL_GROUP="${COMPOSE_E2E_CLAUDE_TOOL_GROUP:-claude-tools-smoke}"
-CLAUDE_TOOL_MODEL="${COMPOSE_E2E_CLAUDE_TOOL_MODEL:-anthropic/claude-sonnet-4.6:nitro}"
+CLAUDE_TOOL_MODEL="${COMPOSE_E2E_CLAUDE_TOOL_MODEL:-MiniMax-M3}"
 HTTP_PORT="${COMPOSE_E2E_HTTP_PORT:-18080}"
 BASE_URL="http://127.0.0.1:${HTTP_PORT}"
 IMAGE_TAG="${COMPOSE_E2E_IMAGE_TAG:-compose-e2e}"
@@ -52,8 +52,8 @@ if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "OPENROUTER_API_KEY must be present in env.json or environment" >&2
   exit 2
 fi
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "OPENAI_API_KEY must be present in env.json or environment for the Codex tool smoke" >&2
+if [[ -z "${MINIMAX_API_KEY:-}" ]]; then
+  echo "MINIMAX_API_KEY must be present in env.json or environment for the Codex and Claude tool smokes" >&2
   exit 2
 fi
 
@@ -72,7 +72,7 @@ from pathlib import Path
 
 token, work, group, model, codex_group, codex_model, claude_group, claude_model = sys.argv[1], Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8]
 token_hash = hashlib.sha256(token.encode()).hexdigest()
-(work / "config/env.json").write_text(json.dumps({"OPENROUTER_API_KEY": "", "OPENAI_API_KEY": ""}, indent=2))
+(work / "config/env.json").write_text(json.dumps({"OPENROUTER_API_KEY": "", "MINIMAX_API_KEY": ""}, indent=2))
 (work / "config/config.yaml").write_text(f"""server:
   listen: ":8080"
   cache:
@@ -83,25 +83,25 @@ token_hash = hashlib.sha256(token.encode()).hexdigest()
     path: /app/logs/requests.jsonl
 state_path: /app/state/router-state.json
 providers:
-  openai:
-    base_url: https://api.openai.com/v1
+  minimax:
+    base_url: https://api.minimax.io/v1
     dialect: openai-responses
-    api_key: ${{OPENAI_API_KEY}}
-    api_key_env: OPENAI_API_KEY
-    key_id: openai-compose-live
+    api_key: ${{MINIMAX_API_KEY}}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-compose-live
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
     api_key: ${{OPENROUTER_API_KEY}}
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-compose-live
-  openrouter_anthropic:
-    base_url: https://openrouter.ai/api
+  minimax_anthropic:
+    base_url: https://api.minimax.io/anthropic
     dialect: anthropic
     auth_scheme: bearer
-    api_key: ${{OPENROUTER_API_KEY}}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-anthropic-compose-live
+    api_key: ${{MINIMAX_API_KEY}}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-anthropic-compose-live
 models:
   {group}:
     strategy: static
@@ -110,11 +110,11 @@ models:
   {codex_group}:
     strategy: static
     targets:
-      - {{ provider: openai, model: "{codex_model}" }}
+      - {{ provider: minimax, model: "{codex_model}" }}
   {claude_group}:
     strategy: static
     targets:
-      - {{ provider: openrouter_anthropic, model: "{claude_model}" }}
+      - {{ provider: minimax_anthropic, model: "{claude_model}" }}
 callers:
   - id: compose-live
     token_sha256: "{token_hash}"
@@ -137,7 +137,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 data = json.loads(path.read_text())
 data["OPENROUTER_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
-data["OPENAI_API_KEY"] = os.environ["OPENAI_API_KEY"]
+data["MINIMAX_API_KEY"] = os.environ["MINIMAX_API_KEY"]
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 chmod 0644 "$WORKDIR/config/config.yaml" "$WORKDIR/config/env.json" "$WORKDIR/config/scripts/router.ts"

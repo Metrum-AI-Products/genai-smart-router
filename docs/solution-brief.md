@@ -204,26 +204,44 @@ server:
     dsn: ${ROUTER_USAGE_DB_DSN}
 
 providers:
-  openai:
-    base_url: https://api.openai.com/v1
-    dialect: openai-responses
-    api_key: ${OPENAI_API_KEY}
-    api_key_env: OPENAI_API_KEY
-    key_id: openai-primary
+  minimax:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-chat
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-primary
     models:
-      fast-model:
-        model: example-fast-model
-        tier: cheap
-      strong-model:
-        model: example-strong-model
+      m3:
+        model: MiniMax-M3
+        tier: heavy
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-chat
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-primary
+    models:
+      deepseek-v4-flash-nitro:
+        model: deepseek/deepseek-v4-flash:nitro
+        tier: balanced
+  kimi:
+    base_url: https://api.moonshot.ai/v1
+    dialect: openai-chat
+    api_key: ${MOONSHOT_API_KEY}
+    api_key_env: MOONSHOT_API_KEY
+    key_id: kimi-primary
+    models:
+      kimi-k2.7-code:
+        model: kimi-k2.7-code
         tier: heavy
 
 models:
   default:
     strategy: weighted
     targets:
-      - { provider: openai, model_ref: fast-model, weight: 10 }
-      - { provider: openai, model_ref: strong-model, weight: 3 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
+      - { provider: minimax, model_ref: m3, weight: 30 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 
 callers:
   - id: example-standard-prod

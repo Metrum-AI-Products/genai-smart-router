@@ -104,46 +104,9 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defaultGroup := cfg.Models["default"]
-	want := map[string]string{
-		"openai:gpt-5.4-nano":                         "gpt-5.4-nano",
-		"openai:gpt-5.4-mini":                         "gpt-5.4-mini",
-		"openai:gpt-5.4":                              "gpt-5.4",
-		"minimax:MiniMax-M3":                          "MiniMax-M3",
-		"minimax:MiniMax-M2.7-highspeed":              "MiniMax-M2.7-highspeed",
-		"openrouter:kwaipilot/kat-coder-pro-v2:nitro": "kwaipilot/kat-coder-pro-v2:nitro",
-		"openrouter:openai/gpt-oss-120b:nitro":        "openai/gpt-oss-120b:nitro",
-		"openrouter:nvidia/nemotron-3-nano-30b-a3b":   "nvidia/nemotron-3-nano-30b-a3b",
-		"openrouter:inception/mercury-2":              "inception/mercury-2",
-		"openrouter:inclusionai/ling-2.6-flash":       "inclusionai/ling-2.6-flash",
-		"groq:qwen/qwen3-32b":                         "qwen/qwen3-32b",
-		"groq:llama-3.3-70b-versatile":                "llama-3.3-70b-versatile",
-	}
-	for name, model := range want {
-		found := false
-		for _, target := range defaultGroup.Targets {
-			if target.Provider+":"+target.Model == name && target.Model == model {
-				found = true
-				if target.Weight <= 0 {
-					t.Fatalf("%s target resolved with non-positive weight: %#v", name, target)
-				}
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("default group missing resolved target %s; targets=%#v", name, defaultGroup.Targets)
-		}
-	}
-	openRouterAnthropic := cfg.Provider["openrouter_anthropic"]
-	if openRouterAnthropic.Dialect != "anthropic" || normalizeAuthScheme(openRouterAnthropic.AuthScheme) != "bearer" {
-		t.Fatalf("openrouter_anthropic provider not configured for Anthropic bearer skin: %#v", openRouterAnthropic)
-	}
-	openAIModels := cfg.Provider["openai"].Models
-	for ref, want := range map[string]string{"gpt55": "gpt-5.5", "gpt55-pro": "gpt-5.5-pro"} {
-		if got := openAIModels[ref].Model; got != want {
-			t.Fatalf("openai model ref %s=%q want %q", ref, got, want)
-		}
-	}
+	assertDefaultGroupTargets(t, cfg.Models["default"])
+	assertAnthropicCompatibleProvider(t, cfg.Provider["minimax_anthropic"], "m3", "MiniMax-M3")
+	assertAnthropicCompatibleProvider(t, cfg.Provider["kimi_anthropic"], "kimi-k2.7-code", "kimi-k2.7-code")
 	for _, name := range []string{"small", "medium", "high"} {
 		group, ok := cfg.Models[name]
 		if !ok {
@@ -155,65 +118,25 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	for name, group := range cfg.Models {
 		if name == "agent-tools-smoke" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openai" || group.Targets[0].Model != "gpt-5.5" {
-				t.Fatalf("example config agent-tools-smoke=%#v, want static openai gpt-5.5", group)
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax" || group.Targets[0].Model != "MiniMax-M3" || group.Targets[0].Dialect != "openai-responses" {
+				t.Fatalf("example config agent-tools-smoke=%#v, want static minimax MiniMax-M3 responses", group)
 			}
 			continue
 		}
 		if name == "claude-tools-smoke" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "anthropic/claude-sonnet-4.6:nitro" {
-				t.Fatalf("example config claude-tools-smoke=%#v, want static openrouter anthropic claude sonnet nitro", group)
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax_anthropic" || group.Targets[0].Model != "MiniMax-M3" {
+				t.Fatalf("example config claude-tools-smoke=%#v, want static minimax Anthropic-compatible MiniMax-M3", group)
 			}
 			continue
 		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
-		totalWeight := 0
-		m3Weight := 0
-		deepSeekWeight := 0
-		kimiWeight := 0
-		normalTargets := 0
-		openAIToolTarget := false
-		anthropicToolTarget := false
-		for _, target := range group.Targets {
-			if target.ToolOnly {
-				if target.Provider == "openai" && target.Model == "gpt-5.5" {
-					openAIToolTarget = true
-				}
-				if target.Provider == "openrouter_anthropic" && target.Model == "anthropic/claude-sonnet-4.6:nitro" {
-					anthropicToolTarget = true
-				}
-				continue
-			}
-			normalTargets++
-			totalWeight += target.Weight
-			if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
-				m3Weight += target.Weight
-			}
-			if target.Provider == "openrouter" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
-				deepSeekWeight += target.Weight
-			}
-			if target.Provider == "kimi" && target.Model == "kimi-k2.7-code" {
-				kimiWeight += target.Weight
-			}
-		}
-		if !openAIToolTarget || !anthropicToolTarget {
-			t.Fatalf("example config group %s missing tool-only targets openai=%v anthropic=%v", name, openAIToolTarget, anthropicToolTarget)
-		}
-		if name == "big-coder" {
-			if normalTargets != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
-				t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d normal_targets=%d, want 50/30/20 over 3 normal targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, normalTargets)
-			}
-			continue
-		}
-		if totalWeight == 0 || m3Weight*10 != totalWeight*3 || deepSeekWeight*10 != totalWeight*6 {
-			t.Fatalf("example config group %s weights m3=%d deepseek=%d total=%d, want 30%%/60%%", name, m3Weight, deepSeekWeight, totalWeight)
-		}
+		assertActiveGroupPolicy(t, name, group)
 	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "agent-tools-smoke", "claude-tools-smoke"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -228,6 +151,106 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	if len(wantAllows) != 0 {
 		t.Fatalf("example config missing caller profiles: %#v", wantAllows)
 	}
+}
+
+func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
+	t.Helper()
+	want := map[string]string{
+		"minimax:MiniMax-M3":                          "MiniMax-M3",
+		"minimax:MiniMax-M2.7-highspeed":              "MiniMax-M2.7-highspeed",
+		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
+		"openrouter:kwaipilot/kat-coder-pro-v2:nitro": "kwaipilot/kat-coder-pro-v2:nitro",
+		"openrouter:nvidia/nemotron-3-nano-30b-a3b":   "nvidia/nemotron-3-nano-30b-a3b",
+		"openrouter:inception/mercury-2":              "inception/mercury-2",
+		"openrouter:inclusionai/ling-2.6-flash":       "inclusionai/ling-2.6-flash",
+	}
+	for name, model := range want {
+		found := false
+		for _, target := range defaultGroup.Targets {
+			if target.Provider+":"+target.Model == name && target.Model == model {
+				found = true
+				if !target.ToolOnly && target.Weight <= 0 {
+					t.Fatalf("%s target resolved with non-positive weight: %#v", name, target)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("default group missing resolved target %s; targets=%#v", name, defaultGroup.Targets)
+		}
+	}
+}
+
+func assertAnthropicCompatibleProvider(t *testing.T, provider ProviderConfig, ref, model string) {
+	t.Helper()
+	if provider.Dialect != "anthropic" || normalizeAuthScheme(provider.AuthScheme) != "bearer" || provider.Models[ref].Model != model {
+		t.Fatalf("provider not configured for Anthropic-compatible bearer skin: %#v", provider)
+	}
+}
+
+func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
+	t.Helper()
+	totalWeight := 0
+	m3Weight := 0
+	deepSeekWeight := 0
+	kimiWeight := 0
+	normalTargets := 0
+	codexToolTarget := false
+	claudeMiniMaxToolTarget := false
+	claudeKimiToolTarget := false
+	for _, target := range group.Targets {
+		if activeTargetUsesDisallowedModel(target) {
+			t.Fatalf("example config group %s has disallowed active target %#v", name, target)
+		}
+		if target.ToolOnly {
+			if target.Provider == "minimax" && target.Model == "MiniMax-M3" && target.Dialect == "openai-responses" {
+				codexToolTarget = true
+			}
+			if target.Provider == "minimax_anthropic" && target.Model == "MiniMax-M3" {
+				claudeMiniMaxToolTarget = true
+			}
+			if target.Provider == "kimi_anthropic" && target.Model == "kimi-k2.7-code" && target.DefaultThinking["type"] == "enabled" {
+				claudeKimiToolTarget = true
+			}
+			continue
+		}
+		normalTargets++
+		totalWeight += target.Weight
+		if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
+			m3Weight += target.Weight
+		}
+		if target.Provider == "openrouter" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+			deepSeekWeight += target.Weight
+		}
+		if target.Provider == "kimi" && target.Model == "kimi-k2.7-code" {
+			kimiWeight += target.Weight
+		}
+	}
+	if !codexToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget {
+		t.Fatalf("example config group %s missing tool-only targets codex=%v minimax=%v kimi=%v", name, codexToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget)
+	}
+	if name == "big-coder" {
+		if normalTargets != 3 || totalWeight != 100 || m3Weight != 50 || kimiWeight != 30 || deepSeekWeight != 20 {
+			t.Fatalf("example config big-coder weights m3=%d kimi=%d deepseek=%d total=%d normal_targets=%d, want 50/30/20 over 3 normal targets", m3Weight, kimiWeight, deepSeekWeight, totalWeight, normalTargets)
+		}
+		return
+	}
+	if totalWeight == 0 || m3Weight*10 != totalWeight*3 || deepSeekWeight*10 != totalWeight*6 {
+		t.Fatalf("example config group %s weights m3=%d deepseek=%d total=%d, want 30%%/60%%", name, m3Weight, deepSeekWeight, totalWeight)
+	}
+}
+
+func activeTargetUsesDisallowedModel(target Target) bool {
+	if target.Provider == "openai" || target.Provider == "anthropic" {
+		return true
+	}
+	needle := strings.ToLower(target.Model + "/" + target.ModelRef)
+	for _, bad := range []string{"anthropic/", "claude", "gpt-5", "gpt54", "gpt55", "openai/gpt"} {
+		if strings.Contains(needle, bad) {
+			return true
+		}
+	}
+	return false
 }
 
 func minimalConfig(t *testing.T) *Config {
