@@ -194,6 +194,15 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Production router was restarted after the caller config update.
 - Verified production `/readyz` and `/v1/models` for both new tokens; both tokens returned only `default`, `fast`, and `small`.
 
+## 2026-06-15 High Group GPT-5.5 Weight Update
+
+- Updated the production `high` group standard/non-tool routing pool.
+- Increased OpenAI `gpt-5.5` from 1% to 10%.
+- Reduced OpenRouter `google/gemma-4-26b-a4b-it:nitro` from 10% to 1%.
+- Final `high` standard pool: DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 4 26B Nitro 1%, Kimi K2.7 Code 10%, GPT-5.5 10%.
+- Tool-only routing weights were not changed.
+- Verified production `/readyz` and pulled the live remote config back to confirm the updated weights.
+
 ## Operations
 
 Restart:
