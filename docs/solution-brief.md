@@ -355,7 +355,7 @@ router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --caller-project harbor-algotune-pca \
-  --caller-environment case-20260614t120000z \
+  --caller-environment case-current-policy-20260615t004637z \
   --resolved-group big-coder \
   --client codex \
   --out /app/logs/harbor-agentic-big-coder-codex.md
@@ -377,7 +377,7 @@ Reports include:
 - Average and maximum latency.
 - Hourly and daily usage tables.
 
-For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The recorded production run is available in `docs/harbor-case-study.md`: 12/12 trials passed with reward `1.0`, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The current recorded production run is available in `docs/harbor-case-study.md`: 12/12 trials passed with reward `1.0` on June 15, 2026, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder` under the OpenRouter/MiniMax/Kimi-only upstream policy.
 
 ## Deployment Options
 

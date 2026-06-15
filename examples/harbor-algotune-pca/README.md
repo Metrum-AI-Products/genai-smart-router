@@ -175,13 +175,13 @@ The generated `reports/$CASE_ID/case-study.md` includes:
 
 ## Latest Recorded Case Study
 
-The checked-in report at `docs/harbor-case-study.md` records a full production run on June 14, 2026:
+The checked-in report at `docs/harbor-case-study.md` records a full production run on June 15, 2026:
 
 - Task: `aider/polyglot_python_two-bucket`
 - Agents: Codex CLI and Claude Code CLI
 - Model groups: `default`, `fast`, `small`, `medium`, `high`, `big-coder`
 - Outcome: 12/12 Harbor trials passed with reward `1.0`
-- Production usage window: 54 router requests, 314,599 total tokens, 0 router errors
+- Production usage window: 121 router requests, 1,682,613 total tokens, 1 upstream error with fallback, and no Harbor exceptions
 
 ## Notes
 

@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-14
+Last deployed: 2026-06-15
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-14
 
 ## Deployed Version
 
-- Router package/image version: `usage-caller-ip-20260614-linux-amd64`
-- Source commit: local working tree deployment image with usage TPS reporting, cache snapshots, caller IP reporting, and Postgres usage DB
+- Router package/image version: `no-openai-anthropic-20260615-linux-amd64`
+- Source commit: `75021b1` plus production config updates for Harbor case-study caller tokens
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -125,6 +125,15 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Verified direct provider smokes: MiniMax Responses tool request HTTP 200, MiniMax Anthropic-compatible tool request HTTP 200, and Kimi Anthropic-compatible thinking/tool request HTTP 200.
 - Verified production `/readyz`, local/remote production config SHA-256 parity, `/v1/models` for the `chetan` token, authenticated `big-coder` chat, authenticated `agent-tools-smoke` Responses tool request, and authenticated `claude-tools-smoke` Messages tool request.
 
+## 2026-06-15 Harbor Current-Policy Validation
+
+- Registered 12 one-group Harbor caller tokens for case environment `case-current-policy-20260615t004637z`.
+- Ran Harbor task `aider/polyglot_python_two-bucket` through hosted production with Codex CLI and Claude Code CLI across `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+- Result: 12/12 Harbor cells passed with reward `1.0` and zero Harbor exceptions.
+- Generated production Postgres usage report at `/opt/smart-llmrouter/compose/logs/harbor-agentic-case-current-policy-20260615t004637z.md` and copied the report into the local case-study artifacts.
+- Observed 121 router requests, 1,682,613 total tokens, 121 cache bypasses, and one upstream `502` during `claude-code/high`; the router recorded one fallback and the Harbor trial still passed.
+- Updated `docs/harbor-case-study.md` with the current production measurement.
+
 ## Operations
 
 Restart:
@@ -205,7 +214,7 @@ For a scoped report, add filters such as:
 
 ```bash
   --caller-project harbor-algotune-pca \
-  --caller-environment case-20260614t120000z \
+  --caller-environment case-current-policy-20260615t004637z \
   --resolved-group big-coder \
   --client codex
 ```

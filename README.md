@@ -381,7 +381,7 @@ Generate a report for one benchmark or case study by caller project/environment:
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --caller-project harbor-algotune-pca \
-  --caller-environment case-20260614t120000z \
+  --caller-environment case-current-policy-20260615t004637z \
   --out harbor-agentic-usage.md
 ```
 
@@ -409,7 +409,7 @@ make e2e-live-full # live provider HTTP cache checks plus live CLI C e2e
 make e2e-compose-live # live provider + Claude/Codex checks through docker compose and Caddy
 ```
 
-The Harbor agentic coding case-study example in `examples/harbor-algotune-pca/` uses `uv tool install harbor`, generates one router token per `{agent, model_group}`, runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code, and emits a markdown usage comparison report. The recorded production run is checked in at `docs/harbor-case-study.md`.
+The Harbor agentic coding case-study example in `examples/harbor-algotune-pca/` uses `uv tool install harbor`, generates one router token per `{agent, model_group}`, runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code, and emits a markdown usage comparison report. The current production run is checked in at `docs/harbor-case-study.md`.
 
 `make e2e-live-c` starts the router once per OpenRouter sample target, runs both local CLIs, extracts the generated C source, compiles it with `cc -std=c11 -Wall -Wextra -Werror`, and runs the binary. It reads the project `env.json` before invoking the router. To keep logs and generated C files:
 
