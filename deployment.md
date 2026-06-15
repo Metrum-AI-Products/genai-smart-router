@@ -211,6 +211,17 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Restarted the production router after backing up `config/config.yaml`.
 - Verified production `/readyz` and pulled the live remote config back to confirm zero callers are missing the requested groups.
 
+## 2026-06-15 Medium/Fast/Big-Coder Routing Weight Update
+
+- Added OpenAI `gpt-5.4-nano` to the production OpenAI provider catalog.
+- Updated `medium` standard/non-tool pool to DeepSeek V4 Flash Nitro 53%, MiniMax-M3 35%, Gemma 4 26B Nitro 1%, Kimi K2.7 Code 8%, and GPT-5.5 3%.
+- Updated `fast` standard/non-tool pool to DeepSeek V4 Flash Nitro 45%, MiniMax-M3 28%, Gemma 4 26B Nitro 1%, Kimi K2.7 Code 5%, GPT-5.5 1%, and GPT-5.4 Nano 20%.
+- Updated `big-coder` standard/non-tool pool to DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, GPT-5.5 25%, and GPT-5.4 Nano 20%.
+- Tool-only routing weights were not changed.
+- Verified production `/readyz` and pulled the live remote config back to confirm all three groups sum to 100.
+- Tested OpenAI `gpt-5.4-nano` directly through the production OpenAI key: HTTP 200, resolved model `gpt-5.4-nano-2026-03-17`, output text `nano-ok`.
+- Tested hosted router selection with unique non-tool prompts. `fast` selected `openai/gpt-5.4-nano` multiple times with HTTP 200; `big-coder` selected `openai/gpt-5.4-nano` twice in 15 requests with HTTP 200.
+
 ## Operations
 
 Restart:
