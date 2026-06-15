@@ -16,8 +16,8 @@ Last deployed: 2026-06-15
 
 ## Deployed Version
 
-- Router package/image version: `no-openai-anthropic-20260615-linux-amd64`
-- Source commit: `75021b1` plus production config updates for Harbor case-study caller tokens
+- Router package/image version: `metrum-docs-20260615-linux-amd64`
+- Source commit: `34e26b3`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:usage-caller-ip-20260614-linux-amd64
+compose-router-1   smart-llmrouter:metrum-docs-20260615-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -152,6 +152,13 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Generated production Postgres usage report at `/opt/smart-llmrouter/compose/logs/harbor-agentic-case-current-policy-20260615t004637z.md` and copied the report into the local case-study artifacts.
 - Observed 121 router requests, 1,682,613 total tokens, 121 cache bypasses, and one upstream `502` during `claude-code/high`; the router recorded one fallback and the Harbor trial still passed.
 - Updated `docs/harbor-case-study.md` with the current production measurement.
+
+## 2026-06-15 Embedded Customer Docs Deployment
+
+- Deployed image `smart-llmrouter:metrum-docs-20260615-linux-amd64` from source commit `34e26b3`.
+- The router binary embeds the Metrum-themed Docusaurus docs site. Browser requests to `/` return `307` to `/docs/`.
+- Verified production `/readyz`, `/docs/` branded HTML, Metrum logo/static asset serving, `/v1/unknown` remains `404`, and authenticated `/v1/models` still returns API JSON.
+- Production config was not changed; only `SMART_LLMROUTER_VERSION` in compose `.env` was updated after backing up the previous `.env`.
 
 ## Operations
 
