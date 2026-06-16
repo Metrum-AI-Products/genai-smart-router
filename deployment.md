@@ -418,3 +418,32 @@ unique daily token limits: [50000000]
 unique monthly token limits: [600000000]
 sharvesh-metrum-insights-prod: 20,020,045 / 50,000,000 daily tokens
 ```
+
+### 2026-06-16 hosted docs API examples
+
+Deployed image/package `smart-llmrouter:70aa94b-linux-amd64` from source commit `70aa94b`.
+
+Hosted Docusaurus docs now include tested examples for:
+
+- `/v1/models`
+- `/v1/chat/completions`
+- `/v1/responses`
+- `/v1/messages`
+- Python OpenAI SDK usage with `uv`
+
+Validation:
+
+```text
+docs-build: passed
+uv Python OpenAI SDK smoke: passed against https://llm-api-engg.metrum.ai
+curl /v1/models: 200
+curl /v1/chat/completions: 200
+curl /v1/responses: 200
+curl /v1/messages: 200
+production readyz after deploy: 200
+hosted docs contain OpenAI Responses section: yes
+hosted docs contain Python Client section: yes
+hosted docs contain uv add openai example: yes
+hosted docs static HTML does not hardcode llm-api-engg.metrum.ai: yes
+compose image: smart-llmrouter:70aa94b-linux-amd64
+```
