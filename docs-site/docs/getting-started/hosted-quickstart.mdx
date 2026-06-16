@@ -40,6 +40,23 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
 `}
 </RouterCodeBlock>
 
+## OpenAI Responses
+
+Use `/v1/responses` for Responses-compatible clients and agent frameworks.
+
+<RouterCodeBlock>
+{`
+curl "$ROUTER_BASE_URL/v1/responses" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "'"$ROUTER_MODEL"'",
+    "input": "Reply with exactly: router ok",
+    "max_output_tokens": 32
+  }'
+`}
+</RouterCodeBlock>
+
 ## Anthropic-Compatible Messages
 
 <RouterCodeBlock>
@@ -69,3 +86,47 @@ curl "$ROUTER_BASE_URL/v1/models" \
 </RouterCodeBlock>
 
 If a caller token is limited to `default`, `fast`, and `small`, premium groups such as `high` or `big-coder` will not be listed and cannot be requested.
+
+## Python Client
+
+The router accepts OpenAI-compatible SDK traffic. This example creates an isolated `uv` project and calls the hosted router through `/v1/chat/completions`.
+
+<RouterCodeBlock>
+{`
+mkdir smart-router-python-example
+cd smart-router-python-example
+uv init --bare
+uv add openai
+
+cat > smoke.py <<'PY'
+import os
+from openai import OpenAI
+
+router_base_url = os.environ["ROUTER_BASE_URL"].rstrip("/")
+router_token = os.environ["ROUTER_TOKEN"]
+router_model = os.environ.get("ROUTER_MODEL", "default")
+
+client = OpenAI(
+    base_url=f"{router_base_url}/v1",
+    api_key=router_token,
+)
+
+response = client.chat.completions.create(
+    model=router_model,
+    messages=[
+        {"role": "user", "content": "Reply with exactly: router ok"},
+    ],
+    max_tokens=32,
+)
+
+print(response.choices[0].message.content)
+PY
+
+export ROUTER_BASE_URL="{{origin}}"
+export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+export ROUTER_MODEL="default"
+uv run python smoke.py
+`}
+</RouterCodeBlock>
+
+The same token and model-group rules apply to SDK calls: `/v1/models` shows only the groups that the token is allowed to use, and provider credentials remain server-side.

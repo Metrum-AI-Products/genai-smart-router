@@ -376,6 +376,45 @@ healthz: 200
 /v1/models: 200 with default, fast, big-coder
 Claude Code: router prod claude ok
 high: 200 with gpt-5.5 at that time; this is no longer an active route under the 2026-06-15 policy
-big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time; current big-coder excludes OpenAI and Anthropic model IDs
+big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time; current big-coder includes weighted OpenAI GPT-5.5/GPT-5.4 Nano alongside MiniMax, Kimi, and OpenRouter routes
 Codex: router prod codex ok
+```
+
+### 2026-06-16 `kyai-judge` production group
+
+Added production-only model group `kyai-judge` as a static route to OpenAI `gpt-5.5`.
+Allowed callers:
+
+- `chetan-metrum-insights-prod`
+- `jerin-metrum-insights-prod-kyai-judge`
+
+Jerin's KYAI key is a dedicated token for the `metrum-insights` project and allows only `kyai-judge`. Raw token material is stored only in the ignored local credential file `ROUTER_TOKENS_JERIN_KYAI_JUDGE_20260616.txt`.
+
+Validation:
+
+```text
+readyz: 200
+chetan /v1/models includes kyai-judge
+jerin KYAI /v1/models returns only kyai-judge
+jitin /v1/models does not include kyai-judge
+chetan kyai-judge chat: 200, upstream model gpt-5.5
+jerin KYAI kyai-judge chat: 200, upstream model gpt-5.5
+jitin kyai-judge chat: 403 model-not-allowed
+```
+
+### 2026-06-16 production quota increase
+
+Raised all deployed caller entries to:
+
+- Daily token quota: `50,000,000`
+- Monthly token quota: `600,000,000`
+
+Validation:
+
+```text
+readyz: 200
+production callers: 94
+unique daily token limits: [50000000]
+unique monthly token limits: [600000000]
+sharvesh-metrum-insights-prod: 20,020,045 / 50,000,000 daily tokens
 ```
