@@ -23,6 +23,7 @@ These instructions apply to the whole repository.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
 - Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep public docs free of raw provider keys, real router tokens, private host paths, SSH details, and internal-only deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
+- Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
 
 ## Development Workflow
 
@@ -98,21 +99,33 @@ Never edit production config without a timestamped backup:
 config/config.yaml.bak.<UTC timestamp>
 ```
 
-## Production Image Deployment Process
+## Production Package Deployment Process
 
-For code changes that affect runtime behavior:
+For code changes that affect runtime behavior or embedded hosted docs:
 
-1. Run `rtk go test ./...`.
-2. Build an amd64 Docker image with an explicit tag that describes the change.
-3. `docker save` the image to `dist/deploy/`.
-4. Copy the tarball to the host with `scp`.
+1. Run relevant tests:
+   - Prefer `rtk go test ./cmd/... ./internal/...` for router code.
+   - `rtk go test ./...` may fail on generated Harbor/job artifact directories; if so, report that separately and do not treat it as a router package failure.
+   - For public docs examples, run the exact curl/Python commands against the intended endpoint using ignored local credentials.
+2. Run `rtk make docs-build` when `docs-site/` changes.
+3. Commit source/docs changes before packaging so `VERSION=$(git describe --tags --always --dirty)` is a stable commit tag and not `-dirty`.
+4. Build the amd64 Docker package:
+   - `rtk make package-docker GOOS=linux GOARCH=amd64`
+5. Copy `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz` to the host with `scp`.
 5. On the host:
-   - `sudo docker load -i /tmp/<image>.tar`
-   - back up `.env`
-   - update `SMART_LLMROUTER_VERSION=<new tag>`
-   - `sudo docker compose up -d router`
-6. Verify health and route behavior.
-7. Update deployment docs with the new image tag and validation results.
+   - back up `/opt/smart-llmrouter` to `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`
+   - unpack the package into a fresh `/opt/smart-llmrouter`
+   - copy forward live `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` from the backup
+   - set `SMART_LLMROUTER_VERSION=<version>-linux-amd64` in `compose/.env`
+   - `sudo docker load -i images/smart-llmrouter-<version>-linux-amd64.tar`
+   - `sudo docker compose config >/dev/null`
+   - `sudo docker compose up -d`
+6. Verify health, route behavior, and hosted docs when relevant:
+   - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
+   - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`
+   - authenticated `/v1/models` or completion smoke for API compatibility
+7. Update `deployment.md` with image/package tag, source commit, backup path when useful, and validation results.
+8. Commit the deployment note after production verification.
 
 ## Router Smoke Tests
 
