@@ -1727,7 +1727,13 @@ func TestOpenRouterAnthropicSkinUsesBearerAuthAndMessagesPath(t *testing.T) {
 		AuthScheme: "bearer",
 		APIKey:     "openrouter-key",
 		Models: map[string]ProviderModel{
-			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1},
+			"qwen3-coder-30b-nitro": {
+				Model:            "qwen/qwen3-coder-30b-a3b-instruct:nitro",
+				Weight:           1,
+				InputModalities:  []string{"text", "image"},
+				OutputModalities: []string{"text"},
+				ToolSupport:      ToolSupport{AnthropicMessages: []string{"client_tools"}},
+			},
 		},
 	}
 	cfg.Models["openrouter-anthropic"] = ModelGroup{
@@ -1917,6 +1923,7 @@ func TestResponsesToolPassthroughCanUseOpenRouterResponsesTarget(t *testing.T) {
 
 func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 	var gotPath, gotAuth, gotAPIKey, gotVersion, gotModel string
+	var gotContent []any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
@@ -1927,6 +1934,11 @@ func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 		gotModel, _ = body["model"].(string)
+		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
+			if msg, ok := messages[0].(map[string]any); ok {
+				gotContent, _ = msg["content"].([]any)
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id":          "msg_openrouter_tool",
 			"type":        "message",
@@ -1951,7 +1963,13 @@ func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 	}
 	cfg.Models["claude-tools-smoke-openrouter"] = ModelGroup{
 		Strategy: "static",
-		Targets:  []Target{{Provider: "openrouter_anthropic", ModelRef: "qwen3-coder-30b-nitro"}},
+		Targets: []Target{{
+			Provider:         "openrouter_anthropic",
+			ModelRef:         "qwen3-coder-30b-nitro",
+			InputModalities:  []string{"text", "image"},
+			OutputModalities: []string{"text"},
+			ToolSupport:      ToolSupport{AnthropicMessages: []string{"client_tools"}},
+		}},
 	}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "claude-tools-smoke-openrouter")
 	svc, err := New(cfg)
@@ -1960,7 +1978,7 @@ func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 	}
 	defer svc.Close()
 
-	body := `{"model":"claude-tools-smoke-openrouter","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"echo","input_schema":{"type":"object"}}]}`
+	body := `{"model":"claude-tools-smoke-openrouter","messages":[{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image_url","image_url":{"url":"` + receiptImageURL + `"}}]}],"tools":[{"name":"echo","input_schema":{"type":"object"}}]}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rr := httptest.NewRecorder()
@@ -1976,6 +1994,14 @@ func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 	}
 	if gotVersion != "2023-06-01" {
 		t.Fatalf("missing Anthropic-Version, got %q", gotVersion)
+	}
+	if len(gotContent) != 2 {
+		t.Fatalf("forwarded content=%#v, want text and image blocks", gotContent)
+	}
+	imageBlock, _ := gotContent[1].(map[string]any)
+	source, _ := imageBlock["source"].(map[string]any)
+	if imageBlock["type"] != "image" || source["type"] != "url" || source["url"] != receiptImageURL {
+		t.Fatalf("forwarded image block=%#v", imageBlock)
 	}
 }
 

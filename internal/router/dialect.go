@@ -168,6 +168,16 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking ma
 	}
 	body["model"] = model
 	body["stream"] = false
+	if len(req.Messages) > 0 {
+		msgs := make([]map[string]any, 0, len(req.Messages))
+		for _, m := range req.Messages {
+			msgs = append(msgs, map[string]any{
+				"role":    m.Role,
+				"content": encodeAnthropicContent(m),
+			})
+		}
+		body["messages"] = msgs
+	}
 	if _, ok := body["max_tokens"]; !ok {
 		body["max_tokens"] = max(req.MaxTokens, 1024)
 	}
