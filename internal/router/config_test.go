@@ -229,6 +229,24 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "agent-tools-smoke-openrouter-qwen36" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
+				t.Fatalf("example config agent-tools-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash Responses-compatible target", group)
+			}
+			continue
+		}
+		if name == "claude-tools-smoke-openrouter-qwen36" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
+				t.Fatalf("example config claude-tools-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash Anthropic-compatible target", group)
+			}
+			continue
+		}
+		if name == "vision-smoke-openrouter-qwen36" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
+				t.Fatalf("example config vision-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash vision target", group)
+			}
+			continue
+		}
 		if name == "vision" {
 			if group.Strategy != "weighted" || len(group.Targets) < 2 {
 				t.Fatalf("example config vision=%#v, want weighted multi-target vision group", group)
@@ -252,7 +270,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small", "vision"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -316,6 +334,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	deepSeekWeight := 0
 	kimiWeight := 0
 	gemmaWeight := 0
+	qwenFlashWeight := 0
 	openAIWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
@@ -363,6 +382,9 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "openrouter" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
 			gemmaWeight += target.Weight
 		}
+		if target.Provider == "openrouter" && target.Model == "qwen/qwen3.6-flash:nitro" {
+			qwenFlashWeight += target.Weight
+		}
 		if target.Provider == "openai" && target.Model == "gpt-5.4-nano" {
 			openAIWeight += target.Weight
 		}
@@ -371,21 +393,21 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		deepSeek, m3, gemma, kimi, openAI, targets int
+		deepSeek, m3, gemma, qwenFlash, kimi, openAI, targets int
 	}{
-		"default":   {56, 28, 8, 7, 1, 5},
-		"fast":      {61, 28, 5, 5, 1, 5},
-		"small":     {61, 30, 4, 4, 1, 5},
-		"medium":    {56, 27, 8, 8, 1, 5},
-		"high":      {51, 28, 10, 10, 1, 5},
-		"big-coder": {20, 49, 0, 30, 1, 4},
+		"default":   {53, 28, 7, 5, 6, 1, 6},
+		"fast":      {58, 27, 4, 5, 5, 1, 6},
+		"small":     {57, 29, 4, 5, 4, 1, 6},
+		"medium":    {53, 26, 7, 5, 8, 1, 6},
+		"high":      {48, 27, 9, 5, 10, 1, 6},
+		"big-coder": {18, 47, 0, 5, 29, 1, 5},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI {
-		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d kimi=%d openai=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI {
+		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, totalWeight, normalTargets, expect)
 	}
 }
 
@@ -400,9 +422,10 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 	if strings.Contains(needle, "moonshotai/kimi") {
 		return true
 	}
+	allowedQwen := target.Model == "qwen/qwen3.6-flash:nitro" || target.Model == "qwen/qwen3.7-plus:nitro"
 	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
-			return true
+			return !allowedQwen
 		}
 	}
 	if target.ToolOnly && (target.Provider == "openai" || target.Provider == "anthropic") {

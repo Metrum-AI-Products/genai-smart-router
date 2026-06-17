@@ -67,6 +67,17 @@ providers:
         pricing_updated_at: "2026-06-17"
         pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
 
+      qwen3-6-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: vision
+        input_price_per_million_usd: 0.1875
+        output_price_per_million_usd: 1.125
+        input_modalities: [text, image, video]
+        output_modalities: [text]
+        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: image-capable; use conservative weight for general VLM routing and validate separately before OCR-specific routing
+
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -210,4 +221,4 @@ Image-bearing requests bypass response caching. The router logs `input_has_image
 
 Keep catalog-only VLM candidates out of active traffic until the exact API shapes you plan to support pass. Some providers advertise image support in a model catalog before the current account, region, or endpoint can actually serve image requests.
 
-For OpenRouter, validate the exact model ID and suffix you plan to route. On 2026-06-17, direct OpenRouter receipt-image smokes passed for `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.7-plus`, and `minimax/minimax-m3`. The same smoke failed or was not suitable for the current account on `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, and `google/gemini-3.1-pro-preview` because OpenRouter returned a provider privacy 404; `qwen/qwen3.6-flash` and `moonshotai/kimi-k2.7-code` returned empty content; `mistralai/mistral-medium-3-5` and `google/gemma-4-26b-a4b-it:nitro` returned the wrong merchant for this receipt.
+For OpenRouter, validate the exact model ID and suffix you plan to route. On 2026-06-17, direct OpenRouter receipt-image smokes passed for `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.7-plus`, `qwen/qwen3.6-flash:nitro`, and `minimax/minimax-m3`. Treat image processing and OCR accuracy as separate gates: `qwen/qwen3.6-flash:nitro` accepted and analyzed the receipt image in direct, local-router, and production-router smokes, but one production run returned the wrong merchant. That is acceptable for a conservative general VLM target, but not enough for an OCR-specific route unless the exact-answer smoke passes consistently. The same smoke failed or was not suitable for the current account on `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, and `google/gemini-3.1-pro-preview` because OpenRouter returned a provider privacy 404; `moonshotai/kimi-k2.7-code` returned empty content; `mistralai/mistral-medium-3-5` and `google/gemma-4-26b-a4b-it:nitro` returned the wrong merchant for this receipt.

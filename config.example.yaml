@@ -165,6 +165,27 @@ providers:
         pricing_updated_at: '2026-06-17'
         pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
           2026-06-17; Nitro suffix validated by completion call.
+      qwen3-6-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: vision
+        input_price_per_million_usd: 0.1875
+        output_price_per_million_usd: 1.125
+        input_modalities:
+        - text
+        - image
+        - video
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed
+          on 2026-06-17. Production router image smoke processed the receipt but returned
+          a wrong merchant once, so treat this as general VLM/image-capable rather
+          than OCR-quality-gated. Tool calls work with auto tool choice; forced object
+          tool_choice fails while thinking mode is enabled.
+        tool_support:
+          openai_chat:
+          - tools
       openrouter-minimax-m3:
         model: minimax/minimax-m3
         tier: vision
@@ -298,6 +319,26 @@ providers:
         tool_support:
           openai_responses:
           - function
+      qwen3-6-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: vision
+        input_price_per_million_usd: 0.1875
+        output_price_per_million_usd: 1.125
+        input_modalities:
+        - text
+        - image
+        - video
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17.
+          A receipt image+tool smoke called the tool but returned Walgreens once,
+          so active Responses tool targets override input_modalities to text only;
+          use for text tools unless image-tool quality is revalidated.
+        tool_support:
+          openai_responses:
+          - function
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -400,6 +441,26 @@ providers:
         tool_support:
           anthropic_messages:
           - client_tools
+      qwen3-6-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: vision
+        input_price_per_million_usd: 0.1875
+        output_price_per_million_usd: 1.125
+        input_modalities:
+        - text
+        - image
+        - video
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool
+          smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice
+          fails upstream while thinking mode is enabled, but the router's Anthropic
+          passthrough removes forced tool_choice when default_thinking is injected.
+        tool_support:
+          anthropic_messages:
+          - client_tools
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -465,6 +526,9 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 20
     - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 12
+    - provider: openrouter
       model_ref: openrouter-claude-sonnet-4-6
       weight: 15
     - provider: openai
@@ -483,6 +547,12 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 12
     - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 8
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
+    - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
       weight: 10
     - provider: openrouter_anthropic
@@ -496,16 +566,19 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 56
+      weight: 53
     - provider: minimax
       model_ref: m3
       weight: 28
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 8
+      weight: 7
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
-      weight: 7
+      weight: 6
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
@@ -550,6 +623,12 @@ models:
       weight: 2
       tool_only: true
     - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
+    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
@@ -565,6 +644,13 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -574,12 +660,15 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 61
+      weight: 58
     - provider: minimax
       model_ref: m3
-      weight: 28
+      weight: 27
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
+      weight: 4
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
       weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
@@ -628,6 +717,12 @@ models:
       weight: 2
       tool_only: true
     - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
+    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
@@ -643,6 +738,13 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -652,13 +754,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 61
+      weight: 57
     - provider: minimax
       model_ref: m3
-      weight: 30
+      weight: 29
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 4
@@ -706,6 +811,12 @@ models:
       weight: 2
       tool_only: true
     - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
+    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
@@ -721,6 +832,13 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -730,13 +848,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 56
+      weight: 53
     - provider: minimax
       model_ref: m3
-      weight: 27
+      weight: 26
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 8
+      weight: 7
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 8
@@ -784,6 +905,12 @@ models:
       weight: 2
       tool_only: true
     - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
+    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
@@ -799,6 +926,13 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -808,13 +942,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 51
+      weight: 48
     - provider: minimax
       model_ref: m3
-      weight: 28
+      weight: 27
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 10
+      weight: 9
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 10
@@ -862,6 +999,12 @@ models:
       weight: 2
       tool_only: true
     - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
+    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
@@ -877,6 +1020,13 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -886,13 +1036,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 20
+      weight: 18
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
+      weight: 5
     - provider: minimax
       model_ref: m3
-      weight: 49
+      weight: 47
     - provider: kimi
       model_ref: kimi-k2.7-code
-      weight: 30
+      weight: 29
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
@@ -952,10 +1105,23 @@ models:
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      input_modalities:
+      - text
     - provider: openrouter_anthropic
       model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      weight: 2
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
   agent-tools-smoke:
     strategy: static
     targets:
@@ -972,11 +1138,33 @@ models:
     targets:
     - provider: openrouter_responses
       model_ref: deepseek-v4-flash-nitro
+  agent-tools-smoke-openrouter-qwen36:
+    strategy: static
+    targets:
+    - provider: openrouter_responses
+      model_ref: qwen3-6-flash-nitro
+      tool_only: true
+      input_modalities:
+      - text
   claude-tools-smoke-openrouter:
     strategy: static
     targets:
     - provider: openrouter_anthropic
       model_ref: deepseek-v4-flash-nitro
+  claude-tools-smoke-openrouter-qwen36:
+    strategy: static
+    targets:
+    - provider: openrouter_anthropic
+      model_ref: qwen3-6-flash-nitro
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 512
+  vision-smoke-openrouter-qwen36:
+    strategy: static
+    targets:
+    - provider: openrouter
+      model_ref: qwen3-6-flash-nitro
   claude-tools-smoke-openrouter-gemma:
     strategy: static
     targets:
@@ -1027,7 +1215,10 @@ callers:
   - agent-tools-smoke
   - claude-tools-smoke
   - agent-tools-smoke-openrouter
+  - agent-tools-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter
+  - claude-tools-smoke-openrouter-qwen36
+  - vision-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter-gemma
   rate:
     rpm: 120

@@ -606,7 +606,7 @@ Claude Code CLI production text smoke against big-coder with --output-format jso
 
 ### 2026-06-17 developer-accessible VLM config rollout
 
-Config-only production update on image/package `smart-llmrouter:081ebac-linux-amd64`.
+Config-only production update was first applied on image/package `smart-llmrouter:081ebac-linux-amd64`; then package `smart-llmrouter:242144f-linux-amd64` was deployed so hosted `/docs/` includes the Qwen3.6 Flash notes and the VLM/OCR quality distinction.
 
 Runtime change:
 
@@ -626,4 +626,57 @@ production /v1/responses fast image+function-tool smoke: 200, selected MiniMax-M
 production /v1/messages fast image+tool smoke: 200, selected qwen/qwen3.7-plus, returned Rite Aid
 Codex CLI production image smoke against small: completed through router and returned Rite Aid
 Claude Code CLI production text smoke against small with --output-format json: completed, result router claude ok, modelUsage small
+```
+
+### 2026-06-17 Qwen3.6 Flash Nitro config rollout
+
+Config-only production update on image/package `smart-llmrouter:081ebac-linux-amd64`.
+
+Runtime change:
+
+- Added OpenRouter `qwen/qwen3.6-flash:nitro` catalog metadata with current OpenRouter pricing of $0.1875/M input tokens and $1.125/M output tokens, text/image/video input modalities, text output, and tool metadata for the validated skins.
+- Added Qwen3.6 Flash at conservative non-tool weight to `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision`.
+- Added text-only OpenAI Responses tool targets for Qwen3.6 Flash, plus Anthropic Messages tool targets with `default_thinking` compatibility, to common developer groups.
+- Added static smoke groups `agent-tools-smoke-openrouter-qwen36`, `claude-tools-smoke-openrouter-qwen36`, and `vision-smoke-openrouter-qwen36` for exact-route validation.
+
+Production backups:
+
+```text
+config/config.yaml.bak.qwen36-flash-20260617T183239Z
+config/config.yaml.bak.qwen36-vision-smoke-20260617T183449Z
+```
+
+Validation:
+
+```text
+OpenRouter provider page checked 2026-06-17: qwen/qwen3.6-flash supports text/image/video input, text output, tools/tool_choice, 1M context, 65,536 max output, and $0.1875/M input plus $1.125/M output pricing
+direct OpenRouter qwen/qwen3.6-flash:nitro text smoke: OK
+direct OpenRouter qwen/qwen3.6-flash:nitro receipt-image smoke: returned Rite Aid
+direct OpenRouter chat tool smoke: tool_call record_answer {"value":"OK"} with tool_choice auto; forced object tool_choice returned provider 400 while thinking mode was enabled
+direct OpenRouter Responses text+function-tool smoke: function_call record_answer {"value":"OK"}
+direct OpenRouter Anthropic Messages text+tool smoke: tool_use record_answer {"value":"OK"}
+direct OpenRouter Anthropic Messages image+tool smoke: tool_use record_answer {"value":"Rite Aid"}
+local router Responses static smoke agent-tools-smoke-openrouter-qwen36: 200, function_call record_answer {"value":"OK"}
+local router Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, tool_use record_answer {"value":"OK"}
+rtk go test ./internal/router ./cmd/...: passed, 69 tests
+production readyz after config updates: 200
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 0ef2b48205cdcb76a6ee7a3ffcddf82b8f7416ebff958f9bcce17e64f2bf3e68
+production /v1/models: static Qwen3.6 smoke groups visible to the smoke token
+production Responses static smoke agent-tools-smoke-openrouter-qwen36: 200, function_call record_answer {"value":"OK"}
+production Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, tool_use record_answer {"value":"OK"}
+production vision static smoke vision-smoke-openrouter-qwen36: 200, selected qwen/qwen3.6-flash:nitro, processed the receipt image but returned Ralphs
+production log monitor after rollout: earlier restart loop caused by config file mode 0600, fixed with chmod 0644; router recovered and no later startup errors in docker logs
+production usage DB check after rollout: Qwen3.6 smoke rows recorded as HTTP 200 with target_model qwen/qwen3.6-flash:nitro
+package deploy backup: /opt/smart-llmrouter.backup-qwen36-docs-20260617T184645Z
+production image after docs/package deploy: smart-llmrouter:242144f-linux-amd64
+production /version after package deploy: 242144f, build_date 2026-06-17T18:44:37Z
+hosted docs /docs/configuration/image-analysis-vlm: 200 and contains qwen/qwen3.6-flash:nitro plus OCR-specific quality caveat
+post-package production Responses static smoke agent-tools-smoke-openrouter-qwen36: 200, function_call record_answer {"value":"OK"}
+post-package production Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, tool_use record_answer {"value":"OK"}
+```
+
+Quality note:
+
+```text
+Keep Qwen3.6 Flash active for general image-capable routing because it accepts and analyzes image inputs. Do not treat the receipt smoke as an OCR-quality pass for exact merchant extraction; use OCR-specific route gates if exact answers are required.
 ```

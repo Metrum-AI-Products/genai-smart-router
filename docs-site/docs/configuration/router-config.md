@@ -80,6 +80,16 @@ providers:
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: "2026-06-17"
         pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
+      qwen3-6-flash-nitro:
+        model: qwen/qwen3.6-flash:nitro
+        tier: vision
+        input_price_per_million_usd: 0.1875
+        output_price_per_million_usd: 1.125
+        input_modalities: [text, image, video]
+        output_modalities: [text]
+        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: image-capable; one receipt smoke returned a wrong merchant, so use conservative weight for general VLM routing and separate OCR-specific gates
 
   kimi:
     base_url: https://api.moonshot.ai/v1
