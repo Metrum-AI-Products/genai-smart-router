@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-15
+Last deployed: 2026-06-17
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-15
 
 ## Deployed Version
 
-- Router package/image version: `harbor-go-sublist-docs-20260615-linux-amd64`
-- Source commit: `a2cb540`
+- Router package/image version: `7f121b6-linux-amd64`
+- Source commit: `7f121b6`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -76,6 +76,16 @@ Port `80` is required for Caddy automatic HTTPS redirects and HTTP-01 fallback. 
 Caddy stores ACME account/cert state in the persistent Docker volume `compose_caddy_data`. Do not remove that volume during normal restarts.
 
 Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs instead of `0.0.0.0/0`.
+
+## 2026-06-17 TypeScript Routing Docs And Policy Helpers
+
+- Deployed image/package: `smart-llmrouter:7f121b6-linux-amd64`.
+- Source commit: `7f121b6`.
+- Backup path: `/opt/smart-llmrouter.backup-ts-routing-docs-20260617T050212Z`.
+- Added router support for bundled TypeScript relative imports and opt-in external policy calls through `router.fetchJSON`.
+- Added per-script-group `script_http` config with deployment-owned `allow_hosts`, timeout/response-size limits, and env-expanded headers for policy-service auth.
+- Updated hosted Docusaurus docs, internal docs, deployment docs, and `config.example.yaml` to cover admin config, proxy-user behavior, imports/dependencies, external-policy calls, and the tested prompt-size routing example.
+- Verified `rtk go test ./cmd/... ./internal/...`, `rtk make docs-build`, production `/readyz`, hosted `/docs/configuration/routing-typescript`, authenticated `/v1/models`, and an authenticated `fast` chat completion routed to `deepseek/deepseek-v4-flash:nitro`.
 
 ## 2026-06-14 Usage Reporting Update
 
