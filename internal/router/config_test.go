@@ -33,7 +33,19 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	cfg := minimalConfig(t)
 	provider := cfg.Provider["mock"]
 	provider.Models = map[string]ProviderModel{
-		"small": {Model: "mock-small", Weight: 99, Tier: "cheap", RPM: 10},
+		"small": {
+			Model:                    "mock-small",
+			Weight:                   99,
+			Tier:                     "cheap",
+			RPM:                      10,
+			InputPricePerMillionUSD:  0.25,
+			OutputPricePerMillionUSD: 1.25,
+			PricingSource:            "https://example.test/pricing",
+			PricingUpdatedAt:         "2026-06-17",
+			ToolSupport: ToolSupport{
+				OpenAIResponses: []string{"function"},
+			},
+		},
 		"large": {Model: "mock-large", Weight: 99, Tier: "heavy"},
 	}
 	cfg.Provider["mock"] = provider
@@ -51,6 +63,11 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	targets := cfg.Models["default"].Targets
 	if targets[0].Model != "mock-small" || targets[0].Weight != 0 || targets[0].Tier != "cheap" || targets[0].RPM != 10 {
 		t.Fatalf("small ref not resolved: %#v", targets[0])
+	}
+	if targets[0].InputPricePerMillionUSD != 0.25 || targets[0].OutputPricePerMillionUSD != 1.25 ||
+		targets[0].PricingSource != "https://example.test/pricing" || targets[0].PricingUpdatedAt != "2026-06-17" ||
+		len(targets[0].ToolSupport.OpenAIResponses) != 1 || targets[0].ToolSupport.OpenAIResponses[0] != "function" {
+		t.Fatalf("small ref metadata not resolved: %#v", targets[0])
 	}
 	if targets[1].Model != "mock-large" || targets[1].Weight != 9 || targets[1].Tier != "heavy" {
 		t.Fatalf("large ref override not resolved: %#v", targets[1])
@@ -74,6 +91,48 @@ func TestMissingProviderModelRefFailsValidation(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "unknown model_ref missing") {
 		t.Fatalf("expected missing model_ref error, got %v", err)
+	}
+}
+
+func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		model  ProviderModel
+		target Target
+		want   string
+	}{
+		{
+			name:  "negative provider input price",
+			model: ProviderModel{Model: "mock-known", InputPricePerMillionUSD: -0.01},
+			want:  "input_price_per_million_usd",
+		},
+		{
+			name:  "duplicate provider tool support",
+			model: ProviderModel{Model: "mock-known", ToolSupport: ToolSupport{OpenAIResponses: []string{"function", "function"}}},
+			want:  "duplicate",
+		},
+		{
+			name:   "negative target output price",
+			model:  ProviderModel{Model: "mock-known"},
+			target: Target{OutputPricePerMillionUSD: -0.01},
+			want:   "output_price_per_million_usd",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			provider := cfg.Provider["mock"]
+			provider.Models = map[string]ProviderModel{"known": tt.model}
+			cfg.Provider["mock"] = provider
+			target := Target{Provider: "mock", ModelRef: "known"}
+			if tt.target.OutputPricePerMillionUSD != 0 {
+				target.OutputPricePerMillionUSD = tt.target.OutputPricePerMillionUSD
+			}
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q error, got %v", tt.want, err)
+			}
+		})
 	}
 }
 

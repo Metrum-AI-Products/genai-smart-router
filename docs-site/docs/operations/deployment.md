@@ -19,6 +19,7 @@ flowchart TB
   Router --> DB[Usage database]
   Router --> Logs[Request logs]
   Router --> Providers[External model providers]
+  Router --> Internal[Internal vLLM or SGLang services]
 ```
 
 ## Runtime Inputs
@@ -26,9 +27,11 @@ flowchart TB
 | Input | Purpose |
 |---|---|
 | Router config | Providers, model groups, caller tokens, limits, cache, usage store |
-| Provider key environment | Upstream provider credentials loaded server-side |
+| Provider key environment | Upstream provider credentials loaded server-side, including internal vLLM/SGLang bearer tokens when required |
 | Routing script | Optional TypeScript policy plus packaged helper/dependency files |
 | Usage database | Durable reporting and cost-management data |
+
+Enterprise deployments often route to internally hosted vLLM or SGLang services. Configure each service as an OpenAI-compatible provider with a private `/v1` base URL, keep its access token in the deployment environment, and expose only router model groups to callers. Validate each internal upstream directly and through the router before adding it to a production model group.
 
 TypeScript routing scripts are loaded from the deployment filesystem. Package local helper imports and any locked third-party dependencies with the script directory, or deploy a pre-bundled script artifact. The router does not install npm packages at runtime.
 

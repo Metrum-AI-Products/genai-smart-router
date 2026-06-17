@@ -136,6 +136,7 @@ XAI_API_KEY
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
 - `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and original OpenAI `gpt-5.5` at low non-tool weight.
+- Enterprise-owned vLLM and SGLang services are configured the same way as other OpenAI-compatible providers: set `base_url` to the internal `/v1` endpoint, use `dialect: openai-chat` for `/v1/chat/completions`, set `auth_scheme: bearer` when the service expects bearer auth, and catalog the served model ID under `providers.<name>.models`. See `docs/SELF_HOSTED_UPSTREAMS.md` for vLLM/SGLang examples and tool-call validation smokes.
 - MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
 
@@ -163,7 +164,16 @@ providers:
     api_key_env: MINIMAX_API_KEY
     key_id: minimax-default
     models:
-      m3: { model: MiniMax-M3, tier: heavy }
+      m3:
+        model: MiniMax-M3
+        tier: heavy
+        input_price_per_million_usd: 0.30
+        output_price_per_million_usd: 1.20
+        pricing_source: https://platform.minimax.io/docs/pricing/overview
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, tool_choice]
+          openai_responses: [function]
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -171,8 +181,24 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-default
     models:
-      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
-      gemma-4-26b-a4b-it-nitro: { model: google/gemma-4-26b-a4b-it:nitro, tier: balanced }
+      deepseek-v4-flash-nitro:
+        model: deepseek/deepseek-v4-flash:nitro
+        tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+      gemma-4-26b-a4b-it-nitro:
+        model: google/gemma-4-26b-a4b-it:nitro
+        tier: balanced
+        input_price_per_million_usd: 0.06
+        output_price_per_million_usd: 0.33
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -180,7 +206,15 @@ providers:
     api_key_env: OPENAI_API_KEY
     key_id: openai-default
     models:
-      gpt-5.5: { model: gpt-5.5, tier: heavy }
+      gpt-5.5:
+        model: gpt-5.5
+        tier: heavy
+        input_price_per_million_usd: 5.00
+        output_price_per_million_usd: 30.00
+        pricing_source: https://openai.com/api/pricing/
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_responses: [function]
   openrouter_responses:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-responses
@@ -188,7 +222,15 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-responses-default
     models:
-      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
+      deepseek-v4-flash-nitro:
+        model: deepseek/deepseek-v4-flash:nitro
+        tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_responses: [function]
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -197,8 +239,24 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-anthropic-default
     models:
-      deepseek-v4-flash-nitro: { model: deepseek/deepseek-v4-flash:nitro, tier: balanced }
-      gemma-4-26b-a4b-it-nitro: { model: google/gemma-4-26b-a4b-it:nitro, tier: balanced }
+      deepseek-v4-flash-nitro:
+        model: deepseek/deepseek-v4-flash:nitro
+        tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages: [client_tools]
+      gemma-4-26b-a4b-it-nitro:
+        model: google/gemma-4-26b-a4b-it:nitro
+        tier: balanced
+        input_price_per_million_usd: 0.06
+        output_price_per_million_usd: 0.33
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages: [client_tools]
   kimi:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
@@ -206,7 +264,13 @@ providers:
     api_key_env: MOONSHOT_API_KEY
     key_id: moonshot-kimi-default
     models:
-      kimi-k2.7-code: { model: kimi-k2.7-code, tier: heavy }
+      kimi-k2.7-code:
+        model: kimi-k2.7-code
+        tier: heavy
+        input_price_per_million_usd: 0.74
+        output_price_per_million_usd: 3.50
+        pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
+        pricing_updated_at: "2026-06-17"
 
 models:
   default:
@@ -222,7 +286,16 @@ models:
 
 `model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
 
+Catalog metadata can include `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, `pricing_updated_at`, and `tool_support`. Pricing is copied onto the selected target at request time and logged with calculated input, output, and total USD cost, so historical usage rows keep the price that was used even if provider pricing changes later. `tool_support` is dialect-specific:
+
+- `openai_chat`: upstream supports OpenAI-compatible chat `tools` / `tool_choice`.
+- `openai_responses`: upstream supports Responses function tools.
+- `anthropic_messages`: upstream supports Anthropic Messages client tools.
+- `provider_hosted`: reserved for provider-executed tools such as web search or code execution after that exact upstream capability is validated.
+
 Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps original OpenAI at a low non-tool weight. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
+
+Self-hosted OpenAI-compatible services such as vLLM and SGLang should be validated exactly like SaaS providers before activation. Confirm `/v1/models`, run a direct text completion smoke, run a direct tool-call smoke if the model is intended for agent tools, then repeat the same request through the router group. Tool calling depends on the upstream model, chat template, parser flags, and `tool_choice` support; do not mark a self-hosted target tool-capable just because the server accepts a `tools` field.
 
 Agentic tool-call traffic can use a separate target set from ordinary text traffic. Mark a target with `tool_only: true` when it should only be considered for requests that include supported tools, such as Codex OpenAI Responses tool calls or Claude Code Anthropic tool calls:
 
@@ -418,6 +491,8 @@ curl http://127.0.0.1:8080/version
 ## Usage Reports
 
 Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
+
+Each request row stores the configured input/output price per million tokens for the selected upstream model, the pricing source/update date, and calculated input/output/total USD cost. These values are logged at request time instead of recalculated during reporting, so historical cost reports remain stable after upstream providers change pricing.
 
 The JSONL file is useful for raw audit/debugging. The relational DB is the source for periodic reports. In container deployments using SQLite, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`. In Postgres deployments, the report tool reads from the configured DSN.
 

@@ -40,19 +40,25 @@ type scriptCaller struct {
 }
 
 type scriptTarget struct {
-	Provider      string `json:"provider"`
-	Model         string `json:"model"`
-	ModelRef      string `json:"modelRef,omitempty"`
-	DisplayName   string `json:"displayName,omitempty"`
-	Dialect       string `json:"dialect"`
-	BaseURL       string `json:"baseUrl"`
-	Weight        int    `json:"weight"`
-	RPM           int    `json:"rpm,omitempty"`
-	Tier          string `json:"tier,omitempty"`
-	Cost          int    `json:"cost,omitempty"`
-	KeyID         string `json:"keyId,omitempty"`
-	APIKeyEnv     string `json:"apiKeyEnv,omitempty"`
-	KeyConfigured bool   `json:"keyConfigured"`
+	Provider                 string      `json:"provider"`
+	Model                    string      `json:"model"`
+	ModelRef                 string      `json:"modelRef,omitempty"`
+	DisplayName              string      `json:"displayName,omitempty"`
+	Dialect                  string      `json:"dialect"`
+	BaseURL                  string      `json:"baseUrl"`
+	Weight                   int         `json:"weight"`
+	RPM                      int         `json:"rpm,omitempty"`
+	Tier                     string      `json:"tier,omitempty"`
+	Cost                     int         `json:"cost,omitempty"`
+	InputPricePerMillionUSD  float64     `json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD float64     `json:"outputPricePerMillionUsd,omitempty"`
+	PricingSource            string      `json:"pricingSource,omitempty"`
+	PricingUpdatedAt         string      `json:"pricingUpdatedAt,omitempty"`
+	PricingNotes             string      `json:"pricingNotes,omitempty"`
+	ToolSupport              ToolSupport `json:"toolSupport,omitempty"`
+	KeyID                    string      `json:"keyId,omitempty"`
+	APIKeyEnv                string      `json:"apiKeyEnv,omitempty"`
+	KeyConfigured            bool        `json:"keyConfigured"`
 }
 
 type scriptOutput struct {
@@ -327,19 +333,25 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 			weight = 1
 		}
 		out = append(out, scriptTarget{
-			Provider:      target.Provider,
-			Model:         target.Model,
-			ModelRef:      target.ModelRef,
-			DisplayName:   target.DisplayName,
-			Dialect:       targetDialect(provider, target),
-			BaseURL:       provider.BaseURL,
-			Weight:        weight,
-			RPM:           target.RPM,
-			Tier:          target.Tier,
-			Cost:          target.Cost,
-			KeyID:         provider.KeyID,
-			APIKeyEnv:     provider.APIKeyEnv,
-			KeyConfigured: provider.APIKey != "",
+			Provider:                 target.Provider,
+			Model:                    target.Model,
+			ModelRef:                 target.ModelRef,
+			DisplayName:              target.DisplayName,
+			Dialect:                  targetDialect(provider, target),
+			BaseURL:                  provider.BaseURL,
+			Weight:                   weight,
+			RPM:                      target.RPM,
+			Tier:                     target.Tier,
+			Cost:                     target.Cost,
+			InputPricePerMillionUSD:  target.InputPricePerMillionUSD,
+			OutputPricePerMillionUSD: target.OutputPricePerMillionUSD,
+			PricingSource:            target.PricingSource,
+			PricingUpdatedAt:         target.PricingUpdatedAt,
+			PricingNotes:             target.PricingNotes,
+			ToolSupport:              target.ToolSupport,
+			KeyID:                    provider.KeyID,
+			APIKeyEnv:                provider.APIKeyEnv,
+			KeyConfigured:            provider.APIKey != "",
 		})
 	}
 	return out

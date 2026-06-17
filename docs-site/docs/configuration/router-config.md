@@ -24,6 +24,13 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
+        input_price_per_million_usd: 0.30
+        output_price_per_million_usd: 1.20
+        pricing_source: https://platform.minimax.io/docs/pricing/overview
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, tool_choice]
+          openai_responses: [function]
 
   openrouter:
     base_url: https://openrouter.ai/api/v1
@@ -35,6 +42,12 @@ providers:
       deepseek-v4-flash-nitro:
         model: deepseek/deepseek-v4-flash:nitro
         tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
 
   kimi:
     base_url: https://api.moonshot.ai/v1
@@ -46,7 +59,36 @@ providers:
       kimi-k2-7-code:
         model: kimi-k2.7-code
         tier: coding
+        input_price_per_million_usd: 0.74
+        output_price_per_million_usd: 3.50
+        pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
+        pricing_updated_at: "2026-06-17"
+
+  vllm_internal:
+    base_url: http://vllm-qwen-tools.inference.svc.cluster.local:8000/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${VLLM_QWEN_API_KEY}
+    api_key_env: VLLM_QWEN_API_KEY
+    key_id: vllm-qwen-tools-prod
+    models:
+      qwen3-coder-tools:
+        model: qwen3-coder-tools
+        tier: coding
+        input_price_per_million_usd: 0.00
+        output_price_per_million_usd: 0.00
+        pricing_notes: internal GPU allocation; set chargeback values if used for reporting
+        tool_support:
+          openai_chat: [tools, tool_choice]
 ```
+
+Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
+
+Catalog entries should carry cost and capability metadata:
+
+- `input_price_per_million_usd` and `output_price_per_million_usd` are the values used to calculate per-request cost at the time the request runs.
+- `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
+- `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
 
 ## Per-Group Weighted Routing
 
@@ -67,6 +109,7 @@ models:
       - { provider: minimax, model_ref: m3, weight: 50 }
       - { provider: kimi, model_ref: kimi-k2-7-code, weight: 30 }
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: vllm_internal, model_ref: qwen3-coder-tools, weight: 10 }
 ```
 
 ## Scripted Routing Options

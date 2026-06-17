@@ -26,8 +26,9 @@ Smart LLM Router gives platform teams one control plane:
 - Server-side provider key injection.
 - Caller tokens with model-group allow lists.
 - Weighted, failover, and TypeScript-driven routing.
+- Enterprise routing to internally hosted vLLM or SGLang services.
 - In-process response cache for eligible non-tool requests.
-- Prometheus metrics, request logs, and durable usage reporting.
+- Prometheus metrics, request logs, and durable usage reporting with request-time cost fields.
 - Codex CLI and Claude Code CLI support through the hosted endpoint.
 
 ## Model Groups
@@ -41,6 +42,7 @@ flowchart LR
   Auth --> Policy[Weighted or scripted policy]
   Policy --> Target[Provider/model target]
   Target --> Provider[External LLM provider]
+  Target --> Internal[Internal vLLM or SGLang]
 ```
 
 This lets teams change the provider mix centrally without rewriting Codex, Claude Code, applications, or agents.
@@ -50,6 +52,8 @@ This lets teams change the provider mix centrally without rewriting Codex, Claud
 The hosted docs include a Harbor agentic coding case study that compares Codex CLI and Claude Code CLI across router model groups. It includes the task goal, reward-score definition, models used, tokenomics, cache behavior, latency, throughput, and provider/model usage.
 
 [Read the Harbor case study](/docs/evaluation/harbor-case-study).
+
+[See self-hosted vLLM and SGLang upstream examples](/docs/configuration/self-hosted-upstreams).
 
 ## API Surfaces
 

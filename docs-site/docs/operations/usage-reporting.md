@@ -28,6 +28,7 @@ Reports include:
 
 - Calls, errors, status codes, latency, and upstream attempts.
 - Input tokens, output tokens, total tokens, and throughput.
+- Request-time input/output token prices and calculated input/output/total USD cost.
 - Usage by public router token ID, user, project, and environment.
 - Usage by caller IP and hour.
 - Usage by router model group.
@@ -48,3 +49,5 @@ router-usage-report \
 ```
 
 Reports use public token IDs and aggregated usage fields. They do not expose raw router tokens or raw provider API keys.
+
+Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices or tool-capability validation changes.

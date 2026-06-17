@@ -24,6 +24,10 @@ providers:
       kimi-k2.7-code:
         model: kimi-k2.7-code
         tier: heavy
+        input_price_per_million_usd: 0.74
+        output_price_per_million_usd: 3.50
+        pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
+        pricing_updated_at: "2026-06-17"
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -34,6 +38,16 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
+        input_price_per_million_usd: 0.30
+        output_price_per_million_usd: 1.20
+        pricing_source: https://platform.minimax.io/docs/pricing/overview
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          openai_responses:
+          - function
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -44,9 +58,27 @@ providers:
       deepseek-v4-flash-nitro:
         model: deepseek/deepseek-v4-flash:nitro
         tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
       gemma-4-26b-a4b-it-nitro:
         model: google/gemma-4-26b-a4b-it:nitro
         tier: balanced
+        input_price_per_million_usd: 0.06
+        output_price_per_million_usd: 0.33
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -57,6 +89,13 @@ providers:
       gpt-5.5:
         model: gpt-5.5
         tier: heavy
+        input_price_per_million_usd: 5.00
+        output_price_per_million_usd: 30.00
+        pricing_source: https://openai.com/api/pricing/
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_responses:
+          - function
   anthropic:
     base_url: https://api.anthropic.com
     dialect: anthropic
@@ -67,6 +106,13 @@ providers:
       sonnet-4.6:
         model: claude-sonnet-4-6
         tier: heavy
+        input_price_per_million_usd: 3.00
+        output_price_per_million_usd: 15.00
+        pricing_source: https://platform.claude.com/docs/en/about-claude/pricing
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages:
+          - client_tools
   minimax_anthropic:
     base_url: https://api.minimax.io/anthropic
     dialect: anthropic
@@ -78,6 +124,13 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
+        input_price_per_million_usd: 0.30
+        output_price_per_million_usd: 1.20
+        pricing_source: https://platform.minimax.io/docs/pricing/overview
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages:
+          - client_tools
   kimi_anthropic:
     base_url: https://api.moonshot.ai/anthropic
     dialect: anthropic
@@ -89,6 +142,13 @@ providers:
       kimi-k2.7-code:
         model: kimi-k2.7-code
         tier: heavy
+        input_price_per_million_usd: 0.74
+        output_price_per_million_usd: 3.50
+        pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages:
+          - client_tools
   openrouter_responses:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-responses
@@ -99,6 +159,13 @@ providers:
       deepseek-v4-flash-nitro:
         model: deepseek/deepseek-v4-flash:nitro
         tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_responses:
+          - function
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -110,9 +177,23 @@ providers:
       deepseek-v4-flash-nitro:
         model: deepseek/deepseek-v4-flash:nitro
         tier: balanced
+        input_price_per_million_usd: 0.09
+        output_price_per_million_usd: 0.18
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages:
+          - client_tools
       gemma-4-26b-a4b-it-nitro:
         model: google/gemma-4-26b-a4b-it:nitro
         tier: balanced
+        input_price_per_million_usd: 0.06
+        output_price_per_million_usd: 0.33
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          anthropic_messages:
+          - client_tools
 models:
   default:
     strategy: weighted

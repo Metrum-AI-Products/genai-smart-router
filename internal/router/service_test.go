@@ -887,6 +887,12 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	defer upstream.Close()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	group := cfg.Models["default"]
+	group.Targets[0].InputPricePerMillionUSD = 2.5
+	group.Targets[0].OutputPricePerMillionUSD = 7.5
+	group.Targets[0].PricingSource = "https://example.test/pricing"
+	group.Targets[0].PricingUpdatedAt = "2026-06-17"
+	cfg.Models["default"] = group
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -953,6 +959,11 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	}
 	if rec.CallerIP != "203.0.113.10" {
 		t.Fatalf("caller ip = %q", rec.CallerIP)
+	}
+	if rec.InputPricePerMillionUSD != 2.5 || rec.OutputPricePerMillionUSD != 7.5 ||
+		rec.InputCostUSD != 0.000005 || rec.OutputCostUSD != 0.0000225 || rec.TotalCostUSD != 0.0000275 ||
+		rec.PricingSource != "https://example.test/pricing" || rec.PricingUpdatedAt != "2026-06-17" {
+		t.Fatalf("cost metadata missing from log record: %#v", rec)
 	}
 }
 
@@ -1495,6 +1506,48 @@ func TestModelRefTargetUsesResolvedExternalModel(t *testing.T) {
 	}
 	if gotModel != "mock-small" {
 		t.Fatalf("upstream model=%q", gotModel)
+	}
+}
+
+func TestToolRequestsRequireMatchingToolSupportMetadata(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Provider["mock"] = ProviderConfig{
+		BaseURL: "http://127.0.0.1:1/v1",
+		Dialect: "openai-responses",
+		APIKey:  "provider-key",
+		Models: map[string]ProviderModel{
+			"chat-tools-only": {
+				Model: "chat-tools-only",
+				ToolSupport: ToolSupport{
+					OpenAIChat: []string{"tools", "tool_choice"},
+				},
+			},
+			"responses-tools": {
+				Model: "responses-tools",
+				ToolSupport: ToolSupport{
+					OpenAIResponses: []string{"function"},
+				},
+			},
+		},
+	}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", ModelRef: "chat-tools-only", ToolOnly: true}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.supportedToolsForGroup("default"); len(got) != 0 {
+		t.Fatalf("advertised tools for incompatible metadata: %#v", got)
+	}
+	svc.Close()
+
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", ModelRef: "responses-tools", ToolOnly: true}}}
+	svc, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	if got := svc.supportedToolsForGroup("default"); len(got) == 0 {
+		t.Fatal("expected tools for matching responses metadata")
 	}
 }
 

@@ -19,7 +19,8 @@ flowchart LR
   Router --> Obs[Logs, metrics, usage DB]
   Policy --> P1[Provider A]
   Policy --> P2[Provider B]
-  Policy --> P3[Provider C]
+  Policy --> P3[Internal vLLM/SGLang]
+  Policy --> P4[Provider C]
 ```
 
 ## Buyer Value
@@ -29,6 +30,7 @@ Smart LLM Router is useful when an organization wants the flexibility of multipl
 Technical buyers typically evaluate it for:
 
 - **Provider optionality:** adopt new models or aggregators centrally while applications keep using stable internal model names.
+- **Enterprise model control:** route to internally hosted vLLM or SGLang services through OpenAI-compatible upstream APIs while callers keep using router model groups.
 - **Cost control:** steer routine traffic to lower-cost targets, reserve premium models for approved keys or workloads, and report usage by person, project, provider, and model.
 - **Security:** keep upstream provider keys server-side, authenticate callers with revocable router tokens, and restrict each token to approved model groups.
 - **Reliability:** use weighted routing, ordered fallback, and provider abstraction to reduce blast radius from model outages or entitlement changes.
@@ -45,7 +47,7 @@ Smart LLM Router addresses the controllable layer of that problem:
 - Apply per-caller allow lists, rate limits, quotas, and lifetime token budgets before any upstream provider call is made.
 - Use weighted routing and fallback to balance cost, latency, quality, and provider availability without client changes.
 - Cache eligible deterministic responses so repeated requests do not create repeated provider charges.
-- Produce usage reports by internal key, user, project, caller IP, provider, model, hour, day, status, cache behavior, and token throughput.
+- Produce usage reports by internal key, user, project, caller IP, provider, model, hour, day, status, cache behavior, request-time USD cost, and token throughput.
 - Give platform and finance teams the evidence needed to compare spend against adoption, workload class, and business value.
 
 ## What It Provides
@@ -55,14 +57,14 @@ Smart LLM Router is designed for platform teams that need a controlled, observab
 Core capabilities:
 
 - One gateway endpoint for OpenAI-compatible and Anthropic-compatible clients.
-- Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, and other compatible upstreams.
+- Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, enterprise-hosted vLLM/SGLang services, and other compatible upstreams.
 - Server-side provider key injection, keeping upstream credentials out of client machines and application code.
 - Caller API tokens with traceable public prefixes, hashed token storage, per-caller allow lists, rate limits, quotas, and lifetime token budgets.
 - Configurable model groups such as `small`, `medium`, `high`, `default`, `fast`, or `big-coder`.
 - Routing strategies including static, weighted, failover, latency-oriented, cost-oriented, semantic stub classification, and TypeScript-driven custom policy.
 - In-process LRU plus TTL cache for eligible unary responses.
-- Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting.
-- Markdown usage reports by time period with per-key, per-model, hourly, daily, throughput, and cache summaries.
+- Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting with request-time pricing/cost fields.
+- Markdown usage reports by time period with per-key, per-model, hourly, daily, throughput, cost, and cache summaries.
 - Docker Compose and binary packaging for controlled deployment without shipping the source tree.
 
 ## High-Level Architecture
@@ -136,7 +138,7 @@ sequenceDiagram
     Provider-->>Router: Provider response
     Router-->>Client: Caller-dialect response
   end
-  Router->>Usage: Log metrics, usage, latency, cache, status
+  Router->>Usage: Log metrics, usage, latency, cache, cost, status
 ```
 
 ## Routing Model
@@ -376,6 +378,7 @@ Reports include:
 - Usage by router model group.
 - Usage by client type.
 - Usage by caller IP, including hourly activity by IP.
+- Request-time input/output token price and calculated input/output/total cost.
 - Status-code distribution.
 - Cache hit, miss, and bypass counts.
 - Cache occupancy snapshots, hit rate, and bypass rate.

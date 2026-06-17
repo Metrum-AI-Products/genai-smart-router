@@ -25,13 +25,15 @@ flowchart LR
   Policy --> P1[OpenRouter]
   Policy --> P2[MiniMax]
   Policy --> P3[Moonshot/Kimi]
-  Policy --> P4[Other compatible providers]
+  Policy --> P4[Internal vLLM or SGLang]
+  Policy --> P5[Other compatible providers]
 ```
 
 ## Buyer Value
 
 - **Provider optionality:** adopt new model providers centrally while applications keep stable model-group names.
-- **Cost control:** steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report usage by user, project, provider, model, and IP.
+- **Enterprise model control:** include internally hosted vLLM or SGLang services in the same routing policy as external providers.
+- **Cost control:** steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
 - **Security:** keep provider keys server-side and issue revocable router tokens to callers.
 - **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
@@ -46,8 +48,8 @@ Smart LLM Router addresses the controllable layer:
 - Enforce caller allow lists and budgets before provider calls.
 - Route workloads by cost, quality, latency, and tool compatibility.
 - Cache eligible deterministic responses.
-- Compare provider/model usage using durable reports.
-- Track usage by caller key, project, environment, model group, provider, model, hour, and IP.
+- Compare provider/model usage and stored request-time cost using durable reports.
+- Track usage by caller key, project, environment, model group, provider, model, hour, IP, and USD cost.
 
 The Harbor case study in these docs shows the same principle numerically: successful agentic coding runs can differ substantially in token volume, latency, fallback use, and output throughput even when final reward score is identical. Those tokenomics are the operational signal that turns model routing from guesswork into policy.
 
@@ -69,7 +71,7 @@ sequenceDiagram
   Router->>Provider: Provider request with server-side key
   Provider-->>Router: Provider response
   Router-->>Client: Caller-dialect response
-  Router->>Usage: Persist usage, latency, cache, throughput
+  Router->>Usage: Persist usage, latency, cache, throughput, cost
 ```
 
 ## Example Deployment Outcome

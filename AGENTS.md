@@ -16,7 +16,10 @@ These instructions apply to the whole repository.
 - Do not print provider API keys, router tokens, token hashes, or full production config contents.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
+- Provider model catalogs must include current `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, and `pricing_updated_at` for every active or cataloged upstream model when pricing is known. Use current primary/provider docs when possible; use OpenRouter model metadata for OpenRouter-hosted routes. For self-hosted models, use the enterprise chargeback rate or explicit `0.00` with `pricing_notes`.
+- Tool capability metadata belongs in provider catalogs as `tool_support` and must be based on a real direct upstream smoke plus router-level smoke for the exact dialect/skin. Do not claim `openai_chat`, `openai_responses`, `anthropic_messages`, or `provider_hosted` support from marketing copy alone.
 - Usage persistence uses GORM. Keep the entire usage DB schema purely relational: no JSON/JSONB columns, no array columns, no serialized blobs for structured data, and no packed multi-value text fields. If one request needs multiple related rows, add a child table with scalar columns and a foreign key to `request_usage`.
+- Usage rows store request-time cost inputs and calculated costs as scalar columns. Reports must sum stored cost values, not recalculate historical cost from current config.
 - Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
 - Do not put unavailable provider models into active routing. The 2026-06-15 cleaned production policy keeps active tool-capable routes on OpenRouter, MiniMax, and Kimi/Moonshot models that passed Harbor/tool validation. Original OpenAI `gpt-5.5` is allowed at low non-tool weight. Original Anthropic remains catalog/support-only until `ANTHROPIC_API_KEY` is present and a live smoke passes.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
@@ -27,6 +30,7 @@ These instructions apply to the whole repository.
   - Proxy-user docs (`docs-site/`, embedded under `/docs/`) must explain what callers request, what behavior they can expect from the proxy, and any client-facing examples without internal deployment details.
 - Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep public docs free of raw provider keys, real router tokens, private host paths, SSH details, and internal-only deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
 - TypeScript routing changes require both admin and proxy-user docs. Include the script context shape, model-group configuration, caller-visible behavior, and at least one tested example when documenting a new script policy pattern.
+- Self-hosted upstream changes or examples require both admin and proxy-user docs. Cover enterprise-hosted vLLM/SGLang-style OpenAI-compatible services, private `/v1` base URLs, served model IDs, parser/chat-template requirements, tool-call behavior, caller-visible model groups, direct upstream smokes, router smokes, and rollback/operational notes. Verify current upstream documentation online before documenting vLLM, SGLang, or similar fast-moving serving frameworks.
 - Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
 
 ## Development Workflow
@@ -42,8 +46,9 @@ These instructions apply to the whole repository.
    - `rtk go test ./...`
 5. For provider/model changes, run direct live provider smoke tests with the relevant key from `env.json` before activating the model in routing.
 6. For router behavior changes, run a router-level smoke test locally or against production, depending on the requested scope.
-7. Update docs for any user-facing config, model, deployment, CLI, or operational change.
-8. Run a stale-doc search for changed concepts before final response. Examples:
+7. For pricing/tool metadata changes, verify current pricing/capability docs online, update `config.example.yaml`, ignored `config.production.yaml`, production config when requested, tests, and public/internal docs together.
+8. Update docs for any user-facing config, model, deployment, CLI, or operational change.
+9. Run a stale-doc search for changed concepts before final response. Examples:
    - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
    - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs deployment.md internal scripts`
 
@@ -55,6 +60,11 @@ These instructions apply to the whole repository.
 - OpenAI-compatible chat smoke:
   - `POST <base_url>/chat/completions`
   - body: `{"model":"<model>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}`
+- Self-hosted vLLM/SGLang OpenAI-compatible smoke:
+  - Validate `GET <base_url>/models` and confirm the served model ID matches `providers.<name>.models.<ref>.model`.
+  - Run a direct `/chat/completions` text smoke before routing traffic through the router.
+  - For tool-capable routes, run a direct `/chat/completions` request with the exact `tools`, `tool_choice`, parser/chat-template, streaming mode, and model version expected in production; then repeat through the router group.
+  - Do not mark a self-hosted target `tool_only` or add it to active tool routing until the direct and router-level tool smokes return correctly shaped tool calls.
 - OpenRouter Nitro variants may not appear as separate IDs in `/models`; validate by making a real completion call with the `:nitro` suffix.
 - OpenRouter reasoning-heavy models such as `z-ai/glm-5.2:nitro` can return HTTP 200 with empty assistant content when `max_tokens` is too small because the budget is spent on reasoning. Before activating or increasing weight for such models, smoke test both a tiny budget and a realistic budget. For GLM 5.2, use a realistic smoke such as `max_tokens: 1024`; note if low-budget requests need a `reasoning.max_tokens` cap or should not be used as acceptance evidence.
 - For OpenRouter candidates intended for coding agents, validate all configured skins before adding them to active groups: `/chat/completions`, `/responses` with a function tool, and `/messages` with an Anthropic-style tool. Keep `openrouter`, `openrouter_responses`, and `openrouter_anthropic` model catalogs in sync for models that pass all three checks.
@@ -172,6 +182,8 @@ Update docs whenever changing:
 - production deployment commands or image tags
 - Codex CLI or Claude Code usage examples
 - TypeScript routing script behavior, context fields, or model-group policy examples
+- self-hosted vLLM/SGLang/OpenAI-compatible upstream deployment, served model IDs, parser/chat-template flags, or tool-call validation behavior
+- provider model pricing metadata, pricing source/update dates, tool support metadata, or upstream capability claims
 - usage reporting, caching, telemetry, or auth behavior
 - DB driver/schema behavior, including SQLite/Postgres config, usage report fields, or durability expectations
 

@@ -59,15 +59,28 @@ type ProviderConfig struct {
 }
 
 type ProviderModel struct {
-	Model       string `yaml:"model" json:"model"`
-	Dialect     string `yaml:"dialect" json:"dialect,omitempty"`
-	DisplayName string `yaml:"display_name" json:"displayName,omitempty"`
+	Model                    string      `yaml:"model" json:"model"`
+	Dialect                  string      `yaml:"dialect" json:"dialect,omitempty"`
+	DisplayName              string      `yaml:"display_name" json:"displayName,omitempty"`
+	InputPricePerMillionUSD  float64     `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD float64     `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	PricingSource            string      `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt         string      `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes             string      `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport              ToolSupport `yaml:"tool_support" json:"toolSupport,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
 	RPM    int    `yaml:"rpm" json:"rpm,omitempty"`
 	Tier   string `yaml:"tier" json:"tier,omitempty"`
 	Cost   int    `yaml:"cost" json:"cost,omitempty"`
+}
+
+type ToolSupport struct {
+	OpenAIChat        []string `yaml:"openai_chat" json:"openaiChat,omitempty"`
+	OpenAIResponses   []string `yaml:"openai_responses" json:"openaiResponses,omitempty"`
+	AnthropicMessages []string `yaml:"anthropic_messages" json:"anthropicMessages,omitempty"`
+	ProviderHosted    []string `yaml:"provider_hosted" json:"providerHosted,omitempty"`
 }
 
 type ModelGroup struct {
@@ -86,17 +99,23 @@ type ScriptHTTPConfig struct {
 }
 
 type Target struct {
-	Provider        string         `yaml:"provider" json:"provider"`
-	Model           string         `yaml:"model" json:"model"`
-	ModelRef        string         `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect         string         `yaml:"dialect" json:"dialect"`
-	DisplayName     string         `yaml:"display_name" json:"displayName,omitempty"`
-	ToolOnly        bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
-	DefaultThinking map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
-	Weight          int            `yaml:"weight" json:"weight"`
-	RPM             int            `yaml:"rpm" json:"rpm"`
-	Tier            string         `yaml:"tier" json:"tier"`
-	Cost            int            `yaml:"cost" json:"cost"`
+	Provider                 string         `yaml:"provider" json:"provider"`
+	Model                    string         `yaml:"model" json:"model"`
+	ModelRef                 string         `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect                  string         `yaml:"dialect" json:"dialect"`
+	DisplayName              string         `yaml:"display_name" json:"displayName,omitempty"`
+	ToolOnly                 bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
+	DefaultThinking          map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Weight                   int            `yaml:"weight" json:"weight"`
+	RPM                      int            `yaml:"rpm" json:"rpm"`
+	Tier                     string         `yaml:"tier" json:"tier"`
+	Cost                     int            `yaml:"cost" json:"cost"`
+	InputPricePerMillionUSD  float64        `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD float64        `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	PricingSource            string         `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt         string         `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes             string         `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport              ToolSupport    `yaml:"tool_support" json:"toolSupport,omitempty"`
 }
 
 type CallerConfig struct {
@@ -250,6 +269,15 @@ func (c *Config) Validate() error {
 			if model.Dialect != "" && normalizeDialect(model.Dialect) == "" {
 				return fmt.Errorf("provider %s model %s has unsupported dialect %q", name, ref, model.Dialect)
 			}
+			if model.InputPricePerMillionUSD < 0 {
+				return fmt.Errorf("provider %s model %s has negative input_price_per_million_usd", name, ref)
+			}
+			if model.OutputPricePerMillionUSD < 0 {
+				return fmt.Errorf("provider %s model %s has negative output_price_per_million_usd", name, ref)
+			}
+			if err := validateToolSupport(model.ToolSupport); err != nil {
+				return fmt.Errorf("provider %s model %s has invalid tool_support: %w", name, ref, err)
+			}
 		}
 	}
 	if len(c.Models) == 0 {
@@ -295,6 +323,15 @@ func (c *Config) Validate() error {
 			m.Targets[i] = resolved
 			if _, ok := c.Provider[resolved.Provider]; !ok {
 				return fmt.Errorf("model group %s references unknown provider %s", name, t.Provider)
+			}
+			if resolved.InputPricePerMillionUSD < 0 {
+				return fmt.Errorf("model group %s target %s has negative input_price_per_million_usd", name, resolved.Model)
+			}
+			if resolved.OutputPricePerMillionUSD < 0 {
+				return fmt.Errorf("model group %s target %s has negative output_price_per_million_usd", name, resolved.Model)
+			}
+			if err := validateToolSupport(resolved.ToolSupport); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
 			}
 		}
 		c.Models[name] = m
@@ -373,10 +410,57 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	if target.Cost == 0 {
 		target.Cost = catalog.Cost
 	}
+	if target.InputPricePerMillionUSD == 0 {
+		target.InputPricePerMillionUSD = catalog.InputPricePerMillionUSD
+	}
+	if target.OutputPricePerMillionUSD == 0 {
+		target.OutputPricePerMillionUSD = catalog.OutputPricePerMillionUSD
+	}
+	if target.PricingSource == "" {
+		target.PricingSource = catalog.PricingSource
+	}
+	if target.PricingUpdatedAt == "" {
+		target.PricingUpdatedAt = catalog.PricingUpdatedAt
+	}
+	if target.PricingNotes == "" {
+		target.PricingNotes = catalog.PricingNotes
+	}
+	if toolSupportEmpty(target.ToolSupport) {
+		target.ToolSupport = catalog.ToolSupport
+	}
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)
 	}
 	return target, nil
+}
+
+func validateToolSupport(ts ToolSupport) error {
+	for surface, values := range map[string][]string{
+		"openai_chat":        ts.OpenAIChat,
+		"openai_responses":   ts.OpenAIResponses,
+		"anthropic_messages": ts.AnthropicMessages,
+		"provider_hosted":    ts.ProviderHosted,
+	} {
+		seen := map[string]bool{}
+		for _, v := range values {
+			trimmed := strings.TrimSpace(v)
+			if trimmed == "" {
+				return fmt.Errorf("%s contains empty capability", surface)
+			}
+			if seen[trimmed] {
+				return fmt.Errorf("%s contains duplicate capability %q", surface, trimmed)
+			}
+			seen[trimmed] = true
+		}
+	}
+	return nil
+}
+
+func toolSupportEmpty(ts ToolSupport) bool {
+	return len(ts.OpenAIChat) == 0 &&
+		len(ts.OpenAIResponses) == 0 &&
+		len(ts.AnthropicMessages) == 0 &&
+		len(ts.ProviderHosted) == 0
 }
 
 func normalizeDialect(d string) string {

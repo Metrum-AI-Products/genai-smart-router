@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"mime"
 	"net"
@@ -301,6 +302,10 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.TargetProvider = dec.Target.Provider
 	rc.rec.TargetModel = dec.Target.Model
 	rc.rec.TargetDialect = targetDialect(s.cfg.Provider[dec.Target.Provider], dec.Target)
+	rc.rec.InputPricePerMillionUSD = dec.Target.InputPricePerMillionUSD
+	rc.rec.OutputPricePerMillionUSD = dec.Target.OutputPricePerMillionUSD
+	rc.rec.PricingSource = dec.Target.PricingSource
+	rc.rec.PricingUpdatedAt = dec.Target.PricingUpdatedAt
 
 	key := cacheKey(req, dec.Target)
 	if cacheable(req) {
@@ -384,6 +389,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	}
 	s.recordCacheStats(rc)
 	populateThroughput(&rc.rec)
+	populateCosts(&rc.rec)
 	if rc.rec.Status == 0 {
 		rc.rec.Status = status
 	}
@@ -582,11 +588,28 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 	out := make([]Target, 0, len(targets))
 	for _, target := range targets {
 		provider := s.cfg.Provider[target.Provider]
-		if toolPassthrough(callerDialect, targetDialect(provider, target), req) {
+		outDialect := targetDialect(provider, target)
+		if toolPassthrough(callerDialect, outDialect, req) && targetSupportsTools(target, outDialect) {
 			out = append(out, target)
 		}
 	}
 	return out
+}
+
+func targetSupportsTools(target Target, dialect string) bool {
+	if toolSupportEmpty(target.ToolSupport) {
+		return true
+	}
+	switch dialect {
+	case "openai-responses":
+		return len(target.ToolSupport.OpenAIResponses) > 0
+	case "anthropic":
+		return len(target.ToolSupport.AnthropicMessages) > 0
+	case "openai", "openai-chat":
+		return len(target.ToolSupport.OpenAIChat) > 0
+	default:
+		return false
+	}
 }
 
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
@@ -810,6 +833,34 @@ func populateThroughput(rec *logRecord) {
 	rec.UpstreamTotalTPS = tokensPerSecond(totalTokens(rec.Usage), rec.UpstreamMS)
 	rec.DownstreamOutputTPS = tokensPerSecond(rec.Usage.OutputTokens, rec.DownstreamMS)
 	rec.DownstreamTotalTPS = tokensPerSecond(totalTokens(rec.Usage), rec.DownstreamMS)
+}
+
+func populateCosts(rec *logRecord) {
+	if rec == nil {
+		return
+	}
+	if rec.Usage.InputTokens > 0 && rec.InputPricePerMillionUSD == 0 {
+		rec.Warnings = appendWarning(rec.Warnings, "missing-input-pricing-metadata")
+	}
+	if rec.Usage.OutputTokens > 0 && rec.OutputPricePerMillionUSD == 0 {
+		rec.Warnings = appendWarning(rec.Warnings, "missing-output-pricing-metadata")
+	}
+	rec.InputCostUSD = roundUSD(float64(rec.Usage.InputTokens) * rec.InputPricePerMillionUSD / 1_000_000)
+	rec.OutputCostUSD = roundUSD(float64(rec.Usage.OutputTokens) * rec.OutputPricePerMillionUSD / 1_000_000)
+	rec.TotalCostUSD = roundUSD(rec.InputCostUSD + rec.OutputCostUSD)
+}
+
+func appendWarning(warnings []string, warning string) []string {
+	for _, existing := range warnings {
+		if existing == warning {
+			return warnings
+		}
+	}
+	return append(warnings, warning)
+}
+
+func roundUSD(v float64) float64 {
+	return math.Round(v*1_000_000_000) / 1_000_000_000
 }
 
 func totalTokens(usage Usage) int {

@@ -1,0 +1,218 @@
+---
+title: Self-Hosted Upstreams
+---
+
+# Self-Hosted Upstreams
+
+Smart LLM Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
+
+<div class="contactBanner">
+  <p>For an enterprise deployment design with internal GPU clusters, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+</div>
+
+## Enterprise Shape
+
+```mermaid
+flowchart LR
+  App[Applications and developer tools] --> Router[Smart LLM Router]
+  Router --> VL1[vLLM service: llama-large]
+  Router --> VL2[vLLM service: qwen-coder-tools]
+  Router --> SG1[SGLang service: kimi-tools]
+  Router --> SaaS[Optional SaaS providers]
+  Router --> DB[Usage database]
+```
+
+Typical enterprise deployments put the router behind the organization's TLS ingress and keep vLLM or SGLang services on private network names such as `http://vllm-llama70b.inference.svc.cluster.local:8000/v1`. The router can also mix internal services with external providers in one model group for migration, overflow, or fallback.
+
+If the internal service requires a bearer token, set `auth_scheme: bearer` and load `api_key` from the deployment environment. If access is enforced entirely by network policy, mTLS, or a service mesh, omit `api_key`; the router will not add an upstream authorization header.
+
+## Upstream Server Requirements
+
+The upstream service must expose an OpenAI-compatible endpoint matching the configured router dialect:
+
+| Router dialect | Upstream endpoint shape | Common use |
+|---|---|---|
+| `openai-chat` | `/v1/chat/completions` | vLLM or SGLang chat models, including tool-capable chat models |
+| `openai-responses` | `/v1/responses` | Codex-style Responses clients when the upstream supports the Responses API |
+| `anthropic` | Anthropic Messages-compatible API | Claude Code-compatible upstreams or provider skins |
+
+vLLM documents OpenAI-compatible serving, including `/v1/models`, `/v1/chat/completions`, `/v1/responses`, `/health`, and `/metrics`. Its chat serving requires a model chat template; if the model does not ship one, start vLLM with `--chat-template`.
+
+SGLang also supports OpenAI-compatible chat completions and a tool parser for models that need structured function-call parsing.
+
+## vLLM Example
+
+Start one vLLM service per served model or model family. Choose the parser and chat template for the actual model you run.
+
+```bash
+vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --served-model-name qwen3-coder-tools \
+  --api-key "${VLLM_QWEN_API_KEY}" \
+  --enable-auto-tool-choice \
+  --tool-call-parser qwen3_xml
+```
+
+Then register that service as a router provider:
+
+```yaml
+providers:
+  vllm_qwen_tools:
+    base_url: http://vllm-qwen-tools.inference.svc.cluster.local:8000/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${VLLM_QWEN_API_KEY}
+    api_key_env: VLLM_QWEN_API_KEY
+    key_id: vllm-qwen-tools-prod
+    models:
+      qwen3-coder-tools:
+        model: qwen3-coder-tools
+        tier: coding
+        input_price_per_million_usd: 0.00
+        output_price_per_million_usd: 0.00
+        pricing_notes: internal GPU allocation; set chargeback values if reports need allocated cost
+        tool_support:
+          openai_chat: [tools, tool_choice]
+
+models:
+  internal-coder:
+    strategy: weighted
+    targets:
+      - provider: vllm_qwen_tools
+        model_ref: qwen3-coder-tools
+        weight: 100
+      - provider: vllm_qwen_tools
+        model_ref: qwen3-coder-tools
+        weight: 100
+        tool_only: true
+```
+
+For self-hosted models, set `input_price_per_million_usd` and `output_price_per_million_usd` to the enterprise chargeback rate if one exists. Use `0.00` only when reports should show token volume without allocated GPU cost. Set `tool_support` only after the direct upstream and router-level tool smokes pass for that exact served model, chat template, parser, and client protocol.
+
+Callers still request the router model group, not the upstream service model:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "internal-coder",
+    "messages": [{"role": "user", "content": "Write a short hello-world function."}],
+    "max_tokens": 200,
+    "stream": false
+  }'
+```
+
+## SGLang Example
+
+Start SGLang with the parser that matches the model. For Qwen 2.5-style tool calls:
+
+```bash
+python3 -m sglang.launch_server \
+  --model-path Qwen/Qwen2.5-7B-Instruct \
+  --host 0.0.0.0 \
+  --port 30000 \
+  --tool-call-parser qwen25
+```
+
+Router config:
+
+```yaml
+providers:
+  sglang_qwen_tools:
+    base_url: http://sglang-qwen-tools.inference.svc.cluster.local:30000/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${SGLANG_QWEN_API_KEY}
+    api_key_env: SGLANG_QWEN_API_KEY
+    key_id: sglang-qwen-tools-prod
+    models:
+      qwen25-tools:
+        model: Qwen/Qwen2.5-7B-Instruct
+        tier: balanced
+
+models:
+  internal-tools:
+    strategy: weighted
+    targets:
+      - provider: sglang_qwen_tools
+        model_ref: qwen25-tools
+        weight: 100
+      - provider: sglang_qwen_tools
+        model_ref: qwen25-tools
+        weight: 100
+        tool_only: true
+```
+
+## Tool Calls Through Self-Hosted Models
+
+For OpenAI-compatible chat requests, the router forwards the `tools` and `tool_choice` fields to an `openai-chat` upstream target. The upstream model decides whether to return a tool call. The router does not execute the tool. The client or agent runtime executes the function and sends the tool result back in the next request.
+
+Example request through the router to a tool-enabled internal vLLM or SGLang target:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "internal-tools",
+    "messages": [{"role": "user", "content": "What is the weather in San Francisco?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather for a city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {"type": "string"},
+            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+          },
+          "required": ["location", "unit"]
+        }
+      }
+    }],
+    "tool_choice": "auto",
+    "stream": false
+  }'
+```
+
+Expected shape when the model chooses the tool:
+
+```json
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "arguments": "{\"location\":\"San Francisco\",\"unit\":\"fahrenheit\"}"
+        }
+      }]
+    }
+  }]
+}
+```
+
+Some upstream models support named or required tool choice better than automatic tool choice. vLLM documents named, `auto`, `required`, and `none` tool-choice modes; SGLang documents `required` and named function tool-choice support with the default Xgrammar backend. Validate the exact model, parser, chat template, streaming mode, and tool-choice setting before adding a self-hosted target to a production tool route.
+
+## Validation Checklist
+
+Before allowing production traffic to a self-hosted upstream:
+
+- Confirm the upstream `/v1/models` ID matches `providers.<name>.models.<ref>.model`.
+- Run a direct upstream text smoke against `/v1/chat/completions`.
+- Run a direct upstream tool smoke with the exact tool schema and `tool_choice` mode clients will use.
+- Run the same text and tool smoke through the router model group.
+- Mark tool-capable targets with `tool_only: true` when they should be used only for tool-bearing requests.
+- Keep non-tool and tool traffic in separate targets if a model is strong for text but unreliable for tools.
+- Monitor upstream latency, error rate, output-token throughput, and cache bypasses in router usage reports and metrics.
+
+Upstream references:
+
+- [vLLM online serving](https://docs.vllm.ai/en/latest/serving/online_serving/)
+- [vLLM tool calling](https://docs.vllm.ai/en/latest/features/tool_calling/)
+- [SGLang tool parser](https://docs.sglang.io/docs/advanced_features/tool_parser)

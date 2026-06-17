@@ -18,6 +18,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "configuration/router-config",
+        "configuration/self-hosted-upstreams",
         "configuration/routing-typescript",
       ],
     },
