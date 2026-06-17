@@ -273,7 +273,7 @@ medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenA
 high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
 default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
 fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
-big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, OpenAI GPT-5.5 15%, OpenAI GPT-5.4 Nano 25%, Z.AI GLM 5.2 Nitro 5%.
+big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, OpenAI GPT-5.5 5%, OpenAI GPT-5.4 Nano 30%, Z.AI GLM 5.2 Nitro 10%.
 ```
 
 Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Current active production/reference targets are limited to Harbor-validated OpenRouter, MiniMax, Kimi/Moonshot, and low-weight original OpenAI non-tool targets. Anthropic original-provider routing is supported but inactive until an Anthropic key is present and validated.
@@ -472,4 +472,27 @@ production compose config: passed
 production readyz: 200
 remote big-coder non-tool weight sum: 100
 authenticated production big-coder chat smoke: 200
+```
+
+### 2026-06-17 `big-coder` OpenAI/GLM weight tune
+
+Updated production `big-coder` non-tool weights:
+
+```text
+OpenRouter DeepSeek V4 Flash Nitro 11%
+MiniMax-M3 27%
+Kimi K2.7 Code 17%
+OpenAI GPT-5.5 5%
+OpenAI GPT-5.4 Nano 30%
+OpenRouter Z.AI GLM 5.2 Nitro 10%
+```
+
+Validation:
+
+```text
+production compose config: passed
+production readyz: 200
+remote big-coder non-tool weight sum: 100
+authenticated production big-coder chat smoke with max_tokens=64: 200, selected GLM, empty content due to reasoning budget
+authenticated production big-coder chat smokes with max_tokens=1024: 8/8 HTTP 200; GLM selected twice and returned router ok both times
 ```
