@@ -70,6 +70,11 @@ These instructions apply to the whole repository.
 - OpenAI-compatible chat smoke:
   - `POST <base_url>/chat/completions`
   - body: `{"model":"<model>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}`
+- Baseten Model APIs:
+  - Configure as `dialect: openai-chat` with `base_url: https://inference.baseten.co/v1`, `api_key_env: BASETEN_API_KEY`, and the served model slug from Baseten docs or `/v1/models`.
+  - Baseten publishes standard input/output pricing plus discounted cache-input pricing. Store standard `input_price_per_million_usd` and `output_price_per_million_usd` in catalog metadata; mention cache-input pricing in `pricing_notes` until the router has a separate cache-input price field for upstream-billed prompt-cache tokens.
+  - Before active routing, run direct non-streaming chat, direct streaming chat with `stream_options.include_usage` and `continuous_usage_stats` if streaming behavior is documented, and direct OpenAI Chat tool-call smoke if `tool_support.openai_chat` will be claimed. Add Baseten only to OpenAI Chat text routes unless an Anthropic or Responses skin is separately validated.
+  - On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct Baseten non-streaming chat, streaming chat with usage chunks, and OpenAI Chat function-call smoke with `tool_choice: "auto"`. It is text-only in router metadata and should not be added to `vision` or multimodal agent fallback routes unless a Baseten vision model passes direct plus router image smokes.
 - xAI/Grok candidates:
   - Official Grok 4.3 docs checked on 2026-06-17 list `grok-4.3` with text+image input, text output, function calling, structured outputs, configurable reasoning, 1M context, and $1.25/M input plus $2.50/M output pricing.
   - Direct xAI `grok-4.3` smokes passed on 2026-06-17 after billing was funded: text returned `OK`, receipt-image OCR returned `Rite Aid`, and xAI usage reported image tokens. Local router-level text and image smokes also passed; the image request logged `input_image_tokens`, separated image cost, and no warnings after `image_input_price_per_million_tokens_usd: 1.25` was configured.

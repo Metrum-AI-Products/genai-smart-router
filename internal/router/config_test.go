@@ -247,6 +247,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "baseten-nemotron-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "nvidia/Nemotron-120B-A12B" {
+				t.Fatalf("example config baseten-nemotron-smoke=%#v, want static Baseten Nemotron target", group)
+			}
+			continue
+		}
 		if name == "vision" {
 			if group.Strategy != "weighted" || len(group.Targets) < 2 {
 				t.Fatalf("example config vision=%#v, want weighted multi-target vision group", group)
@@ -270,7 +276,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev": {"default", "fast", "small", "vision"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -290,6 +296,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
+		"baseten:nvidia/Nemotron-120B-A12B":           "nvidia/Nemotron-120B-A12B",
 		"minimax:MiniMax-M3":                          "MiniMax-M3",
 		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
 		"openrouter:deepseek/deepseek-v4-flash:nitro": "deepseek/deepseek-v4-flash:nitro",
@@ -336,6 +343,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	gemmaWeight := 0
 	qwenFlashWeight := 0
 	openAIWeight := 0
+	basetenWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
@@ -388,26 +396,29 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "openai" && target.Model == "gpt-5.4-nano" {
 			openAIWeight += target.Weight
 		}
+		if target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B" {
+			basetenWeight += target.Weight
+		}
 	}
 	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		deepSeek, m3, gemma, qwenFlash, kimi, openAI, targets int
+		deepSeek, m3, gemma, qwenFlash, kimi, openAI, baseten, targets int
 	}{
-		"default":   {53, 28, 7, 5, 6, 1, 6},
-		"fast":      {58, 27, 4, 5, 5, 1, 6},
-		"small":     {57, 29, 4, 5, 4, 1, 6},
-		"medium":    {53, 26, 7, 5, 8, 1, 6},
-		"high":      {48, 27, 9, 5, 10, 1, 6},
-		"big-coder": {18, 47, 0, 5, 29, 1, 5},
+		"default":   {51, 27, 7, 5, 6, 1, 3, 7},
+		"fast":      {56, 26, 4, 5, 5, 1, 3, 7},
+		"small":     {55, 28, 4, 5, 4, 1, 3, 7},
+		"medium":    {51, 25, 7, 5, 8, 1, 3, 7},
+		"high":      {46, 26, 9, 5, 10, 1, 3, 7},
+		"big-coder": {18, 45, 0, 5, 28, 1, 3, 6},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI {
-		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenWeight != expect.baseten {
+		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d baseten=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, basetenWeight, totalWeight, normalTargets, expect)
 	}
 }
 
@@ -423,9 +434,10 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 		return true
 	}
 	allowedQwen := target.Model == "qwen/qwen3.6-flash:nitro" || target.Model == "qwen/qwen3.7-plus:nitro"
+	allowedBasetenNemotron := target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B"
 	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
-			return !allowedQwen
+			return !allowedQwen && !allowedBasetenNemotron
 		}
 	}
 	if target.ToolOnly && (target.Provider == "openai" || target.Provider == "anthropic") {

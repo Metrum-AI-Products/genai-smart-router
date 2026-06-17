@@ -91,6 +91,26 @@ providers:
         pricing_updated_at: "2026-06-17"
         pricing_notes: image-capable; one receipt smoke returned a wrong merchant, so use conservative weight for general VLM routing and separate OCR-specific gates
 
+  baseten:
+    base_url: https://inference.baseten.co/v1
+    dialect: openai-chat
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-primary
+    models:
+      nemotron-120b-a12b:
+        model: nvidia/Nemotron-120B-A12B
+        tier: heavy
+        input_price_per_million_usd: 0.30
+        output_price_per_million_usd: 0.75
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/pricing/
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: Baseten also publishes a discounted cache-input rate; keep standard input/output rates for router-calculated cost and log upstream-reported billed cost separately when available
+        tool_support:
+          openai_chat: [tools, tool_choice]
+
   kimi:
     base_url: https://api.moonshot.ai/v1
     dialect: openai-chat
@@ -128,6 +148,8 @@ providers:
 
 Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
 
+External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request the router model group such as `default` or `fast`, not the upstream Baseten model ID. The router injects `BASETEN_API_KEY` only when that target is selected.
+
 Catalog entries should carry cost and capability metadata:
 
 - `input_price_per_million_usd` and `output_price_per_million_usd` are the values used to calculate per-request cost at the time the request runs.
@@ -152,16 +174,20 @@ models:
   default:
     strategy: weighted
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
-      - { provider: minimax, model_ref: m3, weight: 30 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 10 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 56 }
+      - { provider: minimax, model_ref: m3, weight: 26 }
+      - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
+      - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
+      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 9 }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
 
   big-coder:
     strategy: weighted
     targets:
-      - { provider: minimax, model_ref: m3, weight: 50 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 30 }
+      - { provider: minimax, model_ref: m3, weight: 42 }
+      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 25 }
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
       - { provider: vllm_internal, model_ref: qwen3-coder-tools, weight: 10 }
 ```
 

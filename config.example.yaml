@@ -48,12 +48,34 @@ providers:
         - text
         pricing_source: https://docs.x.ai/developers/models/grok-4.3
         pricing_updated_at: '2026-06-17'
-        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and
-          image smokes
+        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and image smokes
         tool_support:
           openai_chat:
           - tools
           - structured_outputs
+  baseten:
+    base_url: https://inference.baseten.co/v1
+    dialect: openai-chat
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-default
+    models:
+      nemotron-120b-a12b:
+        model: nvidia/Nemotron-120B-A12B
+        tier: heavy
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 0.75
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.baseten.co/pricing/
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Baseten pricing page also lists $0.06/M cache input for NVIDIA Nemotron 3 Super; router usage rows currently log standard input/output token rates plus any upstream-reported billed cost.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -135,8 +157,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
       openrouter-xai-grok-4-3:
         model: x-ai/grok-4.3
         tier: vision
@@ -149,8 +170,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
       qwen3-7-plus-nitro:
         model: qwen/qwen3.7-plus:nitro
         tier: vision
@@ -163,8 +183,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17; Nitro suffix validated by completion call.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17; Nitro suffix validated by completion call.
       qwen3-6-flash-nitro:
         model: qwen/qwen3.6-flash:nitro
         tier: vision
@@ -178,11 +197,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed
-          on 2026-06-17. Production router image smoke processed the receipt but returned
-          a wrong merchant once, so treat this as general VLM/image-capable rather
-          than OCR-quality-gated. Tool calls work with auto tool choice; forced object
-          tool_choice fails while thinking mode is enabled.
+        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed on 2026-06-17. Production router image smoke processed the receipt but returned a wrong merchant once, so treat this as general VLM/image-capable rather than OCR-quality-gated. Tool calls work with auto tool choice; forced object tool_choice fails while thinking mode is enabled.
         tool_support:
           openai_chat:
           - tools
@@ -198,8 +213,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter
@@ -313,9 +327,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
         tool_support:
           openai_responses:
           - function
@@ -332,10 +344,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17.
-          A receipt image+tool smoke called the tool but returned Walgreens once,
-          so active Responses tool targets override input_modalities to text only;
-          use for text tools unless image-tool quality is revalidated.
+        pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17. A receipt image+tool smoke called the tool but returned Walgreens once, so active Responses tool targets override input_modalities to text only; use for text tools unless image-tool quality is revalidated.
         tool_support:
           openai_responses:
           - function
@@ -351,9 +360,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
         tool_support:
           openai_responses:
           - function
@@ -369,9 +376,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
         tool_support:
           openai_responses:
           - function
@@ -387,9 +392,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
         tool_support:
           openai_responses:
           - function
@@ -436,8 +439,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -454,10 +456,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool
-          smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice
-          fails upstream while thinking mode is enabled, but the router's Anthropic
-          passthrough removes forced tool_choice when default_thinking is injected.
+        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice fails upstream while thinking mode is enabled, but the router's Anthropic passthrough removes forced tool_choice when default_thinking is injected.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -473,8 +472,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -490,8 +488,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -507,8 +504,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -566,10 +562,13 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 53
+      weight: 51
     - provider: minimax
       model_ref: m3
-      weight: 28
+      weight: 27
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
@@ -660,10 +659,13 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 58
+      weight: 56
     - provider: minimax
       model_ref: m3
-      weight: 27
+      weight: 26
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
@@ -754,10 +756,13 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 57
+      weight: 55
     - provider: minimax
       model_ref: m3
-      weight: 29
+      weight: 28
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
@@ -848,10 +853,13 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 53
+      weight: 51
     - provider: minimax
       model_ref: m3
-      weight: 26
+      weight: 25
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
@@ -942,10 +950,13 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 48
+      weight: 46
     - provider: minimax
       model_ref: m3
-      weight: 27
+      weight: 26
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 9
@@ -1042,10 +1053,13 @@ models:
       weight: 5
     - provider: minimax
       model_ref: m3
-      weight: 47
+      weight: 45
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
+      weight: 3
     - provider: kimi
       model_ref: kimi-k2.7-code
-      weight: 29
+      weight: 28
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
@@ -1170,6 +1184,11 @@ models:
     targets:
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
+  baseten-nemotron-smoke:
+    strategy: static
+    targets:
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
 callers:
 - id: standard-dev
   user: standard
@@ -1220,6 +1239,7 @@ callers:
   - claude-tools-smoke-openrouter-qwen36
   - vision-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter-gemma
+  - baseten-nemotron-smoke
   rate:
     rpm: 120
     tpm: 200000
