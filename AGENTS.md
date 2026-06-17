@@ -211,6 +211,14 @@ Update docs whenever changing:
 
 Keep docs concrete and tested. Include working commands, but redact secrets.
 
+## Google Workspace Announcements
+
+- Use Google Chat/Workspace announcements for production rollouts, new supported functionality, externally visible behavior changes, and important validation results when the user asks for team notification.
+- Treat Google Chat incoming webhook URLs as secrets. Do not commit them, add them to docs, echo them in final responses, or store them in tracked scripts. If the user provides a webhook URL in chat, use it only for the requested post.
+- Keep announcements concise and caller-focused. Include the feature or deployment outcome, production URL when appropriate, version/commit or build timestamp when relevant, and high-signal validation results such as health checks, API smokes, and Codex/Claude Code CLI smokes.
+- Do not include provider API keys, router tokens, private SSH details, full production config contents, or sensitive internal host paths in Workspace messages.
+- After posting, it is acceptable to record only the non-secret message name/id and a short summary in the final response or deployment notes when useful. The 2026-06-17 multimodal agent routing announcement was posted successfully to Google Chat and returned message `spaces/AAAAuyaen6A/messages/khuaarPuWeo.khuaarPuWeo`.
+
 Before finalizing, check at minimum:
 
 ```bash
