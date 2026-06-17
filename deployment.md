@@ -606,7 +606,7 @@ Claude Code CLI production text smoke against big-coder with --output-format jso
 
 ### 2026-06-17 developer-accessible VLM config rollout
 
-Config-only production update was first applied on image/package `smart-llmrouter:081ebac-linux-amd64`; then package `smart-llmrouter:242144f-linux-amd64` was deployed so hosted `/docs/` includes the Qwen3.6 Flash notes and the VLM/OCR quality distinction.
+Config-only production update was first applied on image/package `smart-llmrouter:081ebac-linux-amd64`; then package `smart-llmrouter:e376623-linux-amd64` was deployed so hosted `/docs/` includes the Qwen3.6 Flash notes and the VLM/OCR quality distinction. An intermediate `242144f` package was deployed during validation and superseded by `e376623`.
 
 Runtime change:
 
@@ -667,12 +667,13 @@ production Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, too
 production vision static smoke vision-smoke-openrouter-qwen36: 200, selected qwen/qwen3.6-flash:nitro, processed the receipt image but returned Ralphs
 production log monitor after rollout: earlier restart loop caused by config file mode 0600, fixed with chmod 0644; router recovered and no later startup errors in docker logs
 production usage DB check after rollout: Qwen3.6 smoke rows recorded as HTTP 200 with target_model qwen/qwen3.6-flash:nitro
-package deploy backup: /opt/smart-llmrouter.backup-qwen36-docs-20260617T184645Z
-production image after docs/package deploy: smart-llmrouter:242144f-linux-amd64
-production /version after package deploy: 242144f, build_date 2026-06-17T18:44:37Z
+intermediate package deploy backup: /opt/smart-llmrouter.backup-qwen36-docs-20260617T184645Z
+final package deploy backup: /opt/smart-llmrouter.backup-qwen36-docs-e376623-20260617T185109Z
+production image after final docs/package deploy: smart-llmrouter:e376623-linux-amd64
+production /version after final package deploy: e376623, build_date 2026-06-17T18:49:05Z
 hosted docs /docs/configuration/image-analysis-vlm: 200 and contains qwen/qwen3.6-flash:nitro plus OCR-specific quality caveat
-post-package production Responses static smoke agent-tools-smoke-openrouter-qwen36: 200, function_call record_answer {"value":"OK"}
-post-package production Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, tool_use record_answer {"value":"OK"}
+post-final-package production Responses static smoke agent-tools-smoke-openrouter-qwen36: 200, function_call record_answer {"value":"OK"}
+post-final-package production Anthropic static smoke claude-tools-smoke-openrouter-qwen36: 200, tool_use record_answer {"value":"OK"}
 ```
 
 Quality note:
