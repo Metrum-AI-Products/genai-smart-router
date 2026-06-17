@@ -519,3 +519,41 @@ remote big-coder non-tool weight sum: 100
 authenticated production big-coder chat smoke with max_tokens=64: 200, selected GLM, empty content due to reasoning budget
 authenticated production big-coder chat smokes with max_tokens=1024: 8/8 HTTP 200; GLM selected twice and returned router ok both times
 ```
+
+### 2026-06-17 upstream pricing/tool metadata rollout
+
+Deployed image/package `smart-llmrouter:a59125a-linux-amd64` from source commit `a59125a`.
+
+Runtime changes:
+
+- Provider catalog entries now carry input/output dollars per million tokens, pricing source/update date, and dialect-specific tool support metadata.
+- JSONL and Postgres usage rows store request-time input/output prices, calculated input/output/total USD cost, pricing source, and pricing update date.
+- Usage reports now include cost summaries and cost columns.
+- Hosted docs and CLI version endpoints report version `a59125a`, commit `a59125a`, and build timestamp `2026-06-17T14:16:07Z`.
+
+Production backup:
+
+```text
+deployment backup: /opt/smart-llmrouter.backup-pricing-meta-20260617T141837Z
+config backup: /opt/smart-llmrouter/compose/config/config.yaml.bak.20260617T141837Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 60 tests
+rtk go test ./...: router/cmd packages passed; generated Harbor artifact packages still fail to compile as expected
+docs-build/package build: passed
+initial router restart issue: config installed 0600; fixed to 0644 and restarted router
+production readyz: 200
+production /version: a59125a, build_date 2026-06-17T14:16:07Z
+hosted docs /docs/configuration/router-config: 200 with X-Smart-LLMRouter-* headers
+authenticated /v1/models: 200, 12 model groups
+usage DB migration: pricing/cost columns present on request_usage
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes
+production chat smoke small max_tokens=128: 200, selected MiniMax-M3, non-empty content
+production Responses tool smoke agent-tools-smoke: 200, selected MiniMax-M3, output type function_call
+production Anthropic Messages tool smoke claude-tools-smoke: 200, selected MiniMax-M3, content type tool_use
+production usage row cost check: latest small row recorded prices and nonzero total_cost_usd
+production usage report --since 1h: rendered Cost summary and cost columns
+```
