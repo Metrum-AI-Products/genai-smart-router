@@ -537,6 +537,38 @@ models:
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
   fast:
     strategy: weighted
     targets:
@@ -582,6 +614,38 @@ models:
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
       tool_only: true
   small:
     strategy: weighted
@@ -629,6 +693,38 @@ models:
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
   medium:
     strategy: weighted
     targets:
@@ -675,6 +771,38 @@ models:
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
   high:
     strategy: weighted
     targets:
@@ -720,6 +848,38 @@ models:
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
       tool_only: true
   big-coder:
     strategy: weighted

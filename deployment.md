@@ -567,3 +567,63 @@ production Anthropic Messages tool smoke claude-tools-smoke: 200, selected MiniM
 production usage row cost check: latest small row recorded prices and nonzero total_cost_usd
 production usage report --since 1h: rendered Cost summary and cost columns
 ```
+
+### 2026-06-17 multimodal agent routing rollout
+
+Deployed image/package `smart-llmrouter:081ebac-linux-amd64` from source commit `081ebac`.
+
+Runtime changes:
+
+- Added validated multimodal OpenRouter Responses and Anthropic Messages targets to coding-agent routing so deployment-defined coding groups can handle mixed text/image agent requests without requiring users to switch to a separate vision-only group.
+- Added OpenRouter Anthropic-compatible VLM targets to the dedicated `vision` route while preserving existing image-capable targets and weights.
+- Added clearer caller-facing errors:
+  - `no-eligible-target` when the requested group has no upstream target for the requested dialect/tool/modality shape.
+  - `upstream-failed` with safe request id, attempt count, and attempted provider/model details when eligible upstreams fail.
+- Fixed Anthropic tool passthrough to normalize OpenAI-style `image_url` content into Anthropic `image.source` blocks before forwarding to Anthropic-compatible upstreams.
+
+Production backups:
+
+```text
+multimodal config/package backup: /opt/smart-llmrouter.backup-multimodal-agent-20260617T170502Z
+config backup: /opt/smart-llmrouter/compose/config/config.yaml.bak.multimodal-agent-20260617T170502Z
+passthrough fix package backup: /opt/smart-llmrouter.backup-anthropic-image-passthrough-20260617T171201Z
+```
+
+Validation:
+
+```text
+rtk go test ./internal/router ./cmd/...: passed, 69 tests
+docs-build/package build: passed; npm audit still reports 29 known docs-site dependency findings
+production readyz: 200
+production /version: 081ebac, build_date 2026-06-17T17:09:51Z
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 87377a68246309c1e635e789cd1146a9d37d47c71cbc28cbeefec88729c904b7
+authenticated /v1/models: big-coder and vision advertise text+image and tool support
+production /v1/responses big-coder image+function-tool smoke: 200, selected x-ai/grok-4.3, returned Rite Aid
+production /v1/messages big-coder image+tool smoke: 200, selected anthropic/claude-sonnet-4.6, returned Rite Aid
+Codex CLI production image smoke against big-coder: completed through router; selected an image-capable target but returned WELLNESS+ WITH PLENTI, so it validates CLI compatibility but not OCR quality for every weighted target
+Claude Code CLI production text smoke against big-coder with --output-format json: completed, result router claude ok, modelUsage big-coder
+```
+
+### 2026-06-17 developer-accessible VLM config rollout
+
+Config-only production update on image/package `smart-llmrouter:081ebac-linux-amd64`.
+
+Runtime change:
+
+- Added the same validated OpenRouter Responses and Anthropic Messages multimodal `tool_only` targets to the common developer-accessible groups `default`, `fast`, `small`, `medium`, and `high`, in addition to the existing coding group. Text-only traffic still uses the normal weighted targets; image-bearing Codex/Claude-compatible tool requests can now stay on the caller's usual model group.
+
+Validation:
+
+```text
+rtk go test ./internal/router ./cmd/...: passed, 69 tests
+production readyz: 200
+production /version: 081ebac, build_date 2026-06-17T17:09:51Z
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 87e12f70d353e78bbf987a70925c2d17445c4e8a2a064f1e7978c0c1ea338af8
+authenticated /v1/models: default, fast, small, medium, high, and big-coder advertise text+image plus tool support
+production /v1/responses small image+function-tool smoke: 200, selected x-ai/grok-4.3, returned Rite Aid
+production /v1/messages small image+tool smoke: 200, selected anthropic/claude-sonnet-4.6, returned Rite Aid
+production /v1/responses fast image+function-tool smoke: 200, selected MiniMax-M3, returned Rite Aid
+production /v1/messages fast image+tool smoke: 200, selected qwen/qwen3.7-plus, returned Rite Aid
+Codex CLI production image smoke against small: completed through router and returned Rite Aid
+Claude Code CLI production text smoke against small with --output-format json: completed, result router claude ok, modelUsage small
+```
