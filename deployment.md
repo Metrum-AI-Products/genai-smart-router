@@ -681,3 +681,46 @@ Quality note:
 ```text
 Keep Qwen3.6 Flash active for general image-capable routing because it accepts and analyzes image inputs. Do not treat the receipt smoke as an OCR-quality pass for exact merchant extraction; use OCR-specific route gates if exact answers are required.
 ```
+
+### 2026-06-17 Baseten Nemotron config and docs rollout
+
+Config-only production update was applied first on image/package `smart-llmrouter:e376623-linux-amd64`, then package `smart-llmrouter:17df92a-linux-amd64` was deployed so hosted `/docs/` includes Baseten provider configuration examples.
+
+Runtime change:
+
+- Added provider `baseten` with OpenAI-compatible Chat Completions base URL `https://inference.baseten.co/v1`.
+- Added `nvidia/Nemotron-120B-A12B` as `nemotron-120b-a12b` with text input/output metadata, Baseten pricing metadata of $0.30/M input tokens and $0.75/M output tokens, and `tool_support.openai_chat: [tools, tool_choice]` based on direct tool-call validation.
+- Added conservative low-weight Baseten text targets to `default`, `fast`, `small`, `medium`, `high`, and `big-coder`; `vision` was unchanged because this Baseten model is text-only.
+- Added static smoke group `baseten-nemotron-smoke` for exact-route validation.
+
+Production backups:
+
+```text
+config/config.yaml.bak.baseten-20260617T191035Z
+config/env.json.bak.baseten-20260617T191035Z
+/opt/smart-llmrouter.backup-baseten-docs-17df92a-20260617T191930Z
+```
+
+Validation:
+
+```text
+Baseten docs checked 2026-06-17: Model APIs are OpenAI-compatible at https://inference.baseten.co/v1; pricing page lists NVIDIA Nemotron 3 Super at $0.30/M input, $0.06/M cache input, and $0.75/M output.
+direct Baseten nvidia/Nemotron-120B-A12B non-streaming chat smoke: OK with OpenAI-style usage
+direct Baseten streaming chat smoke with stream_options.include_usage and continuous_usage_stats: OK, usage chunks seen
+direct Baseten OpenAI Chat tool smoke: valid function tool_call get_weather
+rtk go test ./internal/router ./cmd/...: passed, 69 tests
+local router baseten-nemotron-smoke non-streaming chat smoke: 200, selected baseten nvidia/Nemotron-120B-A12B
+local router baseten-nemotron-smoke streaming chat smoke: 200, downstream SSE completed
+local usage log: target_provider baseten, target_model nvidia/Nemotron-120B-A12B, input price 0.3, output price 0.75, calculated total cost recorded
+production config-only rollout: readyz 200 after env file mode fixed from 0600 to 0644 for container readability
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 743300c198db745fb68e947340d9880dda9e39f0ca3a349abedbc2ca36ea2600
+production /v1/models: baseten-nemotron-smoke visible to operator smoke token
+production baseten-nemotron-smoke non-streaming chat smoke before package deploy: 200, selected nvidia/Nemotron-120B-A12B
+production baseten-nemotron-smoke streaming chat smoke before package deploy: 200, downstream SSE completed
+production usage DB: recent baseten-nemotron-smoke rows recorded status 200, provider baseten, model nvidia/Nemotron-120B-A12B, input price 0.3, output price 0.75
+production package deploy: smart-llmrouter:17df92a-linux-amd64
+production /version after package deploy: 17df92a, build_date 2026-06-17T19:16:43Z
+hosted docs /docs/configuration/router-config: 200 and contains Baseten provider example plus BASETEN_API_KEY
+post-package production baseten-nemotron-smoke non-streaming chat smoke: 200, selected nvidia/Nemotron-120B-A12B
+post-package production logs: router listening on :8080, no errors in recent logs
+```
