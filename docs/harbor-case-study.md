@@ -13,12 +13,12 @@ OpenRouter `moonshotai/kimi-k2.7-code:nitro` and unvalidated candidate models we
 
 | Model Group | Normal Target Weights | Tool-Capable Targets |
 |---|---|---|
-| `default` | DeepSeek 56%, MiniMax-M3 28%, Gemma 8%, direct Kimi 7%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
-| `fast` | DeepSeek 61%, MiniMax-M3 28%, Gemma 5%, direct Kimi 5%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
-| `small` | DeepSeek 61%, MiniMax-M3 30%, Gemma 4%, direct Kimi 4%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
-| `medium` | DeepSeek 56%, MiniMax-M3 27%, Gemma 8%, direct Kimi 8%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
-| `high` | DeepSeek 51%, MiniMax-M3 28%, Gemma 10%, direct Kimi 10%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
-| `big-coder` | DeepSeek 20%, MiniMax-M3 49%, direct Kimi 30%, OpenAI GPT-5.5 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `default` | DeepSeek 56%, MiniMax-M3 28%, Gemma 8%, direct Kimi 7%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `fast` | DeepSeek 61%, MiniMax-M3 28%, Gemma 5%, direct Kimi 5%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `small` | DeepSeek 61%, MiniMax-M3 30%, Gemma 4%, direct Kimi 4%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `medium` | DeepSeek 56%, MiniMax-M3 27%, Gemma 8%, direct Kimi 8%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `high` | DeepSeek 51%, MiniMax-M3 28%, Gemma 10%, direct Kimi 10%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
+| `big-coder` | DeepSeek 20%, MiniMax-M3 49%, direct Kimi 30%, OpenAI GPT-5.4 Nano 1% (non-tool only) | Codex: MiniMax M3 and OpenRouter DeepSeek V4 Flash Nitro. Claude Code: MiniMax M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and OpenRouter Gemma 4 26B Nitro. |
 
 ## Harbor Results
 
@@ -63,7 +63,7 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 |kimi_anthropic|kimi-k2.7-code|8|0|172326|39300|3490|9|1|8|26.37|3957.61|12642|55614|
 |minimax|MiniMax-M3|22|0|456843|452073|4770|22|0|22|35.06|4915.38|4929|14942|
 |minimax_anthropic|MiniMax-M3|4|0|93049|64476|28573|4|0|4|55.31|889.89|95888|276137|
-|openai|gpt-5.5|5|0|82268|58764|23504|9|4|5|50.56|2335.98|60010|278090|
+|openai|gpt-5.4-nano|5|0|82268|58764|23504|9|4|5|50.56|2335.98|60010|278090|
 |openrouter_anthropic|deepseek/deepseek-v4-flash:nitro|9|0|235221|196113|39108|9|0|9|107.16|2932.31|32928|74085|
 |openrouter_anthropic|google/gemma-4-26b-a4b-it:nitro|6|0|151315|133040|18275|6|0|6|79.37|1832.87|30973|81864|
 |openrouter_responses|deepseek/deepseek-v4-flash:nitro|27|0|266117|205554|60563|27|0|27|99.28|1540.81|19905|73196|
@@ -166,7 +166,7 @@ Both final trials passed with reward `1.0` and zero Harbor exceptions.
 |minimax|MiniMax-M3|6|53584|52034|1550|6|0|39.48|5057|
 |minimax_anthropic|MiniMax-M3|5|46770|44272|2498|5|0|38.26|10408|
 |kimi_anthropic|kimi-k2.7-code|2|41042|2302|84|2|0|14.65|2965|
-|openai|gpt-5.5|2|26492|25852|640|2|0|48.76|5265|
+|openai|gpt-5.4-nano|2|26492|25852|640|2|0|48.76|5265|
 |openrouter_anthropic|google/gemma-4-26b-a4b-it:nitro|1|21876|21769|107|1|0|38.74|2805|
 
 ### Go Sublist Cost Comparison

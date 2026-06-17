@@ -28,6 +28,28 @@ providers:
         output_price_per_million_usd: 3.50
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
         pricing_updated_at: "2026-06-17"
+  xai:
+    base_url: https://api.x.ai/v1
+    dialect: openai-chat
+    api_key: ${XAI_API_KEY}
+    api_key_env: XAI_API_KEY
+    key_id: xai-default
+    models:
+      grok-4-3:
+        model: grok-4.3
+        tier: heavy
+        input_price_per_million_usd: 1.25
+        output_price_per_million_usd: 2.50
+        image_input_price_per_million_tokens_usd: 1.25
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://docs.x.ai/developers/models/grok-4.3
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and image smokes
+        tool_support:
+          openai_chat:
+          - tools
+          - structured_outputs
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -40,6 +62,8 @@ providers:
         tier: heavy
         input_price_per_million_usd: 0.30
         output_price_per_million_usd: 1.20
+        input_modalities: [text, image, video]
+        output_modalities: [text]
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: "2026-06-17"
         tool_support:
@@ -79,6 +103,15 @@ providers:
           - tools
           - tool_choice
           - structured_outputs
+      qwen3-vl-32b-instruct-nitro:
+        model: qwen/qwen3-vl-32b-instruct:nitro
+        tier: vision
+        input_price_per_million_usd: 0.104
+        output_price_per_million_usd: 0.416
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -86,12 +119,12 @@ providers:
     api_key_env: OPENAI_API_KEY
     key_id: openai-default
     models:
-      gpt-5.5:
-        model: gpt-5.5
-        tier: heavy
-        input_price_per_million_usd: 5.00
-        output_price_per_million_usd: 30.00
-        pricing_source: https://openai.com/api/pricing/
+      gpt-5.4-nano:
+        model: gpt-5.4-nano
+        tier: small
+        input_price_per_million_usd: 0.20
+        output_price_per_million_usd: 1.25
+        pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
         pricing_updated_at: "2026-06-17"
         tool_support:
           openai_responses:
@@ -126,6 +159,8 @@ providers:
         tier: heavy
         input_price_per_million_usd: 0.30
         output_price_per_million_usd: 1.20
+        input_modalities: [text, image, video]
+        output_modalities: [text]
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: "2026-06-17"
         tool_support:
@@ -211,7 +246,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 7
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3
@@ -257,7 +292,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 5
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3
@@ -303,7 +338,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 4
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3
@@ -349,7 +384,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 8
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3
@@ -395,7 +430,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 10
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3
@@ -438,7 +473,7 @@ models:
       model_ref: kimi-k2.7-code
       weight: 30
     - provider: openai
-      model_ref: gpt-5.5
+      model_ref: gpt-5.4-nano
       weight: 1
     - provider: minimax
       model_ref: m3

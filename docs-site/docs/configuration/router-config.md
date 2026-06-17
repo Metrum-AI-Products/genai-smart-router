@@ -26,6 +26,8 @@ providers:
         tier: heavy
         input_price_per_million_usd: 0.30
         output_price_per_million_usd: 1.20
+        input_modalities: [text, image, video]
+        output_modalities: [text]
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: "2026-06-17"
         tool_support:
@@ -77,6 +79,8 @@ providers:
         tier: coding
         input_price_per_million_usd: 0.00
         output_price_per_million_usd: 0.00
+        input_modalities: [text]
+        output_modalities: [text]
         pricing_notes: internal GPU allocation; set chargeback values if used for reporting
         tool_support:
           openai_chat: [tools, tool_choice]
@@ -87,6 +91,8 @@ Internal vLLM and SGLang services use the same provider catalog structure as ext
 Catalog entries should carry cost and capability metadata:
 
 - `input_price_per_million_usd` and `output_price_per_million_usd` are the values used to calculate per-request cost at the time the request runs.
+- `input_modalities` and `output_modalities` describe tested model I/O such as `text`, `image`, or `video`. Requests that include image content are automatically filtered to targets with `image` in `input_modalities`; text-only targets are skipped.
+- `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd` are optional VLM pricing fields. Use them only when the provider or internal chargeback model bills image input differently from ordinary input tokens. If the provider returns billed cost in usage metadata, the router logs that upstream-reported cost separately from the calculated cost.
 - `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
 - `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
 
@@ -179,3 +185,7 @@ server:
 ```
 
 The cache is intended for eligible deterministic unary responses. Tool-bearing agent requests bypass cache because tool output can depend on live shell and filesystem state.
+
+Image-bearing requests also bypass response caching. Usage logs and the usage database include `input_has_image`, `input_image_count`, image-token counts when the upstream reports them, calculated VLM costs, and upstream-reported billed costs when available.
+
+Cataloged vision models are not automatically active routes. Keep a vision candidate catalog-only until it passes the exact direct upstream and router-level image smoke for the intended task and API dialect.

@@ -135,7 +135,7 @@ XAI_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and original OpenAI `gpt-5.5` at low non-tool weight.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and original OpenAI `gpt-5.4-nano` at low non-tool weight.
 - Enterprise-owned vLLM and SGLang services are configured the same way as other OpenAI-compatible providers: set `base_url` to the internal `/v1` endpoint, use `dialect: openai-chat` for `/v1/chat/completions`, set `auth_scheme: bearer` when the service expects bearer auth, and catalog the served model ID under `providers.<name>.models`. See `docs/SELF_HOSTED_UPSTREAMS.md` for vLLM/SGLang examples and tool-call validation smokes.
 - MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
@@ -169,6 +169,8 @@ providers:
         tier: heavy
         input_price_per_million_usd: 0.30
         output_price_per_million_usd: 1.20
+        input_modalities: [text, image, video]
+        output_modalities: [text]
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: "2026-06-17"
         tool_support:
@@ -206,12 +208,12 @@ providers:
     api_key_env: OPENAI_API_KEY
     key_id: openai-default
     models:
-      gpt-5.5:
-        model: gpt-5.5
-        tier: heavy
-        input_price_per_million_usd: 5.00
-        output_price_per_million_usd: 30.00
-        pricing_source: https://openai.com/api/pricing/
+      gpt-5.4-nano:
+        model: gpt-5.4-nano
+        tier: small
+        input_price_per_million_usd: 0.20
+        output_price_per_million_usd: 1.25
+        pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
         pricing_updated_at: "2026-06-17"
         tool_support:
           openai_responses: [function]
@@ -281,19 +283,27 @@ models:
       - { provider: minimax, model_ref: m3, weight: 28 }
       - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 8 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 7 }
-      - { provider: openai, model_ref: gpt-5.5, weight: 1 }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
 ```
 
 `model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
 
-Catalog metadata can include `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, `pricing_updated_at`, and `tool_support`. Pricing is copied onto the selected target at request time and logged with calculated input, output, and total USD cost, so historical usage rows keep the price that was used even if provider pricing changes later. `tool_support` is dialect-specific:
+Catalog metadata can include `input_price_per_million_usd`, `output_price_per_million_usd`, optional VLM fields such as `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd`, `input_modalities`, `output_modalities`, `pricing_source`, `pricing_updated_at`, and `tool_support`. Pricing is copied onto the selected target at request time and logged with calculated input, image, output, and total USD cost, so historical usage rows keep the price that was used even if provider pricing changes later. When an upstream returns billed cost metadata, the router logs that upstream-reported cost separately from router-calculated cost. `tool_support` is dialect-specific:
 
 - `openai_chat`: upstream supports OpenAI-compatible chat `tools` / `tool_choice`.
 - `openai_responses`: upstream supports Responses function tools.
 - `anthropic_messages`: upstream supports Anthropic Messages client tools.
 - `provider_hosted`: reserved for provider-executed tools such as web search or code execution after that exact upstream capability is validated.
 
-Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps original OpenAI at a low non-tool weight. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
+Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
+
+Image requests are detected across OpenAI Chat, OpenAI Responses, and Anthropic Messages content blocks. The router filters image-bearing requests to targets with `image` in `input_modalities`, skips text-only targets, bypasses response caching, and logs `input_has_image`, `input_image_count`, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when available.
+
+Vision catalog entries are not automatically active routes. For example, OpenRouter `qwen/qwen3-vl-32b-instruct:nitro` is cataloged with `input_modalities: [text, image]` and current OpenRouter pricing, but it should remain out of active OCR routes until a router-level receipt OCR smoke returns the expected merchant name.
+
+Do not add `~google/gemini-flash-latest` or `google/gemini-3.1-flash-lite-preview` to the OpenRouter catalog or active routes for the current production key until access is fixed and a live smoke passes. On 2026-06-17 the OpenRouter catalog advertised multimodal support for both IDs, but the current account returned a 404 provider-privacy error for direct image requests.
+
+xAI Grok 4.3 is cataloged as an OpenAI-compatible `openai-chat` provider with `input_modalities: [text, image]`, `output_modalities: [text]`, official pricing of $1.25/M input and $2.50/M output tokens, and `image_input_price_per_million_tokens_usd: 1.25` because xAI reports image tokens in prompt usage. Direct xAI text/image smokes and local router-level text/image smokes passed on 2026-06-17; choose production group weights separately before making it an active route.
 
 Self-hosted OpenAI-compatible services such as vLLM and SGLang should be validated exactly like SaaS providers before activation. Confirm `/v1/models`, run a direct text completion smoke, run a direct tool-call smoke if the model is intended for agent tools, then repeat the same request through the router group. Tool calling depends on the upstream model, chat template, parser flags, and `tool_choice` support; do not mark a self-hosted target tool-capable just because the server accepts a `tools` field.
 
@@ -307,7 +317,7 @@ models:
       - { provider: minimax, model_ref: m3, weight: 49 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 30 }
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
-      - { provider: openai, model_ref: gpt-5.5, weight: 1 }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
       - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true }
       - { provider: openrouter_responses, model_ref: deepseek-v4-flash-nitro, tool_only: true, weight: 5 }
       - { provider: minimax_anthropic, model_ref: m3, tool_only: true }
@@ -718,12 +728,12 @@ set +a
 Supported router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.5 1% non-tool.
-medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.5 1% non-tool.
-high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
-default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
-fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
-big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.5 1% non-tool.
+small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.4 Nano 1% non-tool.
+medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.4 Nano 1% non-tool.
+high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.4 Nano 1% non-tool.
+default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.4 Nano 1% non-tool.
+fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.4 Nano 1% non-tool.
+big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.4 Nano 1% non-tool.
 ```
 
 The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard keys are typically limited to `default`, `fast`, and `small`; coding/premium keys can additionally use `medium`, `high`, and `big-coder`.

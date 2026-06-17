@@ -160,7 +160,7 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 ## 2026-06-15 Cleaned Harbor-Validated Routing
 
 - Removed OpenRouter Kimi K2.7 Code Nitro from local and production active configs. Direct Moonshot AI `kimi-k2.7-code` remains active.
-- Removed unvalidated OpenRouter candidate models from local and production active configs. The cleaned active set is MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and low-weight original OpenAI GPT-5.5 for non-tool traffic.
+- Removed unvalidated OpenRouter candidate models from local and production active configs. Historical active set on 2026-06-15 was MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, and low-weight original OpenAI GPT-5.5 for non-tool traffic; the OpenAI fallback was superseded by GPT-5.4 Nano on 2026-06-17.
 - Original Anthropic remains supported by the adapter, but it is not active because no `ANTHROPIC_API_KEY` is present in local or production `env.json`.
 - Deployed production config SHA-256 `929af45877e905414d893c8c5ba91369123a6b3b0cd61c8f2a0aafbc5050baf6` with 12 Harbor caller tokens for case `harbor-cleaned-20260615t031649z`.
 - Ran Harbor `aider/polyglot_python_two-bucket` through Codex CLI and Claude Code across `default`, `fast`, `small`, `medium`, `high`, and `big-coder`. All final cells passed with reward `1.0`; Codex `medium` required a clean rerun after the first attempt produced a passing artifact but exited nonzero.
@@ -219,6 +219,8 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 
 ## 2026-06-15 High Group GPT-5.5 Weight Update
 
+Historical note, superseded on 2026-06-17 by the GPT-5.4 Nano fallback policy.
+
 - Updated the production `high` group standard/non-tool routing pool.
 - Increased OpenAI `gpt-5.5` from 1% to 10%.
 - Reduced OpenRouter `google/gemma-4-26b-a4b-it:nitro` from 10% to 1%.
@@ -235,6 +237,8 @@ Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs inst
 - Verified production `/readyz` and pulled the live remote config back to confirm zero callers are missing the requested groups.
 
 ## 2026-06-15 Medium/Fast/Big-Coder Routing Weight Update
+
+Historical note, superseded on 2026-06-17 by the GPT-5.4 Nano fallback policy.
 
 - Added OpenAI `gpt-5.4-nano` to the production OpenAI provider catalog.
 - Updated `medium` standard/non-tool pool to DeepSeek V4 Flash Nitro 53%, MiniMax-M3 35%, Gemma 4 26B Nitro 1%, Kimi K2.7 Code 8%, and GPT-5.5 3%.
@@ -291,12 +295,12 @@ sudo docker compose up -d
 Supported production router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.5 1% non-tool.
-medium     DeepSeek V4 Flash Nitro 56%, MiniMax-M3 27%, Gemma 8%, Kimi 8%, OpenAI GPT-5.5 1% non-tool.
-high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 10%, Kimi 10%, OpenAI GPT-5.5 1% non-tool.
-default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.5 1% non-tool.
-fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenAI GPT-5.5 1% non-tool.
-big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, OpenAI GPT-5.5 5%, OpenAI GPT-5.4 Nano 30%, Z.AI GLM 5.2 Nitro 10%.
+small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.4 Nano 1% non-tool.
+medium     DeepSeek V4 Flash Nitro 53%, MiniMax-M3 35%, Gemma 1%, Kimi 8%, OpenAI GPT-5.4 Nano 3% non-tool.
+high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 1%, Kimi 10%, OpenAI GPT-5.4 Nano 10% non-tool.
+default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.4 Nano 1% non-tool.
+fast       DeepSeek V4 Flash Nitro 45%, MiniMax-M3 28%, Gemma 1%, Kimi 5%, OpenAI GPT-5.4 Nano 21% non-tool.
+big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, OpenAI GPT-5.4 Nano 35%, Z.AI GLM 5.2 Nitro 10%.
 ```
 
 Clients set one of those router model group names as the model. The router chooses the actual upstream provider/model behind the group. Current active production/reference targets are limited to Harbor-validated OpenRouter, MiniMax, Kimi/Moonshot, and low-weight original OpenAI non-tool targets. Anthropic original-provider routing is supported but inactive until an Anthropic key is present and validated.
@@ -398,12 +402,14 @@ Historical validation during the initial deployment:
 healthz: 200
 /v1/models: 200 with default, fast, big-coder
 Claude Code: router prod claude ok
-high: 200 with gpt-5.5 at that time; this is no longer an active route under the 2026-06-15 policy
-big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time; current big-coder includes weighted OpenAI GPT-5.5/GPT-5.4 Nano alongside MiniMax, Kimi, and OpenRouter routes
+high: 200 with gpt-5.5 at that time; this is no longer an active route under the 2026-06-17 GPT-5.4 Nano fallback policy
+big-coder: weighted smoke selected gpt-5.5 and MiniMax-M3 at that time; current big-coder uses OpenAI GPT-5.4 Nano as the low-weight non-tool OpenAI fallback alongside MiniMax, Kimi, and OpenRouter routes
 Codex: router prod codex ok
 ```
 
 ### 2026-06-16 `kyai-judge` production group
+
+Historical note, superseded on 2026-06-17 by the GPT-5.4 Nano fallback policy.
 
 Added production-only model group `kyai-judge` as a static route to OpenAI `gpt-5.5`.
 Allowed callers:
@@ -473,6 +479,8 @@ compose image: smart-llmrouter:70aa94b-linux-amd64
 
 ### 2026-06-17 `big-coder` GLM 5.2 Nitro production update
 
+Historical note, superseded later on 2026-06-17 by the GPT-5.4 Nano fallback policy.
+
 Added OpenRouter `z-ai/glm-5.2:nitro` to the production `big-coder` non-tool pool at 5% weight.
 
 Current `big-coder` non-tool weights:
@@ -498,6 +506,8 @@ authenticated production big-coder chat smoke: 200
 ```
 
 ### 2026-06-17 `big-coder` OpenAI/GLM weight tune
+
+Historical note, superseded later on 2026-06-17 by the GPT-5.4 Nano fallback policy.
 
 Updated production `big-coder` non-tool weights:
 

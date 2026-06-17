@@ -29,6 +29,7 @@ Reports include:
 - Calls, errors, status codes, latency, and upstream attempts.
 - Input tokens, output tokens, total tokens, and throughput.
 - Request-time input/output token prices and calculated input/output/total USD cost.
+- Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
 - Usage by caller IP and hour.
 - Usage by router model group.
@@ -50,4 +51,6 @@ router-usage-report \
 
 Reports use public token IDs and aggregated usage fields. They do not expose raw router tokens or raw provider API keys.
 
-Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices or tool-capability validation changes.
+Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
+
+For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image chargeback. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.

@@ -38,7 +38,9 @@ The upstream service must expose an OpenAI-compatible endpoint matching the conf
 
 vLLM documents OpenAI-compatible serving, including `/v1/models`, `/v1/chat/completions`, `/v1/responses`, `/health`, and `/metrics`. Its chat serving requires a model chat template; if the model does not ship one, start vLLM with `--chat-template`.
 
-SGLang also supports OpenAI-compatible chat completions and a tool parser for models that need structured function-call parsing.
+vLLM's OpenAI-compatible server accepts multimodal chat content for supported VLMs using OpenAI-style content parts such as `{"type":"image_url","image_url":{"url":"..."}}`. For production VLM deployments, configure vLLM media access controls such as `--allowed-media-domains` so the server cannot fetch arbitrary internal URLs.
+
+SGLang supports OpenAI-compatible chat completions, multimodal language models, and a tool parser for models that need structured function-call parsing. Validate the exact image/video input shape for the model family you serve.
 
 ## vLLM Example
 
@@ -71,6 +73,8 @@ providers:
         tier: coding
         input_price_per_million_usd: 0.00
         output_price_per_million_usd: 0.00
+        input_modalities: [text]
+        output_modalities: [text]
         pricing_notes: internal GPU allocation; set chargeback values if reports need allocated cost
         tool_support:
           openai_chat: [tools, tool_choice]
@@ -89,6 +93,59 @@ models:
 ```
 
 For self-hosted models, set `input_price_per_million_usd` and `output_price_per_million_usd` to the enterprise chargeback rate if one exists. Use `0.00` only when reports should show token volume without allocated GPU cost. Set `tool_support` only after the direct upstream and router-level tool smokes pass for that exact served model, chat template, parser, and client protocol.
+
+For self-hosted VLMs, also set `input_modalities` and `output_modalities` after direct image/video smokes pass. If image input has a separate chargeback rate, use `image_input_price_per_million_tokens_usd` for provider-reported image tokens or `image_input_price_per_image_usd` for fixed per-image accounting. The router logs image count, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when the upstream includes it.
+
+Example VLM catalog entry:
+
+```yaml
+providers:
+  vllm_qwen_vl:
+    base_url: http://vllm-qwen-vl.inference.svc.cluster.local:8000/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${VLLM_QWEN_VL_API_KEY}
+    api_key_env: VLLM_QWEN_VL_API_KEY
+    key_id: vllm-qwen-vl-prod
+    models:
+      qwen-vl:
+        model: qwen-vl
+        tier: vision
+        input_price_per_million_usd: 0.00
+        output_price_per_million_usd: 0.00
+        image_input_price_per_image_usd: 0.0005
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_notes: internal GPU allocation plus per-image chargeback
+
+models:
+  vision:
+    strategy: weighted
+    targets:
+      - provider: vllm_qwen_vl
+        model_ref: qwen-vl
+        weight: 100
+```
+
+Direct VLM smoke before activating the route:
+
+```bash
+curl "$VLLM_QWEN_VL_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $VLLM_QWEN_VL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen-vl",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Read the receipt. Reply with only the merchant name."},
+        {"type": "image_url", "image_url": {"url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
+      ]
+    }],
+    "max_tokens": 64,
+    "stream": false
+  }'
+```
 
 Callers still request the router model group, not the upstream service model:
 
@@ -205,6 +262,7 @@ Before allowing production traffic to a self-hosted upstream:
 
 - Confirm the upstream `/v1/models` ID matches `providers.<name>.models.<ref>.model`.
 - Run a direct upstream text smoke against `/v1/chat/completions`.
+- For VLM targets, run a direct image smoke and then the same image request through the router. Do not add `image` to `input_modalities` until both pass.
 - Run a direct upstream tool smoke with the exact tool schema and `tool_choice` mode clients will use.
 - Run the same text and tool smoke through the router model group.
 - Mark tool-capable targets with `tool_only: true` when they should be used only for tool-bearing requests.
@@ -214,5 +272,7 @@ Before allowing production traffic to a self-hosted upstream:
 Upstream references:
 
 - [vLLM online serving](https://docs.vllm.ai/en/latest/serving/online_serving/)
+- [vLLM multimodal inputs](https://docs.vllm.ai/en/stable/features/multimodal_inputs/)
 - [vLLM tool calling](https://docs.vllm.ai/en/latest/features/tool_calling/)
+- [SGLang multimodal language models](https://docs.sglang.io/docs/supported-models/multimodal_language_models)
 - [SGLang tool parser](https://docs.sglang.io/docs/advanced_features/tool_parser)

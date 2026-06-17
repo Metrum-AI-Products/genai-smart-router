@@ -289,6 +289,145 @@ func TestModelsEndpointMarksAgentToolsSmokeAsToolCapable(t *testing.T) {
 	}
 }
 
+func TestModelsEndpointReportsVisionInputModalities(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "text-model", InputModalities: []string{"text"}},
+		{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	models := body["models"].([]any)
+	first := models[0].(map[string]any)
+	if first["supports_image_detail_original"] != true {
+		t.Fatalf("vision support not advertised: %#v", first)
+	}
+	modalities := first["input_modalities"].([]any)
+	hasImage := false
+	for _, modality := range modalities {
+		hasImage = hasImage || modality == "image"
+	}
+	if !hasImage {
+		t.Fatalf("input_modalities missing image: %#v", first)
+	}
+}
+
+func TestImageRequestsFilterToVisionTargetsAndBypassCache(t *testing.T) {
+	var gotModel string
+	var gotImageURL string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel = stringValue(body["model"])
+		msgs := body["messages"].([]any)
+		content := msgs[0].(map[string]any)["content"].([]any)
+		img := content[1].(map[string]any)["image_url"].(map[string]any)
+		gotImageURL = stringValue(img["url"])
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_vision",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "Rite Aid"},
+			}},
+			"usage": map[string]any{
+				"prompt_tokens":     100,
+				"completion_tokens": 4,
+				"total_tokens":      104,
+				"prompt_tokens_details": map[string]any{
+					"image_tokens": 64,
+				},
+				"cost": 0.00456,
+				"cost_details": map[string]any{
+					"upstream_inference_prompt_cost":      0.003,
+					"upstream_inference_completions_cost": 0.00156,
+				},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "text-model", InputModalities: []string{"text"}},
+		{
+			Provider:                           "mock",
+			Model:                              "vision-model",
+			InputModalities:                    []string{"text", "image"},
+			InputPricePerMillionUSD:            2,
+			OutputPricePerMillionUSD:           8,
+			ImageInputPricePerMillionTokensUSD: 10,
+			ImageInputPricePerImageUSD:         0.001,
+		},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{
+		"model": "default",
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "Read the receipt."},
+				{"type": "image_url", "image_url": {"url": "`+receiptImageURL+`"}}
+			]
+		}]
+	}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	svc.Close()
+
+	if gotModel != "vision-model" || gotImageURL != receiptImageURL {
+		t.Fatalf("upstream model/image=%q/%q", gotModel, gotImageURL)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logText := string(raw)
+	for _, want := range []string{
+		`"target_model":"vision-model"`,
+		`"input_has_image":true`,
+		`"input_image_count":1`,
+		`"input_image_tokens":64`,
+		`"image_input_price_per_million_tokens_usd":10`,
+		`"image_input_price_per_image_usd":0.001`,
+		`"image_cost_usd":0.00164`,
+		`"upstream_reported_total_cost_usd":0.00456`,
+		`"cache":"bypass"`,
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("vision log missing %s: %s", want, raw)
+		}
+	}
+	if !strings.Contains(logText, `"input_cost_usd":0.000072`) || !strings.Contains(logText, `"output_cost_usd":0.000032`) || !strings.Contains(logText, `"total_cost_usd":0.001744`) {
+		t.Fatalf("vision log missing target/image/cache fields: %s", raw)
+	}
+}
+
 func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

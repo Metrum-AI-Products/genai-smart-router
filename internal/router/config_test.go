@@ -34,14 +34,16 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	provider := cfg.Provider["mock"]
 	provider.Models = map[string]ProviderModel{
 		"small": {
-			Model:                    "mock-small",
-			Weight:                   99,
-			Tier:                     "cheap",
-			RPM:                      10,
-			InputPricePerMillionUSD:  0.25,
-			OutputPricePerMillionUSD: 1.25,
-			PricingSource:            "https://example.test/pricing",
-			PricingUpdatedAt:         "2026-06-17",
+			Model:                              "mock-small",
+			Weight:                             99,
+			Tier:                               "cheap",
+			RPM:                                10,
+			InputPricePerMillionUSD:            0.25,
+			OutputPricePerMillionUSD:           1.25,
+			ImageInputPricePerMillionTokensUSD: 3.5,
+			ImageInputPricePerImageUSD:         0.002,
+			PricingSource:                      "https://example.test/pricing",
+			PricingUpdatedAt:                   "2026-06-17",
 			ToolSupport: ToolSupport{
 				OpenAIResponses: []string{"function"},
 			},
@@ -65,6 +67,7 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 		t.Fatalf("small ref not resolved: %#v", targets[0])
 	}
 	if targets[0].InputPricePerMillionUSD != 0.25 || targets[0].OutputPricePerMillionUSD != 1.25 ||
+		targets[0].ImageInputPricePerMillionTokensUSD != 3.5 || targets[0].ImageInputPricePerImageUSD != 0.002 ||
 		targets[0].PricingSource != "https://example.test/pricing" || targets[0].PricingUpdatedAt != "2026-06-17" ||
 		len(targets[0].ToolSupport.OpenAIResponses) != 1 || targets[0].ToolSupport.OpenAIResponses[0] != "function" {
 		t.Fatalf("small ref metadata not resolved: %#v", targets[0])
@@ -117,6 +120,17 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 			target: Target{OutputPricePerMillionUSD: -0.01},
 			want:   "output_price_per_million_usd",
 		},
+		{
+			name:  "negative provider image token price",
+			model: ProviderModel{Model: "mock-known", ImageInputPricePerMillionTokensUSD: -0.01},
+			want:  "image_input_price_per_million_tokens_usd",
+		},
+		{
+			name:   "negative target image unit price",
+			model:  ProviderModel{Model: "mock-known"},
+			target: Target{ImageInputPricePerImageUSD: -0.01},
+			want:   "image_input_price_per_image_usd",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := minimalConfig(t)
@@ -126,6 +140,12 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 			target := Target{Provider: "mock", ModelRef: "known"}
 			if tt.target.OutputPricePerMillionUSD != 0 {
 				target.OutputPricePerMillionUSD = tt.target.OutputPricePerMillionUSD
+			}
+			if tt.target.ImageInputPricePerMillionTokensUSD != 0 {
+				target.ImageInputPricePerMillionTokensUSD = tt.target.ImageInputPricePerMillionTokensUSD
+			}
+			if tt.target.ImageInputPricePerImageUSD != 0 {
+				target.ImageInputPricePerImageUSD = tt.target.ImageInputPricePerImageUSD
 			}
 			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
 			err := cfg.Validate()
@@ -240,7 +260,7 @@ func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
 		"openrouter:deepseek/deepseek-v4-flash:nitro": "deepseek/deepseek-v4-flash:nitro",
 		"openrouter:google/gemma-4-26b-a4b-it:nitro":  "google/gemma-4-26b-a4b-it:nitro",
-		"openai:gpt-5.5":                              "gpt-5.5",
+		"openai:gpt-5.4-nano":                         "gpt-5.4-nano",
 	}
 	for name, model := range want {
 		found := false
@@ -327,7 +347,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "openrouter" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
 			gemmaWeight += target.Weight
 		}
-		if target.Provider == "openai" && target.Model == "gpt-5.5" {
+		if target.Provider == "openai" && target.Model == "gpt-5.4-nano" {
 			openAIWeight += target.Weight
 		}
 	}

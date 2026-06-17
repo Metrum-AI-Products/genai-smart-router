@@ -44,7 +44,7 @@ The evaluated routing policy used validated tool-capable targets from OpenRouter
 | Moonshot AI / Kimi | `kimi-k2.7-code` | Direct coding target for Claude Code-compatible tool flows |
 | OpenRouter | `deepseek/deepseek-v4-flash:nitro` | High-throughput Nitro target used across general and tool-capable groups |
 | OpenRouter | `google/gemma-4-26b-a4b-it:nitro` | Validated secondary Nitro target in general/tool-capable routes |
-| OpenAI-compatible fallback | `gpt-5.5` | Low-weight non-tool fallback path where configured |
+| OpenAI-compatible fallback | `gpt-5.4-nano` | Low-weight non-tool fallback path where configured |
 
 The point of the benchmark is not just "which model passed." It measures whether model groups can hide provider complexity while still exposing the numerical signals needed for routing and cost decisions: pass rate, latency, token volume, upstream attempts, fallback count, cache behavior, and token throughput.
 
@@ -129,7 +129,7 @@ The absolute dollar values are for this single benchmark run, but the percentage
 | Kimi Anthropic-compatible | `kimi-k2.7-code` | 8 | 172,326 | 39,300 | 3,490 | 9 | 1 | 26.37 | 12,642 |
 | MiniMax OpenAI-compatible | `MiniMax-M3` | 22 | 456,843 | 452,073 | 4,770 | 22 | 0 | 35.06 | 4,929 |
 | MiniMax Anthropic-compatible | `MiniMax-M3` | 4 | 93,049 | 64,476 | 28,573 | 4 | 0 | 55.31 | 95,888 |
-| OpenAI-compatible fallback | `gpt-5.5` | 5 | 82,268 | 58,764 | 23,504 | 9 | 4 | 50.56 | 60,010 |
+| OpenAI-compatible fallback | `gpt-5.4-nano` | 5 | 82,268 | 58,764 | 23,504 | 9 | 4 | 50.56 | 60,010 |
 | OpenRouter Anthropic-compatible | `deepseek/deepseek-v4-flash:nitro` | 9 | 235,221 | 196,113 | 39,108 | 9 | 0 | 107.16 | 32,928 |
 | OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 6 | 151,315 | 133,040 | 18,275 | 6 | 0 | 79.37 | 30,973 |
 | OpenRouter Responses-compatible | `deepseek/deepseek-v4-flash:nitro` | 27 | 266,117 | 205,554 | 60,563 | 27 | 0 | 99.28 | 19,905 |
@@ -201,7 +201,7 @@ The three zero-token requests in the scoped report were setup/model-discovery ca
 | MiniMax OpenAI-compatible | `MiniMax-M3` | 6 | 53,584 | 52,034 | 1,550 | 6 | 0 | 39.48 | 5,057 |
 | MiniMax Anthropic-compatible | `MiniMax-M3` | 5 | 46,770 | 44,272 | 2,498 | 5 | 0 | 38.26 | 10,408 |
 | Moonshot/Kimi Anthropic-compatible | `kimi-k2.7-code` | 2 | 41,042 | 2,302 | 84 | 2 | 0 | 14.65 | 2,965 |
-| OpenAI-compatible fallback | `gpt-5.5` | 2 | 26,492 | 25,852 | 640 | 2 | 0 | 48.76 | 5,265 |
+| OpenAI-compatible fallback | `gpt-5.4-nano` | 2 | 26,492 | 25,852 | 640 | 2 | 0 | 48.76 | 5,265 |
 | OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 1 | 21,876 | 21,769 | 107 | 1 | 0 | 38.74 | 2,805 |
 
 ### Cost Savings Using Actual Agents

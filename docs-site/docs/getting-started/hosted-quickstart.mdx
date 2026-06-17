@@ -74,6 +74,77 @@ curl "$ROUTER_BASE_URL/v1/messages" \
 `}
 </RouterCodeBlock>
 
+## Image Input
+
+Image requests use the same router model-group names. The router filters image-bearing requests to targets that have passed vision validation and advertise `image` in `input_modalities`.
+
+OpenAI-compatible chat:
+
+<RouterCodeBlock>
+{`
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "'"$ROUTER_MODEL"'",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Read the receipt. Reply with only the merchant name."},
+        {"type": "image_url", "image_url": {"url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
+      ]
+    }],
+    "max_tokens": 64,
+    "stream": false
+  }'
+`}
+</RouterCodeBlock>
+
+OpenAI Responses:
+
+<RouterCodeBlock>
+{`
+curl "$ROUTER_BASE_URL/v1/responses" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "'"$ROUTER_MODEL"'",
+    "input": [{
+      "role": "user",
+      "content": [
+        {"type": "input_text", "text": "Read the receipt. Reply with only the merchant name."},
+        {"type": "input_image", "image_url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}
+      ]
+    }],
+    "max_output_tokens": 64,
+    "stream": false
+  }'
+`}
+</RouterCodeBlock>
+
+Anthropic-compatible Messages:
+
+<RouterCodeBlock>
+{`
+curl "$ROUTER_BASE_URL/v1/messages" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "'"$ROUTER_MODEL"'",
+    "max_tokens": 64,
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Read the receipt. Reply with only the merchant name."},
+        {"type": "image", "source": {"type": "url", "url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
+      ]
+    }]
+  }'
+`}
+</RouterCodeBlock>
+
+Image-bearing requests bypass response caching. Usage logs include image count, image-token counts when the upstream reports them, calculated VLM cost, and upstream-reported billed cost when available.
+
 ## Model Discovery
 
 `/v1/models` is filtered by the caller token allow list.

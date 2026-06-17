@@ -16,12 +16,13 @@ These instructions apply to the whole repository.
 - Do not print provider API keys, router tokens, token hashes, or full production config contents.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
-- Provider model catalogs must include current `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, and `pricing_updated_at` for every active or cataloged upstream model when pricing is known. Use current primary/provider docs when possible; use OpenRouter model metadata for OpenRouter-hosted routes. For self-hosted models, use the enterprise chargeback rate or explicit `0.00` with `pricing_notes`.
+- Provider model catalogs must include current `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, and `pricing_updated_at` for every active or cataloged upstream model when pricing is known. Use current primary/provider docs when possible; use OpenRouter model metadata for OpenRouter-hosted routes. For VLMs, add `image_input_price_per_million_tokens_usd` or `image_input_price_per_image_usd` only when the upstream/provider or enterprise chargeback model uses separate image pricing. For self-hosted models, use the enterprise chargeback rate or explicit `0.00` with `pricing_notes`.
+- Provider model catalogs must include `input_modalities` and `output_modalities` for active vision, video, audio, or other multimodal targets. Do not mark a target with `image` until a direct upstream image smoke and a router-level image smoke pass for the exact provider/model/dialect/skin.
 - Tool capability metadata belongs in provider catalogs as `tool_support` and must be based on a real direct upstream smoke plus router-level smoke for the exact dialect/skin. Do not claim `openai_chat`, `openai_responses`, `anthropic_messages`, or `provider_hosted` support from marketing copy alone.
 - Usage persistence uses GORM. Keep the entire usage DB schema purely relational: no JSON/JSONB columns, no array columns, no serialized blobs for structured data, and no packed multi-value text fields. If one request needs multiple related rows, add a child table with scalar columns and a foreign key to `request_usage`.
-- Usage rows store request-time cost inputs and calculated costs as scalar columns. Reports must sum stored cost values, not recalculate historical cost from current config.
+- Usage rows store request-time cost inputs, image/VLM event fields, calculated costs, and upstream-reported billed costs as scalar columns. Reports must sum stored cost values, not recalculate historical cost from current config.
 - Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
-- Do not put unavailable provider models into active routing. The 2026-06-15 cleaned production policy keeps active tool-capable routes on OpenRouter, MiniMax, and Kimi/Moonshot models that passed Harbor/tool validation. Original OpenAI `gpt-5.5` is allowed at low non-tool weight. Original Anthropic remains catalog/support-only until `ANTHROPIC_API_KEY` is present and a live smoke passes.
+- Do not put unavailable provider models into active routing. The 2026-06-17 production policy keeps active tool-capable routes on OpenRouter, MiniMax, and Kimi/Moonshot models that passed Harbor/tool validation. Original OpenAI `gpt-5.4-nano` is allowed at low non-tool fallback weight; do not use `gpt-5.5` in active routing. Original Anthropic remains catalog/support-only until `ANTHROPIC_API_KEY` is present and a live smoke passes.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
@@ -46,7 +47,7 @@ These instructions apply to the whole repository.
    - `rtk go test ./...`
 5. For provider/model changes, run direct live provider smoke tests with the relevant key from `env.json` before activating the model in routing.
 6. For router behavior changes, run a router-level smoke test locally or against production, depending on the requested scope.
-7. For pricing/tool metadata changes, verify current pricing/capability docs online, update `config.example.yaml`, ignored `config.production.yaml`, production config when requested, tests, and public/internal docs together.
+7. For pricing/tool/modality metadata changes, verify current pricing/capability docs online, update `config.example.yaml`, ignored `config.production.yaml`, production config when requested, tests, and public/internal docs together.
 8. Update docs for any user-facing config, model, deployment, CLI, or operational change.
 9. Run a stale-doc search for changed concepts before final response. Examples:
    - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
@@ -60,15 +61,24 @@ These instructions apply to the whole repository.
 - OpenAI-compatible chat smoke:
   - `POST <base_url>/chat/completions`
   - body: `{"model":"<model>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}`
+- xAI/Grok candidates:
+  - Official Grok 4.3 docs checked on 2026-06-17 list `grok-4.3` with text+image input, text output, function calling, structured outputs, configurable reasoning, 1M context, and $1.25/M input plus $2.50/M output pricing.
+  - Direct xAI `grok-4.3` smokes passed on 2026-06-17 after billing was funded: text returned `OK`, receipt-image OCR returned `Rite Aid`, and xAI usage reported image tokens. Local router-level text and image smokes also passed; the image request logged `input_image_tokens`, separated image cost, and no warnings after `image_input_price_per_million_tokens_usd: 1.25` was configured.
+- Vision/OpenAI-compatible chat smoke:
+  - `POST <base_url>/chat/completions`
+  - body: `{"model":"<model>","messages":[{"role":"user","content":[{"type":"text","text":"Read the receipt. Reply with only the merchant name."},{"type":"image_url","image_url":{"url":"https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}]}],"max_tokens":64,"stream":false}`
+  - Accept only a useful OCR answer, such as the receipt merchant name. If the response is empty, spends all tokens on reasoning, or merely accepts the image without reading it, do not mark the target vision-capable.
 - Self-hosted vLLM/SGLang OpenAI-compatible smoke:
   - Validate `GET <base_url>/models` and confirm the served model ID matches `providers.<name>.models.<ref>.model`.
   - Run a direct `/chat/completions` text smoke before routing traffic through the router.
   - For tool-capable routes, run a direct `/chat/completions` request with the exact `tools`, `tool_choice`, parser/chat-template, streaming mode, and model version expected in production; then repeat through the router group.
   - Do not mark a self-hosted target `tool_only` or add it to active tool routing until the direct and router-level tool smokes return correctly shaped tool calls.
 - OpenRouter Nitro variants may not appear as separate IDs in `/models`; validate by making a real completion call with the `:nitro` suffix.
+- OpenRouter catalog modality is not enough for activation. `qwen/qwen3-vl-32b-instruct:nitro` accepted the receipt image on 2026-06-17 but answered loyalty-program text rather than merchant name, so it is catalog-only. `qwen/qwen3.7-plus:nitro` returned one correct receipt answer but was slow/inconsistent, spent excessive reasoning tokens, and hallucinated CVS on the stricter prompt, so do not activate it without a better validated prompt/settings path. `~google/gemini-flash-latest` and `google/gemini-3.1-flash-lite-preview` advertised multimodal support on 2026-06-17 but returned provider-privacy 404s with the current OpenRouter account, so do not add them to config until access is fixed and live image smoke passes.
 - OpenRouter reasoning-heavy models such as `z-ai/glm-5.2:nitro` can return HTTP 200 with empty assistant content when `max_tokens` is too small because the budget is spent on reasoning. Before activating or increasing weight for such models, smoke test both a tiny budget and a realistic budget. For GLM 5.2, use a realistic smoke such as `max_tokens: 1024`; note if low-budget requests need a `reasoning.max_tokens` cap or should not be used as acceptance evidence.
 - For OpenRouter candidates intended for coding agents, validate all configured skins before adding them to active groups: `/chat/completions`, `/responses` with a function tool, and `/messages` with an Anthropic-style tool. Keep `openrouter`, `openrouter_responses`, and `openrouter_anthropic` model catalogs in sync for models that pass all three checks.
 - MiniMax Codex smoke should use MiniMax-M3 through a Responses-compatible endpoint and Codex `wire_api="responses"`.
+- Codex CLI image smoke should use `codex exec --image <file>` against the router Responses provider config. Claude Code image support should be validated with the Anthropic Messages image payload shape and, where the installed CLI supports direct image attachment, with the actual CLI workflow.
 - If a direct provider smoke returns 403 or model-not-found, do not add that model to active route targets.
 
 ## Production Host

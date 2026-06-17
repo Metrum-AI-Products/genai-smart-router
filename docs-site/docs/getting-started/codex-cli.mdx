@@ -70,3 +70,29 @@ codex exec --ignore-user-config --ephemeral \
   "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 `}
 </RouterCodeBlock>
+
+## Image Smoke
+
+Codex CLI supports image attachments with `--image`. The router receives those as OpenAI Responses image inputs and filters to vision-capable upstream targets.
+
+<RouterCodeBlock>
+{`
+mkdir -p tmp/router-vision-smoke
+curl -fsSL "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png" \
+  -o tmp/router-vision-smoke/receipt.png
+
+codex exec --ignore-user-config --ephemeral \
+  --ignore-rules \
+  --skip-git-repo-check \
+  --image tmp/router-vision-smoke/receipt.png \
+  -c 'model="default"' \
+  -c 'model_provider="metrum-router"' \
+  -c 'model_providers.metrum-router.name="Metrum Router"' \
+  -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
+  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+  -c 'model_providers.metrum-router.wire_api="responses"' \
+  "Read the attached receipt image. Reply with only the merchant name." </dev/null
+`}
+</RouterCodeBlock>
+
+Image-bearing Codex requests bypass router response caching. Usage records include `input_has_image`, image count, and VLM cost fields when the upstream returns enough usage detail.

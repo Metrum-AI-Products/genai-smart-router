@@ -38,103 +38,121 @@ type UsageReportOptions struct {
 }
 
 type usageRow struct {
-	TS                       time.Time
-	RequestID                string
-	CallerID                 string
-	CallerUser               string
-	CallerProject            string
-	CallerEnvironment        string
-	CallerIP                 string
-	TokenID                  string
-	Client                   string
-	InboundDialect           string
-	RequestedModel           string
-	ResolvedGroup            string
-	Strategy                 string
-	TargetProvider           string
-	TargetModel              string
-	TargetDialect            string
-	Stream                   bool
-	Cache                    string
-	Status                   int
-	Attempts                 int
-	FallbackUsed             bool
-	LatencyMS                int64
-	TTFBMS                   *int64
-	UpstreamMS               *int64
-	DownstreamMS             *int64
-	UpstreamOutputTPS        *float64
-	UpstreamTotalTPS         *float64
-	DownstreamOutputTPS      *float64
-	DownstreamTotalTPS       *float64
-	InputTokens              int
-	OutputTokens             int
-	TotalTokens              int
-	InputPricePerMillionUSD  float64
-	OutputPricePerMillionUSD float64
-	InputCostUSD             float64
-	OutputCostUSD            float64
-	TotalCostUSD             float64
-	PricingSource            string
-	PricingUpdatedAt         string
-	CacheEnabled             bool
-	CacheItems               int64
-	CacheBytes               int64
-	CacheMaxBytes            int64
-	CacheOccupancyPct        float64
-	QuotaState               string
-	KeyState                 string
-	Error                    string
+	TS                                 time.Time
+	RequestID                          string
+	CallerID                           string
+	CallerUser                         string
+	CallerProject                      string
+	CallerEnvironment                  string
+	CallerIP                           string
+	TokenID                            string
+	Client                             string
+	InboundDialect                     string
+	RequestedModel                     string
+	ResolvedGroup                      string
+	Strategy                           string
+	TargetProvider                     string
+	TargetModel                        string
+	TargetDialect                      string
+	Stream                             bool
+	Cache                              string
+	Status                             int
+	Attempts                           int
+	FallbackUsed                       bool
+	LatencyMS                          int64
+	TTFBMS                             *int64
+	UpstreamMS                         *int64
+	DownstreamMS                       *int64
+	UpstreamOutputTPS                  *float64
+	UpstreamTotalTPS                   *float64
+	DownstreamOutputTPS                *float64
+	DownstreamTotalTPS                 *float64
+	InputTokens                        int
+	OutputTokens                       int
+	TotalTokens                        int
+	InputHasImage                      bool
+	InputImageCount                    int
+	InputImageTokens                   int
+	InputPricePerMillionUSD            float64
+	OutputPricePerMillionUSD           float64
+	ImageInputPricePerMillionTokensUSD float64
+	ImageInputPricePerImageUSD         float64
+	InputCostUSD                       float64
+	ImageCostUSD                       float64
+	OutputCostUSD                      float64
+	TotalCostUSD                       float64
+	UpstreamReportedInputCostUSD       float64
+	UpstreamReportedOutputCostUSD      float64
+	UpstreamReportedTotalCostUSD       float64
+	PricingSource                      string
+	PricingUpdatedAt                   string
+	CacheEnabled                       bool
+	CacheItems                         int64
+	CacheBytes                         int64
+	CacheMaxBytes                      int64
+	CacheOccupancyPct                  float64
+	QuotaState                         string
+	KeyState                           string
+	Error                              string
 }
 
 type usageRecord struct {
-	RequestID                string   `gorm:"column:request_id;primaryKey;type:text"`
-	TS                       string   `gorm:"column:ts;type:text;not null;index:idx_request_usage_ts"`
-	CallerID                 string   `gorm:"column:caller_id;type:text;not null"`
-	CallerUser               string   `gorm:"column:caller_user;type:text;not null"`
-	CallerProject            string   `gorm:"column:caller_project;type:text;not null"`
-	CallerEnvironment        string   `gorm:"column:caller_environment;type:text;not null"`
-	CallerIP                 string   `gorm:"column:caller_ip;type:text;index:idx_request_usage_caller_ip,priority:1"`
-	TokenID                  string   `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
-	Client                   string   `gorm:"column:client;type:text;not null"`
-	InboundDialect           string   `gorm:"column:inbound_dialect;type:text;not null"`
-	RequestedModel           string   `gorm:"column:requested_model;type:text;not null"`
-	ResolvedGroup            string   `gorm:"column:resolved_group;type:text;not null;index:idx_request_usage_group,priority:1"`
-	Strategy                 string   `gorm:"column:strategy;type:text;not null"`
-	TargetProvider           string   `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
-	TargetModel              string   `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
-	TargetDialect            string   `gorm:"column:target_dialect;type:text;not null"`
-	Stream                   bool     `gorm:"column:stream;not null"`
-	Cache                    string   `gorm:"column:cache;type:text;not null"`
-	Status                   int      `gorm:"column:status;not null"`
-	Attempts                 int      `gorm:"column:attempts;not null"`
-	FallbackUsed             bool     `gorm:"column:fallback_used;not null"`
-	LatencyMS                int64    `gorm:"column:latency_ms;not null"`
-	TTFBMS                   *int64   `gorm:"column:ttfb_ms"`
-	UpstreamMS               *int64   `gorm:"column:upstream_duration_ms"`
-	DownstreamMS             *int64   `gorm:"column:downstream_duration_ms"`
-	UpstreamOutputTPS        *float64 `gorm:"column:upstream_output_tokens_per_sec"`
-	UpstreamTotalTPS         *float64 `gorm:"column:upstream_total_tokens_per_sec"`
-	DownstreamOutputTPS      *float64 `gorm:"column:downstream_output_tokens_per_sec"`
-	DownstreamTotalTPS       *float64 `gorm:"column:downstream_total_tokens_per_sec"`
-	InputTokens              int      `gorm:"column:input_tokens;not null"`
-	OutputTokens             int      `gorm:"column:output_tokens;not null"`
-	TotalTokens              int      `gorm:"column:total_tokens;not null"`
-	InputPricePerMillionUSD  float64  `gorm:"column:input_price_per_million_usd;not null;default:0"`
-	OutputPricePerMillionUSD float64  `gorm:"column:output_price_per_million_usd;not null;default:0"`
-	InputCostUSD             float64  `gorm:"column:input_cost_usd;not null;default:0"`
-	OutputCostUSD            float64  `gorm:"column:output_cost_usd;not null;default:0"`
-	TotalCostUSD             float64  `gorm:"column:total_cost_usd;not null;default:0"`
-	PricingSource            string   `gorm:"column:pricing_source;type:text;not null;default:''"`
-	PricingUpdatedAt         string   `gorm:"column:pricing_updated_at;type:text;not null;default:''"`
-	CacheEnabled             bool     `gorm:"column:cache_enabled;not null"`
-	CacheItems               int64    `gorm:"column:cache_items;not null"`
-	CacheBytes               int64    `gorm:"column:cache_bytes;not null"`
-	CacheMaxBytes            int64    `gorm:"column:cache_max_bytes;not null"`
-	CacheOccupancyPct        float64  `gorm:"column:cache_occupancy_pct;not null"`
-	QuotaState               string   `gorm:"column:quota_state;type:text;not null"`
-	KeyState                 string   `gorm:"column:key_state;type:text;not null"`
-	Error                    string   `gorm:"column:error;type:text;not null"`
+	RequestID                          string   `gorm:"column:request_id;primaryKey;type:text"`
+	TS                                 string   `gorm:"column:ts;type:text;not null;index:idx_request_usage_ts"`
+	CallerID                           string   `gorm:"column:caller_id;type:text;not null"`
+	CallerUser                         string   `gorm:"column:caller_user;type:text;not null"`
+	CallerProject                      string   `gorm:"column:caller_project;type:text;not null"`
+	CallerEnvironment                  string   `gorm:"column:caller_environment;type:text;not null"`
+	CallerIP                           string   `gorm:"column:caller_ip;type:text;index:idx_request_usage_caller_ip,priority:1"`
+	TokenID                            string   `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
+	Client                             string   `gorm:"column:client;type:text;not null"`
+	InboundDialect                     string   `gorm:"column:inbound_dialect;type:text;not null"`
+	RequestedModel                     string   `gorm:"column:requested_model;type:text;not null"`
+	ResolvedGroup                      string   `gorm:"column:resolved_group;type:text;not null;index:idx_request_usage_group,priority:1"`
+	Strategy                           string   `gorm:"column:strategy;type:text;not null"`
+	TargetProvider                     string   `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
+	TargetModel                        string   `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
+	TargetDialect                      string   `gorm:"column:target_dialect;type:text;not null"`
+	Stream                             bool     `gorm:"column:stream;not null"`
+	Cache                              string   `gorm:"column:cache;type:text;not null"`
+	Status                             int      `gorm:"column:status;not null"`
+	Attempts                           int      `gorm:"column:attempts;not null"`
+	FallbackUsed                       bool     `gorm:"column:fallback_used;not null"`
+	LatencyMS                          int64    `gorm:"column:latency_ms;not null"`
+	TTFBMS                             *int64   `gorm:"column:ttfb_ms"`
+	UpstreamMS                         *int64   `gorm:"column:upstream_duration_ms"`
+	DownstreamMS                       *int64   `gorm:"column:downstream_duration_ms"`
+	UpstreamOutputTPS                  *float64 `gorm:"column:upstream_output_tokens_per_sec"`
+	UpstreamTotalTPS                   *float64 `gorm:"column:upstream_total_tokens_per_sec"`
+	DownstreamOutputTPS                *float64 `gorm:"column:downstream_output_tokens_per_sec"`
+	DownstreamTotalTPS                 *float64 `gorm:"column:downstream_total_tokens_per_sec"`
+	InputTokens                        int      `gorm:"column:input_tokens;not null"`
+	OutputTokens                       int      `gorm:"column:output_tokens;not null"`
+	TotalTokens                        int      `gorm:"column:total_tokens;not null"`
+	InputHasImage                      bool     `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
+	InputImageCount                    int      `gorm:"column:input_image_count;not null;default:0"`
+	InputImageTokens                   int      `gorm:"column:input_image_tokens;not null;default:0"`
+	InputPricePerMillionUSD            float64  `gorm:"column:input_price_per_million_usd;not null;default:0"`
+	OutputPricePerMillionUSD           float64  `gorm:"column:output_price_per_million_usd;not null;default:0"`
+	ImageInputPricePerMillionTokensUSD float64  `gorm:"column:image_input_price_per_million_tokens_usd;not null;default:0"`
+	ImageInputPricePerImageUSD         float64  `gorm:"column:image_input_price_per_image_usd;not null;default:0"`
+	InputCostUSD                       float64  `gorm:"column:input_cost_usd;not null;default:0"`
+	ImageCostUSD                       float64  `gorm:"column:image_cost_usd;not null;default:0"`
+	OutputCostUSD                      float64  `gorm:"column:output_cost_usd;not null;default:0"`
+	TotalCostUSD                       float64  `gorm:"column:total_cost_usd;not null;default:0"`
+	UpstreamReportedInputCostUSD       float64  `gorm:"column:upstream_reported_input_cost_usd;not null;default:0"`
+	UpstreamReportedOutputCostUSD      float64  `gorm:"column:upstream_reported_output_cost_usd;not null;default:0"`
+	UpstreamReportedTotalCostUSD       float64  `gorm:"column:upstream_reported_total_cost_usd;not null;default:0"`
+	PricingSource                      string   `gorm:"column:pricing_source;type:text;not null;default:''"`
+	PricingUpdatedAt                   string   `gorm:"column:pricing_updated_at;type:text;not null;default:''"`
+	CacheEnabled                       bool     `gorm:"column:cache_enabled;not null"`
+	CacheItems                         int64    `gorm:"column:cache_items;not null"`
+	CacheBytes                         int64    `gorm:"column:cache_bytes;not null"`
+	CacheMaxBytes                      int64    `gorm:"column:cache_max_bytes;not null"`
+	CacheOccupancyPct                  float64  `gorm:"column:cache_occupancy_pct;not null"`
+	QuotaState                         string   `gorm:"column:quota_state;type:text;not null"`
+	KeyState                           string   `gorm:"column:key_state;type:text;not null"`
+	Error                              string   `gorm:"column:error;type:text;not null"`
 }
 
 func (usageRecord) TableName() string {
@@ -320,105 +338,123 @@ func rowFromRecord(rec logRecord) usageRow {
 		tokenID = publicTokenID(tokenID)
 	}
 	return usageRow{
-		TS:                       ts,
-		RequestID:                rec.RequestID,
-		CallerID:                 rec.CallerID,
-		CallerUser:               rec.CallerUser,
-		CallerProject:            rec.CallerProject,
-		CallerEnvironment:        rec.CallerEnvironment,
-		CallerIP:                 rec.CallerIP,
-		TokenID:                  tokenID,
-		Client:                   rec.Client,
-		InboundDialect:           rec.InboundDialect,
-		RequestedModel:           rec.RequestedModel,
-		ResolvedGroup:            defaultString(rec.ResolvedGroup, rec.RequestedModel),
-		Strategy:                 rec.Strategy,
-		TargetProvider:           rec.TargetProvider,
-		TargetModel:              rec.TargetModel,
-		TargetDialect:            rec.TargetDialect,
-		Stream:                   rec.Stream,
-		Cache:                    defaultString(rec.Cache, "bypass"),
-		Status:                   rec.Status,
-		Attempts:                 rec.Attempts,
-		FallbackUsed:             rec.FallbackUsed,
-		LatencyMS:                rec.LatencyMS,
-		TTFBMS:                   rec.TTFBMS,
-		UpstreamMS:               rec.UpstreamMS,
-		DownstreamMS:             rec.DownstreamMS,
-		UpstreamOutputTPS:        rec.UpstreamOutputTPS,
-		UpstreamTotalTPS:         rec.UpstreamTotalTPS,
-		DownstreamOutputTPS:      rec.DownstreamOutputTPS,
-		DownstreamTotalTPS:       rec.DownstreamTotalTPS,
-		InputTokens:              rec.Usage.InputTokens,
-		OutputTokens:             rec.Usage.OutputTokens,
-		TotalTokens:              rec.Usage.TotalTokens,
-		InputPricePerMillionUSD:  rec.InputPricePerMillionUSD,
-		OutputPricePerMillionUSD: rec.OutputPricePerMillionUSD,
-		InputCostUSD:             rec.InputCostUSD,
-		OutputCostUSD:            rec.OutputCostUSD,
-		TotalCostUSD:             rec.TotalCostUSD,
-		PricingSource:            rec.PricingSource,
-		PricingUpdatedAt:         rec.PricingUpdatedAt,
-		CacheEnabled:             rec.CacheEnabled,
-		CacheItems:               rec.CacheItems,
-		CacheBytes:               rec.CacheBytes,
-		CacheMaxBytes:            rec.CacheMaxBytes,
-		CacheOccupancyPct:        rec.CacheOccupancyPct,
-		QuotaState:               rec.QuotaState,
-		KeyState:                 rec.KeyState,
-		Error:                    errText,
+		TS:                                 ts,
+		RequestID:                          rec.RequestID,
+		CallerID:                           rec.CallerID,
+		CallerUser:                         rec.CallerUser,
+		CallerProject:                      rec.CallerProject,
+		CallerEnvironment:                  rec.CallerEnvironment,
+		CallerIP:                           rec.CallerIP,
+		TokenID:                            tokenID,
+		Client:                             rec.Client,
+		InboundDialect:                     rec.InboundDialect,
+		RequestedModel:                     rec.RequestedModel,
+		ResolvedGroup:                      defaultString(rec.ResolvedGroup, rec.RequestedModel),
+		Strategy:                           rec.Strategy,
+		TargetProvider:                     rec.TargetProvider,
+		TargetModel:                        rec.TargetModel,
+		TargetDialect:                      rec.TargetDialect,
+		Stream:                             rec.Stream,
+		Cache:                              defaultString(rec.Cache, "bypass"),
+		Status:                             rec.Status,
+		Attempts:                           rec.Attempts,
+		FallbackUsed:                       rec.FallbackUsed,
+		LatencyMS:                          rec.LatencyMS,
+		TTFBMS:                             rec.TTFBMS,
+		UpstreamMS:                         rec.UpstreamMS,
+		DownstreamMS:                       rec.DownstreamMS,
+		UpstreamOutputTPS:                  rec.UpstreamOutputTPS,
+		UpstreamTotalTPS:                   rec.UpstreamTotalTPS,
+		DownstreamOutputTPS:                rec.DownstreamOutputTPS,
+		DownstreamTotalTPS:                 rec.DownstreamTotalTPS,
+		InputTokens:                        rec.Usage.InputTokens,
+		OutputTokens:                       rec.Usage.OutputTokens,
+		TotalTokens:                        rec.Usage.TotalTokens,
+		InputHasImage:                      rec.InputHasImage,
+		InputImageCount:                    rec.InputImageCount,
+		InputImageTokens:                   rec.InputImageTokens,
+		InputPricePerMillionUSD:            rec.InputPricePerMillionUSD,
+		OutputPricePerMillionUSD:           rec.OutputPricePerMillionUSD,
+		ImageInputPricePerMillionTokensUSD: rec.ImageInputPricePerMillionTokensUSD,
+		ImageInputPricePerImageUSD:         rec.ImageInputPricePerImageUSD,
+		InputCostUSD:                       rec.InputCostUSD,
+		ImageCostUSD:                       rec.ImageCostUSD,
+		OutputCostUSD:                      rec.OutputCostUSD,
+		TotalCostUSD:                       rec.TotalCostUSD,
+		UpstreamReportedInputCostUSD:       rec.UpstreamReportedInputCostUSD,
+		UpstreamReportedOutputCostUSD:      rec.UpstreamReportedOutputCostUSD,
+		UpstreamReportedTotalCostUSD:       rec.UpstreamReportedTotalCostUSD,
+		PricingSource:                      rec.PricingSource,
+		PricingUpdatedAt:                   rec.PricingUpdatedAt,
+		CacheEnabled:                       rec.CacheEnabled,
+		CacheItems:                         rec.CacheItems,
+		CacheBytes:                         rec.CacheBytes,
+		CacheMaxBytes:                      rec.CacheMaxBytes,
+		CacheOccupancyPct:                  rec.CacheOccupancyPct,
+		QuotaState:                         rec.QuotaState,
+		KeyState:                           rec.KeyState,
+		Error:                              errText,
 	}
 }
 
 func recordFromRow(row usageRow) *usageRecord {
 	return &usageRecord{
-		RequestID:                row.RequestID,
-		TS:                       formatUsageTime(row.TS),
-		CallerID:                 row.CallerID,
-		CallerUser:               row.CallerUser,
-		CallerProject:            row.CallerProject,
-		CallerEnvironment:        row.CallerEnvironment,
-		CallerIP:                 row.CallerIP,
-		TokenID:                  row.TokenID,
-		Client:                   row.Client,
-		InboundDialect:           row.InboundDialect,
-		RequestedModel:           row.RequestedModel,
-		ResolvedGroup:            row.ResolvedGroup,
-		Strategy:                 row.Strategy,
-		TargetProvider:           row.TargetProvider,
-		TargetModel:              row.TargetModel,
-		TargetDialect:            row.TargetDialect,
-		Stream:                   row.Stream,
-		Cache:                    row.Cache,
-		Status:                   row.Status,
-		Attempts:                 row.Attempts,
-		FallbackUsed:             row.FallbackUsed,
-		LatencyMS:                row.LatencyMS,
-		TTFBMS:                   row.TTFBMS,
-		UpstreamMS:               row.UpstreamMS,
-		DownstreamMS:             row.DownstreamMS,
-		UpstreamOutputTPS:        row.UpstreamOutputTPS,
-		UpstreamTotalTPS:         row.UpstreamTotalTPS,
-		DownstreamOutputTPS:      row.DownstreamOutputTPS,
-		DownstreamTotalTPS:       row.DownstreamTotalTPS,
-		InputTokens:              row.InputTokens,
-		OutputTokens:             row.OutputTokens,
-		TotalTokens:              row.TotalTokens,
-		InputPricePerMillionUSD:  row.InputPricePerMillionUSD,
-		OutputPricePerMillionUSD: row.OutputPricePerMillionUSD,
-		InputCostUSD:             row.InputCostUSD,
-		OutputCostUSD:            row.OutputCostUSD,
-		TotalCostUSD:             row.TotalCostUSD,
-		PricingSource:            row.PricingSource,
-		PricingUpdatedAt:         row.PricingUpdatedAt,
-		CacheEnabled:             row.CacheEnabled,
-		CacheItems:               row.CacheItems,
-		CacheBytes:               row.CacheBytes,
-		CacheMaxBytes:            row.CacheMaxBytes,
-		CacheOccupancyPct:        row.CacheOccupancyPct,
-		QuotaState:               row.QuotaState,
-		KeyState:                 row.KeyState,
-		Error:                    row.Error,
+		RequestID:                          row.RequestID,
+		TS:                                 formatUsageTime(row.TS),
+		CallerID:                           row.CallerID,
+		CallerUser:                         row.CallerUser,
+		CallerProject:                      row.CallerProject,
+		CallerEnvironment:                  row.CallerEnvironment,
+		CallerIP:                           row.CallerIP,
+		TokenID:                            row.TokenID,
+		Client:                             row.Client,
+		InboundDialect:                     row.InboundDialect,
+		RequestedModel:                     row.RequestedModel,
+		ResolvedGroup:                      row.ResolvedGroup,
+		Strategy:                           row.Strategy,
+		TargetProvider:                     row.TargetProvider,
+		TargetModel:                        row.TargetModel,
+		TargetDialect:                      row.TargetDialect,
+		Stream:                             row.Stream,
+		Cache:                              row.Cache,
+		Status:                             row.Status,
+		Attempts:                           row.Attempts,
+		FallbackUsed:                       row.FallbackUsed,
+		LatencyMS:                          row.LatencyMS,
+		TTFBMS:                             row.TTFBMS,
+		UpstreamMS:                         row.UpstreamMS,
+		DownstreamMS:                       row.DownstreamMS,
+		UpstreamOutputTPS:                  row.UpstreamOutputTPS,
+		UpstreamTotalTPS:                   row.UpstreamTotalTPS,
+		DownstreamOutputTPS:                row.DownstreamOutputTPS,
+		DownstreamTotalTPS:                 row.DownstreamTotalTPS,
+		InputTokens:                        row.InputTokens,
+		OutputTokens:                       row.OutputTokens,
+		TotalTokens:                        row.TotalTokens,
+		InputHasImage:                      row.InputHasImage,
+		InputImageCount:                    row.InputImageCount,
+		InputImageTokens:                   row.InputImageTokens,
+		InputPricePerMillionUSD:            row.InputPricePerMillionUSD,
+		OutputPricePerMillionUSD:           row.OutputPricePerMillionUSD,
+		ImageInputPricePerMillionTokensUSD: row.ImageInputPricePerMillionTokensUSD,
+		ImageInputPricePerImageUSD:         row.ImageInputPricePerImageUSD,
+		InputCostUSD:                       row.InputCostUSD,
+		ImageCostUSD:                       row.ImageCostUSD,
+		OutputCostUSD:                      row.OutputCostUSD,
+		TotalCostUSD:                       row.TotalCostUSD,
+		UpstreamReportedInputCostUSD:       row.UpstreamReportedInputCostUSD,
+		UpstreamReportedOutputCostUSD:      row.UpstreamReportedOutputCostUSD,
+		UpstreamReportedTotalCostUSD:       row.UpstreamReportedTotalCostUSD,
+		PricingSource:                      row.PricingSource,
+		PricingUpdatedAt:                   row.PricingUpdatedAt,
+		CacheEnabled:                       row.CacheEnabled,
+		CacheItems:                         row.CacheItems,
+		CacheBytes:                         row.CacheBytes,
+		CacheMaxBytes:                      row.CacheMaxBytes,
+		CacheOccupancyPct:                  row.CacheOccupancyPct,
+		QuotaState:                         row.QuotaState,
+		KeyState:                           row.KeyState,
+		Error:                              row.Error,
 	}
 }
 
@@ -428,53 +464,62 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		return usageRow{}, err
 	}
 	return usageRow{
-		TS:                       ts,
-		RequestID:                record.RequestID,
-		CallerID:                 record.CallerID,
-		CallerUser:               record.CallerUser,
-		CallerProject:            record.CallerProject,
-		CallerEnvironment:        record.CallerEnvironment,
-		CallerIP:                 record.CallerIP,
-		TokenID:                  record.TokenID,
-		Client:                   record.Client,
-		InboundDialect:           record.InboundDialect,
-		RequestedModel:           record.RequestedModel,
-		ResolvedGroup:            record.ResolvedGroup,
-		Strategy:                 record.Strategy,
-		TargetProvider:           record.TargetProvider,
-		TargetModel:              record.TargetModel,
-		TargetDialect:            record.TargetDialect,
-		Stream:                   record.Stream,
-		Cache:                    record.Cache,
-		Status:                   record.Status,
-		Attempts:                 record.Attempts,
-		FallbackUsed:             record.FallbackUsed,
-		LatencyMS:                record.LatencyMS,
-		TTFBMS:                   record.TTFBMS,
-		UpstreamMS:               record.UpstreamMS,
-		DownstreamMS:             record.DownstreamMS,
-		UpstreamOutputTPS:        record.UpstreamOutputTPS,
-		UpstreamTotalTPS:         record.UpstreamTotalTPS,
-		DownstreamOutputTPS:      record.DownstreamOutputTPS,
-		DownstreamTotalTPS:       record.DownstreamTotalTPS,
-		InputTokens:              record.InputTokens,
-		OutputTokens:             record.OutputTokens,
-		TotalTokens:              record.TotalTokens,
-		InputPricePerMillionUSD:  record.InputPricePerMillionUSD,
-		OutputPricePerMillionUSD: record.OutputPricePerMillionUSD,
-		InputCostUSD:             record.InputCostUSD,
-		OutputCostUSD:            record.OutputCostUSD,
-		TotalCostUSD:             record.TotalCostUSD,
-		PricingSource:            record.PricingSource,
-		PricingUpdatedAt:         record.PricingUpdatedAt,
-		CacheEnabled:             record.CacheEnabled,
-		CacheItems:               record.CacheItems,
-		CacheBytes:               record.CacheBytes,
-		CacheMaxBytes:            record.CacheMaxBytes,
-		CacheOccupancyPct:        record.CacheOccupancyPct,
-		QuotaState:               record.QuotaState,
-		KeyState:                 record.KeyState,
-		Error:                    record.Error,
+		TS:                                 ts,
+		RequestID:                          record.RequestID,
+		CallerID:                           record.CallerID,
+		CallerUser:                         record.CallerUser,
+		CallerProject:                      record.CallerProject,
+		CallerEnvironment:                  record.CallerEnvironment,
+		CallerIP:                           record.CallerIP,
+		TokenID:                            record.TokenID,
+		Client:                             record.Client,
+		InboundDialect:                     record.InboundDialect,
+		RequestedModel:                     record.RequestedModel,
+		ResolvedGroup:                      record.ResolvedGroup,
+		Strategy:                           record.Strategy,
+		TargetProvider:                     record.TargetProvider,
+		TargetModel:                        record.TargetModel,
+		TargetDialect:                      record.TargetDialect,
+		Stream:                             record.Stream,
+		Cache:                              record.Cache,
+		Status:                             record.Status,
+		Attempts:                           record.Attempts,
+		FallbackUsed:                       record.FallbackUsed,
+		LatencyMS:                          record.LatencyMS,
+		TTFBMS:                             record.TTFBMS,
+		UpstreamMS:                         record.UpstreamMS,
+		DownstreamMS:                       record.DownstreamMS,
+		UpstreamOutputTPS:                  record.UpstreamOutputTPS,
+		UpstreamTotalTPS:                   record.UpstreamTotalTPS,
+		DownstreamOutputTPS:                record.DownstreamOutputTPS,
+		DownstreamTotalTPS:                 record.DownstreamTotalTPS,
+		InputTokens:                        record.InputTokens,
+		OutputTokens:                       record.OutputTokens,
+		TotalTokens:                        record.TotalTokens,
+		InputHasImage:                      record.InputHasImage,
+		InputImageCount:                    record.InputImageCount,
+		InputImageTokens:                   record.InputImageTokens,
+		InputPricePerMillionUSD:            record.InputPricePerMillionUSD,
+		OutputPricePerMillionUSD:           record.OutputPricePerMillionUSD,
+		ImageInputPricePerMillionTokensUSD: record.ImageInputPricePerMillionTokensUSD,
+		ImageInputPricePerImageUSD:         record.ImageInputPricePerImageUSD,
+		InputCostUSD:                       record.InputCostUSD,
+		ImageCostUSD:                       record.ImageCostUSD,
+		OutputCostUSD:                      record.OutputCostUSD,
+		TotalCostUSD:                       record.TotalCostUSD,
+		UpstreamReportedInputCostUSD:       record.UpstreamReportedInputCostUSD,
+		UpstreamReportedOutputCostUSD:      record.UpstreamReportedOutputCostUSD,
+		UpstreamReportedTotalCostUSD:       record.UpstreamReportedTotalCostUSD,
+		PricingSource:                      record.PricingSource,
+		PricingUpdatedAt:                   record.PricingUpdatedAt,
+		CacheEnabled:                       record.CacheEnabled,
+		CacheItems:                         record.CacheItems,
+		CacheBytes:                         record.CacheBytes,
+		CacheMaxBytes:                      record.CacheMaxBytes,
+		CacheOccupancyPct:                  record.CacheOccupancyPct,
+		QuotaState:                         record.QuotaState,
+		KeyState:                           record.KeyState,
+		Error:                              record.Error,
 	}, nil
 }
 

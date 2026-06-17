@@ -49,3 +49,30 @@ claude --bare --print --model big-coder \
 ```
 
 The requested model must be allowed by the caller token. Standard keys can be limited to lower-cost model groups, while coding keys can allow `big-coder`.
+
+## Image Input
+
+Claude Code sends image work through the Anthropic Messages API shape when an image is attached in the conversation. Use a router model group that is allowed for the caller token, such as `default` or a deployment-specific vision group. The router filters image-bearing Messages requests to targets that advertise `image` in `input_modalities`.
+
+For non-interactive validation, use the same Anthropic-compatible payload shape Claude Code sends:
+
+<RouterCodeBlock>
+{`
+curl "{{origin}}/v1/messages" \
+  -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "default",
+    "max_tokens": 64,
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Read the receipt. Reply with only the merchant name."},
+        {"type": "image", "source": {"type": "url", "url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
+      ]
+    }]
+  }'
+`}
+</RouterCodeBlock>
+
+Image-bearing Claude Code requests bypass router response caching. Usage records include image count and upstream cost fields when the upstream reports them.

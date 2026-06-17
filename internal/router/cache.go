@@ -72,7 +72,7 @@ func cacheKey(req *IRRequest, target Target) string {
 }
 
 func cacheable(req *IRRequest) bool {
-	if req.Stream || req.NoCache || len(req.Tools) > 0 {
+	if req.Stream || req.NoCache || len(req.Tools) > 0 || requestHasImages(req) {
 		return false
 	}
 	if req.Temperature != nil && *req.Temperature > 0 {

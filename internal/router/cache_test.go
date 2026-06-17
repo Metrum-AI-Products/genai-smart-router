@@ -18,3 +18,17 @@ func TestCacheStats(t *testing.T) {
 		t.Fatalf("populated stats = %#v", stats)
 	}
 }
+
+func TestImageRequestsAreNotCacheable(t *testing.T) {
+	req := &IRRequest{Messages: []IRMessage{{
+		Role:    "user",
+		Content: "Read the receipt.",
+		Parts: []IRContentPart{
+			{Type: "text", Text: "Read the receipt."},
+			{Type: "image", ImageURL: receiptImageURL},
+		},
+	}}}
+	if cacheable(req) {
+		t.Fatal("image request should bypass cache")
+	}
+}

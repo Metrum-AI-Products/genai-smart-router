@@ -59,15 +59,19 @@ type ProviderConfig struct {
 }
 
 type ProviderModel struct {
-	Model                    string      `yaml:"model" json:"model"`
-	Dialect                  string      `yaml:"dialect" json:"dialect,omitempty"`
-	DisplayName              string      `yaml:"display_name" json:"displayName,omitempty"`
-	InputPricePerMillionUSD  float64     `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD float64     `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	PricingSource            string      `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt         string      `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes             string      `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport              ToolSupport `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Model                              string      `yaml:"model" json:"model"`
+	Dialect                            string      `yaml:"dialect" json:"dialect,omitempty"`
+	DisplayName                        string      `yaml:"display_name" json:"displayName,omitempty"`
+	InputPricePerMillionUSD            float64     `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64     `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64     `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64     `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string      `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string      `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string      `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport `yaml:"tool_support" json:"toolSupport,omitempty"`
+	InputModalities                    []string    `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string    `yaml:"output_modalities" json:"outputModalities,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -99,23 +103,27 @@ type ScriptHTTPConfig struct {
 }
 
 type Target struct {
-	Provider                 string         `yaml:"provider" json:"provider"`
-	Model                    string         `yaml:"model" json:"model"`
-	ModelRef                 string         `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect                  string         `yaml:"dialect" json:"dialect"`
-	DisplayName              string         `yaml:"display_name" json:"displayName,omitempty"`
-	ToolOnly                 bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
-	DefaultThinking          map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
-	Weight                   int            `yaml:"weight" json:"weight"`
-	RPM                      int            `yaml:"rpm" json:"rpm"`
-	Tier                     string         `yaml:"tier" json:"tier"`
-	Cost                     int            `yaml:"cost" json:"cost"`
-	InputPricePerMillionUSD  float64        `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD float64        `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	PricingSource            string         `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt         string         `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes             string         `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport              ToolSupport    `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Provider                           string         `yaml:"provider" json:"provider"`
+	Model                              string         `yaml:"model" json:"model"`
+	ModelRef                           string         `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect                            string         `yaml:"dialect" json:"dialect"`
+	DisplayName                        string         `yaml:"display_name" json:"displayName,omitempty"`
+	ToolOnly                           bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
+	DefaultThinking                    map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Weight                             int            `yaml:"weight" json:"weight"`
+	RPM                                int            `yaml:"rpm" json:"rpm"`
+	Tier                               string         `yaml:"tier" json:"tier"`
+	Cost                               int            `yaml:"cost" json:"cost"`
+	InputPricePerMillionUSD            float64        `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64        `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64        `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64        `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string         `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string         `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string         `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport    `yaml:"tool_support" json:"toolSupport,omitempty"`
+	InputModalities                    []string       `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string       `yaml:"output_modalities" json:"outputModalities,omitempty"`
 }
 
 type CallerConfig struct {
@@ -275,8 +283,20 @@ func (c *Config) Validate() error {
 			if model.OutputPricePerMillionUSD < 0 {
 				return fmt.Errorf("provider %s model %s has negative output_price_per_million_usd", name, ref)
 			}
+			if model.ImageInputPricePerMillionTokensUSD < 0 {
+				return fmt.Errorf("provider %s model %s has negative image_input_price_per_million_tokens_usd", name, ref)
+			}
+			if model.ImageInputPricePerImageUSD < 0 {
+				return fmt.Errorf("provider %s model %s has negative image_input_price_per_image_usd", name, ref)
+			}
 			if err := validateToolSupport(model.ToolSupport); err != nil {
 				return fmt.Errorf("provider %s model %s has invalid tool_support: %w", name, ref, err)
+			}
+			if err := validateModalities(model.InputModalities); err != nil {
+				return fmt.Errorf("provider %s model %s has invalid input_modalities: %w", name, ref, err)
+			}
+			if err := validateModalities(model.OutputModalities); err != nil {
+				return fmt.Errorf("provider %s model %s has invalid output_modalities: %w", name, ref, err)
 			}
 		}
 	}
@@ -330,9 +350,24 @@ func (c *Config) Validate() error {
 			if resolved.OutputPricePerMillionUSD < 0 {
 				return fmt.Errorf("model group %s target %s has negative output_price_per_million_usd", name, resolved.Model)
 			}
+			if resolved.ImageInputPricePerMillionTokensUSD < 0 {
+				return fmt.Errorf("model group %s target %s has negative image_input_price_per_million_tokens_usd", name, resolved.Model)
+			}
+			if resolved.ImageInputPricePerImageUSD < 0 {
+				return fmt.Errorf("model group %s target %s has negative image_input_price_per_image_usd", name, resolved.Model)
+			}
 			if err := validateToolSupport(resolved.ToolSupport); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
 			}
+			if err := validateModalities(resolved.InputModalities); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid input_modalities: %w", name, resolved.Model, err)
+			}
+			if err := validateModalities(resolved.OutputModalities); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid output_modalities: %w", name, resolved.Model, err)
+			}
+			resolved.InputModalities = defaultModalities(resolved.InputModalities)
+			resolved.OutputModalities = defaultModalities(resolved.OutputModalities)
+			m.Targets[i] = resolved
 		}
 		c.Models[name] = m
 	}
@@ -416,6 +451,12 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	if target.OutputPricePerMillionUSD == 0 {
 		target.OutputPricePerMillionUSD = catalog.OutputPricePerMillionUSD
 	}
+	if target.ImageInputPricePerMillionTokensUSD == 0 {
+		target.ImageInputPricePerMillionTokensUSD = catalog.ImageInputPricePerMillionTokensUSD
+	}
+	if target.ImageInputPricePerImageUSD == 0 {
+		target.ImageInputPricePerImageUSD = catalog.ImageInputPricePerImageUSD
+	}
 	if target.PricingSource == "" {
 		target.PricingSource = catalog.PricingSource
 	}
@@ -427,6 +468,12 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	if toolSupportEmpty(target.ToolSupport) {
 		target.ToolSupport = catalog.ToolSupport
+	}
+	if len(target.InputModalities) == 0 {
+		target.InputModalities = catalog.InputModalities
+	}
+	if len(target.OutputModalities) == 0 {
+		target.OutputModalities = catalog.OutputModalities
 	}
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)
@@ -461,6 +508,40 @@ func toolSupportEmpty(ts ToolSupport) bool {
 		len(ts.OpenAIResponses) == 0 &&
 		len(ts.AnthropicMessages) == 0 &&
 		len(ts.ProviderHosted) == 0
+}
+
+func validateModalities(values []string) error {
+	allowed := map[string]bool{
+		"text":       true,
+		"image":      true,
+		"video":      true,
+		"audio":      true,
+		"pdf":        true,
+		"file":       true,
+		"embeddings": true,
+	}
+	seen := map[string]bool{}
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return fmt.Errorf("contains empty modality")
+		}
+		if !allowed[trimmed] {
+			return fmt.Errorf("contains unsupported modality %q", trimmed)
+		}
+		if seen[trimmed] {
+			return fmt.Errorf("contains duplicate modality %q", trimmed)
+		}
+		seen[trimmed] = true
+	}
+	return nil
+}
+
+func defaultModalities(values []string) []string {
+	if len(values) == 0 {
+		return []string{"text"}
+	}
+	return values
 }
 
 func normalizeDialect(d string) string {

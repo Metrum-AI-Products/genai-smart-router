@@ -156,6 +156,8 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 	defer s.finish(rc, http.StatusOK, nil)
 	data := []map[string]any{}
 	for name := range rc.caller.allow {
+		modalities := s.supportedInputModalitiesForGroup(name)
+		hasImage := stringSliceContains(modalities, "image")
 		data = append(data, map[string]any{
 			"id":                               name,
 			"slug":                             name,
@@ -174,14 +176,14 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"supports_reasoning_summaries":     false,
 			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
 			"supports_search_tool":             false,
-			"supports_image_detail_original":   false,
+			"supports_image_detail_original":   hasImage,
 			"support_verbosity":                true,
 			"apply_patch_tool_type":            "freeform",
 			"web_search_tool_type":             "text_and_image",
 			"additional_speed_tiers":           []string{},
 			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
 			"experimental_supported_tools":     s.supportedToolsForGroup(name),
-			"input_modalities":                 []string{"text"},
+			"input_modalities":                 modalities,
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
 			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
 			"shell_type":                       "shell_command",
@@ -299,11 +301,15 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.ResolvedGroup = req.Model
 	rc.rec.Strategy = dec.Strategy
 	rc.rec.ClassLabel = dec.ClassLabel
+	rc.rec.InputHasImage = requestHasImages(req)
+	rc.rec.InputImageCount = requestImageCount(req)
 	rc.rec.TargetProvider = dec.Target.Provider
 	rc.rec.TargetModel = dec.Target.Model
 	rc.rec.TargetDialect = targetDialect(s.cfg.Provider[dec.Target.Provider], dec.Target)
 	rc.rec.InputPricePerMillionUSD = dec.Target.InputPricePerMillionUSD
 	rc.rec.OutputPricePerMillionUSD = dec.Target.OutputPricePerMillionUSD
+	rc.rec.ImageInputPricePerMillionTokensUSD = dec.Target.ImageInputPricePerMillionTokensUSD
+	rc.rec.ImageInputPricePerImageUSD = dec.Target.ImageInputPricePerImageUSD
 	rc.rec.PricingSource = dec.Target.PricingSource
 	rc.rec.PricingUpdatedAt = dec.Target.PricingUpdatedAt
 
@@ -342,6 +348,10 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.QuotaState = quotaState
 		rc.rec.KeyState = keyState
 		rc.rec.Usage = resp.Usage
+		rc.rec.InputImageTokens = resp.Usage.InputImageTokens
+		rc.rec.UpstreamReportedInputCostUSD = resp.Usage.UpstreamReportedInputCostUSD
+		rc.rec.UpstreamReportedOutputCostUSD = resp.Usage.UpstreamReportedOutputCostUSD
+		rc.rec.UpstreamReportedTotalCostUSD = resp.Usage.UpstreamReportedTotalCostUSD
 		rc.rec.Warnings = append(rc.rec.Warnings, resp.Warnings...)
 		s.writeIR(w, dialect, resp, req.Stream, rc)
 		s.finish(rc, http.StatusOK, nil)
@@ -576,10 +586,11 @@ func toolPassthrough(callerDialect, outDialect string, req *IRRequest) bool {
 }
 
 func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDialect string) []Target {
+	requiredModalities := requestInputModalities(req)
 	if len(req.Tools) == 0 {
 		out := make([]Target, 0, len(targets))
 		for _, target := range targets {
-			if !target.ToolOnly {
+			if !target.ToolOnly && targetSupportsInputModalities(target, requiredModalities) {
 				out = append(out, target)
 			}
 		}
@@ -589,11 +600,23 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 	for _, target := range targets {
 		provider := s.cfg.Provider[target.Provider]
 		outDialect := targetDialect(provider, target)
-		if toolPassthrough(callerDialect, outDialect, req) && targetSupportsTools(target, outDialect) {
+		if toolPassthrough(callerDialect, outDialect, req) &&
+			targetSupportsTools(target, outDialect) &&
+			targetSupportsInputModalities(target, requiredModalities) {
 			out = append(out, target)
 		}
 	}
 	return out
+}
+
+func targetSupportsInputModalities(target Target, required []string) bool {
+	targetModalities := defaultModalities(target.InputModalities)
+	for _, req := range required {
+		if !stringSliceContains(targetModalities, req) {
+			return false
+		}
+	}
+	return true
 }
 
 func targetSupportsTools(target Target, dialect string) bool {
@@ -638,6 +661,26 @@ func (s *Service) supportedToolsForGroup(name string) []string {
 		}
 	}
 	return []string{"local_shell", "apply_patch"}
+}
+
+func (s *Service) supportedInputModalitiesForGroup(name string) []string {
+	group, ok := s.cfg.Models[name]
+	if !ok {
+		return []string{"text"}
+	}
+	seen := map[string]bool{"text": true}
+	for _, target := range group.Targets {
+		for _, modality := range defaultModalities(target.InputModalities) {
+			seen[modality] = true
+		}
+	}
+	out := []string{"text"}
+	for _, modality := range []string{"image", "video", "audio", "pdf", "file", "embeddings"} {
+		if seen[modality] {
+			out = append(out, modality)
+		}
+	}
+	return out
 }
 
 func (s *Service) writeIR(w http.ResponseWriter, dialect string, resp *IRResponse, stream bool, rc *requestContext) {
@@ -845,9 +888,25 @@ func populateCosts(rec *logRecord) {
 	if rec.Usage.OutputTokens > 0 && rec.OutputPricePerMillionUSD == 0 {
 		rec.Warnings = appendWarning(rec.Warnings, "missing-output-pricing-metadata")
 	}
-	rec.InputCostUSD = roundUSD(float64(rec.Usage.InputTokens) * rec.InputPricePerMillionUSD / 1_000_000)
+	imageTokenCost := 0.0
+	textInputTokens := rec.Usage.InputTokens
+	if rec.Usage.InputImageTokens > 0 && rec.ImageInputPricePerMillionTokensUSD > 0 {
+		textInputTokens -= rec.Usage.InputImageTokens
+		if textInputTokens < 0 {
+			textInputTokens = 0
+		}
+		imageTokenCost = float64(rec.Usage.InputImageTokens) * rec.ImageInputPricePerMillionTokensUSD / 1_000_000
+	} else if rec.InputHasImage && rec.Usage.InputImageTokens > 0 && rec.ImageInputPricePerMillionTokensUSD == 0 {
+		rec.Warnings = appendWarning(rec.Warnings, "missing-image-token-pricing-metadata")
+	}
+	imageUnitCost := float64(rec.InputImageCount) * rec.ImageInputPricePerImageUSD
+	rec.InputCostUSD = roundUSD(float64(textInputTokens) * rec.InputPricePerMillionUSD / 1_000_000)
+	rec.ImageCostUSD = roundUSD(imageTokenCost + imageUnitCost)
 	rec.OutputCostUSD = roundUSD(float64(rec.Usage.OutputTokens) * rec.OutputPricePerMillionUSD / 1_000_000)
-	rec.TotalCostUSD = roundUSD(rec.InputCostUSD + rec.OutputCostUSD)
+	rec.TotalCostUSD = roundUSD(rec.InputCostUSD + rec.ImageCostUSD + rec.OutputCostUSD)
+	if rec.InputHasImage && rec.ImageInputPricePerImageUSD == 0 && rec.ImageInputPricePerMillionTokensUSD == 0 && rec.Usage.InputImageTokens == 0 && rec.UpstreamReportedTotalCostUSD == 0 {
+		rec.Warnings = appendWarning(rec.Warnings, "missing-image-pricing-metadata")
+	}
 }
 
 func appendWarning(warnings []string, warning string) []string {
@@ -861,6 +920,15 @@ func appendWarning(warnings []string, warning string) []string {
 
 func roundUSD(v float64) float64 {
 	return math.Round(v*1_000_000_000) / 1_000_000_000
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func totalTokens(usage Usage) int {

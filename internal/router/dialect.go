@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -58,8 +59,10 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 		}
 	case "openai-responses":
 		req.Input = contentToText(raw["input"])
-		if req.Input != "" {
-			req.Messages = []IRMessage{{Role: "user", Content: req.Input}}
+		req.InputParts = decodeContentParts(raw["input"])
+		req.Messages = decodeResponsesMessages(raw["input"])
+		if len(req.Messages) == 0 && req.Input != "" {
+			req.Messages = []IRMessage{{Role: "user", Content: req.Input, Parts: req.InputParts}}
 		}
 		if inst, _ := raw["instructions"].(string); inst != "" {
 			req.System = inst
@@ -84,7 +87,7 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 			if m.Role == "system" || m.Role == "developer" {
 				continue
 			}
-			msgs = append(msgs, map[string]any{"role": m.Role, "content": m.Content})
+			msgs = append(msgs, map[string]any{"role": m.Role, "content": encodeAnthropicContent(m)})
 		}
 		body := map[string]any{"model": model, "messages": msgs, "max_tokens": max(req.MaxTokens, 1024), "stream": false}
 		if req.System != "" {
@@ -95,7 +98,7 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 		}
 		return json.Marshal(body)
 	case "openai-responses":
-		body := map[string]any{"model": model, "input": requestText(req), "stream": false}
+		body := map[string]any{"model": model, "input": encodeResponsesInput(req), "stream": false}
 		if req.System != "" {
 			body["instructions"] = req.System
 		}
@@ -130,7 +133,7 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 			msgs = append(msgs, map[string]any{"role": "system", "content": req.System})
 		}
 		for _, m := range req.Messages {
-			msgs = append(msgs, map[string]any{"role": m.Role, "content": m.Content})
+			msgs = append(msgs, map[string]any{"role": m.Role, "content": encodeOpenAIChatContent(m)})
 		}
 		if len(msgs) == 0 && req.Input != "" {
 			msgs = append(msgs, map[string]any{"role": "user", "content": req.Input})
@@ -358,9 +361,335 @@ func decodeMessages(v any) []IRMessage {
 		if !ok {
 			continue
 		}
-		out = append(out, IRMessage{Role: defaultString(stringValue(m["role"]), "user"), Content: contentToText(m["content"])})
+		out = append(out, IRMessage{
+			Role:    defaultString(stringValue(m["role"]), "user"),
+			Content: contentToText(m["content"]),
+			Parts:   decodeContentParts(m["content"]),
+		})
 	}
 	return out
+}
+
+func decodeResponsesMessages(v any) []IRMessage {
+	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return nil
+		}
+		return []IRMessage{{Role: "user", Content: x, Parts: []IRContentPart{{Type: "text", Text: x}}}}
+	case map[string]any:
+		if _, ok := x["content"]; ok {
+			return []IRMessage{decodeResponseMessage(x)}
+		}
+		if _, ok := x["input"]; ok {
+			return decodeResponsesMessages(x["input"])
+		}
+	case []any:
+		out := []IRMessage{}
+		for _, item := range x {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if _, ok := m["content"]; ok {
+				out = append(out, decodeResponseMessage(m))
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+		parts := decodeContentParts(x)
+		if len(parts) > 0 {
+			return []IRMessage{{Role: "user", Content: contentToText(x), Parts: parts}}
+		}
+	}
+	return nil
+}
+
+func decodeResponseMessage(m map[string]any) IRMessage {
+	content := m["content"]
+	return IRMessage{
+		Role:    defaultString(stringValue(m["role"]), "user"),
+		Content: contentToText(content),
+		Parts:   decodeContentParts(content),
+	}
+}
+
+func decodeContentParts(v any) []IRContentPart {
+	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return nil
+		}
+		return []IRContentPart{{Type: "text", Text: x}}
+	case []any:
+		out := []IRContentPart{}
+		for _, item := range x {
+			if m, ok := item.(map[string]any); ok {
+				if _, hasContent := m["content"]; hasContent && stringValue(m["type"]) == "" {
+					out = append(out, decodeContentParts(m["content"])...)
+					continue
+				}
+			}
+			if part := decodeContentPart(item); part.Type != "" {
+				out = append(out, part)
+			}
+		}
+		return out
+	case map[string]any:
+		if content, ok := x["content"]; ok {
+			return decodeContentParts(content)
+		}
+		if input, ok := x["input"]; ok {
+			return decodeContentParts(input)
+		}
+		if part := decodeContentPart(x); part.Type != "" {
+			return []IRContentPart{part}
+		}
+	}
+	return nil
+}
+
+func decodeContentPart(v any) IRContentPart {
+	m, ok := v.(map[string]any)
+	if !ok {
+		txt := contentToText(v)
+		if txt == "" {
+			return IRContentPart{}
+		}
+		return IRContentPart{Type: "text", Text: txt}
+	}
+	typ := stringValue(m["type"])
+	switch typ {
+	case "text", "input_text", "output_text":
+		return IRContentPart{Type: "text", Text: stringValue(m["text"])}
+	case "image_url", "input_image":
+		part := IRContentPart{Type: "image", Detail: stringValue(m["detail"])}
+		switch img := m["image_url"].(type) {
+		case string:
+			part.ImageURL = img
+		case map[string]any:
+			part.ImageURL = stringValue(img["url"])
+			if part.Detail == "" {
+				part.Detail = stringValue(img["detail"])
+			}
+		}
+		return part
+	case "image":
+		part := IRContentPart{Type: "image"}
+		if source, ok := m["source"].(map[string]any); ok {
+			switch stringValue(source["type"]) {
+			case "url":
+				part.ImageURL = stringValue(source["url"])
+			case "base64":
+				part.MediaType = stringValue(source["media_type"])
+				part.Data = stringValue(source["data"])
+			case "file":
+				part.FileID = stringValue(source["file_id"])
+			}
+		}
+		return part
+	default:
+		txt := contentToText(m)
+		if txt != "" {
+			return IRContentPart{Type: "text", Text: txt}
+		}
+		return IRContentPart{}
+	}
+}
+
+func encodeOpenAIChatContent(m IRMessage) any {
+	if !hasImageParts(m.Parts) {
+		return m.Content
+	}
+	parts := []map[string]any{}
+	for _, p := range ensureTextPart(m.Content, m.Parts) {
+		switch p.Type {
+		case "text":
+			if p.Text != "" {
+				parts = append(parts, map[string]any{"type": "text", "text": p.Text})
+			}
+		case "image":
+			if u := imageURLForOpenAI(p); u != "" {
+				img := map[string]any{"url": u}
+				if p.Detail != "" {
+					img["detail"] = p.Detail
+				}
+				parts = append(parts, map[string]any{"type": "image_url", "image_url": img})
+			}
+		}
+	}
+	return parts
+}
+
+func encodeResponsesInput(req *IRRequest) any {
+	if !requestHasImages(req) {
+		return requestText(req)
+	}
+	msgs := []map[string]any{}
+	for _, m := range req.Messages {
+		if m.Role == "system" || m.Role == "developer" {
+			continue
+		}
+		content := []map[string]any{}
+		for _, p := range ensureTextPart(m.Content, m.Parts) {
+			switch p.Type {
+			case "text":
+				if p.Text != "" {
+					content = append(content, map[string]any{"type": "input_text", "text": p.Text})
+				}
+			case "image":
+				if u := imageURLForOpenAI(p); u != "" {
+					part := map[string]any{"type": "input_image", "image_url": u}
+					if p.Detail != "" {
+						part["detail"] = p.Detail
+					}
+					content = append(content, part)
+				}
+			}
+		}
+		if len(content) > 0 {
+			msgs = append(msgs, map[string]any{"role": defaultString(m.Role, "user"), "content": content})
+		}
+	}
+	if len(msgs) == 0 && len(req.InputParts) > 0 {
+		content := []map[string]any{}
+		for _, p := range ensureTextPart(req.Input, req.InputParts) {
+			if p.Type == "text" && p.Text != "" {
+				content = append(content, map[string]any{"type": "input_text", "text": p.Text})
+			}
+			if p.Type == "image" {
+				if u := imageURLForOpenAI(p); u != "" {
+					content = append(content, map[string]any{"type": "input_image", "image_url": u})
+				}
+			}
+		}
+		msgs = append(msgs, map[string]any{"role": "user", "content": content})
+	}
+	return msgs
+}
+
+func encodeAnthropicContent(m IRMessage) any {
+	if !hasImageParts(m.Parts) {
+		return m.Content
+	}
+	parts := []map[string]any{}
+	for _, p := range ensureTextPart(m.Content, m.Parts) {
+		switch p.Type {
+		case "text":
+			if p.Text != "" {
+				parts = append(parts, map[string]any{"type": "text", "text": p.Text})
+			}
+		case "image":
+			if source := imageSourceForAnthropic(p); source != nil {
+				parts = append(parts, map[string]any{"type": "image", "source": source})
+			}
+		}
+	}
+	return parts
+}
+
+func ensureTextPart(content string, parts []IRContentPart) []IRContentPart {
+	if len(parts) == 0 && content != "" {
+		return []IRContentPart{{Type: "text", Text: content}}
+	}
+	return parts
+}
+
+func hasImageParts(parts []IRContentPart) bool {
+	for _, p := range parts {
+		if p.Type == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+func requestHasImages(req *IRRequest) bool {
+	if req == nil {
+		return false
+	}
+	if hasImageParts(req.InputParts) {
+		return true
+	}
+	for _, m := range req.Messages {
+		if hasImageParts(m.Parts) {
+			return true
+		}
+	}
+	return false
+}
+
+func requestImageCount(req *IRRequest) int {
+	if req == nil {
+		return 0
+	}
+	count := countImageParts(req.InputParts)
+	for _, m := range req.Messages {
+		count += countImageParts(m.Parts)
+	}
+	return count
+}
+
+func countImageParts(parts []IRContentPart) int {
+	count := 0
+	for _, p := range parts {
+		if p.Type == "image" {
+			count++
+		}
+	}
+	return count
+}
+
+func requestInputModalities(req *IRRequest) []string {
+	if requestHasImages(req) {
+		return []string{"text", "image"}
+	}
+	return []string{"text"}
+}
+
+func imageURLForOpenAI(p IRContentPart) string {
+	if p.ImageURL != "" {
+		return p.ImageURL
+	}
+	if p.Data != "" && p.MediaType != "" {
+		return "data:" + p.MediaType + ";base64," + p.Data
+	}
+	return ""
+}
+
+func imageSourceForAnthropic(p IRContentPart) map[string]any {
+	if p.ImageURL != "" {
+		if mediaType, data, ok := parseDataURL(p.ImageURL); ok {
+			return map[string]any{"type": "base64", "media_type": mediaType, "data": data}
+		}
+		return map[string]any{"type": "url", "url": p.ImageURL}
+	}
+	if p.Data != "" && p.MediaType != "" {
+		return map[string]any{"type": "base64", "media_type": p.MediaType, "data": p.Data}
+	}
+	if p.FileID != "" {
+		return map[string]any{"type": "file", "file_id": p.FileID}
+	}
+	return nil
+}
+
+func parseDataURL(v string) (string, string, bool) {
+	if !strings.HasPrefix(v, "data:") {
+		return "", "", false
+	}
+	head, data, ok := strings.Cut(strings.TrimPrefix(v, "data:"), ",")
+	if !ok || data == "" {
+		return "", "", false
+	}
+	parts := strings.Split(head, ";")
+	if len(parts) < 2 || parts[0] == "" || parts[len(parts)-1] != "base64" {
+		return "", "", false
+	}
+	if _, err := base64.StdEncoding.DecodeString(data); err != nil {
+		return "", "", false
+	}
+	return parts[0], data, true
 }
 
 func contentToText(v any) string {
@@ -479,7 +808,36 @@ func usageFromMap(v any) Usage {
 	if total == 0 {
 		total = in + out
 	}
-	return Usage{InputTokens: in, OutputTokens: out, TotalTokens: total}
+	imageTokens := imageTokensFromUsage(m)
+	upstreamTotalCost, _ := numberAsFloat(m["cost"])
+	costDetails, _ := m["cost_details"].(map[string]any)
+	upstreamInputCost, _ := numberAsFloat(costDetails["upstream_inference_prompt_cost"])
+	upstreamOutputCost, _ := numberAsFloat(costDetails["upstream_inference_completions_cost"])
+	if upstreamTotalCost == 0 {
+		upstreamTotalCost, _ = numberAsFloat(costDetails["upstream_inference_cost"])
+	}
+	return Usage{
+		InputTokens:                   in,
+		OutputTokens:                  out,
+		TotalTokens:                   total,
+		InputImageTokens:              imageTokens,
+		UpstreamReportedInputCostUSD:  upstreamInputCost,
+		UpstreamReportedOutputCostUSD: upstreamOutputCost,
+		UpstreamReportedTotalCostUSD:  upstreamTotalCost,
+	}
+}
+
+func imageTokensFromUsage(m map[string]any) int {
+	for _, key := range []string{"input_tokens_details", "prompt_tokens_details"} {
+		details, ok := m[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, ok := numberAsInt(details["image_tokens"]); ok {
+			return n
+		}
+	}
+	return 0
 }
 
 func anySliceToMaps(in []any) []map[string]any {

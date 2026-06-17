@@ -78,7 +78,7 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 	logPath := filepath.Join(dir, "requests.jsonl")
 	dbPath := filepath.Join(dir, "usage.sqlite")
 	raw := strings.Join([]string{
-		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_tps","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","caller_ip":"198.51.100.22","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-responses","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"openai","target_model":"gpt-5.5","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":250,"upstream_duration_ms":200,"downstream_duration_ms":25,"upstream_output_tokens_per_sec":50,"upstream_total_tokens_per_sec":75,"downstream_output_tokens_per_sec":400,"downstream_total_tokens_per_sec":600,"usage":{"input_tokens":5,"output_tokens":10,"total_tokens":15},"input_price_per_million_usd":5,"output_price_per_million_usd":30,"input_cost_usd":0.000025,"output_cost_usd":0.0003,"total_cost_usd":0.000325,"cache_enabled":true,"cache_items":2,"cache_bytes":1024,"cache_max_bytes":4096,"cache_occupancy_pct":25,"quota_state":"ok","key_state":"active","warnings":[]}`,
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_tps","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","caller_ip":"198.51.100.22","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-responses","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"openai","target_model":"gpt-5.4-nano","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":250,"upstream_duration_ms":200,"downstream_duration_ms":25,"upstream_output_tokens_per_sec":50,"upstream_total_tokens_per_sec":75,"downstream_output_tokens_per_sec":400,"downstream_total_tokens_per_sec":600,"usage":{"input_tokens":5,"output_tokens":10,"total_tokens":15},"input_price_per_million_usd":0.2,"output_price_per_million_usd":1.25,"input_cost_usd":0.000001,"output_cost_usd":0.0000125,"total_cost_usd":0.0000135,"cache_enabled":true,"cache_items":2,"cache_bytes":1024,"cache_max_bytes":4096,"cache_occupancy_pct":25,"quota_state":"ok","key_state":"active","warnings":[]}`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
@@ -97,7 +97,7 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 		"upstream `50.00` output tok/s / `75.00` total tok/s",
 		"downstream `400.00` output tok/s / `600.00` total tok/s",
 		"| 1 | 1 | 0 | 1 | 0 | 0.00% | 0.00% | 2 | 1024 | 4096 | 25.00% | 25.00% | 25.00% |",
-		"| 2026-06-14T01:15:00.000Z | `198.51.100.22` | `req_tps` | `rtr_alice_test` | default | openai | gpt-5.5 | 200 | miss | 10 | 15 | $0.000325 | 200 | 25 | 50.00 | 75.00 | 400.00 | 600.00 |",
+		"| 2026-06-14T01:15:00.000Z | `198.51.100.22` | `req_tps` | `rtr_alice_test` | default | openai | gpt-5.4-nano | 200 | miss | 10 | 15 | $0.000013 | 200 | 25 | 50.00 | 75.00 | 400.00 | 600.00 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("report missing %q:\n%s", want, md)
@@ -112,7 +112,7 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	raw := strings.Join([]string{
 		`{"ts":"2026-06-14T01:00:00.000Z","request_id":"req_codex_small","caller_id":"codex-small","caller_user":"codex-small","caller_project":"harbor-algotune-pca","caller_environment":"case-1","caller_ip":"203.0.113.10","token_id":"rtr_metrum_codex-small_harbor-algotune-pca_case-1_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"openrouter","target_model":"deepseek/deepseek-v4-flash:nitro","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1200,"usage":{"input_tokens":100,"output_tokens":40,"total_tokens":140},"quota_state":"ok","key_state":"active","warnings":[]}`,
 		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_claude_small","caller_id":"claude-small","caller_user":"claude-small","caller_project":"harbor-algotune-pca","caller_environment":"case-1","caller_ip":"203.0.113.11","token_id":"rtr_metrum_claude-small_harbor-algotune-pca_case-1_k20260614","client":"claude-code","inbound_dialect":"anthropic","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"minimax","target_model":"MiniMax-M3","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":900,"usage":{"input_tokens":80,"output_tokens":20,"total_tokens":100},"quota_state":"ok","key_state":"active","warnings":[]}`,
-		`{"ts":"2026-06-14T01:30:00.000Z","request_id":"req_other","caller_id":"other","caller_user":"other","caller_project":"metrum-insights","caller_environment":"prod","caller_ip":"203.0.113.12","token_id":"rtr_metrum_other_metrum-insights_prod_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"high","resolved_group":"high","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.5","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1500,"usage":{"input_tokens":300,"output_tokens":100,"total_tokens":400},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		`{"ts":"2026-06-14T01:30:00.000Z","request_id":"req_other","caller_id":"other","caller_user":"other","caller_project":"metrum-insights","caller_environment":"prod","caller_ip":"203.0.113.12","token_id":"rtr_metrum_other_metrum-insights_prod_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"high","resolved_group":"high","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.4-nano","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1500,"usage":{"input_tokens":300,"output_tokens":100,"total_tokens":400},"quota_state":"ok","key_state":"active","warnings":[]}`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
@@ -145,7 +145,7 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	for _, notWant := range []string{
 		"rtr_metrum_claude-small_harbor-algotune-pca_case-1_k20260614",
 		"rtr_metrum_other_metrum-insights_prod_k20260614",
-		"gpt-5.5",
+		"gpt-5.4-nano",
 	} {
 		if strings.Contains(md, notWant) {
 			t.Fatalf("filtered report unexpectedly contains %q:\n%s", notWant, md)
