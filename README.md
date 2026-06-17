@@ -404,6 +404,17 @@ curl http://127.0.0.1:8080/readyz
 curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```
 
+Version checks:
+
+```bash
+./router --version
+./router-token-gen --version
+./router-usage-report --version
+curl http://127.0.0.1:8080/version
+```
+
+`/healthz`, `/readyz`, and `/version` include the router version, commit, and full UTC build timestamp. `/metrics` exports `smart_llmrouter_build_info`. Browser docs show the running docs package version and build timestamp on every page, and docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers. OpenAI-compatible `/v1/*` response bodies do not include router-specific version fields.
+
 ## Usage Reports
 
 Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.

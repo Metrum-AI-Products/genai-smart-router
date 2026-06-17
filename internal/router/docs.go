@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"smart-llmrouter/internal/buildinfo"
 )
 
 //go:embed all:docsdist
@@ -80,6 +82,7 @@ func serveEmbeddedDoc(w http.ResponseWriter, r *http.Request, root fs.FS, name s
 			if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
 				w.Header().Set("Content-Type", ct)
 			}
+			setDocsVersionHeaders(w)
 			http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(data))
 			return true
 		}
@@ -93,6 +96,7 @@ func serveEmbeddedDoc(w http.ResponseWriter, r *http.Request, root fs.FS, name s
 
 func writeFallbackDocs(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	setDocsVersionHeaders(w)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`<!doctype html>
 <html lang="en">
@@ -108,4 +112,11 @@ func writeFallbackDocs(w http.ResponseWriter) {
   </main>
 </body>
 </html>`))
+}
+
+func setDocsVersionHeaders(w http.ResponseWriter) {
+	info := buildinfo.Current()
+	w.Header().Set("X-Smart-LLMRouter-Version", info.Version)
+	w.Header().Set("X-Smart-LLMRouter-Commit", info.Commit)
+	w.Header().Set("X-Smart-LLMRouter-Build-Date", info.BuildDate)
 }

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"smart-llmrouter/internal/buildinfo"
 )
 
 type metricsStore struct {
@@ -139,6 +141,8 @@ func (m *metricsStore) Prometheus() string {
 	writeHelpType(&b, "smart_llmrouter_cache_bytes", "Latest observed cache occupied bytes.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_cache_max_bytes", "Configured cache maximum bytes.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_cache_occupancy_ratio", "Latest observed cache occupancy ratio.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_build_info", "Build information for the running router binary.", "gauge")
+	fmt.Fprintf(&b, "smart_llmrouter_build_info{%s} 1\n", buildInfoLabels())
 	for _, labels := range keys {
 		values := m.series[labels]
 		labelText := prometheusLabels(labels)
@@ -163,6 +167,19 @@ func (m *metricsStore) Prometheus() string {
 		writeFloatMetric(&b, "smart_llmrouter_cache_occupancy_ratio", labelText, values.CacheOccupancyRatio)
 	}
 	return b.String()
+}
+
+func buildInfoLabels() string {
+	info := buildinfo.Current()
+	parts := []string{
+		`version="` + escapeLabel(info.Version) + `"`,
+		`commit="` + escapeLabel(info.Commit) + `"`,
+		`build_date="` + escapeLabel(info.BuildDate) + `"`,
+		`go_version="` + escapeLabel(info.GoVersion) + `"`,
+		`goos="` + escapeLabel(info.GOOS) + `"`,
+		`goarch="` + escapeLabel(info.GOARCH) + `"`,
+	}
+	return strings.Join(parts, ",")
 }
 
 func writeHelp(b *strings.Builder, name, help string) {

@@ -342,6 +342,7 @@ Smart LLM Router produces operational data at three levels:
 
 - Structured JSONL request logs for audit/debugging.
 - Prometheus-compatible `/metrics` for dashboards and alerting.
+- Build version visibility through CLI `--version`, `/version`, health/readiness responses, docs page badges, docs response headers, and the `smart_llmrouter_build_info` metric.
 - Durable relational usage store for periodic reporting.
 
 The `router-usage-report` tool generates markdown reports for a selected time period:

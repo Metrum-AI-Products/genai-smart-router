@@ -189,8 +189,11 @@ From a client machine:
 
 ```bash
 curl https://llm-api-engg.metrum.ai/healthz
+curl https://llm-api-engg.metrum.ai/version
 curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
 ```
+
+On the host, `bin/router --version`, `bin/router-token-gen --version`, and `bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
 
 Use the same base URL for local CLIs:
 

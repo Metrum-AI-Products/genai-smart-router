@@ -35,7 +35,7 @@ flowchart LR
 - **Security:** keep provider keys server-side and issue revocable router tokens to callers.
 - **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
-- **Operational visibility:** expose metrics, request logs, cache behavior, latency, and token throughput.
+- **Operational visibility:** expose metrics, request logs, cache behavior, latency, token throughput, and visible build version metadata.
 
 ## Cost Governance
 

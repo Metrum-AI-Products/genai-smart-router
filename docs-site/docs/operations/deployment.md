@@ -36,11 +36,20 @@ External routing-policy calls are controlled by model-group config. Enable `scri
 
 ## Browser And API Behavior
 
-The router serves embedded docs for browser traffic at `/`. API paths keep precedence:
+The router serves embedded docs for browser traffic at `/`. Every docs page displays the running docs package version and full UTC build timestamp. Docs responses also include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers.
+
+Router-owned operational endpoints expose build metadata:
+
+```bash
+curl https://llm-api.example.com/version
+curl https://llm-api.example.com/readyz
+```
+
+API paths keep precedence:
 
 - `/v1/*`
 - `/metrics`
 - `/healthz`
 - `/readyz`
 
-This makes a hosted router self-documenting without changing client API paths.
+This makes a hosted router self-documenting without changing OpenAI-compatible client API response bodies.

@@ -143,8 +143,11 @@ From outside the instance:
 
 ```bash
 curl https://llm-api-engg.metrum.ai/healthz
+curl https://llm-api-engg.metrum.ai/version
 curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
 ```
+
+Inside the running container, `/app/bin/router --version`, `/app/bin/router-token-gen --version`, and `/app/bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
 
 Generate a markdown usage report on the host from the running compose data:
 

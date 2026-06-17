@@ -9,10 +9,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"smart-llmrouter/internal/buildinfo"
 	"smart-llmrouter/internal/router"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(buildinfo.Text())
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "generate" {
 		usage()
 		os.Exit(2)

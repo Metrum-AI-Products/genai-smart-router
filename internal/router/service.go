@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"smart-llmrouter/internal/buildinfo"
 )
 
 type Service struct {
@@ -109,14 +111,17 @@ func (s *Service) Close() {
 
 func (s *Service) routes() {
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		writeJSON(w, http.StatusOK, healthPayload(true, ""))
 	})
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.cfg.Validate(); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": err.Error()})
+			writeJSON(w, http.StatusServiceUnavailable, healthPayload(false, err.Error()))
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		writeJSON(w, http.StatusOK, healthPayload(true, ""))
+	})
+	s.mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, buildinfo.Current())
 	})
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
@@ -126,6 +131,20 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })
 	s.mux.HandleFunc("POST /v1/responses", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-responses") })
 	s.mux.Handle("GET /", docsHandler())
+}
+
+func healthPayload(ok bool, errorText string) map[string]any {
+	info := buildinfo.Current()
+	payload := map[string]any{
+		"ok":         ok,
+		"version":    info.Version,
+		"commit":     info.Commit,
+		"build_date": info.BuildDate,
+	}
+	if errorText != "" {
+		payload["error"] = errorText
+	}
+	return payload
 }
 
 func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {

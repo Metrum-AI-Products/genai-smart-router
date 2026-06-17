@@ -11,12 +11,18 @@ import (
 	"syscall"
 	"time"
 
+	"smart-llmrouter/internal/buildinfo"
 	"smart-llmrouter/internal/router"
 )
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to router YAML config")
+	showVersion := flag.Bool("version", false, "print build version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(buildinfo.Text())
+		return
+	}
 
 	cfg, err := router.LoadConfig(*configPath)
 	if err != nil {

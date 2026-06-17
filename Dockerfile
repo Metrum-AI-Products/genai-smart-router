@@ -4,14 +4,17 @@ WORKDIR /src
 RUN apk add --no-cache nodejs npm
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN cd docs-site && npm ci && npm run build
+RUN cd docs-site && npm ci && DOCS_ROUTER_VERSION=$VERSION DOCS_ROUTER_COMMIT=$COMMIT DOCS_ROUTER_BUILD_DATE=$BUILD_DATE npm run build
 RUN find internal/router/docsdist -mindepth 1 ! -name .keep -exec rm -rf {} + && cp -R docs-site/build/. internal/router/docsdist/
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/router ./cmd/router
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/router-token-gen ./cmd/router-token-gen
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/router-usage-report ./cmd/router-usage-report
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router ./cmd/router
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-token-gen ./cmd/router-token-gen
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-usage-report ./cmd/router-usage-report
 
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS certs
 RUN apk add --no-cache ca-certificates

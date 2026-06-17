@@ -134,10 +134,47 @@ func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	if _, ok := body["data"].([]any); !ok {
 		t.Fatalf("missing OpenAI data field: %#v", body)
 	}
+	for _, forbidden := range []string{"version", "commit", "build_date", "go_version", "goos", "goarch"} {
+		if _, ok := body[forbidden]; ok {
+			t.Fatalf("/v1/models leaked router build field %q: %#v", forbidden, body)
+		}
+	}
 	if models, ok := body["models"].([]any); !ok || len(models) == 0 {
 		t.Fatalf("missing Codex models field: %#v", body)
 	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["supported_reasoning_levels"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
 		t.Fatalf("missing Codex model compatibility fields: %#v", body)
+	}
+}
+
+func TestVersionAndHealthEndpointsExposeBuildInfo(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	for _, path := range []string{"/version", "/healthz", "/readyz"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", path, rr.Code, rr.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s json: %v", path, err)
+		}
+		for _, key := range []string{"version", "commit", "build_date"} {
+			if body[key] == "" || body[key] == nil {
+				t.Fatalf("%s missing %s: %#v", path, key, body)
+			}
+		}
+		if path == "/version" {
+			for _, key := range []string{"go_version", "goos", "goarch"} {
+				if body[key] == "" || body[key] == nil {
+					t.Fatalf("%s missing %s: %#v", path, key, body)
+				}
+			}
+		} else if body["ok"] != true {
+			t.Fatalf("%s ok field=%#v body=%#v", path, body["ok"], body)
+		}
 	}
 }
 
@@ -175,6 +212,11 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	}
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
 		t.Fatalf("content-type=%q", ct)
+	}
+	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Commit", "X-Smart-LLMRouter-Build-Date"} {
+		if rr.Header().Get(header) == "" {
+			t.Fatalf("missing docs version header %s", header)
+		}
 	}
 }
 
@@ -966,6 +1008,9 @@ func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
 		`smart_llmrouter_cache_entries`,
 		`smart_llmrouter_upstream_output_tokens_per_second_sum`,
 		`smart_llmrouter_downstream_output_tokens_per_second_sum`,
+		`smart_llmrouter_build_info`,
+		`version="`,
+		`build_date="`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)

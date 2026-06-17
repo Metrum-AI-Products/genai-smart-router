@@ -6,10 +6,15 @@ import (
 	"os"
 	"time"
 
+	"smart-llmrouter/internal/buildinfo"
 	"smart-llmrouter/internal/router"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(buildinfo.Text())
+		return
+	}
 	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
 	dsn := flag.String("dsn", "", "Postgres DSN when --driver=postgres")
