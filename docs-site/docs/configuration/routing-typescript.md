@@ -4,21 +4,69 @@ title: TypeScript Routing Policy
 
 # TypeScript Routing Policy
 
-Model groups can delegate selection to a TypeScript routing script. The script receives request metadata, safe caller metadata, and safe target metadata. Raw caller tokens, token hashes, and raw provider API keys are not passed to scripts.
+Model groups can delegate target selection to a TypeScript routing script. Proxy users still request a normal router model group, such as `fast` or `big-coder`; the router runs the script internally and forwards the request to one configured backing target. Raw caller tokens, token hashes, and raw provider API keys are not passed to scripts.
 
 <div class="contactBanner">
   <p>Need help designing routing policy? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
-## Weighted Selection With Content Rules
+## Admin Setup
+
+Configure a model group with `strategy: script`, point `script` at a TypeScript file relative to the config file, and list the targets the script may choose from:
+
+```yaml
+models:
+  adaptive:
+    strategy: script
+    script: scripts/router.ts
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+If the script must call an external policy service, the deployment must explicitly enable it and allow the service host:
+
+```yaml
+models:
+  adaptive:
+    strategy: script
+    script: scripts/router.ts
+    script_http:
+      enabled: true
+      allow_hosts: [routing-policy.internal.example]
+      timeout_ms: 200
+      max_response_bytes: 65536
+      headers:
+        Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+Callers continue to use the group name:
+
+```bash
+curl https://llm-api-engg.metrum.ai/v1/chat/completions \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "adaptive",
+    "messages": [{"role": "user", "content": "Summarize this note in one sentence."}]
+  }'
+```
+
+## Script Context
+
+The script must export `route(ctx)` and return either a configured `targetIndex` or a target selector such as `{ provider, model }`.
 
 ```typescript
-type RouteInput = {
+type RouteContext = {
+  group: string;
+  text: string;
   request: {
     model: string;
-    text: string;
-    metadata?: Record<string, unknown>;
-    hasTools: boolean;
+    max_tokens?: number;
+    stream?: boolean;
   };
   caller?: {
     id: string;
@@ -37,68 +85,143 @@ type RouteInput = {
     keyConfigured: boolean;
   }>;
 };
+```
 
-export default function route(input: RouteInput) {
-  let candidates = input.targets.filter((target) => target.keyConfigured && target.weight > 0);
+`ctx.text` is the normalized request text from chat messages, Responses input, or Anthropic messages. Use it for content and size rules. Returned targets are validated against the configured target list before use.
 
-  if (/refactor|debug|test failure|segfault/i.test(input.request.text)) {
-    candidates = candidates.filter((target) =>
-      /MiniMax-M3|kimi-k2\.7-code|deepseek-v4-flash/i.test(target.model)
-    );
-  }
+## Imports And Dependencies
 
-  if (/^rtr_metrum_.*_prod_/i.test(input.caller?.tokenId || "")) {
-    candidates = candidates.filter((target) => target.provider !== "experimental-provider");
-  }
+Relative TypeScript imports are bundled when the router loads the script, so helpers can live next to the route file:
 
-  const total = candidates.reduce((sum, target) => sum + target.weight, 0);
-  let cursor = Math.random() * total;
-  for (const target of candidates) {
-    cursor -= target.weight;
-    if (cursor <= 0) {
-      return { targetIndex: input.targets.indexOf(target), classLabel: "weighted-content-policy" };
-    }
-  }
+```typescript
+import { scorePrompt } from "./policy";
 
-  return { targetIndex: input.targets.indexOf(candidates[0]), classLabel: "weighted-content-policy" };
+export function route(ctx: RouteContext) {
+  const score = scorePrompt(ctx.text);
+  return { targetIndex: score > 10 ? 1 : 0, classLabel: "local-policy" };
 }
 ```
 
-## External Decision Service
+For deployment-owned helpers, keep files under the packaged script directory, for example:
 
-Routing policy can call an internal service when classification needs model telemetry, business logic, or external context.
+```text
+config/scripts/router.ts
+config/scripts/policy.ts
+config/scripts/scoring.ts
+```
+
+For third-party packages, install and lock dependencies before packaging, then deploy the resolved package files with the script directory. The router bundles from the deployment filesystem at startup; it does not run `npm install`, download packages, or resolve network dependencies at runtime.
+
+Recommended admin workflow:
+
+```bash
+cd config/scripts
+npm init -y
+npm install some-policy-lib
+npm install --save-dev typescript
+```
+
+Commit or otherwise package the files required by the deployment, including `package.json`, lockfile, local helper files, and the resolved dependency tree or a pre-bundled script artifact according to your release process. Keep this directory free of provider keys, router tokens, and private host credentials. If a dependency is large or has native modules, prefer pre-bundling the routing script during release and deploying the generated JavaScript/TypeScript entrypoint plus any source maps you need for review.
+
+## Prompt-Size Routing Example
+
+This tested example keeps short prompts on a smaller/cheaper target and sends large prompts to a heavier target. It falls back to the first configured eligible target if a preferred tier is not available.
 
 ```typescript
-export default async function route(input: RouteInput) {
-  const response = await fetch("https://routing-policy.example.internal/route", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      request: input.request,
-      caller: input.caller,
-      targets: input.targets.map((target, index) => ({
-        index,
-        provider: target.provider,
-        model: target.model,
-        dialect: target.dialect,
-        weight: target.weight,
-        keyId: target.keyId,
-        apiKeyEnv: target.apiKeyEnv,
-        keyConfigured: target.keyConfigured,
-      })),
-    }),
-  });
+type Target = {
+  provider: string;
+  model: string;
+  tier?: string;
+  weight: number;
+  keyConfigured: boolean;
+};
 
-  if (!response.ok) {
-    return { targetIndex: 0, classLabel: "external-policy-unavailable" };
+type RouteContext = {
+  text: string;
+  targets: Target[];
+};
+
+export function route(ctx: RouteContext) {
+  const eligible = ctx.targets
+    .map((target, index) => ({ target, index }))
+    .filter((entry) => entry.target.keyConfigured && entry.target.weight > 0);
+
+  if (eligible.length === 0) {
+    return { targetIndex: 0, classLabel: "prompt-size:no-eligible-targets" };
   }
 
-  const decision = await response.json();
+  const preferredTier = ctx.text.length > 8000 ? "heavy" : "cheap";
+  const preferred = eligible.find((entry) => entry.target.tier === preferredTier) || eligible[0];
+
   return {
-    targetIndex: decision.targetIndex,
-    classLabel: decision.reason || "external-policy",
+    targetIndex: preferred.index,
+    fallbackIndexes: eligible
+      .filter((entry) => entry.index !== preferred.index)
+      .map((entry) => entry.index),
+    classLabel: `prompt-size:${preferredTier}`,
   };
 }
 ```
 
-Returned targets are validated against the configured target list before use.
+## Weighted Selection With Content Rules
+
+Scripts can combine prompt content, caller metadata, target metadata, and group weights:
+
+```typescript
+export function route(ctx: RouteContext) {
+  let candidates = ctx.targets
+    .map((target, index) => ({ target, index }))
+    .filter((entry) => entry.target.keyConfigured && entry.target.weight > 0);
+
+  if (/refactor|debug|test failure|segfault/i.test(ctx.text)) {
+    candidates = candidates.filter((entry) =>
+      /MiniMax-M3|kimi-k2\.7-code|deepseek-v4-flash/i.test(entry.target.model)
+    );
+  }
+
+  if (/^rtr_metrum_.*_prod_/i.test(ctx.caller?.tokenId || "")) {
+    candidates = candidates.filter((entry) => entry.target.provider !== "experimental-provider");
+  }
+
+  const total = candidates.reduce((sum, entry) => sum + entry.target.weight, 0);
+  let cursor = Math.random() * total;
+  for (const entry of candidates) {
+    cursor -= entry.target.weight;
+    if (cursor <= 0) {
+      return { targetIndex: entry.index, classLabel: "weighted-content-policy" };
+    }
+  }
+
+  return { targetIndex: candidates[0]?.index || 0, classLabel: "weighted-content-policy" };
+}
+```
+
+## External Policy Calls
+
+Scripts run synchronously inside the router process after TypeScript transpilation. Keep policy fast and deterministic. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
+
+```typescript
+export function route(ctx: RouteContext) {
+  const response = router.fetchJSON("https://routing-policy.internal.example/route", {
+    method: "POST",
+    body: {
+      group: ctx.group,
+      text: ctx.text,
+      targets: ctx.targets.map((target, index) => ({
+        index,
+        provider: target.provider,
+        model: target.model,
+        tier: target.tier,
+        keyConfigured: target.keyConfigured,
+      })),
+    },
+  });
+
+  if (response.ok && typeof response.body?.targetIndex === "number") {
+    return { targetIndex: response.body.targetIndex, classLabel: "external-policy" };
+  }
+  return { targetIndex: 0, classLabel: "external-policy:fallback" };
+}
+```
+
+`router.fetchJSON` supports `GET` and `POST`, JSON request bodies, JSON responses, and script-supplied headers limited to `Accept`, `Content-Type`, and `X-*`. Hosts, timeout, response size, and deployment-owned headers are controlled by config. Use `script_http.headers` for policy-service authentication such as `Authorization: ${ROUTING_POLICY_AUTH_HEADER}`; config values are env-expanded when the router loads config and are not passed into the script context. `timeout_ms` may be at most `5000`, and smaller values are recommended because routing happens before the upstream model request. Raw provider keys, raw caller tokens, token hashes, unrestricted file access, and runtime package installation are not available to scripts.

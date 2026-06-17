@@ -22,7 +22,11 @@ These instructions apply to the whole repository.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - No stale docs. Before finishing any task that changes behavior, config, deployment, models, auth, CLI usage, tests, or production, search the repo for old names/status and update every matching doc or fixture. If a doc cannot be made current, mark the exact section as historical with a date and reason.
+- Documentation updates must cover both audiences when a behavior affects routing, auth, models, CLI/API usage, telemetry, deployment, or production operations:
+  - Admin/internal docs (`README.md`, `docs/`, `deployment.md`, scripts, and config comments) must explain configuration, validation, rollout, rollback, and operational impact.
+  - Proxy-user docs (`docs-site/`, embedded under `/docs/`) must explain what callers request, what behavior they can expect from the proxy, and any client-facing examples without internal deployment details.
 - Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep public docs free of raw provider keys, real router tokens, private host paths, SSH details, and internal-only deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
+- TypeScript routing changes require both admin and proxy-user docs. Include the script context shape, model-group configuration, caller-visible behavior, and at least one tested example when documenting a new script policy pattern.
 - Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
 
 ## Development Workflow
@@ -167,6 +171,7 @@ Update docs whenever changing:
 - provider keys/env requirements
 - production deployment commands or image tags
 - Codex CLI or Claude Code usage examples
+- TypeScript routing script behavior, context fields, or model-group policy examples
 - usage reporting, caching, telemetry, or auth behavior
 - DB driver/schema behavior, including SQLite/Postgres config, usage report fields, or durability expectations
 

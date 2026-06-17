@@ -413,6 +413,30 @@ models:
     targets:
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
+# Optional TypeScript routing template. Keep commented unless you want this
+# model group active and have added it to caller allow lists.
+#
+# scripted-adaptive:
+#   strategy: script
+#   script: scripts/router.ts
+#   # script_http is disabled by default. Enable it only for deployments that
+#   # need a routing policy service, and list exact allowed hostnames.
+#   script_http:
+#     enabled: true
+#     allow_hosts: [routing-policy.internal.example]
+#     timeout_ms: 200
+#     max_response_bytes: 65536
+#     headers:
+#       Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+#   targets:
+#   - provider: openrouter
+#     model_ref: deepseek-v4-flash-nitro
+#     tier: cheap
+#     weight: 70
+#   - provider: minimax
+#     model_ref: m3
+#     tier: heavy
+#     weight: 30
 callers:
 - id: standard-dev
   user: standard

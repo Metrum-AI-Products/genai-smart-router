@@ -71,9 +71,18 @@ type ProviderModel struct {
 }
 
 type ModelGroup struct {
-	Strategy string   `yaml:"strategy"`
-	Script   string   `yaml:"script"`
-	Targets  []Target `yaml:"targets"`
+	Strategy   string           `yaml:"strategy"`
+	Script     string           `yaml:"script"`
+	ScriptHTTP ScriptHTTPConfig `yaml:"script_http"`
+	Targets    []Target         `yaml:"targets"`
+}
+
+type ScriptHTTPConfig struct {
+	Enabled          bool              `yaml:"enabled" json:"enabled"`
+	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
+	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
+	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
+	Headers          map[string]string `yaml:"headers" json:"headers"`
 }
 
 type Target struct {
@@ -252,6 +261,28 @@ func (c *Config) Validate() error {
 		}
 		if strings.EqualFold(m.Strategy, "script") && m.Script == "" {
 			return fmt.Errorf("model group %s uses script strategy but has no script path", name)
+		}
+		if m.ScriptHTTP.Enabled {
+			if !strings.EqualFold(m.Strategy, "script") {
+				return fmt.Errorf("model group %s configures script_http but does not use script strategy", name)
+			}
+			if len(m.ScriptHTTP.AllowHosts) == 0 {
+				return fmt.Errorf("model group %s enables script_http but has no allow_hosts", name)
+			}
+			if m.ScriptHTTP.TimeoutMS < 0 {
+				return fmt.Errorf("model group %s has negative script_http timeout_ms", name)
+			}
+			if m.ScriptHTTP.TimeoutMS > 5000 {
+				return fmt.Errorf("model group %s script_http timeout_ms must be <= 5000", name)
+			}
+			if m.ScriptHTTP.MaxResponseBytes < 0 {
+				return fmt.Errorf("model group %s has negative script_http max_response_bytes", name)
+			}
+			for header := range m.ScriptHTTP.Headers {
+				if !scriptConfigHeaderAllowed(header) {
+					return fmt.Errorf("model group %s script_http header %s is not allowed", name, header)
+				}
+			}
 		}
 		if len(m.Targets) == 0 {
 			return fmt.Errorf("model group %s has no targets", name)

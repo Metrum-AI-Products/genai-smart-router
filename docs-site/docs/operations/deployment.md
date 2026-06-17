@@ -27,8 +27,12 @@ flowchart TB
 |---|---|
 | Router config | Providers, model groups, caller tokens, limits, cache, usage store |
 | Provider key environment | Upstream provider credentials loaded server-side |
-| Routing script | Optional TypeScript policy |
+| Routing script | Optional TypeScript policy plus packaged helper/dependency files |
 | Usage database | Durable reporting and cost-management data |
+
+TypeScript routing scripts are loaded from the deployment filesystem. Package local helper imports and any locked third-party dependencies with the script directory, or deploy a pre-bundled script artifact. The router does not install npm packages at runtime.
+
+External routing-policy calls are controlled by model-group config. Enable `script_http` only for groups that need it, list exact allowed service hosts, keep timeout and response-size limits small, and put policy-service auth in env-expanded config headers rather than script source.
 
 ## Browser And API Behavior
 

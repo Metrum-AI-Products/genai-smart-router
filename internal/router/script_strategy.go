@@ -1,9 +1,12 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
+	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,8 +16,9 @@ import (
 )
 
 type scriptStrategy struct {
-	path    string
-	program *goja.Program
+	path       string
+	program    *goja.Program
+	httpConfig ScriptHTTPConfig
 }
 
 type scriptInput struct {
@@ -60,7 +64,7 @@ type scriptOutput struct {
 	ClassLabel      string `json:"classLabel"`
 }
 
-func loadScriptStrategy(baseDir, scriptPath string) (*scriptStrategy, error) {
+func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig) (*scriptStrategy, error) {
 	if scriptPath == "" {
 		return nil, fmt.Errorf("missing script path")
 	}
@@ -71,42 +75,47 @@ func loadScriptStrategy(baseDir, scriptPath string) (*scriptStrategy, error) {
 		}
 		resolved = filepath.Join(baseDir, scriptPath)
 	}
-	source, err := os.ReadFile(resolved)
-	if err != nil {
-		return nil, err
-	}
-	result := api.Transform(string(source), api.TransformOptions{
-		Loader:            api.LoaderTS,
+	result := api.Build(api.BuildOptions{
+		EntryPoints:       []string{resolved},
+		Bundle:            true,
+		Write:             false,
 		Format:            api.FormatIIFE,
 		GlobalName:        "routerScript",
 		Target:            api.ES2018,
 		Sourcemap:         api.SourceMapNone,
 		LegalComments:     api.LegalCommentsNone,
-		Supported:         map[string]bool{"dynamic-import": false},
-		Sourcefile:        filepath.Base(resolved),
 		Platform:          api.PlatformNeutral,
 		TreeShaking:       api.TreeShakingTrue,
 		KeepNames:         true,
 		MinifyWhitespace:  false,
 		MinifyIdentifiers: false,
 		MinifySyntax:      false,
+		AbsWorkingDir:     filepath.Dir(resolved),
+		SourceRoot:        filepath.Dir(resolved),
+		LogLevel:          api.LogLevelSilent,
 	})
 	if len(result.Errors) > 0 {
 		return nil, fmt.Errorf("typescript transform: %s", result.Errors[0].Text)
 	}
-	program, err := goja.Compile(resolved, string(result.Code), false)
+	if len(result.OutputFiles) == 0 {
+		return nil, fmt.Errorf("typescript transform produced no output")
+	}
+	program, err := goja.Compile(resolved, string(result.OutputFiles[0].Contents), false)
 	if err != nil {
 		return nil, err
 	}
-	return &scriptStrategy{path: resolved, program: program}, nil
+	return &scriptStrategy{path: resolved, program: program, httpConfig: httpConfig}, nil
 }
 
 func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
 	vm := goja.New()
-	timer := time.AfterFunc(50*time.Millisecond, func() {
+	timer := time.AfterFunc(s.timeout(), func() {
 		vm.Interrupt("script routing timed out")
 	})
 	defer timer.Stop()
+	if err := s.installRouterAPI(vm); err != nil {
+		return decision{}, err
+	}
 	if _, err := vm.RunProgram(s.program); err != nil {
 		return decision{}, fmt.Errorf("run %s: %w", s.path, err)
 	}
@@ -154,6 +163,144 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, pr
 		Strategy:   "script",
 		GroupName:  group,
 	}, nil
+}
+
+func (s *scriptStrategy) timeout() time.Duration {
+	if !s.httpConfig.Enabled || s.httpConfig.TimeoutMS <= 0 {
+		return 50 * time.Millisecond
+	}
+	timeout := time.Duration(s.httpConfig.TimeoutMS)*time.Millisecond + 50*time.Millisecond
+	if timeout > 5050*time.Millisecond {
+		return 5050 * time.Millisecond
+	}
+	return timeout
+}
+
+func (s *scriptStrategy) installRouterAPI(vm *goja.Runtime) error {
+	routerAPI := vm.NewObject()
+	if err := routerAPI.Set("fetchJSON", func(call goja.FunctionCall) goja.Value {
+		if !s.httpConfig.Enabled {
+			panic(vm.NewTypeError("router.fetchJSON is disabled for this model group"))
+		}
+		rawURL := call.Argument(0).String()
+		options := map[string]any{}
+		if len(call.Arguments) > 1 && !goja.IsUndefined(call.Argument(1)) && !goja.IsNull(call.Argument(1)) {
+			if err := vm.ExportTo(call.Argument(1), &options); err != nil {
+				panic(vm.NewTypeError("router.fetchJSON options must be an object"))
+			}
+		}
+		resp, err := s.fetchJSON(rawURL, options)
+		if err != nil {
+			panic(vm.NewTypeError("router.fetchJSON: %s", err.Error()))
+		}
+		return vm.ToValue(resp)
+	}); err != nil {
+		return err
+	}
+	return vm.Set("router", routerAPI)
+}
+
+func (s *scriptStrategy) fetchJSON(rawURL string, options map[string]any) (map[string]any, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return nil, fmt.Errorf("URL scheme must be http or https")
+	}
+	if !scriptHostAllowed(u.Hostname(), s.httpConfig.AllowHosts) {
+		return nil, fmt.Errorf("host %s is not allowed", u.Hostname())
+	}
+	method := "GET"
+	if rawMethod, ok := options["method"].(string); ok && rawMethod != "" {
+		method = strings.ToUpper(rawMethod)
+	}
+	if method != "GET" && method != "POST" {
+		return nil, fmt.Errorf("method %s is not allowed", method)
+	}
+	var body io.Reader
+	if rawBody, ok := options["body"]; ok && rawBody != nil {
+		b, err := json.Marshal(rawBody)
+		if err != nil {
+			return nil, fmt.Errorf("body must be JSON-serializable")
+		}
+		body = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, u.String(), body)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if rawHeaders, ok := options["headers"].(map[string]any); ok {
+		for name, value := range rawHeaders {
+			if !scriptHeaderAllowed(name) {
+				return nil, fmt.Errorf("header %s is not allowed", name)
+			}
+			req.Header.Set(name, fmt.Sprint(value))
+		}
+	}
+	for name, value := range s.httpConfig.Headers {
+		if !scriptConfigHeaderAllowed(name) {
+			return nil, fmt.Errorf("configured header %s is not allowed", name)
+		}
+		req.Header.Set(name, value)
+	}
+	timeout := time.Duration(s.httpConfig.TimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 200 * time.Millisecond
+	}
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	limit := s.httpConfig.MaxResponseBytes
+	if limit <= 0 {
+		limit = 64 << 10
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("response exceeds max_response_bytes")
+	}
+	var data any
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return nil, fmt.Errorf("response is not JSON")
+		}
+	}
+	return map[string]any{
+		"ok":     resp.StatusCode >= 200 && resp.StatusCode < 300,
+		"status": resp.StatusCode,
+		"body":   data,
+	}, nil
+}
+
+func scriptHostAllowed(host string, allowHosts []string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, allowed := range allowHosts {
+		allowed = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(allowed), "."))
+		if allowed != "" && host == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func scriptHeaderAllowed(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return name == "content-type" || name == "accept" || strings.HasPrefix(name, "x-")
+}
+
+func scriptConfigHeaderAllowed(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return scriptHeaderAllowed(name) || name == "authorization"
 }
 
 func buildScriptCaller(caller *callerRuntime, tokenID string) *scriptCaller {

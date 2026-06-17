@@ -69,6 +69,31 @@ models:
       - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
 ```
 
+## Scripted Routing Options
+
+Use `strategy: script` when a model group should choose a target with TypeScript policy. Script paths are resolved relative to the config file.
+
+```yaml
+models:
+  adaptive:
+    strategy: script
+    script: scripts/router.ts
+    script_http:
+      enabled: true
+      allow_hosts: [routing-policy.internal.example]
+      timeout_ms: 200
+      max_response_bytes: 65536
+      headers:
+        Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+`script_http` is disabled unless explicitly enabled for that model group. `allow_hosts` is deployment-owned and must list exact hostnames the script may call through `router.fetchJSON`. `headers` can carry deployment-owned policy-service authentication such as `Authorization: ${ROUTING_POLICY_AUTH_HEADER}` without exposing it to script code. `timeout_ms` is capped at `5000`; smaller timeouts and response-size limits are recommended because routing happens before the provider request is sent.
+
+Relative imports such as `import { scorePrompt } from "./policy"` are bundled from the script directory at router startup. Package local helpers and any third-party dependencies with the deployment; the router does not install packages at runtime.
+
 ## Caller Tokens And Allow Lists
 
 ```yaml

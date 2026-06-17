@@ -289,24 +289,78 @@ models:
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 ```
 
-The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. The default `scripts/router.ts` does three things:
+The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. Proxy users still request the model group name, such as `default` or `big-coder`; the script chooses one backing target from that group's configured `targets`.
+
+The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; network calls and file access are not part of the script runtime.
+
+Relative TypeScript imports are bundled at router startup, so a script can use local helpers such as `import { scorePrompt } from "./policy"`. Keep deployment-owned helpers next to the script, for example `config/scripts/router.ts`, `config/scripts/policy.ts`, and `config/scripts/scoring.ts`.
+
+Third-party dependencies must be installed, locked, and packaged before deployment. The router bundles from the deployment filesystem at startup; it does not run `npm install`, download packages, or resolve network dependencies at runtime. For npm-based policy helpers, manage dependencies under the script directory, package `package.json`, the lockfile, and the resolved dependency tree or a pre-bundled script artifact, and keep that tree free of provider keys, router tokens, and private host credentials. For large dependencies or native modules, prefer pre-bundling during release and deploying the generated entrypoint.
+
+External policy calls are opt-in per model group through deployment config:
+
+```yaml
+models:
+  default:
+    strategy: script
+    script: scripts/router.ts
+    script_http:
+      enabled: true
+      allow_hosts: [routing-policy.internal.example]
+      timeout_ms: 200
+      max_response_bytes: 65536
+      headers:
+        Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+Scripts call external policy with `router.fetchJSON(url, options)`, not browser `fetch`. The helper supports `GET` and `POST`, JSON request bodies, JSON responses, script-supplied headers limited to `Accept`, `Content-Type`, and `X-*`, and only hosts in the model group's `script_http.allow_hosts`. Put policy-service auth in deployment config with `script_http.headers`, for example `Authorization: ${ROUTING_POLICY_AUTH_HEADER}`, rather than in script source. `timeout_ms` is capped at `5000`; use smaller values for routing policy because it runs before the upstream model request.
+
+The default `scripts/router.ts` does three things:
 
 - Removes targets whose provider key is not configured or whose target weight is zero.
 - Applies named regex rules against safe caller-key metadata and safe target-key metadata.
 - Falls back to weighted random routing across eligible targets, using group target weights as relative probabilities.
 
-Minimal weighted example:
+Prompt-size routing example:
 
 ```ts
-export function route(ctx) {
+type Target = {
+  provider: string;
+  model: string;
+  tier?: string;
+  weight: number;
+  keyConfigured: boolean;
+};
+
+type RouteContext = {
+  text: string;
+  targets: Target[];
+};
+
+export function route(ctx: RouteContext) {
   const eligible = ctx.targets
-    .map((target, index) => ({ target, index, weight: Math.max(0, target.weight || 1) }))
-    .filter((entry) => entry.weight > 0 && entry.target.keyConfigured);
-  return { targetIndex: eligible[0]?.index || 0, classLabel: "script:minimal" };
+    .map((target, index) => ({ target, index }))
+    .filter((entry) => entry.target.keyConfigured && entry.target.weight > 0);
+
+  if (eligible.length === 0) {
+    return { targetIndex: 0, classLabel: "prompt-size:no-eligible-targets" };
+  }
+
+  const preferredTier = ctx.text.length > 8000 ? "heavy" : "cheap";
+  const preferred = eligible.find((entry) => entry.target.tier === preferredTier) || eligible[0];
+
+  return {
+    targetIndex: preferred.index,
+    fallbackIndexes: eligible
+      .filter((entry) => entry.index !== preferred.index)
+      .map((entry) => entry.index),
+    classLabel: `prompt-size:${preferredTier}`,
+  };
 }
 ```
-
-The router transpiles TypeScript with embedded esbuild and evaluates it with an embedded JS runtime. Scripts receive request metadata/text, safe caller metadata, and configured target metadata including provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list.
 
 Caller metadata enables key-specific routing with regular expressions over the generated router-token prefix. Target metadata also lets the script route to targets backed by a specific configured provider key identifier or environment variable name:
 

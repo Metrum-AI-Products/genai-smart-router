@@ -268,6 +268,10 @@ The `allow` list is the model-group authorization boundary for each router key. 
 
 For advanced policy, a model group can delegate selection to a TypeScript script evaluated inside the router process. The script receives safe request metadata, caller metadata, and target metadata. It does not receive raw caller tokens or raw provider API keys.
 
+Admins configure this with `strategy: script` on a model group and a script path such as `scripts/router.ts`. Proxy users still request the model group name; the script chooses one configured backing target internally.
+
+Script policy can be split across local TypeScript helper files and bundled at router startup. Deployments that need third-party helpers package locked dependencies or a pre-bundled artifact with the routing script. External policy-service calls are available only when the model group enables `script_http` with deployment-owned allowed hosts, timeouts, and response-size limits.
+
 Example use cases:
 
 - Route a specific project or token prefix to a dedicated model group.
@@ -286,6 +290,8 @@ flowchart TD
   Filter --> Score[Score by weight, tier, cost, text, policy]
   Score --> Pick[Return selected target index]
 ```
+
+A documented and regression-tested pattern uses `ctx.text.length` to keep short prompts on a `cheap` tier target and send larger prompts to a `heavy` tier target, while returning fallback indexes for the remaining configured targets. The full customer-facing example is in the hosted Docusaurus TypeScript routing policy page.
 
 ## Authentication And Key Handling
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1042,10 +1043,38 @@ func TestTypeScriptRoutingStrategy(t *testing.T) {
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "router.ts")
 	if err := os.WriteFile(scriptPath, []byte(`
-type Ctx = { text: string; targets: Array<{ provider: string; model: string; tier?: string }> };
-export function route(ctx: Ctx) {
-  const targetIndex = ctx.text.includes("architecture") ? 1 : 0;
-  return { targetIndex, classLabel: "test:" + targetIndex };
+type Target = {
+  provider: string;
+  model: string;
+  tier?: string;
+  weight: number;
+  keyConfigured: boolean;
+};
+
+type RouteContext = {
+  text: string;
+  targets: Target[];
+};
+
+export function route(ctx: RouteContext) {
+  const eligible = ctx.targets
+    .map((target, index) => ({ target, index }))
+    .filter((entry) => entry.target.keyConfigured && entry.target.weight > 0);
+
+  if (eligible.length === 0) {
+    return { targetIndex: 0, classLabel: "prompt-size:no-eligible-targets" };
+  }
+
+  const preferredTier = ctx.text.length > 8000 ? "heavy" : "cheap";
+  const preferred = eligible.find((entry) => entry.target.tier === preferredTier) || eligible[0];
+
+  return {
+    targetIndex: preferred.index,
+    fallbackIndexes: eligible
+      .filter((entry) => entry.index !== preferred.index)
+      .map((entry) => entry.index),
+    classLabel: "prompt-size:" + preferredTier,
+  };
 }
 `), 0600); err != nil {
 		t.Fatal(err)
@@ -1056,8 +1085,8 @@ export function route(ctx: Ctx) {
 		Strategy: "script",
 		Script:   scriptPath,
 		Targets: []Target{
-			{Provider: "mock", Model: "cheap-model", Tier: "cheap"},
-			{Provider: "mock", Model: "heavy-model", Tier: "heavy"},
+			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 70},
+			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 30},
 		},
 	}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "scripted")
@@ -1068,16 +1097,33 @@ export function route(ctx: Ctx) {
 	defer svc.Close()
 	dec, err := svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
 		Model:    "scripted",
-		Messages: []IRMessage{{Role: "user", Content: "architecture question"}},
+		Messages: []IRMessage{{Role: "user", Content: "short question"}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
 	if err != nil {
-		t.Fatalf("script pick: %v", err)
+		t.Fatalf("short script pick: %v", err)
 	}
-	if dec.Target.Model != "heavy-model" {
-		t.Fatalf("direct script pick selected %q", dec.Target.Model)
+	if dec.Target.Model != "cheap-model" {
+		t.Fatalf("short script pick selected %q", dec.Target.Model)
+	}
+	if dec.ClassLabel == nil || *dec.ClassLabel != "prompt-size:cheap" {
+		t.Fatalf("short script class label=%v", dec.ClassLabel)
+	}
+	if len(dec.Fallbacks) == 0 || dec.Fallbacks[0].Model != "heavy-model" {
+		t.Fatalf("short script fallbacks=%#v", dec.Fallbacks)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"scripted","messages":[{"role":"user","content":"architecture question"}]}`))
+	dec, err = svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
+		Model:    "scripted",
+		Messages: []IRMessage{{Role: "user", Content: strings.Repeat("large prompt ", 900)}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("long script pick: %v", err)
+	}
+	if dec.Target.Model != "heavy-model" {
+		t.Fatalf("long script pick selected %q", dec.Target.Model)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"scripted","messages":[{"role":"user","content":"`+strings.Repeat("large prompt ", 900)+`"}]}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
@@ -1146,6 +1192,152 @@ export function route(ctx: Ctx) {
 	}
 	if gotModel != "alice-key-model" {
 		t.Fatalf("script selected model %q", gotModel)
+	}
+}
+
+func TestTypeScriptRoutingCanUseBundledImportsAndAllowedHTTP(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "script_http_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "script http routed"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer policy-secret" {
+			t.Fatalf("missing policy auth header %q", r.Header.Get("Authorization"))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tier": "heavy"})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "policy.ts"), []byte(`
+export function chooseTier(text: string) {
+  return text.includes("force") ? "heavy" : "cheap";
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(dir, "router.ts")
+	if err := os.WriteFile(scriptPath, []byte(`
+import { chooseTier } from "./policy";
+
+type RouteContext = {
+  text: string;
+  targets: Array<{ tier?: string; keyConfigured: boolean; weight: number }>;
+};
+
+export function route(ctx: RouteContext) {
+  const response = router.fetchJSON("`+policy.URL+`/route", {
+    method: "POST",
+    body: { hint: chooseTier(ctx.text) },
+  });
+  const tier = response.ok ? response.body.tier : chooseTier(ctx.text);
+  const targetIndex = ctx.targets.findIndex((target) =>
+    target.keyConfigured && target.weight > 0 && target.tier === tier
+  );
+  return { targetIndex: targetIndex >= 0 ? targetIndex : 0, classLabel: "external-policy:" + tier };
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["script-http"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		ScriptHTTP: ScriptHTTPConfig{
+			Enabled:          true,
+			AllowHosts:       []string{policyURL.Hostname()},
+			TimeoutMS:        500,
+			MaxResponseBytes: 4096,
+			Headers:          map[string]string{"Authorization": "Bearer policy-secret"},
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 50},
+			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 50},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "script-http")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"script-http","messages":[{"role":"user","content":"force external policy"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "heavy-model" {
+		t.Fatalf("script selected model %q", gotModel)
+	}
+}
+
+func TestTypeScriptRoutingRejectsHTTPHostOutsideAllowlist(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream should not be called when script policy fails")
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"tier": "heavy"})
+	}))
+	defer policy.Close()
+
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "router.ts")
+	if err := os.WriteFile(scriptPath, []byte(`
+export function route() {
+  router.fetchJSON("`+policy.URL+`/route");
+  return { targetIndex: 0 };
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["script-http-blocked"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		ScriptHTTP: ScriptHTTPConfig{
+			Enabled:    true,
+			AllowHosts: []string{"policy.internal.example"},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "script-http-blocked")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"script-http-blocked","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "routing-failed") {
+		t.Fatalf("unexpected body=%s", rr.Body.String())
 	}
 }
 

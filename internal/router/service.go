@@ -461,7 +461,7 @@ func (s *Service) loadScripts() error {
 		if !strings.EqualFold(group.Strategy, "script") {
 			continue
 		}
-		strat, err := loadScriptStrategy(s.cfg.baseDir, group.Script)
+		strat, err := loadScriptStrategy(s.cfg.baseDir, group.Script, group.ScriptHTTP)
 		if err != nil {
 			return fmt.Errorf("load script for model group %s: %w", name, err)
 		}
