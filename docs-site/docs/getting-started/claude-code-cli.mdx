@@ -39,6 +39,8 @@ claude --bare --print --model big-coder \
 claude --model big-coder
 ```
 
+Use the same deployment-defined coding group for mixed coding and image tasks. In these examples the coding group is `big-coder`; your deployment may use a different group name. When a Claude Code request includes image content, the router filters to multimodal Anthropic Messages-compatible targets inside that group; text-only and ordinary tool requests continue to use the normal coding targets.
+
 ## Tool Smoke
 
 ```bash

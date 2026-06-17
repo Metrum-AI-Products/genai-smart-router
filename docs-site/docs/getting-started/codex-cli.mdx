@@ -73,7 +73,7 @@ codex exec --ignore-user-config --ephemeral \
 
 ## Image Smoke
 
-Codex CLI supports image attachments with `--image`. The router receives those as OpenAI Responses image inputs and filters to vision-capable upstream targets.
+Codex CLI supports image attachments with `--image`. Use the same deployment-defined coding model group for mixed code and image tasks. In these examples the coding group is `big-coder`; your deployment may use a different group name. The router receives image attachments as OpenAI Responses image inputs and filters that request to multimodal tool-capable upstream targets inside the group.
 
 <RouterCodeBlock>
 {`
@@ -85,7 +85,7 @@ codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
-  -c 'model="default"' \
+  -c 'model="big-coder"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \

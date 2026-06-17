@@ -47,6 +47,16 @@ type decision struct {
 	TargetIndex int
 }
 
+type routingEligibilityError struct {
+	Model        string
+	Dialect      string
+	Requirements []string
+}
+
+func (e routingEligibilityError) Error() string {
+	return fmt.Sprintf("no eligible targets for model group %q", e.Model)
+}
+
 type requestContext struct {
 	id      string
 	start   time.Time
@@ -296,6 +306,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	}
 	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
+		var eligibilityErr routingEligibilityError
+		if errors.As(err, &eligibilityErr) {
+			s.writeRoutingEligibilityError(w, rc, eligibilityErr)
+			return
+		}
 		s.writeError(w, rc, http.StatusBadGateway, "routing-failed")
 		return
 	}
@@ -337,7 +352,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.Attempts = attempts
 	rc.rec.FallbackUsed = fallbackUsed
 	if err != nil {
-		s.writeError(w, rc, http.StatusBadGateway, "upstream-failed")
+		s.writeUpstreamFailureError(w, rc, req, dec, attempts, err)
 		return
 	}
 	if resp != nil {
@@ -454,7 +469,11 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 	targets := append([]Target(nil), group.Targets...)
 	targets = s.targetsForRequest(targets, req, callerDialect)
 	if len(targets) == 0 {
-		return decision{}, errors.New("no targets")
+		return decision{}, routingEligibilityError{
+			Model:        groupName,
+			Dialect:      callerDialect,
+			Requirements: routingRequirements(req, callerDialect),
+		}
 	}
 	strategy := strings.ToLower(group.Strategy)
 	var label *string
@@ -611,6 +630,14 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 		}
 	}
 	return out
+}
+
+func routingRequirements(req *IRRequest, callerDialect string) []string {
+	requirements := requestInputModalities(req)
+	if len(req.Tools) > 0 {
+		requirements = append(requirements, "tools", callerDialect+"_tool_passthrough")
+	}
+	return requirements
 }
 
 func targetSupportsInputModalities(target Target, required []string) bool {
@@ -973,6 +1000,73 @@ func (s *Service) writeAdmissionError(w http.ResponseWriter, rc *requestContext,
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
 	s.writeError(w, rc, ad.Status, ad.Reason)
+}
+
+func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *requestContext, err routingEligibilityError) {
+	code := "no-eligible-target"
+	if rc != nil {
+		rc.rec.Status = http.StatusBadGateway
+		rc.rec.Error = &code
+		s.finish(rc, http.StatusBadGateway, &code)
+	}
+	message := fmt.Sprintf("no eligible upstream target is configured for model %q with %s requests requiring %s", err.Model, err.Dialect, strings.Join(err.Requirements, ", "))
+	writeJSON(w, http.StatusBadGateway, map[string]any{
+		"error": map[string]any{
+			"type":    code,
+			"message": message,
+			"details": map[string]any{
+				"model":        err.Model,
+				"dialect":      err.Dialect,
+				"requirements": err.Requirements,
+				"hint":         "ask the router administrator to add or enable an upstream target for this model group that supports the requested API dialect, tools, and input modalities",
+			},
+		},
+	})
+}
+
+func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestContext, req *IRRequest, dec decision, attempts int, err error) {
+	code := "upstream-failed"
+	if rc != nil {
+		rc.rec.Status = http.StatusBadGateway
+		rc.rec.Error = &code
+		s.finish(rc, http.StatusBadGateway, &code)
+	}
+	targets := append([]Target{dec.Target}, dec.Fallbacks...)
+	attempted := make([]map[string]string, 0, min(attempts, len(targets)))
+	for i := 0; i < attempts && i < len(targets); i++ {
+		attempted = append(attempted, map[string]string{
+			"provider": targets[i].Provider,
+			"model":    targets[i].Model,
+		})
+	}
+	message := fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", req.Model, attempts)
+	writeJSON(w, http.StatusBadGateway, map[string]any{
+		"error": map[string]any{
+			"type":    code,
+			"message": message,
+			"details": map[string]any{
+				"model":        req.Model,
+				"dialect":      rc.dialect,
+				"attempts":     attempts,
+				"targets":      attempted,
+				"last_error":   sanitizeUpstreamError(err),
+				"retryable":    true,
+				"request_id":   rc.id,
+				"fallbackUsed": attempts > 1,
+			},
+		},
+	})
+}
+
+func sanitizeUpstreamError(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := err.Error()
+	if len(text) > 240 {
+		text = text[:240]
+	}
+	return text
 }
 
 func (s *Service) writeError(w http.ResponseWriter, rc *requestContext, status int, code string) {

@@ -1979,6 +1979,75 @@ func TestAnthropicToolPassthroughCanUseOpenRouterAnthropicTarget(t *testing.T) {
 	}
 }
 
+func TestNoEligibleTargetReturnsActionableError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream should not be called when no target supports the request shape")
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "mock",
+		Model:           "vision-chat-only",
+		InputModalities: []string{"text", "image"},
+		ToolSupport:     ToolSupport{OpenAIChat: []string{"tools"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
+
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{
+		"model":"vision",
+		"max_tokens":512,
+		"tools":[{"name":"noop","description":"No-op","input_schema":{"type":"object","properties":{}}}],
+		"messages":[{"role":"user","content":[
+			{"type":"text","text":"Read the image."},
+			{"type":"image","source":{"type":"url","url":"` + receiptImageURL + `"}}
+		]}]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) ||
+		!strings.Contains(rr.Body.String(), `anthropic_tool_passthrough`) ||
+		!strings.Contains(rr.Body.String(), `image`) {
+		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+}
+
+func TestUpstreamFailureReturnsActionableError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary outage", http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"upstream-failed"`) ||
+		!strings.Contains(rr.Body.String(), `"attempts":1`) ||
+		!strings.Contains(rr.Body.String(), `"provider":"mock"`) ||
+		!strings.Contains(rr.Body.String(), `retryable upstream status 503`) {
+		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+}
+
 const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {

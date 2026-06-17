@@ -391,6 +391,12 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 
 func violatesCurrentRoutingPolicy(target Target) bool {
 	needle := strings.ToLower(target.Provider + "/" + target.Model + "/" + target.ModelRef)
+	if target.ToolOnly && stringSliceContains(target.InputModalities, "image") && (target.Provider == "openrouter_responses" || target.Provider == "openrouter_anthropic") {
+		switch target.ModelRef {
+		case "qwen3-7-plus-nitro", "openrouter-claude-sonnet-4-6", "openrouter-xai-grok-4-3", "openrouter-minimax-m3":
+			return false
+		}
+	}
 	if strings.Contains(needle, "moonshotai/kimi") {
 		return true
 	}

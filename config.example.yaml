@@ -280,6 +280,78 @@ providers:
         tool_support:
           openai_responses:
           - function
+      qwen3-7-plus-nitro:
+        model: qwen/qwen3.7-plus:nitro
+        tier: vision
+        input_price_per_million_usd: 0.32
+        output_price_per_million_usd: 1.28
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text
+        tool_support:
+          openai_responses:
+          - function
+      openrouter-claude-sonnet-4-6:
+        model: anthropic/claude-sonnet-4.6
+        tier: vision
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text
+        tool_support:
+          openai_responses:
+          - function
+      openrouter-xai-grok-4-3:
+        model: x-ai/grok-4.3
+        tier: vision
+        input_price_per_million_usd: 1.25
+        output_price_per_million_usd: 2.5
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text
+        tool_support:
+          openai_responses:
+          - function
+      openrouter-minimax-m3:
+        model: minimax/minimax-m3
+        tier: vision
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text
+        tool_support:
+          openai_responses:
+          - function
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter
@@ -311,6 +383,74 @@ providers:
         tool_support:
           anthropic_messages:
           - client_tools
+      qwen3-7-plus-nitro:
+        model: qwen/qwen3.7-plus:nitro
+        tier: vision
+        input_price_per_million_usd: 0.32
+        output_price_per_million_usd: 1.28
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17
+        tool_support:
+          anthropic_messages:
+          - client_tools
+      openrouter-claude-sonnet-4-6:
+        model: anthropic/claude-sonnet-4.6
+        tier: vision
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17
+        tool_support:
+          anthropic_messages:
+          - client_tools
+      openrouter-xai-grok-4-3:
+        model: x-ai/grok-4.3
+        tier: vision
+        input_price_per_million_usd: 1.25
+        output_price_per_million_usd: 2.5
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17
+        tool_support:
+          anthropic_messages:
+          - client_tools
+      openrouter-minimax-m3:
+        model: minimax/minimax-m3
+        tier: vision
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17
+        tool_support:
+          anthropic_messages:
+          - client_tools
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter
@@ -339,6 +479,18 @@ models:
     - provider: openrouter
       model_ref: openrouter-minimax-m3
       weight: 2
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
+      weight: 12
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 10
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 5
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 3
   default:
     strategy: weighted
     targets:
@@ -610,6 +762,38 @@ models:
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 4
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-xai-grok-4-3
+      weight: 3
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: openrouter-minimax-m3
+      weight: 1
+      tool_only: true
+    - provider: openrouter_responses
+      model_ref: qwen3-7-plus-nitro
+      weight: 2
+      tool_only: true
+    - provider: openrouter_anthropic
+      model_ref: qwen3-7-plus-nitro
       weight: 2
       tool_only: true
   agent-tools-smoke:

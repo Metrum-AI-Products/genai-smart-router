@@ -299,6 +299,8 @@ Cataloging a model does not route traffic to it. Add a cataloged model to a grou
 
 Image requests are detected across OpenAI Chat, OpenAI Responses, and Anthropic Messages content blocks. The router filters image-bearing requests to targets with `image` in `input_modalities`, skips text-only targets, bypasses response caching, and logs `input_has_image`, `input_image_count`, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when available.
 
+Coding-agent groups should not force users to switch between a language model group and a vision model group during one task. Add validated multimodal `tool_only` targets to deployment-defined coding groups, for example the reference `big-coder` group, for Codex Responses and Claude Code Anthropic Messages traffic. Text-only requests continue to use the normal weighted coding targets; image-bearing agent requests automatically filter to multimodal tool-capable targets.
+
 Vision catalog entries are not automatically active routes. For example, OpenRouter `qwen/qwen3-vl-32b-instruct:nitro` is cataloged with `input_modalities: [text, image]` and current OpenRouter pricing, but it should remain out of active OCR routes until a router-level receipt OCR smoke returns the expected merchant name.
 
 Do not add `~google/gemini-flash-latest`, `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, or `google/gemini-3.1-pro-preview` to active OpenRouter routes for the current production key until access is fixed and a live smoke passes. On 2026-06-17 the OpenRouter catalog advertised multimodal support for those IDs, but the current account returned a 404 provider-privacy error for direct image requests.
