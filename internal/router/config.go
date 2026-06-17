@@ -55,6 +55,7 @@ type ProviderConfig struct {
 	APIKeyEnv  string                   `yaml:"api_key_env"`
 	KeyID      string                   `yaml:"key_id"`
 	AuthScheme string                   `yaml:"auth_scheme"`
+	Headers    map[string]string        `yaml:"headers"`
 	Models     map[string]ProviderModel `yaml:"models"`
 }
 

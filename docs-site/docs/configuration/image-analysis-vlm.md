@@ -12,6 +12,23 @@ Add modality and pricing metadata to each upstream model after a direct provider
 
 ```yaml
 providers:
+  openai:
+    base_url: https://api.openai.com/v1
+    dialect: openai-responses
+    api_key: ${OPENAI_API_KEY}
+    api_key_env: OPENAI_API_KEY
+    key_id: openai-primary
+    models:
+      gpt-5-4-nano:
+        model: gpt-5.4-nano
+        tier: vision
+        input_price_per_million_usd: 0.20
+        output_price_per_million_usd: 1.25
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
+        pricing_updated_at: "2026-06-17"
+
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat
@@ -32,12 +49,51 @@ providers:
         tool_support:
           openai_chat: [tools, structured_outputs]
 
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    dialect: openai-chat
+    api_key: ${OPENROUTER_API_KEY}
+    api_key_env: OPENROUTER_API_KEY
+    key_id: openrouter-primary
+    models:
+      qwen3-7-plus-nitro:
+        model: qwen/qwen3.7-plus:nitro
+        tier: vision
+        input_price_per_million_usd: 0.32
+        output_price_per_million_usd: 1.28
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
+
+      openrouter-claude-sonnet-4-6:
+        model: anthropic/claude-sonnet-4.6
+        tier: vision
+        input_price_per_million_usd: 3.00
+        output_price_per_million_usd: 15.00
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: "2026-06-17"
+        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
+
 models:
   vision:
-    strategy: static
+    strategy: weighted
     targets:
       - provider: xai
         model_ref: grok-4-3
+        weight: 45
+      - provider: openrouter
+        model_ref: qwen3-7-plus-nitro
+        weight: 20
+      - provider: openrouter
+        model_ref: openrouter-claude-sonnet-4-6
+        weight: 15
+      - provider: openai
+        model_ref: gpt-5-4-nano
+        weight: 8
 ```
 
 Use `image_input_price_per_million_tokens_usd` when the provider reports image tokens. Use `image_input_price_per_image_usd` for internal chargeback or providers that bill per image. If neither image-specific field is set, image tokens use the normal input-token price.
@@ -153,3 +209,5 @@ curl "$ANTHROPIC_BASE_URL/v1/messages" \
 Image-bearing requests bypass response caching. The router logs `input_has_image`, `input_image_count`, `input_image_tokens` when the upstream reports them, calculated `image_cost_usd`, and upstream-reported billed cost when the provider includes it.
 
 Keep catalog-only VLM candidates out of active traffic until the exact API shapes you plan to support pass. Some providers advertise image support in a model catalog before the current account, region, or endpoint can actually serve image requests.
+
+For OpenRouter, validate the exact model ID and suffix you plan to route. On 2026-06-17, direct OpenRouter receipt-image smokes passed for `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.7-plus`, and `minimax/minimax-m3`. The same smoke failed or was not suitable for the current account on `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, and `google/gemini-3.1-pro-preview` because OpenRouter returned a provider privacy 404; `qwen/qwen3.6-flash` and `moonshotai/kimi-k2.7-code` returned empty content; `mistralai/mistral-medium-3-5` and `google/gemma-4-26b-a4b-it:nitro` returned the wrong merchant for this receipt.

@@ -25,9 +25,9 @@ providers:
         model: kimi-k2.7-code
         tier: heavy
         input_price_per_million_usd: 0.74
-        output_price_per_million_usd: 3.50
+        output_price_per_million_usd: 3.5
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat
@@ -39,13 +39,17 @@ providers:
         model: grok-4.3
         tier: heavy
         input_price_per_million_usd: 1.25
-        output_price_per_million_usd: 2.50
+        output_price_per_million_usd: 2.5
         image_input_price_per_million_tokens_usd: 1.25
-        input_modalities: [text, image]
-        output_modalities: [text]
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
         pricing_source: https://docs.x.ai/developers/models/grok-4.3
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and image smokes
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and
+          image smokes
         tool_support:
           openai_chat:
           - tools
@@ -60,12 +64,16 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
-        input_price_per_million_usd: 0.30
-        output_price_per_million_usd: 1.20
-        input_modalities: [text, image, video]
-        output_modalities: [text]
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        - image
+        - video
+        output_modalities:
+        - text
         pricing_source: https://platform.minimax.io/docs/pricing/overview
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           openai_chat:
           - tools
@@ -85,7 +93,7 @@ providers:
         input_price_per_million_usd: 0.09
         output_price_per_million_usd: 0.18
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           openai_chat:
           - tools
@@ -97,7 +105,7 @@ providers:
         input_price_per_million_usd: 0.06
         output_price_per_million_usd: 0.33
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           openai_chat:
           - tools
@@ -108,10 +116,72 @@ providers:
         tier: vision
         input_price_per_million_usd: 0.104
         output_price_per_million_usd: 0.416
-        input_modalities: [text, image]
-        output_modalities: [text]
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
+      openrouter-claude-sonnet-4-6:
+        model: anthropic/claude-sonnet-4.6
+        tier: vision
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17.
+      openrouter-xai-grok-4-3:
+        model: x-ai/grok-4.3
+        tier: vision
+        input_price_per_million_usd: 1.25
+        output_price_per_million_usd: 2.5
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17.
+      qwen3-7-plus-nitro:
+        model: qwen/qwen3.7-plus:nitro
+        tier: vision
+        input_price_per_million_usd: 0.32
+        output_price_per_million_usd: 1.28
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17; Nitro suffix validated by completion call.
+      openrouter-minimax-m3:
+        model: minimax/minimax-m3
+        tier: vision
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://openrouter.ai/api/v1/models
+        pricing_updated_at: '2026-06-17'
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17.
+    headers:
+      HTTP-Referer: https://llm-api-engg.metrum.ai
+      X-Title: smart-llmrouter
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -122,10 +192,15 @@ providers:
       gpt-5.4-nano:
         model: gpt-5.4-nano
         tier: small
-        input_price_per_million_usd: 0.20
+        input_price_per_million_usd: 0.2
         output_price_per_million_usd: 1.25
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
         pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           openai_responses:
           - function
@@ -139,10 +214,10 @@ providers:
       sonnet-4.6:
         model: claude-sonnet-4-6
         tier: heavy
-        input_price_per_million_usd: 3.00
-        output_price_per_million_usd: 15.00
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
         pricing_source: https://platform.claude.com/docs/en/about-claude/pricing
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           anthropic_messages:
           - client_tools
@@ -157,12 +232,16 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
-        input_price_per_million_usd: 0.30
-        output_price_per_million_usd: 1.20
-        input_modalities: [text, image, video]
-        output_modalities: [text]
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        - image
+        - video
+        output_modalities:
+        - text
         pricing_source: https://platform.minimax.io/docs/pricing/overview
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           anthropic_messages:
           - client_tools
@@ -178,9 +257,9 @@ providers:
         model: kimi-k2.7-code
         tier: heavy
         input_price_per_million_usd: 0.74
-        output_price_per_million_usd: 3.50
+        output_price_per_million_usd: 3.5
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           anthropic_messages:
           - client_tools
@@ -197,10 +276,13 @@ providers:
         input_price_per_million_usd: 0.09
         output_price_per_million_usd: 0.18
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           openai_responses:
           - function
+    headers:
+      HTTP-Referer: https://llm-api-engg.metrum.ai
+      X-Title: smart-llmrouter
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -215,7 +297,7 @@ providers:
         input_price_per_million_usd: 0.09
         output_price_per_million_usd: 0.18
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           anthropic_messages:
           - client_tools
@@ -225,16 +307,38 @@ providers:
         input_price_per_million_usd: 0.06
         output_price_per_million_usd: 0.33
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+        pricing_updated_at: '2026-06-17'
         tool_support:
           anthropic_messages:
           - client_tools
+    headers:
+      HTTP-Referer: https://llm-api-engg.metrum.ai
+      X-Title: smart-llmrouter
 models:
   vision:
-    strategy: static
+    strategy: weighted
     targets:
     - provider: xai
       model_ref: grok-4-3
+      weight: 45
+    - provider: openrouter
+      model_ref: qwen3-7-plus-nitro
+      weight: 20
+    - provider: openrouter
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 15
+    - provider: openai
+      model_ref: gpt-5.4-nano
+      weight: 8
+    - provider: minimax
+      model_ref: m3
+      weight: 5
+    - provider: openrouter
+      model_ref: openrouter-xai-grok-4-3
+      weight: 5
+    - provider: openrouter
+      model_ref: openrouter-minimax-m3
+      weight: 2
   default:
     strategy: weighted
     targets:
@@ -534,30 +638,6 @@ models:
     targets:
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
-# Optional TypeScript routing template. Keep commented unless you want this
-# model group active and have added it to caller allow lists.
-#
-# scripted-adaptive:
-#   strategy: script
-#   script: scripts/router.ts
-#   # script_http is disabled by default. Enable it only for deployments that
-#   # need a routing policy service, and list exact allowed hostnames.
-#   script_http:
-#     enabled: true
-#     allow_hosts: [routing-policy.internal.example]
-#     timeout_ms: 200
-#     max_response_bytes: 65536
-#     headers:
-#       Authorization: ${ROUTING_POLICY_AUTH_HEADER}
-#   targets:
-#   - provider: openrouter
-#     model_ref: deepseek-v4-flash-nitro
-#     tier: cheap
-#     weight: 70
-#   - provider: minimax
-#     model_ref: m3
-#     tier: heavy
-#     weight: 30
 callers:
 - id: standard-dev
   user: standard

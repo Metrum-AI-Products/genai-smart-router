@@ -294,7 +294,7 @@ func TestModelsEndpointReportsVisionInputModalities(t *testing.T) {
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "text-model", InputModalities: []string{"text"}},
-		{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
+		{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image", "video"}, OutputModalities: []string{"text"}},
 	}}
 	svc, err := New(cfg)
 	if err != nil {
@@ -325,6 +325,11 @@ func TestModelsEndpointReportsVisionInputModalities(t *testing.T) {
 	}
 	if !hasImage {
 		t.Fatalf("input_modalities missing image: %#v", first)
+	}
+	for _, modality := range modalities {
+		if modality != "text" && modality != "image" {
+			t.Fatalf("public input_modalities exposed client-incompatible modality %q: %#v", modality, first)
+		}
 	}
 }
 

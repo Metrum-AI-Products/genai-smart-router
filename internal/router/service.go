@@ -156,8 +156,9 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 	defer s.finish(rc, http.StatusOK, nil)
 	data := []map[string]any{}
 	for name := range rc.caller.allow {
-		modalities := s.supportedInputModalitiesForGroup(name)
-		hasImage := stringSliceContains(modalities, "image")
+		internalModalities := s.supportedInputModalitiesForGroup(name)
+		publicModalities := publicModelInputModalities(internalModalities)
+		hasImage := stringSliceContains(internalModalities, "image")
 		data = append(data, map[string]any{
 			"id":                               name,
 			"slug":                             name,
@@ -183,7 +184,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"additional_speed_tiers":           []string{},
 			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
 			"experimental_supported_tools":     s.supportedToolsForGroup(name),
-			"input_modalities":                 modalities,
+			"input_modalities":                 publicModalities,
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
 			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
 			"shell_type":                       "shell_command",
@@ -543,6 +544,9 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	for name, value := range provider.Headers {
+		httpReq.Header.Set(name, value)
+	}
 	if provider.APIKey != "" {
 		switch upstreamAuthScheme(provider, outDialect) {
 		case "x-api-key":
@@ -679,6 +683,14 @@ func (s *Service) supportedInputModalitiesForGroup(name string) []string {
 		if seen[modality] {
 			out = append(out, modality)
 		}
+	}
+	return out
+}
+
+func publicModelInputModalities(modalities []string) []string {
+	out := []string{"text"}
+	if stringSliceContains(modalities, "image") {
+		out = append(out, "image")
 	}
 	return out
 }

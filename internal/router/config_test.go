@@ -230,8 +230,18 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			continue
 		}
 		if name == "vision" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "xai" || group.Targets[0].Model != "grok-4.3" {
-				t.Fatalf("example config vision=%#v, want static xAI Grok 4.3 vision target", group)
+			if group.Strategy != "weighted" || len(group.Targets) < 2 {
+				t.Fatalf("example config vision=%#v, want weighted multi-target vision group", group)
+			}
+			seen := map[string]bool{}
+			for _, target := range group.Targets {
+				seen[target.Provider+":"+target.Model] = true
+				if !stringSliceContains(target.InputModalities, "image") {
+					t.Fatalf("example config vision target lacks image modality: %#v", target)
+				}
+			}
+			if !seen["xai:grok-4.3"] || !seen["openai:gpt-5.4-nano"] {
+				t.Fatalf("example config vision targets=%#v, want xAI Grok 4.3 and OpenAI GPT-5.4 Nano", group.Targets)
 			}
 			continue
 		}
