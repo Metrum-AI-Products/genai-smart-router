@@ -34,6 +34,26 @@ providers:
           openai_chat: [tools, tool_choice]
           openai_responses: [function]
 
+  xai:
+    base_url: https://api.x.ai/v1
+    dialect: openai-chat
+    api_key: ${XAI_API_KEY}
+    api_key_env: XAI_API_KEY
+    key_id: xai-primary
+    models:
+      grok-4-3:
+        model: grok-4.3
+        tier: vision
+        input_price_per_million_usd: 1.25
+        output_price_per_million_usd: 2.50
+        image_input_price_per_million_tokens_usd: 1.25
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://docs.x.ai/developers/models/grok-4.3
+        pricing_updated_at: "2026-06-17"
+        tool_support:
+          openai_chat: [tools, structured_outputs]
+
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -102,6 +122,11 @@ Weights are local to each model group. A target with weight `60` in `default` ha
 
 ```yaml
 models:
+  vision:
+    strategy: static
+    targets:
+      - { provider: xai, model_ref: grok-4-3 }
+
   default:
     strategy: weighted
     targets:

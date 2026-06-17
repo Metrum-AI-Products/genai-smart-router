@@ -230,6 +230,11 @@ providers:
           anthropic_messages:
           - client_tools
 models:
+  vision:
+    strategy: static
+    targets:
+    - provider: xai
+      model_ref: grok-4-3
   default:
     strategy: weighted
     targets:
@@ -564,6 +569,7 @@ callers:
   - default
   - fast
   - small
+  - vision
   rate:
     rpm: 120
     tpm: 200000
@@ -593,6 +599,7 @@ callers:
   - small
   - medium
   - high
+  - vision
   - agent-tools-smoke
   - claude-tools-smoke
   - agent-tools-smoke-openrouter

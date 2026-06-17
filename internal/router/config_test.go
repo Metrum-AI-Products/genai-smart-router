@@ -229,14 +229,20 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "vision" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "xai" || group.Targets[0].Model != "grok-4.3" {
+				t.Fatalf("example config vision=%#v, want static xAI Grok 4.3 vision target", group)
+			}
+			continue
+		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
 		assertActiveGroupPolicy(t, name, group)
 	}
 	wantAllows := map[string][]string{
-		"standard-dev": {"default", "fast", "small"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma"},
+		"standard-dev": {"default", "fast", "small", "vision"},
+		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma"},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
