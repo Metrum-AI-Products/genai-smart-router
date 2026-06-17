@@ -52,6 +52,7 @@ These instructions apply to the whole repository.
   - `POST <base_url>/chat/completions`
   - body: `{"model":"<model>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}`
 - OpenRouter Nitro variants may not appear as separate IDs in `/models`; validate by making a real completion call with the `:nitro` suffix.
+- OpenRouter reasoning-heavy models such as `z-ai/glm-5.2:nitro` can return HTTP 200 with empty assistant content when `max_tokens` is too small because the budget is spent on reasoning. Before activating or increasing weight for such models, smoke test both a tiny budget and a realistic budget. For GLM 5.2, use a realistic smoke such as `max_tokens: 1024`; note if low-budget requests need a `reasoning.max_tokens` cap or should not be used as acceptance evidence.
 - For OpenRouter candidates intended for coding agents, validate all configured skins before adding them to active groups: `/chat/completions`, `/responses` with a function tool, and `/messages` with an Anthropic-style tool. Keep `openrouter`, `openrouter_responses`, and `openrouter_anthropic` model catalogs in sync for models that pass all three checks.
 - MiniMax Codex smoke should use MiniMax-M3 through a Responses-compatible endpoint and Codex `wire_api="responses"`.
 - If a direct provider smoke returns 403 or model-not-found, do not add that model to active route targets.
@@ -112,7 +113,7 @@ For code changes that affect runtime behavior or embedded hosted docs:
 4. Build the amd64 Docker package:
    - `rtk make package-docker GOOS=linux GOARCH=amd64`
 5. Copy `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz` to the host with `scp`.
-5. On the host:
+6. On the host:
    - back up `/opt/smart-llmrouter` to `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`
    - unpack the package into a fresh `/opt/smart-llmrouter`
    - copy forward live `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` from the backup
@@ -120,12 +121,12 @@ For code changes that affect runtime behavior or embedded hosted docs:
    - `sudo docker load -i images/smart-llmrouter-<version>-linux-amd64.tar`
    - `sudo docker compose config >/dev/null`
    - `sudo docker compose up -d`
-6. Verify health, route behavior, and hosted docs when relevant:
+7. Verify health, route behavior, and hosted docs when relevant:
    - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
    - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`
    - authenticated `/v1/models` or completion smoke for API compatibility
-7. Update `deployment.md` with image/package tag, source commit, backup path when useful, and validation results.
-8. Commit the deployment note after production verification.
+8. Update `deployment.md` with image/package tag, source commit, backup path when useful, and validation results.
+9. Commit the deployment note after production verification.
 
 ## Router Smoke Tests
 
@@ -135,7 +136,7 @@ Authenticated production chat smoke:
 rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && TOKEN=$(sudo cat ROUTER_TOKEN.txt) && curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d "{\"model\":\"high\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK only.\"}],\"max_tokens\":16,\"stream\":false}"'
 ```
 
-Use `high` for deterministic failover-first checks, and use repeated calls for weighted groups such as `big-coder`.
+Use `high` for deterministic failover-first checks, and use repeated calls for weighted groups such as `big-coder`. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
 
 ## CLI E2E Expectations
 
