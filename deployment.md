@@ -16,8 +16,8 @@ Last deployed: 2026-06-17
 
 ## Deployed Version
 
-- Router package/image version: `7f121b6-linux-amd64`
-- Source commit: `7f121b6`
+- Router package/image version: `bac7711-linux-amd64`
+- Source commit: `bac7711`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,7 +54,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:harbor-go-sublist-docs-20260615-linux-amd64
+compose-router-1   smart-llmrouter:bac7711-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -76,6 +76,19 @@ Port `80` is required for Caddy automatic HTTPS redirects and HTTP-01 fallback. 
 Caddy stores ACME account/cert state in the persistent Docker volume `compose_caddy_data`. Do not remove that volume during normal restarts.
 
 Recommended hardening still pending: restrict `22/tcp` to trusted admin IPs instead of `0.0.0.0/0`.
+
+## 2026-06-17 Build Version Metadata
+
+- Deployed image/package: `smart-llmrouter:bac7711-linux-amd64`.
+- Source commit: `bac7711`.
+- Backup path: `/opt/smart-llmrouter.backup-version-metadata-20260617T061118Z`.
+- Build metadata now includes a full UTC build timestamp, not only a date: `2026-06-17T06:07:57Z`.
+- Verified production `/readyz` and `/version` return version `bac7711`, commit `bac7711`, and build date `2026-06-17T06:07:57Z`.
+- Verified hosted docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date`; the rendered docs badge appears on `/docs/overview` with the same full timestamp.
+- Verified all packaged CLI binaries report `--version` with the same metadata: `router`, `router-token-gen`, and `router-usage-report`.
+- Verified authenticated `/metrics` exposes `smart_llmrouter_build_info` with version, commit, build timestamp, Go version, OS, and architecture labels.
+- Verified authenticated `/v1/models` keeps OpenAI-compatible response shape and does not include router version fields.
+- Verified an authenticated `fast` chat completion succeeded after deployment.
 
 ## 2026-06-17 TypeScript Routing Docs And Policy Helpers
 
