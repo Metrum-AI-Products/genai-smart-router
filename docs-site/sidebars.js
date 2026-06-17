@@ -18,6 +18,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "configuration/router-config",
+        "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",
         "configuration/routing-typescript",
       ],

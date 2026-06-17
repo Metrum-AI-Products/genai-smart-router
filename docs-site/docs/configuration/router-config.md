@@ -189,3 +189,5 @@ The cache is intended for eligible deterministic unary responses. Tool-bearing a
 Image-bearing requests also bypass response caching. Usage logs and the usage database include `input_has_image`, `input_image_count`, image-token counts when the upstream reports them, calculated VLM costs, and upstream-reported billed costs when available.
 
 Cataloged vision models are not automatically active routes. Keep a vision candidate catalog-only until it passes the exact direct upstream and router-level image smoke for the intended task and API dialect.
+
+See [Image Analysis And VLM Routing](./image-analysis-vlm) for full OpenAI Chat, OpenAI Responses, Anthropic Messages, Codex CLI, and Claude Code image examples.
