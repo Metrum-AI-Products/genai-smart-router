@@ -918,3 +918,43 @@ production /readyz after restart: 200, version 5e8a11f, build_date 2026-06-18T14
 live config caller limit check: 94 caller entries share the same limit tuple
 local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, ae168b79e0eb51571651931921eac2f65def54eb33e2a1520944ea8f08cf11a1
 ```
+
+### 2026-06-18 Baseten GLM 5.2 routing rollout
+
+Package `smart-llmrouter:5cf44a4-linux-amd64` was deployed to production with hosted docs and reference config updates for Baseten `zai-org/GLM-5.2`.
+
+Routing/config changes:
+
+- Added Baseten provider catalog entry `glm-5-2` for `zai-org/GLM-5.2` with pricing metadata, text modalities, and OpenAI Chat tool support.
+- Added static smoke group `baseten-glm52-smoke`.
+- Replaced active OpenRouter GLM 5.2 routing with Baseten GLM 5.2 in the normal text pools for `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+- Kept Baseten GLM lower in `small` at 2% and at 7% in `big-coder`.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.baseten-glm52-20260618T232903Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.pre-baseten-glm52-20260618T232903Z
+```
+
+Validation:
+
+```text
+rtk go test ./internal/router: passed, 76 tests
+rtk go test ./cmd/... ./internal/...: passed, 80 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after final deploy: 200, version 5cf44a4, build_date 2026-06-18T23:26:40Z
+production /version after final deploy: 5cf44a4, build_date 2026-06-18T23:26:40Z
+hosted docs /docs/configuration/router-config: 200 with zai-org/GLM-5.2 content present
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 371460627fc9d1ad29a0b012dd5cc501b70a03d4facbd0db4e2196bb25ced487
+live config active OpenRouter GLM targets: none
+production /v1/models: default, fast, small, medium, high, big-coder, and baseten-glm52-smoke present
+production baseten-glm52-smoke realistic text smoke: HTTP 200, model zai-org/GLM-5.2, finish stop, completion_tokens=74
+production baseten-glm52-smoke max_tokens=1 cap smoke: HTTP 200, finish length, completion_tokens=1
+production baseten-glm52-smoke OpenAI Chat tool smoke: HTTP 200, finish tool_calls, tool_calls present
+Claude Code CLI production tool smoke using claude -p and model claude-tools-smoke: created expected file
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+production startup issue: initial copied config/env permissions blocked container reads; fixed ownership for runtime UID/GID 65532:65532 and recreated router container
+production cleanup: removed uploaded package/config/check files, removed redundant /opt/smart-llmrouter.old.20260618T232903Z, ran sudo docker system prune -f; reclaimed 0 B; volumes were not pruned
+```

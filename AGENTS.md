@@ -169,8 +169,9 @@ For code changes that affect runtime behavior or embedded hosted docs:
    - `curl -fsS https://llm-api-engg.metrum.ai/readyz`
    - `curl -fsS https://llm-api-engg.metrum.ai/docs/...`
    - authenticated `/v1/models` or completion smoke for API compatibility
-8. Update `deployment.md` with image/package tag, source commit, backup path when useful, and validation results.
-9. Commit the deployment note after production verification.
+8. Clean up production deployment leftovers after verification: remove uploaded package/config files from the host, remove superseded temporary unpack directories, keep only intentional timestamped backups, and run `sudo docker system prune -f` when stale images/build cache/containers have accumulated and the current deployment is healthy.
+9. Update `deployment.md` with image/package tag, source commit, backup path when useful, cleanup performed, and validation results.
+10. Commit the deployment note after production verification.
 
 ## Router Smoke Tests
 
