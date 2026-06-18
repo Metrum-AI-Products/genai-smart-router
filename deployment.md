@@ -843,3 +843,47 @@ production usage DB: recent metrics rows show admin 200 and non-admin 403 metric
 production logs: router listening on :8080, no errors in recent router logs
 production cleanup: removed uploaded package; dangling Docker image prune reclaimed 0 B; volumes were not pruned
 ```
+
+### 2026-06-18 Max-token cap enforcement rollout
+
+Package `smart-llmrouter:5e8a11f-linux-amd64` was deployed to production to fix capped request handling for the `vision` model group and related translated API surfaces.
+
+Runtime/config changes:
+
+- Anthropic Messages encoding now forwards positive caller `max_tokens` exactly and defaults to 1024 only when omitted.
+- OpenAI Responses `max_output_tokens` is decoded into router IR and translated to OpenAI Chat `max_tokens` when needed.
+- Added provider/target metadata `honors_max_tokens`; targets marked `false` are skipped whenever the caller supplies a positive max-token field.
+- Marked OpenRouter-hosted VLM targets that failed or had not proven cap-safe as `honors_max_tokens: false` across Chat, Responses, and Anthropic provider skins, while keeping them cataloged and available for uncapped requests.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.max-tokens-20260618T140315Z
+/opt/smart-llmrouter.backup.max-tokens-filter-20260618T141502Z
+/opt/smart-llmrouter.backup.responses-max-output-20260618T142233Z
+config/config.yaml.bak.max-tokens-20260618T141030Z
+config/config.yaml.bak.max-tokens-openrouter-vlm-20260618T141722Z
+```
+
+Validation:
+
+```text
+rtk go test ./internal/router: passed, 76 tests
+rtk go test ./cmd/... ./internal/...: passed, 80 tests
+rtk go test ./...: known generated Harbor/job artifact package failures only
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after final deploy: 200, version 5e8a11f, build_date 2026-06-18T14:20:31Z
+production /version after final deploy: 5e8a11f, build_date 2026-06-18T14:20:31Z
+hosted docs /docs/configuration/router-config: 200 with honors_max_tokens content present
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, f992d3369b1251b5079433fca58ce310de59b9373e8828133c2fbadc1f44d5e7
+initial production /v1/messages max_tokens=1 smoke reproduced cap-unreliable OpenRouter VLM behavior before metadata tightening: qwen/qwen3.7-plus:nitro 1727 output tokens; qwen/qwen3.6-flash:nitro 1072-1241 output tokens; OpenRouter-hosted x-ai/grok-4.3 159 output tokens
+production /v1/messages vision max_tokens=1 after final deploy: 6/6 HTTP 200 with output_tokens=1
+production /v1/chat/completions vision max_tokens=1 after final deploy: HTTP 200 with output_tokens=1
+production /v1/responses vision max_output_tokens=1 after final deploy: HTTP 200 with output_tokens=1
+Claude Code CLI production tool smoke using `claude -p` and model claude-tools-smoke: created expected file
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+production logs: router listening on :8080, no errors in recent router logs
+production usage DB: recent capped vision smokes recorded status 200 with output_tokens=1; unrelated small-group 429 rows were quota/tpm enforcement
+production cleanup: removed uploaded packages for 227d4fd, 0fa3034, and 5e8a11f; dangling Docker image prune reclaimed 0 B; volumes were not pruned
+```
