@@ -210,6 +210,7 @@ Use `high` for deterministic failover-first checks, and use repeated calls for w
 - For agent-tool validation, use real tool calls:
   - Claude Code via Anthropic Messages API and `claude-tools-smoke`.
   - Codex via OpenAI Responses API and `agent-tools-smoke`.
+  - Warp-style OpenAI Chat Completions via `warp-agent-smoke`, using `/v1/chat/completions` with `tools`, `tool_choice`, `parallel_tool_calls`, and `stream: true`; assert downstream SSE contains `delta.tool_calls` and `finish_reason:"tool_calls"`.
   - OpenRouter-specific Claude Code via `claude-tools-smoke-openrouter`.
   - OpenRouter-specific Codex via `agent-tools-smoke-openrouter`.
   - Assert the created file contents, not only text printed by the assistant.

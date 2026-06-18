@@ -867,7 +867,7 @@ func errorTypeRetryable(errorType string) bool {
 }
 
 func toolPassthrough(callerDialect, outDialect string, req *IRRequest) bool {
-	return callerDialect == outDialect && len(req.Tools) > 0 && (outDialect == "openai-responses" || outDialect == "anthropic")
+	return callerDialect == outDialect && len(req.Tools) > 0 && (outDialect == "openai-responses" || outDialect == "anthropic" || outDialect == "openai-chat")
 }
 
 func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDialect string) []Target {
@@ -913,15 +913,21 @@ func targetSupportsInputModalities(target Target, required []string) bool {
 }
 
 func targetSupportsTools(target Target, dialect string) bool {
-	if toolSupportEmpty(target.ToolSupport) {
-		return true
-	}
 	switch dialect {
 	case "openai-responses":
+		if toolSupportEmpty(target.ToolSupport) {
+			return true
+		}
 		return len(target.ToolSupport.OpenAIResponses) > 0
 	case "anthropic":
+		if toolSupportEmpty(target.ToolSupport) {
+			return true
+		}
 		return len(target.ToolSupport.AnthropicMessages) > 0
 	case "openai", "openai-chat":
+		if toolSupportEmpty(target.ToolSupport) {
+			return false
+		}
 		return len(target.ToolSupport.OpenAIChat) > 0
 	default:
 		return false
@@ -929,17 +935,25 @@ func targetSupportsTools(target Target, dialect string) bool {
 }
 
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
-	if dialect == "anthropic" {
+	switch dialect {
+	case "anthropic":
 		return encodeAnthropicPassthrough(model, req, target.DefaultThinking)
+	case "openai-chat":
+		return encodeChatPassthrough(model, req)
+	default:
+		return encodeResponsesPassthrough(model, req)
 	}
-	return encodeResponsesPassthrough(model, req)
 }
 
 func decodeToolPassthrough(dialect string, raw []byte, model string) (*IRResponse, error) {
-	if dialect == "anthropic" {
+	switch dialect {
+	case "anthropic":
 		return decodeAnthropicPassthrough(raw, model)
+	case "openai-chat":
+		return decodeChatPassthrough(raw, model)
+	default:
+		return decodeResponsesPassthrough(raw, model)
 	}
-	return decodeResponsesPassthrough(raw, model)
 }
 
 func (s *Service) supportedToolsForGroup(name string) []string {
@@ -950,7 +964,9 @@ func (s *Service) supportedToolsForGroup(name string) []string {
 	req := &IRRequest{Tools: []map[string]any{{"type": "local_shell"}}}
 	if len(s.targetsForRequest(group.Targets, req, "openai-responses")) == 0 {
 		if len(s.targetsForRequest(group.Targets, req, "anthropic")) == 0 {
-			return []string{}
+			if len(s.targetsForRequest(group.Targets, req, "openai-chat")) == 0 {
+				return []string{}
+			}
 		}
 	}
 	return []string{"local_shell", "apply_patch"}
@@ -1056,14 +1072,78 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 		completed["status"] = "completed"
 		writeSSE("response.completed", map[string]any{"type": "response.completed", "sequence_number": 9, "response": completed})
 		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+	case "openai-chat":
+		if resp.RawResponse && resp.Raw != nil {
+			writeRawChatSSE(writeSSE, w, resp)
+			break
+		}
+		writeChatTextSSE(writeSSE, w, resp)
 	default:
-		writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": resp.Text}, "finish_reason": nil}}})
-		writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": defaultString(resp.StopReason, "stop")}}, "usage": map[string]any{"prompt_tokens": resp.Usage.InputTokens, "completion_tokens": resp.Usage.OutputTokens, "total_tokens": resp.Usage.TotalTokens}})
-		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		writeChatTextSSE(writeSSE, w, resp)
 	}
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+func writeChatTextSSE(writeSSE func(string, any), w http.ResponseWriter, resp *IRResponse) {
+	writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": resp.Text}, "finish_reason": nil}}})
+	writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": defaultString(resp.StopReason, "stop")}}, "usage": map[string]any{"prompt_tokens": resp.Usage.InputTokens, "completion_tokens": resp.Usage.OutputTokens, "total_tokens": resp.Usage.TotalTokens}})
+	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func writeRawChatSSE(writeSSE func(string, any), w http.ResponseWriter, resp *IRResponse) {
+	raw := resp.Raw
+	id := defaultString(stringValue(raw["id"]), resp.ID)
+	model := defaultString(stringValue(raw["model"]), resp.Model)
+	created := time.Now().Unix()
+	if n, ok := numberAsInt(raw["created"]); ok {
+		created = int64(n)
+	}
+	writeSSE("", map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant"}, "finish_reason": nil}}})
+	finishReason := defaultString(resp.StopReason, "stop")
+	if choices := valueAsSlice(raw["choices"]); len(choices) > 0 {
+		if ch, ok := choices[0].(map[string]any); ok {
+			finishReason = defaultString(stringValue(ch["finish_reason"]), finishReason)
+			if msg, ok := ch["message"].(map[string]any); ok {
+				if content := contentToText(msg["content"]); content != "" {
+					writeSSE("", map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": content}, "finish_reason": nil}}})
+				}
+				if calls := valueAsSlice(msg["tool_calls"]); len(calls) > 0 {
+					writeSSE("", map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"tool_calls": chatToolCallDeltas(calls)}, "finish_reason": nil}}})
+				}
+			}
+		}
+	}
+	writeSSE("", map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": finishReason}}, "usage": raw["usage"]})
+	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func chatToolCallDeltas(calls []any) []map[string]any {
+	out := make([]map[string]any, 0, len(calls))
+	for i, call := range calls {
+		c, ok := call.(map[string]any)
+		if !ok {
+			continue
+		}
+		delta := map[string]any{"index": i}
+		for _, key := range []string{"id", "type"} {
+			if v, ok := c[key]; ok {
+				delta[key] = v
+			}
+		}
+		if fn, ok := c["function"].(map[string]any); ok {
+			fnDelta := map[string]any{}
+			for _, key := range []string{"name", "arguments"} {
+				if v, ok := fn[key]; ok {
+					fnDelta[key] = v
+				}
+			}
+			delta["function"] = fnDelta
+		}
+		out = append(out, delta)
+	}
+	return out
 }
 
 func writeRawAnthropicSSE(writeSSE func(string, any), resp *IRResponse) {

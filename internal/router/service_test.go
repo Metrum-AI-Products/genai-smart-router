@@ -515,6 +515,111 @@ func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) 
 	}
 }
 
+func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_tool",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "chat-tool",
+			"choices": []map[string]any{{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": nil,
+					"tool_calls": []map[string]any{{
+						"id":   "call_weather",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "get_weather",
+							"arguments": `{"location":"San Francisco"}`,
+						},
+					}},
+				},
+				"finish_reason": "tool_calls",
+			}},
+			"usage": map[string]any{"prompt_tokens": 17, "completion_tokens": 5, "total_tokens": 22},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["openai_chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["warp-agent-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "openai_chat",
+		Model:       "chat-tool",
+		ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+	}}}
+	cfg.Callers[0].Allow = []string{"warp-agent-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{
+		"model":"warp-agent-smoke",
+		"stream":true,
+		"messages":[{"role":"user","content":"weather"}],
+		"tools":[{"type":"function","function":{"name":"get_weather","description":"weather","parameters":{"type":"object","properties":{"location":{"type":"string"}}}}}],
+		"tool_choice":"auto",
+		"parallel_tool_calls":true
+	}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "OpenAI/Go 3.15.0")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "chat-tool" {
+		t.Fatalf("upstream model=%q", upstreamBody["model"])
+	}
+	if upstreamBody["stream"] != false {
+		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	}
+	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
+		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
+	}
+	if upstreamBody["tool_choice"] != "auto" || upstreamBody["parallel_tool_calls"] != true {
+		t.Fatalf("tool fields not preserved upstream: %#v", upstreamBody)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("content-type=%q, want event stream; body=%s", ct, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"tool_calls"`) ||
+		!strings.Contains(body, `"get_weather"`) ||
+		!strings.Contains(body, `"finish_reason":"tool_calls"`) ||
+		!strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("tool call stream not preserved:\n%s", body)
+	}
+}
+
+func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "chat-maybe-tools"}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := &IRRequest{Tools: []map[string]any{{"type": "function"}}, Messages: []IRMessage{{Role: "user", Content: "hi"}}}
+	if got := svc.targetsForRequest(cfg.Models["default"].Targets, req, "openai-chat"); len(got) != 0 {
+		t.Fatalf("openai-chat target without explicit tool metadata was eligible: %#v", got)
+	}
+}
+
 func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

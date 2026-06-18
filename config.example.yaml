@@ -1199,6 +1199,11 @@ models:
     targets:
     - provider: baseten
       model_ref: nemotron-120b-a12b
+  warp-agent-smoke:
+    strategy: static
+    targets:
+    - provider: baseten
+      model_ref: nemotron-120b-a12b
 callers:
 - id: standard-dev
   user: standard
@@ -1250,6 +1255,7 @@ callers:
   - vision-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter-gemma
   - baseten-nemotron-smoke
+  - warp-agent-smoke
   rate:
     rpm: 120
     tpm: 200000

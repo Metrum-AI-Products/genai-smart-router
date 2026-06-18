@@ -161,6 +161,18 @@ func encodeResponsesPassthrough(model string, req *IRRequest) ([]byte, error) {
 	return json.Marshal(body)
 }
 
+func encodeChatPassthrough(model string, req *IRRequest) ([]byte, error) {
+	body := map[string]any{}
+	for key, value := range req.Raw {
+		body[key] = value
+	}
+	body["model"] = model
+	// The router calls upstreams in unary mode and synthesizes downstream SSE.
+	// This keeps tool-call responses and usage accounting deterministic.
+	body["stream"] = false
+	return json.Marshal(body)
+}
+
 func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking map[string]any) ([]byte, error) {
 	body := map[string]any{}
 	for key, value := range req.Raw {
@@ -258,6 +270,28 @@ func decodeResponsesPassthrough(raw []byte, model string) (*IRResponse, error) {
 	return resp, nil
 }
 
+func decodeChatPassthrough(raw []byte, model string) (*IRResponse, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	resp := &IRResponse{Model: model, Raw: m, RawResponse: true}
+	resp.ID = stringValue(m["id"])
+	if choices, ok := m["choices"].([]any); ok && len(choices) > 0 {
+		if ch, ok := choices[0].(map[string]any); ok {
+			if msg, ok := ch["message"].(map[string]any); ok {
+				resp.Text = contentToText(msg["content"])
+			}
+			resp.StopReason = stringValue(ch["finish_reason"])
+		}
+	}
+	resp.Usage = usageFromMap(m["usage"])
+	if resp.Usage.TotalTokens == 0 {
+		resp.Usage.TotalTokens = resp.Usage.InputTokens + resp.Usage.OutputTokens
+	}
+	return resp, nil
+}
+
 func decodeAnthropicPassthrough(raw []byte, model string) (*IRResponse, error) {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -315,6 +349,9 @@ func encodeAnthropicResponse(resp *IRResponse) map[string]any {
 }
 
 func encodeChatResponse(resp *IRResponse) map[string]any {
+	if resp.RawResponse && resp.Raw != nil {
+		return resp.Raw
+	}
 	return map[string]any{
 		"id":      resp.ID,
 		"object":  "chat.completion",

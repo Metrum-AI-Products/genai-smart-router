@@ -204,7 +204,7 @@ models:
 
 ## Tool Calls Through Self-Hosted Models
 
-For OpenAI-compatible chat requests, the router forwards the `tools` and `tool_choice` fields to an `openai-chat` upstream target. The upstream model decides whether to return a tool call. The router does not execute the tool. The client or agent runtime executes the function and sends the tool result back in the next request.
+For OpenAI-compatible chat requests, the router forwards `tools`, `tool_choice`, `parallel_tool_calls`, tool-result messages, and related Chat Completions fields to an `openai-chat` upstream target. This is the compatibility path used by OpenAI-compatible agents such as Warp Agent. Tool-bearing OpenAI Chat requests only route to targets with explicit `tool_support.openai_chat`. The upstream model decides whether to return a tool call. The router does not execute the tool. The client or agent runtime executes the function and sends the tool result back in the next request.
 
 Example request through the router to a tool-enabled internal vLLM or SGLang target:
 
@@ -234,6 +234,8 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
     "stream": false
   }'
 ```
+
+For streaming OpenAI Chat clients, repeat the same request with `"stream": true` and verify the downstream SSE contains `delta.tool_calls` and `finish_reason: "tool_calls"`. The router may call the upstream non-streaming for passthrough safety and synthesize OpenAI Chat SSE chunks for the caller.
 
 Expected shape when the model chooses the tool:
 

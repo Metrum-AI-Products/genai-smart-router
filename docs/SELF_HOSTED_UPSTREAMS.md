@@ -87,7 +87,7 @@ models:
 
 ## Tool-Calling Notes
 
-The router forwards OpenAI-compatible chat `tools` and `tool_choice` fields to `openai-chat` targets. The model emits `tool_calls`; the client or agent runtime executes those tools and sends tool-result messages back. The router does not execute application tools.
+The router forwards OpenAI-compatible chat `tools`, `tool_choice`, `parallel_tool_calls`, tool-result messages, and related Chat Completions fields to `openai-chat` targets. This is the compatibility path used by OpenAI-compatible agents such as Warp Agent. Tool-bearing OpenAI Chat requests only route to targets with explicit `tool_support.openai_chat`. The model emits `tool_calls`; the client or agent runtime executes those tools and sends tool-result messages back. The router does not execute application tools.
 
 vLLM tool calling depends on the model, chat template, and parser. For example:
 
@@ -111,7 +111,7 @@ python3 -m sglang.launch_server \
   --tool-call-parser qwen25
 ```
 
-Do not assume a model is tool-capable because the server accepts `tools`. Validate that the response contains correctly shaped tool calls in both non-streaming and streaming modes if clients use both. Add `tool_support.openai_chat: [tools, tool_choice]` only after that validation passes for the exact served model, chat template, parser, and client protocol.
+Do not assume a model is tool-capable because the server accepts `tools`. Validate that the response contains correctly shaped tool calls in both non-streaming and streaming modes if clients use both. Add `tool_support.openai_chat: [tools, tool_choice]` only after that validation passes for the exact served model, chat template, parser, and client protocol. For streaming router smokes, verify the downstream SSE contains `delta.tool_calls` and `finish_reason: "tool_calls"`; the router may call the upstream non-streaming for passthrough safety and synthesize OpenAI Chat SSE chunks for the caller.
 
 ## Acceptance Smokes
 

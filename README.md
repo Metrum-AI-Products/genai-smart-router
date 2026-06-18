@@ -321,6 +321,8 @@ Cataloging a model does not route traffic to it. Add a cataloged model to a grou
 
 Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
 
+OpenAI Chat tool passthrough is used by OpenAI-compatible agent clients such as Warp Agent. These clients call `/v1/chat/completions`, send `tools`, `tool_choice`, and often request streaming. For those requests, the router preserves the OpenAI Chat tool payload and tool-result messages, selects only upstream targets with explicit `tool_support.openai_chat`, calls the upstream non-streaming, and returns either the raw non-streaming response or synthesized OpenAI Chat SSE chunks containing `delta.tool_calls`. This avoids asking users to switch model groups just because a coding-agent turn includes tools; the configured group filters to compatible targets automatically.
+
 Image requests are detected across OpenAI Chat, OpenAI Responses, and Anthropic Messages content blocks. The router filters image-bearing requests to targets with `image` in `input_modalities`, skips text-only targets, bypasses response caching, and logs `input_has_image`, `input_image_count`, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when available.
 
 Coding-agent groups should not force users to switch between a language model group and a vision model group during one task. Add validated multimodal `tool_only` targets to deployment-defined coding groups, for example the reference `big-coder` group, for Codex Responses and Claude Code Anthropic Messages traffic. Text-only requests continue to use the normal weighted coding targets; image-bearing agent requests automatically filter to multimodal tool-capable targets.
@@ -353,6 +355,16 @@ models:
 ```
 
 Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
+
+For OpenAI Chat tool clients, for example Warp Agent, configure the client with:
+
+```text
+Base URL: https://llm-api-engg.metrum.ai/v1
+API key: <router caller token>
+Model: small, medium, high, big-coder, or another allowed router model group
+```
+
+`big-coder` is only an example group name. Use whichever deployment-defined model group the caller token allows. If a request includes `tools` and no eligible target in that group has explicit `tool_support.openai_chat`, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, and modalities.
 
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 

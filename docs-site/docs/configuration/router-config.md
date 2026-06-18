@@ -158,6 +158,8 @@ Catalog entries should carry cost and capability metadata:
 - `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
 - `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
 
+OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting ordinary model groups such as `small`, `medium`, `high`, or a deployment-specific coding group; they should not have to switch to a separate tools-only model for a coding-agent turn.
+
 ## Per-Group Weighted Routing
 
 Weights are local to each model group. A target with weight `60` in `default` has no relationship to a target with weight `60` in `big-coder`.
