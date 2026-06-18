@@ -179,6 +179,15 @@ rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrou
 
 Use `high` for deterministic failover-first checks, and use repeated calls for weighted groups such as `big-coder`. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
 
+## Production Error And Timeout Triage
+
+- Start from the caller-visible `X-Request-Id` or error-body `request_id`.
+- Join `request_usage` to diagnostic child tables by `request_id`: `request_attempts`, `request_trace_events`, and `request_errors`.
+- Use `request_attempts` to distinguish slow upstreams, provider 429s, provider 5xxs, decode errors, per-attempt timeouts, and client cancellations. Do not rely only on the terminal `request_usage.target_provider`/`target_model`, because fallback failures before the terminal attempt matter.
+- Keep diagnostic rows sanitized. Never persist raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
+- Timeout mitigation should prefer configurable group/target `attempt_timeout_ms` and evidence from per-attempt rows before removing otherwise useful models from active routing.
+- Caller-facing errors should remain actionable: `504 upstream-timeout`, `503 upstream-rate-limited`, `502 upstream-failed`, or `502 no-eligible-target`, all with request ID and attempted target details when a response can still be sent.
+
 ## CLI E2E Expectations
 
 - Claude Code should use router bearer token settings:

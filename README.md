@@ -528,6 +528,10 @@ curl http://127.0.0.1:8080/version
 
 Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
 
+Diagnostics are written alongside usage when `server.diagnostics.enabled` is true. Each request can have child rows in `request_attempts`, `request_trace_events`, and `request_errors`, all keyed by `request_id`. Use the `X-Request-Id` response header or the `request_id` in an error body to join these rows during incident response. Diagnostic rows store provider/model/status/timing/error-class data, not raw prompts, images, bearer tokens, provider keys, or full upstream headers.
+
+Upstream timing is configurable with `server.upstream.timeout_ms`, `server.upstream.default_attempt_timeout_ms`, model-group `attempt_timeout_ms`, and per-target `timeout_ms`. A target timeout overrides a group timeout, and a group timeout overrides the global default attempt timeout. `0` disables the per-attempt cap while preserving the global HTTP client timeout. Exhausted upstream timeouts return `504 upstream-timeout`; exhausted provider 429s return `503 upstream-rate-limited`; other exhausted upstream failures return `502 upstream-failed`.
+
 Each request row stores the configured input/output price per million tokens for the selected upstream model, the pricing source/update date, and calculated input/output/total USD cost. These values are logged at request time instead of recalculated during reporting, so historical cost reports remain stable after upstream providers change pricing.
 
 The JSONL file is useful for raw audit/debugging. The relational DB is the source for periodic reports. In container deployments using SQLite, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`. In Postgres deployments, the report tool reads from the configured DSN.

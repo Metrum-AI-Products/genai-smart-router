@@ -2069,8 +2069,60 @@ func TestUpstreamFailureReturnsActionableError(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), `"type":"upstream-failed"`) ||
 		!strings.Contains(rr.Body.String(), `"attempts":1`) ||
 		!strings.Contains(rr.Body.String(), `"provider":"mock"`) ||
-		!strings.Contains(rr.Body.String(), `retryable upstream status 503`) {
+		!strings.Contains(rr.Body.String(), `upstream status 503`) {
 		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+}
+
+func TestUpstreamAttemptTimeoutReturnsGatewayTimeoutAndDiagnostics(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "late",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "late"},
+			}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	group := cfg.Models["default"]
+	group.AttemptTimeoutMS = 10
+	cfg.Models["default"] = group
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"upstream-timeout"`) ||
+		!strings.Contains(rr.Body.String(), `"request_id"`) {
+		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("attempt rows=%d", len(attempts))
+	}
+	if !attempts[0].TimedOut || attempts[0].ErrorClass != "upstream_timeout" || attempts[0].AttemptTimeoutMS != 10 {
+		t.Fatalf("unexpected attempt row: %#v", attempts[0])
+	}
+	var errors []requestErrorRecord
+	if err := svc.usage.db.Find(&errors).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(errors) != 1 || errors[0].ErrorType != "upstream-timeout" || !errors[0].Retryable {
+		t.Fatalf("unexpected error rows: %#v", errors)
 	}
 }
 

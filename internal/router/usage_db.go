@@ -159,6 +159,70 @@ func (usageRecord) TableName() string {
 	return "request_usage"
 }
 
+type requestAttemptRecord struct {
+	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_attempt_request"`
+	AttemptIndex     int    `gorm:"column:attempt_index;primaryKey;not null"`
+	TS               string `gorm:"column:ts;type:text;not null;index:idx_request_attempt_ts"`
+	Provider         string `gorm:"column:provider;type:text;not null;index:idx_request_attempt_provider_model,priority:1"`
+	Model            string `gorm:"column:model;type:text;not null;index:idx_request_attempt_provider_model,priority:2"`
+	Dialect          string `gorm:"column:dialect;type:text;not null"`
+	EndpointHost     string `gorm:"column:endpoint_host;type:text;not null"`
+	DurationMS       int64  `gorm:"column:duration_ms;not null"`
+	StatusCode       int    `gorm:"column:status_code;not null;index:idx_request_attempt_status"`
+	ErrorClass       string `gorm:"column:error_class;type:text;not null;index:idx_request_attempt_error"`
+	ErrorMessage     string `gorm:"column:error_message;type:text;not null"`
+	Retryable        bool   `gorm:"column:retryable;not null"`
+	TimedOut         bool   `gorm:"column:timed_out;not null;index:idx_request_attempt_timeout"`
+	ClientCanceled   bool   `gorm:"column:client_canceled;not null;index:idx_request_attempt_cancel"`
+	Selected         bool   `gorm:"column:selected;not null"`
+	FallbackReason   string `gorm:"column:fallback_reason;type:text;not null"`
+	RequestBytes     int64  `gorm:"column:request_bytes;not null"`
+	ResponseBytes    int64  `gorm:"column:response_bytes;not null"`
+	AttemptTimeoutMS int    `gorm:"column:attempt_timeout_ms;not null"`
+}
+
+func (requestAttemptRecord) TableName() string {
+	return "request_attempts"
+}
+
+type requestTraceEventRecord struct {
+	RequestID  string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_trace_request"`
+	Seq        int    `gorm:"column:seq;primaryKey;not null"`
+	TS         string `gorm:"column:ts;type:text;not null;index:idx_request_trace_ts"`
+	Event      string `gorm:"column:event;type:text;not null;index:idx_request_trace_event"`
+	Message    string `gorm:"column:message;type:text;not null"`
+	Provider   string `gorm:"column:provider;type:text;not null"`
+	Model      string `gorm:"column:model;type:text;not null"`
+	Dialect    string `gorm:"column:dialect;type:text;not null"`
+	DurationMS int64  `gorm:"column:duration_ms;not null"`
+	StatusCode int    `gorm:"column:status_code;not null"`
+	ErrorClass string `gorm:"column:error_class;type:text;not null;index:idx_request_trace_error"`
+	Retryable  bool   `gorm:"column:retryable;not null"`
+	Attempt    int    `gorm:"column:attempt;not null"`
+}
+
+func (requestTraceEventRecord) TableName() string {
+	return "request_trace_events"
+}
+
+type requestErrorRecord struct {
+	RequestID    string `gorm:"column:request_id;primaryKey;type:text"`
+	TS           string `gorm:"column:ts;type:text;not null;index:idx_request_error_ts"`
+	Status       int    `gorm:"column:status;not null;index:idx_request_error_status"`
+	ErrorType    string `gorm:"column:error_type;type:text;not null;index:idx_request_error_type"`
+	ErrorClass   string `gorm:"column:error_class;type:text;not null;index:idx_request_error_class"`
+	ErrorMessage string `gorm:"column:error_message;type:text;not null"`
+	Retryable    bool   `gorm:"column:retryable;not null"`
+	Attempts     int    `gorm:"column:attempts;not null"`
+	Provider     string `gorm:"column:provider;type:text;not null"`
+	Model        string `gorm:"column:model;type:text;not null"`
+	Dialect      string `gorm:"column:dialect;type:text;not null"`
+}
+
+func (requestErrorRecord) TableName() string {
+	return "request_errors"
+}
+
 type agg struct {
 	Calls                    int64
 	Errors                   int64
@@ -278,7 +342,7 @@ func (s *usageStore) migrate() error {
 			return err
 		}
 	}
-	if err := s.db.AutoMigrate(&usageRecord{}); err != nil {
+	if err := s.db.AutoMigrate(&usageRecord{}, &requestAttemptRecord{}, &requestTraceEventRecord{}, &requestErrorRecord{}); err != nil {
 		return err
 	}
 	return ensureUsageRelationalSchema(s.db)
@@ -292,13 +356,20 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	var columns []columnInfo
 	switch db.Dialector.Name() {
 	case "sqlite":
-		if err := db.Raw(`SELECT name, type FROM pragma_table_info('request_usage')`).Scan(&columns).Error; err != nil {
-			return err
+		for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors"} {
+			var tableColumns []columnInfo
+			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
+				return err
+			}
+			for i := range tableColumns {
+				tableColumns[i].Name = table + "." + tableColumns[i].Name
+			}
+			columns = append(columns, tableColumns...)
 		}
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name = 'request_usage'`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -317,6 +388,77 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	row := rowFromRecord(rec)
 	_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(recordFromRow(row)).Error
+	for _, attempt := range rec.AttemptsDetail {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(attemptRecordFromLog(rec.RequestID, attempt)).Error
+	}
+	for _, event := range rec.TraceEvents {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(traceRecordFromLog(rec.RequestID, event)).Error
+	}
+	if rec.Error != nil {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(errorRecordFromLog(rec)).Error
+	}
+}
+
+func attemptRecordFromLog(requestID string, rec attemptLogRecord) *requestAttemptRecord {
+	return &requestAttemptRecord{
+		RequestID:        requestID,
+		AttemptIndex:     rec.Index,
+		TS:               rec.TS,
+		Provider:         rec.Provider,
+		Model:            rec.Model,
+		Dialect:          rec.Dialect,
+		EndpointHost:     rec.EndpointHost,
+		DurationMS:       rec.DurationMS,
+		StatusCode:       rec.StatusCode,
+		ErrorClass:       rec.ErrorClass,
+		ErrorMessage:     rec.ErrorMessage,
+		Retryable:        rec.Retryable,
+		TimedOut:         rec.TimedOut,
+		ClientCanceled:   rec.ClientCanceled,
+		Selected:         rec.Selected,
+		FallbackReason:   rec.FallbackReason,
+		RequestBytes:     rec.RequestBytes,
+		ResponseBytes:    rec.ResponseBytes,
+		AttemptTimeoutMS: rec.AttemptTimeoutMS,
+	}
+}
+
+func traceRecordFromLog(requestID string, rec traceLogRecord) *requestTraceEventRecord {
+	return &requestTraceEventRecord{
+		RequestID:  requestID,
+		Seq:        rec.Seq,
+		TS:         rec.TS,
+		Event:      rec.Event,
+		Message:    rec.Message,
+		Provider:   rec.Provider,
+		Model:      rec.Model,
+		Dialect:    rec.Dialect,
+		DurationMS: rec.DurationMS,
+		StatusCode: rec.StatusCode,
+		ErrorClass: rec.ErrorClass,
+		Retryable:  rec.Retryable,
+		Attempt:    rec.Attempt,
+	}
+}
+
+func errorRecordFromLog(rec logRecord) *requestErrorRecord {
+	errType := ""
+	if rec.Error != nil {
+		errType = *rec.Error
+	}
+	return &requestErrorRecord{
+		RequestID:    rec.RequestID,
+		TS:           rec.TS,
+		Status:       rec.Status,
+		ErrorType:    errType,
+		ErrorClass:   rec.ErrorClass,
+		ErrorMessage: rec.ErrorMessage,
+		Retryable:    errorTypeRetryable(errType),
+		Attempts:     rec.Attempts,
+		Provider:     rec.TargetProvider,
+		Model:        rec.TargetModel,
+		Dialect:      rec.TargetDialect,
+	}
 }
 
 func rowFromRecord(rec logRecord) usageRow {

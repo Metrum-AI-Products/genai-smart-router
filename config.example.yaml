@@ -12,6 +12,14 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
+  upstream:
+    timeout_ms: 600000
+    default_attempt_timeout_ms: 0
+  diagnostics:
+    enabled: true
+    retention_days: 30
+    store_sanitized_upstream_errors: false
+    max_error_bytes: 2048
 state_path: router-state.json
 providers:
   kimi:
@@ -850,6 +858,7 @@ models:
       tool_only: true
   medium:
     strategy: weighted
+    attempt_timeout_ms: 180000
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
@@ -1044,6 +1053,7 @@ models:
       tool_only: true
   big-coder:
     strategy: weighted
+    attempt_timeout_ms: 180000
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro

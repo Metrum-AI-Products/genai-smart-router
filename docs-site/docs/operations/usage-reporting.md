@@ -36,6 +36,18 @@ Reports include:
 - Usage by external provider and model.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
 - Streaming and non-streaming request counts.
+- Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.
+
+## Troubleshooting By Request ID
+
+Every response includes `X-Request-Id`. Structured error responses also include `request_id` in the error details. Administrators can use that ID to inspect:
+
+- `request_usage` for the terminal request status, selected target, token counts, and cost fields.
+- `request_attempts` for each upstream provider/model attempt, status code, duration, timeout/cancel flags, retryability, and sanitized error class/message.
+- `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
+- `request_errors` for the terminal sanitized error summary.
+
+Diagnostic rows do not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized upstream response bodies.
 
 ## Filtering
 

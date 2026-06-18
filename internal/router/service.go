@@ -58,12 +58,38 @@ func (e routingEligibilityError) Error() string {
 }
 
 type requestContext struct {
-	id      string
-	start   time.Time
-	caller  *callerRuntime
-	dialect string
-	client  string
-	rec     logRecord
+	id       string
+	start    time.Time
+	caller   *callerRuntime
+	dialect  string
+	client   string
+	rec      logRecord
+	traceSeq int
+}
+
+type upstreamError struct {
+	Class       string
+	Message     string
+	StatusCode  int
+	Retryable   bool
+	TimedOut    bool
+	Canceled    bool
+	ResponseLen int64
+	Err         error
+}
+
+func (e upstreamError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return e.Class
+}
+
+func (e upstreamError) Unwrap() error {
+	return e.Err
 }
 
 func New(cfg *Config) (*Service, error) {
@@ -88,7 +114,7 @@ func New(cfg *Config) (*Service, error) {
 	s := &Service{
 		cfg:          cfg,
 		mux:          http.NewServeMux(),
-		httpClient:   &http.Client{Timeout: 10 * time.Minute},
+		httpClient:   &http.Client{Timeout: time.Duration(cfg.Server.Upstream.TimeoutMS) * time.Millisecond},
 		callersBySum: map[string]*callerRuntime{},
 		quota:        quota,
 		cache:        newCache(cfg.Server.Cache),
@@ -336,17 +362,21 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			rc.rec.Cache = "hit"
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
+			rc.trace("cache_hit", "", dec.Target, 0, http.StatusOK, "", false, 0)
 			s.writeIR(w, dialect, cached, req.Stream, rc)
 			s.finish(rc, http.StatusOK, nil)
 			return
 		}
 		rc.rec.Cache = "miss"
+		rc.trace("cache_miss", "", dec.Target, 0, 0, "", false, 0)
 	} else {
 		rc.rec.Cache = "bypass"
+		rc.trace("cache_bypass", "", dec.Target, 0, 0, "", false, 0)
 	}
 
 	upstreamStart := time.Now()
-	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), w, dialect, req, dec)
+	rc.trace("upstream_start", "", dec.Target, 0, 0, "", false, 0)
+	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), rc, dialect, req, dec)
 	upstreamMS := durationMillis(time.Since(upstreamStart))
 	rc.rec.UpstreamMS = &upstreamMS
 	rc.rec.Attempts = attempts
@@ -398,6 +428,7 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	}
 	if err != nil {
 		rc.rec.TokenID = tokenID
+		rc.trace("auth_rejected", err.Error(), Target{}, 0, http.StatusUnauthorized, "unauthorized", false, 0)
 		s.writeError(w, rc, http.StatusUnauthorized, "unauthorized")
 		return nil, false
 	}
@@ -406,12 +437,17 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	rc.rec.CallerProject = callerProject(caller.cfg)
 	rc.rec.CallerEnvironment = callerEnvironment(caller.cfg)
 	rc.rec.TokenID = tokenID
+	rc.trace("request_accepted", "", Target{}, 0, 0, "", false, 0)
 	return rc, true
 }
 
 func (s *Service) finish(rc *requestContext, status int, code *string) {
 	if rc == nil {
 		return
+	}
+	if !s.diagnosticsEnabled() {
+		rc.rec.AttemptsDetail = nil
+		rc.rec.TraceEvents = nil
 	}
 	s.recordCacheStats(rc)
 	populateThroughput(&rc.rec)
@@ -426,6 +462,36 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
+}
+
+func (s *Service) diagnosticsEnabled() bool {
+	if s == nil || s.cfg == nil {
+		return true
+	}
+	enabled := s.cfg.Server.Diagnostics.Enabled
+	return enabled == nil || *enabled
+}
+
+func (rc *requestContext) trace(event, message string, target Target, attempt, status int, errorClass string, retryable bool, durationMS int64) {
+	if rc == nil {
+		return
+	}
+	rc.traceSeq++
+	rec := traceLogRecord{
+		Seq:        rc.traceSeq,
+		TS:         time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		Event:      event,
+		Message:    message,
+		Provider:   target.Provider,
+		Model:      target.Model,
+		Dialect:    target.Dialect,
+		Attempt:    attempt,
+		StatusCode: status,
+		ErrorClass: errorClass,
+		Retryable:  retryable,
+		DurationMS: durationMS,
+	}
+	rc.rec.TraceEvents = append(rc.rec.TraceEvents, rec)
 }
 
 func (s *Service) recordCacheStats(rc *requestContext) {
@@ -525,27 +591,64 @@ func (s *Service) loadScripts() error {
 	return nil
 }
 
-func (s *Service) callUpstreams(ctx context.Context, w http.ResponseWriter, callerDialect string, req *IRRequest, dec decision) (*IRResponse, int, bool, error) {
+func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerDialect string, req *IRRequest, dec decision) (*IRResponse, int, bool, error) {
 	targets := append([]Target{dec.Target}, dec.Fallbacks...)
 	var lastErr error
 	for i, tgt := range targets {
-		resp, err := s.callOne(ctx, callerDialect, req, tgt)
-		if err == nil {
-			return resp, i + 1, i > 0, nil
+		if err := ctx.Err(); err != nil {
+			lastErr = classifyContextError(err)
+			break
 		}
+		attemptIndex := i + 1
+		resp, attempt, err := s.callOne(ctx, callerDialect, req, dec.GroupName, tgt, attemptIndex)
+		if attempt.ErrorMessage != "" {
+			attempt.ErrorMessage = s.sanitizeDiagnosticError(attempt.ErrorMessage)
+		}
+		if err == nil {
+			attempt.Selected = true
+			rc.rec.AttemptsDetail = append(rc.rec.AttemptsDetail, attempt)
+			rc.trace("upstream_attempt_ok", "", tgt, attemptIndex, attempt.StatusCode, "", false, attempt.DurationMS)
+			return resp, attemptIndex, i > 0, nil
+		}
+		if i < len(targets)-1 {
+			attempt.FallbackReason = classifyError(err).Class
+		}
+		rc.rec.AttemptsDetail = append(rc.rec.AttemptsDetail, attempt)
+		classified := classifyError(err)
+		rc.trace("upstream_attempt_failed", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, classified.Retryable, attempt.DurationMS)
 		lastErr = err
+		if classified.Canceled {
+			break
+		}
 		backoffMS := 100 * (1 << i)
 		if backoffMS > 1000 {
 			backoffMS = 1000
 		}
-		time.Sleep(time.Duration(backoffMS) * time.Millisecond)
+		timer := time.NewTimer(time.Duration(backoffMS) * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			lastErr = classifyContextError(ctx.Err())
+			rc.trace("client_canceled", ctx.Err().Error(), tgt, attemptIndex, 499, "client_canceled", false, 0)
+			return nil, attemptIndex, attemptIndex > 1, lastErr
+		case <-timer.C:
+		}
 	}
 	return nil, len(targets), len(targets) > 1, lastErr
 }
 
-func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequest, target Target) (*IRResponse, error) {
+func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
 	provider := s.cfg.Provider[target.Provider]
 	outDialect := targetDialect(provider, target)
+	attempt := attemptLogRecord{
+		Index:            attemptIndex,
+		TS:               time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		Provider:         target.Provider,
+		Model:            target.Model,
+		Dialect:          outDialect,
+		EndpointHost:     endpointHost(provider.BaseURL),
+		AttemptTimeoutMS: s.attemptTimeoutMS(groupName, target),
+	}
 	passthrough := toolPassthrough(callerDialect, outDialect, req)
 	var upReqBody []byte
 	var err error
@@ -554,13 +657,26 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	} else {
 		upReqBody, err = encodeUpstream(outDialect, target.Model, req)
 	}
+	attempt.RequestBytes = int64(len(upReqBody))
 	if err != nil {
-		return nil, err
+		attempt.ErrorClass = "encode_error"
+		attempt.ErrorMessage = err.Error()
+		return nil, attempt, upstreamError{Class: "encode_error", Message: err.Error(), Err: err}
 	}
 	endpoint := upstreamEndpoint(provider.BaseURL, outDialect, target)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(upReqBody))
+	attemptCtx := ctx
+	var cancel context.CancelFunc
+	if attempt.AttemptTimeoutMS > 0 {
+		attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(attempt.AttemptTimeoutMS)*time.Millisecond)
+		defer cancel()
+	}
+	start := time.Now()
+	httpReq, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, endpoint, bytes.NewReader(upReqBody))
 	if err != nil {
-		return nil, err
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ErrorClass = "request_build_error"
+		attempt.ErrorMessage = err.Error()
+		return nil, attempt, upstreamError{Class: "request_build_error", Message: err.Error(), Err: err}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	for name, value := range provider.Headers {
@@ -583,25 +699,171 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	}
 	httpResp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		attempt.DurationMS = durationMillis(time.Since(start))
+		upErr := classifyContextOrNetworkError(ctx, attemptCtx, err)
+		attempt.ErrorClass = upErr.Class
+		attempt.ErrorMessage = upErr.Message
+		attempt.Retryable = upErr.Retryable
+		attempt.TimedOut = upErr.TimedOut
+		attempt.ClientCanceled = upErr.Canceled
+		return nil, attempt, upErr
 	}
 	defer httpResp.Body.Close()
+	attempt.StatusCode = httpResp.StatusCode
 	if httpResp.StatusCode == http.StatusTooManyRequests || httpResp.StatusCode >= 500 {
-		io.Copy(io.Discard, httpResp.Body)
-		return nil, fmt.Errorf("retryable upstream status %d", httpResp.StatusCode)
+		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ResponseBytes = int64(len(raw))
+		attempt.ErrorClass = statusErrorClass(httpResp.StatusCode)
+		attempt.ErrorMessage = upstreamStatusMessage(httpResp.StatusCode, raw)
+		attempt.Retryable = true
+		return nil, attempt, upstreamError{Class: attempt.ErrorClass, Message: attempt.ErrorMessage, StatusCode: httpResp.StatusCode, Retryable: true, ResponseLen: attempt.ResponseBytes}
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		io.Copy(io.Discard, httpResp.Body)
-		return nil, fmt.Errorf("upstream status %d", httpResp.StatusCode)
+		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ResponseBytes = int64(len(raw))
+		attempt.ErrorClass = statusErrorClass(httpResp.StatusCode)
+		attempt.ErrorMessage = upstreamStatusMessage(httpResp.StatusCode, raw)
+		return nil, attempt, upstreamError{Class: attempt.ErrorClass, Message: attempt.ErrorMessage, StatusCode: httpResp.StatusCode, ResponseLen: attempt.ResponseBytes}
 	}
 	raw, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return nil, err
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ErrorClass = "read_error"
+		attempt.ErrorMessage = err.Error()
+		attempt.Retryable = true
+		return nil, attempt, upstreamError{Class: "read_error", Message: err.Error(), Retryable: true, Err: err}
 	}
+	attempt.DurationMS = durationMillis(time.Since(start))
+	attempt.ResponseBytes = int64(len(raw))
 	if passthrough {
-		return decodeToolPassthrough(outDialect, raw, target.Model)
+		resp, err := decodeToolPassthrough(outDialect, raw, target.Model)
+		if err != nil {
+			attempt.ErrorClass = "decode_error"
+			attempt.ErrorMessage = err.Error()
+			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Err: err}
+		}
+		return resp, attempt, nil
 	}
-	return decodeUpstreamResponse(outDialect, raw, target.Model)
+	resp, err := decodeUpstreamResponse(outDialect, raw, target.Model)
+	if err != nil {
+		attempt.ErrorClass = "decode_error"
+		attempt.ErrorMessage = err.Error()
+		return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Err: err}
+	}
+	return resp, attempt, nil
+}
+
+func (s *Service) attemptTimeoutMS(groupName string, target Target) int {
+	if target.TimeoutMS > 0 {
+		return target.TimeoutMS
+	}
+	if group, ok := s.cfg.Models[groupName]; ok && group.AttemptTimeoutMS > 0 {
+		return group.AttemptTimeoutMS
+	}
+	return s.cfg.Server.Upstream.DefaultAttemptTimeoutMS
+}
+
+func endpointHost(baseURL string) string {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	return parsed.Host
+}
+
+func (s *Service) diagnosticMaxErrorBytes() int {
+	if s == nil || s.cfg == nil || s.cfg.Server.Diagnostics.MaxErrorBytes <= 0 {
+		return 2048
+	}
+	return s.cfg.Server.Diagnostics.MaxErrorBytes
+}
+
+func (s *Service) sanitizeDiagnosticError(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	if !s.cfg.Server.Diagnostics.StoreSanitizedUpstreamError {
+		if i := strings.Index(text, ":"); i > 0 {
+			text = strings.TrimSpace(text[:i])
+		}
+	}
+	maxBytes := s.diagnosticMaxErrorBytes()
+	if maxBytes > 0 && len(text) > maxBytes {
+		text = text[:maxBytes]
+	}
+	return text
+}
+
+func statusErrorClass(status int) string {
+	switch {
+	case status == http.StatusTooManyRequests:
+		return "upstream_rate_limited"
+	case status >= 500:
+		return "upstream_status_5xx"
+	default:
+		return "upstream_status"
+	}
+}
+
+func upstreamStatusMessage(status int, raw []byte) string {
+	msg := fmt.Sprintf("upstream status %d", status)
+	snippet := strings.TrimSpace(string(raw))
+	if snippet == "" {
+		return msg
+	}
+	return msg + ": " + snippet
+}
+
+func classifyContextError(err error) upstreamError {
+	if errors.Is(err, context.Canceled) {
+		return upstreamError{Class: "client_canceled", Message: "client canceled request", Canceled: true}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return upstreamError{Class: "upstream_timeout", Message: "upstream request timed out", TimedOut: true, Retryable: true, Err: err}
+	}
+	return upstreamError{Class: "upstream_error", Message: err.Error(), Retryable: true, Err: err}
+}
+
+func classifyContextOrNetworkError(parentCtx, attemptCtx context.Context, err error) upstreamError {
+	if parentCtx.Err() != nil {
+		return classifyContextError(parentCtx.Err())
+	}
+	if attemptCtx.Err() != nil {
+		return classifyContextError(attemptCtx.Err())
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return classifyContextError(err)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return upstreamError{Class: "upstream_timeout", Message: "upstream request timed out", TimedOut: true, Retryable: true, Err: err}
+	}
+	return upstreamError{Class: "upstream_network_error", Message: err.Error(), Retryable: true, Err: err}
+}
+
+func classifyError(err error) upstreamError {
+	if err == nil {
+		return upstreamError{}
+	}
+	var upErr upstreamError
+	if errors.As(err, &upErr) {
+		return upErr
+	}
+	return upstreamError{Class: "upstream_error", Message: err.Error(), Retryable: true, Err: err}
+}
+
+func errorTypeRetryable(errorType string) bool {
+	switch errorType {
+	case "upstream-timeout", "upstream-rate-limited", "upstream-failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func toolPassthrough(callerDialect, outDialect string, req *IRRequest) bool {
@@ -999,14 +1261,18 @@ func (s *Service) writeAdmissionError(w http.ResponseWriter, rc *requestContext,
 	}
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
+	rc.trace("admission_rejected", ad.Reason, Target{}, 0, ad.Status, ad.Reason, true, 0)
 	s.writeError(w, rc, ad.Status, ad.Reason)
 }
 
 func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *requestContext, err routingEligibilityError) {
 	code := "no-eligible-target"
 	if rc != nil {
+		rc.trace("routing_no_eligible_target", strings.Join(err.Requirements, ","), Target{}, 0, http.StatusBadGateway, code, false, 0)
 		rc.rec.Status = http.StatusBadGateway
 		rc.rec.Error = &code
+		rc.rec.ErrorClass = code
+		rc.rec.ErrorMessage = fmt.Sprintf("no eligible upstream target for %s", err.Model)
 		s.finish(rc, http.StatusBadGateway, &code)
 	}
 	message := fmt.Sprintf("no eligible upstream target is configured for model %q with %s requests requiring %s", err.Model, err.Dialect, strings.Join(err.Requirements, ", "))
@@ -1025,11 +1291,15 @@ func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *reques
 }
 
 func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestContext, req *IRRequest, dec decision, attempts int, err error) {
-	code := "upstream-failed"
+	classified := classifyError(err)
+	code, status := upstreamFailureResponse(classified, rc)
 	if rc != nil {
-		rc.rec.Status = http.StatusBadGateway
+		rc.trace("upstream_exhausted", classified.Message, dec.Target, attempts, status, classified.Class, classified.Retryable, 0)
+		rc.rec.Status = status
 		rc.rec.Error = &code
-		s.finish(rc, http.StatusBadGateway, &code)
+		rc.rec.ErrorClass = classified.Class
+		rc.rec.ErrorMessage = s.sanitizeDiagnosticError(classified.Message)
+		s.finish(rc, status, &code)
 	}
 	targets := append([]Target{dec.Target}, dec.Fallbacks...)
 	attempted := make([]map[string]string, 0, min(attempts, len(targets)))
@@ -1040,7 +1310,7 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 		})
 	}
 	message := fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", req.Model, attempts)
-	writeJSON(w, http.StatusBadGateway, map[string]any{
+	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"type":    code,
 			"message": message,
@@ -1049,13 +1319,38 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 				"dialect":      rc.dialect,
 				"attempts":     attempts,
 				"targets":      attempted,
-				"last_error":   sanitizeUpstreamError(err),
-				"retryable":    true,
+				"last_error":   s.sanitizeDiagnosticError(classified.Message),
+				"retryable":    classified.Retryable,
 				"request_id":   rc.id,
 				"fallbackUsed": attempts > 1,
 			},
 		},
 	})
+}
+
+func upstreamFailureResponse(err upstreamError, rc *requestContext) (string, int) {
+	switch {
+	case err.Canceled:
+		return "client-canceled", 499
+	case err.TimedOut || err.Class == "upstream_timeout":
+		return "upstream-timeout", http.StatusGatewayTimeout
+	case err.Class == "upstream_rate_limited" || attemptsAllClass(rc, "upstream_rate_limited"):
+		return "upstream-rate-limited", http.StatusServiceUnavailable
+	default:
+		return "upstream-failed", http.StatusBadGateway
+	}
+}
+
+func attemptsAllClass(rc *requestContext, class string) bool {
+	if rc == nil || len(rc.rec.AttemptsDetail) == 0 {
+		return false
+	}
+	for _, attempt := range rc.rec.AttemptsDetail {
+		if attempt.ErrorClass != class {
+			return false
+		}
+	}
+	return true
 }
 
 func sanitizeUpstreamError(err error) string {
@@ -1071,9 +1366,12 @@ func sanitizeUpstreamError(err error) string {
 
 func (s *Service) writeError(w http.ResponseWriter, rc *requestContext, status int, code string) {
 	if rc != nil {
+		rc.trace("request_error", code, Target{}, 0, status, code, false, 0)
 		rc.rec.Status = status
 		c := code
 		rc.rec.Error = &c
+		rc.rec.ErrorClass = code
+		rc.rec.ErrorMessage = code
 		s.finish(rc, status, &c)
 	}
 	writeJSON(w, status, map[string]any{"error": map[string]any{"type": code, "message": code}})

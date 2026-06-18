@@ -163,17 +163,19 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		Name string
 		Type string
 	}
-	var cols []col
-	if err := store.db.Raw(`SELECT name, type FROM pragma_table_info('request_usage')`).Scan(&cols).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(cols) == 0 {
-		t.Fatal("request_usage schema not found")
-	}
-	for _, c := range cols {
-		typ := strings.ToLower(c.Type)
-		if strings.Contains(typ, "json") || strings.Contains(typ, "array") || strings.HasSuffix(typ, "[]") {
-			t.Fatalf("non-relational column %s type %s", c.Name, c.Type)
+	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors"} {
+		var cols []col
+		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(cols) == 0 {
+			t.Fatalf("%s schema not found", table)
+		}
+		for _, c := range cols {
+			typ := strings.ToLower(c.Type)
+			if strings.Contains(typ, "json") || strings.Contains(typ, "array") || strings.HasSuffix(typ, "[]") {
+				t.Fatalf("non-relational column %s.%s type %s", table, c.Name, c.Type)
+			}
 		}
 	}
 }

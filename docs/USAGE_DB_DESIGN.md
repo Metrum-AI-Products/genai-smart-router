@@ -19,6 +19,14 @@ The entire usage DB schema must remain relational-only:
 - If a future feature needs one-to-many data, add a child table with scalar columns and a foreign key to `request_usage`.
 - Keep schema tests that inspect the actual DB column types.
 
+Diagnostic child tables are part of the usage DB and follow the same rule:
+
+- `request_attempts`: one scalar row per upstream attempt, including provider/model, status, timing, timeout/cancel flags, retryability, and sanitized error class/message.
+- `request_trace_events`: ordered scalar router events such as request accepted, cache decision, upstream attempt, fallback, timeout, and terminal failure.
+- `request_errors`: one scalar terminal error row per failed request for fast incident queries.
+
+These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
+
 ## Request Metrics
 
 Each request row stores:
@@ -30,6 +38,7 @@ Each request row stores:
 - upstream/downstream output-token/sec and total-token/sec.
 - cache snapshot: enabled state, item count, occupied bytes, max bytes, and occupancy percentage.
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
+- diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.
 
@@ -42,6 +51,7 @@ Durable across container restarts when volumes are preserved:
 - usage DB rows.
 - JSONL request logs.
 - per-request timing, TPS, and cache snapshot fields.
+- diagnostic attempt, trace, and terminal error rows when diagnostics are enabled.
 
 Not durable across router restarts:
 

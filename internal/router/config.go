@@ -23,10 +23,24 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen  string        `yaml:"listen"`
-	Cache   CacheConfig   `yaml:"cache"`
-	Logging LoggingConfig `yaml:"logging"`
-	UsageDB UsageDBConfig `yaml:"usage_db"`
+	Listen      string            `yaml:"listen"`
+	Cache       CacheConfig       `yaml:"cache"`
+	Logging     LoggingConfig     `yaml:"logging"`
+	UsageDB     UsageDBConfig     `yaml:"usage_db"`
+	Upstream    UpstreamConfig    `yaml:"upstream"`
+	Diagnostics DiagnosticsConfig `yaml:"diagnostics"`
+}
+
+type UpstreamConfig struct {
+	TimeoutMS               int `yaml:"timeout_ms"`
+	DefaultAttemptTimeoutMS int `yaml:"default_attempt_timeout_ms"`
+}
+
+type DiagnosticsConfig struct {
+	Enabled                     *bool `yaml:"enabled"`
+	RetentionDays               int   `yaml:"retention_days"`
+	StoreSanitizedUpstreamError bool  `yaml:"store_sanitized_upstream_errors"`
+	MaxErrorBytes               int   `yaml:"max_error_bytes"`
 }
 
 type CacheConfig struct {
@@ -89,10 +103,11 @@ type ToolSupport struct {
 }
 
 type ModelGroup struct {
-	Strategy   string           `yaml:"strategy"`
-	Script     string           `yaml:"script"`
-	ScriptHTTP ScriptHTTPConfig `yaml:"script_http"`
-	Targets    []Target         `yaml:"targets"`
+	Strategy         string           `yaml:"strategy"`
+	Script           string           `yaml:"script"`
+	ScriptHTTP       ScriptHTTPConfig `yaml:"script_http"`
+	AttemptTimeoutMS int              `yaml:"attempt_timeout_ms"`
+	Targets          []Target         `yaml:"targets"`
 }
 
 type ScriptHTTPConfig struct {
@@ -110,6 +125,7 @@ type Target struct {
 	Dialect                            string         `yaml:"dialect" json:"dialect"`
 	DisplayName                        string         `yaml:"display_name" json:"displayName,omitempty"`
 	ToolOnly                           bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
+	TimeoutMS                          int            `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
 	DefaultThinking                    map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
 	Weight                             int            `yaml:"weight" json:"weight"`
 	RPM                                int            `yaml:"rpm" json:"rpm"`
@@ -255,11 +271,32 @@ func (c *Config) setDefaults() {
 			c.Server.UsageDB.Path = filepath.Join(dir, "usage.sqlite")
 		}
 	}
+	if c.Server.Upstream.TimeoutMS == 0 {
+		c.Server.Upstream.TimeoutMS = int((10 * time.Minute).Milliseconds())
+	}
+	if c.Server.Diagnostics.RetentionDays == 0 {
+		c.Server.Diagnostics.RetentionDays = 30
+	}
+	if c.Server.Diagnostics.MaxErrorBytes == 0 {
+		c.Server.Diagnostics.MaxErrorBytes = 2048
+	}
 }
 
 func (c *Config) Validate() error {
 	if len(c.Provider) == 0 {
 		return fmt.Errorf("at least one provider is required")
+	}
+	if c.Server.Upstream.TimeoutMS < 0 {
+		return fmt.Errorf("server upstream timeout_ms cannot be negative")
+	}
+	if c.Server.Upstream.DefaultAttemptTimeoutMS < 0 {
+		return fmt.Errorf("server upstream default_attempt_timeout_ms cannot be negative")
+	}
+	if c.Server.Diagnostics.RetentionDays < 0 {
+		return fmt.Errorf("server diagnostics retention_days cannot be negative")
+	}
+	if c.Server.Diagnostics.MaxErrorBytes < 0 {
+		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
 	}
 	for name, p := range c.Provider {
 		if p.BaseURL == "" {
@@ -311,6 +348,9 @@ func (c *Config) Validate() error {
 		if strings.EqualFold(m.Strategy, "script") && m.Script == "" {
 			return fmt.Errorf("model group %s uses script strategy but has no script path", name)
 		}
+		if m.AttemptTimeoutMS < 0 {
+			return fmt.Errorf("model group %s attempt_timeout_ms cannot be negative", name)
+		}
 		if m.ScriptHTTP.Enabled {
 			if !strings.EqualFold(m.Strategy, "script") {
 				return fmt.Errorf("model group %s configures script_http but does not use script strategy", name)
@@ -356,6 +396,9 @@ func (c *Config) Validate() error {
 			}
 			if resolved.ImageInputPricePerImageUSD < 0 {
 				return fmt.Errorf("model group %s target %s has negative image_input_price_per_image_usd", name, resolved.Model)
+			}
+			if resolved.TimeoutMS < 0 {
+				return fmt.Errorf("model group %s target %s timeout_ms cannot be negative", name, resolved.Model)
 			}
 			if err := validateToolSupport(resolved.ToolSupport); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
