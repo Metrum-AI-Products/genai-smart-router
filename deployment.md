@@ -887,3 +887,34 @@ production logs: router listening on :8080, no errors in recent router logs
 production usage DB: recent capped vision smokes recorded status 200 with output_tokens=1; unrelated small-group 429 rows were quota/tpm enforcement
 production cleanup: removed uploaded packages for 227d4fd, 0fa3034, and 5e8a11f; dangling Docker image prune reclaimed 0 B; volumes were not pruned
 ```
+
+### 2026-06-18 Uniform caller limit config update
+
+Production caller key limits were normalized so every configured caller entry uses the same rate, quota, and lifetime token policy.
+
+Uniform policy:
+
+```text
+rpm=240
+tpm=1200000
+concurrent=16
+daily_requests=10000
+daily_tokens=100000000
+monthly_requests=0
+monthly_tokens=1200000000
+lifetime_tokens=4000000000
+```
+
+Production backup:
+
+```text
+config/config.yaml.bak.uniform-caller-limits-20260618T153524Z
+```
+
+Validation:
+
+```text
+production /readyz after restart: 200, version 5e8a11f, build_date 2026-06-18T14:20:31Z
+live config caller limit check: 94 caller entries share the same limit tuple
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, ae168b79e0eb51571651931921eac2f65def54eb33e2a1520944ea8f08cf11a1
+```
