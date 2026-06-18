@@ -253,6 +253,11 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !rc.caller.cfg.MetricsAdmin {
+		code := "metrics-forbidden"
+		s.writeError(w, rc, http.StatusForbidden, code)
+		return
+	}
 	defer s.finish(rc, http.StatusOK, nil)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

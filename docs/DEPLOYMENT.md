@@ -54,7 +54,7 @@ Initial internal development deployment target:
 llm-api-engg.metrum.ai
 ```
 
-The service is externally reachable, but model, usage, and metrics endpoints still require a valid router caller token. Caddy terminates TLS and reverse-proxies to the router on localhost.
+The service is externally reachable, but model and usage endpoints require a valid router caller token, and `/metrics` requires a caller token configured with `metrics_admin: true`. Caddy terminates TLS and reverse-proxies to the router on localhost.
 
 DNS is managed in DigitalOcean. Create or update an `A` record for `llm-api-engg.metrum.ai` pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
 

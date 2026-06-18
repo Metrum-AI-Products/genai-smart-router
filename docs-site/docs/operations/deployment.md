@@ -51,7 +51,7 @@ curl https://llm-api.example.com/readyz
 API paths keep precedence:
 
 - `/v1/*`
-- `/metrics`
+- `/metrics` for caller tokens configured with `metrics_admin: true`
 - `/healthz`
 - `/readyz`
 

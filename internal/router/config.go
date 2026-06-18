@@ -144,16 +144,17 @@ type Target struct {
 }
 
 type CallerConfig struct {
-	ID          string      `yaml:"id" json:"id"`
-	User        string      `yaml:"user" json:"user"`
-	Project     string      `yaml:"project" json:"project"`
-	Environment string      `yaml:"environment" json:"environment"`
-	TokenSHA256 string      `yaml:"token_sha256" json:"token_sha256"`
-	TokenID     string      `yaml:"token_id" json:"token_id"`
-	Allow       []string    `yaml:"allow" json:"allow"`
-	Rate        RateConfig  `yaml:"rate" json:"rate"`
-	Quota       QuotaConfig `yaml:"quota" json:"quota"`
-	Key         KeyConfig   `yaml:"key" json:"key"`
+	ID           string      `yaml:"id" json:"id"`
+	User         string      `yaml:"user" json:"user"`
+	Project      string      `yaml:"project" json:"project"`
+	Environment  string      `yaml:"environment" json:"environment"`
+	TokenSHA256  string      `yaml:"token_sha256" json:"token_sha256"`
+	TokenID      string      `yaml:"token_id" json:"token_id"`
+	Allow        []string    `yaml:"allow" json:"allow"`
+	MetricsAdmin bool        `yaml:"metrics_admin" json:"metrics_admin"`
+	Rate         RateConfig  `yaml:"rate" json:"rate"`
+	Quota        QuotaConfig `yaml:"quota" json:"quota"`
+	Key          KeyConfig   `yaml:"key" json:"key"`
 }
 
 type RateConfig struct {

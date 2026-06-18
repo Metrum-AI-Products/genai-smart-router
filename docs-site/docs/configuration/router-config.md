@@ -228,6 +228,7 @@ callers:
     environment: prod
     token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
+    metrics_admin: false
     allow: [default, fast, small]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 
@@ -237,11 +238,22 @@ callers:
     environment: prod
     token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
+    metrics_admin: false
     allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+
+  - id: example-metrics-prod
+    user: metrics-admin
+    project: observability
+    environment: prod
+    token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
+    token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
+    metrics_admin: true
+    allow: []
+    rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
-Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used.
+Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`.
 
 ## Cache And Usage Store
 

@@ -28,7 +28,7 @@ Smart LLM Router gives platform teams one control plane:
 - Weighted, failover, and TypeScript-driven routing.
 - Enterprise routing to internally hosted vLLM or SGLang services.
 - In-process response cache for eligible non-tool requests.
-- Prometheus metrics, request logs, and durable usage reporting with request-time cost fields.
+- Metrics-admin Prometheus telemetry, request logs, and durable usage reporting with request-time cost fields.
 - Codex CLI and Claude Code CLI support through the hosted endpoint.
 
 ## Model Groups
@@ -66,7 +66,7 @@ The router supports the common LLM API surfaces used by modern tools:
 | `/v1/messages` | Claude Code and Anthropic-compatible clients |
 | `/v1/models` | Model discovery filtered by caller token allow list |
 | `/v1/usage` | Caller quota/usage lookup |
-| `/metrics` | Prometheus-compatible telemetry |
+| `/metrics` | Prometheus telemetry for `metrics_admin` caller tokens |
 
 ## Hosted Endpoint Example
 

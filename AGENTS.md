@@ -14,6 +14,7 @@ These instructions apply to the whole repository.
 
 - Use `rtk` before shell commands in this repo.
 - Do not print provider API keys, router tokens, token hashes, or full production config contents.
+- `/metrics` is global operational telemetry and must remain restricted to callers with `metrics_admin: true`. Normal application caller keys must receive `403 metrics-forbidden`; do not add tenant-scoped data labels or token IDs to unauthenticated or ordinary-caller endpoints.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
 - Provider model catalogs must include current `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, and `pricing_updated_at` for every active or cataloged upstream model when pricing is known. Use current primary/provider docs when possible; use OpenRouter model metadata for OpenRouter-hosted routes. For VLMs, add `image_input_price_per_million_tokens_usd` or `image_input_price_per_image_usd` only when the upstream/provider or enterprise chargeback model uses separate image pricing. For self-hosted models, use the enterprise chargeback rate or explicit `0.00` with `pricing_notes`.

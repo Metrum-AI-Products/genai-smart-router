@@ -18,7 +18,7 @@ Current MVP capabilities:
 - Per-caller RPM, TPM, concurrency, rolling quota, and lifetime key budget enforcement.
 - Disk-persisted quota/key state.
 - JSONL request logs using the SRS schema.
-- Authenticated Prometheus-compatible `/metrics` with caller/user/project labels.
+- Metrics-admin-only Prometheus-compatible `/metrics` with caller/user/project labels.
 
 ## Cache Behavior
 
@@ -522,8 +522,10 @@ Health checks:
 ```bash
 curl http://127.0.0.1:8080/healthz
 curl http://127.0.0.1:8080/readyz
-curl -H "Authorization: Bearer $ROUTER_TOKEN" http://127.0.0.1:8080/metrics
+curl -H "Authorization: Bearer $METRICS_ADMIN_ROUTER_TOKEN" http://127.0.0.1:8080/metrics
 ```
+
+`/metrics` is intentionally restricted to caller entries with `metrics_admin: true`; normal application keys receive `403 metrics-forbidden`. Use `/v1/usage` and durable usage reports for caller-scoped usage views.
 
 Version checks:
 
@@ -534,7 +536,7 @@ Version checks:
 curl http://127.0.0.1:8080/version
 ```
 
-`/healthz`, `/readyz`, and `/version` include the router version, commit, and full UTC build timestamp. `/metrics` exports `smart_llmrouter_build_info`. Browser docs show the running docs package version and build timestamp on every page, and docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers. OpenAI-compatible `/v1/*` response bodies do not include router-specific version fields.
+`/healthz`, `/readyz`, and `/version` include the router version, commit, and full UTC build timestamp. Metrics-admin `/metrics` exports `smart_llmrouter_build_info`. Browser docs show the running docs package version and build timestamp on every page, and docs responses include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers. OpenAI-compatible `/v1/*` response bodies do not include router-specific version fields.
 
 ## Usage Reports
 

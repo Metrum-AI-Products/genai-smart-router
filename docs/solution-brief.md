@@ -252,6 +252,7 @@ callers:
     environment: prod
     token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
+    metrics_admin: false
     allow: [default, fast, small]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
   - id: example-coding-prod
@@ -260,11 +261,21 @@ callers:
     environment: prod
     token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
+    metrics_admin: false
     allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+  - id: example-metrics-prod
+    user: metrics-admin
+    project: observability
+    environment: prod
+    token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
+    token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
+    metrics_admin: true
+    allow: []
+    rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
-The `allow` list is the model-group authorization boundary for each router key. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used.
+The `allow` list is the model-group authorization boundary for each router key. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used. Global `/metrics` access is a separate `metrics_admin: true` privilege and should not be granted to application keys.
 
 ## Custom TypeScript Routing
 
@@ -302,7 +313,7 @@ The router uses two separate credential classes:
 - Caller tokens: authenticate applications and users that call the router.
 - Provider keys: authenticate the router to upstream model providers.
 
-Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Logs, metrics, scripts, and usage reports use public token identifiers only.
+Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Logs, metrics-admin metrics, scripts, and usage reports use public token identifiers only. Global `/metrics` access is restricted to callers configured with `metrics_admin: true`; normal application keys use `/v1/usage` and reports for scoped usage visibility.
 
 Provider keys are loaded from environment variables or an `env.json` file on the deployment host. They are injected only into outbound provider calls and are not sent to routing scripts, responses, logs, metrics, or usage reports.
 
@@ -343,7 +354,7 @@ Cache hits return a fresh router-owned response ID and do not consume provider c
 Smart LLM Router produces operational data at three levels:
 
 - Structured JSONL request logs for audit/debugging.
-- Prometheus-compatible `/metrics` for dashboards and alerting.
+- Metrics-admin-only Prometheus-compatible `/metrics` for dashboards and alerting.
 - Build version visibility through CLI `--version`, `/version`, health/readiness responses, docs page badges, docs response headers, and the `smart_llmrouter_build_info` metric.
 - Durable relational usage store for periodic reporting.
 

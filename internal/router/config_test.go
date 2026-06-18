@@ -170,8 +170,10 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
 	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
+	metricsAdminSum := sha256.Sum256([]byte("rtr_example_metrics_admin_test"))
 	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
 	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", hex.EncodeToString(metricsAdminSum[:]))
 	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
 
 	dir := t.TempDir()
@@ -281,8 +283,9 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		assertActiveGroupPolicy(t, name, group)
 	}
 	wantAllows := map[string][]string{
-		"standard-dev": {"default", "fast", "small", "vision"},
-		"coding-dev":   {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke"},
+		"standard-dev":      {"default", "fast", "small", "vision"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke"},
+		"metrics-admin-dev": {},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -291,6 +294,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 		if strings.Join(caller.Allow, ",") != strings.Join(want, ",") {
 			t.Fatalf("caller %s allow=%v want %v", caller.ID, caller.Allow, want)
+		}
+		if caller.ID == "metrics-admin-dev" && !caller.MetricsAdmin {
+			t.Fatalf("caller %s metrics_admin=false, want true", caller.ID)
+		}
+		if caller.ID != "metrics-admin-dev" && caller.MetricsAdmin {
+			t.Fatalf("caller %s metrics_admin=true, want false", caller.ID)
 		}
 		delete(wantAllows, caller.ID)
 	}

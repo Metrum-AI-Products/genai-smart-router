@@ -1216,7 +1216,7 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	}
 }
 
-func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
+func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": "up_metrics",
@@ -1227,7 +1227,40 @@ func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
 		})
 	}))
 	defer upstream.Close()
-	svc := newTestService(t, upstream.URL, "provider-key")
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	bobToken := "rtr_bob_test_token"
+	bobSum := sha256.Sum256([]byte(bobToken))
+	adminToken := "rtr_metrics_admin_test_token"
+	adminSum := sha256.Sum256([]byte(adminToken))
+	cfg.Callers = append(cfg.Callers,
+		CallerConfig{
+			ID:          "bob",
+			User:        "bob",
+			Project:     "openfang-daily-reports",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(bobSum[:]),
+			TokenID:     "rtr_bob_test",
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+		},
+		CallerConfig{
+			ID:           "metrics-admin",
+			User:         "ops",
+			Project:      "observability",
+			Environment:  "test",
+			TokenSHA256:  hex.EncodeToString(adminSum[:]),
+			TokenID:      "rtr_metrics_admin_test",
+			Allow:        []string{"default"},
+			MetricsAdmin: true,
+			Rate:         RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+		},
+	)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer svc.Close()
 
 	unauth := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -1237,20 +1270,39 @@ func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
 		t.Fatalf("unauth metrics status=%d body=%s", unauthRR.Code, unauthRR.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	rr := httptest.NewRecorder()
-	svc.Handler().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	for _, token := range []string{testToken, bobToken} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+
+	for _, token := range []string{testToken, bobToken} {
+		metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		metricsReq.Header.Set("Authorization", "Bearer "+token)
+		metricsRR := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(metricsRR, metricsReq)
+		if metricsRR.Code != http.StatusForbidden {
+			t.Fatalf("non-admin metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
+		}
+		body := metricsRR.Body.String()
+		if !strings.Contains(body, "metrics-forbidden") {
+			t.Fatalf("non-admin metrics missing metrics-forbidden: %s", body)
+		}
+		if strings.Contains(body, "caller_user") || strings.Contains(body, "rtr_") || strings.Contains(body, "smart_llmrouter_") {
+			t.Fatalf("non-admin metrics leaked metrics data: %s", body)
+		}
 	}
 
 	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	metricsReq.Header.Set("Authorization", "Bearer "+testToken)
+	metricsReq.Header.Set("Authorization", "Bearer "+adminToken)
 	metricsRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(metricsRR, metricsReq)
 	if metricsRR.Code != http.StatusOK {
-		t.Fatalf("metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
+		t.Fatalf("admin metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
 	}
 	body := metricsRR.Body.String()
 	for _, want := range []string{
@@ -1260,6 +1312,10 @@ func TestMetricsEndpointRequiresAuthAndExportsCallerLabels(t *testing.T) {
 		`caller_project="metrum-insights"`,
 		`caller_environment="test"`,
 		`token_id="rtr_alice_test"`,
+		`caller_id="bob"`,
+		`caller_user="bob"`,
+		`caller_project="openfang-daily-reports"`,
+		`token_id="rtr_bob_test"`,
 		`model_group="default"`,
 		`target_provider="mock"`,
 		`target_model="mock-model"`,

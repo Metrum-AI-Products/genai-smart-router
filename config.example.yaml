@@ -1211,6 +1211,7 @@ callers:
   environment: dev
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
   token_id: rtr_metrum_standard_metrum-insights_dev_kreplace
+  metrics_admin: false
   allow:
   - default
   - fast
@@ -1238,6 +1239,7 @@ callers:
   environment: dev
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN
   token_id: rtr_metrum_coding_metrum-insights_dev_kreplace
+  metrics_admin: false
   allow:
   - default
   - fast
@@ -1272,3 +1274,15 @@ callers:
     lifetime_tokens: 2000000000
     soft_pct: 90
     on_exhaust: disable
+- id: metrics-admin-dev
+  user: metrics-admin
+  project: observability
+  environment: dev
+  token_sha256: REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN
+  token_id: rtr_metrum_metrics-admin_observability_dev_kreplace
+  metrics_admin: true
+  allow: []
+  rate:
+    rpm: 60
+    tpm: 0
+    concurrent: 2
