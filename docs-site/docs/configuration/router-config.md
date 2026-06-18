@@ -111,6 +111,18 @@ providers:
         pricing_notes: Baseten also publishes a discounted cache-input rate; keep standard input/output rates for router-calculated cost and log upstream-reported billed cost separately when available
         tool_support:
           openai_chat: [tools, tool_choice]
+      glm-5-2:
+        model: zai-org/GLM-5.2
+        tier: coding
+        input_price_per_million_usd: 1.50
+        output_price_per_million_usd: 4.50
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/pricing/
+        pricing_updated_at: "2026-06-18"
+        pricing_notes: Baseten also publishes a discounted cache-input rate; GLM 5.2 is reasoning-heavy, so use realistic output budgets for acceptance and coding-agent traffic
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
 
   kimi:
     base_url: https://api.moonshot.ai/v1
@@ -178,21 +190,25 @@ models:
   default:
     strategy: weighted
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 56 }
-      - { provider: minimax, model_ref: m3, weight: 26 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 46 }
+      - { provider: minimax, model_ref: m3, weight: 27 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
+      - { provider: baseten, model_ref: glm-5-2, weight: 5 }
+      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 7 }
       - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 9 }
+      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
 
   big-coder:
     strategy: weighted
     targets:
-      - { provider: minimax, model_ref: m3, weight: 42 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 25 }
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: minimax, model_ref: m3, weight: 38 }
+      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 28 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 18 }
+      - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
-      - { provider: vllm_internal, model_ref: qwen3-coder-tools, weight: 10 }
+      - { provider: baseten, model_ref: glm-5-2, weight: 7 }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
 ```
 
 ## Scripted Routing Options

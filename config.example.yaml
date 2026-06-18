@@ -87,6 +87,27 @@ providers:
           openai_chat:
           - tools
           - tool_choice
+      glm-5-2:
+        model: zai-org/GLM-5.2
+        tier: coding
+        input_price_per_million_usd: 1.5
+        output_price_per_million_usd: 4.5
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.baseten.co/pricing/
+        pricing_updated_at: '2026-06-18'
+        pricing_notes: 'Baseten Model API pricing also lists $0.30/M cache input.
+          Direct Baseten smokes passed on 2026-06-18 for realistic-budget text, max_tokens
+          cap enforcement, and OpenAI Chat tool calls. Reasoning-heavy: max_tokens=128
+          can be spent entirely on reasoning with empty final content; prefer realistic
+          budgets for acceptance and coding-agent traffic.'
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -636,13 +657,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 51
+      weight: 46
     - provider: minimax
       model_ref: m3
       weight: 27
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
@@ -733,13 +757,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 56
+      weight: 51
     - provider: minimax
       model_ref: m3
       weight: 26
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
@@ -830,13 +857,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 55
+      weight: 53
     - provider: minimax
       model_ref: m3
       weight: 28
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 2
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
@@ -928,13 +958,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 51
+      weight: 46
     - provider: minimax
       model_ref: m3
       weight: 25
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
@@ -1025,13 +1058,16 @@ models:
     targets:
     - provider: openrouter
       model_ref: deepseek-v4-flash-nitro
-      weight: 46
+      weight: 40
     - provider: minimax
       model_ref: m3
       weight: 26
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 6
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 9
@@ -1129,10 +1165,13 @@ models:
       weight: 5
     - provider: minimax
       model_ref: m3
-      weight: 45
+      weight: 38
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+    - provider: baseten
+      model_ref: glm-5-2
+      weight: 7
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 28
@@ -1270,6 +1309,11 @@ models:
     targets:
     - provider: baseten
       model_ref: nemotron-120b-a12b
+  baseten-glm52-smoke:
+    strategy: static
+    targets:
+    - provider: baseten
+      model_ref: glm-5-2
 callers:
 - id: standard-dev
   user: standard
@@ -1324,6 +1368,7 @@ callers:
   - claude-tools-smoke-openrouter-gemma
   - baseten-nemotron-smoke
   - warp-agent-smoke
+  - baseten-glm52-smoke
   rate:
     rpm: 120
     tpm: 200000

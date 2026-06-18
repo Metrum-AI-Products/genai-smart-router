@@ -136,7 +136,7 @@ BASETEN_API_KEY
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, Baseten `nvidia/Nemotron-120B-A12B` at low text weight, and original OpenAI `gpt-5.4-nano` at low non-tool weight.
+- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter DeepSeek V4 Flash Nitro, OpenRouter Gemma 4 26B Nitro, Baseten `nvidia/Nemotron-120B-A12B` at low text weight, Baseten `zai-org/GLM-5.2` for reasoning-heavy coding traffic, and original OpenAI `gpt-5.4-nano` at low non-tool weight.
 - Enterprise-owned vLLM and SGLang services are configured the same way as other OpenAI-compatible providers: set `base_url` to the internal `/v1` endpoint, use `dialect: openai-chat` for `/v1/chat/completions`, set `auth_scheme: bearer` when the service expects bearer auth, and catalog the served model ID under `providers.<name>.models`. See `docs/SELF_HOSTED_UPSTREAMS.md` for vLLM/SGLang examples and tool-call validation smokes.
 - MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
@@ -299,12 +299,13 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 56 }
-      - { provider: minimax, model_ref: m3, weight: 26 }
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 46 }
+      - { provider: minimax, model_ref: m3, weight: 27 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
-      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 4 }
+      - { provider: baseten, model_ref: glm-5-2, weight: 5 }
+      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 7 }
       - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
-      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 5 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
 ```
 
@@ -319,7 +320,7 @@ Catalog metadata can include `input_price_per_million_usd`, `output_price_per_mi
 
 Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an opt-in `vision` group for image-analysis traffic. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
 
-Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
+Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes; it is reasoning-heavy, so tiny output budgets can be spent entirely on reasoning before final content. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
 
 OpenAI Chat tool passthrough is used by OpenAI-compatible agent clients such as Warp Agent. These clients call `/v1/chat/completions`, send `tools`, `tool_choice`, and often request streaming. For those requests, the router preserves the OpenAI Chat tool payload and tool-result messages, selects only upstream targets with explicit `tool_support.openai_chat`, calls the upstream non-streaming, and returns either the raw non-streaming response or synthesized OpenAI Chat SSE chunks containing `delta.tool_calls`. This avoids asking users to switch model groups just because a coding-agent turn includes tools; the configured group filters to compatible targets automatically.
 

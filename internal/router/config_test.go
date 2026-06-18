@@ -255,6 +255,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "baseten-glm52-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "zai-org/GLM-5.2" {
+				t.Fatalf("example config baseten-glm52-smoke=%#v, want static Baseten GLM 5.2 target", group)
+			}
+			continue
+		}
 		if name == "warp-agent-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "nvidia/Nemotron-120B-A12B" {
 				t.Fatalf("example config warp-agent-smoke=%#v, want static Baseten Nemotron OpenAI Chat tool target", group)
@@ -284,7 +290,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke"},
 		"metrics-admin-dev": {},
 	}
 	for _, caller := range cfg.Callers {
@@ -312,6 +318,7 @@ func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
 		"baseten:nvidia/Nemotron-120B-A12B":           "nvidia/Nemotron-120B-A12B",
+		"baseten:zai-org/GLM-5.2":                     "zai-org/GLM-5.2",
 		"minimax:MiniMax-M3":                          "MiniMax-M3",
 		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
 		"openrouter:deepseek/deepseek-v4-flash:nitro": "deepseek/deepseek-v4-flash:nitro",
@@ -358,7 +365,8 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	gemmaWeight := 0
 	qwenFlashWeight := 0
 	openAIWeight := 0
-	basetenWeight := 0
+	basetenNemotronWeight := 0
+	basetenGLMWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
@@ -412,28 +420,31 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			openAIWeight += target.Weight
 		}
 		if target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B" {
-			basetenWeight += target.Weight
+			basetenNemotronWeight += target.Weight
+		}
+		if target.Provider == "baseten" && target.Model == "zai-org/GLM-5.2" {
+			basetenGLMWeight += target.Weight
 		}
 	}
 	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		deepSeek, m3, gemma, qwenFlash, kimi, openAI, baseten, targets int
+		deepSeek, m3, gemma, qwenFlash, kimi, openAI, basetenNemotron, basetenGLM, targets int
 	}{
-		"default":   {51, 27, 7, 5, 6, 1, 3, 7},
-		"fast":      {56, 26, 4, 5, 5, 1, 3, 7},
-		"small":     {55, 28, 4, 5, 4, 1, 3, 7},
-		"medium":    {51, 25, 7, 5, 8, 1, 3, 7},
-		"high":      {46, 26, 9, 5, 10, 1, 3, 7},
-		"big-coder": {18, 45, 0, 5, 28, 1, 3, 6},
+		"default":   {46, 27, 7, 5, 6, 1, 3, 5, 8},
+		"fast":      {51, 26, 4, 5, 5, 1, 3, 5, 8},
+		"small":     {53, 28, 4, 5, 4, 1, 3, 2, 8},
+		"medium":    {46, 25, 7, 5, 8, 1, 3, 5, 8},
+		"high":      {40, 26, 9, 5, 10, 1, 3, 6, 8},
+		"big-coder": {18, 38, 0, 5, 28, 1, 3, 7, 7},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenWeight != expect.baseten {
-		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d baseten=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, basetenWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM {
+		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, totalWeight, normalTargets, expect)
 	}
 }
 
@@ -450,9 +461,10 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 	}
 	allowedQwen := target.Model == "qwen/qwen3.6-flash:nitro" || target.Model == "qwen/qwen3.7-plus:nitro"
 	allowedBasetenNemotron := target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B"
+	allowedBasetenGLM := target.Provider == "baseten" && target.Model == "zai-org/GLM-5.2"
 	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
-			return !allowedQwen && !allowedBasetenNemotron
+			return !allowedQwen && !allowedBasetenNemotron && !allowedBasetenGLM
 		}
 	}
 	if target.ToolOnly && (target.Provider == "openai" || target.Provider == "anthropic") {

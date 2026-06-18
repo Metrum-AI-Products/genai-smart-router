@@ -182,12 +182,12 @@ docker compose up -d
 Supported router model groups:
 
 ```text
-small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.4 Nano 1% non-tool.
-medium     DeepSeek V4 Flash Nitro 53%, MiniMax-M3 35%, Gemma 1%, Kimi 8%, OpenAI GPT-5.4 Nano 3% non-tool.
-high       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 28%, Gemma 1%, Kimi 10%, OpenAI GPT-5.4 Nano 10% non-tool.
-default    DeepSeek V4 Flash Nitro 56%, MiniMax-M3 28%, Gemma 8%, Kimi 7%, OpenAI GPT-5.4 Nano 1% non-tool.
-fast       DeepSeek V4 Flash Nitro 45%, MiniMax-M3 28%, Gemma 1%, Kimi 5%, OpenAI GPT-5.4 Nano 21% non-tool.
-big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 11%, MiniMax-M3 27%, Kimi K2.7 Code 17%, OpenAI GPT-5.4 Nano 35%, Z.AI GLM 5.2 Nitro 10%.
+default    DeepSeek V4 Flash Nitro 46%, MiniMax-M3 27%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 7%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 6%, OpenAI GPT-5.4 Nano 1%.
+fast       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 26%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 4%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 5%, OpenAI GPT-5.4 Nano 1%.
+small      DeepSeek V4 Flash Nitro 53%, MiniMax-M3 28%, Baseten Nemotron 3%, Baseten GLM 5.2 2%, Gemma 4%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 4%, OpenAI GPT-5.4 Nano 1%.
+medium     DeepSeek V4 Flash Nitro 46%, MiniMax-M3 25%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 7%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 8%, OpenAI GPT-5.4 Nano 1%.
+high       DeepSeek V4 Flash Nitro 40%, MiniMax-M3 26%, Baseten Nemotron 3%, Baseten GLM 5.2 6%, Gemma 9%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 10%, OpenAI GPT-5.4 Nano 1%.
+big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 18%, Qwen 3.6 Flash 5%, MiniMax-M3 38%, Baseten Nemotron 3%, Baseten GLM 5.2 7%, Kimi K2.7 Code 28%, OpenAI GPT-5.4 Nano 1%.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
