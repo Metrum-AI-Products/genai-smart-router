@@ -764,3 +764,44 @@ Claude Code CLI production smoke with model medium: JSON result OK and modelUsag
 Claude Code CLI production smoke with model big-coder: JSON result OK and modelUsage present
 production cleanup: removed uploaded package/temp files; docker image/build-cache prune reclaimed about 1.5 GB; volumes were not pruned
 ```
+
+### 2026-06-18 OpenAI Chat tool passthrough and Warp Agent rollout
+
+Package `smart-llmrouter:2ccc852-linux-amd64` was deployed to production to support OpenAI Chat Completions tool passthrough for OpenAI-compatible agent clients such as Warp Agent.
+
+Runtime change:
+
+- Preserves OpenAI Chat `tools`, `tool_choice`, `parallel_tool_calls`, and tool-result messages for same-dialect `openai-chat` upstreams.
+- Requires explicit `tool_support.openai_chat` metadata before an OpenAI Chat tool request can select a target.
+- Synthesizes OpenAI Chat SSE chunks with `delta.tool_calls` when the downstream caller requests `stream: true`.
+- Added static production/reference smoke group `warp-agent-smoke` routed to validated Baseten `nvidia/Nemotron-120B-A12B`.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.warp-chat-tools-20260618T132828Z
+config/config.yaml.bak.20260618T132843Z
+```
+
+Validation:
+
+```text
+rtk go test ./internal/router: passed, 68 tests
+rtk go test ./cmd/... ./internal/...: passed, 72 tests
+rtk go test ./...: known generated Harbor/job artifact package failures only
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 2ccc852, build_date 2026-06-18T13:25:47Z
+production /version after deploy: 2ccc852, build_date 2026-06-18T13:25:47Z
+hosted docs /docs/configuration/router-config: 200 with version headers for 2ccc852
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, af48441185bfc145f999d082a50b045caed923b106421e83a2d9f6e95803a161
+production Warp-style /v1/chat/completions smoke with tools, tool_choice, parallel_tool_calls, stream=true: warp-agent-smoke 200, streamed tool_call get_weather
+production Warp-style /v1/chat/completions smoke with tools, tool_choice, parallel_tool_calls, stream=true: small 200, streamed tool_call get_weather
+production Warp-style /v1/chat/completions smoke with tools, tool_choice, parallel_tool_calls, stream=true: big-coder 200, streamed tool_call get_weather
+production /v1/models: small, big-coder, and warp-agent-smoke visible to the operator smoke token
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+Claude Code CLI production tool smoke with model claude-tools-smoke: created expected file and JSON result contained expected text
+production logs: router listening on :8080, no errors in recent router logs
+production usage DB: recent Warp, Codex, and Claude smokes recorded status 200 with no error
+production cleanup: removed uploaded package; dangling Docker image prune reclaimed 0 B; volumes were not pruned
+```
