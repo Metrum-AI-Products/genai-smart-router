@@ -26,6 +26,9 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	if maxTokens, ok := numberAsInt(raw["max_tokens"]); ok {
 		req.MaxTokens = maxTokens
 	}
+	if maxOutputTokens, ok := numberAsInt(raw["max_output_tokens"]); ok && req.MaxTokens == 0 {
+		req.MaxTokens = maxOutputTokens
+	}
 	if temp, ok := numberAsFloat(raw["temperature"]); ok {
 		req.Temperature = &temp
 	}

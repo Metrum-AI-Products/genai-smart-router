@@ -56,7 +56,8 @@ providers:
         - text
         pricing_source: https://docs.x.ai/developers/models/grok-4.3
         pricing_updated_at: '2026-06-17'
-        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and image smokes
+        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and
+          image smokes
         tool_support:
           openai_chat:
           - tools
@@ -79,7 +80,9 @@ providers:
         - text
         pricing_source: https://www.baseten.co/pricing/
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Baseten pricing page also lists $0.06/M cache input for NVIDIA Nemotron 3 Super; router usage rows currently log standard input/output token rates plus any upstream-reported billed cost.
+        pricing_notes: Baseten pricing page also lists $0.06/M cache input for NVIDIA
+          Nemotron 3 Super; router usage rows currently log standard input/output
+          token rates plus any upstream-reported billed cost.
         tool_support:
           openai_chat:
           - tools
@@ -165,7 +168,8 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17.
       openrouter-xai-grok-4-3:
         model: x-ai/grok-4.3
         tier: vision
@@ -178,7 +182,11 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17. Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this
+          target until max-token behavior is revalidated.
+        honors_max_tokens: false
       qwen3-7-plus-nitro:
         model: qwen/qwen3.7-plus:nitro
         tier: vision
@@ -192,7 +200,10 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17; Nitro suffix validated by completion call. Production OpenAI Chat smoke on 2026-06-18 returned 1727 output tokens for caller max_tokens=1, so capped requests must skip this target until max-token behavior is revalidated.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17; Nitro suffix validated by completion call. Production OpenAI
+          Chat smoke on 2026-06-18 returned 1727 output tokens for caller max_tokens=1,
+          so capped requests must skip this target until max-token behavior is revalidated.
       qwen3-6-flash-nitro:
         model: qwen/qwen3.6-flash:nitro
         tier: vision
@@ -206,10 +217,18 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed on 2026-06-17. Production router image smoke processed the receipt but returned a wrong merchant once, so treat this as general VLM/image-capable rather than OCR-quality-gated. Tool calls work with auto tool choice; forced object tool_choice fails while thinking mode is enabled.
+        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed
+          on 2026-06-17. Production router image smoke processed the receipt but returned
+          a wrong merchant once, so treat this as general VLM/image-capable rather
+          than OCR-quality-gated. Tool calls work with auto tool choice; forced object
+          tool_choice fails while thinking mode is enabled. Production capped-request
+          smokes on 2026-06-18 showed OpenRouter-hosted VLM targets can return far
+          above max_tokens=1; capped requests skip this target until max-token behavior
+          is revalidated.
         tool_support:
           openai_chat:
           - tools
+        honors_max_tokens: false
       openrouter-minimax-m3:
         model: minimax/minimax-m3
         tier: vision
@@ -222,7 +241,11 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
+          2026-06-17. Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this
+          target until max-token behavior is revalidated.
+        honors_max_tokens: false
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter
@@ -337,7 +360,10 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text. Keep capped requests away from this model until max-token behavior is revalidated for this skin.
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text. Keep capped requests away from this model until max-token
+          behavior is revalidated for this skin.
         tool_support:
           openai_responses:
           - function
@@ -354,10 +380,17 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17. A receipt image+tool smoke called the tool but returned Walgreens once, so active Responses tool targets override input_modalities to text only; use for text tools unless image-tool quality is revalidated.
+        pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17.
+          A receipt image+tool smoke called the tool but returned Walgreens once,
+          so active Responses tool targets override input_modalities to text only;
+          use for text tools unless image-tool quality is revalidated. Production
+          capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets
+          can return far above max_tokens=1; capped requests skip this target until
+          max-token behavior is revalidated.
         tool_support:
           openai_responses:
           - function
+        honors_max_tokens: false
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -370,7 +403,9 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text
         tool_support:
           openai_responses:
           - function
@@ -386,10 +421,15 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this
+          target until max-token behavior is revalidated.
         tool_support:
           openai_responses:
           - function
+        honors_max_tokens: false
       openrouter-minimax-m3:
         model: minimax/minimax-m3
         tier: vision
@@ -402,10 +442,15 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
+          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
+          reasoning text Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this
+          target until max-token behavior is revalidated.
         tool_support:
           openai_responses:
           - function
+        honors_max_tokens: false
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter
@@ -450,7 +495,9 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17. Keep capped requests away from this model until max-token behavior is revalidated for this skin.
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17. Keep capped requests away from this model until max-token
+          behavior is revalidated for this skin.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -467,10 +514,17 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice fails upstream while thinking mode is enabled, but the router's Anthropic passthrough removes forced tool_choice when default_thinking is injected.
+        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool
+          smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice
+          fails upstream while thinking mode is enabled, but the router's Anthropic
+          passthrough removes forced tool_choice when default_thinking is injected.
+          Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this
+          target until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
+        honors_max_tokens: false
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -483,7 +537,8 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -499,10 +554,14 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17 Production capped-request smokes on 2026-06-18 showed
+          OpenRouter-hosted VLM targets can return far above max_tokens=1; capped
+          requests skip this target until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
+        honors_max_tokens: false
       openrouter-minimax-m3:
         model: minimax/minimax-m3
         tier: vision
@@ -515,10 +574,14 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
+          Aid on 2026-06-17 Production capped-request smokes on 2026-06-18 showed
+          OpenRouter-hosted VLM targets can return far above max_tokens=1; capped
+          requests skip this target until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
+        honors_max_tokens: false
     headers:
       HTTP-Referer: https://llm-api-engg.metrum.ai
       X-Title: smart-llmrouter

@@ -99,6 +99,28 @@ func TestAnthropicMaxTokensDefaultsOnlyWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestResponsesMaxOutputTokensTranslatesToChatMaxTokens(t *testing.T) {
+	req, err := decodeRequest("openai-responses", []byte(`{
+		"model": "vision",
+		"max_output_tokens": 1,
+		"input": "write a long essay"
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeUpstream("openai-chat", "vision-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["max_tokens"]; got != float64(1) {
+		t.Fatalf("max_tokens=%#v, want 1", got)
+	}
+}
+
 func TestResponsesImageMessageArrayTranslatesToChatAndAnthropicBase64(t *testing.T) {
 	dataURL := "data:image/png;base64,aGVsbG8="
 	req, err := decodeRequest("openai-responses", []byte(`{
