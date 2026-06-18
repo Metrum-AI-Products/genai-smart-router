@@ -956,5 +956,7 @@ production baseten-glm52-smoke OpenAI Chat tool smoke: HTTP 200, finish tool_cal
 Claude Code CLI production tool smoke using claude -p and model claude-tools-smoke: created expected file
 Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
 production startup issue: initial copied config/env permissions blocked container reads; fixed ownership for runtime UID/GID 65532:65532 and recreated router container
-production cleanup: removed uploaded package/config/check files, removed redundant /opt/smart-llmrouter.old.20260618T232903Z, ran sudo docker system prune -f; reclaimed 0 B; volumes were not pruned
+final smoke rerun after cleanup: /v1/models present check passed; Baseten GLM realistic text, max_tokens=1 cap, and tool-call smokes passed; Claude Code and Codex CLI tool smokes passed with file assertions
+production cleanup: removed uploaded package/config/check files, removed redundant /opt/smart-llmrouter.old.20260618T232903Z, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp is 18% used; volumes were not pruned
+production recent logs after final smoke: router listening on :8080, no errors in the last 10 minutes
 ```
