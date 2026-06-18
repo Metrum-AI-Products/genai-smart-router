@@ -880,7 +880,9 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 	if len(req.Tools) == 0 {
 		out := make([]Target, 0, len(targets))
 		for _, target := range targets {
-			if !target.ToolOnly && targetSupportsInputModalities(target, requiredModalities) {
+			if !target.ToolOnly &&
+				targetSupportsInputModalities(target, requiredModalities) &&
+				targetHonorsExplicitMaxTokens(target, req) {
 				out = append(out, target)
 			}
 		}
@@ -892,7 +894,8 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 		outDialect := targetDialect(provider, target)
 		if toolPassthrough(callerDialect, outDialect, req) &&
 			targetSupportsTools(target, outDialect) &&
-			targetSupportsInputModalities(target, requiredModalities) {
+			targetSupportsInputModalities(target, requiredModalities) &&
+			targetHonorsExplicitMaxTokens(target, req) {
 			out = append(out, target)
 		}
 	}
@@ -904,7 +907,17 @@ func routingRequirements(req *IRRequest, callerDialect string) []string {
 	if len(req.Tools) > 0 {
 		requirements = append(requirements, "tools", callerDialect+"_tool_passthrough")
 	}
+	if req.MaxTokens > 0 {
+		requirements = append(requirements, "max_tokens")
+	}
 	return requirements
+}
+
+func targetHonorsExplicitMaxTokens(target Target, req *IRRequest) bool {
+	if req == nil || req.MaxTokens <= 0 || target.HonorsMaxTokens == nil {
+		return true
+	}
+	return *target.HonorsMaxTokens
 }
 
 func targetSupportsInputModalities(target Target, required []string) bool {

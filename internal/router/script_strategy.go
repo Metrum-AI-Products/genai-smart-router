@@ -61,6 +61,7 @@ type scriptTarget struct {
 	ToolSupport                        ToolSupport `json:"toolSupport,omitempty"`
 	InputModalities                    []string    `json:"inputModalities,omitempty"`
 	OutputModalities                   []string    `json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool       `json:"honorsMaxTokens,omitempty"`
 	KeyID                              string      `json:"keyId,omitempty"`
 	APIKeyEnv                          string      `json:"apiKeyEnv,omitempty"`
 	KeyConfigured                      bool        `json:"keyConfigured"`
@@ -359,6 +360,7 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 			ToolSupport:                        target.ToolSupport,
 			InputModalities:                    target.InputModalities,
 			OutputModalities:                   target.OutputModalities,
+			HonorsMaxTokens:                    target.HonorsMaxTokens,
 			KeyID:                              provider.KeyID,
 			APIKeyEnv:                          provider.APIKeyEnv,
 			KeyConfigured:                      provider.APIKey != "",

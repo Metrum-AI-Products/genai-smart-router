@@ -87,6 +87,7 @@ type ProviderModel struct {
 	ToolSupport                        ToolSupport `yaml:"tool_support" json:"toolSupport,omitempty"`
 	InputModalities                    []string    `yaml:"input_modalities" json:"inputModalities,omitempty"`
 	OutputModalities                   []string    `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool       `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -141,6 +142,7 @@ type Target struct {
 	ToolSupport                        ToolSupport    `yaml:"tool_support" json:"toolSupport,omitempty"`
 	InputModalities                    []string       `yaml:"input_modalities" json:"inputModalities,omitempty"`
 	OutputModalities                   []string       `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool          `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 }
 
 type CallerConfig struct {
@@ -519,6 +521,9 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	if len(target.OutputModalities) == 0 {
 		target.OutputModalities = catalog.OutputModalities
+	}
+	if target.HonorsMaxTokens == nil {
+		target.HonorsMaxTokens = catalog.HonorsMaxTokens
 	}
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)

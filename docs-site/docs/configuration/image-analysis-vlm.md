@@ -109,6 +109,8 @@ models:
 
 Use `image_input_price_per_million_tokens_usd` when the provider reports image tokens. Use `image_input_price_per_image_usd` for internal chargeback or providers that bill per image. If neither image-specific field is set, image tokens use the normal input-token price.
 
+For capped requests, keep model quality and cap enforcement separate. A model can pass a realistic image-analysis smoke and still be unsafe for requests where the caller explicitly sets a small `max_tokens` or `max_output_tokens` value. If a target returns far more output than requested, keep it cataloged but set `honors_max_tokens: false` on the catalog entry or target override; the router will skip it for capped requests and continue using other eligible VLM targets.
+
 ## OpenAI Chat Example
 
 ```bash

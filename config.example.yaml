@@ -189,9 +189,10 @@ providers:
         - image
         output_modalities:
         - text
+        honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17; Nitro suffix validated by completion call.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17; Nitro suffix validated by completion call. Production OpenAI Chat smoke on 2026-06-18 returned 1727 output tokens for caller max_tokens=1, so capped requests must skip this target until max-token behavior is revalidated.
       qwen3-6-flash-nitro:
         model: qwen/qwen3.6-flash:nitro
         tier: vision
@@ -333,9 +334,10 @@ providers:
         - image
         output_modalities:
         - text
+        honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text. Keep capped requests away from this model until max-token behavior is revalidated for this skin.
         tool_support:
           openai_responses:
           - function
@@ -445,9 +447,10 @@ providers:
         - image
         output_modalities:
         - text
+        honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on 2026-06-17. Keep capped requests away from this model until max-token behavior is revalidated for this skin.
         tool_support:
           anthropic_messages:
           - client_tools

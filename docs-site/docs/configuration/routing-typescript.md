@@ -83,6 +83,7 @@ type RouteContext = {
     keyId?: string;
     apiKeyEnv?: string;
     keyConfigured: boolean;
+    honorsMaxTokens?: boolean;
   }>;
 };
 ```

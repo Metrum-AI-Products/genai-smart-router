@@ -77,9 +77,10 @@ providers:
         output_price_per_million_usd: 1.28
         input_modalities: [text, image]
         output_modalities: [text]
+        honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: "2026-06-17"
-        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
+        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17; capped requests skip this target until max-token behavior is revalidated
       qwen3-6-flash-nitro:
         model: qwen/qwen3.6-flash:nitro
         tier: vision
@@ -157,6 +158,7 @@ Catalog entries should carry cost and capability metadata:
 - `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd` are optional VLM pricing fields. Use them only when the provider or internal chargeback model bills image input differently from ordinary input tokens. If the provider returns billed cost in usage metadata, the router logs that upstream-reported cost separately from the calculated cost.
 - `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
 - `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
+- `honors_max_tokens` defaults to `true`. Set it to `false` for an upstream target that accepts a request but ignores explicit caller caps such as `max_tokens: 1` or `max_output_tokens: 1`; the router then skips that target whenever the caller supplies a positive max-token field.
 
 OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting ordinary model groups such as `small`, `medium`, `high`, or a deployment-specific coding group; they should not have to switch to a separate tools-only model for a coding-agent turn.
 

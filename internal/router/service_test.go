@@ -1436,6 +1436,88 @@ func TestAnthropicMaxTokensForwardedToOpenAIChatVisionUpstream(t *testing.T) {
 	}
 }
 
+func TestExplicitMaxTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_max_tokens",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "cap-safe-vision",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "x"},
+				"finish_reason": "length",
+			}},
+			"usage": map[string]any{"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8},
+		})
+	}))
+	defer upstream.Close()
+
+	honorsMaxTokens := true
+	ignoresMaxTokens := false
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["ignored_caps"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "ignored_caps", Model: "cap-unsafe-vision", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &ignoresMaxTokens},
+		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens},
+	}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"vision","max_tokens":1,"messages":[{"role":"user","content":"write a long essay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := upstreamBody["model"]; got != "cap-safe-vision" {
+		t.Fatalf("upstream model=%#v, want cap-safe-vision; body=%#v", got, upstreamBody)
+	}
+	if got := upstreamBody["max_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	}
+}
+
+func TestNoEligibleTargetMentionsMaxTokensWhenCapUnsafeTargetsSkipped(t *testing.T) {
+	ignoresMaxTokens := false
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Provider["ignored_caps"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:         "ignored_caps",
+		Model:            "cap-unsafe-vision",
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
+		HonorsMaxTokens:  &ignoresMaxTokens,
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"vision","max_tokens":1,"messages":[{"role":"user","content":"write a long essay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "max_tokens") {
+		t.Fatalf("body=%s, want max_tokens requirement", rr.Body.String())
+	}
+}
+
 func TestReplicateProviderAdapter(t *testing.T) {
 	var gotPath, gotAuth string
 	var gotBody map[string]any
