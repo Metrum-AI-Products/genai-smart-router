@@ -678,6 +678,9 @@ func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 	if upstreamBody["stream"] != false {
 		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
 	}
+	if upstreamBody["max_tokens"] != float64(256) {
+		t.Fatalf("upstream max_tokens=%#v, want 256", upstreamBody["max_tokens"])
+	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
 	}
@@ -1331,6 +1334,105 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestAnthropicMaxTokensForwardedToAnthropicUpstream(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_max_tokens",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "anthropic-vision",
+			"stop_reason": "max_tokens",
+			"content":     []map[string]any{{"type": "text", "text": "x"}},
+			"usage":       map[string]any{"input_tokens": 7, "output_tokens": 1},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["anthropic_vision"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:         "anthropic_vision",
+		Model:            "anthropic-vision",
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"vision","max_tokens":1,"messages":[{"role":"user","content":"write a long essay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := upstreamBody["max_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	}
+}
+
+func TestAnthropicMaxTokensForwardedToOpenAIChatVisionUpstream(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_max_tokens",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "chat-vision",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "x"},
+				"finish_reason": "length",
+			}},
+			"usage": map[string]any{"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["chat_vision"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:         "chat_vision",
+		Model:            "chat-vision",
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"vision","max_tokens":1,"messages":[{"role":"user","content":"write a long essay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := upstreamBody["max_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_tokens=%#v, want 1; body=%#v", got, upstreamBody)
 	}
 }
 

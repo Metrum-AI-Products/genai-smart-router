@@ -56,6 +56,49 @@ func TestOpenAIChatImageTranslatesToResponsesAndAnthropic(t *testing.T) {
 	}
 }
 
+func TestAnthropicMaxTokensHonorsCallerValue(t *testing.T) {
+	req, err := decodeRequest("anthropic", []byte(`{
+		"model": "vision",
+		"max_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeUpstream("anthropic", "vision-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["max_tokens"]; got != float64(1) {
+		t.Fatalf("max_tokens=%#v, want 1", got)
+	}
+}
+
+func TestAnthropicMaxTokensDefaultsOnlyWhenOmitted(t *testing.T) {
+	req, err := decodeRequest("anthropic", []byte(`{
+		"model": "vision",
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeUpstream("anthropic", "vision-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["max_tokens"]; got != float64(1024) {
+		t.Fatalf("max_tokens=%#v, want default 1024", got)
+	}
+}
+
 func TestResponsesImageMessageArrayTranslatesToChatAndAnthropicBase64(t *testing.T) {
 	dataURL := "data:image/png;base64,aGVsbG8="
 	req, err := decodeRequest("openai-responses", []byte(`{

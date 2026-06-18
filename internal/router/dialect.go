@@ -89,7 +89,7 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 			}
 			msgs = append(msgs, map[string]any{"role": m.Role, "content": encodeAnthropicContent(m)})
 		}
-		body := map[string]any{"model": model, "messages": msgs, "max_tokens": max(req.MaxTokens, 1024), "stream": false}
+		body := map[string]any{"model": model, "messages": msgs, "max_tokens": effectiveMaxTokens(req, 1024), "stream": false}
 		if req.System != "" {
 			body["system"] = req.System
 		}
@@ -191,7 +191,7 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking ma
 		body["messages"] = msgs
 	}
 	if _, ok := body["max_tokens"]; !ok {
-		body["max_tokens"] = max(req.MaxTokens, 1024)
+		body["max_tokens"] = effectiveMaxTokens(req, 1024)
 	}
 	injectedThinking := false
 	if len(defaultThinking) > 0 {
@@ -206,6 +206,13 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking ma
 		}
 	}
 	return json.Marshal(body)
+}
+
+func effectiveMaxTokens(req *IRRequest, defaultValue int) int {
+	if req != nil && req.MaxTokens > 0 {
+		return req.MaxTokens
+	}
+	return defaultValue
 }
 
 func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRResponse, error) {
