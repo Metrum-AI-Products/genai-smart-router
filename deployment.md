@@ -805,3 +805,41 @@ production logs: router listening on :8080, no errors in recent router logs
 production usage DB: recent Warp, Codex, and Claude smokes recorded status 200 with no error
 production cleanup: removed uploaded package; dangling Docker image prune reclaimed 0 B; volumes were not pruned
 ```
+
+### 2026-06-18 Metrics admin authorization rollout
+
+Package `smart-llmrouter:d315be0-linux-amd64` was deployed to production to close cross-tenant exposure from `/metrics`.
+
+Runtime change:
+
+- Added caller config field `metrics_admin`.
+- `/metrics` now requires an authenticated caller with `metrics_admin: true`.
+- Authenticated non-admin callers receive `403 metrics-forbidden` and no Prometheus metric body.
+- Production config marks only `chetan-metrum-insights-prod` as metrics admin.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.metrics-admin-20260618T134841Z
+config/config.yaml.bak.20260618T134853Z
+```
+
+Validation:
+
+```text
+rtk go test ./internal/router: passed, 68 tests
+rtk go test ./cmd/... ./internal/...: passed, 72 tests
+rtk go test ./...: known generated Harbor/job artifact package failures only
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version d315be0, build_date 2026-06-18T13:46:34Z
+production /version after deploy: d315be0, build_date 2026-06-18T13:46:34Z
+hosted docs /docs/configuration/router-config: 200 with version headers for d315be0 and metrics_admin content present
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 1fa9980e41700dc00f4ba6b50b6ce387ec2f23a1281951c5bf1763a28f7b5d34
+production admin /metrics smoke with operator token: 200, smart_llmrouter_build_info present
+production authenticated non-admin /v1/models smoke: 200
+production authenticated non-admin /metrics smoke: 403 metrics-forbidden, no Prometheus labels or metric names in body
+production usage DB: recent metrics rows show admin 200 and non-admin 403 metrics-forbidden
+production logs: router listening on :8080, no errors in recent router logs
+production cleanup: removed uploaded package; dangling Docker image prune reclaimed 0 B; volumes were not pruned
+```
