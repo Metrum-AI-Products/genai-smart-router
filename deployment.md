@@ -724,3 +724,43 @@ hosted docs /docs/configuration/router-config: 200 and contains Baseten provider
 post-package production baseten-nemotron-smoke non-streaming chat smoke: 200, selected nvidia/Nemotron-120B-A12B
 post-package production logs: router listening on :8080, no errors in recent logs
 ```
+
+### 2026-06-18 Diagnostics and upstream timeout rollout
+
+Package `smart-llmrouter:72fe882-linux-amd64` was deployed to production to improve timeout/error troubleshooting and add configurable upstream attempt caps.
+
+Runtime change:
+
+- Added relational diagnostic tables `request_attempts`, `request_trace_events`, and `request_errors`, keyed by `request_id`.
+- Added structured per-attempt/error classification for upstream timeout, provider rate limit, upstream failure, no eligible target, and client cancellation paths.
+- Added `server.upstream` and `server.diagnostics` config sections.
+- Set production `medium` and `big-coder` `attempt_timeout_ms` to `180000`.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup-diagnostics-72fe882-20260618T125752Z
+config/config.yaml.bak.20260618T125752Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 70 tests
+rtk go test ./...: known generated Harbor/job artifact package failures only
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 72fe882, build_date 2026-06-18T12:54:39Z
+production /version after deploy: 72fe882, build_date 2026-06-18T12:54:39Z
+hosted docs /docs/configuration/router-config: 200 with version headers for 72fe882
+production config: diagnostics enabled, upstream timeout 600000 ms, medium/big-coder attempt_timeout_ms 180000
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 403384ac89fb339c63fb94f8933746096d6874d6ef4050617719ec9050f30a59
+production medium chat smoke: 200, selected deepseek/deepseek-v4-flash:nitro, returned OK
+production big-coder chat smoke: 200, selected nvidia/Nemotron-120B-A12B, returned OK
+production usage DB: request_attempts, request_trace_events, and request_errors tables exist
+production usage DB: recent medium/big-coder smokes recorded one request_attempt and four request_trace_events each
+Codex CLI production smoke through router Responses API with model medium: returned OK
+Claude Code CLI production smoke with model medium: JSON result OK and modelUsage present
+Claude Code CLI production smoke with model big-coder: JSON result OK and modelUsage present
+production cleanup: removed uploaded package/temp files; docker image/build-cache prune reclaimed about 1.5 GB; volumes were not pruned
+```
