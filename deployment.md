@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-17
+Last deployed: 2026-06-19
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-17
 
 ## Deployed Version
 
-- Router package/image version: `bac7711-linux-amd64`
-- Source commit: `bac7711`
+- Router package/image version: `6782a0d-linux-amd64`
+- Source commit: `6782a0d`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -1066,4 +1066,35 @@ Claude Code CLI production tool smoke using claude -p and model claude-tools-smo
 Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
 production logs after deploy: router listening on :8080, no errors in recent router logs
 production cleanup: removed uploaded package, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
+```
+
+### 2026-06-19 GenAI Smart Router branding and competitive docs deployment
+
+Package `smart-llmrouter:6782a0d-linux-amd64` was deployed to production to publish the GenAI Smart Router product branding and stronger customer-facing competitive landscape docs.
+
+Source commit: `6782a0d` (`Rebrand docs for GenAI Smart Router`)
+
+Documentation changes:
+
+- Rebranded public Docusaurus product copy from Smart LLM Router to GenAI Smart Router.
+- Rewrote the competitive landscape page to highlight the product's combined strengths: high-performance gateway path, telemetry, budgets/rate limits, programmable TypeScript policy, private upstreams, VLM/tool-aware eligibility, agent-client compatibility, outcome-oriented Harbor-style evaluation, and request-time accounting.
+- Removed public-doc language that read like internal caveat/review wording and replaced it with customer-facing deployment fit and capability language.
+- Updated `AGENTS.md` documentation guidance so future public product/competitive docs use GenAI Smart Router positioning and avoid meta/internal review phrases.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.genai-brand-docs-20260619T024212Z
+```
+
+Validation:
+
+```text
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 6782a0d, build_date 2026-06-19T02:39:53Z
+production /version after deploy: 6782a0d, build_date 2026-06-19T02:39:53Z, go1.25.11 linux/amd64
+hosted docs pages: /docs/overview and /docs/evaluation/competitive-landscape returned 200 with GenAI Smart Router branding, "strongest offer" competitive positioning, TypeScript policy, and outcome-oriented evaluation language
+production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
+production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp remained 18% used
 ```
