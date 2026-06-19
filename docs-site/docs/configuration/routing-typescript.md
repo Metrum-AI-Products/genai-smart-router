@@ -4,7 +4,7 @@ title: TypeScript Routing Policy
 
 # TypeScript Routing Policy
 
-Model groups can delegate target selection to a TypeScript routing script. Proxy users still request a normal router model group, such as `fast` or `big-coder`; the router runs the script internally and forwards the request to one configured backing target. Raw caller tokens, token hashes, and raw provider API keys are not passed to scripts.
+Model groups can delegate target selection to a TypeScript routing script. Proxy users still request a deployment-defined router model group; the router runs the script internally and forwards the request to one configured backing target. Raw caller tokens, token hashes, and raw provider API keys are not passed to scripts. Names such as `fast` or `big-coder` are examples from a reference deployment, not product-required names.
 
 <div class="contactBanner">
   <p>Need help designing routing policy? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -46,7 +46,7 @@ models:
 Callers continue to use the group name:
 
 ```bash
-curl https://llm-api-engg.metrum.ai/v1/chat/completions \
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

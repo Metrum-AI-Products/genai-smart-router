@@ -6,12 +6,12 @@ import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/Ro
 
 # Hosted Quickstart
 
-Use the hosted router endpoint with a router-issued caller token. The token authenticates the caller to Metrum Smart LLM Router; provider keys stay server-side.
+Use the router endpoint for your deployment with a router-issued caller token. The token authenticates the caller to Metrum Smart LLM Router; provider keys stay server-side. The product can run on prem, in an enterprise cloud account, or as a Metrum-managed instance.
 
 <DeploymentSpecificNote />
 
 <div class="contactBanner">
-  <p>Need a hosted evaluation or deployment? Email <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+  <p>Need an on-prem deployment, enterprise cloud deployment, or Metrum-managed instance? Email <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
 ## Environment
@@ -20,9 +20,11 @@ Use the hosted router endpoint with a router-issued caller token. The token auth
 {`
 export ROUTER_BASE_URL="{{origin}}"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export ROUTER_MODEL="default"
+export ROUTER_MODEL="<allowed-model-group>"
 `}
 </RouterCodeBlock>
+
+Model group names are deployment-defined. If this hosted deployment exposes example names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision`, treat them as deployment policy names, not product-required names.
 
 ## OpenAI-Compatible Chat
 
@@ -76,7 +78,7 @@ curl "$ROUTER_BASE_URL/v1/messages" \
 
 ## Image Input
 
-Image requests use the same router model-group names. The router filters image-bearing requests to targets that have passed vision validation and advertise `image` in `input_modalities`.
+Image requests use the same deployment-defined router model-group names. The router filters image-bearing requests to targets that have passed vision validation and advertise `image` in `input_modalities`.
 
 OpenAI-compatible chat:
 
@@ -158,7 +160,7 @@ curl "$ROUTER_BASE_URL/v1/models" \
 `}
 </RouterCodeBlock>
 
-If a caller token is limited to `default`, `fast`, and `small`, premium groups such as `high` or `big-coder` will not be listed and cannot be requested.
+If a caller token is limited to a smaller set of deployment-defined groups, other groups will not be listed and cannot be requested.
 
 ## Python Client
 
@@ -177,7 +179,7 @@ from openai import OpenAI
 
 router_base_url = os.environ["ROUTER_BASE_URL"].rstrip("/")
 router_token = os.environ["ROUTER_TOKEN"]
-router_model = os.environ.get("ROUTER_MODEL", "default")
+router_model = os.environ["ROUTER_MODEL"]
 
 client = OpenAI(
     base_url=f"{router_base_url}/v1",
@@ -197,7 +199,7 @@ PY
 
 export ROUTER_BASE_URL="{{origin}}"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export ROUTER_MODEL="default"
+export ROUTER_MODEL="<allowed-model-group>"
 uv run python smoke.py
 `}
 </RouterCodeBlock>

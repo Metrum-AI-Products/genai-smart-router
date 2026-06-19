@@ -42,10 +42,23 @@ func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	}
 }
 
-func TestGenerateCallerTokenDefaults(t *testing.T) {
+func TestGenerateCallerTokenRequiresAllow(t *testing.T) {
+	_, err := GenerateCallerToken(TokenGenerateOptions{
+		User:    "alice",
+		Project: "metrum-insights",
+		Reader:  strings.NewReader(strings.Repeat("b", 64)),
+		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+	})
+	if err == nil || !strings.Contains(err.Error(), "allowed model group") {
+		t.Fatalf("err=%v, want missing allow error", err)
+	}
+}
+
+func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
 		User:    "alice",
 		Project: "metrum-insights",
+		Allow:   []string{"example-basic"},
 		Reader:  strings.NewReader(strings.Repeat("b", 64)),
 		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
 	})
@@ -55,7 +68,7 @@ func TestGenerateCallerTokenDefaults(t *testing.T) {
 	if generated.TokenID != "rtr_metrum_alice_metrum-insights_dev_k20260613" {
 		t.Fatalf("default token id=%q", generated.TokenID)
 	}
-	if len(generated.Caller.Allow) != 1 || generated.Caller.Allow[0] != "default" {
+	if len(generated.Caller.Allow) != 1 || generated.Caller.Allow[0] != "example-basic" {
 		t.Fatalf("default allow=%#v", generated.Caller.Allow)
 	}
 }

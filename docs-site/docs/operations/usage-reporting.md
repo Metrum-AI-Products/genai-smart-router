@@ -56,9 +56,9 @@ router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --caller-project harbor-algotune-pca \
-  --resolved-group big-coder \
+  --resolved-group <model-group> \
   --client codex \
-  --out harbor-big-coder-codex.md
+  --out usage-codex.md
 ```
 
 Reports use public token IDs and aggregated usage fields. They do not expose raw router tokens or raw provider API keys.

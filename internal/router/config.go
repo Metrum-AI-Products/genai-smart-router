@@ -23,12 +23,13 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen      string            `yaml:"listen"`
-	Cache       CacheConfig       `yaml:"cache"`
-	Logging     LoggingConfig     `yaml:"logging"`
-	UsageDB     UsageDBConfig     `yaml:"usage_db"`
-	Upstream    UpstreamConfig    `yaml:"upstream"`
-	Diagnostics DiagnosticsConfig `yaml:"diagnostics"`
+	Listen            string            `yaml:"listen"`
+	DefaultModelGroup string            `yaml:"default_model_group"`
+	Cache             CacheConfig       `yaml:"cache"`
+	Logging           LoggingConfig     `yaml:"logging"`
+	UsageDB           UsageDBConfig     `yaml:"usage_db"`
+	Upstream          UpstreamConfig    `yaml:"upstream"`
+	Diagnostics       DiagnosticsConfig `yaml:"diagnostics"`
 }
 
 type UpstreamConfig struct {
@@ -343,6 +344,11 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Models) == 0 {
 		return fmt.Errorf("at least one model group is required")
+	}
+	if c.Server.DefaultModelGroup != "" {
+		if _, ok := c.Models[c.Server.DefaultModelGroup]; !ok {
+			return fmt.Errorf("server default_model_group references unknown model group %s", c.Server.DefaultModelGroup)
+		}
 	}
 	for name, m := range c.Models {
 		if m.Strategy == "" {

@@ -6,6 +6,8 @@ title: Router Configuration
 
 The router is configured with YAML plus environment-loaded provider keys. Customers normally keep provider credentials in the deployment environment or an `env.json` file outside source control.
 
+Model group names are deployment-defined. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by a reference or hosted deployment; the product does not require those names.
+
 <div class="contactBanner">
   <p>Metrum can help design a production routing policy. Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
@@ -161,7 +163,7 @@ providers:
 
 Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
 
-External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request the router model group such as `default` or `fast`, not the upstream Baseten model ID. The router injects `BASETEN_API_KEY` only when that target is selected.
+External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream Baseten model ID. The router injects `BASETEN_API_KEY` only when that target is selected.
 
 Catalog entries should carry cost and capability metadata:
 
@@ -172,11 +174,11 @@ Catalog entries should carry cost and capability metadata:
 - `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
 - `honors_max_tokens` defaults to `true`. Set it to `false` for an upstream target that accepts a request but ignores explicit caller caps such as `max_tokens: 1` or `max_output_tokens: 1`; the router then skips that target whenever the caller supplies a positive max-token field.
 
-OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting ordinary model groups such as `small`, `medium`, `high`, or a deployment-specific coding group; they should not have to switch to a separate tools-only model for a coding-agent turn.
+OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting an ordinary deployment-defined model group; they should not have to switch to a separate tools-only model for a coding-agent turn.
 
 ## Per-Group Weighted Routing
 
-Weights are local to each model group. A target with weight `60` in `default` has no relationship to a target with weight `60` in `big-coder`.
+Weights are local to each model group. A target with weight `60` in one example group has no relationship to a target with weight `60` in another group. The group names in this snippet are examples; use names that match your deployment policy.
 
 ```yaml
 models:
@@ -277,6 +279,9 @@ Disallowed model requests return `403 model-not-allowed` before any upstream pro
 
 ```yaml
 server:
+  # Optional fallback when a compatible API request omits model.
+  # The value must be one of this deployment's configured model groups.
+  default_model_group: default
   cache:
     enabled: true
     max_bytes: 134217728

@@ -89,7 +89,7 @@ The packaged config expects the routing script at `config/scripts/router.ts`, so
 bin/router --config config/config.yaml
 ```
 
-See `docs/DEPLOYMENT.md` for the `llm-api-engg.metrum.ai` deployment plan with Caddy TLS termination.
+See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
 
 For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker-all` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs, `docker-compose.yml`, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
 
@@ -103,7 +103,7 @@ go run ./cmd/router-token-gen generate \
   --user chetan \
   --project metrum-insights \
   --env dev \
-  --allow default,fast,big-coder
+  --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
 Save the printed `token` value as the caller's bearer token, and copy the generated `callers:` entry into `config.yaml`. Tokens use the traceable prefix `rtr_metrum_<user>_<project>_<env>_<key>_<secret>`, while the router stores only `token_sha256` and logs/exports only `token_id`.
@@ -148,7 +148,7 @@ The router uses two different classes of keys:
 - Caller tokens authenticate clients that call this router. A caller sends `Authorization: Bearer <router-token>` or `X-API-Key: <router-token>`. The router hashes the presented token with SHA-256, compares it to configured `callers[].token_sha256`, checks `allow`, rate limits, quotas, and lifetime token budget, then logs/exports only caller metadata and `token_id`.
 - Provider API keys authenticate the router to upstream LLM providers. They come from `providers.<name>.api_key`, usually via `${OPENAI_API_KEY}`, `${OPENROUTER_API_KEY}`, `${GROQ_API_KEY}`, `${MOONSHOT_API_KEY}`, and similar values loaded from `env.json` or the shell. The router injects the selected provider key only when calling the selected upstream target.
 
-`callers[].allow` is the per-key allow list for internal router model group names. A standard key can be limited to `default`, `fast`, and `small`, while a coding/premium key can additionally allow `medium`, `high`, and `big-coder`. Disallowed model requests return `403 model-not-allowed` before provider routing and before any provider API key is used. The authenticated `/v1/models` response is filtered to the caller token's allowed groups.
+`callers[].allow` is the per-key allow list for internal router model group names. Model group names are deployment-defined; names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples from the reference or hosted deployment, not product-required names. Disallowed model requests return `403 model-not-allowed` before provider routing and before any provider API key is used. The authenticated `/v1/models` response is filtered to the caller token's allowed groups.
 
 Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`. This is enough to route by caller key prefix or by the configured provider key name without making secrets available to script code.
 
@@ -318,7 +318,7 @@ Catalog metadata can include `input_price_per_million_usd`, `output_price_per_mi
 - `anthropic_messages`: upstream supports Anthropic Messages client tools.
 - `provider_hosted`: reserved for provider-executed tools such as web search or code execution after that exact upstream capability is validated.
 
-Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an opt-in `vision` group for image-analysis traffic. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
+Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an example opt-in image-analysis group. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
 
 Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes; it is reasoning-heavy, so tiny output budgets can be spent entirely on reasoning before final content. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
 
@@ -332,7 +332,7 @@ Vision catalog entries are not automatically active routes. For example, OpenRou
 
 Do not add `~google/gemini-flash-latest`, `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, or `google/gemini-3.1-pro-preview` to active OpenRouter routes for the current production key until access is fixed and a live smoke passes. On 2026-06-17 the OpenRouter catalog advertised multimodal support for those IDs, but the current account returned a 404 provider-privacy error for direct image requests.
 
-xAI Grok 4.3 is cataloged as an OpenAI-compatible `openai-chat` provider with `input_modalities: [text, image]`, `output_modalities: [text]`, official pricing of $1.25/M input and $2.50/M output tokens, and `image_input_price_per_million_tokens_usd: 1.25` because xAI reports image tokens in prompt usage. Direct xAI text/image smokes and local router-level text/image smokes passed on 2026-06-17. The `vision` group is not Grok-only: it also includes validated OpenRouter multimodal targets such as `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.6-flash:nitro`, `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, and `minimax/minimax-m3`, plus original OpenAI `gpt-5.4-nano` with `input_modalities: [text, image]`. If a target accepts image requests but ignores explicit caller caps, mark it `honors_max_tokens: false`; production capped-request smokes on 2026-06-18 found this on several OpenRouter-hosted VLM targets, so capped requests skip those targets until revalidated.
+xAI Grok 4.3 is cataloged as an OpenAI-compatible `openai-chat` provider with `input_modalities: [text, image]`, `output_modalities: [text]`, official pricing of $1.25/M input and $2.50/M output tokens, and `image_input_price_per_million_tokens_usd: 1.25` because xAI reports image tokens in prompt usage. Direct xAI text/image smokes and local router-level text/image smokes passed on 2026-06-17. A deployment-defined VLM route can include Grok alongside validated OpenRouter multimodal targets such as `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.6-flash:nitro`, `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, and `minimax/minimax-m3`, plus original OpenAI `gpt-5.4-nano` with `input_modalities: [text, image]`. If a target accepts image requests but ignores explicit caller caps, mark it `honors_max_tokens: false`; production capped-request smokes on 2026-06-18 found this on several OpenRouter-hosted VLM targets, so capped requests skip those targets until revalidated.
 
 Self-hosted OpenAI-compatible services such as vLLM and SGLang should be validated exactly like SaaS providers before activation. Confirm `/v1/models`, run a direct text completion smoke, run a direct tool-call smoke if the model is intended for agent tools, then repeat the same request through the router group. Tool calling depends on the upstream model, chat template, parser flags, and `tool_choice` support; do not mark a self-hosted target tool-capable just because the server accepts a `tools` field.
 
@@ -360,12 +360,12 @@ Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use tar
 For OpenAI Chat tool clients, for example Warp Agent, configure the client with:
 
 ```text
-Base URL: https://llm-api-engg.metrum.ai/v1
+Base URL: https://your-router.example.com/v1
 API key: <router caller token>
-Model: small, medium, high, big-coder, or another allowed router model group
+Model: <allowed-model-group>
 ```
 
-`big-coder` is only an example group name. Use whichever deployment-defined model group the caller token allows. If a request includes `tools` and no eligible target in that group has explicit `tool_support.openai_chat`, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, and modalities.
+Use whichever deployment-defined model group the caller token allows. If a request includes `tools` and no eligible target in that group has explicit `tool_support.openai_chat`, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, and modalities.
 
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 
@@ -411,7 +411,7 @@ models:
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 ```
 
-The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. Proxy users still request the model group name, such as `default` or `big-coder`; the script chooses one backing target from that group's configured `targets`.
+The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. Proxy users still request a deployment-defined model group name; the script chooses one backing target from that group's configured `targets`.
 
 The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; network calls and file access are not part of the script runtime.
 
@@ -770,7 +770,7 @@ set -a
 set +a
 ```
 
-Supported router model groups:
+Example hosted deployment model groups:
 
 ```text
 small      DeepSeek V4 Flash Nitro 61%, MiniMax-M3 30%, Gemma 4%, Kimi 4%, OpenAI GPT-5.4 Nano 1% non-tool.
@@ -781,7 +781,7 @@ fast       DeepSeek V4 Flash Nitro 61%, MiniMax-M3 28%, Gemma 5%, Kimi 5%, OpenA
 big-coder  Code-heavy route: MiniMax-M3 49%, direct Kimi 30%, DeepSeek V4 Flash Nitro 20%, OpenAI GPT-5.4 Nano 1% non-tool.
 ```
 
-The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. Standard keys are typically limited to `default`, `fast`, and `small`; coding/premium keys can additionally use `medium`, `high`, and `big-coder`.
+The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. The group names shown above are example hosted deployment names; your deployment can expose different names and access tiers.
 
 ### Claude Code
 

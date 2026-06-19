@@ -46,9 +46,9 @@ make package-docker-all
 
 Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host.
 
-## Internal Development Host
+## Example Internal Development Host
 
-Initial internal development deployment target:
+One internal Metrum-operated deployment target:
 
 ```text
 llm-api-engg.metrum.ai
@@ -56,7 +56,7 @@ llm-api-engg.metrum.ai
 
 The service is externally reachable, but model and usage endpoints require a valid router caller token, and `/metrics` requires a caller token configured with `metrics_admin: true`. Caddy terminates TLS and reverse-proxies to the router on localhost.
 
-DNS is managed in DigitalOcean. Create or update an `A` record for `llm-api-engg.metrum.ai` pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
+DNS for that example host is managed in DigitalOcean. For other enterprise, on-prem, or Metrum-managed deployments, use that deployment's hostname and DNS provider. Create or update an `A` record pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
 
 ## Host Layout
 
@@ -126,12 +126,12 @@ Generate a caller token and append the generated caller block to `config.yaml`:
   --user chetan \
   --project metrum-insights \
   --env dev \
-  --allow default,fast,big-coder
+  --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
 Save the printed `token` value for the client. The router config stores only `token_sha256` and `token_id`.
 
-Use `--allow` to restrict each generated key to specific internal model groups. Standard access is typically `default,fast,small`; coding/premium access can additionally include `medium,high,big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
+Use `--allow` to restrict each generated key to specific internal model groups. Model group names are deployment-defined; any names shown in examples are reference deployment names only. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
 ## systemd
 
@@ -174,7 +174,7 @@ sudo systemctl enable --now smart-llmrouter
 
 Install Caddy on the host and place the packaged `caddy/Caddyfile` at `/etc/caddy/Caddyfile`.
 
-The Caddyfile terminates TLS for `llm-api-engg.metrum.ai` and proxies to `127.0.0.1:8080`. Caddy obtains and renews public certificates automatically after DigitalOcean DNS points the hostname to the host and ports `80` and `443` are reachable.
+The Caddyfile terminates TLS for the configured deployment hostname and proxies to `127.0.0.1:8080`. Caddy obtains and renews public certificates automatically after DNS points the hostname to the host and ports `80` and `443` are reachable.
 
 Reload Caddy:
 
@@ -188,9 +188,10 @@ sudo systemctl reload caddy
 From a client machine:
 
 ```bash
-curl https://llm-api-engg.metrum.ai/healthz
-curl https://llm-api-engg.metrum.ai/version
-curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
+export ROUTER_BASE_URL="https://your-router.example.com"
+curl "$ROUTER_BASE_URL/healthz"
+curl "$ROUTER_BASE_URL/version"
+curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
 ```
 
 On the host, `bin/router --version`, `bin/router-token-gen --version`, and `bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
@@ -201,7 +202,7 @@ Use the same base URL for local CLIs:
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
@@ -210,7 +211,7 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 Codex provider base URL:
 
 ```text
-https://llm-api-engg.metrum.ai/v1
+https://your-router.example.com/v1
 ```
 
 ## Release E2E

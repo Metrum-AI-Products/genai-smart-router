@@ -17,6 +17,7 @@ These instructions apply to the whole repository.
 - `/metrics` is global operational telemetry and must remain restricted to callers with `metrics_admin: true`. Normal application caller keys must receive `403 metrics-forbidden`; do not add tenant-scoped data labels or token IDs to unauthenticated or ordinary-caller endpoints.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
 - Provider model catalogs are metadata only. Routing weights belong only under `models.<group>.targets[]`.
+- Model group names are deployment-defined strings. Never treat reference names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` as product-required constants in code or docs. Public docs may mention them only as clearly labeled reference/hosted deployment examples or historical benchmark names.
 - Provider model catalogs must include current `input_price_per_million_usd`, `output_price_per_million_usd`, `pricing_source`, and `pricing_updated_at` for every active or cataloged upstream model when pricing is known. Use current primary/provider docs when possible; use OpenRouter model metadata for OpenRouter-hosted routes. For VLMs, add `image_input_price_per_million_tokens_usd` or `image_input_price_per_image_usd` only when the upstream/provider or enterprise chargeback model uses separate image pricing. For self-hosted models, use the enterprise chargeback rate or explicit `0.00` with `pricing_notes`.
 - Provider model catalogs must include `input_modalities` and `output_modalities` for active vision, video, audio, or other multimodal targets. Do not mark a target with `image` until a direct upstream image smoke and a router-level image smoke pass for the exact provider/model/dialect/skin.
 - Do not force coding-agent users to choose between a language route and a vision route for ordinary mixed tasks. Deployment-defined developer-accessible groups, for example the reference `default`, `fast`, `small`, `medium`, `high`, and coding groups, should include validated multimodal tool-capable targets for image-bearing Codex/Claude Code requests, while request-shape filtering keeps text-only traffic on the normal text/tool targets. A dedicated `vision` group is useful for explicit OCR/VLM traffic, but it must not be the only way an agent can send images.
@@ -103,6 +104,7 @@ These instructions apply to the whole repository.
 
 ## Production Host
 
+- This is the current Metrum-managed engineering deployment, not a product-default endpoint. Smart LLM Router can also be licensed for on-prem or enterprise-cloud deployments with different hostnames, model group names, provider sets, and caller policies.
 - Host: `ubuntu@100.30.225.66`
 - SSH key: `~/.ssh/chetan-jun-2026.pem`
 - Public URL: `https://llm-api-engg.metrum.ai`
@@ -181,7 +183,7 @@ Authenticated production chat smoke:
 rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrouter/compose && TOKEN=$(sudo cat ROUTER_TOKEN.txt) && curl -fsS https://llm-api-engg.metrum.ai/v1/chat/completions -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d "{\"model\":\"high\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply OK only.\"}],\"max_tokens\":16,\"stream\":false}"'
 ```
 
-Use `high` for deterministic failover-first checks, and use repeated calls for weighted groups such as `big-coder`. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
+Use the current deployment's deterministic failover-first check group, for example `high` on the current Metrum-managed engineering deployment, and use repeated calls for weighted deployment-defined groups. When validating weighted groups that include reasoning-heavy OpenRouter targets, include a realistic `max_tokens` budget; a `max_tokens:16` smoke can produce false failures for GLM-style models that spend the completion budget on reasoning before emitting final content.
 
 ## Production Error And Timeout Triage
 

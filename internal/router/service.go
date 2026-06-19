@@ -279,6 +279,13 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, rc, http.StatusBadRequest, "invalid-request")
 		return
 	}
+	if req.Model == "" {
+		req.Model = s.cfg.Server.DefaultModelGroup
+	}
+	if req.Model == "" {
+		s.writeError(w, rc, http.StatusBadRequest, "missing-model")
+		return
+	}
 	ad := s.quota.Admit(rc.caller, estimateTokens(req))
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
@@ -308,6 +315,13 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	req, err := decodeRequest(dialect, body, r.Header)
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadRequest, "invalid-request")
+		return
+	}
+	if req.Model == "" {
+		req.Model = s.cfg.Server.DefaultModelGroup
+	}
+	if req.Model == "" {
+		s.writeError(w, rc, http.StatusBadRequest, "missing-model")
 		return
 	}
 	rc.rec.RequestedModel = req.Model

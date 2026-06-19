@@ -4,7 +4,7 @@ title: Image Analysis And VLM Routing
 
 # Image Analysis And VLM Routing
 
-Smart LLM Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests use the same router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities`.
+Smart LLM Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests use the same deployment-defined router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities`.
 
 ## Configure A Vision-Capable Target
 
@@ -90,7 +90,8 @@ providers:
         pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
 
 models:
-  vision:
+  # Example dedicated VLM route. Your deployment can use any group name.
+  example-vlm:
     strategy: weighted
     targets:
       - provider: xai
@@ -118,7 +119,7 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "vision",
+    "model": "<allowed-vlm-model-group>",
     "messages": [{
       "role": "user",
       "content": [
@@ -138,7 +139,7 @@ curl "$ROUTER_BASE_URL/v1/responses" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "vision",
+    "model": "<allowed-vlm-model-group>",
     "input": [{
       "role": "user",
       "content": [
@@ -158,7 +159,7 @@ curl "$ROUTER_BASE_URL/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "vision",
+    "model": "<allowed-vlm-model-group>",
     "max_tokens": 128,
     "messages": [{
       "role": "user",
@@ -183,7 +184,7 @@ curl -fsSL "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/rece
 
 codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
-  -c 'model="vision"' \
+  -c 'model="<allowed-vlm-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
@@ -205,7 +206,7 @@ curl "$ANTHROPIC_BASE_URL/v1/messages" \
   -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "vision",
+    "model": "<allowed-vlm-model-group>",
     "max_tokens": 128,
     "messages": [{
       "role": "user",

@@ -17,8 +17,6 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	req := &IRRequest{Raw: raw}
 	if v, _ := raw["model"].(string); v != "" {
 		req.Model = v
-	} else {
-		req.Model = "default"
 	}
 	if stream, ok := raw["stream"].(bool); ok {
 		req.Stream = stream

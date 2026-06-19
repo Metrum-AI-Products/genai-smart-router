@@ -8,7 +8,7 @@ import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/Ro
 
 # Metrum Smart LLM Router
 
-Metrum Smart LLM Router is a governed, multi-provider gateway for LLM traffic. Applications and developer tools call one stable endpoint while routing policy, provider credentials, model selection, quotas, caching, and usage telemetry stay server-side.
+Metrum Smart LLM Router is a governed, multi-provider gateway for LLM traffic. Applications and developer tools call one stable endpoint while routing policy, provider credentials, model selection, quotas, caching, and usage telemetry stay server-side. It can run inside an enterprise network, or Metrum can operate a managed instance for an organization.
 
 <DeploymentSpecificNote />
 
@@ -29,11 +29,11 @@ Smart LLM Router gives platform teams one control plane:
 - Enterprise routing to internally hosted vLLM or SGLang services.
 - In-process response cache for eligible non-tool requests.
 - Metrics-admin Prometheus telemetry, request logs, and durable usage reporting with request-time cost fields.
-- Codex CLI and Claude Code CLI support through the hosted endpoint.
+- Codex CLI and Claude Code CLI support through the deployment endpoint.
 
 ## Model Groups
 
-Callers request stable model groups such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`. The router then selects an upstream provider/model according to the configured policy.
+Callers request stable model groups defined by the deployment. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by one reference or hosted deployment; Smart LLM Router does not require those names. The router selects an upstream provider/model according to the configured policy for whichever group the caller token is allowed to use.
 
 ```mermaid
 flowchart LR
@@ -68,13 +68,13 @@ The router supports the common LLM API surfaces used by modern tools:
 | `/v1/usage` | Caller quota/usage lookup |
 | `/metrics` | Prometheus telemetry for `metrics_admin` caller tokens |
 
-## Hosted Endpoint Example
+## Endpoint Example
 
 <RouterCodeBlock>
 {`
 export ROUTER_BASE_URL="{{origin}}"
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export ROUTER_MODEL="big-coder"
+export ROUTER_MODEL="<allowed-model-group>"
 `}
 </RouterCodeBlock>
 

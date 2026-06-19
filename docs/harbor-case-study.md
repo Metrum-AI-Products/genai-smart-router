@@ -1,8 +1,10 @@
 # Harbor Cleaned-Model Case Study
 
+The model group names in this case study are historical deployment-specific names from the benchmark environment. Smart LLM Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
+
 - Case ID: `harbor-cleaned-20260615T031649Z`
 - Task: `aider/polyglot_python_two-bucket`
-- Hosted router: `https://llm-api-engg.metrum.ai`
+- Hosted router used for this historical run: `https://llm-api-engg.metrum.ai`
 - Agents: `codex`, `claude-code`
 - Goal: implement `two_bucket.py` so Harbor verifier accepts the bucket-measuring algorithm and required `ValueError` behavior.
 - Reward score: Harbor reports `1.0` when the submitted artifact passes the verifier for the task; `0.0` means the verifier rejected the artifact. Exceptions are tracked separately because an agent can produce a passing artifact but still exit nonzero.
@@ -126,7 +128,7 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 
 - Case ID: `harbor-go-sublist-default-20260615T063200Z`
 - Task: `aider/polyglot_go_sublist`
-- Hosted router: `https://llm-api-engg.metrum.ai`
+- Hosted router used for this historical run: `https://llm-api-engg.metrum.ai`
 - Agents: `codex`, `claude-code`
 - Model group: `default`
 - Goal: implement `/app/sublist.go` so Harbor verifier accepts `Sublist(l1, l2 []int) Relation`.

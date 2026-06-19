@@ -60,7 +60,7 @@ Core capabilities:
 - Provider abstraction for OpenAI-style providers, Anthropic-style providers, Groq/OpenRouter-compatible routing, Replicate-style prediction APIs, enterprise-hosted vLLM/SGLang services, and other compatible upstreams.
 - Server-side provider key injection, keeping upstream credentials out of client machines and application code.
 - Caller API tokens with traceable public prefixes, hashed token storage, per-caller allow lists, rate limits, quotas, and lifetime token budgets.
-- Configurable model groups such as `small`, `medium`, `high`, `default`, `fast`, or `big-coder`.
+- Configurable deployment-defined model groups. Names such as `small`, `medium`, `high`, `default`, `fast`, `big-coder`, or `vision` are example/reference deployment names, not product-required names.
 - Routing strategies including static, weighted, failover, latency-oriented, cost-oriented, semantic stub classification, and TypeScript-driven custom policy.
 - In-process LRU plus TTL cache for eligible unary responses.
 - Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting with request-time pricing/cost fields.
@@ -143,16 +143,16 @@ sequenceDiagram
 
 ## Routing Model
 
-Applications request a router model group, not necessarily a concrete provider model. For example, a client might request `big-coder`, while the router decides which configured upstream model should satisfy that request.
+Applications request a deployment-defined router model group, not necessarily a concrete provider model. For example, a hosted deployment might expose a coding-oriented group name, while the router decides which configured upstream model should satisfy that request.
 
 Model groups decouple client intent from provider implementation:
 
-- `small`: low-cost and low-latency default for routine requests.
-- `medium`: balanced quality, latency, and cost.
-- `high`: heavier model path for complex work.
-- `fast`: optimized for lower latency and budget-aware operation.
-- `big-coder`: coding-oriented weighted path for agentic coding tools.
-- `default`: general-purpose routing policy for common workloads.
+- Example low-cost and low-latency group for routine requests.
+- Example balanced group for everyday development tasks.
+- Example heavier group for complex work.
+- Example lower-latency group.
+- Example coding-oriented weighted path for agentic coding tools.
+- Example general-purpose routing policy for common workloads.
 
 In the reference deployment, active groups are deliberately limited to models that have passed live agentic validation. General groups favor OpenRouter DeepSeek V4 Flash Nitro and MiniMax-M3, with smaller weights for OpenRouter Gemma 4 26B Nitro, direct Moonshot Kimi K2.7 Code, and a 1% non-tool original OpenAI path. The code-heavy group uses MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and the same 1% non-tool OpenAI path. Tool-bearing Codex and Claude Code traffic use only tool-validated targets, so tool use is not pinned to a single upstream vendor.
 
@@ -376,9 +376,9 @@ router-usage-report \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --caller-project harbor-algotune-pca \
   --caller-environment case-current-policy-20260615t004637z \
-  --resolved-group big-coder \
+  --resolved-group <model-group> \
   --client codex \
-  --out /app/logs/harbor-agentic-big-coder-codex.md
+  --out /app/logs/harbor-agentic-codex.md
 ```
 
 Reports include:
@@ -424,11 +424,11 @@ For a hosted deployment, developers use a router-issued caller token and request
 
 ```bash
 export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export ROUTER_BASE_URL="https://llm-api-engg.metrum.ai"
-export ROUTER_MODEL="big-coder"
+export ROUTER_BASE_URL="https://your-router.example.com"
+export ROUTER_MODEL="<allowed-model-group>"
 ```
 
-Recommended model groups for CLI use:
+Example hosted deployment model groups for CLI use:
 
 ```text
 big-coder  Coding-oriented route for agentic development tools.
@@ -483,7 +483,7 @@ codex exec --ignore-user-config --ephemeral \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
@@ -500,19 +500,19 @@ codex \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
 ```
 
-For a different route, change `ROUTER_MODEL` to another allowed model group such as `small`, `medium`, `high`, `default`, or `fast`. The router decides the concrete upstream provider and model behind that group.
+For a different route, change `ROUTER_MODEL` to another allowed deployment-defined model group. The router decides the concrete upstream provider and model behind that group.
 
 Agentic tool validation should include real file and shell activity. The hosted deployment exposes dedicated smoke groups for that purpose:
 
 ```bash
 # Claude Code uses the Anthropic Messages API contract.
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="https://llm-api-engg.metrum.ai"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 claude --bare --print --model claude-tools-smoke \
   --permission-mode bypassPermissions \
@@ -536,7 +536,7 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model="agent-tools-smoke"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
@@ -549,7 +549,7 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model="agent-tools-smoke-openrouter"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Create codex_openrouter_tool_smoke.txt containing exactly codex-openrouter-tool-ok, run cat codex_openrouter_tool_smoke.txt, then finish with codex-openrouter-tool-ok." </dev/null
@@ -557,7 +557,7 @@ codex exec --ignore-user-config --ephemeral \
 
 Requests that include agent tools bypass the response cache so the router never replays stale filesystem, shell, or tool-call outcomes.
 
-The caller token must allow the selected `ROUTER_MODEL`. Standard keys can be limited to `default`, `fast`, and `small`; coding or premium keys can additionally allow `medium`, `high`, and `big-coder`. Hosted `/v1/models` responses are filtered to the model groups allowed for the caller token.
+The caller token must allow the selected `ROUTER_MODEL`. Deployment admins decide which model groups each key can use. Hosted `/v1/models` responses are filtered to the model groups allowed for the caller token.
 
 ## Security And Governance Posture
 

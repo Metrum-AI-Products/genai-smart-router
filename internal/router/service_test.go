@@ -2471,6 +2471,59 @@ func TestUpstreamFailureReturnsActionableError(t *testing.T) {
 	}
 }
 
+func TestConfiguredDefaultModelGroupHandlesOmittedModel(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_default",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "configured default ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.DefaultModelGroup = "example-basic"
+	cfg.Models = map[string]ModelGroup{
+		"example-basic": {Strategy: "static", Targets: []Target{{Provider: "mock", Model: "mock-model"}}},
+	}
+	cfg.Callers[0].Allow = []string{"example-basic"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "configured default ok") {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+}
+
+func TestOmittedModelWithoutConfiguredDefaultReturnsMissingModel(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+	svc.cfg.Server.DefaultModelGroup = ""
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "missing-model") {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+}
+
 func TestUpstreamAttemptTimeoutReturnsGatewayTimeoutAndDiagnostics(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
@@ -2539,8 +2592,9 @@ func testConfig(t *testing.T, upstreamURL, providerKey, dir string) *Config {
 	sum := sha256.Sum256([]byte(testToken))
 	return &Config{
 		Server: ServerConfig{
-			Listen: ":0",
-			Cache:  CacheConfig{Enabled: true, MaxBytes: 1 << 20, DefaultTTL: 0},
+			Listen:            ":0",
+			DefaultModelGroup: "default",
+			Cache:             CacheConfig{Enabled: true, MaxBytes: 1 << 20, DefaultTTL: 0},
 			Logging: LoggingConfig{
 				Path: filepath.Join(dir, "requests.jsonl"),
 			},

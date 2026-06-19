@@ -82,7 +82,7 @@ A customer can expose one endpoint to internal developers:
 https://llm-api.example.com/v1
 ```
 
-Developers use stable model groups such as `default`, `fast`, `small`, `medium`, `high`, and `big-coder`. Platform owners can change the underlying provider mix without client rewrites.
+Developers use stable model groups defined by their deployment. Platform owners can change the underlying provider mix without client rewrites. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples used by one reference or hosted deployment, not product-required names.
 
 ## Evaluation Checklist
 

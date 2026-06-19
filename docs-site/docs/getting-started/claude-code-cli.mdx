@@ -29,32 +29,32 @@ export ANTHROPIC_AUTH_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 ## One-Shot Check
 
 ```bash
-claude --bare --print --model big-coder \
+claude --bare --print --model "<allowed-model-group>" \
   "Reply with exactly: router claude ok"
 ```
 
 ## Interactive Usage
 
 ```bash
-claude --model big-coder
+claude --model "<allowed-model-group>"
 ```
 
-Use the same deployment-defined coding group for mixed coding and image tasks. In these examples the coding group is `big-coder`; your deployment may use a different group name. When a Claude Code request includes image content, the router filters to multimodal Anthropic Messages-compatible targets inside that group; text-only and ordinary tool requests continue to use the normal coding targets.
+Use the same deployment-defined coding group for mixed coding and image tasks. Some hosted examples use `big-coder` as a coding-oriented group name; your deployment may use a different group name. When a Claude Code request includes image content, the router filters to multimodal Anthropic Messages-compatible targets inside that group; text-only and ordinary tool requests continue to use the normal coding targets.
 
 ## Tool Smoke
 
 ```bash
-claude --bare --print --model big-coder \
+claude --bare --print --model "<allowed-model-group>" \
   --permission-mode bypassPermissions \
   --allowedTools "Write,Bash" \
   "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
 ```
 
-The requested model must be allowed by the caller token. Standard keys can be limited to lower-cost model groups, while coding keys can allow `big-coder`.
+The requested model must be allowed by the caller token. Deployment admins decide which model groups each key may use.
 
 ## Image Input
 
-Claude Code sends image work through the Anthropic Messages API shape when an image is attached in the conversation. Use a router model group that is allowed for the caller token, such as `default` or a deployment-specific vision group. The router filters image-bearing Messages requests to targets that advertise `image` in `input_modalities`.
+Claude Code sends image work through the Anthropic Messages API shape when an image is attached in the conversation. Use a deployment-defined router model group that is allowed for the caller token. The router filters image-bearing Messages requests to targets that advertise `image` in `input_modalities`.
 
 For non-interactive validation, use the same Anthropic-compatible payload shape Claude Code sends:
 
@@ -64,7 +64,7 @@ curl "{{origin}}/v1/messages" \
   -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "default",
+    "model": "<allowed-model-group>",
     "max_tokens": 64,
     "messages": [{
       "role": "user",

@@ -23,7 +23,7 @@ export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
-  -c 'model="big-coder"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
@@ -42,7 +42,7 @@ codex exec --ignore-user-config --ephemeral \
 export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 
 codex \
-  -c 'model="big-coder"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
@@ -61,7 +61,7 @@ codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   --dangerously-bypass-approvals-and-sandbox \
-  -c 'model="big-coder"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
@@ -73,7 +73,7 @@ codex exec --ignore-user-config --ephemeral \
 
 ## Image Smoke
 
-Codex CLI supports image attachments with `--image`. Use the same deployment-defined coding model group for mixed code and image tasks. In these examples the coding group is `big-coder`; your deployment may use a different group name. The router receives image attachments as OpenAI Responses image inputs and filters that request to multimodal tool-capable upstream targets inside the group.
+Codex CLI supports image attachments with `--image`. Use the same deployment-defined coding model group for mixed code and image tasks. Some hosted examples use `big-coder` as a coding-oriented group name; your deployment may use a different group name. The router receives image attachments as OpenAI Responses image inputs and filters that request to multimodal tool-capable upstream targets inside the group.
 
 <RouterCodeBlock>
 {`
@@ -85,7 +85,7 @@ codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   --image tmp/router-vision-smoke/receipt.png \
-  -c 'model="big-coder"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \

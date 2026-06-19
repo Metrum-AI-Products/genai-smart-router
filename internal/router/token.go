@@ -65,7 +65,7 @@ func GenerateCallerToken(opts TokenGenerateOptions) (GeneratedToken, error) {
 	sum := sha256.Sum256([]byte(token))
 	allow := append([]string(nil), opts.Allow...)
 	if len(allow) == 0 {
-		allow = []string{"default"}
+		return GeneratedToken{}, fmt.Errorf("at least one allowed model group is required")
 	}
 	callerID := strings.Join([]string{user, project, environment}, "-")
 	caller := CallerConfig{

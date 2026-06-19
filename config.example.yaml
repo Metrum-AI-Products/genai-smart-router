@@ -1,5 +1,8 @@
 server:
   listen: :8080
+  # Optional fallback when a compatible API request omits model.
+  # The value must be one of this deployment's configured model groups.
+  default_model_group: default
   cache:
     enabled: true
     max_bytes: 134217728
@@ -268,7 +271,7 @@ providers:
           target until max-token behavior is revalidated.
         honors_max_tokens: false
     headers:
-      HTTP-Referer: https://llm-api-engg.metrum.ai
+      HTTP-Referer: ${ROUTER_HTTP_REFERER}
       X-Title: smart-llmrouter
   openai:
     base_url: https://api.openai.com/v1
@@ -473,7 +476,7 @@ providers:
           - function
         honors_max_tokens: false
     headers:
-      HTTP-Referer: https://llm-api-engg.metrum.ai
+      HTTP-Referer: ${ROUTER_HTTP_REFERER}
       X-Title: smart-llmrouter
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
@@ -604,7 +607,7 @@ providers:
           - client_tools
         honors_max_tokens: false
     headers:
-      HTTP-Referer: https://llm-api-engg.metrum.ai
+      HTTP-Referer: ${ROUTER_HTTP_REFERER}
       X-Title: smart-llmrouter
 models:
   vision:

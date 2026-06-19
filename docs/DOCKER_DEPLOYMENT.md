@@ -49,9 +49,9 @@ Security group inbound rules:
 
 DNS:
 
-- Create or update the `A` record for `llm-api-engg.metrum.ai` to the EC2 public IPv4 address.
+- Create or update the `A` record for your deployment hostname to the EC2 public IPv4 address.
 - Create an `AAAA` record only if the instance has a working public IPv6 address.
-- DNS can stay in DigitalOcean; it only needs to point to the AWS instance.
+- DNS can stay with the organization's DNS provider; it only needs to point to the AWS instance.
 
 Install Docker and the Compose plugin on the host, then unpack:
 
@@ -113,7 +113,7 @@ docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>
   --user chetan \
   --project metrum-insights \
   --env dev \
-  --allow default,fast,big-coder
+  --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
 Append the generated caller config to `compose/config/config.yaml` and save the printed `token` for clients.
@@ -122,7 +122,7 @@ Review `compose/.env`:
 
 ```bash
 SMART_LLMROUTER_VERSION=<version>-linux-amd64
-ROUTER_HOSTNAME=llm-api-engg.metrum.ai
+ROUTER_HOSTNAME=your-router.example.com
 CADDY_EMAIL=chetan@metrum.ai
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
@@ -142,9 +142,10 @@ Caddy terminates TLS and proxies to the private `router:8080` service. Caddy wil
 From outside the instance:
 
 ```bash
-curl https://llm-api-engg.metrum.ai/healthz
-curl https://llm-api-engg.metrum.ai/version
-curl -H "Authorization: Bearer $ROUTER_TOKEN" https://llm-api-engg.metrum.ai/v1/models
+export ROUTER_BASE_URL="https://your-router.example.com"
+curl "$ROUTER_BASE_URL/healthz"
+curl "$ROUTER_BASE_URL/version"
+curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
 ```
 
 Inside the running container, `/app/bin/router --version`, `/app/bin/router-token-gen --version`, and `/app/bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
@@ -179,7 +180,7 @@ docker volume rm "$POSTGRES_VOLUME"
 docker compose up -d
 ```
 
-Supported router model groups:
+Example hosted deployment model groups:
 
 ```text
 default    DeepSeek V4 Flash Nitro 46%, MiniMax-M3 27%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 7%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 6%, OpenAI GPT-5.4 Nano 1%.
@@ -190,15 +191,15 @@ high       DeepSeek V4 Flash Nitro 40%, MiniMax-M3 26%, Baseten Nemotron 3%, Bas
 big-coder  Code-heavy route: DeepSeek V4 Flash Nitro 18%, Qwen 3.6 Flash 5%, MiniMax-M3 38%, Baseten Nemotron 3%, Baseten GLM 5.2 7%, Kimi K2.7 Code 28%, OpenAI GPT-5.4 Nano 1%.
 ```
 
-Caller tokens are restricted by `callers[].allow`. Standard access is `default`, `fast`, and `small`; coding/premium access additionally includes `medium`, `high`, and `big-coder`. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
+Caller tokens are restricted by `callers[].allow`. Model group names are deployment-defined; the names above are examples from this hosted/reference deployment. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
 Claude Code:
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
-claude --bare --print --model default "Reply with exactly: router claude ok"
+claude --bare --print --model "<allowed-model-group>" "Reply with exactly: router claude ok"
 ```
 
 Codex:
@@ -208,10 +209,10 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
-  -c 'model="default"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Reply with exactly: router codex ok" </dev/null
@@ -224,10 +225,10 @@ Interactive Codex uses top-level `codex`, without the `exec`-only flags:
 ```bash
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 codex \
-  -c 'model="default"' \
+  -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"'
 ```
@@ -243,7 +244,7 @@ Claude Code tool smoke:
 unset ANTHROPIC_API_KEY
 mkdir -p /tmp/router-claude-tool-smoke
 cd /tmp/router-claude-tool-smoke
-ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai \
+ANTHROPIC_BASE_URL="$ROUTER_BASE_URL" \
 ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
 claude --bare --print --model claude-tools-smoke \
   --permission-mode bypassPermissions \
@@ -265,7 +266,7 @@ codex exec --ignore-user-config --ephemeral \
   -c 'model="agent-tools-smoke"' \
   -c 'model_provider="metrum-router"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="https://llm-api-engg.metrum.ai/v1"' \
+  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
   -c 'model_providers.metrum-router.wire_api="responses"' \
   "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null

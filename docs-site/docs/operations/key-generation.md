@@ -15,11 +15,11 @@ Router caller tokens authenticate applications, users, or evaluation jobs to Sma
 ## Generate A Token
 
 ```bash
-router-token-gen \
+router-token-gen generate \
   --user chetan \
   --project metrum-insights \
-  --environment prod \
-  --allow default,fast,small,big-coder
+  --env prod \
+  --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
 The tool prints:
@@ -31,16 +31,18 @@ The tool prints:
 ## Access Patterns
 
 ```yaml
-allow: [default, fast, small]
+allow: [example-general, example-low-cost]
 ```
 
-Use this for standard users or applications.
+Use this pattern for users or applications that should only see a smaller set of deployment-defined groups.
 
 ```yaml
-allow: [default, fast, small, medium, high, big-coder]
+allow: [example-general, example-low-cost, example-coding]
 ```
 
-Use this for coding agents, evaluations, or approved heavier workloads.
+Use this pattern for coding agents, evaluations, or approved heavier workloads.
+
+Model group names are deployment-defined. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples from a reference or hosted deployment, not names required by the product.
 
 ## Rotation
 
