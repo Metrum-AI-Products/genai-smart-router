@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `1fa6bef-linux-amd64`
-- Source commit: `1fa6bef`
+- Router package/image version: `a07c60c-linux-amd64`
+- Source commit: `a07c60c`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -55,14 +55,25 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:1fa6bef-linux-amd64
+compose-router-1   smart-llmrouter:a07c60c-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
 
+## 2026-06-19 Harbor Docs Package Deployment
+
+- Deployed image/package: `smart-llmrouter:a07c60c-linux-amd64`.
+- Source commit: `a07c60c`.
+- Backup path: `/opt/smart-llmrouter.backup-harbor-reusable-docs-20260619T050447Z`.
+- Build metadata: version `a07c60c`, commit `a07c60c`, build date `2026-06-19T05:02:26Z`.
+- Deployed hosted Docusaurus docs with the reusable Harbor caller guidance on `/docs/evaluation/harbor-case-study`.
+- Preserved live production `compose/config`, `compose/state`, `compose/logs`, `.env`, `ROUTER_TOKEN.txt`, and `ROUTER_TOKEN_HARBOR.txt` during package replacement.
+- Verified `/readyz`, hosted docs headers, hosted Harbor page content, authenticated `/v1/models` with the Harbor token returning 19 groups, and an authenticated `high` chat completion returning `OK` with `finish_reason: stop`.
+- Removed the uploaded package from `/tmp` and ran `sudo docker system prune -f` after the deployment was healthy.
+
 ## 2026-06-19 Reusable Harbor Caller
 
-- Production config-only update; deployed image remains `smart-llmrouter:1fa6bef-linux-amd64`.
+- Production config-only update; deployed image at the time was `smart-llmrouter:1fa6bef-linux-amd64`.
 - Config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.harbor-reusable-20260619T045217Z`.
 - State backup: `/opt/smart-llmrouter/compose/state/router-state.json.bak.harbor-reusable-20260619T045217Z`.
 - Removed 66 temporary Harbor benchmark callers from production config and pruned stale Harbor benchmark quota state.
