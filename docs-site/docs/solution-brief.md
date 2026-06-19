@@ -94,4 +94,6 @@ Developers use stable model groups defined by their deployment. Platform owners 
 - Which workloads are cache-eligible?
 - What deployment and TLS model is preferred?
 
+For a fuller evaluation workflow, see the [Enterprise Evaluation Guide](/docs/evaluation/enterprise-evaluation), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
+
 For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).

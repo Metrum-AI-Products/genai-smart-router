@@ -42,7 +42,13 @@ const sidebars = {
       type: "category",
       label: "Evaluation",
       collapsed: false,
-      items: ["evaluation/harbor-case-study"],
+      items: [
+        "evaluation/product-capabilities",
+        "evaluation/competitive-landscape",
+        "evaluation/enterprise-evaluation",
+        "evaluation/cost-governance",
+        "evaluation/harbor-case-study",
+      ],
     },
   ],
 };
