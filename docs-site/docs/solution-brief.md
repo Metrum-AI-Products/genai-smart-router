@@ -12,9 +12,11 @@ Metrum GenAI Smart Router is a provider-neutral gateway for enterprises that nee
 
 ## Executive Summary
 
-Modern AI teams rarely standardize on one model forever. Different models fit coding, extraction, summarization, planning, and latency-sensitive chat. Provider availability, rate limits, price, and entitlements also change over time.
+Modern AI teams rarely standardize on one model forever. Different models fit coding, extraction, summarization, planning, vision, browser-control context, and latency-sensitive chat. Provider availability, rate limits, price, and entitlements also change over time.
 
 GenAI Smart Router centralizes that complexity. Clients speak OpenAI-compatible or Anthropic-compatible APIs. The router authenticates the caller, checks model-group authorization, selects an upstream target that satisfies the request's text, image, and tool requirements, injects the provider credential, normalizes the response, records usage, and returns the response in the caller's expected dialect.
+
+The operational model is outcome-oriented: define what each model group must accomplish, validate that outcome with Harbor or another objective harness, and then tune the provider/model mix for cost, latency, and reliability. A simple extraction task, a routine coding edit, a screenshot/OCR task, and a complex agentic refactor do not need the same model economics.
 
 ```mermaid
 flowchart LR
@@ -40,6 +42,20 @@ flowchart LR
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
 - **Outcome-oriented optimization:** use agentic evaluation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
 - **Operational visibility:** expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
+
+## Model Group Quality Contracts
+
+Each deployment should define success criteria for every exposed model group. The criteria should match the group's purpose, not a generic "best model" label.
+
+| Group Purpose | Example Quality Contract |
+|---|---|
+| Low-cost general work | completes short chat, extraction, summarization, and simple edit tasks inside a cost and latency target |
+| Balanced development | passes routine coding tests, supports required tool dialects, and handles occasional image context through VLM-capable targets |
+| Coding agents | passes Harbor or similar agentic tasks with file/tool assertions, acceptable fallback rate, and measured cost savings |
+| VLM workloads | reads images or screenshots accurately enough for the target task and records image token/cost fields |
+| Private upstreams | keeps model endpoints private while meeting direct upstream and router-level smoke criteria |
+
+This lets platform teams reserve expensive targets for workloads that need them while using lower-cost routes for work that still meets its objective.
 
 ## Cost Governance
 
@@ -97,6 +113,6 @@ Developers use stable model groups defined by their deployment. Platform owners 
 - Which workloads are cache-eligible?
 - What deployment and TLS model is preferred?
 
-For a fuller evaluation workflow, see the [Enterprise Evaluation Guide](/docs/evaluation/enterprise-evaluation), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
+For a fuller evaluation workflow, see [Deployment Evaluation](/docs/evaluation/deployment-evaluation), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
 
 For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).

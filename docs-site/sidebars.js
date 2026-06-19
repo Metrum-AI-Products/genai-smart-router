@@ -45,7 +45,10 @@ const sidebars = {
       items: [
         "evaluation/product-capabilities",
         "evaluation/competitive-landscape",
-        "evaluation/enterprise-evaluation",
+        "evaluation/deployment-evaluation",
+        "evaluation/model-group-quality",
+        "evaluation/deployment-security-assessment",
+        "evaluation/operational-acceptance",
         "evaluation/cost-governance",
         "evaluation/harbor-case-study",
       ],

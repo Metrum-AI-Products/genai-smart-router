@@ -18,7 +18,7 @@ Metrum GenAI Smart Router is a governed, multi-provider gateway for LLM, VLM, an
 
 ## What It Solves
 
-AI applications often need several model providers. Model quality, latency, price, availability, and API compatibility can shift quickly. Hard-coding provider endpoints and provider keys into every client creates migration cost and weakens governance.
+AI applications often need several model providers. Model quality, latency, price, availability, and API compatibility can shift quickly. Hard-coding provider endpoints and provider keys into every client creates migration cost and weakens governance. GenAI Smart Router lets platform teams define model groups as quality and cost contracts instead: each group has intended workloads, success criteria, allowed clients, and a provider/model mix that can evolve behind one stable API.
 
 GenAI Smart Router gives platform teams one governed control point:
 
@@ -37,6 +37,8 @@ GenAI Smart Router gives platform teams one governed control point:
 
 Callers request stable model groups defined by the deployment. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by one reference or hosted deployment; GenAI Smart Router does not require those names. The router selects an upstream provider/model according to the configured policy for whichever group the caller token is allowed to use.
 
+Not every task needs the most expensive model. A well-designed deployment uses objective evaluation to keep each model group successful for its intended workload while routing simple work to lower-cost targets and reserving stronger targets for requests that need them.
+
 ```mermaid
 flowchart LR
   Client[Client requests model group] --> Router[GenAI Smart Router]
@@ -54,6 +56,10 @@ This lets teams change the provider mix centrally without rewriting Codex, Claud
 The hosted docs include a Harbor agentic coding case study that compares Codex CLI and Claude Code CLI across router model groups. It includes the task goal, reward-score definition, models used, tokenomics, cache behavior, latency, throughput, and provider/model usage. This is the model-group optimization loop: keep outcome quality positive while finding the lowest-cost provider/model mix that works for the workload.
 
 [Read the Harbor case study](/docs/evaluation/harbor-case-study).
+
+[Define model-group quality criteria](/docs/evaluation/model-group-quality).
+
+[Review deployment evaluation](/docs/evaluation/deployment-evaluation).
 
 [See self-hosted vLLM and SGLang upstream examples](/docs/configuration/self-hosted-upstreams).
 
