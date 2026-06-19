@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `6782a0d-linux-amd64`
-- Source commit: `6782a0d`
+- Router package/image version: `5ec8319-linux-amd64`
+- Source commit: `5ec8319`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -1095,6 +1095,38 @@ make package-docker GOOS=linux GOARCH=amd64: passed
 production /readyz after deploy: 200, version 6782a0d, build_date 2026-06-19T02:39:53Z
 production /version after deploy: 6782a0d, build_date 2026-06-19T02:39:53Z, go1.25.11 linux/amd64
 hosted docs pages: /docs/overview and /docs/evaluation/competitive-landscape returned 200 with GenAI Smart Router branding, "strongest offer" competitive positioning, TypeScript policy, and outcome-oriented evaluation language
+production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
+production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp remained 18% used
+```
+
+### 2026-06-19 Docusaurus terminology cleanup deployment
+
+Package `smart-llmrouter:5ec8319-linux-amd64` was deployed to production to publish customer-facing Docusaurus terminology cleanup across the hosted docs.
+
+Source commit: `5ec8319` (`Polish Docusaurus product terminology`)
+
+Documentation changes:
+
+- Renamed the competitive page source section from `Further Reading` to `Vendor Reference Links`.
+- Changed the source intro to `External product and pricing references checked on June 19, 2026`.
+- Replaced remaining meta/internal phrasing such as `customer-facing capabilities`, `embedded hosted Docusaurus docs`, `Proxy users`, `internal key`, and negative browser-feature wording with product/operator language.
+- Smoothed directive language in model metadata, provider onboarding, API compatibility, error reference, cost governance, enterprise evaluation, and self-hosted upstream docs.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.docs-terminology-20260619T025149Z
+```
+
+Validation:
+
+```text
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 5ec8319, build_date 2026-06-19T02:49:46Z
+production /version after deploy: 5ec8319, build_date 2026-06-19T02:49:46Z, go1.25.11 linux/amd64
+hosted docs /docs/evaluation/competitive-landscape returned 200 with `Vendor Reference Links` and no `Further Reading`
+hosted docs /docs/evaluation/product-capabilities returned 200 with `enterprise deployments` and `embedded product documentation`
 production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
 production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp remained 18% used
 ```
