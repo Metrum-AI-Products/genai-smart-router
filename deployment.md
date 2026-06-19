@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `8c2ad4e-linux-amd64`
-- Source commit: `8c2ad4e`
+- Router package/image version: `99088b7-linux-amd64`
+- Source commit: `99088b7`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -56,10 +56,21 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:8c2ad4e-linux-amd64
+compose-router-1   smart-llmrouter:99088b7-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
+
+## 2026-06-19 Docs Information Architecture Deployment
+
+- Deployed image/package: `smart-llmrouter:99088b7-linux-amd64`.
+- Source commit: `99088b7`.
+- Backup path: `/opt/smart-llmrouter.backup-docs-ia-20260619T154713Z`.
+- Build metadata: version `99088b7`, commit `99088b7`, build date `2026-06-19T15:43:52Z`.
+- Added hosted **Available Models And Access** docs, moved model discovery earlier in Hosted Quickstart, added a Reference sidebar section, and linked CLI/error/admin pages to the model-access guide.
+- Preserved live production `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` files during package replacement.
+- Verified `/readyz`, hosted docs headers, hosted `/docs/getting-started/available-models` content and sidebar, authenticated `/v1/models` returning the expected caller allow list, and an authenticated `small` chat completion returning `OK`.
+- Removed the uploaded package from `/tmp` and ran `sudo docker system prune -f` after the deployment was healthy.
 
 ## 2026-06-19 Model Discovery Docs Deployment
 
