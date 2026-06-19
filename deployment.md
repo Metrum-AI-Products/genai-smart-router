@@ -1033,3 +1033,37 @@ Codex CLI production tool smoke through router Responses API with model agent-to
 production logs after deploy: router listening on :8080, no errors in recent router logs
 production cleanup: removed uploaded package, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
 ```
+
+### 2026-06-19 Competitive and capability docs deployment
+
+Package `smart-llmrouter:3099886-linux-amd64` was deployed to production to publish truthful, capability-grounded product evaluation and competitive landscape docs.
+
+Documentation changes:
+
+- Added hosted Docusaurus pages for Product Capabilities, Competitive Landscape, Enterprise Evaluation Guide, and Cost Governance.
+- Updated Overview, Solution Brief, Usage Reporting, and the Docusaurus sidebar to link the new evaluation docs.
+- Added internal `docs/COMPETITIVE_NOTES.md` and `docs/PRODUCT_CAPABILITY_MATRIX.md`.
+- Updated `AGENTS.md` so future competitive/public market claims are primary-source-first, source-dated, and explicit about current product boundaries.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.competitive-docs-20260619T022017Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 83 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 3099886, build_date 2026-06-19T02:18:08Z
+production /version after deploy: 3099886, build_date 2026-06-19T02:18:08Z
+hosted docs pages: /docs/evaluation/product-capabilities, /docs/evaluation/competitive-landscape, /docs/evaluation/enterprise-evaluation, and /docs/evaluation/cost-governance all returned 200 with expected titles
+production /v1/models with router token: returned 19 allowed groups
+production explicit high /v1/chat/completions: HTTP 200, returned OK
+Claude Code CLI production tool smoke using claude -p and model claude-tools-smoke: created expected file
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+production logs after deploy: router listening on :8080, no errors in recent router logs
+production cleanup: removed uploaded package, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
+```
