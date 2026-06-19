@@ -20,7 +20,7 @@ test:
 	go test ./...
 
 docs-build:
-	cd $(DOCS_SITE_DIR) && npm ci && DOCS_ROUTER_VERSION=$(VERSION) DOCS_ROUTER_COMMIT=$(COMMIT) DOCS_ROUTER_BUILD_DATE=$(BUILD_DATE) npm run build
+	cd $(DOCS_SITE_DIR) && npm ci && DOCS_ROUTER_VERSION=$(VERSION) DOCS_ROUTER_BUILD_DATE=$(BUILD_DATE) npm run build
 	find $(DOCS_EMBED_DIR) -mindepth 1 ! -name .keep -exec rm -rf {} +
 	cp -R $(DOCS_SITE_DIR)/build/. $(DOCS_EMBED_DIR)/
 

@@ -14,7 +14,6 @@ const config = {
   projectName: "smart-llmrouter",
   customFields: {
     routerVersion: process.env.DOCS_ROUTER_VERSION || "dev",
-    routerCommit: process.env.DOCS_ROUTER_COMMIT || "unknown",
     routerBuildDate: process.env.DOCS_ROUTER_BUILD_DATE || "unknown",
   },
   onBrokenLinks: "throw",

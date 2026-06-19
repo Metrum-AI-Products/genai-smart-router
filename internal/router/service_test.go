@@ -207,16 +207,19 @@ func TestEmbeddedDocsAreServedUnderDocs(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "Metrum Smart LLM Router") {
+	if !strings.Contains(rr.Body.String(), "GenAI Smart Router") {
 		t.Fatalf("root did not serve docs HTML: %s", rr.Body.String())
 	}
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
 		t.Fatalf("content-type=%q", ct)
 	}
-	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Commit", "X-Smart-LLMRouter-Build-Date"} {
+	for _, header := range []string{"X-Smart-LLMRouter-Version", "X-Smart-LLMRouter-Build-Date"} {
 		if rr.Header().Get(header) == "" {
 			t.Fatalf("missing docs version header %s", header)
 		}
+	}
+	if got := rr.Header().Get("X-Smart-LLMRouter-Commit"); got != "" {
+		t.Fatalf("docs response exposed source-control commit header: %q", got)
 	}
 }
 

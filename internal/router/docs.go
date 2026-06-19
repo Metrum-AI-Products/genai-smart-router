@@ -117,6 +117,5 @@ func writeFallbackDocs(w http.ResponseWriter) {
 func setDocsVersionHeaders(w http.ResponseWriter) {
 	info := buildinfo.Current()
 	w.Header().Set("X-Smart-LLMRouter-Version", info.Version)
-	w.Header().Set("X-Smart-LLMRouter-Commit", info.Commit)
 	w.Header().Set("X-Smart-LLMRouter-Build-Date", info.BuildDate)
 }
