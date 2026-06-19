@@ -40,7 +40,7 @@ providers:
 | `image` | Image input for VLM/OCR/browser-control workflows |
 | `video` | Video input when the upstream/provider supports it |
 
-Do not mark a modality as active because a provider marketing page mentions it. Validate the exact account, endpoint, model ID, request shape, and deployment region.
+Mark a modality active after validating the exact account, endpoint, model ID, request shape, and deployment region.
 
 ## Tool Support
 
@@ -81,7 +81,7 @@ Keep a model catalog-only when:
 - direct provider smoke failed;
 - tool or image support is unvalidated;
 - cap behavior is unsafe;
-- the model exists but should not receive production traffic yet.
+- the model exists and is best kept out of production traffic until rollout criteria are met.
 
 ## Group Targets
 
@@ -99,4 +99,3 @@ models:
 ```
 
 Model group names are deployment-defined. Use names that match the organization's policy and caller contracts.
-

@@ -17,7 +17,7 @@ Record:
 - tool support by API shape;
 - pricing or internal chargeback rates;
 - pricing source and update date;
-- known limitations such as `honors_max_tokens: false`.
+- operating notes such as `honors_max_tokens: false`.
 
 Keep unavailable or unvalidated provider models catalog-only. Move a model into active routing after the deployment has entitlement and validation evidence for the API shapes it will serve.
 

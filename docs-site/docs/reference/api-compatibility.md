@@ -19,7 +19,7 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
 | `/readyz`, `/healthz`, `/version` | Router operational endpoints | Load balancers and operators |
 
-`/metrics` is not a caller API. It is global operational telemetry and requires a caller token configured with `metrics_admin: true`.
+`/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
 ## Model Names
 
@@ -54,5 +54,4 @@ Router-only endpoints are not part of OpenAI or Anthropic compatibility:
 - `/v1/usage` returns usage/quota information for the authenticated caller.
 - `/metrics` returns Prometheus telemetry only for metrics-admin tokens.
 
-Do not configure OpenAI or Anthropic SDKs to call router-only endpoints unless the SDK supports custom paths.
-
+Use SDKs for the compatible provider-style APIs they support. Router-only endpoints such as `/readyz`, `/version`, and `/v1/usage` are best called with ordinary HTTP clients.

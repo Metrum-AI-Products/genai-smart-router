@@ -98,9 +98,9 @@ Use concrete workloads instead of feature checklists alone:
 - A usage report showing caller, provider, model, token, latency, cache, and cost fields.
 - A private vLLM or SGLang upstream smoke when internal models are part of the enterprise requirement.
 
-## Further Reading
+## Vendor Reference Links
 
-Vendor references checked on June 19, 2026:
+External product and pricing references checked on June 19, 2026:
 
 - [LiteLLM Enterprise](https://docs.litellm.ai/docs/enterprise)
 - [Bifrost overview](https://docs.getbifrost.ai/overview)

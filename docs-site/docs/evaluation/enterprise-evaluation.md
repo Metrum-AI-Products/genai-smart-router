@@ -62,7 +62,7 @@ Test each required route type:
 - image/VLM target selection;
 - capped `max_tokens` or `max_output_tokens` behavior.
 
-For new upstream models, validate direct provider behavior first, then router behavior. Do not activate a model broadly until text, tools, image, and cap smokes pass for the request shapes the deployment will serve.
+For new upstream models, validate direct provider behavior first, then router behavior. Keep broad activation gated on text, tools, image, and cap smokes for the request shapes the deployment will serve.
 
 ## Finance Evaluation
 

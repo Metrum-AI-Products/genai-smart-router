@@ -4,7 +4,7 @@ title: Product Capabilities
 
 # Product Capabilities
 
-This page summarizes the customer-facing capabilities of GenAI Smart Router.
+This page summarizes GenAI Smart Router capabilities for enterprise deployments.
 
 ## Capabilities
 
@@ -20,7 +20,7 @@ This page summarizes the customer-facing capabilities of GenAI Smart Router.
 | Usage reporting | Reports by caller, project, environment, token ID, provider, model, model group, client, status, cache, latency, and token counts |
 | Observability | JSONL logs, relational usage DB, diagnostics child tables, metrics-admin Prometheus telemetry |
 | Caching | In-process LRU/TTL cache for eligible non-tool responses with cache snapshots in usage rows |
-| Deployment | Linux binary and Docker Compose packages with embedded hosted Docusaurus docs |
+| Deployment | Linux binary and Docker Compose packages with embedded product documentation |
 | Agent clients | Codex CLI and Claude Code CLI workflows validated through router-compatible API shapes |
 | Private upstreams | OpenAI-compatible vLLM, SGLang, Baseten-style, and other internal services can be configured as providers |
 

@@ -29,7 +29,7 @@ The `no-eligible-target` response includes a `requirements` list. Examples:
 - `openai-responses_function`: Responses function tools are required.
 - `anthropic-messages_client_tools`: Anthropic Messages client tools are required.
 
-The fix is normally a configuration change, not a caller workaround. The model group must contain at least one enabled target whose provider dialect and metadata satisfy those requirements.
+Resolution is usually a configuration update. The model group must contain at least one enabled target whose provider dialect and metadata satisfy those requirements.
 
 ## Max-Token Cap Errors
 

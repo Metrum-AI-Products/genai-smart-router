@@ -6,7 +6,7 @@ title: User Key Generation
 
 Router caller tokens authenticate applications, users, or evaluation jobs to GenAI Smart Router. Tokens use a readable prefix for traceability plus a random secret suffix. The router stores only token hashes.
 
-`router-token-gen` is an Enterprise Edition administrative CLI. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation. It is not a browser feature and should not be distributed to ordinary application users.
+`router-token-gen` is an Enterprise Edition administrative CLI for platform administrators. Run it from a secure server console, deployment host shell, or controlled administrator workstation, and distribute only the generated router tokens to approved callers.
 
 <div class="contactBanner">
   <p>For production token design and rollout support, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>

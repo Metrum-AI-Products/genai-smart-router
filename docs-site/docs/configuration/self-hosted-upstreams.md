@@ -264,7 +264,7 @@ Before allowing production traffic to a self-hosted upstream:
 
 - Confirm the upstream `/v1/models` ID matches `providers.<name>.models.<ref>.model`.
 - Run a direct upstream text smoke against `/v1/chat/completions`.
-- For VLM targets, run a direct image smoke and then the same image request through the router. Do not add `image` to `input_modalities` until both pass.
+- For VLM targets, run a direct image smoke and then the same image request through the router. Add `image` to `input_modalities` after both pass.
 - Run a direct upstream tool smoke with the exact tool schema and `tool_choice` mode clients will use.
 - Run the same text and tool smoke through the router model group.
 - Mark tool-capable targets with `tool_only: true` when they should be used only for tool-bearing requests.

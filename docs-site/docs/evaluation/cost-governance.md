@@ -65,7 +65,7 @@ For savings reports:
 - keep image costs separate when applicable;
 - state the price source and date for any comparison baseline.
 
-Do not recalculate actual historical router cost from current provider metadata. The stored request-time values are the durable financial record.
+Use stored request-time values for actual historical router cost. They are the durable financial record even when current provider metadata changes.
 
 ## Image And VLM Costs
 
