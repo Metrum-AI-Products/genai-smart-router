@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `5ec8319-linux-amd64`
-- Source commit: `5ec8319`
+- Router package/image version: `7635a89-linux-amd64`
+- Source commit: `7635a89`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -1129,4 +1129,37 @@ hosted docs /docs/evaluation/competitive-landscape returned 200 with `Vendor Ref
 hosted docs /docs/evaluation/product-capabilities returned 200 with `enterprise deployments` and `embedded product documentation`
 production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
 production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp remained 18% used
+```
+
+### 2026-06-19 Plan & Validate docs deployment
+
+Package `smart-llmrouter:7635a89-linux-amd64` was deployed to production to publish the customer-facing deployment planning and quality documentation cleanup.
+
+Source commit: `7635a89` (`Polish deployment planning docs`)
+
+Documentation changes:
+
+- Renamed the public docs section from `Evaluation` to `Plan & Validate`.
+- Replaced the old deployment-evaluation page with `Deployment Readiness`.
+- Cleaned visible headings across the public docs to use product-oriented terms such as `Proof Points To Verify`, `External Vendor Links`, `Operational Readiness`, `Activation Standard`, `Agentic Quality Validation`, `Release Gates`, and `Ongoing Governance`.
+- Updated `AGENTS.md` guidance so future docs use deployment readiness, validation, outcome, and operational wording instead of internal evaluation-language framing.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.plan-validate-docs-20260619T031840Z
+```
+
+Validation:
+
+```text
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 7635a89, build_date 2026-06-19T03:16:30Z
+production /version after deploy: 7635a89, build_date 2026-06-19T03:16:30Z, go1.25.11 linux/amd64
+hosted docs /docs/evaluation/deployment-readiness returned 200 with `Deployment Readiness`, `Outcome And Cost Control`, and `Operational Readiness`
+hosted docs /docs/evaluation/competitive-landscape returned 200 with `Where GenAI Smart Router Wins`, `Proof Points To Verify`, and `External Vendor Links`
+hosted docs /docs/evaluation/model-group-quality returned 200 with `Agentic Quality Validation`, `Release Gates`, and `Ongoing Governance`
+production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
+production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f
 ```
