@@ -1000,3 +1000,36 @@ Codex CLI production tool smoke through router Responses API with model agent-to
 production logs after deploy: router listening on :8080, no errors in recent router logs
 production cleanup: removed uploaded package/config files, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
 ```
+
+### 2026-06-19 Product and operator reference docs deployment
+
+Package `smart-llmrouter:d2aa84e-linux-amd64` was deployed to production to publish new external Docusaurus reference docs and packaged internal operator runbooks.
+
+Documentation changes:
+
+- Added hosted Docusaurus pages for API compatibility, error reference, model metadata, and provider/model onboarding.
+- Added internal runbooks for production deployment, troubleshooting, smoke testing, usage reporting, and security review notes.
+- Updated packaging so release packages include every `docs/*.md` internal document.
+- Updated `AGENTS.md` documentation expectations so future changes maintain both external product docs and internal operator docs.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.docs-reference-20260619T020557Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 83 tests
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version d2aa84e, build_date 2026-06-19T02:03:41Z
+production /version after deploy: d2aa84e, build_date 2026-06-19T02:03:41Z
+hosted docs pages: /docs/reference/api-compatibility, /docs/reference/errors, /docs/reference/model-metadata, and /docs/reference/add-provider-model all returned 200 with expected titles
+production /v1/models with router token: returned 19 allowed groups
+production explicit high /v1/chat/completions: HTTP 200, returned OK
+Claude Code CLI production tool smoke using claude -p and model claude-tools-smoke: created expected file
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+production logs after deploy: router listening on :8080, no errors in recent router logs
+production cleanup: removed uploaded package, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
+```
