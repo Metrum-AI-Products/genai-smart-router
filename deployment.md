@@ -61,6 +61,16 @@ compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
 
+## 2026-06-19 Ajoshi TPM Increase
+
+- Production config-only update; deployed image remains `smart-llmrouter:99088b7-linux-amd64`.
+- Config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.ajoshi-tpm-20260619T170533Z`.
+- Increased `ajoshi-metrum-insights-prod` from `1,200,000 TPM` to `2,500,000 TPM`.
+- Left RPM and concurrency unchanged at `240 RPM` and `16 concurrent`.
+- Reason: production usage showed 16 recent `429 tpm-exceeded` errors for Ajoshi from Cursor on `big-coder`/`high`, while RPM/concurrency were not the bottleneck.
+- Verified `sudo docker compose config >/dev/null`, router restart, `/readyz`, live config summary, local `config.production.yaml` SHA-256 match, and an authenticated production chat smoke returning `OK`.
+- Ajoshi's raw token is not stored in `ROUTER_TOKEN*.txt` on the host, so the authenticated smoke used another production caller token after validating Ajoshi's live config entry directly.
+
 ## 2026-06-19 Docs Information Architecture Deployment
 
 - Deployed image/package: `smart-llmrouter:99088b7-linux-amd64`.
