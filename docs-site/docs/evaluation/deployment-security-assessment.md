@@ -11,7 +11,7 @@ Use this checklist to assess a GenAI Smart Router deployment before production r
 Confirm:
 
 - provider API keys are loaded server-side from the deployment environment or protected config files;
-- caller tokens are distributed only to approved users, services, or evaluation jobs;
+- caller tokens are distributed only to approved users, services, or validation jobs;
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
 - metrics-admin access uses separate caller tokens with `metrics_admin: true`.
@@ -71,7 +71,7 @@ Each deployment should follow the organization's security process for:
 
 The docs build currently reports npm audit advisories from the Docusaurus dependency tree. Treat those under the deployment's normal dependency-review process and record whether they affect the hosted documentation surface, build-time dependencies, or runtime router path.
 
-## Security Acceptance Record
+## Security Sign-Off Record
 
 Record:
 

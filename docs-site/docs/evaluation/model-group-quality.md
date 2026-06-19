@@ -6,9 +6,9 @@ title: Model Group Quality Criteria
 
 Model groups are the caller-facing quality and cost contracts in GenAI Smart Router. A group name should mean something operational: what work it is intended to handle, what clients can use it, what modalities and tools it supports, and what outcome it must preserve while the router optimizes cost, latency, and provider mix behind the scenes.
 
-This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when evaluation shows the group still meets its objective.
+This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when validation shows the group still meets its objective.
 
-## Required Fields
+## Group Contract Fields
 
 Define these fields for every model group in a deployment:
 
@@ -24,7 +24,7 @@ Define these fields for every model group in a deployment:
 | Cost target | Cost/request, daily budget, or savings target against a baseline |
 | Latency target | p50/p95 latency or token-throughput target |
 | Reliability target | Timeout, fallback, and provider error thresholds |
-| Evaluation harness | Harbor, workload-specific tests, or another objective harness |
+| Validation harness | Harbor, workload-specific tests, or another objective harness |
 | Promotion criteria | When to increase target weight or caller access |
 | Rollback criteria | When to reduce weight, disable a target, or isolate the group |
 
@@ -40,9 +40,9 @@ Define these fields for every model group in a deployment:
 
 These are examples only. The deployment chooses group names and contracts that match its teams, applications, and governance model.
 
-## Harbor And Agentic Evaluation
+## Agentic Quality Validation
 
-Harbor-style evaluation is useful because it tests the whole agent loop, not only a single completion. For a coding-agent group, run tasks that require the agent to inspect files, call tools, edit artifacts, and pass an external verifier.
+Harbor-style validation is useful because it tests the whole agent loop, not only a single completion. For a coding-agent group, run tasks that require the agent to inspect files, call tools, edit artifacts, and pass an external verifier.
 
 Track:
 
@@ -57,7 +57,7 @@ Track:
 
 Promotion is justified when the group maintains the required outcome while meeting cost, latency, and reliability targets. A cheaper provider mix should be adopted when it passes the same objective criteria. A stronger target should remain available for workloads that need it, but it does not need to handle every request.
 
-## Quality Gates
+## Release Gates
 
 Before a group receives broad caller access:
 
@@ -67,9 +67,9 @@ Before a group receives broad caller access:
 - image requests are validated with realistic VLM budgets when image modality is advertised;
 - capped request behavior is tested for `max_tokens` or `max_output_tokens`;
 - usage rows include selected provider/model, token counts, status, latency, cache behavior, and cost fields;
-- Harbor or workload-specific evaluation meets the group success criteria;
+- Harbor or workload-specific validation meets the group success criteria;
 - rollback criteria are documented.
 
-## Ongoing Review
+## Ongoing Governance
 
 Review model groups after provider price changes, model entitlement changes, provider instability, new client requirements, new modalities, or observed quality regressions. The router makes model substitution operationally easier, but the group contract determines whether a substitution is acceptable.

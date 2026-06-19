@@ -1,14 +1,14 @@
 ---
-title: Deployment Evaluation
+title: Deployment Readiness
 ---
 
-# Deployment Evaluation
+# Deployment Readiness
 
-Evaluate GenAI Smart Router as a deployment-owned GenAI control plane. A production-ready deployment proves more than API reachability: it defines model-group quality targets, security controls, client compatibility, cost policy, operational readiness, and rollout criteria for every model group exposed to callers.
+Plan and validate GenAI Smart Router as a deployment-owned GenAI control plane. A production-ready deployment proves more than API reachability: it defines model-group quality targets, security controls, client compatibility, cost policy, operational readiness, and rollout criteria for every model group exposed to callers.
 
 Model groups are deployment contracts. Each group should state who it is for, which API shapes it supports, which modalities and tools it can serve, what task outcomes it is expected to complete, and what cost/latency envelope it should stay inside. The goal is not to route every request to the most expensive model. The goal is to maintain the required outcome for each workload while using the lowest-cost reliable provider/model mix that passes the group criteria.
 
-## Evaluation Flow
+## Rollout Validation Flow
 
 Use this sequence for a new deployment or major routing update:
 
@@ -17,11 +17,11 @@ Use this sequence for a new deployment or major routing update:
 3. Validate provider and private-upstream metadata.
 4. Run security assessment checks.
 5. Run client acceptance checks.
-6. Run model-group quality evaluations with Harbor or a similar workload harness.
+6. Run model-group quality validation with Harbor or a similar workload harness.
 7. Confirm usage, cost, quota, telemetry, and diagnostics.
 8. Record rollout, rollback, and promotion criteria.
 
-## Deployment Readiness
+## Platform Readiness
 
 Confirm:
 
@@ -65,7 +65,7 @@ Use [Model Group Quality Criteria](./model-group-quality) for the full template.
 
 ## Security Assessment
 
-Security evaluation should cover secrets, telemetry, diagnostics, network exposure, and dependency/container scans. Use [Deployment Security Assessment](./deployment-security-assessment) for the checklist.
+Security validation should cover secrets, telemetry, diagnostics, network exposure, and dependency/container scans. Use [Deployment Security Assessment](./deployment-security-assessment) for the checklist.
 
 Minimum acceptance:
 
@@ -89,9 +89,9 @@ Validate real clients, not only curl:
 
 For CLI tool tests, require the agent to create or edit a file and assert the file contents. Text-only responses are useful smoke checks, but they are not sufficient evidence for agent tool compatibility.
 
-## Outcome And Cost Optimization
+## Outcome And Cost Control
 
-Evaluation should measure outcome first, then optimize the provider/model mix. A lower-cost target is valuable only when the model group still completes the objective it is responsible for.
+Validation should measure outcome first, then optimize the provider/model mix. A lower-cost target is valuable only when the model group still completes the objective it is responsible for.
 
 For agentic workloads, use Harbor or a similar harness to compare:
 
@@ -106,7 +106,7 @@ For agentic workloads, use Harbor or a similar harness to compare:
 
 This enables substantial cost benefits without degrading the result the group is meant to deliver. Simple tasks can use lower-cost routes; complex coding, long-context, tool-heavy, or VLM tasks can route to stronger targets only when the request actually needs them.
 
-## Operational Acceptance
+## Operational Readiness
 
 Before production rollout, validate:
 
@@ -118,4 +118,4 @@ Before production rollout, validate:
 - usage reports grouped by caller, project, environment, model group, provider, model, status, cache, latency, tokens, and cost;
 - cleanup of uploaded packages, replaced deployment trees, stale `/tmp` files, and accumulated Docker artifacts.
 
-Use [Operational Acceptance](./operational-acceptance) for a release checklist.
+Use [Operational Readiness](./operational-acceptance) for a release checklist.

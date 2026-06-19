@@ -25,7 +25,7 @@ The model group names in this case study are historical deployment-specific name
 
 Harbor reports `1.0` when the submitted artifact passes the verifier for the task. A score of `0.0` means the verifier rejected the artifact. Agent runtime exceptions are tracked separately because an agent can produce a passing artifact but still exit nonzero.
 
-## Model Groups Evaluated
+## Model Groups Covered
 
 | Group | Intended use |
 |---|---|
@@ -226,6 +226,6 @@ As in the first case study, these were tool-bearing agent requests that read and
 
 ## Interpretation
 
-Every final published run passed with reward `1.0`, which means the routed model groups were able to complete the coding tasks under both Codex CLI and Claude Code CLI. The report also shows why model-group evaluation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, cache eligibility, caller IP, and throughput vary materially by task, agent, and group.
+Every final published run passed with reward `1.0`, which means the routed model groups were able to complete the coding tasks under both Codex CLI and Claude Code CLI. The report also shows why model-group validation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, cache eligibility, caller IP, and throughput vary materially by task, agent, and group.
 
 For production buyers, the key result is that GenAI Smart Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.

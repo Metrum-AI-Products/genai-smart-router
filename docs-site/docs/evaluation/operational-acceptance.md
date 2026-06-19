@@ -1,10 +1,10 @@
 ---
-title: Operational Acceptance
+title: Operational Readiness
 ---
 
-# Operational Acceptance
+# Operational Readiness
 
-Operational acceptance proves that a GenAI Smart Router deployment can be run, observed, updated, and rolled back predictably.
+Operational readiness proves that a GenAI Smart Router deployment can be run, observed, updated, and rolled back predictably.
 
 ## Release Readiness
 

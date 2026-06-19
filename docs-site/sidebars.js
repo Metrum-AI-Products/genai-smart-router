@@ -40,12 +40,12 @@ const sidebars = {
     "solution-brief",
     {
       type: "category",
-      label: "Evaluation",
+      label: "Plan & Validate",
       collapsed: false,
       items: [
         "evaluation/product-capabilities",
         "evaluation/competitive-landscape",
-        "evaluation/deployment-evaluation",
+        "evaluation/deployment-readiness",
         "evaluation/model-group-quality",
         "evaluation/deployment-security-assessment",
         "evaluation/operational-acceptance",

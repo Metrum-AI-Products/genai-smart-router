@@ -32,11 +32,11 @@ GenAI Smart Router is designed as the governed gateway layer for enterprise GenA
 - keep provider keys and private inference endpoints server-side;
 - route by API dialect, tool support, image modality, latency, cost, quota, and custom policy;
 - record request-time token, image, cost, cache, and provider selection details;
-- evaluate and roll out new upstream models without rewriting every client.
+- validate and roll out new upstream models without rewriting every client.
 
 Broader enterprise controls such as identity integration, procurement process, managed hosting terms, and compliance workflows are handled as part of the selected deployment and operating model.
 
-## Validation Philosophy
+## Activation Standard
 
 Provider catalogs are metadata, not proof. A model should only become active after the exact deployment validates:
 

@@ -28,7 +28,7 @@ Core strengths:
 - **Budgets, quotas, and rate limits:** per-key RPM, TPM, concurrency, daily, monthly, and lifetime limits are enforced before the provider call.
 - **Telemetry and operational visibility:** request logs, relational usage reporting, cache telemetry, throughput fields, diagnostics, and metrics-admin Prometheus telemetry are available.
 - **Programmable policy:** TypeScript routing scripts can implement deployment-owned routing logic and optional allowlisted external policy calls without changing application code.
-- **Evaluation-driven optimization:** agentic evaluation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix with evidence.
+- **Outcome-driven optimization:** agentic validation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix using measured results.
 
 ## Where GenAI Smart Router Wins
 
@@ -37,7 +37,7 @@ GenAI Smart Router wins when the gateway must be part of the enterprise control 
 | Requirement | Why GenAI Smart Router is stronger |
 |---|---|
 | Combine the major gateway controls | High-performance routing, telemetry, budgets, rate limits, quotas, caching, fallback, model metadata, request diagnostics, usage reporting, and request-time cost accounting are handled by the router instead of split across multiple systems. |
-| Optimize for outcomes, not only model preference | Evaluation harnesses such as Harbor can run real coding-agent workloads through model groups and compare success outcomes against cost, latency, token volume, fallback rate, and throughput. This lets teams adjust weights and group composition until the group maintains positive task results while capturing substantial cost benefits. |
+| Optimize for outcomes, not only model preference | Validation harnesses such as Harbor can run real coding-agent workloads through model groups and compare success outcomes against cost, latency, token volume, fallback rate, and throughput. This lets teams adjust weights and group composition until the group maintains positive task results while capturing substantial cost benefits. |
 | Keep routing policy close to the deployment | Policies live in the router config and optional TypeScript scripts. Teams can route by prompt size, caller metadata, project, environment, tool requirements, image presence, target health, weights, failover order, or an allowlisted policy service. |
 | Serve coding agents and normal apps from one endpoint | The same deployment can support OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages clients, including Codex CLI, Claude Code CLI, and OpenAI Chat tool clients. |
 | Avoid manual model switching for mixed agent tasks | Text-only requests can use normal text/tool targets, while image-bearing requests through the same model group are filtered to VLM-capable targets. Developers do not need to exit an agent workflow just to switch from code generation to image/OCR/browser-control context. |
@@ -60,7 +60,7 @@ Examples:
 - **Fine-grained quotas per key:** each caller token can have its own allowed groups, RPM/TPM limits, concurrency caps, and daily/monthly/lifetime budgets. That allows evaluation keys, production service keys, admin metrics keys, and restricted project keys to coexist on the same deployment.
 - **Private model integration:** internally hosted vLLM or SGLang endpoints can sit behind the same public API contract as hosted providers. Teams can keep GPU endpoints private while exposing a governed router endpoint to applications and agents.
 - **Custom policy without client rewrites:** TypeScript policies can route by prompt size, caller key metadata, project, environment, requested API dialect, tool requirement, image presence, cache eligibility, model health, or external policy-service response. For example, a deployment can keep one caller-visible group while sending short prompts to a fast low-cost model, long prompts to a long-context model, tool requests to tool-validated targets, and image requests to VLM-validated targets.
-- **Outcome-oriented model mix:** the Harbor case study shows how the router can evaluate agentic coding runs by reward score, cost drivers, latency, fallback use, cache behavior, throughput, and selected provider/model. That evaluation loop helps teams choose the lowest-cost mix that still preserves the desired task outcome for each model group.
+- **Outcome-oriented model mix:** the Harbor case study shows how the router can validate agentic coding runs by reward score, cost drivers, latency, fallback use, cache behavior, throughput, and selected provider/model. That feedback loop helps teams choose the lowest-cost mix that still preserves the desired task outcome for each model group.
 - **Fast operational rollout:** new upstreams can be added catalog-only, smoke-tested directly, tested through a private router group, then introduced at low weight in active groups. Rollback is usually a config weight change rather than a client migration.
 - **Actionable failures:** caller-facing errors include request IDs and structured reasons such as `no-eligible-target`, `upstream-timeout`, `upstream-rate-limited`, or `quota-exceeded`, giving operators a direct path to traces and provider attempts.
 
@@ -83,7 +83,7 @@ GenAI Smart Router is best evaluated as the governed routing and accounting laye
 | TrueFoundry AI Gateway | Enterprise AI platform gateway | Platform-level governance and MLOps integration | GenAI Smart Router is stronger for teams that want direct gateway-layer control over model groups, upstream weights, TypeScript policy, per-key access, cost accounting, and private inference endpoints. |
 | Martian | Model routing/intelligence product | Dynamic model selection and optimization | GenAI Smart Router exposes explicit deployment-owned policy, validation, usage records, quotas, and upstream routing controls that operators can inspect and change. |
 
-## How To Evaluate
+## Proof Points To Verify
 
 Use concrete workloads instead of feature checklists alone:
 
@@ -94,11 +94,11 @@ Use concrete workloads instead of feature checklists alone:
 - An image request through the same model group a developer would normally use.
 - A request that exercises quotas and `/v1/models` allow-list filtering.
 - A TypeScript policy route, such as prompt-size routing within one caller-visible model group.
-- An evaluation run that compares model-group outcome, cost, latency, token volume, fallback behavior, and provider/model mix.
+- A validation run that compares model-group outcome, cost, latency, token volume, fallback behavior, and provider/model mix.
 - A usage report showing caller, provider, model, token, latency, cache, and cost fields.
 - A private vLLM or SGLang upstream smoke when internal models are part of the enterprise requirement.
 
-## Vendor Reference Links
+## External Vendor Links
 
 External product and pricing references checked on June 19, 2026:
 

@@ -31,7 +31,7 @@ flowchart LR
   Policy --> P5[Other compatible providers]
 ```
 
-## Buyer Value
+## Enterprise Value
 
 - **Provider optionality:** adopt new model providers centrally while applications keep stable model-group names.
 - **Multimodal readiness:** support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
@@ -40,7 +40,7 @@ flowchart LR
 - **Security:** keep provider keys server-side and issue revocable router tokens to callers.
 - **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
-- **Outcome-oriented optimization:** use agentic evaluation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
+- **Outcome-oriented optimization:** use agentic validation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
 - **Operational visibility:** expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
 
 ## Model Group Quality Contracts
@@ -103,16 +103,16 @@ https://llm-api.example.com/v1
 
 Developers use stable model groups defined by their deployment. Platform owners can change the underlying provider mix without client rewrites. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples used by one reference or hosted deployment, not product-required names.
 
-## Evaluation Checklist
+## Deployment Planning Checklist
 
 - Which clients need OpenAI, Responses, or Anthropic compatibility?
-- Which model groups should be exposed?
+- Which model groups should be exposed, and what success criteria should each group satisfy?
 - Which provider models are approved and validated?
 - What token, quota, and budget rules are required?
 - Which reports and dashboards are needed for cost governance?
 - Which workloads are cache-eligible?
 - What deployment and TLS model is preferred?
 
-For a fuller evaluation workflow, see [Deployment Evaluation](/docs/evaluation/deployment-evaluation), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
+For a fuller rollout workflow, see [Deployment Readiness](/docs/evaluation/deployment-readiness), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
 
 For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).
