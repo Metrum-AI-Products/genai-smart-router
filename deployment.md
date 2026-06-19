@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `7635a89-linux-amd64`
-- Source commit: `7635a89`
+- Router package/image version: `1fa6bef-linux-amd64`
+- Source commit: `1fa6bef`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -1162,4 +1162,40 @@ hosted docs /docs/evaluation/competitive-landscape returned 200 with `Where GenA
 hosted docs /docs/evaluation/model-group-quality returned 200 with `Agentic Quality Validation`, `Release Gates`, and `Ongoing Governance`
 production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
 production cleanup: removed uploaded package, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f
+```
+
+### 2026-06-19 Public docs binary-version wording deployment
+
+Package `smart-llmrouter:1fa6bef-linux-amd64` was deployed to production to remove source-control terminology from the public Docusaurus product docs and docs response metadata.
+
+Source commit: `1fa6bef` (`Hide source-control metadata from public docs`)
+
+Documentation/runtime changes:
+
+- Replaced public wording such as `source commit and package version` with `binary release version`.
+- Updated product docs to describe running binary version and build timestamp rather than source-control details.
+- Removed the docs-browser commit badge field from the Docusaurus config and rendered badge.
+- Removed `X-Smart-LLMRouter-Commit` from docs responses while keeping `X-Smart-LLMRouter-Version` and `X-Smart-LLMRouter-Build-Date`.
+- Added regression coverage that embedded docs responses do not expose the docs commit header.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.public-docs-no-source-metadata-20260619T033643Z
+```
+
+Validation:
+
+```text
+go test ./internal/router: passed, 79 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 1fa6bef, build_date 2026-06-19T03:34:44Z
+production /version after deploy: 1fa6bef, build_date 2026-06-19T03:34:44Z, go1.25.11 linux/amd64
+hosted docs /docs/evaluation/operational-acceptance returned 200 with `binary release version` and `build timestamp`, and without `source commit` or `package version`
+hosted docs /docs/reference/api-compatibility returned 200 with `running binary version` and `build timestamp`, and without `commit`
+hosted docs response headers include `x-smart-llmrouter-version` and `x-smart-llmrouter-build-date`; `x-smart-llmrouter-commit` is absent
+hosted docs JS bundle contains no `routerCommit`, `X-Smart-LLMRouter-Commit`, `source commit`, or `package version`
+production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
+production cleanup: removed uploaded packages, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f
 ```
