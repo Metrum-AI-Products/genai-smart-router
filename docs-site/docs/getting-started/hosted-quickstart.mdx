@@ -151,7 +151,7 @@ For dedicated vision route configuration, pricing metadata, and CLI image smokes
 
 ## Model Discovery
 
-`/v1/models` is filtered by the caller token allow list.
+If you are not sure which `ROUTER_MODEL` value to use, call `/v1/models` with your router token. The response is filtered by that token's allow list and returns the deployment-defined model groups you can request.
 
 <RouterCodeBlock>
 {`
@@ -160,7 +160,7 @@ curl "$ROUTER_BASE_URL/v1/models" \
 `}
 </RouterCodeBlock>
 
-If a caller token is limited to a smaller set of deployment-defined groups, other groups will not be listed and cannot be requested.
+Use one returned `id` as the `model` value in chat, Responses, or Messages requests. If a caller token is limited to a smaller set of groups, other groups will not be listed and cannot be requested. See [API Compatibility](../reference/api-compatibility#discover-allowed-model-groups) for the response shape and error behavior.
 
 ## Python Client
 

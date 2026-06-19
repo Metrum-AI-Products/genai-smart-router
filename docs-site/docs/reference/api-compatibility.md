@@ -27,6 +27,39 @@ The `model` field is a router model group, not necessarily a provider model ID. 
 
 If a compatible API request omits `model`, the router uses `server.default_model_group` when configured. If no default is configured, the router returns `400 missing-model`.
 
+## Discover Allowed Model Groups
+
+Call `/v1/models` with the same router token that the client will use for completions. The response is filtered to that token's allow list, so it shows the deployment-defined model groups the caller can request.
+
+```bash
+curl "$ROUTER_BASE_URL/v1/models" \
+  -H "Authorization: Bearer $ROUTER_TOKEN"
+```
+
+Example response:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "default",
+      "object": "model",
+      "owned_by": "smart-llmrouter"
+    },
+    {
+      "id": "vision",
+      "object": "model",
+      "owned_by": "smart-llmrouter"
+    }
+  ]
+}
+```
+
+Use one of the returned `id` values as the `model` field in `/v1/chat/completions`, `/v1/responses`, or `/v1/messages`. If a group is not listed, that token is not allowed to use it. Requests for unlisted groups fail with `403 model-not-allowed` before any upstream provider is called.
+
+The returned IDs are router model groups, not a full inventory of every upstream provider model. Platform teams can change the upstream provider/model mix behind a group without changing the caller-facing group name.
+
 ## Tool Calls
 
 Tool requests only route to upstream targets that explicitly advertise support for the caller's API dialect and tool mode.
