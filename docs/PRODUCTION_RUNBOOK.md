@@ -65,7 +65,7 @@ curl -fsS https://llm-api-engg.metrum.ai/docs/overview
 
 With a router token, verify:
 
-- `/v1/models` returns allowed model groups;
+- `/v1/models` returns the model groups allowed for that exact caller token;
 - a text request succeeds;
 - an omitted-model request behaves according to `server.default_model_group`;
 - changed model/provider/tool/VLM behavior passes a targeted smoke.
@@ -94,4 +94,3 @@ Record cleanup results in `deployment.md`.
 Prefer config rollback for bad model/provider weights. Restore the previous `config.yaml` backup, restart router, then verify `/readyz` and a representative request.
 
 For package rollback, stop compose, move the current `/opt/smart-llmrouter` aside, restore the timestamped backup tree, start compose, and verify health, version, docs, and affected API behavior.
-

@@ -26,6 +26,19 @@ export ROUTER_MODEL="<allowed-model-group>"
 
 Model group names are deployment-defined. If this hosted deployment exposes example names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision`, treat them as deployment policy names, not product-required names.
 
+## Model Discovery
+
+If you are not sure which `ROUTER_MODEL` value to use, call `/v1/models` with your router token first. The response is filtered by that token's allow list and returns the deployment-defined model groups you can request.
+
+<RouterCodeBlock>
+{`
+curl "$ROUTER_BASE_URL/v1/models" \
+  -H "Authorization: Bearer $ROUTER_TOKEN"
+`}
+</RouterCodeBlock>
+
+Use one returned `id` as the `model` value in chat, Responses, Messages, or CLI requests. If a caller token is limited to a smaller set of groups, other groups will not be listed and cannot be requested. See [Available Models And Access](./available-models) for response examples and troubleshooting.
+
 ## OpenAI-Compatible Chat
 
 <RouterCodeBlock>
@@ -148,19 +161,6 @@ curl "$ROUTER_BASE_URL/v1/messages" \
 Image-bearing requests bypass response caching. Usage logs include image count, image-token counts when the upstream reports them, calculated VLM cost, and upstream-reported billed cost when available.
 
 For dedicated vision route configuration, pricing metadata, and CLI image smokes, see [Image Analysis And VLM Routing](../configuration/image-analysis-vlm).
-
-## Model Discovery
-
-If you are not sure which `ROUTER_MODEL` value to use, call `/v1/models` with your router token. The response is filtered by that token's allow list and returns the deployment-defined model groups you can request.
-
-<RouterCodeBlock>
-{`
-curl "$ROUTER_BASE_URL/v1/models" \
-  -H "Authorization: Bearer $ROUTER_TOKEN"
-`}
-</RouterCodeBlock>
-
-Use one returned `id` as the `model` value in chat, Responses, or Messages requests. If a caller token is limited to a smaller set of groups, other groups will not be listed and cannot be requested. See [API Compatibility](../reference/api-compatibility#discover-allowed-model-groups) for the response shape and error behavior.
 
 ## Python Client
 

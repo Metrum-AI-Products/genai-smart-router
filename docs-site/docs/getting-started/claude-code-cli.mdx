@@ -28,6 +28,8 @@ export ANTHROPIC_AUTH_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 
 ## One-Shot Check
 
+Use one of the model group IDs returned by `/v1/models` for `--model`. See [Available Models And Access](./available-models) if you need to check which groups your token can request.
+
 ```bash
 claude --bare --print --model "<allowed-model-group>" \
   "Reply with exactly: router claude ok"

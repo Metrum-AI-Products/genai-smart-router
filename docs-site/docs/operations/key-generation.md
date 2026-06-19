@@ -44,6 +44,8 @@ Use this pattern for coding agents, evaluations, or approved heavier workloads.
 
 Model group names are deployment-defined. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples from a reference or hosted deployment, not names required by the product.
 
+Callers see only allowed groups when they call `/v1/models`. See [Available Models And Access](../getting-started/available-models) for the caller-facing behavior administrators should expect after issuing a token.
+
 ## Rotation
 
 Generate a new token, add its hashed caller entry to config, reload or restart the router, then remove the old caller entry after clients have switched.

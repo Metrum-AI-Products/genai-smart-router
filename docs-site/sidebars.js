@@ -8,6 +8,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "getting-started/hosted-quickstart",
+        "getting-started/available-models",
         "getting-started/codex-cli",
         "getting-started/claude-code-cli",
       ],
@@ -21,8 +22,6 @@ const sidebars = {
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",
         "configuration/routing-typescript",
-        "reference/model-metadata",
-        "reference/add-provider-model",
       ],
     },
     {
@@ -33,8 +32,17 @@ const sidebars = {
         "operations/key-generation",
         "operations/usage-reporting",
         "operations/deployment",
+      ],
+    },
+    {
+      type: "category",
+      label: "Reference",
+      collapsed: false,
+      items: [
         "reference/api-compatibility",
         "reference/errors",
+        "reference/model-metadata",
+        "reference/add-provider-model",
       ],
     },
     "solution-brief",

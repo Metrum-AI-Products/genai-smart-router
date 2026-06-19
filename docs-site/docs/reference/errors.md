@@ -11,7 +11,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | Type | HTTP status | Meaning | Caller action | Admin action |
 |---|---:|---|---|---|
 | `missing-model` | 400 | The request omitted `model` and no `server.default_model_group` is configured. | Set a model group allowed for your token. | Configure `server.default_model_group` if omitted model should be accepted. |
-| `model-not-allowed` | 403 | The caller token is not allowed to use the requested model group. | Use `/v1/models` to see allowed groups. | Update the caller `allow` list if access is intended. |
+| `model-not-allowed` | 403 | The caller token is not allowed to use the requested model group. | Use `/v1/models` to see allowed groups; see [Available Models And Access](../getting-started/available-models). | Update the caller `allow` list if access is intended. |
 | `quota-exceeded` or `rate-limited` | 429 | Request, token, daily, monthly, lifetime, or concurrency policy blocked the request. | Reduce traffic or ask for a quota change. | Inspect caller limits and recent usage. |
 | `no-eligible-target` | 502 | No configured upstream target satisfies the request requirements. | Try a different allowed group only if instructed. | Add or enable a target that supports the requested dialect, tools, modalities, and cap behavior. |
 | `upstream-error` | 502 | The selected upstream failed and no fallback succeeded. | Retry if the task is idempotent. | Inspect request attempts and provider status. |

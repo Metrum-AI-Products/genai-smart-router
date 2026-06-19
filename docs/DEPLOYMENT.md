@@ -133,6 +133,14 @@ Save the printed `token` value for the client. The router config stores only `to
 
 Use `--allow` to restrict each generated key to specific internal model groups. Model group names are deployment-defined; any names shown in examples are reference deployment names only. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 
+Caller model discovery is part of the access contract. After issuing or rotating a token, verify the caller-facing list with the same token:
+
+```bash
+curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
+```
+
+Every listed `id` is a router model group the caller can request. Missing groups require an allow-list change, not a client-side workaround.
+
 ## systemd
 
 Create `/etc/systemd/system/smart-llmrouter.service`:

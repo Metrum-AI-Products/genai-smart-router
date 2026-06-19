@@ -118,6 +118,14 @@ docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>
 
 Append the generated caller config to `compose/config/config.yaml` and save the printed `token` for clients.
 
+Verify the caller-facing model groups with the same token before handing it to users:
+
+```bash
+curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
+```
+
+The response is filtered by that token's `allow` entries. Every returned `id` is a router model group the caller can use in Chat Completions, Responses, Messages, Codex CLI, or Claude Code CLI. Missing groups require an allow-list update.
+
 Review `compose/.env`:
 
 ```bash

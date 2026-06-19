@@ -60,6 +60,8 @@ Use one of the returned `id` values as the `model` field in `/v1/chat/completion
 
 The returned IDs are router model groups, not a full inventory of every upstream provider model. Platform teams can change the upstream provider/model mix behind a group without changing the caller-facing group name.
 
+For caller-facing troubleshooting and administrator handoff guidance, see [Available Models And Access](../getting-started/available-models).
+
 ## Tool Calls
 
 Tool requests only route to upstream targets that explicitly advertise support for the caller's API dialect and tool mode.

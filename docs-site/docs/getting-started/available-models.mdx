@@ -1,0 +1,68 @@
+---
+title: Available Models And Access
+---
+
+import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/RouterEndpoint";
+
+# Available Models And Access
+
+Use `/v1/models` to see which deployment-defined router model groups your token can request. This is the first check to run after receiving a router endpoint and caller token.
+
+<DeploymentSpecificNote />
+
+## Check Your Allowed Groups
+
+<RouterCodeBlock>
+{`
+export ROUTER_BASE_URL="{{origin}}"
+export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+
+curl "$ROUTER_BASE_URL/v1/models" \
+  -H "Authorization: Bearer $ROUTER_TOKEN"
+`}
+</RouterCodeBlock>
+
+Example response:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "default",
+      "object": "model",
+      "owned_by": "smart-llmrouter"
+    },
+    {
+      "id": "vision",
+      "object": "model",
+      "owned_by": "smart-llmrouter"
+    }
+  ]
+}
+```
+
+Use one returned `id` as the `model` value in `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, Codex CLI, Claude Code CLI, or another compatible client.
+
+## What The Names Mean
+
+The returned IDs are router model groups, not a full inventory of every upstream provider model. A deployment might expose groups such as `default`, `fast`, `coding`, `vision`, or different names chosen by the platform team. GenAI Smart Router does not require any specific group names.
+
+Each group is a policy contract. The platform team can change the upstream provider/model mix, weights, fallbacks, TypeScript policy, tool support, VLM support, cost controls, and validation criteria behind the group without changing the caller-facing name.
+
+## Why A Group May Be Missing
+
+`/v1/models` is filtered by the caller token allow list. If a group is not listed, that token is not allowed to use it. Requests for unlisted groups fail with `403 model-not-allowed` before any upstream provider is called.
+
+| Symptom | Meaning | Next step |
+|---|---|---|
+| Expected group is missing | The token allow list does not include that group | Ask the deployment administrator to add access if intended |
+| No groups are listed | The token may be wrong, disabled, or scoped too narrowly | Verify the token and endpoint with the administrator |
+| `401` or `403` before a model list appears | Authentication failed or the token is not accepted by this deployment | Check the base URL and token value |
+| A listed group returns `no-eligible-target` for tools or images | The group is allowed, but no target matches that request shape | Ask the administrator to enable a compatible target or use an allowed group designed for that client |
+
+## For Administrators
+
+Administrators control this list with each caller token's `allow` entries. Use [User Key Generation](../operations/key-generation) for token creation and [Router Configuration](../configuration/router-config#caller-tokens-and-allow-lists) for allow-list behavior.
+
+For API details and compatible endpoint shapes, see [API Compatibility](../reference/api-compatibility).
