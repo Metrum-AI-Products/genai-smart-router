@@ -650,7 +650,7 @@ make e2e-live-full # live provider HTTP cache checks plus live CLI C e2e
 make e2e-compose-live # live provider + Claude/Codex checks through docker compose and Caddy
 ```
 
-The Harbor agentic coding case-study example in `examples/harbor-algotune-pca/` uses `uv tool install harbor`, generates one router token per `{agent, model_group}`, runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code, and emits a markdown usage comparison report. The current production run is checked in at `docs/harbor-case-study.md`.
+The Harbor agentic coding case-study example in `examples/harbor-algotune-pca/` uses `uv tool install harbor`, runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code, and emits a markdown usage comparison report. Current production Harbor runs use one reusable Harbor caller token with access to the deployed model groups, then separate results by run matrix, client, model group, timestamps, and usage-report filters. The older per-`{agent, model_group}` token generator remains available only for isolated local or one-off investigations. The current production run is checked in at `docs/harbor-case-study.md`.
 
 `make e2e-live-c` starts the router once per OpenRouter sample target, runs both local CLIs, extracts the generated C source, compiles it with `cc -std=c11 -Wall -Wextra -Werror`, and runs the binary. It reads the project `env.json` before invoking the router. To keep logs and generated C files:
 

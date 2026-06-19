@@ -14,11 +14,12 @@ if [[ -z "$CASE_ID" ]]; then
   fi
 fi
 
-ROUTER_BASE_URL="${ROUTER_BASE_URL:-https://llm-api-engg.metrum.ai}"
+ROUTER_BASE_URL="${ROUTER_BASE_URL:-http://127.0.0.1:18080}"
 HARBOR_TASK="${HARBOR_TASK:-aider/polyglot_python_two-bucket}"
 AGENTS="${AGENTS:-codex,claude-code}"
 MODEL_GROUPS="${MODEL_GROUPS:-default,fast,small,medium,high,big-coder}"
 TOKEN_ENV_FILE="${TOKEN_ENV_FILE:-$EXAMPLE_DIR/generated/$CASE_ID/tokens.env}"
+HARBOR_ROUTER_TOKEN="${HARBOR_ROUTER_TOKEN:-}"
 RUN_DIR="${RUN_DIR:-$EXAMPLE_DIR/runs/$CASE_ID}"
 DRY_RUN="${DRY_RUN:-0}"
 DISABLE_VERIFICATION="${DISABLE_VERIFICATION:-0}"
@@ -26,9 +27,9 @@ HARBOR_ARTIFACTS="${HARBOR_ARTIFACTS:-/app/two_bucket.py}"
 EXTRA_INSTRUCTION_PATHS="${EXTRA_INSTRUCTION_PATHS:-$EXAMPLE_DIR/two-bucket-verification.md}"
 HARBOR_BIN="${HARBOR_BIN:-harbor}"
 
-if [[ ! -f "$TOKEN_ENV_FILE" ]]; then
+if [[ ! -f "$TOKEN_ENV_FILE" && -z "$HARBOR_ROUTER_TOKEN" ]]; then
   echo "Token env file not found: $TOKEN_ENV_FILE" >&2
-  echo "Run ./generate_tokens.sh and register generated callers in the router config first." >&2
+  echo "Set HARBOR_ROUTER_TOKEN for a reusable Harbor caller, or run ./generate_tokens.sh and register generated callers in the router config first." >&2
   exit 2
 fi
 
@@ -37,10 +38,12 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v "$HARBOR_BIN" >/dev/null 2>&1; then
   exit 2
 fi
 
-set -a
-# shellcheck disable=SC1090
-. "$TOKEN_ENV_FILE"
-set +a
+if [[ -f "$TOKEN_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$TOKEN_ENV_FILE"
+  set +a
+fi
 
 mkdir -p "$RUN_DIR"
 chmod 0700 "$RUN_DIR"
@@ -61,13 +64,13 @@ run_one() {
   local agent="$1"
   local group="$2"
   local token_var="ROUTER_TOKEN_$(env_name "${agent}_${group}")"
-  local token="${!token_var:-}"
+  local token="${!token_var:-$HARBOR_ROUTER_TOKEN}"
   local log="$RUN_DIR/${agent}-${group}.log"
   local harbor_env="$RUN_DIR/${agent}-${group}.env"
   local start end elapsed code status reward errors job_result
 
   if [[ -z "$token" ]]; then
-    echo "Missing $token_var in $TOKEN_ENV_FILE" >&2
+    echo "Missing $token_var in $TOKEN_ENV_FILE and HARBOR_ROUTER_TOKEN is not set" >&2
     return 2
   fi
 

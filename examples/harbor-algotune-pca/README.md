@@ -1,12 +1,14 @@
 # Harbor Agentic Coding Case Study
 
-This example compares Smart LLM Router model groups on Harbor's `aider/polyglot_python_two-bucket` agentic coding task. The canonical task command is:
+This example compares GenAI Smart Router model groups on Harbor's `aider/polyglot_python_two-bucket` agentic coding task. The canonical task command is:
 
 ```bash
 harbor run -t aider/polyglot_python_two-bucket
 ```
 
-The workflow runs both Codex CLI and Claude Code through the router across the model groups `default`, `fast`, `small`, `medium`, `high`, and `big-coder`. Each `{agent, model_group}` run uses a fresh router caller token so the usage DB can attribute provider calls, input tokens, output tokens, latency, throughput, cache behavior, and fallback behavior to a single test cell.
+The workflow runs both Codex CLI and Claude Code through the router across deployment-defined model groups. The checked-in defaults `default`, `fast`, `small`, `medium`, `high`, and `big-coder` are examples from the historical case-study deployment, not product-required group names.
+
+Current production Harbor runs use one reusable Harbor caller token with access to all deployed model groups. The usage DB and reports still separate provider calls, input tokens, output tokens, latency, throughput, cache behavior, and fallback behavior by client, requested model group, timestamps, and run results. The older per-`{agent, model_group}` token generator is retained for isolated local or one-off investigations where separate caller identities are required.
 
 ## Prerequisites
 
@@ -29,9 +31,37 @@ Build the local router tools if they are not already present:
 make build
 ```
 
-## Generate Test Tokens
+## Configure Router Token
 
-Generate one token per `{agent, model_group}`:
+For production Harbor runs, use the reusable Harbor caller token from the production host token file and pass it as `HARBOR_ROUTER_TOKEN`. Do not print the token in logs or commit it.
+
+```bash
+cd examples/harbor-algotune-pca
+export HARBOR_ROUTER_TOKEN="<raw reusable Harbor router token>"
+export ROUTER_BASE_URL="https://<router-host>"
+export CASE_ID="case-$(date -u +%Y%m%dT%H%M%SZ)"
+./run_case_study.sh
+```
+
+Collect production usage for the reusable Harbor caller by filtering on the configured caller project/environment and the run time window:
+
+```bash
+cd /opt/smart-llmrouter/compose
+dsn="$(sed -n 's/^ROUTER_USAGE_DB_DSN=//p' .env | tail -n 1)"
+
+docker compose exec -T router /app/bin/router-usage-report \
+  --driver postgres \
+  --dsn "$dsn" \
+  --caller-project harbor \
+  --caller-environment prod \
+  --from "<case-start-utc>" \
+  --to "<case-end-utc>" \
+  --out /app/logs/harbor-agentic-usage.md
+```
+
+## Legacy Test Tokens
+
+For isolated local or one-off investigations, generate one token per `{agent, model_group}`:
 
 ```bash
 cd examples/harbor-algotune-pca
@@ -46,26 +76,27 @@ callers.yaml   caller config blocks to register with the router
 manifest.tsv   agent/model_group/token_id mapping for audit
 ```
 
-Register the caller entries from `callers.yaml` in the router config before running the case study. Each token allows exactly one model group. The router stores only token hashes and logs only the public `token_id`.
+Register the caller entries from `callers.yaml` in the router config before running the case study. Each generated token allows exactly one model group. The router stores only token hashes and logs only the public `token_id`.
 
-For production, follow the normal production config process:
+Avoid this path for routine production Harbor runs. If temporary production callers are required for an isolated investigation, follow the normal production config process:
 
 1. Back up `/opt/smart-llmrouter/compose/config/config.yaml`.
 2. Append the generated caller blocks with structured YAML tooling.
 3. Run `sudo docker compose config >/dev/null`.
 4. Restart the router container.
-5. Verify `https://llm-api-engg.metrum.ai/readyz`.
+5. Verify `https://<router-host>/readyz`.
 
 After the report is collected, remove the temporary caller blocks from production config and restart the router again. Historical usage remains queryable by `token_id`.
 
 ## Run The Matrix
 
-Hosted production example:
+Hosted production example with the reusable Harbor token:
 
 ```bash
 cd examples/harbor-algotune-pca
-export CASE_ID="<generated-case-id>"
-export ROUTER_BASE_URL="https://llm-api-engg.metrum.ai"
+export CASE_ID="<case-id>"
+export ROUTER_BASE_URL="https://<router-host>"
+export HARBOR_ROUTER_TOKEN="<raw reusable Harbor router token>"
 ./run_case_study.sh
 ```
 
@@ -73,8 +104,9 @@ Local router example:
 
 ```bash
 cd examples/harbor-algotune-pca
-export CASE_ID="<generated-case-id>"
+export CASE_ID="<case-id>"
 export ROUTER_BASE_URL="http://127.0.0.1:18080"
+export HARBOR_ROUTER_TOKEN="<raw reusable or local router token>"
 ./run_case_study.sh
 ```
 
@@ -156,9 +188,13 @@ From this repository, the helper has the same filters:
 
 ```bash
 cd examples/harbor-algotune-pca
-export CASE_ID="<generated-case-id>"
+export CASE_ID="<case-id>"
 export ROUTER_USAGE_DB_DRIVER=postgres
 export ROUTER_USAGE_DB_DSN="$ROUTER_USAGE_DB_DSN"
+export PROJECT="harbor"
+export CALLER_ENVIRONMENT="prod"
+export FROM="<case-start-utc>"
+export TO="<case-end-utc>"
 ./collect_report.sh
 ```
 
@@ -188,4 +224,5 @@ The checked-in report at `docs/harbor-case-study.md` records a full production r
 - The two-bucket task asks the agent to implement `/app/two_bucket.py` with a `measure` function for the bucket-measuring puzzle.
 - The scripts do not print raw provider keys.
 - Generated raw router tokens are ignored by git.
+- Routine production Harbor runs should reuse the common Harbor caller instead of adding temporary production callers.
 - Full matrix runs can be expensive. Use `MODEL_GROUPS=small` or `DRY_RUN=1` for a smoke test first.

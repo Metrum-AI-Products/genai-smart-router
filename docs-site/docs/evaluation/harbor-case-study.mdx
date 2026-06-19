@@ -6,7 +6,7 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 # Harbor Agentic Coding Case Study
 
-This case study evaluates model groups behind GenAI Smart Router using Harbor and real coding agents. Each run used a router token scoped to one `{agent, model_group}` pair so usage and cost signals could be compared cleanly.
+This case study evaluates model groups behind GenAI Smart Router using Harbor and real coding agents. The recorded June 15, 2026 run used router tokens scoped to individual `{agent, model_group}` pairs so usage and cost signals could be compared cleanly. Current production Harbor runs use one reusable Harbor caller token with access to all deployed model groups, then separate results by run matrix, client, model group, timestamps, and usage-report filters.
 
 The model group names in this case study are historical deployment-specific names from the benchmark environment. GenAI Smart Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
 

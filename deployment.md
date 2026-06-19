@@ -27,8 +27,9 @@ Last deployed: 2026-06-19
 - Usage DB: Postgres compose service (`postgres:18-bookworm`), configured by `ROUTER_USAGE_DB_DSN` in `/opt/smart-llmrouter/compose/.env`
 - State file: `/opt/smart-llmrouter/compose/state/router-state.json`
 - Production caller token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN.txt`
+- Reusable Harbor benchmark token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_HARBOR.txt`
 
-Do not copy `env.json` or `ROUTER_TOKEN.txt` into git, chat, tickets, or logs. The token file is stored on the host as `ubuntu:ubuntu` with mode `0600`.
+Do not copy `env.json`, `ROUTER_TOKEN.txt`, or `ROUTER_TOKEN_HARBOR.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
 ## Host Runtime
 
@@ -54,10 +55,22 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:bac7711-linux-amd64
+compose-router-1   smart-llmrouter:1fa6bef-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
+
+## 2026-06-19 Reusable Harbor Caller
+
+- Production config-only update; deployed image remains `smart-llmrouter:1fa6bef-linux-amd64`.
+- Config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.harbor-reusable-20260619T045217Z`.
+- State backup: `/opt/smart-llmrouter/compose/state/router-state.json.bak.harbor-reusable-20260619T045217Z`.
+- Removed 66 temporary Harbor benchmark callers from production config and pruned stale Harbor benchmark quota state.
+- Added reusable caller `harbor-reusable-prod` with public token ID `rtr_metrum_harbor_harbor_prod_reusable-20260619`, project `harbor`, environment `prod`, and access to all 19 deployed model groups.
+- Stored the raw Harbor token only in `/opt/smart-llmrouter/compose/ROUTER_TOKEN_HARBOR.txt` with mode `0600`.
+- Verified production config summary: 29 callers, 19 model groups, 0 temporary Harbor callers, 1 reusable Harbor caller.
+- Verified `sudo docker compose config >/dev/null`, router restart, `/readyz`, authenticated `/v1/models` with the Harbor token returning 19 groups, and an authenticated `high` chat smoke with a realistic 1024-token budget returning `OK`.
+- Synced ignored local `config.production.yaml` from the live production config; SHA-256 matches the remote config.
 
 ## TLS And Networking
 

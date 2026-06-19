@@ -398,7 +398,7 @@ Reports include:
 - Average and maximum latency.
 - Hourly and daily usage tables.
 
-For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code with one router token per `{agent, model_group}`. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The current recorded production run is available in `docs/harbor-case-study.md`: all final cells passed with reward `1.0` on June 15, 2026, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder` after pruning unvalidated OpenRouter candidates.
+For model-group evaluation, the Harbor agentic coding case study runs Harbor's `aider/polyglot_python_two-bucket` task through Codex CLI and Claude Code. Current production practice uses one reusable Harbor caller token that can access every deployed model group, then separates results by run matrix, client, model group, timestamps, and usage-report filters. The resulting report compares task reward, provider input/output tokens, chosen upstream provider models, cache behavior, latency, caller IP, and token throughput. The current recorded production run is available in `docs/harbor-case-study.md`: all final cells passed with reward `1.0` on June 15, 2026, covering `default`, `fast`, `small`, `medium`, `high`, and `big-coder` after pruning unvalidated OpenRouter candidates.
 
 ## Deployment Options
 
