@@ -28,8 +28,9 @@ Last deployed: 2026-06-19
 - State file: `/opt/smart-llmrouter/compose/state/router-state.json`
 - Production caller token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN.txt`
 - Reusable Harbor benchmark token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_HARBOR.txt`
+- Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
-Do not copy `env.json`, `ROUTER_TOKEN.txt`, or `ROUTER_TOKEN_HARBOR.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
 ## Host Runtime
 
@@ -59,6 +60,17 @@ compose-router-1   smart-llmrouter:a07c60c-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
+
+## 2026-06-19 Steen Production Caller
+
+- Production config-only update; deployed image remains `smart-llmrouter:a07c60c-linux-amd64`.
+- Config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.steen-token-20260619T150904Z`.
+- Added caller `steen-metrum-insights-prod` for Steen with public token ID `rtr_metrum_steen_metrum-insights_prod_k20260619`, project `metrum-insights`, environment `prod`.
+- Matched the regular developer access profile: `default`, `vision`, `fast`, `small`, `medium`, `high`, `big-coder`, and `warp-agent-smoke`.
+- Matched the regular developer rate/quota profile: 240 RPM, 1,200,000 TPM, 16 concurrent, 10,000 daily requests, 100,000,000 daily tokens, 1,200,000,000 monthly tokens, and 4,000,000,000 lifetime tokens.
+- Stored the raw token only in `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt` with mode `0600`.
+- Verified `sudo docker compose config >/dev/null`, router restart, `/readyz`, authenticated `/v1/models` returning the 8 expected groups, and an authenticated `small` chat completion returning `OK` with `finish_reason: stop`.
+- Synced ignored local `config.production.yaml` from the live production config; SHA-256 `4b6fee522674c3d9c62a0ece700c34f671c8e71ba17df2a238f086e647051175` matches production.
 
 ## 2026-06-19 Harbor Docs Package Deployment
 
