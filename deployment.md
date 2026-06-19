@@ -960,3 +960,43 @@ final smoke rerun after cleanup: /v1/models present check passed; Baseten GLM re
 production cleanup: removed uploaded package/config/check files, removed redundant /opt/smart-llmrouter.old.20260618T232903Z, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp is 18% used; volumes were not pruned
 production recent logs after final smoke: router listening on :8080, no errors in the last 10 minutes
 ```
+
+### 2026-06-19 Deployment-defined model groups and endpoint-neutral docs
+
+Package `smart-llmrouter:5df71f8-linux-amd64` was deployed to production. This release removes product-level assumptions that model group names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` are required names, and treats the current production URL as one Metrum-managed deployment rather than the only hosting location. The product docs now describe on-prem, enterprise-cloud, and Metrum-managed deployments.
+
+Runtime/config changes:
+
+- Added `server.default_model_group` as an explicit config fallback for compatible API requests that omit `model`.
+- Removed parser-level hardcoded fallback to `default`; omitted-model requests now use `server.default_model_group` or return `400 missing-model` if no fallback is configured.
+- Updated `router-token-gen` so `--allow` is required and no model group is granted by default.
+- Added `ROUTER_HTTP_REFERER` to env metadata and production env; sample configs use env expansion for OpenRouter referer headers.
+- Updated public docs and hosted Docusaurus pages so deployment endpoint and model group names are placeholders or clearly labeled examples.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.model-groups-configurable-20260619T005052Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.pre-model-groups-configurable-20260619T005052Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 83 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version 5df71f8, build_date 2026-06-19T00:48:20Z
+production /version after deploy: 5df71f8, build_date 2026-06-19T00:48:20Z
+local config.production.yaml SHA-256 matches live runtime config SHA-256: yes, 852c658f30aa0bc890fe67ad289ccf1dc0e052056785cd0f9663bdb508fc49ee
+hosted docs /docs/overview: 200, displayed version 5df71f8 and build timestamp, used generic your-router.example.com metadata
+production env.json: ROUTER_HTTP_REFERER set
+production /v1/models with router token: returned 19 allowed groups
+production omitted-model /v1/chat/completions: HTTP 200, routed through configured default_model_group
+production explicit high /v1/chat/completions: HTTP 200, returned OK
+production router-token-gen without --allow: exited nonzero with "at least one allowed model group is required"
+Claude Code CLI production tool smoke using claude -p and model claude-tools-smoke: created expected file
+Codex CLI production tool smoke through router Responses API with model agent-tools-smoke: created expected file
+production logs after deploy: router listening on :8080, no errors in recent router logs
+production cleanup: removed uploaded package/config files, removed replaced deployment tree, removed stale /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f; reclaimed 0 B from Docker; /tmp smart-llmrouter package files remaining: 0
+```
