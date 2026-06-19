@@ -122,7 +122,7 @@ npm install some-policy-lib
 npm install --save-dev typescript
 ```
 
-Commit or otherwise package the files required by the deployment, including `package.json`, lockfile, local helper files, and the resolved dependency tree or a pre-bundled script artifact according to your release process. Keep this directory free of provider keys, router tokens, and private host credentials. If a dependency is large or has native modules, prefer pre-bundling the routing script during release and deploying the generated JavaScript/TypeScript entrypoint plus any source maps you need for review.
+Package the files required by the deployment, including `package.json`, lockfile, local helper files, and the resolved dependency tree or a pre-bundled script bundle according to your release process. Keep this directory free of provider keys, router tokens, and private host credentials. If a dependency is large or has native modules, prefer pre-bundling the routing script during release and deploying the generated JavaScript/TypeScript entrypoint plus any review assets required by your change-control process.
 
 ## Prompt-Size Routing Example
 

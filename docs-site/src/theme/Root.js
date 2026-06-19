@@ -5,7 +5,7 @@ import "./root.css";
 
 export default function Root({ children }) {
   const { siteConfig } = useDocusaurusContext();
-  const { routerVersion, routerCommit, routerBuildDate } = siteConfig.customFields || {};
+  const { routerVersion, routerBuildDate } = siteConfig.customFields || {};
   const version = routerVersion || "dev";
   const buildDate = routerBuildDate || "unknown";
 
@@ -16,9 +16,6 @@ export default function Root({ children }) {
         <span className="routerVersionBadge__label">Router</span>
         <span className="routerVersionBadge__version">{version}</span>
         <span className="routerVersionBadge__date">{buildDate}</span>
-        {routerCommit && routerCommit !== version ? (
-          <span className="routerVersionBadge__commit">{routerCommit}</span>
-        ) : null}
       </div>
     </>
   );

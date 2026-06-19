@@ -25,15 +25,13 @@
 }
 
 .routerVersionBadge__version,
-.routerVersionBadge__date,
-.routerVersionBadge__commit {
+.routerVersionBadge__date {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.routerVersionBadge__date,
-.routerVersionBadge__commit {
+.routerVersionBadge__date {
   max-width: 190px;
 }
 
@@ -46,7 +44,4 @@
     font-size: 0.66rem;
   }
 
-  .routerVersionBadge__commit {
-    display: none;
-  }
 }

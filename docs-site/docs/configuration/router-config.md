@@ -4,7 +4,7 @@ title: Router Configuration
 
 # Router Configuration
 
-The router is configured with YAML plus environment-loaded provider keys. Customers normally keep provider credentials in the deployment environment or an `env.json` file outside source control.
+The router is configured with YAML plus environment-loaded provider keys. Customers normally keep provider credentials in the deployment environment or a protected `env.json` file outside the shipped binary package.
 
 Model group names are deployment-defined. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by a reference or hosted deployment; the product does not require those names.
 

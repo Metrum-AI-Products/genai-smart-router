@@ -37,7 +37,7 @@ Confirm:
 Acceptance checks:
 
 - `/readyz` and `/version` return build metadata.
-- Browser docs show the same package version and build timestamp.
+- Browser docs show the running binary version and build timestamp.
 - `/v1/models` is filtered by the presented caller token.
 - Disallowed model groups return `403 model-not-allowed` before any provider call.
 - `/metrics` is available only to metrics-admin tokens.

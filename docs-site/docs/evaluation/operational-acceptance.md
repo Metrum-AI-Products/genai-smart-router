@@ -10,7 +10,7 @@ Operational readiness proves that a GenAI Smart Router deployment can be run, ob
 
 Before rollout, confirm:
 
-- source commit and package version are known;
+- binary release version is known;
 - build timestamp is visible in `/version` and hosted docs;
 - config has been validated with structured YAML parsing;
 - provider keys and caller tokens are not present in the package or public docs;

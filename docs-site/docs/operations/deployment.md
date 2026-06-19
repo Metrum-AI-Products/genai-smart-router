@@ -35,11 +35,11 @@ Enterprise deployments often route to internally hosted vLLM or SGLang services.
 
 TypeScript routing scripts are loaded from the deployment filesystem. Package local helper imports and any locked third-party dependencies with the script directory, or deploy a pre-bundled script artifact. The router does not install npm packages at runtime.
 
-External routing-policy calls are controlled by model-group config. Enable `script_http` only for groups that need it, list exact allowed service hosts, keep timeout and response-size limits small, and put policy-service auth in env-expanded config headers rather than script source.
+External routing-policy calls are controlled by model-group config. Enable `script_http` only for groups that need it, list exact allowed service hosts, keep timeout and response-size limits small, and put policy-service auth in env-expanded config headers rather than script files.
 
 ## Browser And API Behavior
 
-The router serves embedded docs for browser traffic at `/`. Every docs page displays the running docs package version and full UTC build timestamp. Docs responses also include `X-Smart-LLMRouter-Version`, `X-Smart-LLMRouter-Commit`, and `X-Smart-LLMRouter-Build-Date` headers.
+The router serves embedded docs for browser traffic at `/`. Every docs page displays the running binary version and full UTC build timestamp. Docs responses also include `X-Smart-LLMRouter-Version` and `X-Smart-LLMRouter-Build-Date` headers.
 
 Router-owned operational endpoints expose build metadata:
 
