@@ -4,7 +4,7 @@ title: Image Analysis And VLM Routing
 
 # Image Analysis And VLM Routing
 
-Smart LLM Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests use the same deployment-defined router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities`.
+GenAI Smart Router accepts image inputs through the OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API shapes. Image-bearing requests use the same deployment-defined router model-group names as text requests, but the router only selects upstream targets that advertise `image` in `input_modalities`.
 
 ## Configure A Vision-Capable Target
 

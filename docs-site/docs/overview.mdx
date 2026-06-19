@@ -6,38 +6,40 @@ slug: /overview
 
 import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/RouterEndpoint";
 
-# Metrum Smart LLM Router
+# Metrum GenAI Smart Router
 
-Metrum Smart LLM Router is a governed, multi-provider gateway for LLM traffic. Applications and developer tools call one stable endpoint while routing policy, provider credentials, model selection, quotas, caching, and usage telemetry stay server-side. It can run inside an enterprise network, or Metrum can operate a managed instance for an organization.
+Metrum GenAI Smart Router is a governed, multi-provider gateway for LLM, VLM, and AI agent traffic. Applications, developer tools, and coding agents call one stable endpoint while routing policy, provider credentials, model selection, quotas, caching, and usage telemetry stay server-side. It can run inside an enterprise network, in a customer cloud account, or as a Metrum-managed instance.
 
 <DeploymentSpecificNote />
 
 <div class="contactBanner">
-  <p>Interested in deploying Smart LLM Router for your organization? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+  <p>Interested in deploying GenAI Smart Router for your organization? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
 ## What It Solves
 
 AI applications often need several model providers. Model quality, latency, price, availability, and API compatibility can shift quickly. Hard-coding provider endpoints and provider keys into every client creates migration cost and weakens governance.
 
-Smart LLM Router gives platform teams one control plane:
+GenAI Smart Router gives platform teams one governed control point:
 
 - One OpenAI-compatible and Anthropic-compatible gateway.
 - Server-side provider key injection.
 - Caller tokens with model-group allow lists.
 - Weighted, failover, and TypeScript-driven routing.
+- Capability-aware routing for text, image/VLM, and tool-call requests.
 - Enterprise routing to internally hosted vLLM or SGLang services.
 - In-process response cache for eligible non-tool requests.
 - Metrics-admin Prometheus telemetry, request logs, and durable usage reporting with request-time cost fields.
+- Outcome-oriented evaluation loops that compare task success, latency, token volume, fallback behavior, and cost across model groups.
 - Codex CLI and Claude Code CLI support through the deployment endpoint.
 
 ## Model Groups
 
-Callers request stable model groups defined by the deployment. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by one reference or hosted deployment; Smart LLM Router does not require those names. The router selects an upstream provider/model according to the configured policy for whichever group the caller token is allowed to use.
+Callers request stable model groups defined by the deployment. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by one reference or hosted deployment; GenAI Smart Router does not require those names. The router selects an upstream provider/model according to the configured policy for whichever group the caller token is allowed to use.
 
 ```mermaid
 flowchart LR
-  Client[Client requests model group] --> Router[Smart LLM Router]
+  Client[Client requests model group] --> Router[GenAI Smart Router]
   Router --> Auth[Caller auth and allow list]
   Auth --> Policy[Weighted or scripted policy]
   Policy --> Target[Provider/model target]
@@ -49,15 +51,15 @@ This lets teams change the provider mix centrally without rewriting Codex, Claud
 
 ## Evaluation Evidence
 
-The hosted docs include a Harbor agentic coding case study that compares Codex CLI and Claude Code CLI across router model groups. It includes the task goal, reward-score definition, models used, tokenomics, cache behavior, latency, throughput, and provider/model usage.
+The hosted docs include a Harbor agentic coding case study that compares Codex CLI and Claude Code CLI across router model groups. It includes the task goal, reward-score definition, models used, tokenomics, cache behavior, latency, throughput, and provider/model usage. This is the model-group optimization loop: keep outcome quality positive while finding the lowest-cost provider/model mix that works for the workload.
 
 [Read the Harbor case study](/docs/evaluation/harbor-case-study).
 
 [See self-hosted vLLM and SGLang upstream examples](/docs/configuration/self-hosted-upstreams).
 
-[Review product capabilities and boundaries](/docs/evaluation/product-capabilities).
+[Review product capabilities](/docs/evaluation/product-capabilities).
 
-[Compare Smart LLM Router with other LLM gateways](/docs/evaluation/competitive-landscape).
+[Compare GenAI Smart Router with other GenAI gateways](/docs/evaluation/competitive-landscape).
 
 ## API Surfaces
 

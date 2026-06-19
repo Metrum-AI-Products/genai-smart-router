@@ -27,7 +27,7 @@ export function DeploymentSpecificNote() {
   return (
     <div className="contactBanner">
       <p>
-        These docs are built into the hosted Smart LLM Router server delivered for your deployment. Examples that
+        These docs are built into the hosted GenAI Smart Router server delivered for your deployment. Examples that
         show the router base URL use this browser origin, so on this deployment they render as <RouterOrigin /> and{" "}
         <RouterApiBase />.
       </p>

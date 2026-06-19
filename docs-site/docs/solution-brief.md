@@ -2,23 +2,23 @@
 title: Solution Brief
 ---
 
-# Smart LLM Router Solution Brief
+# GenAI Smart Router Solution Brief
 
-Metrum Smart LLM Router is a provider-neutral LLM gateway for enterprises that need flexibility across model providers without losing security, cost control, or operational visibility.
+Metrum GenAI Smart Router is a provider-neutral gateway for enterprises that need flexibility across LLMs, VLMs, tool-capable models, and AI agent clients without losing security, cost control, or operational visibility.
 
 <div class="contactBanner">
-  <p>Interested in deploying Smart LLM Router? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
+  <p>Interested in deploying GenAI Smart Router? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
 ## Executive Summary
 
 Modern AI teams rarely standardize on one model forever. Different models fit coding, extraction, summarization, planning, and latency-sensitive chat. Provider availability, rate limits, price, and entitlements also change over time.
 
-Smart LLM Router centralizes that complexity. Clients speak OpenAI-compatible or Anthropic-compatible APIs. The router authenticates the caller, checks model-group authorization, selects an upstream target, injects the provider credential, normalizes the response, records usage, and returns the response in the caller's expected dialect.
+GenAI Smart Router centralizes that complexity. Clients speak OpenAI-compatible or Anthropic-compatible APIs. The router authenticates the caller, checks model-group authorization, selects an upstream target that satisfies the request's text, image, and tool requirements, injects the provider credential, normalizes the response, records usage, and returns the response in the caller's expected dialect.
 
 ```mermaid
 flowchart LR
-  App[Applications and coding agents] --> Router[Smart LLM Router]
+  App[Applications and AI agents] --> Router[GenAI Smart Router]
   Router --> Auth[Auth, quotas, allow lists]
   Router --> Policy[Routing policy]
   Router --> Telemetry[Metrics and usage reports]
@@ -32,24 +32,27 @@ flowchart LR
 ## Buyer Value
 
 - **Provider optionality:** adopt new model providers centrally while applications keep stable model-group names.
+- **Multimodal readiness:** support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
 - **Enterprise model control:** include internally hosted vLLM or SGLang services in the same routing policy as external providers.
 - **Cost control:** steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
 - **Security:** keep provider keys server-side and issue revocable router tokens to callers.
 - **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
+- **Outcome-oriented optimization:** use agentic evaluation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
 - **Operational visibility:** expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
 
 ## Cost Governance
 
 Agentic AI can turn one user request into many model calls, tool calls, retries, and follow-up requests. Token cost management becomes a platform concern rather than a per-application detail.
 
-Smart LLM Router addresses the controllable layer:
+GenAI Smart Router addresses the controllable layer:
 
 - Enforce caller allow lists and budgets before provider calls.
 - Route workloads by cost, quality, latency, and tool compatibility.
 - Cache eligible deterministic responses.
 - Compare provider/model usage and stored request-time cost using durable reports.
 - Track usage by caller key, project, environment, model group, provider, model, hour, IP, and USD cost.
+- Evaluate model groups with agentic harnesses so cost savings are measured against task outcomes, not only token price.
 
 The Harbor case study in these docs shows the same principle numerically: successful agentic coding runs can differ substantially in token volume, latency, fallback use, and output throughput even when final reward score is identical. Those tokenomics are the operational signal that turns model routing from guesswork into policy.
 

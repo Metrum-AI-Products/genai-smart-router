@@ -4,7 +4,7 @@ title: Enterprise Evaluation Guide
 
 # Enterprise Evaluation Guide
 
-Use this guide to evaluate Smart LLM Router for an enterprise deployment. The goal is to prove routing control, caller governance, agent compatibility, private upstream access, cost accounting, and operational safety with real requests.
+Use this guide to evaluate GenAI Smart Router for an enterprise deployment. The goal is to prove routing control, caller governance, multimodal and agent compatibility, private upstream access, cost accounting, and operational safety with real requests.
 
 ## Platform Evaluation
 
@@ -77,7 +77,7 @@ Confirm usage reports answer these questions:
 - Were any upstream-reported billed costs returned?
 - How much traffic was cached or bypassed?
 
-Smart LLM Router stores cost inputs on each usage row so historical reports do not need to be recalculated from current provider prices.
+GenAI Smart Router stores cost inputs on each usage row so historical reports do not need to be recalculated from current provider prices.
 
 ## Operations Evaluation
 
@@ -89,5 +89,4 @@ Require:
 - request ID based troubleshooting;
 - cleanup of old packages and temporary files after deployment.
 
-Use the internal runbooks for production operations. Public Docusaurus docs intentionally avoid deployment-specific hostnames, SSH keys, and private paths.
-
+Deployment-specific operator runbooks should cover the exact hostnames, backup locations, credentials process, and rollback commands for the selected environment.

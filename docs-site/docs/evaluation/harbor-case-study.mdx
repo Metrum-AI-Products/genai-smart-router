@@ -6,9 +6,9 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 # Harbor Agentic Coding Case Study
 
-This case study evaluates model groups behind Smart LLM Router using Harbor and real coding agents. Each run used a router token scoped to one `{agent, model_group}` pair so usage and cost signals could be compared cleanly.
+This case study evaluates model groups behind GenAI Smart Router using Harbor and real coding agents. Each run used a router token scoped to one `{agent, model_group}` pair so usage and cost signals could be compared cleanly.
 
-The model group names in this case study are historical deployment-specific names from the benchmark environment. Smart LLM Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
+The model group names in this case study are historical deployment-specific names from the benchmark environment. GenAI Smart Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
 
 <div class="contactBanner">
   <p>For a benchmark tailored to your workloads, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -19,7 +19,7 @@ The model group names in this case study are historical deployment-specific name
 - Dataset/task: `aider/polyglot_python_two-bucket`
 - Goal: implement `two_bucket.py` so the verifier accepts the bucket-measuring algorithm and required `ValueError` behavior.
 - Agents: Codex CLI and Claude Code CLI.
-- Hosted router endpoint: Metrum Smart LLM Router.
+- Hosted router endpoint: Metrum GenAI Smart Router.
 
 ## Reward Score
 
@@ -228,4 +228,4 @@ As in the first case study, these were tool-bearing agent requests that read and
 
 Every final published run passed with reward `1.0`, which means the routed model groups were able to complete the coding tasks under both Codex CLI and Claude Code CLI. The report also shows why model-group evaluation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, cache eligibility, caller IP, and throughput vary materially by task, agent, and group.
 
-For production buyers, the key result is that Smart LLM Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.
+For production buyers, the key result is that GenAI Smart Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.

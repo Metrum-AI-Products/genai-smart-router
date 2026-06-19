@@ -8,25 +8,26 @@ import styles from "./index.module.css";
 const features = [
   ["One endpoint", "OpenAI-compatible and Anthropic-compatible clients integrate once while routing policy stays server-side."],
   ["Governed access", "Caller tokens, model-group allow lists, quotas, rate limits, cache policy, and telemetry are enforced before provider calls."],
-  ["Provider optionality", "Route across validated OpenRouter, MiniMax, Moonshot/Kimi, OpenAI-compatible, and Anthropic-compatible targets without client rewrites."],
-  ["Measured evaluation", "The Harbor case study compares model groups with reward score, tokens, latency, throughput, cache behavior, and agent results."],
+  ["Multimodal routing", "Text, image/VLM, tool-call, and coding-agent requests can share deployment-defined model groups with capability-aware target selection."],
+  ["Provider optionality", "Route across validated hosted providers, OpenAI-compatible upstreams, and enterprise-owned inference services without client rewrites."],
+  ["Usage intelligence", "Reports connect users, projects, model groups, providers, token counts, image events, latency, cache behavior, and request-time cost."],
 ];
 
 export default function Home() {
   const logoUrl = useBaseUrl("/img/metrum_logo_white_new.png");
   return (
     <Layout
-      title="Metrum Smart LLM Router"
-      description="Customer documentation for Metrum Smart LLM Router"
+      title="Metrum GenAI Smart Router"
+      description="Customer documentation for Metrum GenAI Smart Router"
     >
       <main className={styles.main}>
         <section className={styles.hero}>
           <div className={styles.heroInner}>
             <img src={logoUrl} alt="Metrum AI" className={styles.logo} />
             <p className={styles.eyebrow}>Metrum AI Product Documentation</p>
-            <h1>Smart LLM Router</h1>
+            <h1>GenAI Smart Router</h1>
             <p className={styles.lede}>
-              A governed, multi-provider LLM gateway for applications, developer tools, and agentic coding workflows.
+              A governed, multi-provider gateway for LLMs, VLMs, developer tools, and AI agent workflows.
             </p>
             <div className={styles.actions}>
               <Link className={clsx("button", styles.primary)} to="/overview">

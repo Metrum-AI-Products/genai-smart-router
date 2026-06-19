@@ -19,7 +19,7 @@ Record:
 - pricing source and update date;
 - known limitations such as `honors_max_tokens: false`.
 
-Do not add unavailable provider models to active routing. Catalog-only is acceptable when the model exists but the deployment is not entitled or validation is incomplete.
+Keep unavailable or unvalidated provider models catalog-only. Move a model into active routing after the deployment has entitlement and validation evidence for the API shapes it will serve.
 
 ## 2. Run Direct Provider Smokes
 
@@ -57,7 +57,7 @@ Start with a low weight in active groups. Increase only after:
 Update:
 
 - external model metadata docs if the new capability is user-visible;
-- internal rollout history and deployment notes;
+- operator rollout history and deployment notes;
 - sample config if the provider/model should be part of reference config;
 - usage reports if a new cost or modality field affects accounting.
 
@@ -69,4 +69,3 @@ Rollback should be a config-only weight or target change when possible:
 2. Keep the catalog entry with notes unless the model ID was wrong.
 3. Restart the router and run `/readyz`.
 4. Run a request through affected groups to confirm another eligible target is selected.
-

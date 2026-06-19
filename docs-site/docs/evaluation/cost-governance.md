@@ -4,7 +4,7 @@ title: Cost Governance
 
 # Cost Governance
 
-Smart LLM Router treats cost control as a routing and accounting problem. Provider selection, caller authorization, quotas, caching, and usage reporting are handled centrally instead of being left to each application.
+GenAI Smart Router treats cost control as a routing and accounting problem. Provider selection, caller authorization, quotas, caching, and usage reporting are handled centrally instead of being left to each application.
 
 ## Request-Time Cost Accounting
 
@@ -42,7 +42,7 @@ These dimensions support internal chargeback, quota review, provider evaluation,
 
 ## Cost Controls
 
-Smart LLM Router can reduce uncontrolled spend through:
+GenAI Smart Router can reduce uncontrolled spend through:
 
 - per-key allow lists;
 - RPM and TPM limits;
@@ -53,7 +53,7 @@ Smart LLM Router can reduce uncontrolled spend through:
 - caching for eligible non-tool requests;
 - target filtering for tools, images, and cap behavior.
 
-The router does not claim to make every request cheaper automatically. It gives platform teams the control and accounting needed to make cost policy explicit and measurable.
+Platform teams keep the cost policy explicit: choose which routes are available, set budgets and weights, decide when caching is appropriate, and measure the result with durable usage and cost reports.
 
 ## Savings Analysis
 
@@ -77,4 +77,3 @@ For VLM requests:
 - upstream-reported billed cost is stored separately when available.
 
 This makes image analysis, OCR, and browser-control workloads visible in the same reporting model as text traffic.
-

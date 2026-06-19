@@ -4,7 +4,7 @@ title: Deployment
 
 # Deployment
 
-Smart LLM Router can be deployed as a compiled Linux binary or as a Docker Compose package. Release binaries embed this documentation site, so the router can serve product docs at `/` without a separate web server.
+GenAI Smart Router can be deployed as a compiled Linux binary or as a Docker Compose package. Release binaries embed this documentation site, so the router can serve product docs at `/` without a separate web server.
 
 <div class="contactBanner">
   <p>For deployment planning, TLS setup, or managed rollout, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -15,7 +15,7 @@ Smart LLM Router can be deployed as a compiled Linux binary or as a Docker Compo
 ```mermaid
 flowchart TB
   DNS[DNS] --> Proxy[TLS reverse proxy]
-  Proxy --> Router[Smart LLM Router]
+  Proxy --> Router[GenAI Smart Router]
   Router --> DB[Usage database]
   Router --> Logs[Request logs]
   Router --> Providers[External model providers]

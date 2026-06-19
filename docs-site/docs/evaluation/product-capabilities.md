@@ -4,9 +4,9 @@ title: Product Capabilities
 
 # Product Capabilities
 
-This page describes what Smart LLM Router is designed to do today, and where its current boundaries are.
+This page summarizes the customer-facing capabilities of GenAI Smart Router.
 
-## Implemented Strengths
+## Capabilities
 
 | Area | Capability |
 |---|---|
@@ -24,17 +24,17 @@ This page describes what Smart LLM Router is designed to do today, and where its
 | Agent clients | Codex CLI and Claude Code CLI workflows validated through router-compatible API shapes |
 | Private upstreams | OpenAI-compatible vLLM, SGLang, Baseten-style, and other internal services can be configured as providers |
 
-## Product Boundaries
+## Best Fit
 
-Smart LLM Router is not positioned as:
+GenAI Smart Router is designed as the governed gateway layer for enterprise GenAI traffic. It works well when a platform team wants to:
 
-- a public model marketplace;
-- a general-purpose observability SaaS;
-- a replacement for every enterprise API gateway product;
-- a full enterprise administration dashboard with SSO and compliance workflow automation in this repository;
-- an automatic model-quality oracle for every possible prompt.
+- expose stable model-group names to developers and agents;
+- keep provider keys and private inference endpoints server-side;
+- route by API dialect, tool support, image modality, latency, cost, quota, and custom policy;
+- record request-time token, image, cost, cache, and provider selection details;
+- evaluate and roll out new upstream models without rewriting every client.
 
-It is a governed routing gateway. Its value comes from centralizing model access, policy, validation, cost records, and client compatibility in a deployment-owned control point.
+Broader enterprise controls such as identity integration, procurement process, managed hosting terms, and compliance workflows are handled as part of the selected deployment and operating model.
 
 ## Validation Philosophy
 
@@ -52,11 +52,10 @@ Models can remain catalog-only until validation passes.
 
 ## Deployment Options
 
-Smart LLM Router can be deployed:
+GenAI Smart Router can be deployed:
 
 - inside an enterprise network;
 - in a customer cloud account;
 - as a Metrum-managed instance.
 
 Deployment-specific hostnames, model group names, caller policies, provider keys, and upstream mixes are configuration choices, not product constants.
-

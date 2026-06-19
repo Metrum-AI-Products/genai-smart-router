@@ -5,8 +5,8 @@ const darkCodeTheme = require("prism-react-renderer").themes.dracula;
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: "Metrum Smart LLM Router",
-  tagline: "A governed, multi-provider LLM gateway for applications and coding agents.",
+  title: "Metrum GenAI Smart Router",
+  tagline: "A governed, multi-provider gateway for LLMs, VLMs, and AI agents.",
   favicon: "img/favicon/favicon.ico",
   url: process.env.DOCS_SITE_URL || "https://your-router.example.com",
   baseUrl: "/docs/",
@@ -60,7 +60,7 @@ const config = {
         respectPrefersColorScheme: false,
       },
       navbar: {
-        title: "Smart LLM Router",
+        title: "GenAI Smart Router",
         logo: {
           alt: "Metrum AI",
           src: "img/metrum_logo_white_new.png",

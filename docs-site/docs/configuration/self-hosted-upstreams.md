@@ -4,7 +4,7 @@ title: Self-Hosted Upstreams
 
 # Self-Hosted Upstreams
 
-Smart LLM Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
+GenAI Smart Router can sit inside an enterprise network and route to internally hosted inference services, including vLLM and SGLang deployments that expose OpenAI-compatible HTTP APIs. Applications continue to call one router endpoint and one set of governed model-group names, while platform teams keep GPU endpoints, model IDs, routing policy, caller allow lists, telemetry, and provider credentials server-side.
 
 <div class="contactBanner">
   <p>For an enterprise deployment design with internal GPU clusters, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -14,7 +14,7 @@ Smart LLM Router can sit inside an enterprise network and route to internally ho
 
 ```mermaid
 flowchart LR
-  App[Applications and developer tools] --> Router[Smart LLM Router]
+  App[Applications and developer tools] --> Router[GenAI Smart Router]
   Router --> VL1[vLLM service: llama-large]
   Router --> VL2[vLLM service: qwen-coder-tools]
   Router --> SG1[SGLang service: kimi-tools]

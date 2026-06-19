@@ -4,7 +4,7 @@ title: Error Reference
 
 # Error Reference
 
-Smart LLM Router returns structured errors intended to be useful to both callers and administrators. Every response includes `X-Request-Id`; include that ID when asking an administrator to inspect router traces.
+GenAI Smart Router returns structured errors intended to be useful to both callers and administrators. Every response includes `X-Request-Id`; include that ID when asking an administrator to inspect router traces.
 
 ## Common Errors
 
@@ -44,5 +44,4 @@ Administrators can use `X-Request-Id` to inspect:
 - `request_trace_events` for routing, fallback, timeout, and cache decisions.
 - `request_errors` for sanitized terminal error summaries.
 
-Prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies should not be stored in diagnostic rows.
-
+Diagnostic rows exclude prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies.
