@@ -21,6 +21,8 @@ const sidebars = {
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",
         "configuration/routing-typescript",
+        "reference/model-metadata",
+        "reference/add-provider-model",
       ],
     },
     {
@@ -31,6 +33,8 @@ const sidebars = {
         "operations/key-generation",
         "operations/usage-reporting",
         "operations/deployment",
+        "reference/api-compatibility",
+        "reference/errors",
       ],
     },
     "solution-brief",

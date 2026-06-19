@@ -33,6 +33,8 @@ These instructions apply to the whole repository.
   - Admin/internal docs (`README.md`, `docs/`, `deployment.md`, scripts, and config comments) must explain configuration, validation, rollout, rollback, and operational impact.
   - Proxy-user docs (`docs-site/`, embedded under `/docs/`) must explain what callers request, what behavior they can expect from the proxy, and any client-facing examples without internal deployment details.
 - Customer-facing hosted docs live in `docs-site/` and are embedded into release binaries under `/docs/`. Keep public docs free of raw provider keys, real router tokens, private host paths, SSH details, and internal-only deployment notes. Route interested readers to `mailto:contact@metrum.ai`.
+- External Docusaurus product docs must maintain reference material for API compatibility, error responses, model metadata, provider/model onboarding, deployment options, CLI clients, usage reporting, and VLM/tool behavior when those areas change.
+- Internal docs in `docs/` must maintain operator runbooks for production deployment, troubleshooting, smoke testing, usage reporting, and security review notes. Keep internal hostnames, SSH details, backup paths, and production procedures out of public Docusaurus docs unless explicitly labeled as a historical case study.
 - TypeScript routing changes require both admin and proxy-user docs. Include the script context shape, model-group configuration, caller-visible behavior, and at least one tested example when documenting a new script policy pattern.
 - Self-hosted upstream changes or examples require both admin and proxy-user docs. Cover enterprise-hosted vLLM/SGLang-style OpenAI-compatible services, private `/v1` base URLs, served model IDs, parser/chat-template requirements, tool-call behavior, caller-visible model groups, direct upstream smokes, router smokes, and rollback/operational notes. Verify current upstream documentation online before documenting vLLM, SGLang, or similar fast-moving serving frameworks.
 - Public API examples in `docs-site/` must be tested before deployment. For Python examples, use `uv` in an ignored temporary project under `tmp/`, run the exact documented dependency/install flow, and keep docs generic with placeholder router tokens.
@@ -237,6 +239,7 @@ Update docs whenever changing:
 - provider model pricing metadata, pricing source/update dates, tool support metadata, or upstream capability claims
 - usage reporting, caching, telemetry, or auth behavior
 - DB driver/schema behavior, including SQLite/Postgres config, usage report fields, or durability expectations
+- API compatibility, error semantics, model metadata, provider/model onboarding, production runbooks, smoke tests, or security expectations
 
 Keep docs concrete and tested. Include working commands, but redact secrets.
 
