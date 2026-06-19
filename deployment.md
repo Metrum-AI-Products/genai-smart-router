@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `a07c60c-linux-amd64`
-- Source commit: `a07c60c`
+- Router package/image version: `8c2ad4e-linux-amd64`
+- Source commit: `8c2ad4e`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -56,10 +56,21 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:a07c60c-linux-amd64
+compose-router-1   smart-llmrouter:8c2ad4e-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
+
+## 2026-06-19 Model Discovery Docs Deployment
+
+- Deployed image/package: `smart-llmrouter:8c2ad4e-linux-amd64`.
+- Source commit: `8c2ad4e`.
+- Backup path: `/opt/smart-llmrouter.backup-model-discovery-docs-20260619T152229Z`.
+- Build metadata: version `8c2ad4e`, commit `8c2ad4e`, build date `2026-06-19T15:20:23Z`.
+- Updated hosted Docusaurus docs so callers can clearly discover allowed model groups by calling `/v1/models` with their router token.
+- Preserved live production `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` files during package replacement.
+- Verified `/readyz`, hosted docs headers, hosted API Compatibility content, authenticated `/v1/models` returning the expected caller allow list, and an authenticated `small` chat completion returning `OK` with `finish_reason: stop`.
+- Removed the uploaded package from `/tmp` and ran `sudo docker system prune -f` after the deployment was healthy.
 
 ## 2026-06-19 Steen Production Caller
 
