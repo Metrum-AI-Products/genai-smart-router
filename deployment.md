@@ -1267,3 +1267,40 @@ hosted docs JS bundle contains no `routerCommit`, `X-Smart-LLMRouter-Commit`, `s
 production explicit high /v1/chat/completions: HTTP 200, finish_reason=stop, final content OK with realistic token budget
 production cleanup: removed uploaded packages, confirmed zero /tmp/smart-llmrouter-*tar* files, ran sudo docker system prune -f
 ```
+
+### 2026-06-21 External routing policy deployment
+
+Package `smart-llmrouter:e1f7749-linux-amd64` was deployed to production to add first-class external routing policy services.
+
+Source commit: `e1f7749` (`Add external routing policy strategy`)
+
+Runtime and documentation changes:
+
+- Added `strategy: external` with `external_policy` config for standalone HTTP routing policy services.
+- Added fail-closed `502 routing-policy-error` behavior for invalid or unavailable policy services, with explicit `on_error: fallback` support.
+- Added public Docusaurus docs for external routing policy service setup, request/response schema, security boundaries, and the tested prompt-size demo service.
+- Added internal runbook and committed demo service under `examples/external-routing-policy/`.
+- Cleaned local generated Harbor artifacts so `go test ./...` runs cleanly in the repo.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.external-policy-20260621T164600Z
+```
+
+Validation:
+
+```text
+go test ./...: passed, 86 tests after cleaning ignored Harbor artifact workspaces
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64: passed
+production /readyz after deploy: 200, version e1f7749, build_date 2026-06-21T16:43:44Z
+production /version after deploy: e1f7749, build_date 2026-06-21T16:43:44Z, go1.25.11 linux/amd64
+hosted docs /docs/configuration/external-routing-policy returned 200 with version headers
+production normal chat smoke against `high`: HTTP 200
+temporary production external-policy smoke:
+  short prompt selected openrouter/deepseek-v4-flash:nitro with strategy external, status 200
+  long prompt selected minimax/MiniMax-M3 with strategy external, status 200
+temporary external-policy-smoke group and policy-service container were removed after validation
+production cleanup: removed uploaded package and /tmp/smart-llmrouter-* scratch files, removed older smart-llmrouter Docker images while keeping current e1f7749 and previous 99088b7 rollback image, ran sudo docker system prune -f
+```
