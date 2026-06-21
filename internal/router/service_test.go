@@ -1941,6 +1941,204 @@ export function route() {
 	}
 }
 
+func TestExternalRoutingPolicyStrategy(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "external_policy_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "external policy routed"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+
+	var policyPayload map[string]any
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer policy-secret" {
+			t.Fatalf("missing policy auth header %q", r.Header.Get("Authorization"))
+		}
+		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+			t.Fatal(err)
+		}
+		text, _ := policyPayload["text"].(string)
+		if len(text) > 8000 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"targetIndex":     1,
+				"fallbackIndexes": []int{0},
+				"classLabel":      "external-policy:heavy",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0, "classLabel": "external-policy:cheap"})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:              policy.URL + "/route",
+			AllowHosts:       []string{policyURL.Hostname()},
+			TimeoutMS:        500,
+			MaxResponseBytes: 4096,
+			Headers:          map[string]string{"Authorization": "Bearer policy-secret"},
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 70, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.2},
+			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 30, InputPricePerMillionUSD: 1.0, OutputPricePerMillionUSD: 2.0},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","messages":[{"role":"user","content":"`+strings.Repeat("large prompt ", 900)+`"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "heavy-model" {
+		t.Fatalf("external policy selected model %q", gotModel)
+	}
+	if policyPayload["group"] != "external-policy" {
+		t.Fatalf("policy payload missing group: %#v", policyPayload)
+	}
+	targets, _ := policyPayload["targets"].([]any)
+	if len(targets) != 2 {
+		t.Fatalf("policy payload targets=%#v", policyPayload["targets"])
+	}
+	firstTarget, _ := targets[0].(map[string]any)
+	if firstTarget["inputPricePerMillionUsd"] != 0.1 || firstTarget["keyConfigured"] != true {
+		t.Fatalf("policy target metadata missing: %#v", firstTarget)
+	}
+	caller, _ := policyPayload["caller"].(map[string]any)
+	if caller["tokenId"] == "" || caller["user"] != "alice" {
+		t.Fatalf("policy caller metadata missing: %#v", caller)
+	}
+	rawPayload, _ := json.Marshal(policyPayload)
+	if strings.Contains(string(rawPayload), testToken) || strings.Contains(string(rawPayload), "provider-key") || strings.Contains(string(rawPayload), cfg.Callers[0].TokenSHA256) {
+		t.Fatalf("policy payload leaked secret material: %s", rawPayload)
+	}
+}
+
+func TestExternalRoutingPolicyInvalidDecisionFailsClosed(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream should not be called when external policy returns invalid decision")
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 99})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        policy.URL + "/route",
+			AllowHosts: []string{policyURL.Hostname()},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "routing-policy-error") {
+		t.Fatalf("missing routing-policy-error: %s", rr.Body.String())
+	}
+}
+
+func TestExternalRoutingPolicyCanFallbackOnError(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "external_policy_fallback_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "fallback routed"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "policy down", http.StatusServiceUnavailable)
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        policy.URL + "/route",
+			AllowHosts: []string{policyURL.Hostname()},
+			TimeoutMS:  500,
+			OnError:    "fallback",
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "fallback-model", Weight: 1},
+			{Provider: "mock", Model: "second-model", Weight: 1},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "fallback-model" {
+		t.Fatalf("fallback selected model %q", gotModel)
+	}
+}
+
 func TestScriptTargetsIncludeProviderMetadataWithoutRawKeys(t *testing.T) {
 	targets := []Target{{
 		Provider:    "mock",

@@ -755,6 +755,24 @@ models:
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
+  external-policy-demo:
+    strategy: external
+    external_policy:
+      url: http://127.0.0.1:18090/route
+      allow_hosts:
+      - 127.0.0.1
+      timeout_ms: 500
+      max_response_bytes: 65536
+      on_error: fail_closed
+    targets:
+    - provider: openrouter
+      model_ref: deepseek-v4-flash-nitro
+      tier: cheap
+      weight: 70
+    - provider: minimax
+      model_ref: m3
+      tier: heavy
+      weight: 30
   fast:
     strategy: weighted
     targets:
@@ -1330,6 +1348,7 @@ callers:
   - fast
   - small
   - vision
+  - external-policy-demo
   rate:
     rpm: 120
     tpm: 200000

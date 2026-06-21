@@ -38,6 +38,8 @@ If `router.ts` imports local helpers, place those files under `config/scripts/` 
 
 External TypeScript policy calls are disabled unless a script model group enables `script_http` in `config.yaml`. Configure exact `allow_hosts`, a small `timeout_ms`, and `max_response_bytes`; scripts call these services through `router.fetchJSON`, not unrestricted browser `fetch`. Put policy-service auth in `script_http.headers` with env-expanded values such as `${ROUTING_POLICY_AUTH_HEADER}` instead of hardcoding secrets in script source.
 
+For standalone policy services, prefer `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, response-size limits, and config-owned auth headers. The external routing policy service receives normalized request context and eligible target metadata, returns `targetIndex` or `target`, and is validated before any upstream provider call. See `docs/EXTERNAL_ROUTING_POLICY.md`.
+
 Docker Compose packages are built separately:
 
 ```bash

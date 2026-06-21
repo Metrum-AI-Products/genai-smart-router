@@ -238,6 +238,29 @@ models:
 
 Relative imports such as `import { scorePrompt } from "./policy"` are bundled from the script directory at router startup. Package local helpers and any third-party dependencies with the deployment; the router does not install packages at runtime.
 
+## External Routing Policy Service
+
+Use `strategy: external` when target selection should be delegated to a standalone routing policy service. The router still enforces caller allow lists, request-shape eligibility, tool support, modalities, and max-token safety before calling the service.
+
+```yaml
+models:
+  adaptive:
+    strategy: external
+    external_policy:
+      url: https://routing-policy.internal.example/route
+      allow_hosts: [routing-policy.internal.example]
+      timeout_ms: 500
+      max_response_bytes: 65536
+      headers:
+        Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+      on_error: fail_closed
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+The policy service receives normalized request context, safe caller metadata, eligible targets, pricing metadata, tool support, and modality metadata. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
+
 ## Caller Tokens And Allow Lists
 
 ```yaml

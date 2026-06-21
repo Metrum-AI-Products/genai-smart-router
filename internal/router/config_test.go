@@ -283,13 +283,22 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "external-policy-demo" {
+			if group.Strategy != "external" ||
+				group.ExternalPolicy.URL != "http://127.0.0.1:18090/route" ||
+				!stringSliceContains(group.ExternalPolicy.AllowHosts, "127.0.0.1") ||
+				len(group.Targets) != 2 {
+				t.Fatalf("example config external-policy-demo=%#v, want prompt-size external policy demo", group)
+			}
+			continue
+		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
 		assertActiveGroupPolicy(t, name, group)
 	}
 	wantAllows := map[string][]string{
-		"standard-dev":      {"default", "fast", "small", "vision"},
+		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
 		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke"},
 		"metrics-admin-dev": {},
 	}

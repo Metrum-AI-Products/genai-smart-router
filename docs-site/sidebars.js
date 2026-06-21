@@ -22,6 +22,7 @@ const sidebars = {
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",
         "configuration/routing-typescript",
+        "configuration/external-routing-policy",
       ],
     },
     {

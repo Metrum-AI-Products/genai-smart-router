@@ -10,6 +10,7 @@ Current MVP capabilities:
 - Bearer-token auth using configured SHA-256 token hashes.
 - Config-driven model groups and static, weighted, failover, latency, cost, and stub semantic routing.
 - TypeScript routing scripts for custom model-selection logic inside the Go router.
+- External routing policy services for standalone web-service target selection with safe request, caller, target, pricing, tool, and modality context.
 - Separate caller dialects from upstream provider adapters: callers can use Anthropic/OpenAI wire formats while targets route to Anthropic, OpenAI-compatible providers, or Replicate.
 - Server-side provider key injection.
 - Unary upstream proxying with caller-dialect response encoding.
@@ -439,6 +440,29 @@ models:
 ```
 
 Scripts call external policy with `router.fetchJSON(url, options)`, not browser `fetch`. The helper supports `GET` and `POST`, JSON request bodies, JSON responses, script-supplied headers limited to `Accept`, `Content-Type`, and `X-*`, and only hosts in the model group's `script_http.allow_hosts`. Put policy-service auth in deployment config with `script_http.headers`, for example `Authorization: ${ROUTING_POLICY_AUTH_HEADER}`, rather than in script source. `timeout_ms` is capped at `5000`; use smaller values for routing policy because it runs before the upstream model request.
+
+## External Routing Policy Service
+
+Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, eligible target metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. Raw router tokens, token hashes, and provider API keys are never sent.
+
+```yaml
+models:
+  adaptive:
+    strategy: external
+    external_policy:
+      url: https://routing-policy.internal.example/route
+      allow_hosts: [routing-policy.internal.example]
+      timeout_ms: 500
+      max_response_bytes: 65536
+      headers:
+        Authorization: ${ROUTING_POLICY_AUTH_HEADER}
+      on_error: fail_closed
+    targets:
+      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
+```
+
+Policy responses use the same selector shape as TypeScript: `targetIndex` or `target`, optional `fallbackIndexes`/`fallbacks`, and optional `classLabel`. The default `on_error` behavior is `fail_closed`, returning `502 routing-policy-error`; `fallback` can be configured when the target order is an acceptable default. A runnable demo service lives at `examples/external-routing-policy/prompt_size_policy.py`.
 
 The default `scripts/router.ts` does three things:
 

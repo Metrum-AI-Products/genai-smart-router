@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,11 +107,12 @@ type ToolSupport struct {
 }
 
 type ModelGroup struct {
-	Strategy         string           `yaml:"strategy"`
-	Script           string           `yaml:"script"`
-	ScriptHTTP       ScriptHTTPConfig `yaml:"script_http"`
-	AttemptTimeoutMS int              `yaml:"attempt_timeout_ms"`
-	Targets          []Target         `yaml:"targets"`
+	Strategy         string               `yaml:"strategy"`
+	Script           string               `yaml:"script"`
+	ScriptHTTP       ScriptHTTPConfig     `yaml:"script_http"`
+	ExternalPolicy   ExternalPolicyConfig `yaml:"external_policy"`
+	AttemptTimeoutMS int                  `yaml:"attempt_timeout_ms"`
+	Targets          []Target             `yaml:"targets"`
 }
 
 type ScriptHTTPConfig struct {
@@ -118,6 +121,16 @@ type ScriptHTTPConfig struct {
 	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
 	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
 	Headers          map[string]string `yaml:"headers" json:"headers"`
+}
+
+type ExternalPolicyConfig struct {
+	URL              string            `yaml:"url" json:"url"`
+	Method           string            `yaml:"method" json:"method"`
+	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
+	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
+	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
+	Headers          map[string]string `yaml:"headers" json:"headers"`
+	OnError          string            `yaml:"on_error" json:"onError"`
 }
 
 type Target struct {
@@ -357,6 +370,48 @@ func (c *Config) Validate() error {
 		if strings.EqualFold(m.Strategy, "script") && m.Script == "" {
 			return fmt.Errorf("model group %s uses script strategy but has no script path", name)
 		}
+		if strings.EqualFold(m.Strategy, "external") {
+			if strings.TrimSpace(m.ExternalPolicy.URL) == "" {
+				return fmt.Errorf("model group %s uses external strategy but has no external_policy.url", name)
+			}
+			if len(m.ExternalPolicy.AllowHosts) == 0 {
+				return fmt.Errorf("model group %s uses external strategy but has no external_policy.allow_hosts", name)
+			}
+			policyURL, err := url.Parse(m.ExternalPolicy.URL)
+			if err != nil || policyURL.Hostname() == "" {
+				return fmt.Errorf("model group %s external_policy.url is invalid", name)
+			}
+			if policyURL.Scheme != "http" && policyURL.Scheme != "https" {
+				return fmt.Errorf("model group %s external_policy.url scheme must be http or https", name)
+			}
+			if !scriptHostAllowed(policyURL.Hostname(), m.ExternalPolicy.AllowHosts) {
+				return fmt.Errorf("model group %s external_policy.url host %s is not in allow_hosts", name, policyURL.Hostname())
+			}
+			if m.ExternalPolicy.Method != "" && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodGet && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodPost {
+				return fmt.Errorf("model group %s external_policy method must be GET or POST", name)
+			}
+			if m.ExternalPolicy.TimeoutMS < 0 {
+				return fmt.Errorf("model group %s has negative external_policy timeout_ms", name)
+			}
+			if m.ExternalPolicy.TimeoutMS > 5000 {
+				return fmt.Errorf("model group %s external_policy timeout_ms must be <= 5000", name)
+			}
+			if m.ExternalPolicy.MaxResponseBytes < 0 {
+				return fmt.Errorf("model group %s has negative external_policy max_response_bytes", name)
+			}
+			switch strings.ToLower(strings.TrimSpace(m.ExternalPolicy.OnError)) {
+			case "", "fail_closed", "fallback":
+			default:
+				return fmt.Errorf("model group %s external_policy on_error must be fail_closed or fallback", name)
+			}
+			for header := range m.ExternalPolicy.Headers {
+				if !scriptConfigHeaderAllowed(header) {
+					return fmt.Errorf("model group %s external_policy header %s is not allowed", name, header)
+				}
+			}
+		} else if !externalPolicyEmpty(m.ExternalPolicy) {
+			return fmt.Errorf("model group %s configures external_policy but does not use external strategy", name)
+		}
 		if m.AttemptTimeoutMS < 0 {
 			return fmt.Errorf("model group %s attempt_timeout_ms cannot be negative", name)
 		}
@@ -564,6 +619,16 @@ func toolSupportEmpty(ts ToolSupport) bool {
 		len(ts.OpenAIResponses) == 0 &&
 		len(ts.AnthropicMessages) == 0 &&
 		len(ts.ProviderHosted) == 0
+}
+
+func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
+	return strings.TrimSpace(cfg.URL) == "" &&
+		strings.TrimSpace(cfg.Method) == "" &&
+		len(cfg.AllowHosts) == 0 &&
+		cfg.TimeoutMS == 0 &&
+		cfg.MaxResponseBytes == 0 &&
+		len(cfg.Headers) == 0 &&
+		strings.TrimSpace(cfg.OnError) == ""
 }
 
 func validateModalities(values []string) error {

@@ -35,7 +35,7 @@ Enterprise deployments often route to internally hosted vLLM or SGLang services.
 
 TypeScript routing scripts are loaded from the deployment filesystem. Package local helper imports and any locked third-party dependencies with the script directory, or deploy a pre-bundled script artifact. The router does not install npm packages at runtime.
 
-External routing-policy calls are controlled by model-group config. Enable `script_http` only for groups that need it, list exact allowed service hosts, keep timeout and response-size limits small, and put policy-service auth in env-expanded config headers rather than script files.
+External routing-policy calls are controlled by model-group config. For TypeScript policies, enable `script_http` only for groups that need it, list exact allowed service hosts, keep timeout and response-size limits small, and put policy-service auth in env-expanded config headers rather than script files. For standalone policy services, use `strategy: external` with `external_policy.url`, exact `allow_hosts`, low timeouts, response-size limits, and config-owned auth headers.
 
 ## Browser And API Behavior
 

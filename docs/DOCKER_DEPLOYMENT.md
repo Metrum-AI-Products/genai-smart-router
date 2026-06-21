@@ -85,6 +85,8 @@ If the TypeScript routing script imports local helpers, copy those files into `c
 
 External routing-policy calls are opt-in per script model group with `script_http.enabled: true`, exact `allow_hosts`, `timeout_ms`, and `max_response_bytes`. Scripts call allowlisted services with `router.fetchJSON`; unrestricted `fetch`, runtime package installation, provider keys, and raw router tokens are not exposed to scripts. Put policy-service auth in env-expanded `script_http.headers`, not in script source.
 
+For standalone policy services, configure `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, `max_response_bytes`, and config-owned auth headers. The service receives safe routing context and eligible target metadata, then returns the selected target decision.
+
 Edit `compose/config/config.yaml` for container paths:
 
 ```yaml

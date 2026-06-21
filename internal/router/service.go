@@ -356,6 +356,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			s.writeRoutingEligibilityError(w, rc, eligibilityErr)
 			return
 		}
+		var policyErr routingPolicyError
+		if errors.As(err, &policyErr) {
+			s.writeRoutingPolicyError(w, rc, policyErr)
+			return
+		}
 		s.writeError(w, rc, http.StatusBadGateway, "routing-failed")
 		return
 	}
@@ -590,6 +595,9 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 			return decision{}, fmt.Errorf("script strategy %s not loaded", groupName)
 		}
 		return strat.Pick(groupName, req, targets, s.cfg.Provider, caller, tokenID)
+	case "external":
+		strat := externalPolicyStrategy{cfg: group.ExternalPolicy}
+		return strat.Pick(groupName, req, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
 	}
@@ -1397,6 +1405,32 @@ func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *reques
 				"dialect":      err.Dialect,
 				"requirements": err.Requirements,
 				"hint":         "ask the router administrator to add or enable an upstream target for this model group that supports the requested API dialect, tools, and input modalities",
+			},
+		},
+	})
+}
+
+func (s *Service) writeRoutingPolicyError(w http.ResponseWriter, rc *requestContext, err routingPolicyError) {
+	code := "routing-policy-error"
+	message := s.sanitizeDiagnosticError(err.Error())
+	if message == "" {
+		message = "external routing policy failed"
+	}
+	if rc != nil {
+		rc.trace("routing_policy_error", message, Target{}, 0, http.StatusBadGateway, code, false, 0)
+		rc.rec.Status = http.StatusBadGateway
+		rc.rec.Error = &code
+		rc.rec.ErrorClass = code
+		rc.rec.ErrorMessage = message
+		s.finish(rc, http.StatusBadGateway, &code)
+	}
+	writeJSON(w, http.StatusBadGateway, map[string]any{
+		"error": map[string]any{
+			"type":    code,
+			"message": message,
+			"details": map[string]any{
+				"model": err.Group,
+				"hint":  "the configured external routing policy service did not return a valid target decision",
 			},
 		},
 	})

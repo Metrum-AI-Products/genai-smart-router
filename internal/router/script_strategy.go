@@ -370,40 +370,43 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 }
 
 func exportScriptOutput(val goja.Value) (scriptOutput, error) {
-	exported := val.Export()
+	return exportDecisionOutput(val.Export(), "route(ctx)")
+}
+
+func exportDecisionOutput(exported any, source string) (scriptOutput, error) {
 	raw, err := json.Marshal(exported)
 	if err != nil {
-		return scriptOutput{}, fmt.Errorf("route(ctx) returned invalid decision: %w", err)
+		return scriptOutput{}, fmt.Errorf("%s returned invalid decision: %w", source, err)
 	}
 	fields := map[string]json.RawMessage{}
 	if err := json.Unmarshal(raw, &fields); err != nil {
-		return scriptOutput{}, fmt.Errorf("route(ctx) returned invalid decision: %w", err)
+		return scriptOutput{}, fmt.Errorf("%s returned invalid decision: %w", source, err)
 	}
 	var out scriptOutput
 	if rawTargetIndex, ok := fields["targetIndex"]; ok {
 		if err := json.Unmarshal(rawTargetIndex, &out.TargetIndex); err != nil {
-			return scriptOutput{}, fmt.Errorf("route(ctx) targetIndex must be a number")
+			return scriptOutput{}, fmt.Errorf("%s targetIndex must be a number", source)
 		}
 		out.HasTargetIndex = true
 	}
 	if rawTarget, ok := fields["target"]; ok {
 		if err := json.Unmarshal(rawTarget, &out.Target); err != nil {
-			return scriptOutput{}, fmt.Errorf("route(ctx) target is invalid")
+			return scriptOutput{}, fmt.Errorf("%s target is invalid", source)
 		}
 	}
 	if rawFallbackIndexes, ok := fields["fallbackIndexes"]; ok {
 		if err := json.Unmarshal(rawFallbackIndexes, &out.FallbackIndexes); err != nil {
-			return scriptOutput{}, fmt.Errorf("route(ctx) fallbackIndexes must be numbers")
+			return scriptOutput{}, fmt.Errorf("%s fallbackIndexes must be numbers", source)
 		}
 	}
 	if rawFallbacks, ok := fields["fallbacks"]; ok {
 		if err := json.Unmarshal(rawFallbacks, &out.Fallbacks); err != nil {
-			return scriptOutput{}, fmt.Errorf("route(ctx) fallbacks are invalid")
+			return scriptOutput{}, fmt.Errorf("%s fallbacks are invalid", source)
 		}
 	}
 	if rawClassLabel, ok := fields["classLabel"]; ok {
 		if err := json.Unmarshal(rawClassLabel, &out.ClassLabel); err != nil {
-			return scriptOutput{}, fmt.Errorf("route(ctx) classLabel must be a string")
+			return scriptOutput{}, fmt.Errorf("%s classLabel must be a string", source)
 		}
 	}
 	return out, nil
