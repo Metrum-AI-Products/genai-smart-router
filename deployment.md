@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-19
+Last deployed: 2026-06-22
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-19
 
 ## Deployed Version
 
-- Router package/image version: `99088b7-linux-amd64`
-- Source commit: `99088b7`
+- Router package/image version: `7d8bc80-linux-amd64`
+- Source commit: `7d8bc80`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -56,10 +56,24 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:99088b7-linux-amd64
+compose-router-1   smart-llmrouter:7d8bc80-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
+
+## 2026-06-22 External Policy And PII Filtering Deployment
+
+- Deployed image/package: `smart-llmrouter:7d8bc80-linux-amd64`.
+- Source commit: `7d8bc80`.
+- Backup path: `/opt/smart-llmrouter.backup.reconcile-pii-external-20260622T192332Z`.
+- Build metadata: version `7d8bc80`, commit `7d8bc80`, build date `2026-06-22T19:20:46Z`.
+- Reconciled the local external routing policy feature with merged first-class model-group `pii_filter` support, preserving both feature sets and their test coverage.
+- Added production-hosted Docusaurus docs for PII filtering and kept the external routing policy docs available under `/docs/configuration/external-routing-policy`.
+- Preserved live production `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt` files during package replacement.
+- Verified locally before deployment: focused `ExternalRoutingPolicy|PIIFilter|DocumentedYAMLShape` tests, full `rtk go test ./...`, and `rtk make docs-build`. Docs npm audit still reports the existing 31 advisories: 30 moderate and 1 high.
+- Verified production `/readyz` returns version `7d8bc80`, hosted `/docs/configuration/pii-filtering`, authenticated `/v1/models`, authenticated `high` chat completion, Codex CLI text smoke through OpenAI Responses on `big-coder`, and Claude Code `claude -p` text smoke through Anthropic Messages on `big-coder`.
+- Checked router logs after deployment; no new startup/runtime errors were present.
+- Removed uploaded package files from `/tmp` and ran `sudo docker system prune -f` after the deployment was healthy.
 
 ## 2026-06-19 Ajoshi TPM Increase
 
