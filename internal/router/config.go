@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -108,8 +109,33 @@ type ModelGroup struct {
 	Strategy         string           `yaml:"strategy"`
 	Script           string           `yaml:"script"`
 	ScriptHTTP       ScriptHTTPConfig `yaml:"script_http"`
+	PIIFilter        PIIFilterConfig  `yaml:"pii_filter"`
 	AttemptTimeoutMS int              `yaml:"attempt_timeout_ms"`
 	Targets          []Target         `yaml:"targets"`
+}
+
+type PIIFilterConfig struct {
+	Enabled                   bool             `yaml:"enabled" json:"enabled"`
+	Mode                      string           `yaml:"mode" json:"mode"`
+	FailOnMatch               bool             `yaml:"fail_on_match" json:"failOnMatch"`
+	ApplyTo                   PIIFilterApplyTo `yaml:"apply_to" json:"applyTo"`
+	RestoreResponse           *bool            `yaml:"restore_response" json:"restoreResponse"`
+	MaxReplacementsPerRequest int              `yaml:"max_replacements_per_request" json:"maxReplacementsPerRequest"`
+	Rules                     []PIIFilterRule  `yaml:"rules" json:"rules"`
+}
+
+type PIIFilterApplyTo struct {
+	System         *bool `yaml:"system" json:"system"`
+	Messages       *bool `yaml:"messages" json:"messages"`
+	ResponsesInput *bool `yaml:"responses_input" json:"responsesInput"`
+	ToolResults    *bool `yaml:"tool_results" json:"toolResults"`
+	ImageURLs      bool  `yaml:"image_urls" json:"imageUrls"`
+}
+
+type PIIFilterRule struct {
+	Name              string `yaml:"name" json:"name"`
+	Expression        string `yaml:"expression" json:"expression"`
+	PlaceholderPrefix string `yaml:"placeholder_prefix" json:"placeholderPrefix"`
 }
 
 type ScriptHTTPConfig struct {
@@ -360,6 +386,9 @@ func (c *Config) Validate() error {
 		if m.AttemptTimeoutMS < 0 {
 			return fmt.Errorf("model group %s attempt_timeout_ms cannot be negative", name)
 		}
+		if err := validatePIIFilter(name, m.PIIFilter); err != nil {
+			return err
+		}
 		if m.ScriptHTTP.Enabled {
 			if !strings.EqualFold(m.Strategy, "script") {
 				return fmt.Errorf("model group %s configures script_http but does not use script strategy", name)
@@ -447,6 +476,47 @@ func (c *Config) Validate() error {
 			if _, ok := c.Models[group]; !ok {
 				return fmt.Errorf("caller %s allows unknown model group %s", caller.ID, group)
 			}
+		}
+	}
+	return nil
+}
+
+func validatePIIFilter(group string, cfg PIIFilterConfig) error {
+	if !cfg.Enabled {
+		if cfg.Mode != "" || cfg.FailOnMatch || cfg.RestoreResponse != nil || cfg.MaxReplacementsPerRequest != 0 || len(cfg.Rules) > 0 {
+			return fmt.Errorf("model group %s configures pii_filter but pii_filter.enabled is false", group)
+		}
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
+	case "", "redact_only", "redact_and_restore", "fail_on_match":
+	default:
+		return fmt.Errorf("model group %s pii_filter mode must be redact_only, redact_and_restore, or fail_on_match", group)
+	}
+	if cfg.MaxReplacementsPerRequest < 0 {
+		return fmt.Errorf("model group %s pii_filter max_replacements_per_request cannot be negative", group)
+	}
+	if len(cfg.Rules) == 0 {
+		return fmt.Errorf("model group %s pii_filter requires at least one rule", group)
+	}
+	seen := map[string]bool{}
+	for i, rule := range cfg.Rules {
+		name := strings.TrimSpace(rule.Name)
+		if name == "" {
+			return fmt.Errorf("model group %s pii_filter rule %d missing name", group, i)
+		}
+		if seen[name] {
+			return fmt.Errorf("model group %s pii_filter contains duplicate rule %q", group, name)
+		}
+		seen[name] = true
+		if strings.TrimSpace(rule.Expression) == "" {
+			return fmt.Errorf("model group %s pii_filter rule %s missing expression", group, name)
+		}
+		if _, err := regexp.Compile(rule.Expression); err != nil {
+			return fmt.Errorf("model group %s pii_filter rule %s has invalid expression: %w", group, name, err)
+		}
+		if normalizePlaceholderPrefix(rule.PlaceholderPrefix) == "" {
+			return fmt.Errorf("model group %s pii_filter rule %s missing placeholder_prefix", group, name)
 		}
 	}
 	return nil

@@ -49,6 +49,10 @@ type logRecord struct {
 	InputHasImage                      bool               `json:"input_has_image,omitempty"`
 	InputImageCount                    int                `json:"input_image_count,omitempty"`
 	InputImageTokens                   int                `json:"input_image_tokens,omitempty"`
+	PIIFilterApplied                   bool               `json:"pii_filter_applied,omitempty"`
+	PIIFilterMode                      string             `json:"pii_filter_mode,omitempty"`
+	PIIFilterReplacements              int                `json:"pii_filter_replacements,omitempty"`
+	PIIFilterRuleCount                 int                `json:"pii_filter_rule_count,omitempty"`
 	InputPricePerMillionUSD            float64            `json:"input_price_per_million_usd,omitempty"`
 	OutputPricePerMillionUSD           float64            `json:"output_price_per_million_usd,omitempty"`
 	ImageInputPricePerMillionTokensUSD float64            `json:"image_input_price_per_million_tokens_usd,omitempty"`

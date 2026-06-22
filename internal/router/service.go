@@ -349,6 +349,30 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
+	piiResult, err := applyPIIFilter(req, group.PIIFilter)
+	if err != nil {
+		var blocked piiFilterBlockedError
+		if errors.As(err, &blocked) {
+			rc.rec.PIIFilterApplied = piiResult.Applied
+			rc.rec.PIIFilterMode = piiResult.Mode
+			rc.rec.PIIFilterReplacements = piiResult.Replacements
+			rc.rec.PIIFilterRuleCount = piiRuleCount(piiResult)
+			rc.trace("pii_filter_blocked", "pii_filter matched request content", Target{}, 0, http.StatusBadRequest, "pii-filter-blocked", false, 0)
+			s.writeError(w, rc, http.StatusBadRequest, "pii-filter-blocked")
+			return
+		}
+		s.writeError(w, rc, http.StatusBadGateway, "pii-filter-failed")
+		return
+	}
+	if piiResult.Applied {
+		rc.rec.PIIFilterApplied = true
+		rc.rec.PIIFilterMode = piiResult.Mode
+		rc.rec.PIIFilterReplacements = piiResult.Replacements
+		rc.rec.PIIFilterRuleCount = piiRuleCount(piiResult)
+		rc.rec.Warnings = appendWarning(rc.rec.Warnings, "pii-filter-applied")
+		rc.rec.Warnings = append(rc.rec.Warnings, piiResult.Warnings...)
+		rc.trace("pii_filter_applied", fmt.Sprintf("replacements=%d rules=%d", piiResult.Replacements, piiRuleCount(piiResult)), Target{}, 0, 0, "", false, 0)
+	}
 	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		var eligibilityErr routingEligibilityError
@@ -378,6 +402,9 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	if cacheable(req) {
 		if cached, ok := s.cache.Get(key); ok {
 			ensureResponseID(cached)
+			if piiRestoreEnabled(group.PIIFilter) {
+				restorePIIPlaceholders(cached, piiResult)
+			}
 			rc.rec.Cache = "hit"
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
@@ -408,6 +435,9 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		ensureResponseID(resp)
 		if cacheable(req) {
 			s.cache.Put(key, resp)
+		}
+		if piiRestoreEnabled(group.PIIFilter) {
+			restorePIIPlaceholders(resp, piiResult)
 		}
 		quotaState, keyState := s.quota.RecordTokens(rc.caller, resp.Usage)
 		rc.rec.QuotaState = quotaState
