@@ -16,8 +16,8 @@ Last deployed: 2026-06-22
 
 ## Deployed Version
 
-- Router package/image version: `7d8bc80-linux-amd64`
-- Source commit: `7d8bc80`
+- Router package/image version: `7659981-linux-amd64`
+- Source commit: `7659981`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,26 @@ Last deployed: 2026-06-22
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-22 Baseten GPT OSS 120B Replacement
+
+- Replaced active OpenRouter Qwen and OpenRouter DeepSeek targets in production model groups with Baseten `openai/gpt-oss-120b` for OpenAI Chat text traffic.
+- Added `baseten_anthropic` provider skin for Baseten Anthropic Messages beta at `https://inference.baseten.co`, validated with `openai/gpt-oss-120b` text and client-tool smokes.
+- Kept Codex/OpenAI Responses tool traffic on validated Responses-compatible targets because Baseten has not been validated as a Responses API provider.
+- Rebalanced VLM/image routes away from OpenRouter Qwen toward already validated image-capable targets; Baseten GPT OSS 120B remains text-only in metadata.
+- Production config backup: `config/config.yaml.bak.gptoss-20260622T205146Z`.
+- Production package backup: `/opt/smart-llmrouter.backup.gptoss-7659981-20260622T205746Z`.
+- Deployed image: `smart-llmrouter:7659981-linux-amd64`.
+- Live config SHA-256 after metadata note: `f2026ca3ab6052657cb1e13edcb6ab7e31d659251bc3b35a3567871bad292d06`.
+- Verified live config has `active_openrouter_qwen_deepseek 0`.
+- Verified `/readyz` and `/version` report version `7659981`, commit `7659981`, build date `2026-06-22T20:55:41Z`.
+- Verified hosted docs page `/docs/configuration/router-config` includes `gpt-oss-120b` and `baseten_anthropic`.
+- Direct Baseten smokes passed for `openai/gpt-oss-120b`: OpenAI Chat text, streaming with usage chunks, auto tool call, forced tool choice, Anthropic Messages text, and Anthropic Messages client tool.
+- Local router smokes passed for static Baseten GPT OSS groups: OpenAI Chat text/tool and Anthropic Messages text/tool.
+- Production router smokes passed for static Baseten GPT OSS groups: OpenAI Chat realistic-budget text, OpenAI Chat tool, Anthropic Messages text, and Anthropic Messages tool.
+- Claude Code CLI production smoke passed for `baseten-gpt-oss-120b-claude-smoke` text and tool/file creation.
+- Codex CLI production smoke passed for `big-coder` text and tool/file creation through Responses wire API. The first Codex tool attempt failed only because local bubblewrap sandboxing blocked file writes; rerun with `--sandbox danger-full-access` in an isolated temp directory passed.
+- Note: a production OpenAI Chat smoke with `max_tokens: 64` returned HTTP 200 with empty content once; realistic `max_tokens: 512` returned `OK`. GPT OSS 120B metadata now notes that small budgets can be consumed by reasoning before final content.
 
 ## Host Runtime
 
@@ -56,7 +76,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:7d8bc80-linux-amd64
+compose-router-1   smart-llmrouter:7659981-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
