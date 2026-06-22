@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadEnvJSONSetsMissingValuesOnly(t *testing.T) {
@@ -153,6 +155,131 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 				t.Fatalf("expected %q error, got %v", tt.want, err)
 			}
 		})
+	}
+}
+
+func TestPIIFilterValidation(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		filter PIIFilterConfig
+		want   string
+	}{
+		{
+			name:   "disabled but configured",
+			filter: PIIFilterConfig{Rules: []PIIFilterRule{{Name: "email", Expression: `@`, PlaceholderPrefix: "EMAIL"}}},
+			want:   "enabled is false",
+		},
+		{
+			name:   "missing rules",
+			filter: PIIFilterConfig{Enabled: true},
+			want:   "requires at least one rule",
+		},
+		{
+			name: "invalid mode",
+			filter: PIIFilterConfig{
+				Enabled: true,
+				Mode:    "restore_everywhere",
+				Rules:   []PIIFilterRule{{Name: "email", Expression: `@`, PlaceholderPrefix: "EMAIL"}},
+			},
+			want: "mode must be",
+		},
+		{
+			name: "invalid regex",
+			filter: PIIFilterConfig{
+				Enabled: true,
+				Rules:   []PIIFilterRule{{Name: "email", Expression: `[`, PlaceholderPrefix: "EMAIL"}},
+			},
+			want: "invalid expression",
+		},
+		{
+			name: "duplicate rule",
+			filter: PIIFilterConfig{
+				Enabled: true,
+				Rules: []PIIFilterRule{
+					{Name: "email", Expression: `@`, PlaceholderPrefix: "EMAIL"},
+					{Name: "email", Expression: `phone`, PlaceholderPrefix: "PHONE"},
+				},
+			},
+			want: "duplicate rule",
+		},
+		{
+			name: "missing placeholder prefix",
+			filter: PIIFilterConfig{
+				Enabled: true,
+				Rules:   []PIIFilterRule{{Name: "email", Expression: `@`, PlaceholderPrefix: "!!!"}},
+			},
+			want: "missing placeholder_prefix",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Models["default"] = ModelGroup{
+				Strategy:  "static",
+				PIIFilter: tt.filter,
+				Targets:   []Target{{Provider: "mock", Model: "mock-model"}},
+			}
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPIIFilterDocumentedYAMLShapeValidates(t *testing.T) {
+	raw := []byte(`
+server:
+  logging:
+    path: requests.jsonl
+providers:
+  mock:
+    base_url: http://127.0.0.1:1/v1
+    dialect: openai-chat
+    api_key: secret
+models:
+  sensitive-workloads:
+    strategy: weighted
+    pii_filter:
+      enabled: true
+      mode: redact_and_restore
+      restore_response: true
+      max_replacements_per_request: 200
+      apply_to:
+        system: true
+        messages: true
+        responses_input: true
+        tool_results: true
+        image_urls: false
+      rules:
+        - name: email
+          expression: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+          placeholder_prefix: EMAIL
+        - name: us_phone
+          expression: '\b(?:\+1[-. ]?)?\(?[2-9]\d{2}\)?[-. ]?[2-9]\d{2}[-. ]?\d{4}\b'
+          placeholder_prefix: PHONE
+        - name: us_ssn
+          expression: '\b\d{3}-\d{2}-\d{4}\b'
+          placeholder_prefix: US_SSN
+    targets:
+      - { provider: mock, model: mock-model, weight: 1 }
+callers:
+  - id: alice
+    token_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    allow: [sensitive-workloads]
+`)
+	var cfg Config
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("documented pii_filter YAML shape did not validate: %v", err)
+	}
+	filter := cfg.Models["sensitive-workloads"].PIIFilter
+	if !filter.Enabled || filter.Mode != "redact_and_restore" || len(filter.Rules) != 3 {
+		t.Fatalf("unexpected pii_filter decode: %#v", filter)
+	}
+	if filter.ApplyTo.System == nil || !*filter.ApplyTo.System || filter.ApplyTo.ImageURLs {
+		t.Fatalf("unexpected apply_to decode: %#v", filter.ApplyTo)
 	}
 }
 

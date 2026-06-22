@@ -38,6 +38,7 @@ Each request row stores:
 - upstream/downstream output-token/sec and total-token/sec.
 - cache snapshot: enabled state, item count, occupied bytes, max bytes, and occupancy percentage.
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
+- PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.

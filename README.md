@@ -470,6 +470,12 @@ The default `scripts/router.ts` does three things:
 - Applies named regex rules against safe caller-key metadata and safe target-key metadata.
 - Falls back to weighted random routing across eligible targets, using group target weights as relative probabilities.
 
+## PII Filtering
+
+Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
+
+See `docs/PII_FILTERING.md` and the Docusaurus PII Filtering page for configuration examples and smoke-test guidance.
+
 Prompt-size routing example:
 
 ```ts

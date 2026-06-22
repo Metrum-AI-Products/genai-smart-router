@@ -24,6 +24,7 @@ These instructions apply to the whole repository.
 - Tool capability metadata belongs in provider catalogs as `tool_support` and must be based on a real direct upstream smoke plus router-level smoke for the exact dialect/skin. Do not claim `openai_chat`, `openai_responses`, `anthropic_messages`, or `provider_hosted` support from marketing copy alone.
 - Usage persistence uses GORM. Keep the entire usage DB schema purely relational: no JSON/JSONB columns, no array columns, no serialized blobs for structured data, and no packed multi-value text fields. If one request needs multiple related rows, add a child table with scalar columns and a foreign key to `request_usage`.
 - Usage rows store request-time cost inputs, image/VLM event fields, calculated costs, and upstream-reported billed costs as scalar columns. Reports must sum stored cost values, not recalculate historical cost from current config.
+- Model-group `pii_filter` redacts configured text before target selection, cache-key generation, routing-policy inputs, and upstream calls. Keep placeholder mappings in memory only unless a separate governed content-capture feature explicitly enables durable storage. Usage/log metadata may record only safe scalar values such as applied flag, mode, replacement count, and matched-rule count; never persist raw matched values, regex captures, placeholder maps, raw prompts, raw images, raw tool outputs, bearer tokens, provider keys, or token hashes.
 - Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
 - Do not put unavailable provider models into active routing. The 2026-06-17 production policy keeps active tool-capable routes on OpenRouter, MiniMax, and Kimi/Moonshot models that passed Harbor/tool validation. Original OpenAI `gpt-5.4-nano` is allowed at low non-tool fallback weight; do not use `gpt-5.5` in active routing. Original Anthropic remains catalog/support-only until `ANTHROPIC_API_KEY` is present and a live smoke passes.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
@@ -159,6 +160,7 @@ config/config.yaml.bak.<UTC timestamp>
 
 For code changes that affect runtime behavior or embedded hosted docs:
 
+0. If local production-impacting work has diverged from `origin/main`, reconcile it first on the deployment branch, resolve conflicts by preserving both intended feature sets, and run the full verification set after reconciliation. Do not package from an unmerged branch or a dirty worktree. Stash unrelated local edits before building and restore them only after deployment verification.
 1. Run relevant tests:
    - Prefer `rtk go test ./cmd/... ./internal/...` for router code.
    - `rtk go test ./...` may fail on generated Harbor/job artifact directories; if so, report that separately and do not treat it as a router package failure.
@@ -245,6 +247,7 @@ Update docs whenever changing:
 - self-hosted vLLM/SGLang/OpenAI-compatible upstream deployment, served model IDs, parser/chat-template flags, or tool-call validation behavior
 - provider model pricing metadata, pricing source/update dates, tool support metadata, or upstream capability claims
 - usage reporting, caching, telemetry, or auth behavior
+- model-group PII filtering, redaction/restoration behavior, privacy controls, or content-capture interactions
 - DB driver/schema behavior, including SQLite/Postgres config, usage report fields, or durability expectations
 - API compatibility, error semantics, model metadata, provider/model onboarding, production runbooks, smoke tests, or security expectations
 - competitive positioning, product capability matrices, buyer evaluation docs, or public claims about other products

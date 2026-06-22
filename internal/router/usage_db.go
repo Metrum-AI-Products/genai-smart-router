@@ -73,6 +73,10 @@ type usageRow struct {
 	InputHasImage                      bool
 	InputImageCount                    int
 	InputImageTokens                   int
+	PIIFilterApplied                   bool
+	PIIFilterMode                      string
+	PIIFilterReplacements              int
+	PIIFilterRuleCount                 int
 	InputPricePerMillionUSD            float64
 	OutputPricePerMillionUSD           float64
 	ImageInputPricePerMillionTokensUSD float64
@@ -132,6 +136,10 @@ type usageRecord struct {
 	InputHasImage                      bool     `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
 	InputImageCount                    int      `gorm:"column:input_image_count;not null;default:0"`
 	InputImageTokens                   int      `gorm:"column:input_image_tokens;not null;default:0"`
+	PIIFilterApplied                   bool     `gorm:"column:pii_filter_applied;not null;default:false;index:idx_request_usage_pii_filter"`
+	PIIFilterMode                      string   `gorm:"column:pii_filter_mode;type:text;not null;default:''"`
+	PIIFilterReplacements              int      `gorm:"column:pii_filter_replacements;not null;default:0"`
+	PIIFilterRuleCount                 int      `gorm:"column:pii_filter_rule_count;not null;default:0"`
 	InputPricePerMillionUSD            float64  `gorm:"column:input_price_per_million_usd;not null;default:0"`
 	OutputPricePerMillionUSD           float64  `gorm:"column:output_price_per_million_usd;not null;default:0"`
 	ImageInputPricePerMillionTokensUSD float64  `gorm:"column:image_input_price_per_million_tokens_usd;not null;default:0"`
@@ -515,6 +523,10 @@ func rowFromRecord(rec logRecord) usageRow {
 		InputHasImage:                      rec.InputHasImage,
 		InputImageCount:                    rec.InputImageCount,
 		InputImageTokens:                   rec.InputImageTokens,
+		PIIFilterApplied:                   rec.PIIFilterApplied,
+		PIIFilterMode:                      rec.PIIFilterMode,
+		PIIFilterReplacements:              rec.PIIFilterReplacements,
+		PIIFilterRuleCount:                 rec.PIIFilterRuleCount,
 		InputPricePerMillionUSD:            rec.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           rec.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: rec.ImageInputPricePerMillionTokensUSD,
@@ -576,6 +588,10 @@ func recordFromRow(row usageRow) *usageRecord {
 		InputHasImage:                      row.InputHasImage,
 		InputImageCount:                    row.InputImageCount,
 		InputImageTokens:                   row.InputImageTokens,
+		PIIFilterApplied:                   row.PIIFilterApplied,
+		PIIFilterMode:                      row.PIIFilterMode,
+		PIIFilterReplacements:              row.PIIFilterReplacements,
+		PIIFilterRuleCount:                 row.PIIFilterRuleCount,
 		InputPricePerMillionUSD:            row.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           row.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: row.ImageInputPricePerMillionTokensUSD,
@@ -641,6 +657,10 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		InputHasImage:                      record.InputHasImage,
 		InputImageCount:                    record.InputImageCount,
 		InputImageTokens:                   record.InputImageTokens,
+		PIIFilterApplied:                   record.PIIFilterApplied,
+		PIIFilterMode:                      record.PIIFilterMode,
+		PIIFilterReplacements:              record.PIIFilterReplacements,
+		PIIFilterRuleCount:                 record.PIIFilterRuleCount,
 		InputPricePerMillionUSD:            record.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           record.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: record.ImageInputPricePerMillionTokensUSD,

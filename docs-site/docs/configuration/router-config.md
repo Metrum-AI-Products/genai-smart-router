@@ -329,6 +329,8 @@ The cache is intended for eligible deterministic unary responses. Tool-bearing a
 
 Image-bearing requests also bypass response caching. Usage logs and the usage database include `input_has_image`, `input_image_count`, image-token counts when the upstream reports them, calculated VLM costs, and upstream-reported billed costs when available.
 
+Model groups can enable `pii_filter` to redact configured text expressions before upstream calls. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted by default. See [PII Filtering](./pii-filtering).
+
 Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, or full upstream headers.
 
 Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. Exhausted upstream timeouts return `504 upstream-timeout`; exhausted provider rate limits return `503 upstream-rate-limited`; other exhausted upstream failures return `502 upstream-failed`.
