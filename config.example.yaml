@@ -125,7 +125,9 @@ providers:
           passed on 2026-06-22 for OpenAI Chat non-streaming, streaming with usage chunks,
           auto tool calls, forced OpenAI Chat tool_choice, Anthropic Messages text, and Anthropic
           Messages client tool_use. Baseten documents Anthropic Messages support as beta and
-          recommends OpenAI Chat for production workloads.
+          recommends OpenAI Chat for production workloads. Small max_tokens budgets can be
+          consumed by reasoning before final content; use realistic budgets such as 512+ tokens
+          for text acceptance smokes.
         tool_support:
           openai_chat:
           - tools
@@ -647,7 +649,9 @@ providers:
           passed on 2026-06-22 for OpenAI Chat non-streaming, streaming with usage chunks,
           auto tool calls, forced OpenAI Chat tool_choice, Anthropic Messages text, and Anthropic
           Messages client tool_use. Baseten documents Anthropic Messages support as beta and
-          recommends OpenAI Chat for production workloads.
+          recommends OpenAI Chat for production workloads. Small max_tokens budgets can be
+          consumed by reasoning before final content; use realistic budgets such as 512+ tokens
+          for text acceptance smokes.
         tool_support:
           anthropic_messages:
           - client_tools
