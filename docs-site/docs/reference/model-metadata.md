@@ -90,8 +90,8 @@ models:
   example-general:
     strategy: weighted
     targets:
-      - provider: openrouter
-        model_ref: deepseek-v4-flash-nitro
+      - provider: baseten
+        model_ref: gpt-oss-120b
         weight: 60
       - provider: internal_vllm
         model_ref: llama-70b

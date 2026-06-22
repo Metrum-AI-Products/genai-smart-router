@@ -37,7 +37,7 @@ models:
           placeholder_prefix: US_SSN
     targets:
       - { provider: private-vllm, model_ref: internal-sensitive-model, weight: 70 }
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 30 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 30 }
 ```
 
 With this configuration, text such as:

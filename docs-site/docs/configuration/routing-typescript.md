@@ -22,7 +22,7 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -41,7 +41,7 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -178,7 +178,7 @@ export function route(ctx: RouteContext) {
 
   if (/refactor|debug|test failure|segfault/i.test(ctx.text)) {
     candidates = candidates.filter((entry) =>
-      /MiniMax-M3|kimi-k2\.7-code|deepseek-v4-flash/i.test(entry.target.model)
+      /MiniMax-M3|kimi-k2\.7-code|gpt-oss-120b/i.test(entry.target.model)
     );
   }
 

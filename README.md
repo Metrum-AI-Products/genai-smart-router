@@ -185,15 +185,6 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-default
     models:
-      deepseek-v4-flash-nitro:
-        model: deepseek/deepseek-v4-flash:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.09
-        output_price_per_million_usd: 0.18
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
       gemma-4-26b-a4b-it-nitro:
         model: google/gemma-4-26b-a4b-it:nitro
         tier: balanced
@@ -222,6 +213,18 @@ providers:
         pricing_notes: Baseten also lists a discounted cache-input rate; router cost logs use standard input/output rates plus upstream-reported billed cost when available.
         tool_support:
           openai_chat: [tools, tool_choice]
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.10
+        output_price_per_million_usd: 0.50
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: "2026-06-22"
+        pricing_notes: Direct Baseten OpenAI Chat and Anthropic Messages text/tool smokes passed on 2026-06-22.
+        tool_support:
+          openai_chat: [tools, tool_choice]
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -238,22 +241,25 @@ providers:
         pricing_updated_at: "2026-06-17"
         tool_support:
           openai_responses: [function]
-  openrouter_responses:
-    base_url: https://openrouter.ai/api/v1
-    dialect: openai-responses
-    api_key: ${OPENROUTER_API_KEY}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-responses-default
+  baseten_anthropic:
+    base_url: https://inference.baseten.co
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-anthropic-default
     models:
-      deepseek-v4-flash-nitro:
-        model: deepseek/deepseek-v4-flash:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.09
-        output_price_per_million_usd: 0.18
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.10
+        output_price_per_million_usd: 0.50
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: "2026-06-22"
         tool_support:
-          openai_responses: [function]
+          anthropic_messages: [client_tools]
   openrouter_anthropic:
     base_url: https://openrouter.ai/api
     dialect: anthropic
@@ -262,15 +268,6 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-anthropic-default
     models:
-      deepseek-v4-flash-nitro:
-        model: deepseek/deepseek-v4-flash:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.09
-        output_price_per_million_usd: 0.18
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          anthropic_messages: [client_tools]
       gemma-4-26b-a4b-it-nitro:
         model: google/gemma-4-26b-a4b-it:nitro
         tier: balanced
@@ -300,14 +297,14 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 46 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 51 }
       - { provider: minimax, model_ref: m3, weight: 27 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
       - { provider: baseten, model_ref: glm-5-2, weight: 5 }
       - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 7 }
-      - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
+      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
 ```
 
 `model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
@@ -321,7 +318,7 @@ Catalog metadata can include `input_price_per_million_usd`, `output_price_per_mi
 
 Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an example opt-in image-analysis group. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
 
-Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes; it is reasoning-heavy, so tiny output budgets can be spent entirely on reasoning before final content. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
+Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers, and Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider for Claude Code-style traffic. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes. On 2026-06-22, `openai/gpt-oss-120b` passed direct Baseten OpenAI Chat text, streaming, auto tool, forced tool-choice, Anthropic Messages text, and Anthropic Messages client-tool smokes. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
 
 OpenAI Chat tool passthrough is used by OpenAI-compatible agent clients such as Warp Agent. These clients call `/v1/chat/completions`, send `tools`, `tool_choice`, and often request streaming. For those requests, the router preserves the OpenAI Chat tool payload and tool-result messages, selects only upstream targets with explicit `tool_support.openai_chat`, calls the upstream non-streaming, and returns either the raw non-streaming response or synthesized OpenAI Chat SSE chunks containing `delta.tool_calls`. This avoids asking users to switch model groups just because a coding-agent turn includes tools; the configured group filters to compatible targets automatically.
 
@@ -344,15 +341,16 @@ models:
   big-coder:
     strategy: weighted
     targets:
-      - { provider: minimax, model_ref: m3, weight: 49 }
-      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 30 }
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 20 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 23 }
+      - { provider: minimax, model_ref: m3, weight: 38 }
+      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 28 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
       - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true }
-      - { provider: openrouter_responses, model_ref: deepseek-v4-flash-nitro, tool_only: true, weight: 5 }
+      - { provider: openrouter_responses, model_ref: openrouter-claude-sonnet-4-6, tool_only: true, weight: 13 }
       - { provider: minimax_anthropic, model_ref: m3, tool_only: true }
+      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
       - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, default_thinking: { type: enabled, budget_tokens: 512 } }
-      - { provider: openrouter_anthropic, model_ref: deepseek-v4-flash-nitro, tool_only: true, weight: 4 }
+      - { provider: openrouter_anthropic, model_ref: openrouter-claude-sonnet-4-6, tool_only: true, weight: 4 }
       - { provider: openrouter_anthropic, model_ref: gemma-4-26b-a4b-it-nitro, tool_only: true, weight: 2 }
 ```
 
@@ -407,7 +405,7 @@ models:
     strategy: script
     script: scripts/router.ts
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 60 }
       - { provider: minimax, model_ref: m3, weight: 30 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 ```
@@ -435,7 +433,7 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -458,7 +456,7 @@ models:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -691,12 +689,12 @@ KEEP_LIVE_E2E_WORKDIR=1 make e2e-live-c
 To run one live case:
 
 ```bash
-LIVE_E2E_CASE_REGEX=or-deepseek-v4-flash make e2e-live-c
+LIVE_E2E_CASE_REGEX=baseten-gpt-oss-120b make e2e-live-c
 ```
 
 ## CLI Smoke Tests
 
-The following commands were tested locally with `Claude Code 2.1.177`, `codex-cli 0.139.0`, router port `18081`, and OpenRouter model `deepseek/deepseek-v4-flash:nitro`. They require `OPENROUTER_API_KEY` in the project `env.json`.
+The following commands were tested locally with `Claude Code 2.1.177`, `codex-cli 0.139.0`, router port `18081`, and deployment-defined model groups. Provider-backed smokes require the relevant provider keys in the project `env.json`.
 
 CLI install/update references:
 
@@ -748,17 +746,17 @@ generated = json.loads((work / "token.json").read_text())
     path: {work}/requests.jsonl
 state_path: {work}/state.json
 providers:
-  openrouter:
-    base_url: https://openrouter.ai/api/v1
+  baseten:
+    base_url: https://inference.baseten.co/v1
     dialect: openai-chat
-    api_key: ${{OPENROUTER_API_KEY}}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-readme-smoke
+    api_key: ${{BASETEN_API_KEY}}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-readme-smoke
 models:
   cli-smoke:
     strategy: static
     targets:
-      - {{ provider: openrouter, model: "deepseek/deepseek-v4-flash:nitro" }}
+      - {{ provider: baseten, model: "openai/gpt-oss-120b" }}
 callers:
   - id: readme-metrum-insights-dev
     user: readme

@@ -1,7 +1,5 @@
 server:
   listen: :8080
-  # Optional fallback when a compatible API request omits model.
-  # The value must be one of this deployment's configured model groups.
   default_model_group: default
   cache:
     enabled: true
@@ -59,8 +57,8 @@ providers:
         - text
         pricing_source: https://docs.x.ai/developers/models/grok-4.3
         pricing_updated_at: '2026-06-17'
-        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and
-          image smokes
+        pricing_notes: catalog-only until a valid XAI_API_KEY passes direct text and image
+          smokes
         tool_support:
           openai_chat:
           - tools
@@ -83,9 +81,9 @@ providers:
         - text
         pricing_source: https://www.baseten.co/pricing/
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Baseten pricing page also lists $0.06/M cache input for NVIDIA
-          Nemotron 3 Super; router usage rows currently log standard input/output
-          token rates plus any upstream-reported billed cost.
+        pricing_notes: Baseten pricing page also lists $0.06/M cache input for NVIDIA Nemotron
+          3 Super; router usage rows currently log standard input/output token rates plus
+          any upstream-reported billed cost.
         tool_support:
           openai_chat:
           - tools
@@ -101,16 +99,37 @@ providers:
         - text
         pricing_source: https://www.baseten.co/pricing/
         pricing_updated_at: '2026-06-18'
-        pricing_notes: 'Baseten Model API pricing also lists $0.30/M cache input.
-          Direct Baseten smokes passed on 2026-06-18 for realistic-budget text, max_tokens
-          cap enforcement, and OpenAI Chat tool calls. Reasoning-heavy: max_tokens=128
-          can be spent entirely on reasoning with empty final content; prefer realistic
-          budgets for acceptance and coding-agent traffic.'
+        pricing_notes: 'Baseten Model API pricing also lists $0.30/M cache input. Direct Baseten
+          smokes passed on 2026-06-18 for realistic-budget text, max_tokens cap enforcement,
+          and OpenAI Chat tool calls. Reasoning-heavy: max_tokens=128 can be spent entirely
+          on reasoning with empty final content; prefer realistic budgets for acceptance and
+          coding-agent traffic.'
         tool_support:
           openai_chat:
           - tools
           - tool_choice
           - structured_outputs
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.1
+        output_price_per_million_usd: 0.5
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: '2026-06-22'
+        pricing_notes: Baseten Model API pricing lists GPT OSS 120B at $0.10/M input tokens
+          and $0.50/M output tokens with no separate cache-input price. Direct Baseten smokes
+          passed on 2026-06-22 for OpenAI Chat non-streaming, streaming with usage chunks,
+          auto tool calls, forced OpenAI Chat tool_choice, Anthropic Messages text, and Anthropic
+          Messages client tool_use. Baseten documents Anthropic Messages support as beta and
+          recommends OpenAI Chat for production workloads.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -192,8 +211,7 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
       openrouter-xai-grok-4-3:
         model: x-ai/grok-4.3
         tier: vision
@@ -206,10 +224,10 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17. Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
-          VLM targets can return far above max_tokens=1; capped requests skip this
-          target until max-token behavior is revalidated.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
+          Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets
+          can return far above max_tokens=1; capped requests skip this target until max-token
+          behavior is revalidated.
         honors_max_tokens: false
       qwen3-7-plus-nitro:
         model: qwen/qwen3.7-plus:nitro
@@ -224,10 +242,10 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17; Nitro suffix validated by completion call. Production OpenAI
-          Chat smoke on 2026-06-18 returned 1727 output tokens for caller max_tokens=1,
-          so capped requests must skip this target until max-token behavior is revalidated.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17;
+          Nitro suffix validated by completion call. Production OpenAI Chat smoke on 2026-06-18
+          returned 1727 output tokens for caller max_tokens=1, so capped requests must skip
+          this target until max-token behavior is revalidated.
       qwen3-6-flash-nitro:
         model: qwen/qwen3.6-flash:nitro
         tier: vision
@@ -241,14 +259,13 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed
-          on 2026-06-17. Production router image smoke processed the receipt but returned
-          a wrong merchant once, so treat this as general VLM/image-capable rather
-          than OCR-quality-gated. Tool calls work with auto tool choice; forced object
-          tool_choice fails while thinking mode is enabled. Production capped-request
-          smokes on 2026-06-18 showed OpenRouter-hosted VLM targets can return far
-          above max_tokens=1; capped requests skip this target until max-token behavior
-          is revalidated.
+        pricing_notes: Direct OpenRouter Nitro text and receipt-image smokes passed on 2026-06-17.
+          Production router image smoke processed the receipt but returned a wrong merchant
+          once, so treat this as general VLM/image-capable rather than OCR-quality-gated.
+          Tool calls work with auto tool choice; forced object tool_choice fails while thinking
+          mode is enabled. Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this target
+          until max-token behavior is revalidated.
         tool_support:
           openai_chat:
           - tools
@@ -265,10 +282,10 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on
-          2026-06-17. Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
-          VLM targets can return far above max_tokens=1; capped requests skip this
-          target until max-token behavior is revalidated.
+        pricing_notes: Direct OpenRouter receipt image smoke returned Rite Aid on 2026-06-17.
+          Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets
+          can return far above max_tokens=1; capped requests skip this target until max-token
+          behavior is revalidated.
         honors_max_tokens: false
     headers:
       HTTP-Referer: ${ROUTER_HTTP_REFERER}
@@ -384,10 +401,10 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text. Keep capped requests away from this model until max-token
-          behavior is revalidated for this skin.
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17;
+          Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text. Keep
+          capped requests away from this model until max-token behavior is revalidated for
+          this skin.
         tool_support:
           openai_responses:
           - function
@@ -405,12 +422,11 @@ providers:
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
         pricing_notes: OpenRouter Responses text+function-tool smoke passed on 2026-06-17.
-          A receipt image+tool smoke called the tool but returned Walgreens once,
-          so active Responses tool targets override input_modalities to text only;
-          use for text tools unless image-tool quality is revalidated. Production
-          capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets
-          can return far above max_tokens=1; capped requests skip this target until
-          max-token behavior is revalidated.
+          A receipt image+tool smoke called the tool but returned Walgreens once, so active
+          Responses tool targets override input_modalities to text only; use for text tools
+          unless image-tool quality is revalidated. Production capped-request smokes on 2026-06-18
+          showed OpenRouter-hosted VLM targets can return far above max_tokens=1; capped requests
+          skip this target until max-token behavior is revalidated.
         tool_support:
           openai_responses:
           - function
@@ -427,9 +443,8 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17;
+          Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text
         tool_support:
           openai_responses:
           - function
@@ -445,11 +460,11 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
-          VLM targets can return far above max_tokens=1; capped requests skip this
-          target until max-token behavior is revalidated.
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17;
+          Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text Production
+          capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets can return
+          far above max_tokens=1; capped requests skip this target until max-token behavior
+          is revalidated.
         tool_support:
           openai_responses:
           - function
@@ -466,11 +481,11 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image
-          on 2026-06-17; Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include
-          reasoning text Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
-          VLM targets can return far above max_tokens=1; capped requests skip this
-          target until max-token behavior is revalidated.
+        pricing_notes: OpenRouter Responses image+function-tool smoke accepted image on 2026-06-17;
+          Claude/Grok returned clean Rite Aid, Qwen/MiniMax may include reasoning text Production
+          capped-request smokes on 2026-06-18 showed OpenRouter-hosted VLM targets can return
+          far above max_tokens=1; capped requests skip this target until max-token behavior
+          is revalidated.
         tool_support:
           openai_responses:
           - function
@@ -519,9 +534,9 @@ providers:
         honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17. Keep capped requests away from this model until max-token
-          behavior is revalidated for this skin.
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on
+          2026-06-17. Keep capped requests away from this model until max-token behavior is
+          revalidated for this skin.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -538,13 +553,12 @@ providers:
         - text
         pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool
-          smokes passed on 2026-06-17 with auto tool choice. Forced object tool_choice
-          fails upstream while thinking mode is enabled, but the router's Anthropic
-          passthrough removes forced tool_choice when default_thinking is injected.
-          Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
-          VLM targets can return far above max_tokens=1; capped requests skip this
-          target until max-token behavior is revalidated.
+        pricing_notes: OpenRouter Anthropic Messages text+tool and receipt image+tool smokes
+          passed on 2026-06-17 with auto tool choice. Forced object tool_choice fails upstream
+          while thinking mode is enabled, but the router's Anthropic passthrough removes forced
+          tool_choice when default_thinking is injected. Production capped-request smokes
+          on 2026-06-18 showed OpenRouter-hosted VLM targets can return far above max_tokens=1;
+          capped requests skip this target until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -561,8 +575,8 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on
+          2026-06-17
         tool_support:
           anthropic_messages:
           - client_tools
@@ -578,10 +592,10 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17 Production capped-request smokes on 2026-06-18 showed
-          OpenRouter-hosted VLM targets can return far above max_tokens=1; capped
-          requests skip this target until max-token behavior is revalidated.
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on
+          2026-06-17 Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this target
+          until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -598,10 +612,10 @@ providers:
         - text
         pricing_source: https://openrouter.ai/api/v1/models
         pricing_updated_at: '2026-06-17'
-        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite
-          Aid on 2026-06-17 Production capped-request smokes on 2026-06-18 showed
-          OpenRouter-hosted VLM targets can return far above max_tokens=1; capped
-          requests skip this target until max-token behavior is revalidated.
+        pricing_notes: OpenRouter Anthropic Messages image+tool smoke returned Rite Aid on
+          2026-06-17 Production capped-request smokes on 2026-06-18 showed OpenRouter-hosted
+          VLM targets can return far above max_tokens=1; capped requests skip this target
+          until max-token behavior is revalidated.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -609,19 +623,41 @@ providers:
     headers:
       HTTP-Referer: ${ROUTER_HTTP_REFERER}
       X-Title: smart-llmrouter
+  baseten_anthropic:
+    base_url: https://inference.baseten.co
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-anthropic-default
+    models:
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.1
+        output_price_per_million_usd: 0.5
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: '2026-06-22'
+        pricing_notes: Baseten Model API pricing lists GPT OSS 120B at $0.10/M input tokens
+          and $0.50/M output tokens with no separate cache-input price. Direct Baseten smokes
+          passed on 2026-06-22 for OpenAI Chat non-streaming, streaming with usage chunks,
+          auto tool calls, forced OpenAI Chat tool_choice, Anthropic Messages text, and Anthropic
+          Messages client tool_use. Baseten documents Anthropic Messages support as beta and
+          recommends OpenAI Chat for production workloads.
+        tool_support:
+          anthropic_messages:
+          - client_tools
 models:
   vision:
     strategy: weighted
     targets:
     - provider: xai
       model_ref: grok-4-3
-      weight: 45
-    - provider: openrouter
-      model_ref: qwen3-7-plus-nitro
-      weight: 20
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 12
+      weight: 77
     - provider: openrouter
       model_ref: openrouter-claude-sonnet-4-6
       weight: 15
@@ -638,17 +674,8 @@ models:
       model_ref: openrouter-minimax-m3
       weight: 2
     - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 12
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 8
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
-    - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 10
+      weight: 30
     - provider: openrouter_anthropic
       model_ref: openrouter-xai-grok-4-3
       weight: 5
@@ -658,9 +685,9 @@ models:
   default:
     strategy: weighted
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 46
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 51
     - provider: minimax
       model_ref: m3
       weight: 27
@@ -673,9 +700,6 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 6
@@ -686,10 +710,6 @@ models:
       model_ref: m3
       weight: 5
       dialect: openai-responses
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -703,34 +723,24 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
     - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -740,17 +750,6 @@ models:
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -765,10 +764,10 @@ models:
       max_response_bytes: 65536
       on_error: fail_closed
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      tier: cheap
+    - provider: baseten
+      model_ref: gpt-oss-120b
       weight: 70
+      tier: cheap
     - provider: minimax
       model_ref: m3
       tier: heavy
@@ -776,9 +775,9 @@ models:
   fast:
     strategy: weighted
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 51
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 56
     - provider: minimax
       model_ref: m3
       weight: 26
@@ -791,9 +790,6 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 5
@@ -804,10 +800,6 @@ models:
       model_ref: m3
       weight: 5
       dialect: openai-responses
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -821,34 +813,24 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
     - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -858,17 +840,6 @@ models:
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -876,9 +847,9 @@ models:
   small:
     strategy: weighted
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 53
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 58
     - provider: minimax
       model_ref: m3
       weight: 28
@@ -891,9 +862,6 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 4
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 4
@@ -904,10 +872,6 @@ models:
       model_ref: m3
       weight: 5
       dialect: openai-responses
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -921,34 +885,24 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
     - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -958,17 +912,6 @@ models:
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -977,9 +920,9 @@ models:
     strategy: weighted
     attempt_timeout_ms: 180000
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 46
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 51
     - provider: minimax
       model_ref: m3
       weight: 25
@@ -992,9 +935,6 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 7
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 8
@@ -1005,10 +945,6 @@ models:
       model_ref: m3
       weight: 5
       dialect: openai-responses
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1022,34 +958,24 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
     - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -1059,17 +985,6 @@ models:
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -1077,9 +992,9 @@ models:
   high:
     strategy: weighted
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 40
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 45
     - provider: minimax
       model_ref: m3
       weight: 26
@@ -1092,9 +1007,6 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 9
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 10
@@ -1105,10 +1017,6 @@ models:
       model_ref: m3
       weight: 5
       dialect: openai-responses
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1122,34 +1030,24 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
     - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -1159,17 +1057,6 @@ models:
       model_ref: openrouter-xai-grok-4-3
       weight: 3
       tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
     - provider: openrouter_anthropic
       model_ref: openrouter-minimax-m3
       weight: 1
@@ -1178,12 +1065,9 @@ models:
     strategy: weighted
     attempt_timeout_ms: 180000
     targets:
-    - provider: openrouter
-      model_ref: deepseek-v4-flash-nitro
-      weight: 18
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
-      weight: 5
+    - provider: baseten
+      model_ref: gpt-oss-120b
+      weight: 23
     - provider: minimax
       model_ref: m3
       weight: 38
@@ -1204,10 +1088,6 @@ models:
       weight: 5
       dialect: openai-responses
       tool_only: true
-    - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-      weight: 5
-      tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
       weight: 4
@@ -1220,16 +1100,12 @@ models:
       weight: 3
       tool_only: true
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-      weight: 4
-      tool_only: true
-    - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
+      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
@@ -1238,6 +1114,10 @@ models:
     - provider: openrouter_responses
       model_ref: openrouter-minimax-m3
       weight: 1
+      tool_only: true
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
+      weight: 8
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
@@ -1251,27 +1131,6 @@ models:
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      input_modalities:
-      - text
-    - provider: openrouter_anthropic
-      model_ref: qwen3-7-plus-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
-      weight: 2
-      tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
   agent-tools-smoke:
     strategy: static
     targets:
@@ -1287,34 +1146,14 @@ models:
     strategy: static
     targets:
     - provider: openrouter_responses
-      model_ref: deepseek-v4-flash-nitro
-  agent-tools-smoke-openrouter-qwen36:
-    strategy: static
-    targets:
-    - provider: openrouter_responses
-      model_ref: qwen3-6-flash-nitro
+      model_ref: openrouter-claude-sonnet-4-6
       tool_only: true
-      input_modalities:
-      - text
   claude-tools-smoke-openrouter:
     strategy: static
     targets:
     - provider: openrouter_anthropic
-      model_ref: deepseek-v4-flash-nitro
-  claude-tools-smoke-openrouter-qwen36:
-    strategy: static
-    targets:
-    - provider: openrouter_anthropic
-      model_ref: qwen3-6-flash-nitro
+      model_ref: openrouter-claude-sonnet-4-6
       tool_only: true
-      default_thinking:
-        type: enabled
-        budget_tokens: 512
-  vision-smoke-openrouter-qwen36:
-    strategy: static
-    targets:
-    - provider: openrouter
-      model_ref: qwen3-6-flash-nitro
   claude-tools-smoke-openrouter-gemma:
     strategy: static
     targets:
@@ -1335,6 +1174,16 @@ models:
     targets:
     - provider: baseten
       model_ref: glm-5-2
+  baseten-gpt-oss-120b-smoke:
+    strategy: static
+    targets:
+    - provider: baseten
+      model_ref: gpt-oss-120b
+  baseten-gpt-oss-120b-claude-smoke:
+    strategy: static
+    targets:
+    - provider: baseten_anthropic
+      model_ref: gpt-oss-120b
 callers:
 - id: standard-dev
   user: standard
@@ -1383,14 +1232,13 @@ callers:
   - agent-tools-smoke
   - claude-tools-smoke
   - agent-tools-smoke-openrouter
-  - agent-tools-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter
-  - claude-tools-smoke-openrouter-qwen36
-  - vision-smoke-openrouter-qwen36
   - claude-tools-smoke-openrouter-gemma
   - baseten-nemotron-smoke
   - warp-agent-smoke
   - baseten-glm52-smoke
+  - baseten-gpt-oss-120b-smoke
+  - baseten-gpt-oss-120b-claude-smoke
   rate:
     rpm: 120
     tpm: 200000

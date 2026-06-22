@@ -56,28 +56,6 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-primary
     models:
-      qwen3-7-plus-nitro:
-        model: qwen/qwen3.7-plus:nitro
-        tier: vision
-        input_price_per_million_usd: 0.32
-        output_price_per_million_usd: 1.28
-        input_modalities: [text, image]
-        output_modalities: [text]
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
-
-      qwen3-6-flash-nitro:
-        model: qwen/qwen3.6-flash:nitro
-        tier: vision
-        input_price_per_million_usd: 0.1875
-        output_price_per_million_usd: 1.125
-        input_modalities: [text, image, video]
-        output_modalities: [text]
-        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: image-capable; use conservative weight for general VLM routing and validate separately before OCR-specific routing
-
       openrouter-claude-sonnet-4-6:
         model: anthropic/claude-sonnet-4.6
         tier: vision
@@ -96,13 +74,10 @@ models:
     targets:
       - provider: xai
         model_ref: grok-4-3
-        weight: 45
-      - provider: openrouter
-        model_ref: qwen3-7-plus-nitro
-        weight: 20
+        weight: 65
       - provider: openrouter
         model_ref: openrouter-claude-sonnet-4-6
-        weight: 15
+        weight: 27
       - provider: openai
         model_ref: gpt-5-4-nano
         weight: 8

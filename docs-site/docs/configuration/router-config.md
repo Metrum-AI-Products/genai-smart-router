@@ -63,36 +63,15 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     key_id: openrouter-primary
     models:
-      deepseek-v4-flash-nitro:
-        model: deepseek/deepseek-v4-flash:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.09
-        output_price_per_million_usd: 0.18
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
-      qwen3-7-plus-nitro:
-        model: qwen/qwen3.7-plus:nitro
-        tier: vision
-        input_price_per_million_usd: 0.32
-        output_price_per_million_usd: 1.28
+      claude-sonnet-4-6:
+        model: anthropic/claude-sonnet-4.6
+        tier: coding
         input_modalities: [text, image]
         output_modalities: [text]
-        honors_max_tokens: false
         pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17; capped requests skip this target until max-token behavior is revalidated
-      qwen3-6-flash-nitro:
-        model: qwen/qwen3.6-flash:nitro
-        tier: vision
-        input_price_per_million_usd: 0.1875
-        output_price_per_million_usd: 1.125
-        input_modalities: [text, image, video]
-        output_modalities: [text]
-        pricing_source: https://openrouter.ai/qwen/qwen3.6-flash/providers
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: image-capable; one receipt smoke returned a wrong merchant, so use conservative weight for general VLM routing and separate OCR-specific gates
+        pricing_updated_at: "2026-06-22"
+        tool_support:
+          openai_chat: [tools, tool_choice]
 
   baseten:
     base_url: https://inference.baseten.co/v1
@@ -125,6 +104,39 @@ providers:
         pricing_notes: Baseten also publishes a discounted cache-input rate; GLM 5.2 is reasoning-heavy, so use realistic output budgets for acceptance and coding-agent traffic
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.10
+        output_price_per_million_usd: 0.50
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: "2026-06-22"
+        pricing_notes: Baseten Model API; direct chat, streaming, auto tool, and forced tool-choice smokes passed on 2026-06-22
+        tool_support:
+          openai_chat: [tools, tool_choice]
+
+  baseten_anthropic:
+    base_url: https://inference.baseten.co
+    dialect: anthropic
+    auth_scheme: bearer
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-anthropic-primary
+    models:
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.10
+        output_price_per_million_usd: 0.50
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.baseten.co/products/model-apis/
+        pricing_updated_at: "2026-06-22"
+        pricing_notes: Baseten Anthropic Messages API support is beta; direct text and client-tool smokes passed for this model on 2026-06-22
+        tool_support:
+          anthropic_messages: [client_tools]
 
   kimi:
     base_url: https://api.moonshot.ai/v1
@@ -163,7 +175,7 @@ providers:
 
 Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
 
-External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream Baseten model ID. The router injects `BASETEN_API_KEY` only when that target is selected.
+External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream Baseten model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects `BASETEN_API_KEY` only when a Baseten target is selected.
 
 Catalog entries should carry cost and capability metadata:
 
@@ -185,32 +197,32 @@ models:
   vision:
     strategy: weighted
     targets:
-      - { provider: xai, model_ref: grok-4-3, weight: 45 }
-      - { provider: openrouter, model_ref: qwen3-7-plus-nitro, weight: 20 }
+      - { provider: xai, model_ref: grok-4-3, weight: 77 }
+      - { provider: openrouter, model_ref: claude-sonnet-4-6, weight: 15 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 8 }
 
   default:
     strategy: weighted
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 46 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 51 }
       - { provider: minimax, model_ref: m3, weight: 27 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
       - { provider: baseten, model_ref: glm-5-2, weight: 5 }
       - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 7 }
-      - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
       - { provider: kimi, model_ref: kimi-k2-7-code, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
+      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
 
   big-coder:
     strategy: weighted
     targets:
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 23 }
       - { provider: minimax, model_ref: m3, weight: 38 }
       - { provider: kimi, model_ref: kimi-k2-7-code, weight: 28 }
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 18 }
-      - { provider: openrouter, model_ref: qwen3-6-flash-nitro, weight: 5 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
       - { provider: baseten, model_ref: glm-5-2, weight: 7 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
+      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
 ```
 
 ## Scripted Routing Options
@@ -230,7 +242,7 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -255,7 +267,7 @@ models:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 

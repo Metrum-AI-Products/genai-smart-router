@@ -315,8 +315,10 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	assertDefaultGroupTargets(t, cfg.Models["default"])
 	assertAnthropicCompatibleProvider(t, cfg.Provider["minimax_anthropic"], "m3", "MiniMax-M3")
 	assertAnthropicCompatibleProvider(t, cfg.Provider["kimi_anthropic"], "kimi-k2.7-code", "kimi-k2.7-code")
-	assertResponsesCompatibleProvider(t, cfg.Provider["openrouter_responses"], "deepseek-v4-flash-nitro", "deepseek/deepseek-v4-flash:nitro")
-	assertAnthropicCompatibleProvider(t, cfg.Provider["openrouter_anthropic"], "deepseek-v4-flash-nitro", "deepseek/deepseek-v4-flash:nitro")
+	assertAnthropicCompatibleProvider(t, cfg.Provider["baseten_anthropic"], "gpt-oss-120b", "openai/gpt-oss-120b")
+	if cfg.Provider["baseten"].Models["gpt-oss-120b"].Model != "openai/gpt-oss-120b" {
+		t.Fatalf("example config missing Baseten GPT OSS 120B catalog entry")
+	}
 	assertAnthropicCompatibleProvider(t, cfg.Provider["openrouter_anthropic"], "gemma-4-26b-a4b-it-nitro", "google/gemma-4-26b-a4b-it:nitro")
 	for _, name := range []string{"small", "medium", "high"} {
 		group, ok := cfg.Models[name]
@@ -341,38 +343,20 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			continue
 		}
 		if name == "agent-tools-smoke-openrouter" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "deepseek/deepseek-v4-flash:nitro" {
-				t.Fatalf("example config agent-tools-smoke-openrouter=%#v, want static OpenRouter DeepSeek V4 Flash responses", group)
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "anthropic/claude-sonnet-4.6" {
+				t.Fatalf("example config agent-tools-smoke-openrouter=%#v, want static OpenRouter Claude Sonnet responses", group)
 			}
 			continue
 		}
 		if name == "claude-tools-smoke-openrouter" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "deepseek/deepseek-v4-flash:nitro" {
-				t.Fatalf("example config claude-tools-smoke-openrouter=%#v, want static OpenRouter DeepSeek V4 Flash Anthropic-compatible target", group)
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "anthropic/claude-sonnet-4.6" {
+				t.Fatalf("example config claude-tools-smoke-openrouter=%#v, want static OpenRouter Claude Sonnet Anthropic-compatible target", group)
 			}
 			continue
 		}
 		if name == "claude-tools-smoke-openrouter-gemma" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "google/gemma-4-26b-a4b-it:nitro" {
 				t.Fatalf("example config claude-tools-smoke-openrouter-gemma=%#v, want static OpenRouter Gemma Anthropic-compatible target", group)
-			}
-			continue
-		}
-		if name == "agent-tools-smoke-openrouter-qwen36" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
-				t.Fatalf("example config agent-tools-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash Responses-compatible target", group)
-			}
-			continue
-		}
-		if name == "claude-tools-smoke-openrouter-qwen36" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_anthropic" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
-				t.Fatalf("example config claude-tools-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash Anthropic-compatible target", group)
-			}
-			continue
-		}
-		if name == "vision-smoke-openrouter-qwen36" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter" || group.Targets[0].Model != "qwen/qwen3.6-flash:nitro" {
-				t.Fatalf("example config vision-smoke-openrouter-qwen36=%#v, want static OpenRouter Qwen3.6 Flash vision target", group)
 			}
 			continue
 		}
@@ -385,6 +369,21 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		if name == "baseten-glm52-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "zai-org/GLM-5.2" {
 				t.Fatalf("example config baseten-glm52-smoke=%#v, want static Baseten GLM 5.2 target", group)
+			}
+			continue
+		}
+		if name == "baseten-gpt-oss-120b-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "openai/gpt-oss-120b" {
+				t.Fatalf("example config baseten-gpt-oss-120b-smoke=%#v, want static Baseten GPT OSS 120B target", group)
+			}
+			continue
+		}
+		if name == "baseten-gpt-oss-120b-claude-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten_anthropic" || group.Targets[0].Model != "openai/gpt-oss-120b" {
+				t.Fatalf("example config baseten-gpt-oss-120b-claude-smoke=%#v, want static Baseten Anthropic GPT OSS 120B target", group)
+			}
+			if group.Targets[0].ToolOnly {
+				t.Fatalf("example config baseten-gpt-oss-120b-claude-smoke=%#v, want text-and-tool smoke target, not tool_only", group)
 			}
 			continue
 		}
@@ -426,7 +425,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "agent-tools-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-qwen36", "vision-smoke-openrouter-qwen36", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke"},
 		"metrics-admin-dev": {},
 	}
 	for _, caller := range cfg.Callers {
@@ -454,10 +453,10 @@ func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
 		"baseten:nvidia/Nemotron-120B-A12B":           "nvidia/Nemotron-120B-A12B",
+		"baseten:openai/gpt-oss-120b":                 "openai/gpt-oss-120b",
 		"baseten:zai-org/GLM-5.2":                     "zai-org/GLM-5.2",
 		"minimax:MiniMax-M3":                          "MiniMax-M3",
 		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
-		"openrouter:deepseek/deepseek-v4-flash:nitro": "deepseek/deepseek-v4-flash:nitro",
 		"openrouter:google/gemma-4-26b-a4b-it:nitro":  "google/gemma-4-26b-a4b-it:nitro",
 		"openai:gpt-5.4-nano":                         "gpt-5.4-nano",
 	}
@@ -496,16 +495,16 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	t.Helper()
 	totalWeight := 0
 	m3Weight := 0
-	deepSeekWeight := 0
 	kimiWeight := 0
 	gemmaWeight := 0
-	qwenFlashWeight := 0
 	openAIWeight := 0
 	basetenNemotronWeight := 0
 	basetenGLMWeight := 0
+	basetenGPTOSSWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
+	claudeBasetenToolTarget := false
 	claudeMiniMaxToolTarget := false
 	claudeKimiToolTarget := false
 	claudeOpenRouterToolTarget := false
@@ -518,16 +517,19 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			if target.Provider == "minimax" && target.Model == "MiniMax-M3" && target.Dialect == "openai-responses" {
 				codexToolTarget = true
 			}
-			if target.Provider == "openrouter_responses" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+			if target.Provider == "openrouter_responses" && target.Model == "anthropic/claude-sonnet-4.6" {
 				codexOpenRouterToolTarget = true
 			}
 			if target.Provider == "minimax_anthropic" && target.Model == "MiniMax-M3" {
 				claudeMiniMaxToolTarget = true
 			}
+			if target.Provider == "baseten_anthropic" && target.Model == "openai/gpt-oss-120b" {
+				claudeBasetenToolTarget = true
+			}
 			if target.Provider == "kimi_anthropic" && target.Model == "kimi-k2.7-code" && target.DefaultThinking["type"] == "enabled" {
 				claudeKimiToolTarget = true
 			}
-			if target.Provider == "openrouter_anthropic" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
+			if target.Provider == "openrouter_anthropic" && target.Model == "anthropic/claude-sonnet-4.6" {
 				claudeOpenRouterToolTarget = true
 			}
 			if target.Provider == "openrouter_anthropic" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
@@ -540,17 +542,11 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "minimax" && target.Model == "MiniMax-M3" {
 			m3Weight += target.Weight
 		}
-		if target.Provider == "openrouter" && target.Model == "deepseek/deepseek-v4-flash:nitro" {
-			deepSeekWeight += target.Weight
-		}
 		if target.Provider == "kimi" && target.Model == "kimi-k2.7-code" {
 			kimiWeight += target.Weight
 		}
 		if target.Provider == "openrouter" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
 			gemmaWeight += target.Weight
-		}
-		if target.Provider == "openrouter" && target.Model == "qwen/qwen3.6-flash:nitro" {
-			qwenFlashWeight += target.Weight
 		}
 		if target.Provider == "openai" && target.Model == "gpt-5.4-nano" {
 			openAIWeight += target.Weight
@@ -561,26 +557,29 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "baseten" && target.Model == "zai-org/GLM-5.2" {
 			basetenGLMWeight += target.Weight
 		}
+		if target.Provider == "baseten" && target.Model == "openai/gpt-oss-120b" {
+			basetenGPTOSSWeight += target.Weight
+		}
 	}
-	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
-		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
+	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
+		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		deepSeek, m3, gemma, qwenFlash, kimi, openAI, basetenNemotron, basetenGLM, targets int
+		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, targets int
 	}{
-		"default":   {46, 27, 7, 5, 6, 1, 3, 5, 8},
-		"fast":      {51, 26, 4, 5, 5, 1, 3, 5, 8},
-		"small":     {53, 28, 4, 5, 4, 1, 3, 2, 8},
-		"medium":    {46, 25, 7, 5, 8, 1, 3, 5, 8},
-		"high":      {40, 26, 9, 5, 10, 1, 3, 6, 8},
-		"big-coder": {18, 38, 0, 5, 28, 1, 3, 7, 7},
+		"default":   {51, 27, 7, 6, 1, 3, 5, 7},
+		"fast":      {56, 26, 4, 5, 1, 3, 5, 7},
+		"small":     {58, 28, 4, 4, 1, 3, 2, 7},
+		"medium":    {51, 25, 7, 8, 1, 3, 5, 7},
+		"high":      {45, 26, 9, 10, 1, 3, 6, 7},
+		"big-coder": {23, 38, 0, 28, 1, 3, 7, 6},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || deepSeekWeight != expect.deepSeek || m3Weight != expect.m3 || gemmaWeight != expect.gemma || qwenFlashWeight != expect.qwenFlash || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM {
-		t.Fatalf("example config group %s weights deepseek=%d m3=%d gemma=%d qwen_flash=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d total=%d normal_targets=%d, want %#v", name, deepSeekWeight, m3Weight, gemmaWeight, qwenFlashWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM {
+		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, totalWeight, normalTargets, expect)
 	}
 }
 
@@ -595,13 +594,16 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 	if strings.Contains(needle, "moonshotai/kimi") {
 		return true
 	}
-	allowedQwen := target.Model == "qwen/qwen3.6-flash:nitro" || target.Model == "qwen/qwen3.7-plus:nitro"
 	allowedBasetenNemotron := target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B"
 	allowedBasetenGLM := target.Provider == "baseten" && target.Model == "zai-org/GLM-5.2"
+	allowedBasetenGPTOSS := target.Provider == "baseten" && target.Model == "openai/gpt-oss-120b"
 	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
-			return !allowedQwen && !allowedBasetenNemotron && !allowedBasetenGLM
+			return !allowedBasetenNemotron && !allowedBasetenGLM && !allowedBasetenGPTOSS
 		}
+	}
+	if target.Provider == "openrouter" && strings.Contains(strings.ToLower(target.Model), "deepseek/") {
+		return true
 	}
 	if target.ToolOnly && (target.Provider == "openai" || target.Provider == "anthropic") {
 		return true

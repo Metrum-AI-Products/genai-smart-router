@@ -25,7 +25,7 @@ models:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
@@ -69,19 +69,19 @@ The router sends a JSON `POST` body to the policy service:
   },
   "targets": [
     {
-      "provider": "openrouter",
-      "model": "deepseek/deepseek-v4-flash:nitro",
-      "modelRef": "deepseek-v4-flash-nitro",
+      "provider": "baseten",
+      "model": "openai/gpt-oss-120b",
+      "modelRef": "gpt-oss-120b",
       "dialect": "openai-chat",
       "tier": "cheap",
       "weight": 70,
-      "inputPricePerMillionUsd": 0.09,
-      "outputPricePerMillionUsd": 0.18,
+      "inputPricePerMillionUsd": 0.10,
+      "outputPricePerMillionUsd": 0.50,
       "toolSupport": {"openaiChat": ["tools", "tool_choice"]},
       "inputModalities": ["text"],
       "outputModalities": ["text"],
-      "keyId": "openrouter-primary",
-      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "keyId": "baseten-primary",
+      "apiKeyEnv": "BASETEN_API_KEY",
       "keyConfigured": true
     }
   ],
@@ -109,7 +109,7 @@ Return one target decision:
 The router accepts:
 
 - `targetIndex`: zero-based index into the request's `targets` array.
-- `target`: selector such as `{ "provider": "openrouter", "model": "deepseek/deepseek-v4-flash:nitro" }`.
+- `target`: selector such as `{ "provider": "baseten", "model": "openai/gpt-oss-120b" }`.
 - `fallbackIndexes` or `fallbacks`: optional fallback order.
 - `classLabel`: optional label stored in logs and usage records.
 
@@ -138,7 +138,7 @@ models:
       max_response_bytes: 65536
       on_error: fail_closed
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 

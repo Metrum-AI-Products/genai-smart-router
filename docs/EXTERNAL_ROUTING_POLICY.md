@@ -17,7 +17,7 @@ models:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, tier: cheap, weight: 70 }
+      - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 

@@ -216,15 +216,15 @@ providers:
       m3:
         model: MiniMax-M3
         tier: heavy
-  openrouter:
-    base_url: https://openrouter.ai/api/v1
+  baseten:
+    base_url: https://inference.baseten.co/v1
     dialect: openai-chat
-    api_key: ${OPENROUTER_API_KEY}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-primary
+    api_key: ${BASETEN_API_KEY}
+    api_key_env: BASETEN_API_KEY
+    key_id: baseten-primary
     models:
-      deepseek-v4-flash-nitro:
-        model: deepseek/deepseek-v4-flash:nitro
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
         tier: balanced
   kimi:
     base_url: https://api.moonshot.ai/v1
@@ -241,7 +241,7 @@ models:
   default:
     strategy: weighted
     targets:
-      - { provider: openrouter, model_ref: deepseek-v4-flash-nitro, weight: 60 }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 60 }
       - { provider: minimax, model_ref: m3, weight: 30 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 
