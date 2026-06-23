@@ -1373,3 +1373,38 @@ production router-usage-report --since 24h generated a report containing Downstr
 production authenticated chat smoke with realistic token budget returned HTTP 200 through the weighted high group
 production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
 ```
+
+### 2026-06-23 Graphical report examples docs deployment
+
+Package `smart-llmrouter:d9aa8e3-linux-amd64` was deployed to production to add anonymized graphical usage, savings, and performance report examples to the hosted Docusaurus docs.
+
+Source commit: `d9aa8e3` (`Add graphical usage report examples`)
+
+Documentation changes:
+
+- Added `docs/operations/report-examples` with anonymized production-derived daily usage, savings, caller cohort, and upstream endpoint performance examples.
+- Added Chart.js-based report example visualizations in the Docusaurus layer instead of hardcoding charts in the router report generator.
+- Linked the examples from Usage Reporting and Cost Governance.
+- Replaced a concrete project value in the public usage-reporting filter example with neutral placeholders.
+- Updated AGENTS.md to keep graphical report examples in Docusaurus unless chart output is explicitly required from the binary.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.report-examples-20260623T140358Z
+```
+
+Validation:
+
+```text
+go test ./...: passed, 102 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64 from clean worktree: passed
+production /readyz after deploy: 200, version d9aa8e3, build_date 2026-06-23T14:01:51Z
+production /version after deploy: d9aa8e3, build_date 2026-06-23T14:01:51Z, go1.25.11 linux/amd64
+hosted docs /docs/operations/report-examples returned 200 with Chart.js canvas elements and expected chart headings
+hosted docs /docs/operations/usage-reporting returned 200 and links to Report Examples
+production router-usage-report --since 24h still generated Downstream User Performance, Upstream Endpoint Performance, and Per-Request Throughput sections
+browser pixel-level validation was not run because no local browser automation runtime was installed in the workspace
+production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
+```
