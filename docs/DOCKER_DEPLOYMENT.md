@@ -7,7 +7,7 @@ Docker packages are intended for AWS EC2 or similar hosts where the source tree 
 From the development machine:
 
 ```bash
-make package-docker-all
+make package-docker
 ```
 
 This creates:
@@ -16,6 +16,8 @@ This creates:
 dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz
 dist/smart-llmrouter-<version>-docker-linux-arm64.tar.gz
 ```
+
+Docker image builds use `docker buildx build --load` for each packaged platform.
 
 Each package contains:
 
@@ -60,6 +62,8 @@ sudo mkdir -p /opt/smart-llmrouter
 sudo tar -C /opt/smart-llmrouter --strip-components=1 -xzf smart-llmrouter-<version>-docker-linux-amd64.tar.gz
 cd /opt/smart-llmrouter
 ```
+
+Use the `docker-linux-amd64` package on x86_64 hosts and the `docker-linux-arm64` package on ARM64 hosts.
 
 Load the packaged image:
 

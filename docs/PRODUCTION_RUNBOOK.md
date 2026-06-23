@@ -33,16 +33,16 @@ Do not print router tokens, provider keys, token hashes, or full production conf
 ```bash
 rtk go test ./cmd/... ./internal/...
 rtk make docs-build
-rtk make package-docker GOOS=linux GOARCH=amd64
+rtk make package-docker
 ```
 
 2. Commit source/docs changes before packaging so the binary version is not dirty.
-3. Copy the package to the host.
+3. Copy the package matching the production host CPU architecture to the host. The current Metrum-managed production host uses the `linux-amd64` package.
 4. Back up `/opt/smart-llmrouter` as `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`.
 5. Unpack the new package into a fresh directory.
 6. Copy forward live `compose/config`, `compose/state`, `compose/logs`, `.env`, and `ROUTER_TOKEN*.txt`.
 7. If applying a new production config, back up the copied config before replacing it.
-8. Set `SMART_LLMROUTER_VERSION=<version>-linux-amd64` in `compose/.env`.
+8. Set `SMART_LLMROUTER_VERSION=<version>-linux-amd64` in `compose/.env` for the current x86_64 production host, or the matching package architecture for other deployments.
 9. Ensure runtime ownership:
 
 ```bash

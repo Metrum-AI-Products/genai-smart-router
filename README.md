@@ -48,9 +48,10 @@ The deployment artifact is a binary package. Operators should not need this sour
 ```bash
 make build        # build Docusaurus docs, then local router/tool binaries with embedded docs
 make build-go-only # local router/tool binaries without rebuilding docs
-make package      # dist/smart-llmrouter-<version>-linux-<arch>.tar.gz
-make package-all  # linux amd64 and linux arm64 tarballs
-make package-docker-all # docker image tarballs plus compose/caddy/config/docs
+make package      # linux amd64 and linux arm64 tarballs
+make package-all  # same as package
+make package-docker # linux amd64 and linux arm64 Docker packages
+make package-docker-all # same as package-docker
 ```
 
 Each tarball contains:
@@ -92,7 +93,7 @@ bin/router --config config/config.yaml
 
 See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
 
-For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker-all` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs, `docker-compose.yml`, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
+For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs for linux/amd64 and linux/arm64, `docker-compose.yml`, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
 
 ## Run From Source
 
@@ -667,11 +668,11 @@ make docs-dev   # run the Docusaurus development server
 make build      # build docs, then ./router, ./router-token-gen, and ./router-usage-report
 make build-go-only # build Go binaries without refreshing embedded docs
 make build-all  # build docs, then linux amd64 and linux arm64 binaries under dist/build
-make package    # build one tarball with binaries, config, docs, tools, and Caddyfile
-make package-all # build linux amd64 and linux arm64 tarballs
-make docker-image # build smart-llmrouter docker image for GOOS/GOARCH
-make package-docker # build one docker-image tarball package with compose/caddy/config/docs
-make package-docker-all # build linux amd64 and linux arm64 docker packages
+make package    # build linux amd64 and linux arm64 tarballs
+make package-all # same as package
+make docker-image # build one smart-llmrouter image for GOOS/GOARCH with docker buildx
+make package-docker # build linux amd64 and linux arm64 Docker packages
+make package-docker-all # same as package-docker
 make e2e-mock   # local mock Claude/Codex C harness
 make e2e-live-c # live OpenRouter :nitro C-generation e2e through Claude Code and Codex
 make e2e-live-full # live provider HTTP cache checks plus live CLI C e2e

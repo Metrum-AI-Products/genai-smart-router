@@ -4,7 +4,7 @@ This project is packaged as a binary distribution. A deployment host does not ne
 
 ## Package Contents
 
-`make package-all` creates Linux x86_64 and arm64 tarballs under `dist/`:
+`make package` creates Linux x86_64 and arm64 tarballs under `dist/`:
 
 ```text
 smart-llmrouter-<version>-linux-amd64.tar.gz
@@ -43,7 +43,7 @@ For standalone policy services, prefer `strategy: external` with `external_polic
 Docker Compose packages are built separately:
 
 ```bash
-make package-docker-all
+make package-docker
 ```
 
 Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host.
@@ -91,6 +91,8 @@ sudo cp /opt/smart-llmrouter/config/env.example.json /opt/smart-llmrouter/config
 sudo chmod 0755 /opt/smart-llmrouter/bin/router /opt/smart-llmrouter/bin/router-token-gen
 sudo chmod 0600 /opt/smart-llmrouter/config/env.json
 ```
+
+Use the `linux-amd64` tarball for x86_64 hosts and the `linux-arm64` tarball for ARM64 hosts.
 
 Edit `/opt/smart-llmrouter/config/config.yaml`:
 
