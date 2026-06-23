@@ -368,10 +368,10 @@ sudo docker compose down
 sudo docker compose up -d
 ```
 
-Deploy a new amd64 package:
+Build both Docker package architectures, then deploy the package that matches the production host:
 
 ```bash
-make package-docker GOOS=linux GOARCH=amd64
+make package-docker
 scp -i ~/.ssh/chetan-jun-2026.pem dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz ubuntu@100.30.225.66:/tmp/
 ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66
 sudo mv /opt/smart-llmrouter /opt/smart-llmrouter.backup.$(date +%Y%m%d%H%M%S)

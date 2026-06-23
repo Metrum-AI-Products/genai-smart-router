@@ -68,6 +68,7 @@ These instructions apply to the whole repository.
 9. Run a stale-doc search for changed concepts before final response. Examples:
    - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
    - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs deployment.md internal scripts`
+10. When feature-branch work is complete and thoroughly tested, always prepare to create a GitHub pull request into the upstream repository. Before creating the PR, confirm with the user and ask whether the PR should target the upstream default branch or a different branch.
 
 ## Live Provider Testing
 
@@ -171,9 +172,9 @@ For code changes that affect runtime behavior or embedded hosted docs:
    - For public docs examples, run the exact curl/Python commands against the intended endpoint using ignored local credentials.
 2. Run `rtk make docs-build` when `docs-site/` changes.
 3. Commit source/docs changes before packaging so `VERSION=$(git describe --tags --always --dirty)` is a stable commit tag and not `-dirty`.
-4. Build the amd64 Docker package:
-   - `rtk make package-docker GOOS=linux GOARCH=amd64`
-5. Copy `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz` to the host with `scp`.
+4. Build both Docker package architectures:
+   - `rtk make package-docker`
+5. Copy the package matching the production host CPU architecture, currently `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz`, to the host with `scp`.
 6. On the host:
    - back up `/opt/smart-llmrouter` to `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`
    - unpack the package into a fresh `/opt/smart-llmrouter`

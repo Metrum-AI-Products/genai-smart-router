@@ -150,7 +150,7 @@ CADDY_HTTP_PORT=${HTTP_PORT}
 CADDY_HTTPS_PORT=18443
 ENV
 
-docker build -t "smart-llmrouter:${IMAGE_TAG}" "$ROOT"
+docker buildx build --load -t "smart-llmrouter:${IMAGE_TAG}" "$ROOT"
 (cd "$WORKDIR" && docker compose up -d)
 
 for _ in $(seq 1 120); do
