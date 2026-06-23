@@ -1,0 +1,103 @@
+---
+title: Report Examples
+---
+
+import ReportExamplesCharts from "@site/src/components/ReportExamplesCharts";
+
+# Report Examples
+
+This page shows anonymized production-derived report excerpts. Names, public token IDs, request IDs, IP addresses, provider names, upstream endpoint names, model names, and deployment-specific group names have been replaced with generic labels. The examples preserve the shape of the reporting output so platform teams can see how GenAI Smart Router supports cost governance and performance triage.
+
+The savings examples compare stored router cost against a documented reference baseline:
+
+| Baseline | Input price | Output price |
+|---|---:|---:|
+| Reference baseline A | $5.00 / 1M input tokens | $30.00 / 1M output tokens |
+
+Savings are calculated as:
+
+```text
+reference_cost = input_tokens / 1,000,000 * reference_input_price
+               + output_tokens / 1,000,000 * reference_output_price
+
+savings = reference_cost - stored_router_cost
+```
+
+Router cost is the stored request-time cost from usage rows. It is not recalculated from current provider metadata.
+
+## Graphical Summary
+
+<ReportExamplesCharts />
+
+## Daily Usage And Savings
+
+This excerpt answers: how much traffic ran each day, what did it cost through the router, what would it have cost under the reference baseline, and what user-facing latency did the deployment see?
+
+| Day UTC | Calls | Errors | Input tokens | Output tokens | Router cost | Reference cost | Savings | Avg latency ms | Max latency ms | Avg upstream output tok/s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2026-06-17 | 2,277 | 236 | 78,767,512 | 1,058,468 | $14.62 | $425.59 | $410.97 | 13,390 | 297,537 | 38.57 |
+| 2026-06-18 | 2,773 | 372 | 61,897,631 | 1,520,263 | $45.20 | $355.10 | $309.90 | 11,782 | 303,098 | 50.52 |
+| 2026-06-19 | 2,782 | 134 | 137,590,878 | 1,991,097 | $56.54 | $747.69 | $691.15 | 11,966 | 267,865 | 56.89 |
+| 2026-06-20 | 1,725 | 71 | 86,558,339 | 708,877 | $31.75 | $454.06 | $422.31 | 10,665 | 121,148 | 52.59 |
+| 2026-06-21 | 1,333 | 28 | 200,204,234 | 420,117 | $70.47 | $1,013.62 | $943.15 | 7,765 | 120,462 | 43.60 |
+| 2026-06-22 | 3,142 | 349 | 116,476,313 | 1,037,342 | $135.54 | $613.50 | $477.97 | 8,224 | 259,202 | 47.22 |
+| **Total** | **14,032** | **1,190** | **681,494,907** | **6,736,164** | **$354.12** | **$3,609.56** | **$3,255.44** | **10,632** | **303,098** | **48.23** |
+
+The daily view is useful for spend reviews, quota planning, rollout comparisons, and incident timelines. A rising error count or max latency spike can be investigated with the upstream endpoint and per-request sections in the generated report.
+
+## Caller Usage And Savings
+
+This excerpt answers: which caller cohorts are driving spend, savings, token volume, and latency?
+
+| Caller cohort | Project | Client | Calls | Errors | Input tokens | Output tokens | Router cost | Reference cost | Savings | Avg latency ms | Max latency ms | Avg downstream output tok/s |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Team A | Project A | Client A | 1,634 | 65 | 187,520,679 | 802,818 | $64.50 | $961.69 | $897.19 | 13,442 | 121,148 | 509,579.56 |
+| Team B | Project B | Client B | 1,014 | 21 | 175,094,108 | 292,520 | $63.80 | $884.25 | $820.44 | 7,849 | 120,462 | 291,263.34 |
+| Team C | Project C | Client C | 1,595 | 124 | 50,312,249 | 900,358 | $41.48 | $278.57 | $237.09 | 16,988 | 303,098 | 696,380.87 |
+| Team D | Project D | Client D | 470 | 51 | 42,551,897 | 222,225 | $12.96 | $219.43 | $206.47 | 10,643 | 121,009 | 528,595.47 |
+| Team E | Project E | Client E | 498 | 27 | 36,619,786 | 146,357 | $86.28 | $187.49 | $101.21 | 5,363 | 61,406 | 78,517.37 |
+| Team F | Project F | Client F | 784 | 64 | 32,061,835 | 330,830 | $5.30 | $170.23 | $164.93 | 14,971 | 295,382 | 460,312.09 |
+
+The caller view supports chargeback, quota reviews, and support triage. For example, a team with moderate cost but high average latency may need a different model-group policy, a higher timeout, or a provider mix with stronger streaming behavior.
+
+## Upstream Endpoint Performance
+
+This excerpt answers: which anonymized upstream endpoint/API combinations are slow, error-prone, or fallback-heavy?
+
+| Endpoint | API shape | Calls | Errors | Attempts | Fallbacks | Tokens | Router cost | Avg upstream ms | Max upstream ms | Avg upstream output tok/s | Avg latency ms |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Endpoint A | API A | 5 | 1 | 11 | 1 | 6,742 | $0.01 | 42,969 | 132,688 | 46.75 | 42,972 |
+| Endpoint B | API B | 561 | 57 | 700 | 47 | 33,287,316 | $1.31 | 36,077 | 303,067 | 22.66 | 36,208 |
+| Endpoint C | API C | 221 | 6 | 232 | 3 | 19,435,221 | $4.04 | 25,410 | 119,132 | 76.69 | 25,908 |
+| Endpoint D | API D | 10 | 0 | 10 | 0 | 212,619 | $0.09 | 22,855 | 122,641 | 38.75 | 22,935 |
+| Endpoint E | API E | 52 | 0 | 94 | 30 | 2,201,353 | $0.24 | 21,015 | 86,371 | 122.02 | 21,019 |
+| Endpoint F | API F | 262 | 3 | 375 | 111 | 1,870,726 | $1.98 | 20,581 | 205,667 | 55.28 | 19,419 |
+| Endpoint G | API G | 37 | 0 | 36 | 0 | 1,938,639 | $2.65 | 20,572 | 116,179 | 20.43 | 20,441 |
+| Endpoint H | API H | 12 | 0 | 12 | 0 | 288,474 | $0.10 | 19,272 | 64,730 | 34.41 | 19,459 |
+
+The endpoint view is the fastest place to identify upstreams that compromise user experience. High average upstream duration, low token throughput, elevated attempts, or fallback pressure can justify lowering a target weight, changing timeout policy, isolating a provider to lower-priority groups, or opening a provider incident.
+
+## Report Generation Commands
+
+Generate a usage report for a recent window:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 7d \
+  --out usage-7d.md
+```
+
+Generate a report for one caller cohort or rollout:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-project <project> \
+  --caller-environment <environment> \
+  --out usage-project.md
+```
+
+Generated markdown reports include usage by internal key, caller, project, environment, caller IP, model group, provider/model, status, cache behavior, hour, day, downstream user performance, upstream endpoint performance, and per-request throughput. Savings tables are produced by comparing the generated report totals with a separately documented reference baseline.

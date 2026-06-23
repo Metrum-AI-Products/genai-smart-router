@@ -22,6 +22,8 @@ router-usage-report \
   --out usage-24h.md
 ```
 
+Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
+
 ## Report Dimensions
 
 Reports include:
@@ -57,10 +59,10 @@ Diagnostic rows do not store raw prompts, image payloads, bearer tokens, provide
 router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
-  --caller-project harbor-algotune-pca \
+  --caller-project <project> \
   --resolved-group <model-group> \
-  --client codex \
-  --out usage-codex.md
+  --client <client> \
+  --out usage-filtered.md
 ```
 
 Reports use public token IDs and aggregated usage fields. They do not expose raw router tokens or raw provider API keys.
@@ -74,3 +76,5 @@ Cost fields are captured when each request finishes. Reports do not look up curr
 For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image chargeback. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.
 
 For a buyer-facing explanation of cost policy and chargeback, see [Cost Governance](/docs/evaluation/cost-governance).
+
+For anonymized graphical examples generated from production-style data, see [Report Examples](/docs/operations/report-examples).

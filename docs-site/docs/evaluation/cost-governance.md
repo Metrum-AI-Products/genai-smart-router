@@ -67,6 +67,8 @@ For savings reports:
 
 Use stored request-time values for actual historical router cost. They are the durable financial record even when current provider metadata changes.
 
+For anonymized graphical examples that show daily savings, caller-cohort savings, and upstream performance triage, see [Report Examples](/docs/operations/report-examples).
+
 ## Image And VLM Costs
 
 For VLM requests:
