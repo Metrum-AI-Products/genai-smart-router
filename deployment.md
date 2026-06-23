@@ -1338,3 +1338,38 @@ temporary production external-policy smoke:
 temporary external-policy-smoke group and policy-service container were removed after validation
 production cleanup: removed uploaded package and /tmp/smart-llmrouter-* scratch files, removed older smart-llmrouter Docker images while keeping current e1f7749 and previous 99088b7 rollback image, ran sudo docker system prune -f
 ```
+
+### 2026-06-23 Usage report performance sections deployment
+
+Package `smart-llmrouter:133e645-linux-amd64` was deployed to production to add first-class performance triage sections to generated usage reports.
+
+Source commit: `133e645` (`Add performance sections to usage reports`)
+
+Runtime and documentation changes:
+
+- Added `Downstream User Performance` grouped by user, project, environment, and client.
+- Added `Upstream Endpoint Performance` grouped by provider, model, and API dialect.
+- Included average/max latency, TTFB, upstream/downstream duration, token throughput, errors, attempts, fallbacks, streams, tokens, and cost where applicable.
+- Updated internal usage reporting docs, Docker deployment docs, public Docusaurus usage reporting docs, README, and AGENTS.md.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.perf-report-20260623T134718Z
+```
+
+Validation:
+
+```text
+go test ./internal/router -run 'TestUsageReport': passed, 3 tests
+go test ./cmd/... ./internal/...: passed, 102 tests
+go test ./...: passed, 102 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64 from clean worktree: passed
+production /readyz after deploy: 200, version 133e645, build_date 2026-06-23T13:44:58Z
+production /version after deploy: 133e645, build_date 2026-06-23T13:44:58Z, go1.25.11 linux/amd64
+hosted docs /docs/operations/usage-reporting returned 200 with version headers
+production router-usage-report --since 24h generated a report containing Downstream User Performance, Upstream Endpoint Performance, and Per-Request Throughput sections
+production authenticated chat smoke with realistic token budget returned HTTP 200 through the weighted high group
+production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
+```
