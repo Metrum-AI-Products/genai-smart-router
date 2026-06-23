@@ -1374,6 +1374,39 @@ production authenticated chat smoke with realistic token budget returned HTTP 20
 production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
 ```
 
+### 2026-06-23 Harbor case study context docs deployment
+
+Package `smart-llmrouter:6b3c1fc-linux-amd64` was deployed to production to update the hosted Docusaurus Harbor case study with clearer product context for outcome-based model-group evaluation.
+
+Source commit: `6b3c1fc` (`Improve Harbor case study context`)
+
+Documentation changes:
+
+- Added public Harbor case study framing that explains why different GenAI/VLM/agent models fit different workloads.
+- Clarified that the operational target is the best cheapest model or model mix that still completes the job with the required quality, latency, and reliability.
+- Explained that Harbor is one example agent-evaluation harness, while deployments can use any workload-specific verifier such as unit tests, extraction accuracy checks, OCR targets, tool-call correctness, browser-control tasks, golden datasets, or product acceptance tests.
+- Mirrored the same context in the internal Harbor case study note.
+- Updated AGENTS.md so future benchmark and case-study docs include product decision context before raw benchmark tables.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.harbor-docs-20260623T172653Z
+```
+
+Validation:
+
+```text
+go test ./cmd/... ./internal/...: passed, 102 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker GOOS=linux GOARCH=amd64 VERSION=6b3c1fc COMMIT=6b3c1fc from clean worktree: passed
+production /readyz after deploy: 200, version 6b3c1fc, build_date 2026-06-23T17:24:51Z
+production /version after deploy: 6b3c1fc, build_date 2026-06-23T17:24:51Z, go1.25.11 linux/amd64
+hosted docs /docs/evaluation/harbor-case-study returned 200 and contains the new Why Outcome-Based Model Evaluation Matters and How To Read This Case Study sections
+production cleanup: removed uploaded package, removed duplicate previous switch directory, ran sudo docker system prune -f
+local cleanup: removed temporary clean deployment worktree and stale Claude Code worktree
+```
+
 ### 2026-06-23 Graphical report examples docs deployment
 
 Package `smart-llmrouter:d9aa8e3-linux-amd64` was deployed to production to add anonymized graphical usage, savings, and performance report examples to the hosted Docusaurus docs.
