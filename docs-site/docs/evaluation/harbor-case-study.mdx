@@ -6,13 +6,37 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 # Harbor Agentic Coding Case Study
 
-This case study evaluates model groups behind GenAI Smart Router using Harbor and real coding agents. The recorded June 15, 2026 run used router tokens scoped to individual `{agent, model_group}` pairs so usage and cost signals could be compared cleanly. Current production Harbor runs use one reusable Harbor caller token with access to all deployed model groups, then separate results by run matrix, client, model group, timestamps, and usage-report filters.
+This case study shows how a platform team can decide whether a routed model group is good enough for a real agentic job while still optimizing cost. Harbor is one example of an agent evaluation harness that can run coding-agent tasks, check the produced artifact with a verifier, and give the router team outcome data instead of only benchmark anecdotes.
 
 The model group names in this case study are historical deployment-specific names from the benchmark environment. GenAI Smart Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
 
 <div class="contactBanner">
   <p>For a benchmark tailored to your workloads, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
+
+## Why Outcome-Based Model Evaluation Matters
+
+Different GenAI models are good at different kinds of work and to different degrees. A model that is strong at long-form coding may not be the fastest choice for short edits. A lower-cost model may be sufficient for structured extraction but too weak for a multi-step agent task. A vision-language model may be the right target for image-bearing requests while a text-only model remains better for simple text completions.
+
+The practical goal is not to always call the largest or most expensive model. The goal is to use the best cheapest model, or mix of models, that completes the job with the required quality, latency, and reliability. GenAI Smart Router makes that operationally possible by letting callers request stable deployment-defined model groups while platform teams tune the upstream provider/model mix behind each group.
+
+The hard question is: given a workload, how does a platform team know that a model group is good enough?
+
+The answer should be objective evaluation. For agentic coding workloads, an agent evaluation framework such as Harbor can run the task end to end: start the agent, let it inspect files and call tools, collect the artifact it produces, and score that artifact with an independent verifier. The result is a model-group quality signal that can be compared with token usage, cost, latency, fallbacks, and throughput.
+
+Harbor is not the only possible harness. Teams can use any verifier that reflects their real workload: unit tests, extraction accuracy checks, OCR target answers, tool-call correctness, browser-control tasks, internal golden datasets, or product acceptance tests. The important pattern is the same: validate outcomes first, then tune cost and routing policy.
+
+## How To Read This Case Study
+
+This page is not a claim that one historical group name or one provider model is universally best. It is an example of the decision loop GenAI Smart Router supports:
+
+1. Define a caller-facing model group as a quality and cost contract.
+2. Run a real task through agents and the router.
+3. Verify whether the task outcome passes.
+4. Compare cost drivers such as input tokens, output tokens, latency, fallback behavior, and selected upstream models.
+5. Promote, demote, or reweight upstream targets only when the model group still meets the outcome criteria for its intended workload.
+
+The recorded June 15, 2026 run used router tokens scoped to individual `{agent, model_group}` pairs so usage and cost signals could be compared cleanly. Current production Harbor runs use one reusable Harbor caller token with access to all deployed model groups, then separate results by run matrix, client, model group, timestamps, and usage-report filters.
 
 ## Task
 

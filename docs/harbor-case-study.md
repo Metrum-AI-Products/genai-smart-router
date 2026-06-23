@@ -1,5 +1,15 @@
 # Harbor Cleaned-Model Case Study
 
+This case study shows how to decide whether a routed model group is good enough for a real agentic job while still optimizing cost. Harbor is one possible agent evaluation harness: it runs coding-agent tasks, checks the produced artifact with an independent verifier, and gives the router team outcome data instead of relying only on generic model benchmarks.
+
+Different GenAI models are good at different work and to different degrees. A model that is strong at long-form coding may not be the fastest choice for short edits. A lower-cost model may be sufficient for structured extraction but too weak for a multi-step agent task. Vision-language models may be required for image-bearing requests while text-only models remain better for simple text completions.
+
+The operational goal is to use the best cheapest model, or model mix, that completes the job with the required quality, latency, and reliability. GenAI Smart Router supports that by letting callers request stable deployment-defined model groups while platform teams tune upstream providers, weights, fallback paths, and eligibility behind each group.
+
+The key question for every exposed model group is: given this workload, is the group good enough? The answer should come from objective evaluation. Harbor can validate agentic coding groups by running the full loop: start the agent, let it inspect files and call tools, collect the artifact, and score it with a verifier. Other workloads can use unit tests, extraction accuracy checks, OCR target answers, tool-call correctness, browser-control tasks, internal golden datasets, or product acceptance tests.
+
+Read the numbers below as an example decision loop: define the model-group quality contract, run a real task, verify outcome success, compare token/cost/latency/fallback behavior, then promote, demote, or reweight upstream targets only when the group still meets its success criteria.
+
 The model group names in this case study are historical deployment-specific names from the benchmark environment. Smart LLM Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
 
 - Case ID: `harbor-cleaned-20260615T031649Z`
