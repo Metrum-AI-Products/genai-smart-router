@@ -46,6 +46,8 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"## Hourly Usage By Caller IP",
 		"| 2026-06-14 01:00 | 203.0.113.10 | 1 | 0 | 140 | 100 | 40 | $0.000520 |",
 		"## Cache Summary",
+		"## Downstream User Performance",
+		"## Upstream Endpoint Performance",
 		"## Per-Request Throughput",
 	} {
 		if !strings.Contains(md, want) {
@@ -97,6 +99,8 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 		"upstream `50.00` output tok/s / `75.00` total tok/s",
 		"downstream `400.00` output tok/s / `600.00` total tok/s",
 		"| 1 | 1 | 0 | 1 | 0 | 0.00% | 0.00% | 2 | 1024 | 4096 | 25.00% | 25.00% | 25.00% |",
+		"| alice | metrum-insights | test | codex | 1 | 0 | 0 | 15 | 10 | 250 | 250 | 0 | 0 | 25 | 25 | 400.00 | 600.00 | 0 |",
+		"| openai | gpt-5.4-nano | openai-responses | 1 | 0 | 1 | 0 | 0 | 15 | 10 | $0.000013 | 200 | 200 | 250 | 250 | 0 | 0 | 50.00 | 75.00 |",
 		"| 2026-06-14T01:15:00.000Z | `198.51.100.22` | `req_tps` | `rtr_alice_test` | default | openai | gpt-5.4-nano | 200 | miss | 10 | 15 | $0.000013 | 200 | 25 | 50.00 | 75.00 | 400.00 | 600.00 |",
 	} {
 		if !strings.Contains(md, want) {

@@ -253,8 +253,10 @@ type agg struct {
 	MaxTTFBMS                int64
 	UpstreamMS               int64
 	UpstreamMSCount          int64
+	MaxUpstreamMS            int64
 	DownstreamMS             int64
 	DownstreamMSCount        int64
+	MaxDownstreamMS          int64
 	UpstreamOutputTPS        float64
 	UpstreamOutputTPSCount   int64
 	UpstreamTotalTPS         float64
@@ -801,6 +803,8 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 	byClient := map[string]*agg{}
 	byCallerIP := map[string]*agg{}
 	byStatus := map[string]*agg{}
+	byDownstreamUser := map[string]*agg{}
+	byUpstreamEndpoint := map[string]*agg{}
 	byHour := map[string]*agg{}
 	byHourIP := map[string]*agg{}
 	byDay := map[string]*agg{}
@@ -826,6 +830,12 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 		statusKey := fmt.Sprint(row.Status)
 		byStatus[statusKey] = getAgg(byStatus, statusKey)
 		byStatus[statusKey].add(row)
+		downstreamUserKey := joinKey(defaultString(row.CallerUser, "unknown"), defaultString(row.CallerProject, "unknown"), defaultString(row.CallerEnvironment, "unknown"), clientKey)
+		byDownstreamUser[downstreamUserKey] = getAgg(byDownstreamUser, downstreamUserKey)
+		byDownstreamUser[downstreamUserKey].add(row)
+		upstreamEndpointKey := joinKey(defaultString(row.TargetProvider, "unknown"), defaultString(row.TargetModel, "unknown"), defaultString(row.TargetDialect, "unknown"))
+		byUpstreamEndpoint[upstreamEndpointKey] = getAgg(byUpstreamEndpoint, upstreamEndpointKey)
+		byUpstreamEndpoint[upstreamEndpointKey].add(row)
 		hourKey := row.TS.UTC().Truncate(time.Hour).Format("2006-01-02 15:00")
 		byHour[hourKey] = getAgg(byHour, hourKey)
 		byHour[hourKey].add(row)
@@ -856,6 +866,8 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
 
 	writeCacheSummary(&b, total)
+	writeDownstreamUserPerformanceTable(&b, byDownstreamUser)
+	writeUpstreamEndpointPerformanceTable(&b, byUpstreamEndpoint)
 	writeRequestThroughputTable(&b, rows)
 	writeTokenTable(&b, "Usage By Internal API Key", byToken, byTokenMeta)
 	writeAggTable(&b, "Usage By External Model", []string{"Provider", "Model"}, byModel, splitKey2)
@@ -913,10 +925,16 @@ func (a *agg) add(row usageRow) {
 	if row.UpstreamMS != nil {
 		a.UpstreamMS += *row.UpstreamMS
 		a.UpstreamMSCount++
+		if *row.UpstreamMS > a.MaxUpstreamMS {
+			a.MaxUpstreamMS = *row.UpstreamMS
+		}
 	}
 	if row.DownstreamMS != nil {
 		a.DownstreamMS += *row.DownstreamMS
 		a.DownstreamMSCount++
+		if *row.DownstreamMS > a.MaxDownstreamMS {
+			a.MaxDownstreamMS = *row.DownstreamMS
+		}
 	}
 	addFloat(row.UpstreamOutputTPS, &a.UpstreamOutputTPS, &a.UpstreamOutputTPSCount)
 	addFloat(row.UpstreamTotalTPS, &a.UpstreamTotalTPS, &a.UpstreamTotalTPSCount)
@@ -1008,6 +1026,51 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
 }
 
+func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*agg) {
+	fmt.Fprintln(b, "## Downstream User Performance")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| User | Project | Env | Client | Calls | Errors | Streams | Tokens | Output | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Downstream ms | Max Downstream ms | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Fallbacks |")
+	fmt.Fprintln(b, "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.LatencyMS, a.Calls) }) {
+		parts := splitKey4(key)
+		a := data[key]
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s | %d |\n",
+			esc(parts[0]), esc(parts[1]), esc(parts[2]), esc(parts[3]),
+			a.Calls, a.Errors, a.Streams, a.TotalTokens, a.OutputTokens,
+			avg(a.LatencyMS, a.Calls), a.MaxLatencyMS, avg(a.TTFBMS, a.TTFBCount), a.MaxTTFBMS,
+			avg(a.DownstreamMS, a.DownstreamMSCount), a.MaxDownstreamMS,
+			fmtFloat(avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount)),
+			fmtFloat(avgFloat(a.DownstreamTotalTPS, a.DownstreamTotalTPSCount)),
+			a.Fallbacks)
+	}
+	if len(data) == 0 {
+		fmt.Fprintln(b, "| _none_ |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | 0 |")
+	}
+	fmt.Fprintln(b)
+}
+
+func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*agg) {
+	fmt.Fprintln(b, "## Upstream Endpoint Performance")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| Provider | Model | Dialect | Calls | Errors | Attempts | Fallbacks | Streams | Tokens | Output | Cost USD | Avg Upstream ms | Max Upstream ms | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Upstream Output tok/s | Avg Upstream Total tok/s |")
+	fmt.Fprintln(b, "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.UpstreamMS, a.UpstreamMSCount) }) {
+		parts := splitKey3(key)
+		a := data[key]
+		fmt.Fprintf(b, "| %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | $%s | %d | %d | %d | %d | %d | %d | %s | %s |\n",
+			esc(parts[0]), esc(parts[1]), esc(parts[2]),
+			a.Calls, a.Errors, a.Attempts, a.Fallbacks, a.Streams, a.TotalTokens, a.OutputTokens, fmtUSD(a.TotalCostUSD),
+			avg(a.UpstreamMS, a.UpstreamMSCount), a.MaxUpstreamMS,
+			avg(a.LatencyMS, a.Calls), a.MaxLatencyMS, avg(a.TTFBMS, a.TTFBCount), a.MaxTTFBMS,
+			fmtFloat(avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount)),
+			fmtFloat(avgFloat(a.UpstreamTotalTPS, a.UpstreamTotalTPSCount)))
+	}
+	if len(data) == 0 {
+		fmt.Fprintln(b, "| _none_ |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | $0.000000 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a |")
+	}
+	fmt.Fprintln(b)
+}
+
 func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
 	fmt.Fprintln(b, "## Per-Request Throughput")
 	fmt.Fprintln(b)
@@ -1051,6 +1114,28 @@ func sortedAggKeys(m map[string]*agg) []string {
 	return keys
 }
 
+func sortedAggKeysByMetric(m map[string]*agg, metric func(*agg) int64) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ai, aj := m[keys[i]], m[keys[j]]
+		mi, mj := metric(ai), metric(aj)
+		if mi != mj {
+			return mi > mj
+		}
+		if ai.MaxLatencyMS != aj.MaxLatencyMS {
+			return ai.MaxLatencyMS > aj.MaxLatencyMS
+		}
+		if ai.Calls != aj.Calls {
+			return ai.Calls > aj.Calls
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
+}
+
 func joinKey(parts ...string) string {
 	return strings.Join(parts, "\x00")
 }
@@ -1063,6 +1148,22 @@ func splitKey2(key string) []string {
 	parts := strings.SplitN(key, "\x00", 2)
 	if len(parts) == 1 {
 		return []string{parts[0], ""}
+	}
+	return parts
+}
+
+func splitKey3(key string) []string {
+	return splitKeyN(key, 3)
+}
+
+func splitKey4(key string) []string {
+	return splitKeyN(key, 4)
+}
+
+func splitKeyN(key string, n int) []string {
+	parts := strings.SplitN(key, "\x00", n)
+	for len(parts) < n {
+		parts = append(parts, "")
 	}
 	return parts
 }

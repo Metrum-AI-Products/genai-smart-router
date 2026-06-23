@@ -4,7 +4,12 @@ Usage reports support cost governance, quota reviews, incident analysis, and sav
 
 ## Standard Dimensions
 
-Report by token ID, caller user/project/environment, model group, provider/model, client type, caller IP, hour/day, cache status, request status, input/output/image tokens, and request-time USD cost.
+Report by token ID, caller user/project/environment, model group, provider/model/dialect, client type, caller IP, hour/day, cache status, request status, input/output/image tokens, request-time USD cost, and performance fields.
+
+Performance sections are included for latency triage:
+
+- Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream token throughput, errors, streams, and fallbacks.
+- Upstream endpoint performance groups by provider, model, and API dialect with average/max upstream duration, latency, TTFB, upstream token throughput, attempts, fallbacks, errors, and cost.
 
 ## Common Reports
 
@@ -42,4 +47,3 @@ For VLM requests, normal input-token pricing is the fallback. `image_input_price
 ## Data Handling
 
 Reports may include public token IDs, caller metadata, providers, models, counts, costs, latency, and statuses. Reports must not include raw tokens, provider keys, token hashes, raw prompts, raw image payloads, or unsanitized provider responses.
-
