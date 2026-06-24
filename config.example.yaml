@@ -237,8 +237,11 @@ providers:
         pricing_source: https://www.crusoe.ai/cloud/pricing
         pricing_updated_at: '2026-06-24'
         pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists GLM 5.2 at
-          $1.40/M input, $4.40/M output, and $0.26/M cached tokens. Catalog-only until
-          entitlement, output-cap behavior, tool behavior, and Harbor outcomes are validated.
+          $1.40/M input, $4.40/M output, and $0.26/M cached tokens. Direct Crusoe text
+          smoke passed on 2026-06-24; a max_tokens=1 probe honored the cap but returned
+          empty content with finish=length. Used only for ordinary OpenAI Chat text
+          routing in general groups; tool, structured-output, Responses, and Anthropic
+          skins remain disabled until separately validated.
       kimi-k2-6:
         model: moonshotai/Kimi-K2.6
         tier: coding
@@ -918,7 +921,10 @@ models:
       weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 7
+      weight: 2
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 6
@@ -1008,7 +1014,10 @@ models:
       weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 4
+      weight: 2
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 2
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 5
@@ -1080,7 +1089,10 @@ models:
       weight: 2
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 4
+      weight: 2
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 2
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 4
@@ -1153,7 +1165,10 @@ models:
       weight: 5
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 7
+      weight: 2
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 8
@@ -1225,7 +1240,10 @@ models:
       weight: 6
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 9
+      weight: 2
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 7
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 10

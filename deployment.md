@@ -32,6 +32,19 @@ Last deployed: 2026-06-24
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-24 OpenRouter Gemma Cap And Crusoe GLM Production Config Update
+
+- Reduced normal OpenRouter Gemma 4 26B Nitro weight to 2% in `default`, `fast`, `small`, `medium`, and `high`.
+- Added Crusoe Managed Inference `zai/GLM-5.2` as ordinary OpenAI Chat text routing to replace the reduced OpenRouter Gemma weight: `default` 5%, `fast` 2%, `small` 2%, `medium` 5%, and `high` 7%.
+- Kept existing OpenRouter Anthropic Gemma tool-only targets at 2%; Crusoe GLM is not enabled for tool, structured-output, Responses, or Anthropic skins.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.gemma2-crusoe-glm-20260624T185540Z`.
+- Direct Crusoe `zai/GLM-5.2` text smoke from the production host returned HTTP 200 with `OK`; a `max_tokens: 1` cap probe returned `finish=length` with empty content, so the route is ordinary-text only.
+- Verified `sudo docker compose config >/dev/null`, restarted the router, and confirmed `/readyz` returned 200 for version `4459ba1`.
+- Verified live normal-route weights sum to 100 in `default`, `fast`, `small`, `medium`, `high`, and `big-coder`; OpenRouter Gemma normal weight is at most 2%.
+- Public endpoint weighted `high` smoke selected Crusoe `zai/GLM-5.2` on attempt 4 and returned `OK`.
+- Production usage DB recorded the Crusoe GLM smoke with status 200, attempts 1, `fallback_used=false`, input/output token counts, and stored cost.
+- Local validation: focused config tests passed; `go test ./...` passed with 188 tests in 6 packages; `make docs-qa` passed.
+
 ## 2026-06-24 Public Docs Refresh Package Deployment
 
 - Deployed package/image `smart-llmrouter:4459ba1-linux-amd64` from source commit `4459ba1` after PR #70 merged.

@@ -265,7 +265,8 @@ models:
       - { provider: minimax, model_ref: m3, weight: 27 }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
       - { provider: baseten, model_ref: glm-5-2, weight: 5 }
-      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 7 }
+      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 2 }
+      - { provider: crusoe, model_ref: glm-5-2, weight: 5 }
       - { provider: kimi, model_ref: kimi-k2-7-code, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
       - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }

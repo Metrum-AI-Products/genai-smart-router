@@ -742,6 +742,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	basetenGLMWeight := 0
 	basetenGPTOSSWeight := 0
 	crusoeGemmaWeight := 0
+	crusoeGLMWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
@@ -808,6 +809,9 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "crusoe" && target.Model == "google/gemma-4-31b-it" {
 			crusoeGemmaWeight += target.Weight
 		}
+		if target.Provider == "crusoe" && target.Model == "zai/GLM-5.2" {
+			crusoeGLMWeight += target.Weight
+		}
 	}
 	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
@@ -816,21 +820,21 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		t.Fatalf("example config group %s missing OpenAI Chat Crusoe Gemma tool-only target", name)
 	}
 	want := map[string]struct {
-		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, targets int
+		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, targets int
 	}{
-		"default":   {51, 27, 7, 6, 1, 3, 5, 0, 7},
-		"fast":      {56, 26, 4, 5, 1, 3, 5, 0, 7},
-		"small":     {58, 28, 4, 4, 1, 3, 2, 0, 7},
-		"medium":    {51, 25, 7, 8, 1, 3, 5, 0, 7},
-		"high":      {45, 26, 9, 10, 1, 3, 6, 0, 7},
-		"big-coder": {18, 30, 0, 23, 1, 2, 6, 20, 7},
+		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 8},
+		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 8},
+		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 8},
+		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 8},
+		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 8},
+		"big-coder": {18, 30, 0, 23, 1, 2, 6, 20, 0, 7},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma {
-		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma || crusoeGLMWeight != expect.crusoeGLM {
+		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d crusoe_glm=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, crusoeGLMWeight, totalWeight, normalTargets, expect)
 	}
 }
 
@@ -848,9 +852,10 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 	allowedBasetenNemotron := target.Provider == "baseten" && target.Model == "nvidia/Nemotron-120B-A12B"
 	allowedBasetenGLM := target.Provider == "baseten" && target.Model == "zai-org/GLM-5.2"
 	allowedBasetenGPTOSS := target.Provider == "baseten" && target.Model == "openai/gpt-oss-120b"
+	allowedCrusoeGLM := target.Provider == "crusoe" && target.Model == "zai/GLM-5.2"
 	for _, bad := range []string{"qwen", "glm", "hy3", "kat-coder", "nemotron", "mercury", "ling-2.6", "pareto", "m2.7-highspeed"} {
 		if strings.Contains(needle, bad) {
-			return !allowedBasetenNemotron && !allowedBasetenGLM && !allowedBasetenGPTOSS
+			return !allowedBasetenNemotron && !allowedBasetenGLM && !allowedBasetenGPTOSS && !allowedCrusoeGLM
 		}
 	}
 	if target.Provider == "openrouter" && strings.Contains(strings.ToLower(target.Model), "deepseek/") {
