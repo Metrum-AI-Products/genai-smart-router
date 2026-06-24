@@ -136,7 +136,7 @@ providers:
         output_modalities: [text]
         pricing_source: https://www.crusoe.ai/cloud/pricing
         pricing_updated_at: "2026-06-24"
-        pricing_notes: Crusoe Managed Inference hosted OpenAI-compatible endpoint; direct and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed on 2026-06-24 with an explicit User-Agent. Keep out of broad ordinary-text groups until workload gates pass for the deployment account.
+        pricing_notes: Crusoe Managed Inference hosted OpenAI-compatible endpoint; direct and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed on 2026-06-24 with an explicit User-Agent. Keep cataloged or in dedicated smoke groups unless workload gates pass for the deployment account.
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
       gpt-oss-120b:
@@ -158,7 +158,7 @@ providers:
         output_modalities: [text]
         pricing_source: https://www.crusoe.ai/cloud/pricing
         pricing_updated_at: "2026-06-24"
-        pricing_notes: OpenAI Chat text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24; use only for OpenAI Chat tool routing unless other skins pass separately
+        pricing_notes: OpenAI Chat text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24; use for ordinary OpenAI Chat text and OpenAI Chat tool routing only after workload validation, and keep out of OpenAI Responses or Anthropic Messages routes unless those skins pass separately
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
 
@@ -221,6 +221,8 @@ providers:
 Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
 
 External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`, and Crusoe Managed Inference uses `base_url: https://api.inference.crusoecloud.com/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream provider model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects provider keys such as `BASETEN_API_KEY` or `CRUSOE_API_KEY` only when a matching target is selected.
+
+Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, place a validated Crusoe Gemma target in an ordinary-text weighted group, or add a separate OpenAI Chat `tool_only` target. Do not treat a Crusoe OpenAI Chat pass as proof of OpenAI Responses, Anthropic Messages, image, video, or audio support.
 
 Catalog entries should carry cost and capability metadata:
 

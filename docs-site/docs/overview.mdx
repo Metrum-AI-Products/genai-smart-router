@@ -79,6 +79,8 @@ For a first evaluation, run one path through the gateway and inspect both the ca
 
 [Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router) gives a complete checklist and proof points to request.
 
+The expected guarantee is concrete: a caller can discover the groups its token is allowed to use, send the same client request shape it will use in production, and receive either a compatible response from a validated target or a clear router error before an unsafe upstream call is attempted. Operators should be able to show which provider/model served the request, why fallback did or did not happen, and what cost and latency were recorded for that request window.
+
 ## Proof Points
 
 The docs include an outcome-based Harbor coding-agent case study that compares Codex CLI and Claude Code CLI across router model groups. It records the task goal, verifier reward score, models used, tokenomics, cache behavior, latency, throughput, fallback behavior, and provider/model usage. The same pattern can be applied to extraction accuracy checks, OCR targets, unit tests, browser-control tasks, golden datasets, or product acceptance tests.

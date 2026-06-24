@@ -154,7 +154,7 @@ Model groups decouple client intent from provider implementation:
 - Example coding-oriented weighted path for agentic coding tools.
 - Example general-purpose routing policy for common workloads.
 
-In the reference deployment, active groups are deliberately limited to models that have passed live agentic validation. General groups favor OpenRouter DeepSeek V4 Flash Nitro and MiniMax-M3, with smaller weights for OpenRouter Gemma 4 26B Nitro, direct Moonshot Kimi K2.7 Code, and a 1% non-tool original OpenAI path. The code-heavy group uses MiniMax-M3, direct Moonshot Kimi K2.7 Code, OpenRouter DeepSeek V4 Flash Nitro, and the same 1% non-tool OpenAI path. Tool-bearing Codex and Claude Code traffic use only tool-validated targets, so tool use is not pinned to a single upstream vendor.
+In the reference deployment, active groups are deliberately limited to models that have passed live validation for their request shapes. General groups currently use Baseten GPT OSS 120B, MiniMax-M3, OpenRouter Gemma 4 26B Nitro where configured, direct Moonshot Kimi K2.7 Code, low-weight Baseten Nemotron and GLM paths, and a 1% non-tool original OpenAI fallback. The code-heavy `big-coder` example uses MiniMax-M3 30%, direct Kimi K2.7 Code 23%, Crusoe Gemma 4 31B-it 20%, Baseten GPT OSS 120B 18%, Baseten GLM 5.2 6%, Baseten Nemotron 2%, and OpenAI GPT-5.4 Nano 1% for ordinary text. Tool-bearing Codex, OpenAI Chat tool, and Claude Code traffic use separate tool-validated targets, so tool use is not pinned to a single upstream vendor or unsupported skin.
 
 ```mermaid
 flowchart LR

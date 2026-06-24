@@ -31,6 +31,8 @@ Use this checklist to evaluate GenAI Smart Router with a real deployment or a Me
 6. Ask the administrator for the usage/report excerpt for the evaluation window.
 7. Confirm selected upstream provider/model, token counts, cost fields, latency, fallback behavior, and request status are visible without storing raw prompts or raw images.
 
+This path should prove both caller-visible behavior and operator controls. The caller sees stable model-group names, compatibility with its chosen API shape, allow-list enforcement, and clear errors such as `model-not-allowed` or `no-eligible-target`. The operator sees request-time evidence for target selection, cost, latency, attempts, fallback, and quota impact.
+
 ## Expected First Outputs
 
 | Step | Successful result |

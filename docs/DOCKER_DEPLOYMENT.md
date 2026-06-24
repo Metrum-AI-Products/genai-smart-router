@@ -231,14 +231,14 @@ docker volume rm "$POSTGRES_VOLUME"
 docker compose up -d
 ```
 
-Example hosted deployment model groups:
+Example hosted/reference deployment model groups. These names and weights are deployment-defined examples, not product-required constants:
 
 ```text
-default    DeepSeek V4 Flash Nitro 46%, MiniMax-M3 27%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 7%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 6%, OpenAI GPT-5.4 Nano 1%.
-fast       DeepSeek V4 Flash Nitro 51%, MiniMax-M3 26%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 4%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 5%, OpenAI GPT-5.4 Nano 1%.
-small      DeepSeek V4 Flash Nitro 53%, MiniMax-M3 28%, Baseten Nemotron 3%, Baseten GLM 5.2 2%, Gemma 4%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 4%, OpenAI GPT-5.4 Nano 1%.
-medium     DeepSeek V4 Flash Nitro 46%, MiniMax-M3 25%, Baseten Nemotron 3%, Baseten GLM 5.2 5%, Gemma 7%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 8%, OpenAI GPT-5.4 Nano 1%.
-high       DeepSeek V4 Flash Nitro 40%, MiniMax-M3 26%, Baseten Nemotron 3%, Baseten GLM 5.2 6%, Gemma 9%, Qwen 3.6 Flash 5%, Kimi K2.7 Code 10%, OpenAI GPT-5.4 Nano 1%.
+default    Baseten GPT OSS 120B 51%, MiniMax-M3 27%, OpenRouter Gemma 4 26B Nitro 7%, Kimi K2.7 Code 6%, Baseten GLM 5.2 5%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1%.
+fast       Baseten GPT OSS 120B 56%, MiniMax-M3 26%, Kimi K2.7 Code 5%, Baseten GLM 5.2 5%, OpenRouter Gemma 4 26B Nitro 4%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1%.
+small      Baseten GPT OSS 120B 58%, MiniMax-M3 28%, OpenRouter Gemma 4 26B Nitro 4%, Kimi K2.7 Code 4%, Baseten Nemotron 3%, Baseten GLM 5.2 2%, OpenAI GPT-5.4 Nano 1%.
+medium     Baseten GPT OSS 120B 51%, MiniMax-M3 25%, Kimi K2.7 Code 8%, OpenRouter Gemma 4 26B Nitro 7%, Baseten GLM 5.2 5%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1%.
+high       Baseten GPT OSS 120B 45%, MiniMax-M3 26%, Kimi K2.7 Code 10%, OpenRouter Gemma 4 26B Nitro 9%, Baseten GLM 5.2 6%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1%.
 big-coder  Code-heavy route: MiniMax-M3 30%, Kimi K2.7 Code 23%, Crusoe Gemma 4 31B-it 20%, Baseten GPT OSS 120B 18%, Baseten GLM 5.2 6%, Baseten Nemotron 2%, OpenAI GPT-5.4 Nano 1%.
 ```
 
