@@ -68,12 +68,14 @@ type scriptTarget struct {
 }
 
 type scriptOutput struct {
-	Target          any    `json:"target"`
-	TargetIndex     int    `json:"targetIndex"`
-	HasTargetIndex  bool   `json:"-"`
-	Fallbacks       []any  `json:"fallbacks"`
-	FallbackIndexes []int  `json:"fallbackIndexes"`
-	ClassLabel      string `json:"classLabel"`
+	Target             any    `json:"target"`
+	TargetIndex        int    `json:"targetIndex"`
+	HasTargetIndex     bool   `json:"-"`
+	Fallbacks          []any  `json:"fallbacks"`
+	HasFallbacks       bool   `json:"-"`
+	FallbackIndexes    []int  `json:"fallbackIndexes"`
+	HasFallbackIndexes bool   `json:"-"`
+	ClassLabel         string `json:"classLabel"`
 }
 
 func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig) (*scriptStrategy, error) {
@@ -395,11 +397,13 @@ func exportDecisionOutput(exported any, source string) (scriptOutput, error) {
 		if err := json.Unmarshal(rawFallbackIndexes, &out.FallbackIndexes); err != nil {
 			return scriptOutput{}, fmt.Errorf("%s fallbackIndexes must be numbers", source)
 		}
+		out.HasFallbackIndexes = true
 	}
 	if rawFallbacks, ok := fields["fallbacks"]; ok {
 		if err := json.Unmarshal(rawFallbacks, &out.Fallbacks); err != nil {
 			return scriptOutput{}, fmt.Errorf("%s fallbacks are invalid", source)
 		}
+		out.HasFallbacks = true
 	}
 	if rawClassLabel, ok := fields["classLabel"]; ok {
 		if err := json.Unmarshal(rawClassLabel, &out.ClassLabel); err != nil {
@@ -434,6 +438,7 @@ func resolveScriptTarget(out scriptOutput, targets []Target) (int, error) {
 func resolveScriptFallbacks(out scriptOutput, primary int, targets []Target) ([]Target, error) {
 	seen := map[int]bool{primary: true}
 	indexes := []int{}
+	explicitFallbacks := out.HasFallbackIndexes || out.HasFallbacks
 	for _, idx := range out.FallbackIndexes {
 		valid, err := validateTargetIndex(idx, targets)
 		if err != nil {
@@ -454,9 +459,11 @@ func resolveScriptFallbacks(out scriptOutput, primary int, targets []Target) ([]
 			seen[idx] = true
 		}
 	}
-	for i := range targets {
-		if !seen[i] {
-			indexes = append(indexes, i)
+	if !explicitFallbacks {
+		for i := range targets {
+			if !seen[i] {
+				indexes = append(indexes, i)
+			}
 		}
 	}
 	fallbacks := make([]Target, 0, len(indexes))

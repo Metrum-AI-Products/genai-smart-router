@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1792,6 +1793,112 @@ export function route(ctx: Ctx) {
 	}
 	if gotModel != "alice-key-model" {
 		t.Fatalf("script selected model %q", gotModel)
+	}
+}
+
+func TestTypeScriptPIIPolicyExampleRoutesSensitiveWithoutLeakingPII(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	scriptPath := filepath.Join(repoRoot, "examples", "typescript-pii-policy", "router.ts")
+
+	cfg := testConfig(t, "http://example.invalid", "provider-key", t.TempDir())
+	cfg.Models["pii-aware"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		Targets: []Target{
+			{Provider: "mock", Model: "normal-model", DisplayName: "Normal target", Tier: "normal", Weight: 90},
+			{Provider: "mock", Model: "private-model", DisplayName: "Private sensitive target", Tier: "private", Weight: 10},
+			{Provider: "mock", Model: "sensitive-fallback-model", DisplayName: "Sensitive fallback target", Tier: "sensitive", Weight: 5},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "pii-aware")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	piiText := "Please summarize the account note for Jane Patient. Email jane.patient@example.com and SSN 123-45-6789 are in the record."
+	dec, err := svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+		Model:    "pii-aware",
+		Messages: []IRMessage{{Role: "user", Content: piiText}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("pii script pick: %v", err)
+	}
+	if dec.Target.Model != "private-model" {
+		t.Fatalf("pii script pick selected %q", dec.Target.Model)
+	}
+	if len(dec.Fallbacks) != 1 || dec.Fallbacks[0].Model != "sensitive-fallback-model" {
+		t.Fatalf("pii script fallbacks=%#v, want only sensitive fallback target", dec.Fallbacks)
+	}
+	if dec.ClassLabel == nil || *dec.ClassLabel != "pii-detected:sensitive-route" {
+		t.Fatalf("pii script class label=%v", dec.ClassLabel)
+	}
+	rawDecision, err := json.Marshal(dec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"jane.patient@example.com", "123-45-6789", "Jane Patient"} {
+		if strings.Contains(string(rawDecision), forbidden) {
+			t.Fatalf("script decision leaked raw pii %q: %s", forbidden, rawDecision)
+		}
+	}
+
+	dec, err = svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+		Model:    "pii-aware",
+		Messages: []IRMessage{{Role: "user", Content: "Summarize this public release note in one sentence."}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err != nil {
+		t.Fatalf("non-pii script pick: %v", err)
+	}
+	if dec.Target.Model != "normal-model" {
+		t.Fatalf("non-pii script pick selected %q", dec.Target.Model)
+	}
+	if len(dec.Fallbacks) != 2 {
+		t.Fatalf("non-pii script fallbacks=%#v, want remaining eligible targets", dec.Fallbacks)
+	}
+	if dec.ClassLabel == nil || *dec.ClassLabel != "pii-detected:none" {
+		t.Fatalf("non-pii script class label=%v", dec.ClassLabel)
+	}
+}
+
+func TestTypeScriptPIIPolicyExampleFailsClosedWithoutSensitiveTarget(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	scriptPath := filepath.Join(repoRoot, "examples", "typescript-pii-policy", "router.ts")
+
+	cfg := testConfig(t, "http://example.invalid", "provider-key", t.TempDir())
+	cfg.Models["pii-aware"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		Targets: []Target{
+			{Provider: "mock", Model: "normal-model", DisplayName: "Normal target", Tier: "normal", Weight: 90},
+			{Provider: "mock", Model: "public-fallback-model", DisplayName: "Public fallback target", Tier: "normal", Weight: 10},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "pii-aware")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	_, err = svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+		Model:    "pii-aware",
+		Messages: []IRMessage{{Role: "user", Content: "Contact Jane Patient at jane.patient@example.com."}},
+	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
+	if err == nil {
+		t.Fatal("pii script pick succeeded without a sensitive target")
+	}
+	if !strings.Contains(err.Error(), "pii-detected:no-sensitive-target") {
+		t.Fatalf("pii script error=%v, want fail-closed no-sensitive-target error", err)
 	}
 }
 

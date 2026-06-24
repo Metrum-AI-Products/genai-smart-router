@@ -166,6 +166,24 @@ export function route(ctx: RouteContext) {
 }
 ```
 
+When a script omits `fallbackIndexes` and `fallbacks`, the router uses the remaining eligible targets as the retry order. When either fallback field is present, the supplied entries are the complete retry set. Return an empty fallback list for fail-closed routes that must not retry to another target.
+
+## PII-Aware Routing Example
+
+A deployment can use TypeScript policy to send likely sensitive prompts to private targets while leaving ordinary prompts on normal targets. The demo in `examples/typescript-pii-policy/router.ts` detects common PII-like shapes in `ctx.text`, chooses a target whose `tier`, `displayName`, or model name is marked `sensitive` or `private`, restricts fallback retries to sensitive/private targets, and returns only safe labels such as `pii-detected:sensitive-route` or `pii-detected:none`.
+
+```yaml
+models:
+  pii-aware:
+    strategy: script
+    script: scripts/pii-policy/router.ts
+    targets:
+      - { provider: public-provider, model_ref: normal, tier: normal, weight: 90 }
+      - { provider: private-provider, model_ref: private, tier: private, display_name: "Private sensitive target", weight: 10 }
+```
+
+This pattern is routing only. TypeScript scripts do not redact outbound request content; if the sensitive target is selected, the original request content is still forwarded to that upstream. The demo fails closed with `pii-detected:no-sensitive-target` when a PII-detected request has no eligible sensitive/private target, rather than retrying to a normal/public target. Use model-group `pii_filter` when the deployment requires router-managed redaction, restoration, or fail-on-match behavior.
+
 ## Weighted Selection With Content Rules
 
 Scripts can combine prompt content, caller metadata, target metadata, and group weights:
