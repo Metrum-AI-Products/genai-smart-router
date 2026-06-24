@@ -3033,6 +3033,184 @@ func TestUpstreamFailureReturnsActionableError(t *testing.T) {
 	}
 }
 
+func TestDiagnosticsSanitizeUpstreamErrorBeforePersistence(t *testing.T) {
+	const (
+		echoedPrompt = "prompt-like user text: summarize confidential launch notes"
+		bearerToken  = "Bearer fake-provider-bearer-token-1234567890"
+		providerKey  = "sk-fake-provider-key-1234567890"
+		tokenHash    = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		nestedDetail = "nested upstream body detail"
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": map[string]any{
+				"message": "provider echoed request context",
+				"details": map[string]any{
+					"prompt":           echoedPrompt,
+					"authorization":    bearerToken,
+					"provider_api_key": providerKey,
+					"token_hash":       tokenHash,
+					"nested": map[string]any{
+						"body": nestedDetail,
+					},
+				},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"please do not persist this prompt"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	var traces []requestTraceEventRecord
+	if err := svc.usage.db.Find(&traces).Error; err != nil {
+		t.Fatal(err)
+	}
+	var errors []requestErrorRecord
+	if err := svc.usage.db.Find(&errors).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || len(errors) != 1 {
+		t.Fatalf("diagnostic rows attempts=%d errors=%d", len(attempts), len(errors))
+	}
+	foundFailedTrace := false
+	for _, trace := range traces {
+		if trace.Event == "upstream_attempt_failed" {
+			foundFailedTrace = true
+			if !strings.Contains(trace.Message, "upstream error body redacted") {
+				t.Fatalf("failed trace message was not redacted: %q", trace.Message)
+			}
+		}
+	}
+	if !foundFailedTrace {
+		t.Fatalf("upstream_attempt_failed trace not found: %#v", traces)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosticsText := string(raw)
+	for _, attempt := range attempts {
+		diagnosticsText += "\n" + attempt.ErrorMessage
+	}
+	for _, trace := range traces {
+		diagnosticsText += "\n" + trace.Message
+	}
+	for _, rec := range errors {
+		diagnosticsText += "\n" + rec.ErrorMessage
+	}
+	for _, forbidden := range []string{echoedPrompt, bearerToken, providerKey, tokenHash, nestedDetail, "please do not persist this prompt"} {
+		if strings.Contains(diagnosticsText, forbidden) {
+			t.Fatalf("diagnostics leaked %q in: %s", forbidden, diagnosticsText)
+		}
+	}
+	for _, want := range []string{`"trace_events"`, `"attempts_detail"`, "upstream error body redacted"} {
+		if !strings.Contains(diagnosticsText, want) {
+			t.Fatalf("sanitized diagnostics missing %q in: %s", want, diagnosticsText)
+		}
+	}
+}
+
+func TestDiagnosticsSanitizeTruncatedUpstreamErrorBeforePersistence(t *testing.T) {
+	const (
+		echoedPrompt = "truncated prompt-like user text"
+		bearerToken  = "Bearer truncated-provider-bearer-token-1234567890"
+		providerKey  = "sk-truncated-provider-key-1234567890"
+		tokenHash    = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	bodyPrefix := `{"error":{"message":"provider echoed request context","prompt":"` + echoedPrompt + `","authorization":"` + bearerToken + `","token_hash":"` + tokenHash + `","provider_api_key":"` + providerKey + `","tail":"`
+	upstreamBody := bodyPrefix + strings.Repeat("x", 2048)
+	maxErrorBytes := len(bodyPrefix) + 32
+	if json.Valid([]byte(upstreamBody[:maxErrorBytes])) {
+		t.Fatal("truncated upstream body unexpectedly valid JSON")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(upstreamBody))
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	cfg.Server.Diagnostics.MaxErrorBytes = maxErrorBytes
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"do not persist caller prompt"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	var traces []requestTraceEventRecord
+	if err := svc.usage.db.Find(&traces).Error; err != nil {
+		t.Fatal(err)
+	}
+	var errors []requestErrorRecord
+	if err := svc.usage.db.Find(&errors).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || len(errors) != 1 {
+		t.Fatalf("diagnostic rows attempts=%d errors=%d", len(attempts), len(errors))
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosticsText := string(raw)
+	for _, attempt := range attempts {
+		diagnosticsText += "\n" + attempt.ErrorMessage
+	}
+	for _, trace := range traces {
+		diagnosticsText += "\n" + trace.Message
+	}
+	for _, rec := range errors {
+		diagnosticsText += "\n" + rec.ErrorMessage
+	}
+	for _, forbidden := range []string{echoedPrompt, bearerToken, providerKey, tokenHash, "do not persist caller prompt"} {
+		if strings.Contains(diagnosticsText, forbidden) {
+			t.Fatalf("diagnostics leaked %q in: %s", forbidden, diagnosticsText)
+		}
+	}
+	for _, want := range []string{`"prompt":[REDACTED]`, `"authorization":[REDACTED]`, `"token_hash":[REDACTED]`, `"provider_api_key":[REDACTED]`} {
+		if !strings.Contains(diagnosticsText, want) {
+			t.Fatalf("sanitized diagnostics missing %q in: %s", want, diagnosticsText)
+		}
+	}
+}
+
 func TestConfiguredDefaultModelGroupHandlesOmittedModel(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{

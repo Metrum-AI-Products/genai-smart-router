@@ -60,13 +60,14 @@ func (e routingEligibilityError) Error() string {
 }
 
 type requestContext struct {
-	id       string
-	start    time.Time
-	caller   *callerRuntime
-	dialect  string
-	client   string
-	rec      logRecord
-	traceSeq int
+	id                   string
+	start                time.Time
+	caller               *callerRuntime
+	dialect              string
+	client               string
+	rec                  logRecord
+	traceSeq             int
+	sanitizeTraceMessage func(string, string) string
 }
 
 type upstreamError struct {
@@ -469,11 +470,12 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	w.Header().Set("X-Request-Id", id)
 	caller, tokenID, err := s.authenticate(r.Header.Get("Authorization"), r.Header.Get("X-API-Key"))
 	rc := &requestContext{
-		id:      id,
-		start:   time.Now(),
-		caller:  caller,
-		dialect: dialect,
-		client:  inferClient(r),
+		id:                   id,
+		start:                time.Now(),
+		caller:               caller,
+		dialect:              dialect,
+		client:               inferClient(r),
+		sanitizeTraceMessage: s.sanitizeDiagnosticTraceMessage,
 		rec: logRecord{
 			RequestID:      id,
 			Client:         inferClient(r),
@@ -509,6 +511,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		rc.rec.AttemptsDetail = nil
 		rc.rec.TraceEvents = nil
 	}
+	s.sanitizeDiagnosticRecord(&rc.rec)
 	s.recordCacheStats(rc)
 	populateThroughput(&rc.rec)
 	populateCosts(&rc.rec)
@@ -536,6 +539,11 @@ func (s *Service) diagnosticsEnabled() bool {
 func (rc *requestContext) trace(event, message string, target Target, attempt, status int, errorClass string, retryable bool, durationMS int64) {
 	if rc == nil {
 		return
+	}
+	if rc.sanitizeTraceMessage != nil {
+		message = rc.sanitizeTraceMessage(event, message)
+	} else {
+		message = sanitizePersistedTraceMessage(event, message)
 	}
 	rc.traceSeq++
 	rec := traceLogRecord{
@@ -844,25 +852,6 @@ func (s *Service) diagnosticMaxErrorBytes() int {
 		return 2048
 	}
 	return s.cfg.Server.Diagnostics.MaxErrorBytes
-}
-
-func (s *Service) sanitizeDiagnosticError(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	text = strings.ReplaceAll(text, "\n", " ")
-	text = strings.ReplaceAll(text, "\r", " ")
-	if !s.cfg.Server.Diagnostics.StoreSanitizedUpstreamError {
-		if i := strings.Index(text, ":"); i > 0 {
-			text = strings.TrimSpace(text[:i])
-		}
-	}
-	maxBytes := s.diagnosticMaxErrorBytes()
-	if maxBytes > 0 && len(text) > maxBytes {
-		text = text[:maxBytes]
-	}
-	return text
 }
 
 func statusErrorClass(status int) string {
