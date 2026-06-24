@@ -27,7 +27,8 @@ providers:
         pricing_updated_at: "2026-06-19"
         honors_max_tokens: true
         tool_support:
-          openai_chat: [tools]
+          openai_chat: [tools, tool_choice, structured_outputs]
+          openai_responses: [function, structured_outputs]
 ```
 
 ## Modalities
@@ -44,16 +45,33 @@ Mark a modality active after validating the exact account, endpoint, model ID, r
 
 ## Tool Support
 
-Tool support is API-shape-specific. A model that handles OpenAI Chat tools may not handle Anthropic Messages tools through the same provider endpoint.
+Tool support is API-shape-specific. A model that handles OpenAI Chat tools may not handle Responses function tools or Anthropic Messages tools through the same provider endpoint. Structured-output support is tracked in the same metadata object because it is also a dialect-specific request-shape eligibility requirement.
 
 Declare only what has passed direct upstream and router-level smokes:
 
 ```yaml
 tool_support:
-  openai_chat: [tools, structured_outputs]
-  openai_responses: [function]
+  openai_chat: [tools, tool_choice, structured_outputs]
+  openai_responses: [function, structured_outputs]
   anthropic_messages: [client_tools]
 ```
+
+Capability labels:
+
+| Label | Meaning |
+|---|---|
+| `tools` | OpenAI Chat tool payloads are accepted and produce correctly shaped tool calls |
+| `tool_choice` | OpenAI Chat `tool_choice` modes used by clients are accepted |
+| `function` | OpenAI Responses function tools are accepted and produce correctly shaped tool calls |
+| `client_tools` | Anthropic Messages client tools are accepted and produce correctly shaped tool calls |
+| `structured_outputs` | The matching OpenAI dialect accepts JSON Schema structured-output requests |
+| `provider_hosted` | Reserved for provider-executed tools after exact upstream validation |
+
+`openai_chat` and `openai_responses` are separate validation surfaces. Declare `structured_outputs` under `openai_chat` only after a direct upstream Chat Completions `response_format` smoke and a router-level Chat smoke pass for the exact provider, model ID, dialect, and skin. Declare it under `openai_responses` only after the same direct and router-level evidence exists for Responses `text.format`.
+
+Tool support and structured-output support are independent. A target may support tools but not structured outputs, structured outputs but not tools, or both. A request containing both tools and structured-output fields needs a target that satisfies both requirements. Unsupported targets are skipped before routing policy selection; if no compatible target remains, callers receive `502 no-eligible-target` and no upstream request is sent.
+
+The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
 
 ## Pricing And Cost Fields
 

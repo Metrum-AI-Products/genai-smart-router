@@ -341,10 +341,14 @@ models:
 
 Catalog metadata can include `input_price_per_million_usd`, `output_price_per_million_usd`, optional VLM fields such as `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd`, `input_modalities`, `output_modalities`, `pricing_source`, `pricing_updated_at`, and `tool_support`. Pricing is copied onto the selected target at request time and logged with calculated input, image, output, and total USD cost, so historical usage rows keep the price that was used even if provider pricing changes later. When an upstream returns billed cost metadata, the router logs that upstream-reported cost separately from router-calculated cost. `tool_support` is dialect-specific:
 
-- `openai_chat`: upstream supports OpenAI-compatible chat `tools` / `tool_choice`.
-- `openai_responses`: upstream supports Responses function tools.
+- `openai_chat`: upstream supports OpenAI-compatible chat `tools`, `tool_choice`, and/or `response_format` structured outputs.
+- `openai_responses`: upstream supports Responses function tools and/or `text.format` structured outputs.
 - `anthropic_messages`: upstream supports Anthropic Messages client tools.
 - `provider_hosted`: reserved for provider-executed tools such as web search or code execution after that exact upstream capability is validated.
+
+Use explicit capability labels such as `tools`, `tool_choice`, `function`, `client_tools`, and `structured_outputs`. OpenAI Chat and OpenAI Responses are separate validation surfaces; a Chat `response_format` pass does not prove Responses `text.format`, and Anthropic Messages has no OpenAI structured-output equivalent unless a deployment adds and documents one. Structured-output requests route only to targets with matching `structured_outputs` metadata for the caller dialect. The router forwards JSON Schema payloads to the selected upstream and does not perform application-level JSON Schema validation, schema-subset enforcement, or output repair unless a separate feature implements that behavior. Unsupported schemas can still fail with upstream/provider errors.
+
+Before declaring `structured_outputs`, run a direct upstream schema smoke and the same request through the router for the exact provider, model ID, dialect, skin, and client request shape. If clients combine tools and structured-output fields, run a combined tool plus structured-output smoke and require both capabilities on the same target. If smokes fail after rollout, remove the `structured_outputs` metadata from the provider model or target override; if the target is broadly unsafe, remove it from active `models.<group>.targets[]` and keep the catalog entry disabled until validation passes.
 
 Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an example opt-in image-analysis group. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
 
@@ -436,6 +440,8 @@ models:
 Cold start is deterministic: until `min_observations` is reached, targets are ordered by configured group-local weight. After that, the router uses in-memory rolling observations for latency, throughput, error rate, timeout rate, and fallback rate; it does not read the usage database on the hot path. Decision traces contain only safe scalar metadata such as enabled signal names, request-shape buckets, candidate count, selected provider/model, score bucket, observation count, and cold-start mode. They must not contain raw prompts, images, tool outputs, router tokens, token hashes, provider keys, or full upstream headers.
 
 Rollout should start on a deployment-defined test group with interchangeable validated targets. Use mock or local router smokes for simple text, code/debug prompts, tool calls, forced tool calls, image requests when supported, structured-output requests when supported, and low output caps for each caller API. Roll back by switching the group strategy to `weighted` or by removing score terms and thresholds that are too strict for the workload.
+
+For structured-output rollout, smoke both Chat Completions `response_format` and Responses `text.format` if both dialects are configured. Also run a negative router smoke against a group with no structured-output-capable target and expect `502 no-eligible-target` with no upstream attempt. If a target claims both tools and structured outputs, include a combined request in rollout validation. Streaming clients should be told whether the router is returning provider-native streaming or synthesizing downstream SSE from a unary upstream call; schema-constrained incremental chunks are provider-specific and not guaranteed by the router.
 
 For OpenAI Chat tool clients, for example Warp Agent, configure the client with:
 

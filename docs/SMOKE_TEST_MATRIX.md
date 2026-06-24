@@ -25,6 +25,22 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 
 For agent CLI smokes, the agent must create a file and the test must assert the file contents.
 
+## Structured-Output Smokes
+
+Structured-output requests are dialect-specific. Declare `structured_outputs` only for the exact provider/model/dialect/skin that passes the relevant smoke.
+
+| Client/API | Smoke |
+|---|---|
+| OpenAI Chat structured outputs | Direct upstream `/chat/completions` with `response_format.type: json_schema`, then the same request through the router group |
+| OpenAI Responses structured outputs | Direct upstream `/responses` with `text.format.type: json_schema`, then the same request through the router group |
+| Negative eligibility | Router request against a group with no compatible target; expect `502 no-eligible-target` and no upstream attempt |
+| Tools plus structured outputs | Combined request when the target claims both capabilities for the same dialect |
+| Streaming structured outputs | Verify caller-visible behavior for clients that request streaming; note whether downstream SSE is provider-native or router-synthesized |
+
+The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets or repair model output. Unsupported schemas may produce upstream/provider errors even when eligibility metadata is correct.
+
+Rollback for failed structured-output validation: remove `structured_outputs` from the provider model or target override. If the target is unsafe beyond that capability, remove it from active `models.<group>.targets[]` and keep it catalog-only until direct upstream and router-level smokes pass again.
+
 ## Image Smokes
 
 Use the receipt image when validating generic VLM/OCR transport:

@@ -183,10 +183,20 @@ Catalog entries should carry cost and capability metadata:
 - `input_modalities` and `output_modalities` describe tested model I/O such as `text`, `image`, or `video`. Requests that include image content are automatically filtered to targets with `image` in `input_modalities`; text-only targets are skipped.
 - `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd` are optional VLM pricing fields. Use them only when the provider or internal chargeback model bills image input differently from ordinary input tokens. If the provider returns billed cost in usage metadata, the router logs that upstream-reported cost separately from the calculated cost.
 - `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
-- `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which tool protocol has been tested for that upstream. Tool-bearing requests only use compatible tool targets. Leave the field absent until a direct upstream smoke and router-level tool smoke pass.
+- `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which request-shape capabilities have been tested for that upstream. Tool-bearing and structured-output requests only use compatible targets. Leave each capability absent until a direct upstream smoke and router-level smoke pass for that exact provider, model, dialect, and skin.
 - `honors_max_tokens` defaults to `true`. Set it to `false` for an upstream target that accepts a request but ignores explicit caller caps such as `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1`; the router then skips that target whenever the caller supplies a positive max-token field.
 
 OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting an ordinary deployment-defined model group; they should not have to switch to a separate tools-only model for a coding-agent turn.
+
+Structured-output callers use OpenAI Chat `response_format` or OpenAI Responses `text.format`. The router treats those fields as eligibility requirements and forwards the schema to the selected upstream. It does not perform application-level JSON Schema validation or guarantee that every provider accepts the same schema subset. Declare `structured_outputs` separately for each dialect that passes validation:
+
+```yaml
+tool_support:
+  openai_chat: [tools, tool_choice, structured_outputs]
+  openai_responses: [function, structured_outputs]
+```
+
+A target that supports tools is not automatically structured-output capable, and a target that supports Chat structured outputs is not automatically Responses structured-output capable. Requests that include both tools and structured-output fields require both capabilities on the same eligible target. If structured-output smokes fail after rollout, remove `structured_outputs` from that provider model or target override; if the whole target is unsafe, remove it from active `models.<group>.targets[]` and keep it catalog-only until validation passes.
 
 ## Per-Group Weighted Routing
 

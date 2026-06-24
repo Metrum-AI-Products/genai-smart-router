@@ -794,7 +794,7 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		EndpointHost:     endpointHost(provider.BaseURL),
 		AttemptTimeoutMS: s.attemptTimeoutMS(groupName, target),
 	}
-	passthrough := toolPassthrough(callerDialect, outDialect, req)
+	passthrough := requestShapePassthrough(callerDialect, outDialect, req)
 	var upReqBody []byte
 	var err error
 	if passthrough {
@@ -996,13 +996,24 @@ func toolPassthrough(callerDialect, outDialect string, req *IRRequest) bool {
 	return callerDialect == outDialect && len(req.Tools) > 0 && (outDialect == "openai-responses" || outDialect == "anthropic" || outDialect == "openai-chat")
 }
 
+func requestShapePassthrough(callerDialect, outDialect string, req *IRRequest) bool {
+	if toolPassthrough(callerDialect, outDialect, req) {
+		return true
+	}
+	return callerDialect == outDialect && requestHasStructuredOutput(req) && (outDialect == "openai-responses" || outDialect == "openai-chat")
+}
+
 func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDialect string) []Target {
 	requiredModalities := requestInputModalities(req)
+	requiresStructuredOutput := requestHasStructuredOutput(req)
 	if len(req.Tools) == 0 {
 		out := make([]Target, 0, len(targets))
 		for _, target := range targets {
+			provider := s.cfg.Provider[target.Provider]
+			outDialect := targetDialect(provider, target)
 			if !target.ToolOnly &&
 				targetSupportsInputModalities(target, requiredModalities) &&
+				targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 				targetHonorsExplicitMaxTokens(target, req) {
 				out = append(out, target)
 			}
@@ -1016,6 +1027,7 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 		if toolPassthrough(callerDialect, outDialect, req) &&
 			targetSupportsTools(target, outDialect) &&
 			targetSupportsInputModalities(target, requiredModalities) &&
+			targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 			targetHonorsExplicitMaxTokens(target, req) {
 			out = append(out, target)
 		}
@@ -1027,6 +1039,9 @@ func routingRequirements(req *IRRequest, callerDialect string) []string {
 	requirements := requestInputModalities(req)
 	if len(req.Tools) > 0 {
 		requirements = append(requirements, "tools", callerDialect+"_tool_passthrough")
+	}
+	if requestHasStructuredOutput(req) {
+		requirements = append(requirements, "structured_outputs")
 	}
 	if req.MaxTokens > 0 {
 		requirements = append(requirements, "max_tokens")
@@ -1057,20 +1072,39 @@ func targetSupportsTools(target Target, dialect string) bool {
 		if toolSupportEmpty(target.ToolSupport) {
 			return true
 		}
-		return len(target.ToolSupport.OpenAIResponses) > 0
+		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
 	case "anthropic":
 		if toolSupportEmpty(target.ToolSupport) {
 			return true
 		}
-		return len(target.ToolSupport.AnthropicMessages) > 0
+		return supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
 	case "openai", "openai-chat":
 		if toolSupportEmpty(target.ToolSupport) {
 			return false
 		}
-		return len(target.ToolSupport.OpenAIChat) > 0
+		return supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
 	default:
 		return false
 	}
+}
+
+func supportsAnyCapability(values []string, capabilities ...string) bool {
+	for _, capability := range capabilities {
+		if stringSliceContains(values, capability) {
+			return true
+		}
+	}
+	return false
+}
+
+func targetSupportsStructuredOutput(target Target, callerDialect, outDialect string, required bool) bool {
+	if !required {
+		return true
+	}
+	if callerDialect != outDialect {
+		return false
+	}
+	return targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
 }
 
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {

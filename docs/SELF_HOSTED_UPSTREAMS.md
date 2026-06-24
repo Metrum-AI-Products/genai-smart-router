@@ -113,6 +113,20 @@ python3 -m sglang.launch_server \
 
 Do not assume a model is tool-capable because the server accepts `tools`. Validate that the response contains correctly shaped tool calls in both non-streaming and streaming modes if clients use both. Add `tool_support.openai_chat: [tools, tool_choice]` only after that validation passes for the exact served model, chat template, parser, and client protocol. For streaming router smokes, verify the downstream SSE contains `delta.tool_calls` and `finish_reason: "tool_calls"`; the router may call the upstream non-streaming for passthrough safety and synthesize OpenAI Chat SSE chunks for the caller.
 
+## Structured-Output Notes
+
+Structured-output support is a separate request-shape capability. For OpenAI Chat, validate `response_format` with `type: json_schema`; for Responses, validate `text.format` with `type: json_schema`. Passing one dialect does not prove the other. Anthropic Messages has no OpenAI structured-output equivalent unless a deployment adds and documents an explicit compatibility layer.
+
+Example metadata after validation:
+
+```yaml
+tool_support:
+  openai_chat: [tools, tool_choice, structured_outputs]
+  openai_responses: [function, structured_outputs]
+```
+
+The router forwards schema payloads to the upstream and uses metadata only for eligibility. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema restrictions, or repair model output. Unsupported schemas can still produce upstream/provider errors. If structured-output smokes fail, remove `structured_outputs` from the provider model or target override; remove the target from active groups if the failure makes the upstream unsafe for the deployed group contract.
+
 ## Acceptance Smokes
 
 Direct upstream text smoke:
@@ -196,6 +210,9 @@ Before adding a self-hosted tool target to production:
 
 - Directly validate `/v1/models`, text completions, and tool calls against the upstream.
 - Validate the same text and tool requests through the router model group.
+- Directly validate structured-output requests for each claimed dialect, then repeat through the router group.
+- For targets that claim both tools and structured outputs, validate a combined request for the same dialect.
+- Run a negative structured-output router smoke against a group with no compatible target and expect `502 no-eligible-target` before any upstream request.
 - Keep `tool_only: true` targets for upstreams that are validated only for tool-bearing traffic.
 - Keep caller allow lists scoped to the enterprise model groups the caller actually needs.
 - Record the upstream model ID, parser flags, chat template, server version, smoke results, and rollback path in deployment notes.

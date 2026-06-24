@@ -263,6 +263,58 @@ func TestDynamicScoreHardFiltersForcedToolsAndStructuredOutput(t *testing.T) {
 	}
 }
 
+func TestRequestHasStructuredOutputOnlyForSchemaOrJSONFormats(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  map[string]any
+		want bool
+	}{
+		{
+			name: "chat json schema",
+			raw:  map[string]any{"response_format": map[string]any{"type": "json_schema"}},
+			want: true,
+		},
+		{
+			name: "chat json object",
+			raw:  map[string]any{"response_format": map[string]any{"type": "json_object"}},
+			want: true,
+		},
+		{
+			name: "chat text format",
+			raw:  map[string]any{"response_format": map[string]any{"type": "text"}},
+			want: false,
+		},
+		{
+			name: "responses json schema",
+			raw:  map[string]any{"text": map[string]any{"format": map[string]any{"type": "json_schema"}}},
+			want: true,
+		},
+		{
+			name: "responses json object",
+			raw:  map[string]any{"text": map[string]any{"format": map[string]any{"type": "json_object"}}},
+			want: true,
+		},
+		{
+			name: "responses text format",
+			raw:  map[string]any{"text": map[string]any{"format": map[string]any{"type": "text"}}},
+			want: false,
+		},
+		{
+			name: "responses missing format type",
+			raw:  map[string]any{"text": map[string]any{"format": map[string]any{"verbosity": "low"}}},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := requestHasStructuredOutput(&IRRequest{Raw: tt.raw})
+			if got != tt.want {
+				t.Fatalf("requestHasStructuredOutput()=%v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDynamicScoreHardFilterRequiresRequestedAPISkin(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()

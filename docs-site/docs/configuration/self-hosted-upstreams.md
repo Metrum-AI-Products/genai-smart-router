@@ -258,6 +258,17 @@ Expected shape when the model chooses the tool:
 
 Some upstream models support named or required tool choice better than automatic tool choice. vLLM documents named, `auto`, `required`, and `none` tool-choice modes; SGLang documents `required` and named function tool-choice support with the default Xgrammar backend. Validate the exact model, parser, chat template, streaming mode, and tool-choice setting before adding a self-hosted target to a production tool route.
 
+## Structured Outputs
+
+For OpenAI-compatible chat services, declare structured-output support only after the upstream accepts Chat Completions `response_format` with the schema subset your clients use and the same request passes through the router. For Responses-compatible services, validate `/v1/responses` with `text.format` separately before declaring `tool_support.openai_responses: [structured_outputs]`.
+
+```yaml
+tool_support:
+  openai_chat: [tools, tool_choice, structured_outputs]
+```
+
+Structured-output support is not inferred from vLLM, SGLang, model-card, or provider marketing claims. It depends on the exact served model, server version, parser/chat template, dialect, and client request shape. The router forwards the schema payload to the upstream; it does not validate arbitrary JSON Schema subsets or repair nonconforming model output. If a structured-output smoke starts failing, remove `structured_outputs` from the provider model metadata or remove the target from active groups until the upstream behavior is fixed.
+
 ## Validation Checklist
 
 Before allowing production traffic to a self-hosted upstream:
@@ -267,6 +278,8 @@ Before allowing production traffic to a self-hosted upstream:
 - For VLM targets, run a direct image smoke and then the same image request through the router. Add `image` to `input_modalities` after both pass.
 - Run a direct upstream tool smoke with the exact tool schema and `tool_choice` mode clients will use.
 - Run the same text and tool smoke through the router model group.
+- Run direct upstream and router-level structured-output smokes for every dialect that claims `structured_outputs`.
+- Run a combined tool plus structured-output smoke when a target claims both capabilities for the same dialect.
 - Mark tool-capable targets with `tool_only: true` when they should be used only for tool-bearing requests.
 - Keep non-tool and tool traffic in separate targets if a model is strong for text but unreliable for tools.
 - Monitor upstream latency, error rate, output-token throughput, and cache bypasses in router usage reports and metrics.

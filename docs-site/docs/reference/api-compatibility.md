@@ -30,12 +30,13 @@ Content-capture maintenance endpoints are administrative APIs, not model APIs. `
 | Text input/output | Supported | Supported | Supported |
 | Streaming | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
+| Structured outputs | `response_format` requires `tool_support.openai_chat: [structured_outputs]` | `text.format` requires `tool_support.openai_responses: [structured_outputs]` | No OpenAI structured-output equivalent |
 | Image input | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` |
 | Caller max-token caps | `max_tokens` and `max_completion_tokens` are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
 | Usage and cost rows | Recorded | Recorded | Recorded |
 
-If a request includes tools, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped.
+If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
 For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_tokens` are treated as explicit output caps. If a Chat request sends both fields, `max_tokens` takes precedence for router eligibility and normalized upstream forwarding.
 
@@ -99,6 +100,70 @@ Tool requests only route to upstream targets that explicitly advertise support f
 | Anthropic Messages client tools | `tool_support.anthropic_messages` |
 
 Tool-bearing requests bypass response caching because tool results depend on external shell, filesystem, browser, or client tool state.
+
+## Structured Outputs
+
+Structured-output requests are routing contracts, not router-side schema execution. The router detects OpenAI Chat `response_format` and OpenAI Responses `text.format`, selects only targets with explicit dialect-matching `structured_outputs` metadata, and forwards the schema payload to the selected upstream. It does not validate arbitrary JSON Schema subsets or repair provider output unless a separate implementation adds that behavior. Unsupported schemas, strictness settings, or provider-specific JSON Schema subsets may produce upstream/provider errors.
+
+Structured-output support is dialect-specific. Passing Chat Completions `response_format` does not prove Responses `text.format`, and Anthropic Messages has no OpenAI structured-output equivalent unless a deployment adds and documents an explicit compatible behavior.
+
+Chat Completions JSON Schema example:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "example-structured",
+    "messages": [{"role": "user", "content": "Extract the ticket id and priority from: INC-1234 high"}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    }
+  }'
+```
+
+Responses JSON Schema example:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/responses" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "example-structured",
+    "input": "Extract the ticket id and priority from: INC-1234 high",
+    "text": {
+      "format": {
+        "type": "json_schema",
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    }
+  }'
+```
+
+Use a deployment-defined model group returned by `/v1/models`; `example-structured` is only a placeholder group name.
 
 ## Image Inputs
 

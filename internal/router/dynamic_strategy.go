@@ -353,14 +353,32 @@ func requestHasStructuredOutput(req *IRRequest) bool {
 		return false
 	}
 	if rf, ok := req.Raw["response_format"]; ok && rf != nil {
-		return true
+		return structuredOutputFormatRequiresSupport(rf)
 	}
 	if text, ok := req.Raw["text"].(map[string]any); ok {
 		if format, ok := text["format"]; ok && format != nil {
-			return true
+			return structuredOutputFormatRequiresSupport(format)
 		}
 	}
 	return false
+}
+
+func structuredOutputFormatRequiresSupport(format any) bool {
+	var typ string
+	switch v := format.(type) {
+	case string:
+		typ = v
+	case map[string]any:
+		typ, _ = v["type"].(string)
+	default:
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(typ)) {
+	case "json_schema", "json_object":
+		return true
+	default:
+		return false
+	}
 }
 
 func targetSupportsCapability(target Target, dialect string, capabilities ...string) bool {
