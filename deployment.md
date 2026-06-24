@@ -760,7 +760,7 @@ Runtime changes:
 - Added validated multimodal OpenRouter Responses and Anthropic Messages targets to coding-agent routing so deployment-defined coding groups can handle mixed text/image agent requests without requiring users to switch to a separate vision-only group.
 - Added OpenRouter Anthropic-compatible VLM targets to the dedicated `vision` route while preserving existing image-capable targets and weights.
 - Added clearer caller-facing errors:
-  - `no-eligible-target` when the requested group has no upstream target for the requested dialect/tool/modality shape.
+  - `no-eligible-target` when the requested group has no upstream target for the requested dialect/tool/structured-output/modality shape.
   - `upstream-failed` with safe request id, attempt count, and attempted provider/model details when eligible upstreams fail.
 - Fixed Anthropic tool passthrough to normalize OpenAI-style `image_url` content into Anthropic `image.source` blocks before forwarding to Anthropic-compatible upstreams.
 

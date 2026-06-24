@@ -451,7 +451,7 @@ API key: <router caller token>
 Model: <allowed-model-group>
 ```
 
-Use whichever deployment-defined model group the caller token allows. If a request includes `tools` and no eligible target in that group has explicit `tool_support.openai_chat`, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, and modalities.
+Use whichever deployment-defined model group the caller token allows. If a request includes `tools`, structured-output fields, images, or explicit output caps and no eligible target in that group declares the required support, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, structured outputs, modalities, and cap behavior.
 
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 

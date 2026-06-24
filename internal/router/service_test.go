@@ -624,6 +624,262 @@ func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatStructuredOutputPassthrough(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_structured",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "provider-structured-chat",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": `{"ticket_id":"INC-1234","priority":"high"}`},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["structured_chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["structured-chat-test"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "structured_chat",
+		Model:       "provider-structured-chat",
+		ToolSupport: ToolSupport{OpenAIChat: []string{"structured_outputs"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "structured-chat-test")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	requestBody := `{
+	  "model":"structured-chat-test",
+	  "messages":[{"role":"user","content":"Extract INC-1234 high"}],
+	  "response_format":{
+	    "type":"json_schema",
+	    "json_schema":{
+	      "name":"ticket_extract",
+	      "strict":true,
+	      "schema":{
+	        "type":"object",
+	        "properties":{
+	          "ticket_id":{"type":"string"},
+	          "priority":{"type":"string","enum":["low","medium","high"]}
+	        },
+	        "required":["ticket_id","priority"],
+	        "additionalProperties":false
+	      }
+	    }
+	  }
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "provider-structured-chat" {
+		t.Fatalf("upstream model=%#v, want provider model; body=%#v", upstreamBody["model"], upstreamBody)
+	}
+	expectedRequest := mustJSONMap(t, requestBody)
+	assertJSONEquivalent(t, "response_format", upstreamBody["response_format"], expectedRequest["response_format"])
+	var response map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	choices := response["choices"].([]any)
+	if response["object"] != "chat.completion" || stringValue(response["id"]) == "" || len(choices) != 1 {
+		t.Fatalf("not an OpenAI Chat-compatible response: %#v", response)
+	}
+	message := choices[0].(map[string]any)["message"].(map[string]any)
+	if message["content"] != `{"ticket_id":"INC-1234","priority":"high"}` {
+		t.Fatalf("structured response content not preserved: %#v", response)
+	}
+	rawLog, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"ticket_id", "priority", "INC-1234", "ticket_extract"} {
+		if strings.Contains(string(rawLog), forbidden) {
+			t.Fatalf("request log leaked structured-output schema or prompt text %q: %s", forbidden, rawLog)
+		}
+	}
+}
+
+func TestOpenAIResponsesStructuredOutputPassthrough(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_structured",
+			"object":      "response",
+			"status":      "completed",
+			"model":       "provider-structured-responses",
+			"output_text": `{"ticket_id":"INC-1234","priority":"high"}`,
+			"output": []map[string]any{{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]any{{
+					"type": "output_text",
+					"text": `{"ticket_id":"INC-1234","priority":"high"}`,
+				}},
+			}},
+			"usage": map[string]any{"input_tokens": 13, "output_tokens": 8, "total_tokens": 21},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["structured_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["structured-responses-test"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "structured_responses",
+		Model:       "provider-structured-responses",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"structured_outputs"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "structured-responses-test")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	requestBody := `{
+	  "model":"structured-responses-test",
+	  "input":"Extract INC-1234 high",
+	  "text":{
+	    "format":{
+	      "type":"json_schema",
+	      "name":"ticket_extract",
+	      "strict":true,
+	      "schema":{
+	        "type":"object",
+	        "properties":{
+	          "ticket_id":{"type":"string"},
+	          "priority":{"type":"string","enum":["low","medium","high"]}
+	        },
+	        "required":["ticket_id","priority"],
+	        "additionalProperties":false
+	      }
+	    }
+	  }
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "provider-structured-responses" {
+		t.Fatalf("upstream model=%#v, want provider model; body=%#v", upstreamBody["model"], upstreamBody)
+	}
+	expectedRequest := mustJSONMap(t, requestBody)
+	assertJSONEquivalent(t, "text.format", upstreamBody["text"], expectedRequest["text"])
+	var response map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["object"] != "response" || response["status"] != "completed" {
+		t.Fatalf("not a Responses-compatible response: %#v", response)
+	}
+	usage := response["usage"].(map[string]any)
+	if usage["total_tokens"] != float64(21) {
+		t.Fatalf("usage not preserved: %#v", usage)
+	}
+}
+
+func TestStructuredOutputRequestsRequireExplicitSupport(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["structured-chat-test"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "mock",
+		Model:       "unsupported-structured-chat",
+		ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "structured-chat-test")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"structured-chat-test","messages":[{"role":"user","content":"Extract INC-1234 high"}],"response_format":{"type":"json_schema","json_schema":{"name":"ticket_extract","schema":{"type":"object","properties":{"ticket_id":{"type":"string"}}}}}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("unsupported structured-output request reached upstream %d times", calls.Load())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) ||
+		!strings.Contains(rr.Body.String(), `structured_outputs`) {
+		t.Fatalf("error details missing structured-output requirement: %s", rr.Body.String())
+	}
+	rawLog, err := os.ReadFile(filepath.Join(dir, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rawLog), `"error":"no-eligible-target"`) ||
+		!strings.Contains(string(rawLog), `structured_outputs`) {
+		t.Fatalf("request log missing safe scalar error metadata: %s", rawLog)
+	}
+	for _, forbidden := range []string{"ticket_id", "INC-1234", "ticket_extract"} {
+		if strings.Contains(string(rawLog), forbidden) {
+			t.Fatalf("request log leaked structured-output schema or prompt text %q: %s", forbidden, rawLog)
+		}
+	}
+}
+
+func TestToolAndStructuredOutputRequestsRequireBothCapabilities(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+	req := &IRRequest{
+		Messages: []IRMessage{{Role: "user", Content: "Extract INC-1234 high"}},
+		Tools:    []map[string]any{{"type": "function"}},
+		Raw: map[string]any{
+			"response_format": map[string]any{"type": "json_schema"},
+		},
+	}
+	targets := []Target{
+		{Provider: "mock", Model: "tools-only", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+		{Provider: "mock", Model: "structured-only", ToolSupport: ToolSupport{OpenAIChat: []string{"structured_outputs"}}},
+		{Provider: "mock", Model: "tools-and-structured", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice", "structured_outputs"}}},
+		{Provider: "mock", Model: "neither"},
+	}
+	got := svc.targetsForRequest(targets, req, "openai-chat")
+	if len(got) != 1 || got[0].Model != "tools-and-structured" {
+		t.Fatalf("eligible targets=%#v, want only tools-and-structured", got)
+	}
+}
+
 func TestOpenAIChatMaxCompletionTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5014,6 +5270,30 @@ func testPIIFilterConfig(mode string) PIIFilterConfig {
 				PlaceholderPrefix: "US_SSN",
 			},
 		},
+	}
+}
+
+func mustJSONMap(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func assertJSONEquivalent(t *testing.T, name string, got, want any) {
+	t.Helper()
+	gotRaw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("%s got value is not JSON-serializable: %v", name, err)
+	}
+	wantRaw, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("%s want value is not JSON-serializable: %v", name, err)
+	}
+	if string(gotRaw) != string(wantRaw) {
+		t.Fatalf("%s mismatch\ngot:  %s\nwant: %s", name, gotRaw, wantRaw)
 	}
 }
 

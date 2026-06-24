@@ -38,7 +38,7 @@ Diagnostic tables must not store raw prompts, raw image payloads, raw tokens, to
 
 ### `no-eligible-target`
 
-Check the requirements in the error body. The fix is normally a configuration change: enable or add a target in the requested model group that supports the requested dialect, tools, modalities, and max-token cap behavior.
+Check the requirements in the error body. The fix is normally a configuration change: enable or add a target in the requested model group that supports the requested dialect, tools, structured outputs, modalities, and max-token cap behavior.
 
 ### Timeout
 

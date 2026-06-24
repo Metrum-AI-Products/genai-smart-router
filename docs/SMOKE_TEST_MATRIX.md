@@ -27,7 +27,7 @@ For agent CLI smokes, the agent must create a file and the test must assert the 
 
 ## Structured-Output Smokes
 
-Structured-output requests are dialect-specific. Declare `structured_outputs` only for the exact provider/model/dialect/skin that passes the relevant smoke.
+Structured-output requests are dialect-specific. Declare `structured_outputs` only for the exact provider/model/dialect/skin that passes the relevant smoke. A target that only accepts the request field syntactically is not validated until it returns schema-shaped content, reports normal usage when the upstream normally does, and fails or rejects unsupported strict schemas in an understandable way.
 
 | Client/API | Smoke |
 |---|---|
@@ -39,7 +39,168 @@ Structured-output requests are dialect-specific. Declare `structured_outputs` on
 
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets or repair model output. Unsupported schemas may produce upstream/provider errors even when eligibility metadata is correct.
 
-Rollback for failed structured-output validation: remove `structured_outputs` from the provider model or target override. If the target is unsafe beyond that capability, remove it from active `models.<group>.targets[]` and keep it catalog-only until direct upstream and router-level smokes pass again.
+Add metadata only after validation:
+
+```yaml
+providers:
+  example:
+    models:
+      example-model:
+        model: provider-model-id
+        tool_support:
+          openai_chat: [structured_outputs]
+          openai_responses: [structured_outputs]
+```
+
+If a target supports both tools and structured outputs on one surface, keep both capabilities on that same surface, for example `openai_chat: [tools, tool_choice, structured_outputs]`. A tool-bearing structured-output request must not route to a tools-only target or a structured-only target.
+
+### Direct Upstream Checks
+
+Run these checks directly against the upstream endpoint before routing traffic through the router. Use placeholder-safe prompts and do not print provider keys.
+
+OpenAI Chat `response_format.type: json_schema`:
+
+```bash
+curl -fsS "$UPSTREAM_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $UPSTREAM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "<provider-model-id>",
+    "messages": [{"role": "user", "content": "Extract INC-1234 high"}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "max_tokens": 128,
+    "stream": false
+  }'
+```
+
+OpenAI Responses `text.format.type: json_schema`:
+
+```bash
+curl -fsS "$UPSTREAM_BASE_URL/responses" \
+  -H "Authorization: Bearer $UPSTREAM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "<provider-model-id>",
+    "input": "Extract INC-1234 high",
+    "text": {
+      "format": {
+        "type": "json_schema",
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "max_output_tokens": 128,
+    "stream": false
+  }'
+```
+
+When declaring strict tool/function argument support, also run a tool-call request with a strict parameter schema on the same surface. Record only safe evidence: provider, model ID, API surface, HTTP status, finish reason or response status, whether parsed content matched the schema, usage token counts, and whether intentionally unsupported schemas failed clearly.
+
+### Router-Level Checks
+
+After direct upstream checks pass, add the capability metadata to the target and run router-level smokes through a deployment-defined test group before activating or increasing the target in broad groups.
+
+OpenAI Chat through the router:
+
+```bash
+curl -fsS "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "<structured-chat-test-group>",
+    "messages": [{"role": "user", "content": "Extract INC-1234 high"}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "max_tokens": 128,
+    "stream": false
+  }'
+```
+
+OpenAI Responses through the router:
+
+```bash
+curl -fsS "$ROUTER_BASE_URL/v1/responses" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "<structured-responses-test-group>",
+    "input": "Extract INC-1234 high",
+    "text": {
+      "format": {
+        "type": "json_schema",
+        "name": "ticket_extract",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {"type": "string"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]}
+          },
+          "required": ["ticket_id", "priority"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "max_output_tokens": 128,
+    "stream": false
+  }'
+```
+
+Negative and mixed-capability router checks:
+
+- Send the same structured-output request to a test group with no `structured_outputs` target and expect `502 no-eligible-target` with `structured_outputs` in `details.requirements`.
+- For tool plus structured-output requests, verify this matrix:
+
+| Target capabilities | Expected eligibility |
+|---|---|
+| tools only | skipped |
+| structured outputs only | skipped for tool-bearing request |
+| tools + structured outputs | eligible |
+| neither | skipped |
+
+Structured-output requests bypass the response cache because schema fields are part of the contract and should not be coalesced with ordinary text requests or other schemas. Confirm repeated structured-output smokes reach the upstream each time and that request logs record `cache=bypass`.
+
+### Rollback
+
+If validation fails, remove `structured_outputs` or `json_schema` from the affected target metadata. If the target is already active, remove it from the model group or lower its active weight to zero, restart/reload using the normal deployment process, and rerun the negative router smoke to confirm structured-output traffic no longer reaches that upstream. Do not leave a target in active routing with stale structured-output metadata.
 
 ## Image Smokes
 
