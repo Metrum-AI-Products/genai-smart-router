@@ -102,7 +102,7 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
         {"type": "image_url", "image_url": {"url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
       ]
     }],
-    "max_tokens": 128,
+    "max_tokens": 512,
     "stream": false
   }'
 ```
@@ -122,7 +122,7 @@ curl "$ROUTER_BASE_URL/v1/responses" \
         {"type": "input_image", "image_url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}
       ]
     }],
-    "max_output_tokens": 128,
+    "max_output_tokens": 512,
     "stream": false
   }'
 ```
@@ -135,7 +135,7 @@ curl "$ROUTER_BASE_URL/v1/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<allowed-vlm-model-group>",
-    "max_tokens": 128,
+    "max_tokens": 512,
     "messages": [{
       "role": "user",
       "content": [
@@ -182,7 +182,7 @@ curl "$ANTHROPIC_BASE_URL/v1/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<allowed-vlm-model-group>",
-    "max_tokens": 128,
+    "max_tokens": 512,
     "messages": [{
       "role": "user",
       "content": [
@@ -199,4 +199,6 @@ Image-bearing requests bypass response caching. The router logs `input_has_image
 
 Keep catalog-only VLM candidates out of active traffic until the exact API shapes you plan to support pass. Some providers advertise image support in a model catalog before the current account, region, or endpoint can actually serve image requests.
 
-For OpenRouter, validate the exact model ID and suffix you plan to route. On 2026-06-17, direct OpenRouter receipt-image smokes passed for `anthropic/claude-sonnet-4.6`, `x-ai/grok-4.3`, `qwen/qwen3.7-plus:nitro`, `qwen/qwen3.7-plus`, `qwen/qwen3.6-flash:nitro`, and `minimax/minimax-m3`. Treat image processing and OCR accuracy as separate gates: `qwen/qwen3.6-flash:nitro` accepted and analyzed the receipt image in direct, local-router, and production-router smokes, but one production run returned the wrong merchant. That is acceptable for a conservative general VLM target, but not enough for an OCR-specific route unless the exact-answer smoke passes consistently. The same smoke failed or was not suitable for the current account on `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, and `google/gemini-3.1-pro-preview` because OpenRouter returned a provider privacy 404; `moonshotai/kimi-k2.7-code` returned empty content; `mistralai/mistral-medium-3-5` and `google/gemma-4-26b-a4b-it:nitro` returned the wrong merchant for this receipt.
+Validate the exact provider, model ID, suffix, API dialect, account entitlement, and region you plan to route. Treat image processing and OCR accuracy as separate gates: a model may accept and analyze an image but still fail an exact-answer OCR test. That can be acceptable for a conservative general VLM group, but not for OCR-specific or browser-control routes unless the exact workload verifier passes consistently.
+
+Record dated provider-specific investigation results in internal deployment notes or a clearly labeled historical case study. Keep the public product docs focused on the validation method and customer-facing behavior, because provider catalogs, entitlements, and model quality change quickly.

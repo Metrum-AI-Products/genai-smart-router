@@ -3,13 +3,10 @@
 }
 
 .hero {
-  min-height: 72vh;
+  min-height: 70vh;
   display: flex;
   align-items: center;
-  background:
-    radial-gradient(circle at 75% 20%, rgba(204, 40, 175, 0.22), transparent 32rem),
-    radial-gradient(circle at 20% 15%, rgba(255, 49, 50, 0.18), transparent 26rem),
-    #000;
+  background: #000;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
@@ -43,7 +40,7 @@
 }
 
 .lede {
-  max-width: 760px;
+  max-width: 850px;
   margin: 28px 0 0;
   color: var(--metrum-text-muted);
   font-size: clamp(1.12rem, 2vw, 1.45rem);
@@ -77,6 +74,48 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+.pathBand {
+  border-bottom: 1px solid var(--metrum-border);
+  background: var(--ifm-background-surface-color);
+  padding: 28px 0;
+}
+
+.pathGrid {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.path {
+  display: block;
+  border: 1px solid var(--metrum-border);
+  background: var(--ifm-background-color);
+  padding: 22px 24px;
+  color: var(--ifm-color-content);
+  text-decoration: none;
+}
+
+.path:hover {
+  color: var(--ifm-color-content);
+  text-decoration: none;
+  border-color: var(--metrum-pink);
+}
+
+.path span {
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  text-transform: uppercase;
+  font-size: 0.82rem;
+  color: var(--metrum-pink);
+}
+
+.path p {
+  margin: 12px 0 0;
+  color: var(--metrum-text-muted);
+}
+
 .featureBand {
   background: var(--ifm-background-color);
   padding: 56px 0 72px;
@@ -108,6 +147,10 @@
 
 @media (max-width: 800px) {
   .featureGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pathGrid {
     grid-template-columns: 1fr;
   }
 }

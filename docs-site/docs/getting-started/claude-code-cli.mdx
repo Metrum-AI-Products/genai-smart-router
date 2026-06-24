@@ -18,6 +18,8 @@ Claude Code uses the Anthropic Messages API shape. For router traffic, use the r
 
 Use `ANTHROPIC_AUTH_TOKEN` for the router token. Keep `ANTHROPIC_API_KEY` reserved for direct Anthropic traffic; setting both for the router path can cause client warnings or incorrect authentication behavior.
 
+Record the Claude Code version used for deployment validation with `claude --version`; CLI flags can change over time.
+
 <RouterCodeBlock>
 {`
 unset ANTHROPIC_API_KEY
@@ -44,6 +46,8 @@ claude --model "<allowed-model-group>"
 Use the same deployment-defined coding group for mixed coding and image tasks. Some hosted examples use `big-coder` as a coding-oriented group name; your deployment may use a different group name. When a Claude Code request includes image content, the router filters to multimodal Anthropic Messages-compatible targets inside that group; text-only and ordinary tool requests continue to use the normal coding targets.
 
 ## Tool Smoke
+
+Run tool smokes in a disposable directory because the command intentionally grants file and shell tools.
 
 ```bash
 claude --bare --print --model "<allowed-model-group>" \

@@ -6,11 +6,17 @@ import clsx from "clsx";
 import styles from "./index.module.css";
 
 const features = [
-  ["One endpoint", "OpenAI-compatible and Anthropic-compatible clients integrate once while routing policy stays server-side."],
-  ["Governed access", "Caller tokens, model-group allow lists, quotas, rate limits, cache policy, and telemetry are enforced before provider calls."],
-  ["Multimodal routing", "Text, image/VLM, tool-call, and coding-agent requests can share deployment-defined model groups with capability-aware target selection."],
-  ["Provider optionality", "Route across validated hosted providers, OpenAI-compatible upstreams, and enterprise-owned inference services without client rewrites."],
-  ["Usage intelligence", "Reports connect users, projects, model groups, providers, token counts, image events, latency, cache behavior, and request-time cost."],
+  ["Stable client API", "OpenAI Chat, OpenAI Responses, Anthropic Messages, SDKs, Codex CLI, and Claude Code can call one governed endpoint."],
+  ["Policy-owned model groups", "Expose quality and cost contracts instead of raw provider IDs, then tune providers and weights without client rewrites."],
+  ["Request-shape safety", "Tool, image, dialect, and max-token requirements filter targets before the router calls an upstream model."],
+  ["Cost and performance evidence", "Usage rows and reports preserve provider/model, tokens, image fields, cache, latency, attempts, fallbacks, and request-time cost."],
+  ["Private and hosted upstreams", "Mix external providers with enterprise vLLM, SGLang, Baseten-style, or other OpenAI-compatible services behind one API."],
+];
+
+const paths = [
+  ["Evaluate", "Run a complete proof path and know what evidence to request.", "/evaluation/evaluate-smart-router"],
+  ["Start Coding", "Set up Codex CLI, Claude Code, or OpenAI-compatible SDK traffic.", "/getting-started/hosted-quickstart"],
+  ["Plan Deployment", "Review model-group contracts, trust controls, reports, and rollout gates.", "/evaluation/deployment-readiness"],
 ];
 
 export default function Home() {
@@ -27,22 +33,36 @@ export default function Home() {
             <p className={styles.eyebrow}>Metrum AI Product Documentation</p>
             <h1>GenAI Smart Router</h1>
             <p className={styles.lede}>
-              A governed, multi-provider gateway for LLMs, VLMs, developer tools, and AI agent workflows.
+              A deployable enterprise gateway that keeps GenAI clients stable while routing policy, provider keys,
+              model selection, budgets, telemetry, and request-time cost accounting stay under platform control.
             </p>
             <div className={styles.actions}>
               <Link className={clsx("button", styles.primary)} to="/overview">
-                Browse Docs
+                Product Overview
+              </Link>
+              <Link className={clsx("button", styles.secondary)} to="/evaluation/evaluate-smart-router">
+                Evaluate
               </Link>
               <Link className={clsx("button", styles.secondary)} to="/solution-brief">
-                Read Solution Brief
+                Solution Brief
               </Link>
               <Link className={clsx("button", styles.secondary)} to="/evaluation/harbor-case-study">
-                View Case Study
+                Case Study
               </Link>
               <Link className={clsx("button", styles.secondary)} href="mailto:contact@metrum.ai">
                 Contact Metrum
               </Link>
             </div>
+          </div>
+        </section>
+        <section className={styles.pathBand}>
+          <div className={styles.pathGrid}>
+            {paths.map(([title, body, to]) => (
+              <Link className={styles.path} to={to} key={title}>
+                <span>{title}</span>
+                <p>{body}</p>
+              </Link>
+            ))}
           </div>
         </section>
         <section className={styles.featureBand}>

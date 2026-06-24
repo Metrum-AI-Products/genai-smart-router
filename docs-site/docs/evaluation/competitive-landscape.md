@@ -6,7 +6,7 @@ title: Competitive Landscape
 
 GenAI Smart Router is a governed enterprise gateway for LLM, VLM, and AI agent traffic. It is built for organizations that want a fast, deployment-owned control point for applications, developer tools, coding agents, private model endpoints, and hosted providers. Provider keys, routing policy, model metadata, usage accounting, quotas, and private upstream access stay server-side.
 
-For enterprises that want the key gateway capabilities together in one deployable product, GenAI Smart Router is the strongest offer in this landscape: high-performance routing, telemetry, budgets and rate limits, programmable policy, private upstream support, multimodal and tool-aware eligibility, agent-client compatibility, outcome-oriented evaluation, and detailed request-time accounting are part of the same gateway design.
+For enterprises that want the key gateway capabilities together in one deployable product, GenAI Smart Router is designed to combine high-performance routing, telemetry, budgets and rate limits, programmable policy, private upstream support, multimodal and tool-aware eligibility, agent-client compatibility, outcome-oriented evaluation, and detailed request-time accounting in the same gateway path.
 
 This comparison focuses on product shape and operational fit, not pricing. Vendor pricing and packaging change frequently, so use each vendor's current pricing page during procurement. Competitor references on this page were checked on June 19, 2026.
 
@@ -30,9 +30,9 @@ Core strengths:
 - **Programmable policy:** TypeScript routing scripts can implement deployment-owned routing logic and optional allowlisted external policy calls without changing application code.
 - **Outcome-driven optimization:** agentic validation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix using measured results.
 
-## Where GenAI Smart Router Wins
+## Where GenAI Smart Router Is A Strong Fit
 
-GenAI Smart Router wins when the gateway must be part of the enterprise control plane, not just a pass-through provider abstraction. Many products cover one or two pieces very well: public model access, generic proxying, observability, edge caching, guardrails, or broad API gateway management. GenAI Smart Router combines the controls that matter most for enterprise GenAI operations in the request path.
+GenAI Smart Router is a strong fit when the gateway must be part of the enterprise control plane, not just a pass-through provider abstraction. Many products cover one or two pieces very well: public model access, generic proxying, observability, edge caching, guardrails, or broad API gateway management. GenAI Smart Router combines the controls that matter most for enterprise GenAI operations in the request path.
 
 | Requirement | Why GenAI Smart Router is stronger |
 |---|---|
@@ -70,9 +70,9 @@ GenAI Smart Router is best evaluated as the governed routing and accounting laye
 
 ## Capability Comparison
 
-| Product | Typical shape | Strong fit | GenAI Smart Router advantage |
+| Product | Typical shape | Strong fit | GenAI Smart Router fit |
 |---|---|---|---|
-| GenAI Smart Router | Self-hosted, enterprise cloud, or Metrum-managed gateway | Controlled multi-provider routing, private upstreams, multimodal and agent clients, detailed usage accounting | Strongest all-around fit when teams need high-performance routing, telemetry, budgets/rate limits, programmable policy, private upstreams, VLM/tool-aware eligibility, agent compatibility, outcome-oriented evaluation, and chargeback-grade accounting together. |
+| GenAI Smart Router | Self-hosted, enterprise cloud, or Metrum-managed gateway | Controlled multi-provider routing, private upstreams, multimodal and agent clients, detailed usage accounting | Strong fit when teams need high-performance routing, telemetry, budgets/rate limits, programmable policy, private upstreams, VLM/tool-aware eligibility, agent compatibility, outcome-oriented evaluation, and chargeback-grade accounting together. |
 | LiteLLM | Open-source proxy with enterprise features | Broad provider abstraction, virtual keys, budgets, and proxy management | GenAI Smart Router also supports budgets and rate limits, then adds stronger deployment-defined model-group policy, validated target metadata, dialect-specific VLM/tool eligibility, TypeScript routing logic, private upstream rollout workflow, and durable request-time cost records. |
 | Bifrost | High-performance open-source AI gateway | Fast OpenAI-compatible gateway, failover, load balancing, and telemetry | GenAI Smart Router also supports high-performance gateway deployment and telemetry, then adds stronger caller-key governance, budgets, multimodal/tool eligibility, request-time cost persistence, detailed usage reporting, and deployment-specific policy logic. |
 | OpenRouter | Public model marketplace and routing service | Easy access to many public hosted models | GenAI Smart Router can use OpenRouter as one upstream while adding enterprise allow lists, quotas, private upstreams, programmable routing, model validation, and cost accounting under the customer's control. |

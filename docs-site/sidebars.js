@@ -2,6 +2,7 @@
 const sidebars = {
   routerSidebar: [
     "overview",
+    "concepts",
     {
       type: "category",
       label: "Getting Started",
@@ -52,17 +53,26 @@ const sidebars = {
     "solution-brief",
     {
       type: "category",
+      label: "Evaluate",
+      collapsed: false,
+      items: [
+        "evaluation/evaluate-smart-router",
+        "evaluation/product-capabilities",
+        "evaluation/security-and-trust",
+        "evaluation/cost-governance",
+        "evaluation/harbor-case-study",
+        "evaluation/competitive-landscape",
+      ],
+    },
+    {
+      type: "category",
       label: "Plan & Validate",
       collapsed: false,
       items: [
-        "evaluation/product-capabilities",
-        "evaluation/competitive-landscape",
         "evaluation/deployment-readiness",
         "evaluation/model-group-quality",
         "evaluation/deployment-security-assessment",
         "evaluation/operational-acceptance",
-        "evaluation/cost-governance",
-        "evaluation/harbor-case-study",
       ],
     },
   ],

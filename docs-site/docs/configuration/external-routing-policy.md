@@ -117,7 +117,7 @@ Returned targets are validated against the eligible target list. A policy servic
 
 ## Tested Demo Service
 
-The repository includes a runnable prompt-size policy service:
+The deployment examples include a runnable prompt-size policy service:
 
 ```bash
 python3 examples/external-routing-policy/prompt_size_policy.py

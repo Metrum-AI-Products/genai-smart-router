@@ -39,6 +39,8 @@ curl "$ROUTER_BASE_URL/v1/models" \
 
 Use one returned `id` as the `model` value in chat, Responses, Messages, or CLI requests. If a caller token is limited to a smaller set of groups, other groups will not be listed and cannot be requested. See [Available Models And Access](./available-models) for response examples and troubleshooting.
 
+Successful output is a JSON list whose `data[].id` values are the model groups you may request.
+
 ## OpenAI-Compatible Chat
 
 <RouterCodeBlock>
@@ -54,6 +56,8 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
   }'
 `}
 </RouterCodeBlock>
+
+Successful output includes one assistant message with `router ok`.
 
 ## OpenAI Responses
 
@@ -72,6 +76,8 @@ curl "$ROUTER_BASE_URL/v1/responses" \
 `}
 </RouterCodeBlock>
 
+Successful output includes text equivalent to `router ok`.
+
 ## Anthropic-Compatible Messages
 
 <RouterCodeBlock>
@@ -89,9 +95,13 @@ curl "$ROUTER_BASE_URL/v1/messages" \
 `}
 </RouterCodeBlock>
 
+Successful output includes one content block with `router ok`.
+
 ## Image Input
 
 Image requests use the same deployment-defined router model-group names. The router filters image-bearing requests to targets that have passed vision validation and advertise `image` in `input_modalities`.
+
+The examples below use a realistic VLM response budget because image acceptance tests should not be judged with a tiny output cap. Use smaller caps only when explicitly testing cap enforcement.
 
 OpenAI-compatible chat:
 
@@ -109,7 +119,7 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
         {"type": "image_url", "image_url": {"url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}
       ]
     }],
-    "max_tokens": 64,
+    "max_tokens": 512,
     "stream": false
   }'
 `}
@@ -131,7 +141,7 @@ curl "$ROUTER_BASE_URL/v1/responses" \
         {"type": "input_image", "image_url": "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}
       ]
     }],
-    "max_output_tokens": 64,
+    "max_output_tokens": 512,
     "stream": false
   }'
 `}
@@ -146,7 +156,7 @@ curl "$ROUTER_BASE_URL/v1/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "'"$ROUTER_MODEL"'",
-    "max_tokens": 64,
+    "max_tokens": 512,
     "messages": [{
       "role": "user",
       "content": [
@@ -164,7 +174,7 @@ For dedicated vision route configuration, pricing metadata, and CLI image smokes
 
 ## Python Client
 
-The router accepts OpenAI-compatible SDK traffic. This example creates an isolated `uv` project and calls the hosted router through `/v1/chat/completions`.
+The router accepts OpenAI-compatible SDK traffic. This example creates an isolated `uv` project and calls the hosted router through `/v1/chat/completions`. Install `uv` first if it is not available in your shell.
 
 <RouterCodeBlock>
 {`
@@ -205,3 +215,15 @@ uv run python smoke.py
 </RouterCodeBlock>
 
 The same token and model-group rules apply to SDK calls: `/v1/models` shows only the groups that the token is allowed to use, and provider credentials remain server-side.
+
+## Common First-Run Issues
+
+| Symptom | Meaning | Next step |
+|---|---|---|
+| `401` or `403` before model discovery | Token or endpoint mismatch | Confirm `ROUTER_BASE_URL` and `ROUTER_TOKEN` with the deployment administrator. |
+| Expected group missing from `/v1/models` | The token allow list does not include that group | Use a listed group or request access. |
+| `403 model-not-allowed` | Requested model group is not allowed for the token | Use one of the returned `/v1/models` IDs. |
+| `502 no-eligible-target` for tools or images | The group is allowed but lacks a validated target for that request shape | Ask for a compatible group or target. |
+| `504 upstream-timeout` | The selected upstream did not finish before timeout | Retry a smaller task or ask the administrator to inspect attempts. |
+
+See [Error Reference](../reference/errors) for the full structured error list.

@@ -67,6 +67,7 @@ const config = {
         },
         items: [
           { to: "/overview", label: "Docs", position: "left" },
+          { to: "/evaluation/evaluate-smart-router", label: "Evaluate", position: "left" },
           { to: "/solution-brief", label: "Solution Brief", position: "left" },
           { to: "/evaluation/harbor-case-study", label: "Case Study", position: "left" },
           { href: "mailto:contact@metrum.ai", label: "Deploy with Metrum", position: "right" },
@@ -79,6 +80,7 @@ const config = {
             title: "Product",
             items: [
               { label: "Overview", to: "/overview" },
+              { label: "Concepts", to: "/concepts" },
               { label: "Configuration", to: "/configuration/router-config" },
               { label: "Operations", to: "/operations/key-generation" },
             ],
@@ -86,6 +88,8 @@ const config = {
           {
             title: "Evaluate",
             items: [
+              { label: "Evaluation Guide", to: "/evaluation/evaluate-smart-router" },
+              { label: "Security And Trust", to: "/evaluation/security-and-trust" },
               { label: "Solution Brief", to: "/solution-brief" },
               { label: "Harbor Case Study", to: "/evaluation/harbor-case-study" },
               { label: "Contact Metrum", href: "mailto:contact@metrum.ai" },

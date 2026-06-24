@@ -21,6 +21,20 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 `/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
+## Compatibility Matrix
+
+| Capability | Chat Completions | Responses | Messages |
+|---|---|---|---|
+| Text input/output | Supported | Supported | Supported |
+| Streaming | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path |
+| Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
+| Image input | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` |
+| Caller max-token caps | `max_tokens` and compatible provider fields are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
+| Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
+| Usage and cost rows | Recorded | Recorded | Recorded |
+
+If a request includes tools, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped.
+
 ## Model Names
 
 The `model` field is a router model group, not necessarily a provider model ID. Model group names are deployment-defined. Names shown in examples are examples only.
