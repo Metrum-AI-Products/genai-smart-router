@@ -61,6 +61,7 @@ Governed content capture is separate from diagnostics. It is disabled by default
 router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-user <owner-user> \
   --caller-project <project> \
   --resolved-group <model-group> \
   --client <client> \

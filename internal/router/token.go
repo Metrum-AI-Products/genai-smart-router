@@ -15,6 +15,7 @@ const tokenPrefixName = "rtr_metrum"
 
 type TokenGenerateOptions struct {
 	User        string
+	OwnerUser   string
 	Project     string
 	Environment string
 	KeySlug     string
@@ -31,7 +32,10 @@ type GeneratedToken struct {
 }
 
 func GenerateCallerToken(opts TokenGenerateOptions) (GeneratedToken, error) {
-	user := slugify(opts.User)
+	user := slugify(opts.OwnerUser)
+	if user == "" {
+		user = slugify(opts.User)
+	}
 	project := slugify(opts.Project)
 	environment := slugify(opts.Environment)
 	if user == "" {
@@ -70,9 +74,10 @@ func GenerateCallerToken(opts TokenGenerateOptions) (GeneratedToken, error) {
 	callerID := strings.Join([]string{user, project, environment}, "-")
 	caller := CallerConfig{
 		ID:          callerID,
-		User:        user,
+		OwnerUser:   user,
 		Project:     project,
 		Environment: environment,
+		Status:      accountStatusActive,
 		TokenSHA256: hex.EncodeToString(sum[:]),
 		TokenID:     tokenID,
 		Allow:       allow,
@@ -116,6 +121,9 @@ func slugify(in string) string {
 }
 
 func callerUser(c CallerConfig) string {
+	if v := slugify(c.OwnerUser); v != "" {
+		return v
+	}
 	if v := slugify(c.User); v != "" {
 		return v
 	}

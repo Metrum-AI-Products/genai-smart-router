@@ -89,6 +89,33 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestAuthRejectsDisabledCallerKeyAfterTokenMatch(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream must not be called for disabled key")
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Users = []UserConfig{{ID: "alice"}}
+	cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
+	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Role: "developer"}}
+	cfg.Callers[0].OwnerUser = "alice"
+	cfg.Callers[0].Status = "disabled"
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "key-disabled") {
+		t.Fatalf("status=%d body=%s, want key-disabled", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAuthAcceptsXAPIKeyForAnthropicStyleClients(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -4340,16 +4367,16 @@ func TestScriptCallerMetadataExcludesSecrets(t *testing.T) {
 	sum := sha256.Sum256([]byte(testToken))
 	caller := &callerRuntime{cfg: CallerConfig{
 		ID:          "alice",
-		User:        "Alice",
+		OwnerUser:   "Alice",
 		Project:     "Metrum Insights",
 		Environment: "Prod",
 		TokenSHA256: hex.EncodeToString(sum[:]),
 		TokenID:     "rtr_metrum_alice_metrum-insights_prod_key1",
 		Allow:       []string{"default"},
-	}}
+	}, keyStatus: "active", membershipRole: "developer"}
 
 	scriptCaller := buildScriptCaller(caller, caller.cfg.TokenID)
-	if scriptCaller == nil || scriptCaller.TokenID != caller.cfg.TokenID || scriptCaller.User != "alice" || scriptCaller.Project != "metrum-insights" || scriptCaller.Environment != "prod" {
+	if scriptCaller == nil || scriptCaller.TokenID != caller.cfg.TokenID || scriptCaller.User != "alice" || scriptCaller.OwnerUser != "alice" || scriptCaller.Username != "alice" || scriptCaller.Project != "metrum-insights" || scriptCaller.Environment != "prod" || scriptCaller.MembershipRole != "developer" || scriptCaller.KeyStatus != "active" {
 		t.Fatalf("caller metadata not populated: %#v", scriptCaller)
 	}
 	raw, err := json.Marshal(scriptCaller)

@@ -112,7 +112,7 @@ func New(cfg *Config) (*Service, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	quota, err := newQuotaStore(cfg.StatePath, cfg.Callers)
+	quota, err := newQuotaStore(cfg.StatePath, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -610,8 +610,15 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	}
 	if err != nil {
 		rc.rec.TokenID = tokenID
-		rc.trace("auth_rejected", err.Error(), Target{}, 0, http.StatusUnauthorized, "unauthorized", false, 0)
-		s.writeError(w, rc, http.StatusUnauthorized, "unauthorized")
+		status := http.StatusUnauthorized
+		code := "unauthorized"
+		var policyErr authPolicyError
+		if errors.As(err, &policyErr) {
+			status = policyErr.status
+			code = policyErr.code
+		}
+		rc.trace("auth_rejected", err.Error(), Target{}, 0, status, code, false, 0)
+		s.writeError(w, rc, status, code)
 		return nil, false
 	}
 	rc.rec.CallerID = caller.cfg.ID
@@ -714,10 +721,40 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 			if caller.cfg.TokenID != "" {
 				tokenID = publicTokenID(caller.cfg.TokenID)
 			}
+			if err := caller.authPolicyError(); err != nil {
+				return nil, tokenID, err
+			}
 			return caller, tokenID, nil
 		}
 	}
 	return nil, "invalid-token", errors.New("unknown token")
+}
+
+type authPolicyError struct {
+	status int
+	code   string
+}
+
+func (e authPolicyError) Error() string {
+	return e.code
+}
+
+func (c *callerRuntime) authPolicyError() error {
+	if c == nil {
+		return authPolicyError{status: http.StatusUnauthorized, code: "unauthorized"}
+	}
+	switch {
+	case normalizeStatusDefault(c.keyStatus) != accountStatusActive:
+		return authPolicyError{status: http.StatusForbidden, code: "key-disabled"}
+	case normalizeStatusDefault(c.ownerUserStatus) != accountStatusActive:
+		return authPolicyError{status: http.StatusForbidden, code: "user-disabled"}
+	case normalizeStatusDefault(c.projectStatus) != accountStatusActive:
+		return authPolicyError{status: http.StatusForbidden, code: "project-disabled"}
+	case normalizeStatusDefault(c.membershipStatus) != accountStatusActive:
+		return authPolicyError{status: http.StatusForbidden, code: "membership-disabled"}
+	default:
+		return nil
+	}
 }
 
 func (s *Service) authenticateAdminBasic(w http.ResponseWriter, r *http.Request) (adminBasicRuntime, bool) {

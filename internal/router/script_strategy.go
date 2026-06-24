@@ -32,12 +32,16 @@ type scriptInput struct {
 }
 
 type scriptCaller struct {
-	ID          string   `json:"id"`
-	User        string   `json:"user"`
-	Project     string   `json:"project"`
-	Environment string   `json:"environment"`
-	TokenID     string   `json:"tokenId"`
-	Allow       []string `json:"allow"`
+	ID             string   `json:"id"`
+	User           string   `json:"user"`
+	OwnerUser      string   `json:"ownerUser"`
+	Username       string   `json:"username"`
+	Project        string   `json:"project"`
+	Environment    string   `json:"environment"`
+	TokenID        string   `json:"tokenId"`
+	KeyStatus      string   `json:"keyStatus"`
+	MembershipRole string   `json:"membershipRole,omitempty"`
+	Allow          []string `json:"allow"`
 }
 
 type scriptTarget struct {
@@ -320,13 +324,18 @@ func buildScriptCaller(caller *callerRuntime, tokenID string) *scriptCaller {
 		return nil
 	}
 	allow := append([]string(nil), caller.cfg.Allow...)
+	user := callerUser(caller.cfg)
 	return &scriptCaller{
-		ID:          caller.cfg.ID,
-		User:        callerUser(caller.cfg),
-		Project:     callerProject(caller.cfg),
-		Environment: callerEnvironment(caller.cfg),
-		TokenID:     tokenID,
-		Allow:       allow,
+		ID:             caller.cfg.ID,
+		User:           user,
+		OwnerUser:      user,
+		Username:       user,
+		Project:        callerProject(caller.cfg),
+		Environment:    callerEnvironment(caller.cfg),
+		TokenID:        tokenID,
+		KeyStatus:      normalizeStatusDefault(caller.keyStatus),
+		MembershipRole: caller.membershipRole,
+		Allow:          allow,
 	}
 }
 

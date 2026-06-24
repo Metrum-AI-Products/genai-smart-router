@@ -22,6 +22,8 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 `/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
+Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. A configured key with `status: disabled` returns `403 key-disabled` after token match. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
+
 Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` and `POST /v1/content-captures/purge-expired` require a caller token configured with `content_admin: true` and never return captured content.
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.

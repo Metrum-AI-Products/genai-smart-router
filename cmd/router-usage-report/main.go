@@ -25,6 +25,7 @@ func main() {
 	outPath := flag.String("out", "", "optional markdown output path; defaults to stdout")
 	tokenID := flag.String("token-id", "", "filter report to one public router token id")
 	tokenIDPrefix := flag.String("token-id-prefix", "", "filter report to public router token ids with this prefix")
+	callerUser := flag.String("caller-user", "", "filter report to one caller owner user")
 	callerProject := flag.String("caller-project", "", "filter report to one caller project")
 	callerEnvironment := flag.String("caller-environment", "", "filter report to one caller environment")
 	resolvedGroup := flag.String("resolved-group", "", "filter report to one resolved router model group")
@@ -63,6 +64,7 @@ func main() {
 		To:                to,
 		TokenID:           *tokenID,
 		TokenIDPrefix:     *tokenIDPrefix,
+		CallerUser:        *callerUser,
 		CallerProject:     *callerProject,
 		CallerEnvironment: *callerEnvironment,
 		ResolvedGroup:     *resolvedGroup,

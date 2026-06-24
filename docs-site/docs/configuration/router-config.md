@@ -340,11 +340,59 @@ The policy service receives normalized request context, safe caller metadata, el
 ## Caller Tokens And Allow Lists
 
 ```yaml
+users:
+  - id: example-standard
+    name: Example Standard Caller
+    type: service_account
+    status: active
+  - id: example-coding
+    name: Example Coding Caller
+    type: service_account
+    status: active
+  - id: metrics-admin
+    name: Metrics Admin
+    type: service_account
+    status: active
+  - id: content-admin
+    name: Content Admin
+    type: service_account
+    status: active
+
+projects:
+  - id: example-project
+    name: Example Project
+    status: active
+  - id: observability
+    name: Observability
+    status: active
+  - id: compliance
+    name: Compliance
+    status: active
+
+project_memberships:
+  - user_id: example-standard
+    project: example-project
+    role: developer
+    status: active
+  - user_id: example-coding
+    project: example-project
+    role: developer
+    status: active
+  - user_id: metrics-admin
+    project: observability
+    role: operator
+    status: active
+  - user_id: content-admin
+    project: compliance
+    role: operator
+    status: active
+
 callers:
   - id: example-standard-prod
-    user: example-standard
+    owner_user: example-standard
     project: example-project
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
     metrics_admin: false
@@ -353,9 +401,10 @@ callers:
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 
   - id: example-coding-prod
-    user: example-coding
+    owner_user: example-coding
     project: example-project
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
     metrics_admin: false
@@ -364,9 +413,10 @@ callers:
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 
   - id: example-metrics-prod
-    user: metrics-admin
+    owner_user: metrics-admin
     project: observability
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
     token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
     metrics_admin: true
@@ -375,9 +425,10 @@ callers:
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 
   - id: example-content-admin-prod
-    user: content-admin
+    owner_user: content-admin
     project: compliance
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN
     token_id: rtr_metrum_content-admin_compliance_prod_k20260614
     metrics_admin: false
@@ -386,9 +437,9 @@ callers:
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
-Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values.
+User ids, project ids, membership pairs, caller `id`, `token_sha256`, and non-empty `token_id` values must be unique after normalization. Each key must reference an active `owner_user`, active `project`, and active project membership. Legacy `callers[].user` is still accepted as a deprecated alias for `owner_user`; if both fields are present they must normalize to the same id. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values.
 
-Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content_admin: true`; metrics-admin tokens do not grant content-admin access.
+Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. Disabled keys return `403 key-disabled` after token match; disabled users, projects, or memberships are rejected by config validation before startup. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content_admin: true`; metrics-admin tokens do not grant content-admin access.
 
 ## Cache And Usage Store
 

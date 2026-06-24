@@ -23,7 +23,9 @@ func main() {
 		os.Exit(2)
 	}
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
-	user := fs.String("user", "", "caller user name")
+	ownerUser := fs.String("owner-user", "", "caller owner user id")
+	username := fs.String("username", "", "alias for --owner-user")
+	user := fs.String("user", "", "deprecated alias for --owner-user")
 	project := fs.String("project", "", "caller project name")
 	environment := fs.String("env", "dev", "caller environment")
 	keySlug := fs.String("key", "", "visible key slug; defaults to kYYYYMMDD")
@@ -33,8 +35,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	effectiveOwner := firstNonEmpty(*ownerUser, *username, *user)
 	generated, err := router.GenerateCallerToken(router.TokenGenerateOptions{
-		User:        *user,
+		OwnerUser:   effectiveOwner,
 		Project:     *project,
 		Environment: *environment,
 		KeySlug:     *keySlug,
@@ -58,7 +61,16 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: router-token-gen generate --user USER --project PROJECT --allow GROUP[,GROUP...] [--env ENV] [--key KEY] [--format yaml|json|env]")
+	fmt.Fprintln(os.Stderr, "usage: router-token-gen generate --owner-user USER_ID --project PROJECT --allow GROUP[,GROUP...] [--env ENV] [--key KEY] [--format yaml|json|env]")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func splitCSV(raw string) []string {

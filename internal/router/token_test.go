@@ -10,7 +10,7 @@ import (
 
 func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
-		User:        "Chetan",
+		OwnerUser:   "Chetan",
 		Project:     "Metrum Insights",
 		Environment: "Dev",
 		KeySlug:     "Key 1",
@@ -34,7 +34,7 @@ func TestGenerateCallerTokenStructuredMetrumPrefix(t *testing.T) {
 	if generated.TokenSHA256 != hex.EncodeToString(sum[:]) || generated.Caller.TokenSHA256 != generated.TokenSHA256 {
 		t.Fatalf("hash mismatch: %#v", generated)
 	}
-	if generated.Caller.ID != "chetan-metrum-insights-dev" || generated.Caller.User != "chetan" || generated.Caller.Project != "metrum-insights" || generated.Caller.Environment != "dev" {
+	if generated.Caller.ID != "chetan-metrum-insights-dev" || generated.Caller.OwnerUser != "chetan" || generated.Caller.Project != "metrum-insights" || generated.Caller.Environment != "dev" {
 		t.Fatalf("caller metadata not normalized: %#v", generated.Caller)
 	}
 	if len(generated.Caller.Allow) != 2 || generated.Caller.Allow[0] != "default" || generated.Caller.Allow[1] != "fast" {
@@ -56,11 +56,11 @@ func TestGenerateCallerTokenRequiresAllow(t *testing.T) {
 
 func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
-		User:    "alice",
-		Project: "metrum-insights",
-		Allow:   []string{"example-basic"},
-		Reader:  strings.NewReader(strings.Repeat("b", 64)),
-		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+		OwnerUser: "alice",
+		Project:   "metrum-insights",
+		Allow:     []string{"example-basic"},
+		Reader:    strings.NewReader(strings.Repeat("b", 64)),
+		Now:       time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -75,17 +75,33 @@ func TestGenerateCallerTokenDefaultsMetadata(t *testing.T) {
 
 func TestGenerateCallerTokenPreservesAllowedModelGroups(t *testing.T) {
 	generated, err := GenerateCallerToken(TokenGenerateOptions{
-		User:    "coder",
-		Project: "metrum-insights",
-		Allow:   []string{"default", "big-coder", "high"},
-		Reader:  strings.NewReader(strings.Repeat("c", 64)),
-		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+		OwnerUser: "coder",
+		Project:   "metrum-insights",
+		Allow:     []string{"default", "big-coder", "high"},
+		Reader:    strings.NewReader(strings.Repeat("c", 64)),
+		Now:       time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := strings.Join(generated.Caller.Allow, ","), "default,big-coder,high"; got != want {
 		t.Fatalf("allow=%q want %q", got, want)
+	}
+}
+
+func TestGenerateCallerTokenAcceptsLegacyUserAlias(t *testing.T) {
+	generated, err := GenerateCallerToken(TokenGenerateOptions{
+		User:    "legacy user",
+		Project: "metrum-insights",
+		Allow:   []string{"default"},
+		Reader:  strings.NewReader(strings.Repeat("d", 64)),
+		Now:     time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated.Caller.OwnerUser != "legacy-user" {
+		t.Fatalf("owner_user=%q", generated.Caller.OwnerUser)
 	}
 }
 

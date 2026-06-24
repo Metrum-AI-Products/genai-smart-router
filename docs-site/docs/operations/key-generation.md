@@ -16,7 +16,7 @@ Router caller tokens authenticate applications, users, or evaluation jobs to Gen
 
 ```bash
 router-token-gen generate \
-  --user chetan \
+  --owner-user chetan \
   --project metrum-insights \
   --env prod \
   --allow <allowed-model-group>[,<allowed-model-group>...]
@@ -26,9 +26,9 @@ The tool prints:
 
 - The full token to give to the caller once.
 - A public `token_id` used in logs and reports.
-- A `callers:` YAML entry containing `token_sha256`.
+- A `callers:` YAML entry containing `owner_user`, `project`, and `token_sha256`.
 
-Each configured caller `id`, `token_sha256`, and non-empty `token_id` must be unique. Token hashes are checked case-insensitively, and duplicate-hash validation errors identify the caller IDs without printing hash values.
+Before the key can authenticate, `owner_user` must exist in `users`, `project` must exist in `projects`, and `project_memberships` must contain an active membership for that user/project pair. Each configured user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization. Token hashes are checked case-insensitively, and duplicate-hash validation errors identify the caller IDs without printing hash values. `--username` is an alias for `--owner-user`; `--user` remains a deprecated compatibility alias.
 
 ## Access Patterns
 
@@ -51,3 +51,5 @@ Callers see only allowed groups when they call `/v1/models`. See [Available Mode
 ## Rotation
 
 Generate a new token, add its hashed caller entry to config, reload or restart the router, then remove the old caller entry after clients have switched.
+
+To suspend access without deleting history, set the caller key `status: disabled` and restart or reload the deployment. Disabling a user, project, or project membership should be done by removing or correcting active key references first, because config validation requires active account references for all enabled keys.

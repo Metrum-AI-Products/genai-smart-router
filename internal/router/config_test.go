@@ -200,6 +200,65 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 	}
 }
 
+func TestExplicitAccountsValidateCallerOwnership(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Users = []UserConfig{{ID: "Alice", Name: "Alice Example"}}
+	cfg.Projects = []ProjectConfig{{ID: "Metrum Insights", Name: "Metrum Insights"}}
+	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "Alice", Project: "Metrum Insights", Role: "admin"}}
+	cfg.Callers[0].OwnerUser = "Alice"
+	cfg.Callers[0].Project = "Metrum Insights"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() explicit account directory: %v", err)
+	}
+}
+
+func TestExplicitAccountsRejectInactiveMembership(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Users = []UserConfig{{ID: "alice"}}
+	cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
+	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Status: "disabled"}}
+	cfg.Callers[0].OwnerUser = "alice"
+	cfg.Callers[0].Project = "metrum-insights"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "non-active membership") {
+		t.Fatalf("Validate() error=%v, want inactive membership rejection", err)
+	}
+}
+
+func TestExplicitAccountsRejectConflictingLegacyUserAlias(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Callers[0].OwnerUser = "alice"
+	cfg.Callers[0].User = "bob"
+	cfg.Callers[0].Project = "metrum-insights"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "conflicting owner_user") {
+		t.Fatalf("Validate() error=%v, want owner_user/user conflict", err)
+	}
+}
+
+func TestExplicitAccountsRejectAccountlessCaller(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Users = []UserConfig{{ID: "alice"}}
+	cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
+	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights"}}
+	cfg.Callers[0].OwnerUser = ""
+	cfg.Callers[0].User = ""
+	cfg.Callers[0].Project = ""
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "missing owner_user and project") {
+		t.Fatalf("Validate() error=%v, want accountless caller rejection", err)
+	}
+}
+
+func TestExplicitAccountsRejectDuplicateNormalizedIDs(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Users = []UserConfig{{ID: "Alice Smith"}, {ID: "alice/smith"}}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "duplicate user id") {
+		t.Fatalf("Validate() error=%v, want duplicate user id rejection", err)
+	}
+}
+
 func TestMissingProviderModelRefFailsValidation(t *testing.T) {
 	cfg := minimalConfig(t)
 	provider := cfg.Provider["mock"]

@@ -95,6 +95,7 @@ Generate a report for one caller cohort or rollout:
 router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-user <owner-user> \
   --caller-project <project> \
   --caller-environment <environment> \
   --out usage-project.md

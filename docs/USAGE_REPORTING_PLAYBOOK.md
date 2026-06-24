@@ -29,6 +29,7 @@ Filtered benchmark or project report:
 router-usage-report \
   --driver postgres \
   --dsn "$ROUTER_USAGE_DB_DSN" \
+  --caller-user <owner-user> \
   --caller-project <project> \
   --caller-environment <environment> \
   --resolved-group <model-group> \

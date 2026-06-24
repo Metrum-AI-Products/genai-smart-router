@@ -200,7 +200,7 @@ export function route(ctx: RouteContext) {
     );
   }
 
-  if (/^rtr_metrum_.*_prod_/i.test(ctx.caller?.tokenId || "")) {
+  if (ctx.caller?.environment === "prod") {
     candidates = candidates.filter((entry) => entry.target.provider !== "experimental-provider");
   }
 

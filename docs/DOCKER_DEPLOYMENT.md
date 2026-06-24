@@ -141,13 +141,13 @@ Generate a caller token:
 
 ```bash
 docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-amd64 generate \
-  --user chetan \
+  --owner-user chetan \
   --project metrum-insights \
   --env dev \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Append the generated caller config to `compose/config/config.yaml` and save the printed `token` for clients.
+Append the generated caller config to `compose/config/config.yaml`, add or verify the matching `users`, `projects`, and `project_memberships` entries, and save the printed `token` for clients.
 
 Verify the caller-facing model groups with the same token before handing it to users:
 
@@ -214,7 +214,7 @@ docker compose run --rm --entrypoint /app/bin/router-usage-report router \
   --out /app/logs/usage-24h.md
 ```
 
-Add `--caller-project`, `--caller-environment`, `--token-id`, `--token-id-prefix`, `--resolved-group`, or `--client` to narrow a report to one benchmark, caller cohort, model group, or CLI client.
+Add `--caller-user`, `--caller-project`, `--caller-environment`, `--token-id`, `--token-id-prefix`, `--resolved-group`, or `--client` to narrow a report to one owner user, benchmark, caller cohort, model group, or CLI client.
 
 The report includes internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, external provider/model calls, token totals, request-time USD cost, cache hit/miss/bypass, cache occupancy, attempts, fallbacks, status codes, latency, hourly usage, daily usage, downstream user performance, upstream provider/model/dialect performance, and per-request upstream/downstream tokens/sec. Use the downstream user and upstream endpoint performance sections first when triaging slow UX. It does not include raw router tokens or provider API keys.
 

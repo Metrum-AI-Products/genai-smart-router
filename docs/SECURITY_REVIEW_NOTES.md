@@ -13,7 +13,7 @@ Browser-admin HTTP Basic authentication is separate from router caller tokens. I
 
 ## Tenant And Caller Isolation
 
-Caller tokens carry allow lists, quota policy, and metadata such as user, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups.
+Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and disabled keys are rejected after token match with a safe `403 key-disabled` error.
 
 `/metrics` is global operational telemetry. It must only be accessible to tokens configured with `metrics_admin: true`; ordinary caller tokens must use `/v1/usage` or generated usage reports.
 

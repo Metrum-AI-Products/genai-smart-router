@@ -31,6 +31,7 @@ type UsageReportOptions struct {
 	To                time.Time
 	TokenID           string
 	TokenIDPrefix     string
+	CallerUser        string
 	CallerProject     string
 	CallerEnvironment string
 	ResolvedGroup     string
@@ -775,6 +776,9 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	}
 	if opts.TokenIDPrefix != "" {
 		q = q.Where("token_id LIKE ?", opts.TokenIDPrefix+"%")
+	}
+	if opts.CallerUser != "" {
+		q = q.Where("caller_user = ?", opts.CallerUser)
 	}
 	if opts.CallerProject != "" {
 		q = q.Where("caller_project = ?", opts.CallerProject)

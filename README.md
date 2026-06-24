@@ -127,13 +127,13 @@ Create a config from the example:
 ```bash
 cp config.example.yaml config.yaml
 go run ./cmd/router-token-gen generate \
-  --user chetan \
+  --owner-user chetan \
   --project metrum-insights \
   --env dev \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Save the printed `token` value as the caller's bearer token, and copy the generated `callers:` entry into `config.yaml`. Tokens use the traceable prefix `rtr_metrum_<user>_<project>_<env>_<key>_<secret>`, while the router stores only `token_sha256` and logs/exports only `token_id`. Each caller `id`, `token_sha256`, and non-empty `token_id` must be unique; token hashes are checked case-insensitively.
+Save the printed `token` value as the caller's bearer token, add the owner to `users`, add the project to `projects`, add an active `project_memberships` row, and copy the generated `callers:` key entry into `config.yaml`. Tokens use a traceable public prefix plus a random secret suffix, while the router stores only `token_sha256` and logs/exports only `token_id`. Identity and authorization come from the explicit account sections and the key's `owner_user`/`project` references, not from parsing the token prefix. Each user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization; token hashes are checked case-insensitively.
 
 Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
@@ -183,7 +183,7 @@ Token-budget admission reserves the estimated input tokens plus the caller's req
 
 Set realistic output caps for each client workflow. Very large caps can be rejected near a token budget even when the prompt is small, because the router admits based on the maximum output the caller asked the upstream to generate. Request-count quotas are unchanged and still count admitted requests independently from token usage.
 
-Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, `user`, `project`, `environment`, `tokenId`, and target `keyId`, `apiKeyEnv`, and `keyConfigured`. This is enough to route by caller key prefix or by the configured provider key name without making secrets available to script code.
+Raw caller tokens, caller token hashes, and raw provider API keys are not exposed to TypeScript routing scripts, logs, metrics, or responses. Scripts get safe identifiers only: caller `id`, legacy-compatible `user`, canonical `ownerUser`/`username`, `project`, `environment`, public `tokenId`, membership role, key status, and target `keyId`, `apiKeyEnv`, and `keyConfigured`. This is enough to route by validated owner/project metadata or by the configured provider key name without making secrets available to script code.
 
 ## Provider Model Catalogs
 
@@ -552,7 +552,7 @@ models:
 
 The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. Proxy users still request a deployment-defined model group name; the script chooses one backing target from that group's configured `targets`.
 
-The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. For groups with `pii_filter`, `ctx.text`, normalized request fields, and `ctx.request.raw` are redacted before the script runs, and placeholder mappings are not exposed. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; unrestricted network calls and file access are not part of the script runtime.
+The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Caller metadata includes `id`, legacy-compatible `user`, canonical `ownerUser`/`username`, `project`, `environment`, public `tokenId`, `membershipRole`, `keyStatus`, and the key allow list. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. For groups with `pii_filter`, `ctx.text`, normalized request fields, and `ctx.request.raw` are redacted before the script runs, and placeholder mappings are not exposed. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; unrestricted network calls and file access are not part of the script runtime.
 
 Relative TypeScript imports are bundled at router startup, so a script can use local helpers such as `import { scorePrompt } from "./policy"`. Keep deployment-owned helpers next to the script, for example `config/scripts/router.ts`, `config/scripts/policy.ts`, and `config/scripts/scoring.ts`.
 
@@ -656,12 +656,12 @@ export function route(ctx: RouteContext) {
 }
 ```
 
-Caller metadata enables key-specific routing with regular expressions over the generated router-token prefix. Target metadata also lets the script route to targets backed by a specific configured provider key identifier or environment variable name:
+Caller metadata enables owner-, project-, environment-, or key-class routing without exposing secrets. Target metadata also lets the script route to targets backed by a specific configured provider key identifier or environment variable name:
 
 ```ts
 export function route(ctx) {
   if (
-    /^rtr_metrum_chetan_metrum-insights_prod_/.test(ctx.caller?.tokenId || "") &&
+    /^chetan$/.test(ctx.caller?.ownerUser || ctx.caller?.username || "") &&
     /^metrum-insights$/.test(ctx.caller?.project || "")
   ) {
     const heavyIndex = ctx.targets.findIndex((target) =>
@@ -682,7 +682,7 @@ export function route(ctx) {
 }
 ```
 
-`ctx.caller.tokenId` is the generated token prefix without the secret suffix, for example `rtr_metrum_chetan_metrum-insights_prod_key1`. Use it for traceable key classes. Do not route on raw token secrets; the router never passes them to scripts.
+`ctx.caller.ownerUser` and `ctx.caller.project` come from validated config references. `ctx.caller.tokenId` is the generated public token id without the secret suffix, for example `rtr_metrum_chetan_metrum-insights_prod_key1`; use it for traceable key classes, not identity. Do not route on raw token secrets; the router never passes them to scripts.
 
 Check which names are present without printing secret values:
 
@@ -741,6 +741,8 @@ The JSONL file is useful for raw audit/debugging. The relational DB is the sourc
 --token-id ID   Filter to one public router token id.
 --token-id-prefix PREFIX
                 Filter to public router token ids with this prefix.
+--caller-user USER
+                Filter to one caller owner user.
 --caller-project PROJECT
                 Filter to one caller project.
 --caller-environment ENV
@@ -869,7 +871,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 ./router-token-gen generate \
-  --user readme \
+  --owner-user readme \
   --project metrum-insights \
   --env dev \
   --allow cli-smoke \
@@ -905,11 +907,26 @@ models:
     strategy: static
     targets:
       - {{ provider: baseten, model: "openai/gpt-oss-120b" }}
+users:
+  - id: readme
+    name: README Smoke
+    type: service_account
+    status: active
+projects:
+  - id: metrum-insights
+    name: Metrum Insights
+    status: active
+project_memberships:
+  - user_id: readme
+    project: metrum-insights
+    role: developer
+    status: active
 callers:
   - id: readme-metrum-insights-dev
-    user: readme
+    owner_user: readme
     project: metrum-insights
     environment: dev
+    status: active
     token_sha256: "{generated['token_sha256']}"
     token_id: "{generated['token_id']}"
     allow: ["cli-smoke"]

@@ -19,6 +19,13 @@ type quotaStore struct {
 type callerRuntime struct {
 	cfg                    CallerConfig
 	allow                  map[string]bool
+	ownerUser              string
+	ownerUserStatus        string
+	project                string
+	projectStatus          string
+	membershipRole         string
+	membershipStatus       string
+	keyStatus              string
 	inFlight               int
 	inFlightReservedTokens int64
 	reqTimes               []time.Time
@@ -61,7 +68,7 @@ type quotaReservation struct {
 	active bool
 }
 
-func newQuotaStore(path string, callers []CallerConfig) (*quotaStore, error) {
+func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
 	qs := &quotaStore{path: path, callers: map[string]*callerRuntime{}, state: persistentState{Callers: map[string]*callerState{}}}
 	if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &qs.state); err != nil {
@@ -72,14 +79,38 @@ func newQuotaStore(path string, callers []CallerConfig) (*quotaStore, error) {
 		qs.state.Callers = map[string]*callerState{}
 	}
 	now := time.Now().UTC()
-	for _, cfg := range callers {
+	dir, err := cfg.validateAccounts()
+	if err != nil {
+		return nil, err
+	}
+	for _, callerCfg := range cfg.Callers {
 		allow := map[string]bool{}
-		for _, group := range cfg.Allow {
+		for _, group := range callerCfg.Allow {
 			allow[group] = true
 		}
-		qs.callers[cfg.ID] = &callerRuntime{cfg: cfg, allow: allow}
-		if qs.state.Callers[cfg.ID] == nil {
-			qs.state.Callers[cfg.ID] = &callerState{DayStart: dayStart(now), MonthStart: monthStart(now)}
+		rt := &callerRuntime{cfg: callerCfg, allow: allow, keyStatus: normalizeStatusDefault(callerCfg.Status)}
+		rt.ownerUser, _ = callerOwnerUser(callerCfg)
+		rt.project = normalizeAccountID(callerCfg.Project)
+		if user, ok := dir.users[rt.ownerUser]; ok {
+			rt.ownerUserStatus = normalizeStatusDefault(user.Status)
+		} else {
+			rt.ownerUserStatus = accountStatusActive
+		}
+		if project, ok := dir.projects[rt.project]; ok {
+			rt.projectStatus = normalizeStatusDefault(project.Status)
+		} else {
+			rt.projectStatus = accountStatusActive
+		}
+		if membership, ok := dir.memberships[membershipKey(rt.ownerUser, rt.project)]; ok {
+			rt.membershipRole = normalizeRoleDefault(membership.Role)
+			rt.membershipStatus = normalizeStatusDefault(membership.Status)
+		} else {
+			rt.membershipRole = "member"
+			rt.membershipStatus = accountStatusActive
+		}
+		qs.callers[callerCfg.ID] = rt
+		if qs.state.Callers[callerCfg.ID] == nil {
+			qs.state.Callers[callerCfg.ID] = &callerState{DayStart: dayStart(now), MonthStart: monthStart(now)}
 		}
 	}
 	return qs, nil

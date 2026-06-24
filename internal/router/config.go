@@ -19,12 +19,15 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig              `yaml:"server"`
-	Provider  map[string]ProviderConfig `yaml:"providers"`
-	Models    map[string]ModelGroup     `yaml:"models"`
-	Callers   []CallerConfig            `yaml:"callers"`
-	StatePath string                    `yaml:"state_path"`
-	baseDir   string
+	Server             ServerConfig              `yaml:"server"`
+	Users              []UserConfig              `yaml:"users"`
+	Projects           []ProjectConfig           `yaml:"projects"`
+	ProjectMemberships []ProjectMembershipConfig `yaml:"project_memberships"`
+	Provider           map[string]ProviderConfig `yaml:"providers"`
+	Models             map[string]ModelGroup     `yaml:"models"`
+	Callers            []CallerConfig            `yaml:"callers"`
+	StatePath          string                    `yaml:"state_path"`
+	baseDir            string
 }
 
 type ServerConfig struct {
@@ -348,9 +351,11 @@ type Target struct {
 
 type CallerConfig struct {
 	ID             string               `yaml:"id" json:"id"`
+	OwnerUser      string               `yaml:"owner_user" json:"owner_user"`
 	User           string               `yaml:"user" json:"user"`
 	Project        string               `yaml:"project" json:"project"`
 	Environment    string               `yaml:"environment" json:"environment"`
+	Status         string               `yaml:"status" json:"status"`
 	TokenSHA256    string               `yaml:"token_sha256" json:"token_sha256"`
 	TokenID        string               `yaml:"token_id" json:"token_id"`
 	Allow          []string             `yaml:"allow" json:"allow"`
@@ -360,6 +365,31 @@ type CallerConfig struct {
 	Rate           RateConfig           `yaml:"rate" json:"rate"`
 	Quota          QuotaConfig          `yaml:"quota" json:"quota"`
 	Key            KeyConfig            `yaml:"key" json:"key"`
+}
+
+type UserConfig struct {
+	ID          string `yaml:"id" json:"id"`
+	Name        string `yaml:"name" json:"name"`
+	Email       string `yaml:"email" json:"email"`
+	Type        string `yaml:"type" json:"type"`
+	Status      string `yaml:"status" json:"status"`
+	Description string `yaml:"description" json:"description"`
+}
+
+type ProjectConfig struct {
+	ID          string `yaml:"id" json:"id"`
+	Name        string `yaml:"name" json:"name"`
+	Status      string `yaml:"status" json:"status"`
+	Description string `yaml:"description" json:"description"`
+}
+
+type ProjectMembershipConfig struct {
+	UserID   string `yaml:"user_id" json:"user_id"`
+	Project  string `yaml:"project" json:"project"`
+	Role     string `yaml:"role" json:"role"`
+	Status   string `yaml:"status" json:"status"`
+	Source   string `yaml:"source" json:"source"`
+	JoinedAt string `yaml:"joined_at" json:"joined_at"`
 }
 
 type RateConfig struct {
@@ -490,7 +520,29 @@ func (c *Config) setDefaults() {
 		c.Server.Diagnostics.MaxErrorBytes = 2048
 	}
 	defaultContentCaptureConfig(&c.Server.ContentCapture)
+	for i := range c.Users {
+		c.Users[i].ID = normalizeAccountID(c.Users[i].ID)
+		c.Users[i].Status = normalizeStatusDefault(c.Users[i].Status)
+		c.Users[i].Type = normalizeUserTypeDefault(c.Users[i].Type)
+	}
+	for i := range c.Projects {
+		c.Projects[i].ID = normalizeAccountID(c.Projects[i].ID)
+		c.Projects[i].Status = normalizeStatusDefault(c.Projects[i].Status)
+	}
+	for i := range c.ProjectMemberships {
+		c.ProjectMemberships[i].UserID = normalizeAccountID(c.ProjectMemberships[i].UserID)
+		c.ProjectMemberships[i].Project = normalizeAccountID(c.ProjectMemberships[i].Project)
+		c.ProjectMemberships[i].Status = normalizeStatusDefault(c.ProjectMemberships[i].Status)
+		c.ProjectMemberships[i].Role = normalizeRoleDefault(c.ProjectMemberships[i].Role)
+	}
 	for i := range c.Callers {
+		if c.Callers[i].OwnerUser == "" {
+			c.Callers[i].OwnerUser = c.Callers[i].User
+		}
+		c.Callers[i].OwnerUser = normalizeAccountID(c.Callers[i].OwnerUser)
+		c.Callers[i].Project = normalizeAccountID(c.Callers[i].Project)
+		c.Callers[i].Environment = normalizeAccountID(c.Callers[i].Environment)
+		c.Callers[i].Status = normalizeStatusDefault(c.Callers[i].Status)
 		defaultContentCaptureConfig(&c.Callers[i].ContentCapture)
 	}
 	for name, group := range c.Models {
@@ -523,6 +575,9 @@ func (c *Config) Validate() error {
 	}
 	if c.contentCaptureEnabled() && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
 		return fmt.Errorf("content_capture requires usage_db enabled")
+	}
+	if _, err := c.validateAccounts(); err != nil {
+		return err
 	}
 	for name, p := range c.Provider {
 		if p.BaseURL == "" {
@@ -709,18 +764,26 @@ func (c *Config) Validate() error {
 		if caller.ID == "" {
 			return fmt.Errorf("caller missing id")
 		}
+		ownerUser, err := callerOwnerUser(caller)
+		if err != nil {
+			return err
+		}
 		if previousCallerID, ok := callerIDs[caller.ID]; ok {
 			return fmt.Errorf("duplicate caller id %q for callers %s and %s", caller.ID, previousCallerID, caller.ID)
 		}
 		callerIDs[caller.ID] = caller.ID
-		if caller.User != "" && slugify(caller.User) == "" {
-			return fmt.Errorf("caller %s has invalid user", caller.ID)
+		if ownerUser == "" && (caller.Project != "" || caller.User != "" || caller.OwnerUser != "") {
+			return fmt.Errorf("caller %s has invalid owner_user", caller.ID)
 		}
 		if caller.Project != "" && slugify(caller.Project) == "" {
 			return fmt.Errorf("caller %s has invalid project", caller.ID)
 		}
 		if caller.Environment != "" && slugify(caller.Environment) == "" {
 			return fmt.Errorf("caller %s has invalid environment", caller.ID)
+		}
+		status := normalizeStatusDefault(caller.Status)
+		if !validAccountStatus(status) {
+			return fmt.Errorf("caller %s has invalid status %q", caller.ID, caller.Status)
 		}
 		if caller.TokenSHA256 == "" || len(caller.TokenSHA256) != sha256.Size*2 {
 			return fmt.Errorf("caller %s has invalid token_sha256", caller.ID)

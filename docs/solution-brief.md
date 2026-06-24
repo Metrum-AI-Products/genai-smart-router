@@ -245,11 +245,29 @@ models:
       - { provider: minimax, model_ref: m3, weight: 30 }
       - { provider: kimi, model_ref: kimi-k2.7-code, weight: 10 }
 
+users:
+  - { id: example-standard, name: Example Standard Caller, type: service_account, status: active }
+  - { id: example-coding, name: Example Coding Caller, type: service_account, status: active }
+  - { id: metrics-admin, name: Metrics Admin, type: service_account, status: active }
+  - { id: content-admin, name: Content Admin, type: service_account, status: active }
+
+projects:
+  - { id: example-project, name: Example Project, status: active }
+  - { id: observability, name: Observability, status: active }
+  - { id: compliance, name: Compliance, status: active }
+
+project_memberships:
+  - { user_id: example-standard, project: example-project, role: developer, status: active }
+  - { user_id: example-coding, project: example-project, role: developer, status: active }
+  - { user_id: metrics-admin, project: observability, role: operator, status: active }
+  - { user_id: content-admin, project: compliance, role: operator, status: active }
+
 callers:
   - id: example-standard-prod
-    user: example-standard
+    owner_user: example-standard
     project: example-project
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
     metrics_admin: false
@@ -257,9 +275,10 @@ callers:
     allow: [default, fast, small]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
   - id: example-coding-prod
-    user: example-coding
+    owner_user: example-coding
     project: example-project
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
     metrics_admin: false
@@ -267,9 +286,10 @@ callers:
     allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
   - id: example-metrics-prod
-    user: metrics-admin
+    owner_user: metrics-admin
     project: observability
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
     token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
     metrics_admin: true
@@ -277,9 +297,10 @@ callers:
     allow: []
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
   - id: example-content-admin-prod
-    user: content-admin
+    owner_user: content-admin
     project: compliance
     environment: prod
+    status: active
     token_sha256: SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN
     token_id: rtr_metrum_content-admin_compliance_prod_k20260614
     metrics_admin: false
@@ -288,7 +309,7 @@ callers:
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
-The `allow` list is the model-group authorization boundary for each router key. Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique; token hashes are checked case-insensitively. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used. Global `/metrics` access is a separate `metrics_admin: true` privilege and should not be granted to application keys. Governed content-capture maintenance uses a separate `content_admin: true` privilege for delete and retention-purge operations.
+The `allow` list is the model-group authorization boundary for each router key. Each key references an active `owner_user`, project, and project membership. User ids, project ids, caller `id`, `token_sha256`, and non-empty `token_id` values must be unique after normalization; token hashes are checked case-insensitively. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used. Global `/metrics` access is a separate `metrics_admin: true` privilege and should not be granted to application keys. Governed content-capture maintenance uses a separate `content_admin: true` privilege for delete and retention-purge operations.
 
 ## Custom TypeScript Routing
 
@@ -302,7 +323,7 @@ For teams that want policy to live outside the router process, a model group can
 
 Example use cases:
 
-- Route a specific project or token prefix to a dedicated model group.
+- Route a specific owner user or project to a dedicated model group.
 - Bias smaller models for short prompts and larger models for complex prompts.
 - Prefer a provider during business hours and another provider after hours.
 - Exclude targets when the caller is not allowed to use premium models.
@@ -328,7 +349,7 @@ The router uses two separate credential classes:
 - Caller tokens: authenticate applications and users that call the router.
 - Provider keys: authenticate the router to upstream model providers.
 
-Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Config validation rejects duplicate caller IDs, duplicate token hashes case-insensitively, and duplicate non-empty public token IDs before startup. Logs, metrics-admin metrics, scripts, and usage reports use public token identifiers only. Global `/metrics` access is restricted to callers configured with `metrics_admin: true`; normal application keys use `/v1/usage` and reports for scoped usage visibility. Content-capture maintenance access is restricted separately with `content_admin: true`.
+Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Identity is validated through explicit `users`, `projects`, and `project_memberships` config sections; caller keys reference those records with `owner_user` and `project`. Config validation rejects duplicate account IDs, caller IDs, duplicate token hashes case-insensitively, and duplicate non-empty public token IDs before startup. Logs, metrics-admin metrics, scripts, and usage reports use public token identifiers and safe owner/project metadata only. Global `/metrics` access is restricted to callers configured with `metrics_admin: true`; normal application keys use `/v1/usage` and reports for scoped usage visibility. Content-capture maintenance access is restricted separately with `content_admin: true`.
 
 Provider keys are loaded from environment variables or an `env.json` file on the deployment host. They are injected only into outbound provider calls and are not sent to routing scripts, responses, logs, metrics, or usage reports.
 
