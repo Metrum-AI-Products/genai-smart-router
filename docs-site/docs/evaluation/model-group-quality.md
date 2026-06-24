@@ -65,7 +65,7 @@ Before a group receives broad caller access:
 - router-level smokes pass for each required API shape;
 - tool requests are validated with real tool calls when tools are advertised;
 - image requests are validated with realistic VLM budgets when image modality is advertised;
-- capped request behavior is tested for `max_tokens` or `max_output_tokens`;
+- capped request behavior is tested for the caller API's output cap field, including OpenAI Chat `max_completion_tokens`;
 - usage rows include selected provider/model, token counts, status, latency, cache behavior, and cost fields;
 - Harbor or workload-specific validation meets the group success criteria;
 - rollback criteria are documented.

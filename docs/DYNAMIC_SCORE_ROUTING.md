@@ -50,7 +50,7 @@ Before rollout, validate the group targets the same way as weighted routing:
 - Direct tool smoke before claiming tool support.
 - Direct image smoke plus router-level image smoke before marking `input_modalities: [text, image]`.
 - Router-level smoke for each API skin that will be used by clients.
-- Explicit low-budget cap smoke, including `max_tokens: 1`, to confirm unsafe targets are skipped when `honors_max_tokens: false`.
+- Explicit low-budget cap smoke, including OpenAI Chat `max_completion_tokens: 1`, to confirm unsafe targets are skipped when `honors_max_tokens: false`.
 
 Then run a fixed request matrix against the dynamic group:
 
@@ -83,4 +83,3 @@ Diagnostics must not include raw prompts, images, tool outputs, router tokens, t
 Roll out first on a dedicated test group with interchangeable validated targets and a non-sensitive caller token allowed only to that group. Compare p95 latency, error rate, fallbacks, cost, and selected target mix against the weighted baseline.
 
 Rollback is config-only: switch the model group `strategy` to `weighted`, lower strict thresholds, or remove score terms. After production config changes, follow the normal timestamped-backup, compose validation, restart, health check, authenticated smoke, and stale-doc search process.
-

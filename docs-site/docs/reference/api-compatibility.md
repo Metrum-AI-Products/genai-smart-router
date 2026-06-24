@@ -31,11 +31,13 @@ Content-capture maintenance endpoints are administrative APIs, not model APIs. `
 | Streaming | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
 | Image input | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` |
-| Caller max-token caps | `max_tokens` and compatible provider fields are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
+| Caller max-token caps | `max_tokens` and `max_completion_tokens` are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
 | Usage and cost rows | Recorded | Recorded | Recorded |
 
 If a request includes tools, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped.
+
+For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_tokens` are treated as explicit output caps. If a Chat request sends both fields, `max_tokens` takes precedence for router eligibility and normalized upstream forwarding.
 
 ## Model Names
 

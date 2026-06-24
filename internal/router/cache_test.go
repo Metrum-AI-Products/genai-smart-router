@@ -1,6 +1,7 @@
 package router
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -30,5 +31,34 @@ func TestImageRequestsAreNotCacheable(t *testing.T) {
 	}}}
 	if cacheable(req) {
 		t.Fatal("image request should bypass cache")
+	}
+}
+
+func TestCacheKeyDistinguishesOpenAIChatCapField(t *testing.T) {
+	maxTokensReq, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"max_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxCompletionTokensReq, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"max_completion_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maxTokensReq.MaxTokens != maxCompletionTokensReq.MaxTokens {
+		t.Fatalf("test setup produced different canonical caps: %d vs %d", maxTokensReq.MaxTokens, maxCompletionTokensReq.MaxTokens)
+	}
+
+	target := Target{Provider: "openai_chat", Model: "chat-model"}
+	maxTokensKey := cacheKey(maxTokensReq, target)
+	maxCompletionTokensKey := cacheKey(maxCompletionTokensReq, target)
+	if maxTokensKey == maxCompletionTokensKey {
+		t.Fatalf("cache key reused across cap fields: %s", maxTokensKey)
 	}
 }

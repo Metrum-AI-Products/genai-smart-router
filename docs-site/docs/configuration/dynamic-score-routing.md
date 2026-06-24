@@ -67,7 +67,7 @@ The router first applies the same request eligibility rules used by other strate
 - API skin and upstream dialect must preserve the caller request.
 - Tool-bearing requests require compatible tool passthrough.
 - Image-bearing requests require matching input modality metadata.
-- Explicit positive caller token caps, including `max_tokens: 1`, skip targets marked `honors_max_tokens: false`.
+- Explicit positive caller token caps, including OpenAI Chat `max_completion_tokens: 1`, skip targets marked `honors_max_tokens: false`.
 
 After eligibility, `dynamic_score` applies configured thresholds and score terms. Supported score names include:
 
@@ -89,4 +89,3 @@ The strategy uses in-memory rolling observations for latency, upstream duration,
 Decision traces are safe scalar diagnostics. They include fields such as strategy, cold-start mode, enabled signal names, request-shape buckets, selected provider/model, score bucket, observation count, and candidate count. They do not include raw prompts, raw images, raw tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
 Roll out on a deployment-defined test group with interchangeable validated targets before enabling broad production traffic. Test simple text, code/debug prompts, tool requests, forced tool requests, image requests where supported, structured-output requests where supported, and low explicit max-token caps. Roll back by changing the group strategy to `weighted` or by disabling strict thresholds and score terms.
-

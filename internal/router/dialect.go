@@ -23,9 +23,15 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	}
 	if maxTokens, ok := numberAsInt(raw["max_tokens"]); ok {
 		req.MaxTokens = maxTokens
+		req.MaxTokensField = "max_tokens"
+	}
+	if maxCompletionTokens, ok := numberAsInt(raw["max_completion_tokens"]); ok && dialect == "openai-chat" && req.MaxTokens == 0 {
+		req.MaxTokens = maxCompletionTokens
+		req.MaxTokensField = "max_completion_tokens"
 	}
 	if maxOutputTokens, ok := numberAsInt(raw["max_output_tokens"]); ok && req.MaxTokens == 0 {
 		req.MaxTokens = maxOutputTokens
+		req.MaxTokensField = "max_output_tokens"
 	}
 	if temp, ok := numberAsFloat(raw["temperature"]); ok {
 		req.Temperature = &temp
@@ -140,9 +146,7 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 			msgs = append(msgs, map[string]any{"role": "user", "content": req.Input})
 		}
 		body := map[string]any{"model": model, "messages": msgs, "stream": false}
-		if req.MaxTokens > 0 {
-			body["max_tokens"] = req.MaxTokens
-		}
+		applyOpenAIChatMaxTokens(body, req, false)
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
@@ -171,6 +175,7 @@ func encodeChatPassthrough(model string, req *IRRequest) ([]byte, error) {
 	// The router calls upstreams in unary mode and synthesizes downstream SSE.
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
+	applyOpenAIChatMaxTokens(body, req, true)
 	return json.Marshal(body)
 }
 
@@ -214,6 +219,22 @@ func effectiveMaxTokens(req *IRRequest, defaultValue int) int {
 		return req.MaxTokens
 	}
 	return defaultValue
+}
+
+func applyOpenAIChatMaxTokens(body map[string]any, req *IRRequest, normalizeExisting bool) {
+	if req == nil || req.MaxTokens <= 0 {
+		return
+	}
+	field := "max_tokens"
+	if req.MaxTokensField == "max_completion_tokens" {
+		field = "max_completion_tokens"
+	}
+	if normalizeExisting {
+		delete(body, "max_tokens")
+		delete(body, "max_completion_tokens")
+		delete(body, "max_output_tokens")
+	}
+	body[field] = req.MaxTokens
 }
 
 func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRResponse, error) {

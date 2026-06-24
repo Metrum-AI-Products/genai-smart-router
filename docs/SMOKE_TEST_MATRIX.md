@@ -11,7 +11,7 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 | Auth/allow list | `/v1/models` with caller token |
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
 | Text routing | relevant dialect with realistic token budget |
-| Max-token cap | request with `max_tokens: 1` or `max_output_tokens: 1` |
+| Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | Usage/cost fields | query usage DB/report after a request |
 
 ## Tool Smokes
@@ -59,4 +59,3 @@ Codex CLI should use an OpenAI-compatible provider with `wire_api="responses"` a
 ## Acceptance Rule
 
 Do not activate a provider/model in broad routing until the relevant direct provider smokes, router smokes, docs, config, and production checks have all passed.
-

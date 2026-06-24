@@ -25,8 +25,8 @@ Keep unavailable or unvalidated provider models catalog-only. Move a model into 
 
 Run direct upstream requests before involving the router:
 
-- text completion with realistic `max_tokens` or `max_output_tokens`;
-- small cap request such as `max_tokens: 1` when cap behavior matters;
+- text completion with a realistic output cap for the caller API, such as `max_tokens`, `max_completion_tokens`, or `max_output_tokens`;
+- small cap request such as OpenAI Chat `max_completion_tokens: 1` when cap behavior matters;
 - tool request for each API shape you plan to support;
 - image request when declaring `image` modality.
 

@@ -1,20 +1,21 @@
 package router
 
 type IRRequest struct {
-	Model       string            `json:"model"`
-	System      string            `json:"system,omitempty"`
-	Messages    []IRMessage       `json:"messages,omitempty"`
-	Input       string            `json:"input,omitempty"`
-	InputParts  []IRContentPart   `json:"input_parts,omitempty"`
-	Tools       []map[string]any  `json:"tools,omitempty"`
-	MaxTokens   int               `json:"max_tokens,omitempty"`
-	Temperature *float64          `json:"temperature,omitempty"`
-	Stream      bool              `json:"stream,omitempty"`
-	Thinking    map[string]any    `json:"thinking,omitempty"`
-	Stop        []string          `json:"stop,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-	Raw         map[string]any    `json:"raw,omitempty"`
-	NoCache     bool              `json:"no_cache,omitempty"`
+	Model          string            `json:"model"`
+	System         string            `json:"system,omitempty"`
+	Messages       []IRMessage       `json:"messages,omitempty"`
+	Input          string            `json:"input,omitempty"`
+	InputParts     []IRContentPart   `json:"input_parts,omitempty"`
+	Tools          []map[string]any  `json:"tools,omitempty"`
+	MaxTokens      int               `json:"max_tokens,omitempty"`
+	MaxTokensField string            `json:"-"`
+	Temperature    *float64          `json:"temperature,omitempty"`
+	Stream         bool              `json:"stream,omitempty"`
+	Thinking       map[string]any    `json:"thinking,omitempty"`
+	Stop           []string          `json:"stop,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	Raw            map[string]any    `json:"raw,omitempty"`
+	NoCache        bool              `json:"no_cache,omitempty"`
 }
 
 type IRMessage struct {

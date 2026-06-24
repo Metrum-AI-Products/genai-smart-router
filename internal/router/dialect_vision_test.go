@@ -99,6 +99,80 @@ func TestAnthropicMaxTokensDefaultsOnlyWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatMaxCompletionTokensDecodesCanonicalMaxTokens(t *testing.T) {
+	req, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"max_completion_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.MaxTokens != 1 {
+		t.Fatalf("MaxTokens=%d, want 1", req.MaxTokens)
+	}
+	if req.MaxTokensField != "max_completion_tokens" {
+		t.Fatalf("MaxTokensField=%q, want max_completion_tokens", req.MaxTokensField)
+	}
+}
+
+func TestOpenAIChatMaxCompletionTokensForwardsOutputCap(t *testing.T) {
+	req, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"max_completion_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeUpstream("openai-chat", "chat-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["max_completion_tokens"]; got != float64(1) {
+		t.Fatalf("max_completion_tokens=%#v, want 1; body=%#v", got, body)
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("max_tokens also present in body=%#v", body)
+	}
+}
+
+func TestOpenAIChatMaxTokensTakesPrecedenceOverMaxCompletionTokens(t *testing.T) {
+	req, err := decodeRequest("openai-chat", []byte(`{
+		"model": "default",
+		"max_tokens": 2,
+		"max_completion_tokens": 1,
+		"messages": [{"role": "user", "content": "write a long essay"}]
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.MaxTokens != 2 {
+		t.Fatalf("MaxTokens=%d, want 2", req.MaxTokens)
+	}
+	if req.MaxTokensField != "max_tokens" {
+		t.Fatalf("MaxTokensField=%q, want max_tokens", req.MaxTokensField)
+	}
+	raw, err := encodeUpstream("openai-chat", "chat-model", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["max_tokens"]; got != float64(2) {
+		t.Fatalf("max_tokens=%#v, want 2; body=%#v", got, body)
+	}
+	if _, ok := body["max_completion_tokens"]; ok {
+		t.Fatalf("max_completion_tokens should not be emitted when max_tokens wins; body=%#v", body)
+	}
+}
+
 func TestResponsesMaxOutputTokensTranslatesToChatMaxTokens(t *testing.T) {
 	req, err := decodeRequest("openai-responses", []byte(`{
 		"model": "vision",

@@ -624,6 +624,137 @@ func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatMaxCompletionTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_max_completion_tokens",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "cap-safe-chat",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "x"},
+				"finish_reason": "length",
+			}},
+			"usage": map[string]any{"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8},
+		})
+	}))
+	defer upstream.Close()
+
+	honorsMaxTokens := true
+	ignoresMaxTokens := false
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["ignored_caps"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["chat"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "ignored_caps", Model: "cap-unsafe-chat", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &ignoresMaxTokens},
+		{Provider: "safe_caps", Model: "cap-safe-chat", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens},
+	}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "chat")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat","max_completion_tokens":1,"messages":[{"role":"user","content":"write a long essay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := upstreamBody["model"]; got != "cap-safe-chat" {
+		t.Fatalf("upstream model=%#v, want cap-safe-chat; body=%#v", got, upstreamBody)
+	}
+	if got := upstreamBody["max_completion_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_completion_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	}
+	if _, ok := upstreamBody["max_tokens"]; ok {
+		t.Fatalf("upstream max_tokens should not be set when max_completion_tokens was used; body=%#v", upstreamBody)
+	}
+}
+
+func TestOpenAIChatToolPassthroughMaxCompletionTokensFiltersCapUnsafeTargets(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_tool_cap",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "cap-safe-tool",
+			"choices": []map[string]any{{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": nil,
+					"tool_calls": []map[string]any{{
+						"id":   "call_echo",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "echo",
+							"arguments": `{"text":"hi"}`,
+						},
+					}},
+				},
+				"finish_reason": "tool_calls",
+			}},
+			"usage": map[string]any{"prompt_tokens": 17, "completion_tokens": 1, "total_tokens": 18},
+		})
+	}))
+	defer upstream.Close()
+
+	honorsMaxTokens := true
+	ignoresMaxTokens := false
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["ignored_caps"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["warp-agent-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "ignored_caps", Model: "cap-unsafe-tool", HonorsMaxTokens: &ignoresMaxTokens, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+		{Provider: "safe_caps", Model: "cap-safe-tool", HonorsMaxTokens: &honorsMaxTokens, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+	}}
+	cfg.Callers[0].Allow = []string{"warp-agent-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{
+		"model":"warp-agent-smoke",
+		"stream":true,
+		"max_completion_tokens":1,
+		"messages":[{"role":"user","content":"echo"}],
+		"tools":[{"type":"function","function":{"name":"echo","parameters":{"type":"object","properties":{"text":{"type":"string"}}}}}],
+		"tool_choice":"auto"
+	}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := upstreamBody["model"]; got != "cap-safe-tool" {
+		t.Fatalf("upstream model=%#v, want cap-safe-tool; body=%#v", got, upstreamBody)
+	}
+	if got := upstreamBody["max_completion_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_completion_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	}
+	if _, ok := upstreamBody["max_tokens"]; ok {
+		t.Fatalf("upstream max_tokens should not be set when max_completion_tokens was used; body=%#v", upstreamBody)
+	}
+	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
+		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
+	}
+}
+
 func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

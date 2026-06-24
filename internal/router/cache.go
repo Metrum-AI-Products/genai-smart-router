@@ -46,26 +46,28 @@ func newCache(cfg CacheConfig) *responseCache {
 
 func cacheKey(req *IRRequest, target Target) string {
 	type normalized struct {
-		Model       string      `json:"model"`
-		System      string      `json:"system,omitempty"`
-		Messages    []IRMessage `json:"messages,omitempty"`
-		Input       string      `json:"input,omitempty"`
-		MaxTokens   int         `json:"max_tokens,omitempty"`
-		Temperature *float64    `json:"temperature,omitempty"`
-		Stop        []string    `json:"stop,omitempty"`
-		Provider    string      `json:"provider"`
-		TargetModel string      `json:"target_model"`
+		Model          string      `json:"model"`
+		System         string      `json:"system,omitempty"`
+		Messages       []IRMessage `json:"messages,omitempty"`
+		Input          string      `json:"input,omitempty"`
+		MaxTokens      int         `json:"max_tokens,omitempty"`
+		MaxTokensField string      `json:"max_tokens_field,omitempty"`
+		Temperature    *float64    `json:"temperature,omitempty"`
+		Stop           []string    `json:"stop,omitempty"`
+		Provider       string      `json:"provider"`
+		TargetModel    string      `json:"target_model"`
 	}
 	raw, _ := json.Marshal(normalized{
-		Model:       req.Model,
-		System:      req.System,
-		Messages:    req.Messages,
-		Input:       req.Input,
-		MaxTokens:   req.MaxTokens,
-		Temperature: req.Temperature,
-		Stop:        req.Stop,
-		Provider:    target.Provider,
-		TargetModel: target.Model,
+		Model:          req.Model,
+		System:         req.System,
+		Messages:       req.Messages,
+		Input:          req.Input,
+		MaxTokens:      req.MaxTokens,
+		MaxTokensField: req.MaxTokensField,
+		Temperature:    req.Temperature,
+		Stop:           req.Stop,
+		Provider:       target.Provider,
+		TargetModel:    target.Model,
 	})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
