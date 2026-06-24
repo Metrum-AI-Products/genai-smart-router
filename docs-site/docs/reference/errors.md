@@ -19,6 +19,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `upstream-error` | 502 | The selected upstream failed and no fallback succeeded. | Retry if the task is idempotent. | Inspect request attempts and provider status. |
 | `upstream-timeout` | 504 | The upstream did not complete within configured timeout. | Retry with a smaller task or larger timeout if available. | Tune timeout, fallback, provider mix, or client token budget. |
 | `metrics-forbidden` | 403 | `/metrics` was requested with a non-metrics-admin token. | Use `/v1/usage` for caller usage. | Issue a separate metrics-admin token only for operators. |
+| `content-forbidden` | 403 | A content-capture maintenance endpoint was requested with a non-content-admin token. | Do not call content-capture admin endpoints from application clients. | Issue a separate `content_admin: true` token only for governed content maintenance. |
 
 ## Eligibility Requirements
 
@@ -47,3 +48,5 @@ Administrators can use `X-Request-Id` to inspect:
 - `request_errors` for sanitized terminal error summaries.
 
 Diagnostic rows exclude prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies.
+
+If governed content capture is enabled by an operator, captured content lives in separate content-capture tables and remains outside usage reports and diagnostics. Delete and retention-purge maintenance endpoints require `content_admin: true`.

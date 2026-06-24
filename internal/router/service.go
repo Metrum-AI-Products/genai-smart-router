@@ -167,6 +167,8 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
+	s.mux.HandleFunc("DELETE /v1/content-captures/{request_id}", s.handleContentCaptureDelete)
+	s.mux.HandleFunc("POST /v1/content-captures/purge-expired", s.handleContentCapturePurgeExpired)
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
 	s.mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })
@@ -266,6 +268,57 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, s.metrics.Prometheus())
+}
+
+func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Request) {
+	rc, ok := s.begin(w, r, "content-admin")
+	if !ok {
+		return
+	}
+	if !rc.caller.cfg.ContentAdmin {
+		code := "content-forbidden"
+		s.writeError(w, rc, http.StatusForbidden, code)
+		return
+	}
+	requestID := strings.TrimSpace(r.PathValue("request_id"))
+	if requestID == "" {
+		s.writeError(w, rc, http.StatusBadRequest, "missing-request-id")
+		return
+	}
+	if s.usage == nil {
+		s.writeError(w, rc, http.StatusServiceUnavailable, "content-store-disabled")
+		return
+	}
+	rows, err := s.usage.DeleteContentCapturesByRequestID(requestID, rc.rec.CallerID, rc.rec.TokenID, "admin-delete")
+	if err != nil {
+		s.writeError(w, rc, http.StatusInternalServerError, "content-delete-failed")
+		return
+	}
+	defer s.finish(rc, http.StatusOK, nil)
+	writeJSON(w, http.StatusOK, map[string]any{"request_id": requestID, "deleted": rows})
+}
+
+func (s *Service) handleContentCapturePurgeExpired(w http.ResponseWriter, r *http.Request) {
+	rc, ok := s.begin(w, r, "content-admin")
+	if !ok {
+		return
+	}
+	if !rc.caller.cfg.ContentAdmin {
+		code := "content-forbidden"
+		s.writeError(w, rc, http.StatusForbidden, code)
+		return
+	}
+	if s.usage == nil {
+		s.writeError(w, rc, http.StatusServiceUnavailable, "content-store-disabled")
+		return
+	}
+	rows, err := s.usage.PurgeExpiredContentCaptures(time.Now().UTC(), rc.rec.CallerID, rc.rec.TokenID, "admin-retention-purge")
+	if err != nil {
+		s.writeError(w, rc, http.StatusInternalServerError, "content-purge-failed")
+		return
+	}
+	defer s.finish(rc, http.StatusOK, nil)
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": rows})
 }
 
 func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
@@ -377,6 +430,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.Warnings = append(rc.rec.Warnings, piiResult.Warnings...)
 		rc.trace("pii_filter_applied", fmt.Sprintf("replacements=%d rules=%d", piiResult.Replacements, piiRuleCount(piiResult)), Target{}, 0, 0, "", false, 0)
 	}
+	captureDecision := s.contentCaptureFor(rc.caller, req.Model, group)
+	s.captureRequestContent(rc, req, r.Header, captureDecision)
 	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		var eligibilityErr routingEligibilityError
@@ -421,6 +476,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
 			rc.trace("cache_hit", "", dec.Target, 0, http.StatusOK, "", false, 0)
+			s.captureResponseContent(rc, cached, captureDecision)
 			s.writeIR(w, dialect, cached, req.Stream, rc)
 			s.finish(rc, http.StatusOK, nil)
 			return
@@ -440,7 +496,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.Attempts = attempts
 	rc.rec.FallbackUsed = fallbackUsed
 	if err != nil {
-		s.writeUpstreamFailureError(w, rc, req, dec, attempts, err)
+		s.writeUpstreamFailureError(w, rc, req, dec, attempts, err, captureDecision)
 		return
 	}
 	if resp != nil {
@@ -460,6 +516,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.UpstreamReportedOutputCostUSD = resp.Usage.UpstreamReportedOutputCostUSD
 		rc.rec.UpstreamReportedTotalCostUSD = resp.Usage.UpstreamReportedTotalCostUSD
 		rc.rec.Warnings = append(rc.rec.Warnings, resp.Warnings...)
+		s.captureResponseContent(rc, resp, captureDecision)
 		s.writeIR(w, dialect, resp, req.Stream, rc)
 		s.finish(rc, http.StatusOK, nil)
 	}
@@ -1464,10 +1521,11 @@ func (s *Service) writeRoutingPolicyError(w http.ResponseWriter, rc *requestCont
 	})
 }
 
-func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestContext, req *IRRequest, dec decision, attempts int, err error) {
+func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestContext, req *IRRequest, dec decision, attempts int, err error, captureDecision contentCaptureDecision) {
 	classified := classifyError(err)
 	code, status := upstreamFailureResponse(classified, rc)
 	if rc != nil {
+		s.captureUpstreamErrorContent(rc, req, dec, attempts, classified, captureDecision, status)
 		rc.trace("upstream_exhausted", classified.Message, dec.Target, attempts, status, classified.Class, classified.Retryable, 0)
 		rc.rec.Status = status
 		rc.rec.Error = &code

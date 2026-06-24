@@ -21,6 +21,24 @@ server:
     retention_days: 30
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
+  # Governed content capture is disabled by default. Enabling it stores redacted
+  # request/response/upstream-error content in separate relational tables keyed
+  # by request_id. It is not diagnostics, metrics, or usage reporting.
+  content_capture:
+    enabled: false
+    retention_days: 30
+    capture_request: false
+    capture_response: false
+    capture_tool_calls: false
+    capture_images: false
+    capture_upstream_errors: false
+    capture_headers_allowlist: []
+    redact_before_storage: true
+    redaction_patterns: []
+    max_capture_bytes: 65536
+    encryption:
+      enabled: false
+      kms_key_id: ""
 state_path: router-state.json
 providers:
   kimi:
@@ -1254,6 +1272,7 @@ callers:
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
   token_id: rtr_metrum_standard_metrum-insights_dev_kreplace
   metrics_admin: false
+  content_admin: false
   allow:
   - default
   - fast
@@ -1283,6 +1302,7 @@ callers:
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN
   token_id: rtr_metrum_coding_metrum-insights_dev_kreplace
   metrics_admin: false
+  content_admin: false
   allow:
   - default
   - fast
@@ -1324,6 +1344,20 @@ callers:
   token_sha256: REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN
   token_id: rtr_metrum_metrics-admin_observability_dev_kreplace
   metrics_admin: true
+  content_admin: false
+  allow: []
+  rate:
+    rpm: 60
+    tpm: 0
+    concurrent: 2
+- id: content-admin-dev
+  user: content-admin
+  project: compliance
+  environment: dev
+  token_sha256: REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN
+  token_id: rtr_metrum_content-admin_compliance_dev_kreplace
+  metrics_admin: false
+  content_admin: true
   allow: []
   rate:
     rpm: 60

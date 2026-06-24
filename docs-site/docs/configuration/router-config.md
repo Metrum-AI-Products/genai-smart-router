@@ -288,6 +288,7 @@ callers:
     token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
     metrics_admin: false
+    content_admin: false
     allow: [default, fast, small]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 
@@ -298,6 +299,7 @@ callers:
     token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
     metrics_admin: false
+    content_admin: false
     allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
 
@@ -308,13 +310,25 @@ callers:
     token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
     token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
     metrics_admin: true
+    content_admin: false
+    allow: []
+    rate: { rpm: 60, tpm: 0, concurrent: 2 }
+
+  - id: example-content-admin-prod
+    user: content-admin
+    project: compliance
+    environment: prod
+    token_sha256: SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN
+    token_id: rtr_metrum_content-admin_compliance_prod_k20260614
+    metrics_admin: false
+    content_admin: true
     allow: []
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
 Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values.
 
-Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`.
+Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content_admin: true`; metrics-admin tokens do not grant content-admin access.
 
 ## Cache And Usage Store
 
@@ -341,6 +355,21 @@ server:
     retention_days: 30
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
+  content_capture:
+    enabled: false
+    retention_days: 30
+    capture_request: false
+    capture_response: false
+    capture_tool_calls: false
+    capture_images: false
+    capture_upstream_errors: false
+    capture_headers_allowlist: []
+    redact_before_storage: true
+    redaction_patterns: []
+    max_capture_bytes: 65536
+    encryption:
+      enabled: false
+      kms_key_id: ""
 ```
 
 The cache is intended for eligible deterministic unary responses. Tool-bearing agent requests bypass cache because tool output can depend on live shell and filesystem state.
@@ -350,6 +379,20 @@ Image-bearing requests also bypass response caching. Usage logs and the usage da
 Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. See [PII Filtering](./pii-filtering).
 
 Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture and still redacts prompt-like fields, nested upstream bodies, and secret-shaped values before JSONL or usage DB persistence.
+
+Governed content capture is separate from diagnostics and remains disabled unless `server.content_capture.enabled: true` and at least one scope is enabled. Captured rows live in `request_content_captures`, allowlisted headers in `request_content_headers`, and delete/purge audit events in `request_content_audit_events`. Rows are keyed by `request_id` for joins to usage metadata. Built-in secret redaction and configured `redaction_patterns` run before storage; `redact_before_storage: false` is rejected. Header capture is allowlist-only and rejects authorization, API-key, token, secret, cookie, and key-like header names. The current foundation supports retention purge and delete-by-request maintenance; KMS/encryption-at-rest and content export/read APIs are follow-up work, and `encryption.enabled: true` is rejected until implemented.
+
+Deployments can keep capture disabled globally and enable a scoped override on a specific `callers[]` entry or `models.<group>.content_capture` block for a governed workload. Each enabled block must name at least one capture scope.
+
+Content-capture maintenance endpoints:
+
+```bash
+curl -X DELETE "$SMART_ROUTER_BASE_URL/v1/content-captures/<request_id>" \
+  -H "Authorization: Bearer $CONTENT_ADMIN_ROUTER_TOKEN"
+
+curl -X POST "$SMART_ROUTER_BASE_URL/v1/content-captures/purge-expired" \
+  -H "Authorization: Bearer $CONTENT_ADMIN_ROUTER_TOKEN"
+```
 
 Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. Exhausted upstream timeouts return `504 upstream-timeout`; exhausted provider rate limits return `503 upstream-rate-limited`; other exhausted upstream failures return `502 upstream-failed`.
 

@@ -73,6 +73,7 @@ Minimum acceptance:
 - caller tokens are stored only as hashes;
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
 - `/metrics` requires `metrics_admin: true`;
+- governed content capture is disabled unless required by policy, and any enabled deployment has `content_admin` isolation, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;
 - image-fetching VLM services have media-domain restrictions where applicable;
 - TypeScript and external policy egress use exact hostname allowlists, HTTPS by default, approved `allow_http` exceptions only for trusted infrastructure, and redirect revalidation;

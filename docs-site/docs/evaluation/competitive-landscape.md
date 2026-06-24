@@ -26,7 +26,7 @@ Core strengths:
 - **Private upstream support:** enterprise-hosted vLLM, SGLang, Baseten-style, and other OpenAI-compatible services can participate in the same policy as hosted providers.
 - **Request-time cost accounting:** configured token prices, image cost fields, and upstream-reported billed costs are stored with usage rows when available.
 - **Budgets, quotas, and rate limits:** per-key RPM, TPM, concurrency, daily, monthly, and lifetime limits are enforced before the provider call.
-- **Telemetry and operational visibility:** request logs, relational usage reporting, cache telemetry, throughput fields, diagnostics, and metrics-admin Prometheus telemetry are available.
+- **Telemetry and operational visibility:** request logs, relational usage reporting, cache telemetry, throughput fields, diagnostics, optional governed content capture, and metrics-admin Prometheus telemetry are available.
 - **Programmable policy:** TypeScript routing scripts can implement deployment-owned routing logic and optional allowlisted external policy calls without changing application code.
 - **Outcome-driven optimization:** agentic validation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix using measured results.
 
@@ -36,7 +36,7 @@ GenAI Smart Router is a strong fit when the gateway must be part of the enterpri
 
 | Requirement | Why GenAI Smart Router is stronger |
 |---|---|
-| Combine the major gateway controls | High-performance routing, telemetry, budgets, rate limits, quotas, caching, fallback, model metadata, request diagnostics, usage reporting, and request-time cost accounting are handled by the router instead of split across multiple systems. |
+| Combine the major gateway controls | High-performance routing, telemetry, budgets, rate limits, quotas, caching, fallback, model metadata, request diagnostics, optional governed content capture, usage reporting, and request-time cost accounting are handled by the router instead of split across multiple systems. |
 | Optimize for outcomes, not only model preference | Validation harnesses such as Harbor can run real coding-agent workloads through model groups and compare success outcomes against cost, latency, token volume, fallback rate, and throughput. This lets teams adjust weights and group composition until the group maintains positive task results while capturing substantial cost benefits. |
 | Keep routing policy close to the deployment | Policies live in the router config and optional TypeScript scripts. Teams can route by prompt size, caller metadata, project, environment, tool requirements, image presence, target health, weights, failover order, or an allowlisted policy service. |
 | Serve coding agents and normal apps from one endpoint | The same deployment can support OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages clients, including Codex CLI, Claude Code CLI, and OpenAI Chat tool clients. |

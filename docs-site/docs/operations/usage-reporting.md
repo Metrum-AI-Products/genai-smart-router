@@ -53,6 +53,8 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 
 Diagnostic rows do not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized upstream response bodies.
 
+Governed content capture is separate from diagnostics. It is disabled by default and, when enabled by the deployment operator, writes redacted request/response/upstream-error content to dedicated relational tables keyed by `request_id`. Maintenance operations require a caller token with `content_admin: true`: `DELETE /v1/content-captures/<request_id>` removes one request's captured content, and `POST /v1/content-captures/purge-expired` deletes rows past their retention timestamp. Both operations write audit rows. Usage reports remain metadata-oriented and do not print captured content.
+
 ## Filtering
 
 ```bash

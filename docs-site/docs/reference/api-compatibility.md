@@ -21,6 +21,8 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 `/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
+Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` and `POST /v1/content-captures/purge-expired` require a caller token configured with `content_admin: true` and never return captured content.
+
 ## Compatibility Matrix
 
 | Capability | Chat Completions | Responses | Messages |

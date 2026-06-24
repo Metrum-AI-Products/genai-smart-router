@@ -27,6 +27,14 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 
 These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
 
+Governed content-capture tables are separate from diagnostics and also follow the relational-only rule:
+
+- `request_content_captures`: redacted request, response, and upstream-error content rows with scalar request/route metadata, retention timestamp, redaction counts, and truncation flags.
+- `request_content_headers`: allowlisted captured header values keyed to a capture row; authorization, API-key, token, secret, cookie, and key-like headers must be rejected before storage.
+- `request_content_audit_events`: read/delete/purge audit events with actor caller metadata, action, request ID, affected row count, and reason.
+
+Content-capture rows are keyed by `request_id` so administrators can join them to `request_usage`. This is an explicit opt-in enterprise feature; default usage and diagnostics behavior remains metadata-only.
+
 ## Request Metrics
 
 Each request row stores:
@@ -40,6 +48,7 @@ Each request row stores:
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
 - PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
+- optional governed content-capture traceability: separate content rows keyed by request ID only when `server.content_capture.enabled` and a capture scope are configured.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.
 
@@ -53,6 +62,7 @@ Durable across container restarts when volumes are preserved:
 - JSONL request logs.
 - per-request timing, TPS, and cache snapshot fields.
 - diagnostic attempt, trace, and terminal error rows when diagnostics are enabled.
+- content-capture rows and content-capture audit rows when governed content capture is enabled.
 
 Not durable across router restarts:
 

@@ -3966,6 +3966,274 @@ func TestOmittedModelWithoutConfiguredDefaultReturnsMissingModel(t *testing.T) {
 	}
 }
 
+func TestContentCaptureDisabledByDefault(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_default_capture_disabled",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "metadata only"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"do not capture this by default"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var count int64
+	if err := svc.usage.db.Model(&contentCaptureRecord{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("content capture rows=%d, want 0", count)
+	}
+}
+
+func TestContentCaptureRequestPayloadDropsRawForScopeOptOuts(t *testing.T) {
+	req := &IRRequest{
+		Model: "default",
+		Messages: []IRMessage{{
+			Role: "user",
+			Parts: []IRContentPart{{
+				Type:     "image",
+				ImageURL: "data:image/png;base64,RAW_NORMALIZED_IMAGE_DATA",
+			}},
+		}},
+		Tools: []map[string]any{{"type": "function", "function": map[string]any{"name": "raw_tool"}}},
+		Raw: map[string]any{
+			"tools": []any{map[string]any{"function": map[string]any{"name": "raw_tool"}}},
+			"messages": []any{map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64,RAW_OPENAI_IMAGE_DATA"}},
+					map[string]any{"type": "image", "source": map[string]any{"type": "base64", "data": "RAW_ANTHROPIC_IMAGE_DATA"}},
+				},
+			}},
+		},
+	}
+	payload := contentCaptureRequestPayload(req, ContentCaptureConfig{CaptureImages: false, CaptureToolCalls: false})
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, forbidden := range []string{"\"raw\"", "\"tools\"", "raw_tool", "RAW_NORMALIZED_IMAGE_DATA", "RAW_OPENAI_IMAGE_DATA", "RAW_ANTHROPIC_IMAGE_DATA"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("request capture payload leaked %q in %s", forbidden, text)
+		}
+	}
+	if !strings.Contains(text, "[IMAGE_REDACTED]") {
+		t.Fatalf("request capture payload did not retain image redaction marker: %s", text)
+	}
+}
+
+func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_capture_enabled",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "send result to bob@example.com with sk-test-secret"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.ContentCapture = ContentCaptureConfig{
+		Enabled:                 true,
+		RetentionDays:           7,
+		CaptureRequest:          true,
+		CaptureResponse:         true,
+		CaptureHeadersAllowlist: []string{"User-Agent", "X-Trace-Id"},
+		RedactionPatterns:       []ContentCaptureRedactionRule{{Name: "email", Expression: `[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"email alice@example.com and use Bearer rtr_should_not_store_secret"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "capture-test")
+	req.Header.Set("X-Trace-Id", "trace-123")
+	req.Header.Set("X-API-Key", "do-not-store")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var rows []contentCaptureRecord
+	if err := svc.usage.db.Order("scope").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("capture rows=%d, want 2: %#v", len(rows), rows)
+	}
+	joined := rows[0].ContentText + "\n" + rows[1].ContentText
+	for _, forbidden := range []string{testToken, cfg.Callers[0].TokenSHA256, "alice@example.com", "bob@example.com", "sk-test-secret", "rtr_should_not_store_secret", "do-not-store"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("captured content leaked %q in %s", forbidden, joined)
+		}
+	}
+	for _, want := range []string{"[REDACTED_EMAIL]", "[REDACTED_SECRET]"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("captured content missing redaction marker %q in %s", want, joined)
+		}
+	}
+	for _, row := range rows {
+		if row.RequestID == "" || row.CallerID != "alice" || row.TokenID != "rtr_alice_test" {
+			t.Fatalf("capture row not joinable/safe: %#v", row)
+		}
+		if row.RetentionUntil == "" {
+			t.Fatalf("capture row missing retention_until: %#v", row)
+		}
+	}
+	var headers []contentCaptureHeaderRecord
+	if err := svc.usage.db.Order("name").Find(&headers).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(headers) != 2 {
+		t.Fatalf("header rows=%d, want 2: %#v", len(headers), headers)
+	}
+	headerText := ""
+	for _, h := range headers {
+		headerText += h.Name + "=" + h.Value + "\n"
+	}
+	if !strings.Contains(headerText, "User-Agent=capture-test") || !strings.Contains(headerText, "X-Trace-Id=trace-123") {
+		t.Fatalf("allowed headers not captured: %s", headerText)
+	}
+	if strings.Contains(headerText, "Authorization") || strings.Contains(headerText, "X-Api-Key") {
+		t.Fatalf("forbidden header captured: %s", headerText)
+	}
+}
+
+func TestContentCaptureStoresSanitizedUpstreamError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":{"message":"prompt: secret body Authorization: Bearer sk-leaky-secret"}}`))
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.ContentCapture = ContentCaptureConfig{
+		Enabled:               true,
+		RetentionDays:         7,
+		CaptureUpstreamErrors: true,
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"trigger upstream failure"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var row contentCaptureRecord
+	if err := svc.usage.db.Where("scope = ?", contentCaptureScopeUpstreamError).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.SourceStatus != http.StatusBadGateway {
+		t.Fatalf("source status=%d", row.SourceStatus)
+	}
+	for _, forbidden := range []string{"sk-leaky-secret", "secret body"} {
+		if strings.Contains(row.ContentText, forbidden) {
+			t.Fatalf("upstream error capture leaked %q in %s", forbidden, row.ContentText)
+		}
+	}
+	if !strings.Contains(row.ContentText, "upstream error body redacted") {
+		t.Fatalf("upstream error capture missing sanitized marker: %s", row.ContentText)
+	}
+}
+
+func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_capture_delete",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "captured"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	adminToken := "rtr_content_admin_test_token"
+	adminHash := sha256.Sum256([]byte(adminToken))
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Callers = append(cfg.Callers, CallerConfig{
+		ID:           "content-admin",
+		User:         "content-admin",
+		Project:      "platform",
+		Environment:  "test",
+		TokenSHA256:  hex.EncodeToString(adminHash[:]),
+		TokenID:      "rtr_content_admin_test",
+		Allow:        []string{"default"},
+		ContentAdmin: true,
+		Rate:         RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+		Quota:        QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+		Key:          KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+	})
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"capture me"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	requestID := rr.Header().Get("X-Request-Id")
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+requestID, nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+testToken)
+	deleteRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(deleteRR, deleteReq)
+	if deleteRR.Code != http.StatusForbidden {
+		t.Fatalf("non-admin delete status=%d body=%s", deleteRR.Code, deleteRR.Body.String())
+	}
+
+	adminReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+requestID, nil)
+	adminReq.Header.Set("Authorization", "Bearer "+adminToken)
+	adminRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(adminRR, adminReq)
+	if adminRR.Code != http.StatusOK {
+		t.Fatalf("admin delete status=%d body=%s", adminRR.Code, adminRR.Body.String())
+	}
+	var remaining int64
+	if err := svc.usage.db.Model(&contentCaptureRecord{}).Where("request_id = ?", requestID).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("remaining captures=%d, want 0", remaining)
+	}
+	var audit contentCaptureAuditRecord
+	if err := svc.usage.db.Where("action = ? AND request_id = ?", "request_delete", requestID).First(&audit).Error; err != nil {
+		t.Fatal(err)
+	}
+	if audit.ActorCallerID != "content-admin" || audit.ActorTokenID != "rtr_content_admin_test" || audit.RowsAffected != 1 {
+		t.Fatalf("unexpected audit row: %#v", audit)
+	}
+}
+
 func TestUpstreamAttemptTimeoutReturnsGatewayTimeoutAndDiagnostics(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)

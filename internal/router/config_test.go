@@ -117,6 +117,88 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	}
 }
 
+func TestContentCaptureConfigValidation(t *testing.T) {
+	falseValue := false
+	for _, tt := range []struct {
+		name string
+		edit func(*Config)
+		want string
+	}{
+		{
+			name: "enabled without scope",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 30}
+			},
+			want: "no capture scope",
+		},
+		{
+			name: "redaction disabled",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactBeforeStorage: &falseValue}
+			},
+			want: "redact_before_storage must remain true",
+		},
+		{
+			name: "forbidden header",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, CaptureHeadersAllowlist: []string{"Authorization"}}
+			},
+			want: "forbidden header",
+		},
+		{
+			name: "invalid custom regex",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, RedactionPatterns: []ContentCaptureRedactionRule{{Name: "bad", Expression: "["}}}
+			},
+			want: "redaction pattern bad is invalid",
+		},
+		{
+			name: "unsupported encryption",
+			edit: func(cfg *Config) {
+				cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true, Encryption: ContentCaptureEncryptionConfig{Enabled: true, KMSKeyID: "kms-test"}}
+			},
+			want: "encryption.enabled is not supported yet",
+		},
+		{
+			name: "caller capture requires usage db",
+			edit: func(cfg *Config) {
+				enabled := false
+				cfg.Server.UsageDB.Enable = &enabled
+				cfg.Callers[0].ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true}
+			},
+			want: "content_capture requires usage_db enabled",
+		},
+		{
+			name: "model group capture requires usage db",
+			edit: func(cfg *Config) {
+				enabled := false
+				cfg.Server.UsageDB.Enable = &enabled
+				group := cfg.Models["default"]
+				group.ContentCapture = ContentCaptureConfig{Enabled: true, CaptureRequest: true}
+				cfg.Models["default"] = group
+			},
+			want: "content_capture requires usage_db enabled",
+		},
+		{
+			name: "caller override validates",
+			edit: func(cfg *Config) {
+				cfg.Callers[0].ContentCapture = ContentCaptureConfig{Enabled: true}
+			},
+			want: "no capture scope",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.setDefaults()
+			tt.edit(cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() error=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestMissingProviderModelRefFailsValidation(t *testing.T) {
 	cfg := minimalConfig(t)
 	provider := cfg.Provider["mock"]
@@ -399,9 +481,11 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
 	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
 	metricsAdminSum := sha256.Sum256([]byte("rtr_example_metrics_admin_test"))
+	contentAdminSum := sha256.Sum256([]byte("rtr_example_content_admin_test"))
 	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
 	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
 	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", hex.EncodeToString(metricsAdminSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN", hex.EncodeToString(contentAdminSum[:]))
 	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
 
 	dir := t.TempDir()
@@ -537,6 +621,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
 		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke"},
 		"metrics-admin-dev": {},
+		"content-admin-dev": {},
 	}
 	for _, caller := range cfg.Callers {
 		want, ok := wantAllows[caller.ID]
@@ -551,6 +636,12 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 		if caller.ID != "metrics-admin-dev" && caller.MetricsAdmin {
 			t.Fatalf("caller %s metrics_admin=true, want false", caller.ID)
+		}
+		if caller.ID == "content-admin-dev" && !caller.ContentAdmin {
+			t.Fatalf("caller %s content_admin=false, want true", caller.ID)
+		}
+		if caller.ID != "content-admin-dev" && caller.ContentAdmin {
+			t.Fatalf("caller %s content_admin=true, want false", caller.ID)
 		}
 		delete(wantAllows, caller.ID)
 	}

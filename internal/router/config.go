@@ -26,13 +26,14 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen            string            `yaml:"listen"`
-	DefaultModelGroup string            `yaml:"default_model_group"`
-	Cache             CacheConfig       `yaml:"cache"`
-	Logging           LoggingConfig     `yaml:"logging"`
-	UsageDB           UsageDBConfig     `yaml:"usage_db"`
-	Upstream          UpstreamConfig    `yaml:"upstream"`
-	Diagnostics       DiagnosticsConfig `yaml:"diagnostics"`
+	Listen            string               `yaml:"listen"`
+	DefaultModelGroup string               `yaml:"default_model_group"`
+	Cache             CacheConfig          `yaml:"cache"`
+	Logging           LoggingConfig        `yaml:"logging"`
+	UsageDB           UsageDBConfig        `yaml:"usage_db"`
+	Upstream          UpstreamConfig       `yaml:"upstream"`
+	Diagnostics       DiagnosticsConfig    `yaml:"diagnostics"`
+	ContentCapture    ContentCaptureConfig `yaml:"content_capture"`
 }
 
 type UpstreamConfig struct {
@@ -45,6 +46,31 @@ type DiagnosticsConfig struct {
 	RetentionDays               int   `yaml:"retention_days"`
 	StoreSanitizedUpstreamError bool  `yaml:"store_sanitized_upstream_errors"`
 	MaxErrorBytes               int   `yaml:"max_error_bytes"`
+}
+
+type ContentCaptureConfig struct {
+	Enabled                 bool                           `yaml:"enabled" json:"enabled"`
+	RetentionDays           int                            `yaml:"retention_days" json:"retention_days"`
+	CaptureRequest          bool                           `yaml:"capture_request" json:"capture_request"`
+	CaptureResponse         bool                           `yaml:"capture_response" json:"capture_response"`
+	CaptureToolCalls        bool                           `yaml:"capture_tool_calls" json:"capture_tool_calls"`
+	CaptureImages           bool                           `yaml:"capture_images" json:"capture_images"`
+	CaptureUpstreamErrors   bool                           `yaml:"capture_upstream_errors" json:"capture_upstream_errors"`
+	CaptureHeadersAllowlist []string                       `yaml:"capture_headers_allowlist" json:"capture_headers_allowlist"`
+	RedactBeforeStorage     *bool                          `yaml:"redact_before_storage" json:"redact_before_storage"`
+	RedactionPatterns       []ContentCaptureRedactionRule  `yaml:"redaction_patterns" json:"redaction_patterns"`
+	MaxCaptureBytes         int                            `yaml:"max_capture_bytes" json:"max_capture_bytes"`
+	Encryption              ContentCaptureEncryptionConfig `yaml:"encryption" json:"encryption"`
+}
+
+type ContentCaptureRedactionRule struct {
+	Name       string `yaml:"name" json:"name"`
+	Expression string `yaml:"expression" json:"expression"`
+}
+
+type ContentCaptureEncryptionConfig struct {
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+	KMSKeyID string `yaml:"kms_key_id" json:"kms_key_id"`
 }
 
 type CacheConfig struct {
@@ -114,6 +140,7 @@ type ModelGroup struct {
 	ExternalPolicy   ExternalPolicyConfig `yaml:"external_policy"`
 	RoutingPolicy    RoutingPolicyConfig  `yaml:"routing_policy"`
 	PIIFilter        PIIFilterConfig      `yaml:"pii_filter"`
+	ContentCapture   ContentCaptureConfig `yaml:"content_capture"`
 	AttemptTimeoutMS int                  `yaml:"attempt_timeout_ms"`
 	Targets          []Target             `yaml:"targets"`
 }
@@ -297,17 +324,19 @@ type Target struct {
 }
 
 type CallerConfig struct {
-	ID           string      `yaml:"id" json:"id"`
-	User         string      `yaml:"user" json:"user"`
-	Project      string      `yaml:"project" json:"project"`
-	Environment  string      `yaml:"environment" json:"environment"`
-	TokenSHA256  string      `yaml:"token_sha256" json:"token_sha256"`
-	TokenID      string      `yaml:"token_id" json:"token_id"`
-	Allow        []string    `yaml:"allow" json:"allow"`
-	MetricsAdmin bool        `yaml:"metrics_admin" json:"metrics_admin"`
-	Rate         RateConfig  `yaml:"rate" json:"rate"`
-	Quota        QuotaConfig `yaml:"quota" json:"quota"`
-	Key          KeyConfig   `yaml:"key" json:"key"`
+	ID             string               `yaml:"id" json:"id"`
+	User           string               `yaml:"user" json:"user"`
+	Project        string               `yaml:"project" json:"project"`
+	Environment    string               `yaml:"environment" json:"environment"`
+	TokenSHA256    string               `yaml:"token_sha256" json:"token_sha256"`
+	TokenID        string               `yaml:"token_id" json:"token_id"`
+	Allow          []string             `yaml:"allow" json:"allow"`
+	MetricsAdmin   bool                 `yaml:"metrics_admin" json:"metrics_admin"`
+	ContentAdmin   bool                 `yaml:"content_admin" json:"content_admin"`
+	ContentCapture ContentCaptureConfig `yaml:"content_capture" json:"content_capture"`
+	Rate           RateConfig           `yaml:"rate" json:"rate"`
+	Quota          QuotaConfig          `yaml:"quota" json:"quota"`
+	Key            KeyConfig            `yaml:"key" json:"key"`
 }
 
 type RateConfig struct {
@@ -434,6 +463,14 @@ func (c *Config) setDefaults() {
 	if c.Server.Diagnostics.MaxErrorBytes == 0 {
 		c.Server.Diagnostics.MaxErrorBytes = 2048
 	}
+	defaultContentCaptureConfig(&c.Server.ContentCapture)
+	for i := range c.Callers {
+		defaultContentCaptureConfig(&c.Callers[i].ContentCapture)
+	}
+	for name, group := range c.Models {
+		defaultContentCaptureConfig(&group.ContentCapture)
+		c.Models[name] = group
+	}
 }
 
 func (c *Config) Validate() error {
@@ -451,6 +488,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.Diagnostics.MaxErrorBytes < 0 {
 		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
+	}
+	if err := validateContentCapture("server content_capture", c.Server.ContentCapture); err != nil {
+		return err
+	}
+	if c.contentCaptureEnabled() && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
+		return fmt.Errorf("content_capture requires usage_db enabled")
 	}
 	for name, p := range c.Provider {
 		if p.BaseURL == "" {
@@ -563,6 +606,9 @@ func (c *Config) Validate() error {
 		if err := validatePIIFilter(name, m.PIIFilter); err != nil {
 			return err
 		}
+		if err := validateContentCapture("model group "+name+" content_capture", m.ContentCapture); err != nil {
+			return err
+		}
 		if m.ScriptHTTP.Enabled {
 			if !strings.EqualFold(m.Strategy, "script") {
 				return fmt.Errorf("model group %s configures script_http but does not use script strategy", name)
@@ -669,8 +715,94 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("caller %s allows unknown model group %s", caller.ID, group)
 			}
 		}
+		if err := validateContentCapture("caller "+caller.ID+" content_capture", caller.ContentCapture); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func defaultContentCaptureConfig(cfg *ContentCaptureConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.RetentionDays == 0 {
+		cfg.RetentionDays = 30
+	}
+	if cfg.MaxCaptureBytes == 0 {
+		cfg.MaxCaptureBytes = 64 << 10
+	}
+	if cfg.RedactBeforeStorage == nil {
+		v := true
+		cfg.RedactBeforeStorage = &v
+	}
+}
+
+func (c *Config) contentCaptureEnabled() bool {
+	if c == nil {
+		return false
+	}
+	if c.Server.ContentCapture.Enabled {
+		return true
+	}
+	for _, caller := range c.Callers {
+		if caller.ContentCapture.Enabled {
+			return true
+		}
+	}
+	for _, group := range c.Models {
+		if group.ContentCapture.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func validateContentCapture(label string, cfg ContentCaptureConfig) error {
+	if cfg.RetentionDays < 0 {
+		return fmt.Errorf("%s retention_days cannot be negative", label)
+	}
+	if cfg.MaxCaptureBytes < 0 {
+		return fmt.Errorf("%s max_capture_bytes cannot be negative", label)
+	}
+	if cfg.RedactBeforeStorage != nil && !*cfg.RedactBeforeStorage {
+		return fmt.Errorf("%s redact_before_storage must remain true", label)
+	}
+	if cfg.Encryption.Enabled {
+		return fmt.Errorf("%s encryption.enabled is not supported yet", label)
+	}
+	if cfg.Enabled && !cfg.CaptureRequest && !cfg.CaptureResponse && !cfg.CaptureUpstreamErrors {
+		return fmt.Errorf("%s enables content capture but no capture scope is enabled", label)
+	}
+	for _, header := range cfg.CaptureHeadersAllowlist {
+		if !contentCaptureHeaderAllowed(header) {
+			return fmt.Errorf("%s capture_headers_allowlist contains forbidden header %q", label, header)
+		}
+	}
+	for _, rule := range cfg.RedactionPatterns {
+		if strings.TrimSpace(rule.Name) == "" {
+			return fmt.Errorf("%s redaction_patterns contains a rule without name", label)
+		}
+		if strings.TrimSpace(rule.Expression) == "" {
+			return fmt.Errorf("%s redaction pattern %s missing expression", label, rule.Name)
+		}
+		if _, err := regexp.Compile(rule.Expression); err != nil {
+			return fmt.Errorf("%s redaction pattern %s is invalid: %w", label, rule.Name, err)
+		}
+	}
+	return nil
+}
+
+func contentCaptureHeaderAllowed(header string) bool {
+	name := strings.ToLower(strings.TrimSpace(header))
+	if name == "" {
+		return false
+	}
+	switch name {
+	case "authorization", "proxy-authorization", "x-api-key", "api-key", "openai-api-key", "anthropic-api-key", "cookie", "set-cookie":
+		return false
+	}
+	return !strings.Contains(name, "token") && !strings.Contains(name, "secret") && !strings.Contains(name, "key")
 }
 
 func validatePIIFilter(group string, cfg PIIFilterConfig) error {

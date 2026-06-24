@@ -14,13 +14,15 @@ Confirm:
 - caller tokens are distributed only to approved users, services, or validation jobs;
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
-- metrics-admin access uses separate caller tokens with `metrics_admin: true`.
+- metrics-admin access uses separate caller tokens with `metrics_admin: true`;
+- content-capture maintenance access, when enabled by policy, uses separate caller tokens with `content_admin: true`.
 
 Acceptance checks:
 
 - ordinary caller token can access allowed API paths;
 - ordinary caller token receives `403 metrics-forbidden` on `/metrics`;
 - metrics-admin token can scrape `/metrics`;
+- ordinary caller token receives `403 content-forbidden` on content-capture maintenance endpoints;
 - `/v1/models` returns only groups allowed for the presented token.
 
 ## Diagnostics And Data Handling
@@ -36,6 +38,8 @@ Confirm diagnostic records exclude:
 - unsanitized upstream response bodies.
 
 Expected diagnostics include request IDs, selected provider/model, attempt summaries, status, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
+
+Governed content capture is disabled by default. If a deployment enables it, confirm captured rows are redacted before storage, keyed by `request_id`, subject to retention purge, and maintained through audited `content_admin` delete/purge operations.
 
 ## Network And Private Upstreams
 

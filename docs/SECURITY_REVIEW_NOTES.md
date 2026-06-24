@@ -15,6 +15,8 @@ Caller tokens carry allow lists, quota policy, and metadata such as user, projec
 
 `/metrics` is global operational telemetry. It must only be accessible to tokens configured with `metrics_admin: true`; ordinary caller tokens must use `/v1/usage` or generated usage reports.
 
+Content-capture maintenance is separate from metrics access. Delete-by-request and retention purge endpoints require `content_admin: true`; metrics-admin tokens do not imply content-admin privileges.
+
 ## Diagnostics And Redaction
 
 Request diagnostics may contain request ID, caller metadata, selected route/provider/model, status/error class, token counts, latency, sanitized upstream error class/message, and cost fields.
@@ -22,6 +24,8 @@ Request diagnostics may contain request ID, caller metadata, selected route/prov
 Diagnostics must not contain raw prompts, raw images, raw router tokens, token hashes, provider API keys, full upstream headers, or unsanitized upstream response bodies.
 
 Model-group `pii_filter` may redact configured request text before routing policy, cache keys, and upstream calls. TypeScript and external policy request contexts are built from the redacted request, including raw payload mirrors. PII-filter usage metadata must stay scalar and safe: applied flag, mode, replacement count, and matched-rule count only. Raw matched values and placeholder mappings must remain in memory for the request lifecycle unless a separate governed content-capture feature explicitly enables durable storage.
+
+Governed content capture is opt-in and disabled by default. When enabled, captured request, response, and upstream-error content is stored in separate relational tables keyed by `request_id`, with retention timestamps and audit rows for delete and purge operations. Captured content is redacted before storage with built-in secret patterns and configured regex rules. Header capture is allowlist-only and must not include authorization, API-key, token, secret, cookie, or key-like headers. The current foundation does not implement KMS/encryption-at-rest or content export/read APIs; enabling `content_capture.encryption.enabled` is rejected until that support exists.
 
 ## Docs And Examples
 

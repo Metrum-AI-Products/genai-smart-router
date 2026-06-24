@@ -352,7 +352,15 @@ func (s *usageStore) migrate() error {
 			return err
 		}
 	}
-	if err := s.db.AutoMigrate(&usageRecord{}, &requestAttemptRecord{}, &requestTraceEventRecord{}, &requestErrorRecord{}); err != nil {
+	if err := s.db.AutoMigrate(
+		&usageRecord{},
+		&requestAttemptRecord{},
+		&requestTraceEventRecord{},
+		&requestErrorRecord{},
+		&contentCaptureRecord{},
+		&contentCaptureHeaderRecord{},
+		&contentCaptureAuditRecord{},
+	); err != nil {
 		return err
 	}
 	return ensureUsageRelationalSchema(s.db)
@@ -366,7 +374,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	var columns []columnInfo
 	switch db.Dialector.Name() {
 	case "sqlite":
-		for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors"} {
+		for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events"} {
 			var tableColumns []columnInfo
 			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
 				return err
@@ -379,14 +387,14 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
 	for _, col := range columns {
 		t := strings.ToLower(col.Type)
 		if strings.Contains(t, "json") || strings.Contains(t, "array") || strings.HasSuffix(t, "[]") {
-			return fmt.Errorf("request_usage.%s uses forbidden non-relational type %q", col.Name, col.Type)
+			return fmt.Errorf("%s uses forbidden non-relational type %q", col.Name, col.Type)
 		}
 	}
 	return nil

@@ -167,7 +167,7 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		Name string
 		Type string
 	}
-	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors"} {
+	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events"} {
 		var cols []col
 		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {
 			t.Fatal(err)
@@ -181,5 +181,78 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 				t.Fatalf("non-relational column %s.%s type %s", table, c.Name, c.Type)
 			}
 		}
+	}
+}
+
+func TestContentCaptureRetentionPurgeDeletesRowsAndAudits(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
+	expired := contentCaptureRecord{
+		RequestID:      "req_expired",
+		TS:             formatUsageTime(now.Add(-48 * time.Hour)),
+		Scope:          contentCaptureScopeRequest,
+		CallerID:       "alice",
+		TokenID:        "rtr_alice_test",
+		ResolvedGroup:  "default",
+		InboundDialect: "openai-chat",
+		ContentType:    "application/json",
+		ContentText:    "expired",
+		ContentBytes:   len("expired"),
+		RetentionUntil: formatUsageTime(now.Add(-time.Hour)),
+	}
+	fresh := contentCaptureRecord{
+		RequestID:      "req_fresh",
+		TS:             formatUsageTime(now),
+		Scope:          contentCaptureScopeRequest,
+		CallerID:       "alice",
+		TokenID:        "rtr_alice_test",
+		ResolvedGroup:  "default",
+		InboundDialect: "openai-chat",
+		ContentType:    "application/json",
+		ContentText:    "fresh",
+		ContentBytes:   len("fresh"),
+		RetentionUntil: formatUsageTime(now.Add(24 * time.Hour)),
+	}
+	if err := store.db.Create(&expired).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&fresh).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&contentCaptureHeaderRecord{CaptureID: expired.ID, RequestID: expired.RequestID, Scope: expired.Scope, Name: "User-Agent", Value: "test"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := store.PurgeExpiredContentCaptures(now, "content-admin", "rtr_content_admin", "unit-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted=%d, want 1", deleted)
+	}
+	var captures []contentCaptureRecord
+	if err := store.db.Order("request_id").Find(&captures).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(captures) != 1 || captures[0].RequestID != "req_fresh" {
+		t.Fatalf("remaining captures: %#v", captures)
+	}
+	var headerCount int64
+	if err := store.db.Model(&contentCaptureHeaderRecord{}).Count(&headerCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if headerCount != 0 {
+		t.Fatalf("header rows=%d, want 0", headerCount)
+	}
+	var audit contentCaptureAuditRecord
+	if err := store.db.Where("action = ?", "retention_purge").First(&audit).Error; err != nil {
+		t.Fatal(err)
+	}
+	if audit.RequestID != "req_expired" || audit.RowsAffected != 1 || audit.ActorCallerID != "content-admin" {
+		t.Fatalf("unexpected audit row: %#v", audit)
 	}
 }

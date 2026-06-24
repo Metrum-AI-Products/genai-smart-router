@@ -253,6 +253,7 @@ callers:
     token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
     metrics_admin: false
+    content_admin: false
     allow: [default, fast, small]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
   - id: example-coding-prod
@@ -262,6 +263,7 @@ callers:
     token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
     metrics_admin: false
+    content_admin: false
     allow: [default, fast, small, medium, high, big-coder]
     rate: { rpm: 120, tpm: 200000, concurrent: 8 }
   - id: example-metrics-prod
@@ -271,11 +273,22 @@ callers:
     token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
     token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
     metrics_admin: true
+    content_admin: false
+    allow: []
+    rate: { rpm: 60, tpm: 0, concurrent: 2 }
+  - id: example-content-admin-prod
+    user: content-admin
+    project: compliance
+    environment: prod
+    token_sha256: SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN
+    token_id: rtr_metrum_content-admin_compliance_prod_k20260614
+    metrics_admin: false
+    content_admin: true
     allow: []
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
-The `allow` list is the model-group authorization boundary for each router key. Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique; token hashes are checked case-insensitively. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used. Global `/metrics` access is a separate `metrics_admin: true` privilege and should not be granted to application keys.
+The `allow` list is the model-group authorization boundary for each router key. Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique; token hashes are checked case-insensitively. A disallowed request is rejected with `403 model-not-allowed` before provider routing and before any upstream provider key is used. Global `/metrics` access is a separate `metrics_admin: true` privilege and should not be granted to application keys. Governed content-capture maintenance uses a separate `content_admin: true` privilege for delete and retention-purge operations.
 
 ## Custom TypeScript Routing
 
@@ -315,7 +328,7 @@ The router uses two separate credential classes:
 - Caller tokens: authenticate applications and users that call the router.
 - Provider keys: authenticate the router to upstream model providers.
 
-Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Config validation rejects duplicate caller IDs, duplicate token hashes case-insensitively, and duplicate non-empty public token IDs before startup. Logs, metrics-admin metrics, scripts, and usage reports use public token identifiers only. Global `/metrics` access is restricted to callers configured with `metrics_admin: true`; normal application keys use `/v1/usage` and reports for scoped usage visibility.
+Caller tokens are generated with a structured public prefix for traceability and a random secret suffix. The router stores and checks only SHA-256 hashes. Config validation rejects duplicate caller IDs, duplicate token hashes case-insensitively, and duplicate non-empty public token IDs before startup. Logs, metrics-admin metrics, scripts, and usage reports use public token identifiers only. Global `/metrics` access is restricted to callers configured with `metrics_admin: true`; normal application keys use `/v1/usage` and reports for scoped usage visibility. Content-capture maintenance access is restricted separately with `content_admin: true`.
 
 Provider keys are loaded from environment variables or an `env.json` file on the deployment host. They are injected only into outbound provider calls and are not sent to routing scripts, responses, logs, metrics, or usage reports.
 

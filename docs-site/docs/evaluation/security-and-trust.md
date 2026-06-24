@@ -38,6 +38,8 @@ Expected diagnostic fields include request IDs, selected provider/model, model g
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream response bodies.
 
+Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through `content_admin` delete/purge operations with audit rows. It is disabled by default and is not part of ordinary diagnostics or usage reports.
+
 ## PII Filtering
 
 Model groups can redact configured text patterns before target selection, cache-key generation, routing-policy inputs, and upstream calls. Placeholder mappings are kept in memory for the request lifecycle unless a separate governed content-capture feature is explicitly enabled.
@@ -49,6 +51,8 @@ See [PII Filtering](../configuration/pii-filtering).
 ## Metrics Isolation
 
 `/metrics` exposes global operational telemetry and must be restricted to caller tokens configured with `metrics_admin: true`. Normal application caller keys receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
+
+Content-capture maintenance uses a separate `content_admin: true` permission. Do not grant it to application caller keys or assume metrics-admin access includes content access.
 
 ## Private Upstreams
 
