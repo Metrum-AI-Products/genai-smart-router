@@ -117,6 +117,51 @@ providers:
         tool_support:
           openai_chat: [tools, tool_choice]
 
+  crusoe:
+    base_url: https://api.inference.crusoecloud.com/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${CRUSOE_API_KEY}
+    api_key_env: CRUSOE_API_KEY
+    key_id: crusoe-primary
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      llama-3-3-70b-instruct:
+        model: meta-llama/Llama-3.3-70B-Instruct
+        tier: balanced
+        input_price_per_million_usd: 0.25
+        output_price_per_million_usd: 0.75
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Crusoe Managed Inference hosted OpenAI-compatible endpoint; direct and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed on 2026-06-24 with an explicit User-Agent. Keep out of broad ordinary-text groups until workload gates pass for the deployment account.
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.05
+        output_price_per_million_usd: 0.20
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Catalog-only until direct tool, cap, structured-output, router, and workload smokes pass
+      gemma-4-31b-it:
+        model: google/gemma-4-31b-it
+        tier: balanced
+        input_price_per_million_usd: 0.14
+        output_price_per_million_usd: 0.40
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: OpenAI Chat text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24; use only for OpenAI Chat tool routing unless other skins pass separately
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+
   baseten_anthropic:
     base_url: https://inference.baseten.co
     dialect: anthropic
@@ -175,7 +220,7 @@ providers:
 
 Internal vLLM and SGLang services use the same provider catalog structure as external OpenAI-compatible providers. Set `base_url` to the private service `/v1` endpoint and catalog the model ID returned by the upstream `/v1/models` endpoint. See [Self-Hosted Upstreams](./self-hosted-upstreams) for vLLM/SGLang deployment and tool-call examples.
 
-External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream Baseten model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects `BASETEN_API_KEY` only when a Baseten target is selected.
+External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`, and Crusoe Managed Inference uses `base_url: https://api.inference.crusoecloud.com/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream provider model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects provider keys such as `BASETEN_API_KEY` or `CRUSOE_API_KEY` only when a matching target is selected.
 
 Catalog entries should carry cost and capability metadata:
 
@@ -233,6 +278,7 @@ models:
       - { provider: baseten, model_ref: glm-5-2, weight: 7 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
       - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
+      - { provider: crusoe, model_ref: gemma-4-31b-it, tool_only: true, weight: 2 }
 ```
 
 ## Scripted Routing Options

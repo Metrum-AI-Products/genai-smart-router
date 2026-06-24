@@ -159,11 +159,13 @@ GROQ_API_KEY
 REPLICATE_API_KEY
 XAI_API_KEY
 BASETEN_API_KEY
+CRUSOE_API_KEY
 ```
 
 Provider adapter notes:
 - `anthropic` targets call Anthropic Messages.
 - `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: Baseten `openai/gpt-oss-120b`, direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter Gemma 4 26B Nitro, Baseten `nvidia/Nemotron-120B-A12B` at low text weight, Baseten `zai-org/GLM-5.2` for reasoning-heavy coding traffic, and original OpenAI `gpt-5.4-nano` at low non-tool weight.
+- Crusoe Managed Inference is configured as an external hosted OpenAI-compatible `openai-chat` provider with `base_url: https://api.inference.crusoecloud.com/v1` and `api_key_env: CRUSOE_API_KEY`. Keep Crusoe models catalog-only or in dedicated smoke groups until the exact account, model ID, tool behavior, structured-output behavior, output-cap behavior, and router usage/cost fields have passed; add broad or ordinary-text routing only after workload gates such as Harbor pass. The reference `big-coder` Crusoe Gemma target is limited to OpenAI Chat tool traffic.
 - Enterprise-owned vLLM and SGLang services are configured the same way as other OpenAI-compatible providers: set `base_url` to the internal `/v1` endpoint, use `dialect: openai-chat` for `/v1/chat/completions`, set `auth_scheme: bearer` when the service expects bearer auth, and catalog the served model ID under `providers.<name>.models`. See `docs/SELF_HOSTED_UPSTREAMS.md` for vLLM/SGLang examples and tool-call validation smokes.
 - MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
 - `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
@@ -255,6 +257,50 @@ providers:
         pricing_notes: Direct Baseten OpenAI Chat and Anthropic Messages text/tool smokes passed on 2026-06-22.
         tool_support:
           openai_chat: [tools, tool_choice]
+  crusoe:
+    base_url: https://api.inference.crusoecloud.com/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${CRUSOE_API_KEY}
+    api_key_env: CRUSOE_API_KEY
+    key_id: crusoe-default
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.05
+        output_price_per_million_usd: 0.20
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Crusoe also publishes cached-token pricing; keep standard input/output rates for router-calculated cost until cached-token upstream billing has dedicated accounting. Catalog-only until direct Crusoe and router-level text, streaming, cap, tool, structured-output, and Harbor smokes pass.
+      gemma-4-31b-it:
+        model: google/gemma-4-31b-it
+        tier: balanced
+        input_price_per_million_usd: 0.14
+        output_price_per_million_usd: 0.40
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Crusoe Gemma 4 31B-it OpenAI Chat smokes passed for text, streaming, max_tokens=1, auto tool, forced tool_choice, structured outputs, and combined tool plus structured-output requests. Use only for OpenAI Chat tool routing unless other skins pass separately.
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+      llama-3-3-70b-instruct:
+        model: meta-llama/Llama-3.3-70B-Instruct
+        tier: balanced
+        input_price_per_million_usd: 0.25
+        output_price_per_million_usd: 0.75
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Crusoe quickstart example model. Direct Crusoe text, streaming, max_tokens=1, auto tool, forced tool_choice, and structured-output smokes passed on 2026-06-24 with an explicit User-Agent. Local router-level text, streaming, cap, tool, structured-output, usage, cost, latency, and no-fallback smokes also passed. Keep out of broad groups until Harbor workload validation passes.
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
   openai:
     base_url: https://api.openai.com/v1
     dialect: openai-responses
@@ -354,6 +400,8 @@ Cataloging a model does not route traffic to it. Add a cataloged model to a grou
 
 Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers, and Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider for Claude Code-style traffic. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes. On 2026-06-22, `openai/gpt-oss-120b` passed direct Baseten OpenAI Chat text, streaming, auto tool, forced tool-choice, Anthropic Messages text, and Anthropic Messages client-tool smokes. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
 
+Crusoe Managed Inference is an external hosted OpenAI-compatible provider. Crusoe documentation checked on 2026-06-24 lists `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible base URL, documents API keys from the Intelligence Foundry console, and uses `meta-llama/Llama-3.3-70B-Instruct` in the quickstart. A direct `/v1/models` check on 2026-06-24 required an explicit `User-Agent` and returned exact IDs such as `openai/gpt-oss-120b`, `google/gemma-4-31b-it`, `meta-llama/Llama-3.3-70B-Instruct`, `zai/GLM-5.2`, `moonshotai/Kimi-K2.6`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, and `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B`. Direct and local router-level Llama text, streaming, `max_tokens: 1`, auto tool, forced tool-choice, and structured-output smokes passed on 2026-06-24. Direct Crusoe Gemma 4 31B-it OpenAI Chat text, streaming, `max_tokens: 1`, auto tool, forced tool-choice, structured-output, and combined tool plus structured-output smokes also passed on 2026-06-24; local router-level smokes passed for OpenAI Chat tool-only routing through the reference `big-coder` group. The reference config catalogs other source-dated text models and includes `crusoe-smoke` and `crusoe-gemma-smoke` groups. Do not claim Crusoe OpenAI Responses or Anthropic Messages support unless those skins are separately exposed and validated.
+
 OpenAI Chat tool passthrough is used by OpenAI-compatible agent clients such as Warp Agent. These clients call `/v1/chat/completions`, send `tools`, `tool_choice`, and often request streaming. For those requests, the router preserves the OpenAI Chat tool payload and tool-result messages, selects only upstream targets with explicit `tool_support.openai_chat`, calls the upstream non-streaming, and returns either the raw non-streaming response or synthesized OpenAI Chat SSE chunks containing `delta.tool_calls`. This avoids asking users to switch model groups just because a coding-agent turn includes tools; the configured group filters to compatible targets automatically.
 
 Image requests are detected across OpenAI Chat, OpenAI Responses, and Anthropic Messages content blocks. The router filters image-bearing requests to targets with `image` in `input_modalities`, skips text-only targets, bypasses response caching, and logs `input_has_image`, `input_image_count`, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when available.
@@ -386,9 +434,10 @@ models:
       - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, default_thinking: { type: enabled, budget_tokens: 512 } }
       - { provider: openrouter_anthropic, model_ref: openrouter-claude-sonnet-4-6, tool_only: true, weight: 4 }
       - { provider: openrouter_anthropic, model_ref: gemma-4-26b-a4b-it-nitro, tool_only: true, weight: 2 }
+      - { provider: crusoe, model_ref: gemma-4-31b-it, tool_only: true, weight: 2 }
 ```
 
-Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
+Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; for example, an OpenAI Chat tool request can use an OpenAI Chat-compatible Crusoe target, while an Anthropic Messages tool request needs an Anthropic-compatible target. Tool-bearing requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
 
 ## Dynamic Score Routing
 
@@ -899,7 +948,7 @@ medium     Baseten GPT OSS 120B 51%, MiniMax-M3 25%, Gemma 7%, Kimi 8%, Baseten 
 high       Baseten GPT OSS 120B 45%, MiniMax-M3 26%, Gemma 9%, Kimi 10%, Baseten Nemotron 3%, Baseten GLM 6%, OpenAI GPT-5.4 Nano 1% non-tool.
 default    Baseten GPT OSS 120B 51%, MiniMax-M3 27%, Gemma 7%, Kimi 6%, Baseten Nemotron 3%, Baseten GLM 5%, OpenAI GPT-5.4 Nano 1% non-tool.
 fast       Baseten GPT OSS 120B 56%, MiniMax-M3 26%, Gemma 4%, Kimi 5%, Baseten Nemotron 3%, Baseten GLM 5%, OpenAI GPT-5.4 Nano 1% non-tool.
-big-coder  Code-heavy route: MiniMax-M3 38%, direct Kimi 28%, Baseten GPT OSS 120B 23%, Baseten GLM 7%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1% non-tool.
+big-coder  Code-heavy route: MiniMax-M3 38%, direct Kimi 28%, Baseten GPT OSS 120B 23%, Baseten GLM 7%, Baseten Nemotron 3%, OpenAI GPT-5.4 Nano 1% non-tool, plus tool-only OpenAI Chat/Responses/Anthropic-compatible fallbacks including Crusoe Gemma 4 31B-it for OpenAI Chat tool traffic.
 ```
 
 The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. The group names shown above are example hosted deployment names; your deployment can expose different names and access tiers.

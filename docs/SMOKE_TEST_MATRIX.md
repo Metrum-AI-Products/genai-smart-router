@@ -14,6 +14,50 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | Usage/cost fields | query usage DB/report after a request |
 
+## Hosted OpenAI-Compatible Provider Smokes
+
+Hosted OpenAI-compatible providers such as Crusoe Managed Inference use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.
+
+For Crusoe, public docs checked on 2026-06-24 list `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and `meta-llama/Llama-3.3-70B-Instruct` as the quickstart model. Direct validation on 2026-06-24 required an explicit `User-Agent`; configure one under provider `headers`. Use `CRUSOE_API_KEY` only from a protected environment or ignored `env.json`; never print it.
+
+Direct checks before any active route:
+
+```bash
+curl -fsS https://api.inference.crusoecloud.com/v1/models \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${CRUSOE_API_KEY}"
+
+curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":false}'
+
+curl -N https://api.inference.crusoecloud.com/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":16,"stream":true}'
+
+curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":"Write five sentences about routing."}],"max_tokens":1,"stream":false}'
+```
+
+Run OpenAI Chat tool, forced `tool_choice`, and `response_format` structured-output checks only for models intended to serve those request shapes. Add `tool_support.openai_chat` entries only after both direct Crusoe and router-level smokes pass for the exact model. Keep Crusoe out of Codex Responses and Claude Code Anthropic groups unless Crusoe exposes and passes those exact skins.
+
+Router-level checks for a dedicated Crusoe smoke group:
+
+- `/readyz` starts cleanly with `CRUSOE_API_KEY` configured and logs do not contain secrets.
+- `/v1/models` only exposes the Crusoe smoke group to an explicitly allowed test caller.
+- Non-streaming `/v1/chat/completions` returns `OK` and usage rows include `target_provider=crusoe`, upstream model, tokens, cost, latency, TTFB, duration, attempts, and no fallback.
+- Streaming `/v1/chat/completions` returns valid SSE if the route will serve streaming callers.
+- Tool, forced-tool, and structured-output requests return `502 no-eligible-target` before an upstream attempt until validated capability metadata is present.
+- Bad-key, 401/403, 429, timeout, and 5xx responses are sanitized and produce stable caller-visible router errors.
+- Harbor e2e passes before Crusoe joins broad ordinary-text coding-agent traffic. Limited tool-only targets may be added after exact direct and router-level tool smokes when the caller dialect matches the upstream dialect and the existing fallback target set remains intact.
+
 ## Tool Smokes
 
 | Client/API | Smoke |

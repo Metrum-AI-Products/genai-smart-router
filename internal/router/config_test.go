@@ -504,6 +504,16 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	if cfg.Provider["baseten"].Models["gpt-oss-120b"].Model != "openai/gpt-oss-120b" {
 		t.Fatalf("example config missing Baseten GPT OSS 120B catalog entry")
 	}
+	assertOpenAIChatProvider(t, cfg.Provider["crusoe"], "llama-3-3-70b-instruct", "meta-llama/Llama-3.3-70B-Instruct")
+	if got := cfg.Provider["crusoe"].Models["gpt-oss-120b"]; got.Model != "openai/gpt-oss-120b" || got.InputPricePerMillionUSD != 0.05 || got.OutputPricePerMillionUSD != 0.2 {
+		t.Fatalf("example config Crusoe GPT OSS catalog entry=%#v", got)
+	}
+	if got := cfg.Provider["crusoe"].Models["gemma-4-31b-it"]; got.Model != "google/gemma-4-31b-it" || got.InputPricePerMillionUSD != 0.14 || got.OutputPricePerMillionUSD != 0.4 ||
+		!stringSliceContains(got.ToolSupport.OpenAIChat, "tools") ||
+		!stringSliceContains(got.ToolSupport.OpenAIChat, "tool_choice") ||
+		!stringSliceContains(got.ToolSupport.OpenAIChat, "structured_outputs") {
+		t.Fatalf("example config Crusoe Gemma catalog entry=%#v", got)
+	}
 	assertAnthropicCompatibleProvider(t, cfg.Provider["openrouter_anthropic"], "gemma-4-26b-a4b-it-nitro", "google/gemma-4-26b-a4b-it:nitro")
 	for _, name := range []string{"small", "medium", "high"} {
 		group, ok := cfg.Models[name]
@@ -572,6 +582,28 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "crusoe-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "crusoe" || group.Targets[0].Model != "meta-llama/Llama-3.3-70B-Instruct" {
+				t.Fatalf("example config crusoe-smoke=%#v, want static Crusoe Llama 3.3 70B Instruct target", group)
+			}
+			if !stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tools") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tool_choice") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "structured_outputs") {
+				t.Fatalf("example config crusoe-smoke missing validated OpenAI Chat capability metadata: %#v", group.Targets[0].ToolSupport)
+			}
+			continue
+		}
+		if name == "crusoe-gemma-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "crusoe" || group.Targets[0].Model != "google/gemma-4-31b-it" {
+				t.Fatalf("example config crusoe-gemma-smoke=%#v, want static Crusoe Gemma 4 31B-it target", group)
+			}
+			if !stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tools") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tool_choice") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "structured_outputs") {
+				t.Fatalf("example config crusoe-gemma-smoke missing validated OpenAI Chat capability metadata: %#v", group.Targets[0].ToolSupport)
+			}
+			continue
+		}
 		if name == "warp-agent-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "nvidia/Nemotron-120B-A12B" {
 				t.Fatalf("example config warp-agent-smoke=%#v, want static Baseten Nemotron OpenAI Chat tool target", group)
@@ -619,7 +651,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -685,6 +717,13 @@ func assertAnthropicCompatibleProvider(t *testing.T, provider ProviderConfig, re
 	}
 }
 
+func assertOpenAIChatProvider(t *testing.T, provider ProviderConfig, ref, model string) {
+	t.Helper()
+	if provider.Dialect != "openai-chat" || normalizeAuthScheme(provider.AuthScheme) != "bearer" || provider.Models[ref].Model != model {
+		t.Fatalf("provider not configured for OpenAI Chat-compatible bearer skin: %#v", provider)
+	}
+}
+
 func assertResponsesCompatibleProvider(t *testing.T, provider ProviderConfig, ref, model string) {
 	t.Helper()
 	if provider.Dialect != "openai-responses" || provider.Models[ref].Model != model {
@@ -710,6 +749,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	claudeKimiToolTarget := false
 	claudeOpenRouterToolTarget := false
 	claudeGemmaToolTarget := false
+	openAIChatCrusoeGemmaToolTarget := false
 	for _, target := range group.Targets {
 		if violatesCurrentRoutingPolicy(target) {
 			t.Fatalf("example config group %s has routing-policy violation %#v", name, target)
@@ -735,6 +775,9 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			}
 			if target.Provider == "openrouter_anthropic" && target.Model == "google/gemma-4-26b-a4b-it:nitro" {
 				claudeGemmaToolTarget = true
+			}
+			if target.Provider == "crusoe" && target.Model == "google/gemma-4-31b-it" {
+				openAIChatCrusoeGemmaToolTarget = true
 			}
 			continue
 		}
@@ -764,6 +807,9 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	}
 	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
+	}
+	if name == "big-coder" && !openAIChatCrusoeGemmaToolTarget {
+		t.Fatalf("example config group %s missing OpenAI Chat Crusoe Gemma tool-only target", name)
 	}
 	want := map[string]struct {
 		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, targets int

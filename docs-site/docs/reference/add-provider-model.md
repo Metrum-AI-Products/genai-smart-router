@@ -6,6 +6,8 @@ title: Add A Provider Or Model
 
 Use this process before adding a new upstream model to active routing. It applies to external providers, OpenAI-compatible aggregators, Baseten-style endpoints, and self-hosted vLLM/SGLang deployments.
 
+For hosted OpenAI-compatible services such as Crusoe Managed Inference, use the normal `openai-chat` provider path first. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Treat the public model list and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests.
+
 ## 1. Capture Required Metadata
 
 Record:
@@ -41,6 +43,41 @@ Add provider catalog metadata with pricing, modality, tool, and cap fields. Keep
 ## 4. Add A Smoke Group First
 
 Create a deployment-defined smoke group with one target and no broad caller access. Run router-level smokes against the same API shapes tested directly.
+
+Example hosted OpenAI-compatible smoke group:
+
+```yaml
+providers:
+  crusoe:
+    base_url: https://api.inference.crusoecloud.com/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${CRUSOE_API_KEY}
+    api_key_env: CRUSOE_API_KEY
+    key_id: crusoe-primary
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      llama-3-3-70b-instruct:
+        model: meta-llama/Llama-3.3-70B-Instruct
+        input_price_per_million_usd: 0.25
+        output_price_per_million_usd: 0.75
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: "2026-06-24"
+        pricing_notes: Direct Crusoe and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed on 2026-06-24 with an explicit User-Agent; keep out of broad groups until workload gates pass for this account and model.
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+
+models:
+  hosted-openai-compatible-smoke:
+    strategy: static
+    targets:
+      - { provider: crusoe, model_ref: llama-3-3-70b-instruct }
+```
+
+Do not declare `tool_support`, `structured_outputs`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes.
 
 ## 5. Add Production Weight Conservatively
 

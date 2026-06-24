@@ -150,6 +150,138 @@ providers:
           openai_chat:
           - tools
           - tool_choice
+  crusoe:
+    base_url: https://api.inference.crusoecloud.com/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${CRUSOE_API_KEY}
+    api_key_env: CRUSOE_API_KEY
+    key_id: crusoe-default
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        tier: coding
+        input_price_per_million_usd: 0.05
+        output_price_per_million_usd: 0.2
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists GPT-OSS 120B
+          at $0.05/M input, $0.20/M output, and $0.05/M cached tokens. Router-calculated
+          costs use standard input/output token rates until cached-token upstream billing
+          has dedicated accounting. Catalog-only in broad groups until direct Crusoe text,
+          streaming, output-cap, tool, structured-output, router-level, and Harbor workload
+          smokes pass for the exact account/model.
+      gemma-4-31b-it:
+        model: google/gemma-4-31b-it
+        tier: balanced
+        input_price_per_million_usd: 0.14
+        output_price_per_million_usd: 0.4
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Gemma 4
+          31B-it at $0.14/M input, $0.40/M output, and $0.14/M cached tokens. Direct
+          Crusoe text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output,
+          and combined tool plus structured-output smokes passed on 2026-06-24 with
+          an explicit User-Agent. Local router-level smokes passed on 2026-06-24 for
+          OpenAI Chat tool-only routing through the big-coder group, usage, request-time
+          cost, latency, and no fallback. Keep out of Anthropic Messages and OpenAI
+          Responses tool routes unless those skins are separately exposed and validated.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
+      llama-3-3-70b-instruct:
+        model: meta-llama/Llama-3.3-70B-Instruct
+        tier: balanced
+        input_price_per_million_usd: 0.25
+        output_price_per_million_usd: 0.75
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Llama 3.3
+          70B Instruct at $0.25/M input, $0.75/M output, and $0.13/M cached tokens. Crusoe's
+          quickstart uses this exact upstream model ID. Direct Crusoe text, streaming, max_tokens=1,
+          auto tool, forced tool_choice, and structured-output smokes passed on 2026-06-24
+          with an explicit User-Agent. Local router-level smokes passed on 2026-06-24 for
+          /v1/models visibility, non-streaming text, streaming text, max_tokens=1, OpenAI
+          Chat tools, structured outputs, usage, request-time cost, latency, and no fallback.
+          Keep out of broad groups until Harbor workload validation passes.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
+      glm-5-2:
+        model: zai/GLM-5.2
+        tier: coding
+        input_price_per_million_usd: 1.4
+        output_price_per_million_usd: 4.4
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists GLM 5.2 at
+          $1.40/M input, $4.40/M output, and $0.26/M cached tokens. Catalog-only until
+          entitlement, output-cap behavior, tool behavior, and Harbor outcomes are validated.
+      kimi-k2-6:
+        model: moonshotai/Kimi-K2.6
+        tier: coding
+        input_price_per_million_usd: 0.7
+        output_price_per_million_usd: 3.5
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Kimi K2.6 at
+          $0.70/M input, $3.50/M output, and $0.35/M cached tokens. Catalog-only until
+          entitlement and routing smokes pass.
+      qwen3-235b-a22b:
+        model: Qwen/Qwen3-235B-A22B-Instruct-2507
+        tier: heavy
+        input_price_per_million_usd: 0.22
+        output_price_per_million_usd: 0.8
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Qwen3 235B
+          A22B Instruct 2507 at $0.22/M input, $0.80/M output, and $0.11/M cached tokens.
+          Catalog-only until exact model ID, entitlement, and behavior smokes pass.
+      nemotron-3-super-120b-a12b:
+        model: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B
+        tier: heavy
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 2.4
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-24'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Nemotron 3
+          Super 120B-A12B-FP8 at $0.30/M input, $2.40/M output, and $0.15/M cached tokens.
+          Catalog-only until entitlement, direct smokes, router smokes, and workload validation
+          pass.
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -674,6 +806,16 @@ providers:
           anthropic_messages:
           - client_tools
 models:
+  crusoe-smoke:
+    strategy: static
+    targets:
+    - provider: crusoe
+      model_ref: llama-3-3-70b-instruct
+  crusoe-gemma-smoke:
+    strategy: static
+    targets:
+    - provider: crusoe
+      model_ref: gemma-4-31b-it
   vision:
     strategy: weighted
     targets:
@@ -1180,6 +1322,10 @@ models:
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
       tool_only: true
+    - provider: crusoe
+      model_ref: gemma-4-31b-it
+      weight: 2
+      tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
       weight: 13
@@ -1321,6 +1467,8 @@ callers:
   - baseten-glm52-smoke
   - baseten-gpt-oss-120b-smoke
   - baseten-gpt-oss-120b-claude-smoke
+  - crusoe-smoke
+  - crusoe-gemma-smoke
   rate:
     rpm: 120
     tpm: 200000
