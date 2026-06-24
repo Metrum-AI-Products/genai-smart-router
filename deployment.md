@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `4459ba1-linux-amd64`
-- Source commit: `4459ba1`
+- Router package/image version: `0d5003e-linux-amd64`
+- Source commit: `0d5003e`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -44,6 +44,12 @@ Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTE
 - Public endpoint weighted `high` smoke selected Crusoe `zai/GLM-5.2` on attempt 4 and returned `OK`.
 - Production usage DB recorded the Crusoe GLM smoke with status 200, attempts 1, `fallback_used=false`, input/output token counts, and stored cost.
 - Local validation: focused config tests passed; `go test ./...` passed with 188 tests in 6 packages; `make docs-qa` passed.
+- Deployed package/image `smart-llmrouter:0d5003e-linux-amd64` from source commit `0d5003e` so hosted docs and packaged sample config include the new route policy.
+- Production package backup: `/opt/smart-llmrouter.backup.crusoe-glm-0d5003e-20260624T190432Z`.
+- Verified public `/readyz` reports version `0d5003e`, commit `0d5003e`, and build date `2026-06-24T19:00:37Z`.
+- Verified hosted docs `/docs/configuration/router-config` returns HTTP 200 with `x-smart-llmrouter-version: 0d5003e`.
+- Post-package weighted `high` smoke selected Crusoe `zai/GLM-5.2`; `max_tokens: 128` returned an empty content body, while `max_tokens: 1024` returned `OK`. Keep the model on ordinary text routing and use realistic budgets for validation.
+- Production cleanup: removed uploaded package, removed the duplicate previous-active switch directory, kept timestamped backups, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-24 Public Docs Refresh Package Deployment
 
