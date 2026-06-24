@@ -90,7 +90,7 @@ type RouteContext = {
 };
 ```
 
-`ctx.text` is the normalized request text from chat messages, Responses input, or Anthropic messages. Use it for content and size rules. Returned targets are validated against the configured target list before use.
+`ctx.text` is the normalized request text from chat messages, Responses input, or Anthropic messages. Use it for content and size rules. If the model group enables `pii_filter`, `ctx.text`, normalized request fields, and `ctx.request.raw` are already redacted before the script runs. Placeholder mappings remain request-local and are not exposed to scripts. Returned targets are validated against the configured target list before use.
 
 ## Imports And Dependencies
 

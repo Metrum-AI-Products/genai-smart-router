@@ -95,6 +95,8 @@ The router sends a JSON `POST` body to the policy service:
 
 `targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, and capped requests skip targets marked as not honoring max tokens.
 
+When the model group has `pii_filter` enabled, the policy body is built from the redacted request object. `request.raw`, `text`, and normalized message/input fields contain placeholders rather than configured raw PII matches. Placeholder mappings stay in router memory for the current request and are not sent to the policy service.
+
 The router does not send raw router tokens, token hashes, provider API keys, or full deployment config.
 
 ## Policy Response
@@ -150,7 +152,7 @@ Names such as `external-policy-demo`, `cheap`, and `heavy` are examples. Deploym
 
 ## Security And Operations
 
-- Keep policy services inside trusted infrastructure because they receive prompt text, message context, tool schemas, image references or image data, caller metadata, pricing metadata, and target capability metadata.
+- Keep policy services inside trusted infrastructure because they receive request context, tool schemas, image references or image data, caller metadata, pricing metadata, and target capability metadata. For PII-filtered groups this context is redacted before policy dispatch, but the policy service still handles sensitive routing metadata.
 - Use exact `allow_hosts`; wildcard host allowlists are not supported.
 - Use HTTPS for non-local policy services. Use `external_policy.allow_http: true` only for an approved trusted internal endpoint; loopback HTTP is reserved for local demos and sidecars.
 - Treat redirects as policy-service egress: a redirect to a non-allowlisted hostname fails before the redirected service is reached.

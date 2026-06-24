@@ -74,6 +74,8 @@ PII filtering applies to normalized text across supported caller APIs:
 
 The router preserves image parts, tool-call IDs, tool schemas, usage fields, request IDs, provider metadata, and model metadata. Image URLs are not filtered unless `apply_to.image_urls: true`.
 
+TypeScript routing scripts and external routing policy services receive the same redacted request object used for target selection and upstream calls. That includes `ctx.request.raw` in scripts and `request.raw` in external policy payloads. Placeholder mappings remain request-local and are not sent to policy code.
+
 ## API Examples
 
 OpenAI Chat:

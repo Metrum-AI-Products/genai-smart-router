@@ -465,7 +465,7 @@ models:
 
 The script must export `route(ctx)` and return one configured target by index or by `{ provider, model }`. Proxy users still request a deployment-defined model group name; the script chooses one backing target from that group's configured `targets`.
 
-The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; unrestricted network calls and file access are not part of the script runtime.
+The script context uses top-level `ctx.text` for normalized request text, plus `ctx.group`, `ctx.request`, `ctx.caller`, and `ctx.targets`. Target metadata includes provider, model, modelRef, baseUrl, dialect, weight, keyId, apiKeyEnv, and keyConfigured. For groups with `pii_filter`, `ctx.text`, normalized request fields, and `ctx.request.raw` are redacted before the script runs, and placeholder mappings are not exposed. Raw provider API keys, raw caller tokens, and caller token hashes are never passed to scripts; returned targets are validated against the configured list. Scripts run synchronously inside the router process, so keep policy local and fast; unrestricted network calls and file access are not part of the script runtime.
 
 Relative TypeScript imports are bundled at router startup, so a script can use local helpers such as `import { scorePrompt } from "./policy"`. Keep deployment-owned helpers next to the script, for example `config/scripts/router.ts`, `config/scripts/policy.ts`, and `config/scripts/scoring.ts`.
 
@@ -496,7 +496,7 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
-Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, eligible target metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. Raw router tokens, token hashes, and provider API keys are never sent.
+Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, eligible target metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. For groups with `pii_filter`, the policy payload is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
 
 ```yaml
 models:
@@ -527,7 +527,7 @@ The default `scripts/router.ts` does three things:
 
 ## PII Filtering
 
-Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
+Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. The redacted request object is the source of truth for policy contexts, including script `ctx.request.raw` and external policy `request.raw`. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
 
 See `docs/PII_FILTERING.md` and the Docusaurus PII Filtering page for configuration examples and smoke-test guidance.
 

@@ -21,7 +21,7 @@ models:
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
-The external routing policy service receives prompt/message context, safe caller metadata, eligible targets, pricing metadata, tool support, modalities, and max-token requirements. It must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
+The external routing policy service receives prompt/message context, safe caller metadata, eligible targets, pricing metadata, tool support, modalities, and max-token requirements. If the model group enables `pii_filter`, the policy request is built from the redacted request object, including `request.raw`; placeholder mappings remain request-local and are not sent. The service must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
 
 Policy URLs should use HTTPS. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly configured for a trusted non-local endpoint. `allow_hosts` is exact-host matching, not a suffix or wildcard rule. Redirects are revalidated before each hop; a redirect to any host outside `allow_hosts`, including a loopback address that was not listed, fails before the redirected service is reached.
 

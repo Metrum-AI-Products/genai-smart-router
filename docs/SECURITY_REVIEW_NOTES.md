@@ -21,7 +21,7 @@ Request diagnostics may contain request ID, caller metadata, selected route/prov
 
 Diagnostics must not contain raw prompts, raw images, raw router tokens, token hashes, provider API keys, full upstream headers, or unsanitized upstream response bodies.
 
-Model-group `pii_filter` may redact configured request text before upstream calls. PII-filter usage metadata must stay scalar and safe: applied flag, mode, replacement count, and matched-rule count only. Raw matched values and placeholder mappings must remain in memory for the request lifecycle unless a separate governed content-capture feature explicitly enables durable storage.
+Model-group `pii_filter` may redact configured request text before routing policy, cache keys, and upstream calls. TypeScript and external policy request contexts are built from the redacted request, including raw payload mirrors. PII-filter usage metadata must stay scalar and safe: applied flag, mode, replacement count, and matched-rule count only. Raw matched values and placeholder mappings must remain in memory for the request lifecycle unless a separate governed content-capture feature explicitly enables durable storage.
 
 ## Docs And Examples
 

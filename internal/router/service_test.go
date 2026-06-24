@@ -1736,6 +1736,73 @@ export function route(ctx: RouteContext) {
 	}
 }
 
+func TestTypeScriptRoutingContextRawIsRedactedForNonToolChat(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "script_pii_raw_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "script redacted raw"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 3, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "router.ts")
+	if err := os.WriteFile(scriptPath, []byte(`
+type RouteContext = {
+  request: {
+    raw?: unknown;
+  };
+};
+
+export function route(ctx: RouteContext) {
+  const raw = JSON.stringify(ctx.request.raw || {});
+  if (raw.includes("jane.doe@example.com")) {
+    throw new Error("script raw context leaked original PII");
+  }
+  if (!raw.includes("[EMAIL_1]")) {
+    throw new Error("script raw context missing redacted placeholder: " + raw);
+  }
+  return { targetIndex: 0, classLabel: "script-pii-redacted" };
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["scripted-pii"] = ModelGroup{
+		Strategy:  "script",
+		Script:    scriptPath,
+		PIIFilter: testPIIFilterConfig("redact_only"),
+		Targets:   []Target{{Provider: "mock", Model: "script-pii-model"}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "scripted-pii")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"scripted-pii","messages":[{"role":"user","content":"Email jane.doe@example.com"}],"max_tokens":16}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "script-pii-model" {
+		t.Fatalf("script selected model %q", gotModel)
+	}
+}
+
 func TestTypeScriptRoutingCanUseCallerTokenRegex(t *testing.T) {
 	var gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2291,6 +2358,115 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	}
 }
 
+func TestExternalRoutingPolicyPayloadRedactsPIIForAllDialects(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		dialect string
+		body    string
+	}{
+		{
+			name:    "openai-chat",
+			path:    "/v1/chat/completions",
+			dialect: "openai-chat",
+			body:    `{"model":"external-policy-pii","messages":[{"role":"user","content":"Email jane.doe@example.com"}],"max_tokens":16}`,
+		},
+		{
+			name:    "openai-responses",
+			path:    "/v1/responses",
+			dialect: "openai-responses",
+			body:    `{"model":"external-policy-pii","input":"Email jane.doe@example.com","max_output_tokens":16}`,
+		},
+		{
+			name:    "anthropic",
+			path:    "/v1/messages",
+			dialect: "anthropic",
+			body:    `{"model":"external-policy-pii","messages":[{"role":"user","content":"Email jane.doe@example.com"}],"max_tokens":16}`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch tc.dialect {
+				case "anthropic":
+					writeJSON(w, http.StatusOK, map[string]any{
+						"id":          "msg_external_pii",
+						"type":        "message",
+						"content":     []map[string]any{{"type": "text", "text": "ok"}},
+						"stop_reason": "end_turn",
+						"usage":       map[string]any{"input_tokens": 4, "output_tokens": 1},
+					})
+				case "openai-responses":
+					writeJSON(w, http.StatusOK, map[string]any{
+						"id":          "resp_external_pii",
+						"output_text": "ok",
+						"usage":       map[string]any{"input_tokens": 4, "output_tokens": 1, "total_tokens": 5},
+					})
+				default:
+					writeJSON(w, http.StatusOK, map[string]any{
+						"id": "chat_external_pii",
+						"choices": []map[string]any{{
+							"message": map[string]any{"role": "assistant", "content": "ok"},
+						}},
+						"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5},
+					})
+				}
+			}))
+			defer upstream.Close()
+
+			var policyPayload map[string]any
+			policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+					t.Fatal(err)
+				}
+				raw, _ := json.Marshal(policyPayload)
+				if strings.Contains(string(raw), "jane.doe@example.com") {
+					t.Fatalf("external policy payload leaked raw PII: %s", raw)
+				}
+				if !strings.Contains(string(raw), "[EMAIL_1]") {
+					t.Fatalf("external policy payload missing redacted placeholder: %s", raw)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0, "classLabel": "external-policy-pii-redacted"})
+			}))
+			defer policy.Close()
+			policyURL, err := url.Parse(policy.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: tc.dialect, APIKey: "provider-key"}
+			cfg.Models["external-policy-pii"] = ModelGroup{
+				Strategy:  "external",
+				PIIFilter: testPIIFilterConfig("redact_only"),
+				ExternalPolicy: ExternalPolicyConfig{
+					URL:        policy.URL + "/route",
+					AllowHosts: []string{policyURL.Hostname()},
+					TimeoutMS:  500,
+				},
+				Targets: []Target{{Provider: "mock", Model: "policy-pii-model"}},
+			}
+			cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy-pii")
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if policyPayload == nil {
+				t.Fatal("external policy was not called")
+			}
+		})
+	}
+}
+
 func TestExternalRoutingPolicyRejectsHTTPRedirectOutsideAllowlist(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -2592,6 +2768,54 @@ func TestPIIFilterRedactsOpenAIChatAndRestoresResponse(t *testing.T) {
 	}
 }
 
+func TestPIIFilterReplacementLimitDoesNotLetRawMirrorStarveNormalizedRequest(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(upstreamBody)
+		if strings.Contains(string(raw), "jane.doe@example.com") {
+			t.Fatalf("upstream received raw PII after raw mirror consumed budget: %s", raw)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "pii_limit_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "Use [EMAIL_1]."},
+			}},
+			"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 3, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	filter := testPIIFilterConfig("redact_only")
+	filter.MaxReplacementsPerRequest = 1
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{
+		Strategy:  "static",
+		PIIFilter: filter,
+		Targets:   []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.doe@example.com"}],"max_tokens":16}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	msgs := upstreamBody["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].(string)
+	if content != "Email [EMAIL_1]" {
+		t.Fatalf("upstream content=%q, want normalized placeholder", content)
+	}
+}
+
 func TestPIIFilterCacheStoresRedactedResponseNotRestoredPII(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2890,6 +3114,91 @@ func TestPIIFilterRedactOnlyPreservesPlaceholdersAndImages(t *testing.T) {
 	imageURL := imagePart["image_url"].(map[string]any)["url"].(string)
 	if imageURL != "https://example.com/receipt.png" {
 		t.Fatalf("image URL changed: %q", imageURL)
+	}
+}
+
+func TestPIIFilterImageURLsRedactedOnlyWhenEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		imageURLs   bool
+		wantURLPart string
+		blockURL    string
+	}{
+		{
+			name:        "disabled",
+			imageURLs:   false,
+			wantURLPart: "jane.doe@example.com",
+			blockURL:    "[EMAIL_1]",
+		},
+		{
+			name:        "enabled",
+			imageURLs:   true,
+			wantURLPart: "[EMAIL_1]",
+			blockURL:    "jane.doe@example.com",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var upstreamBody map[string]any
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+					t.Fatal(err)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id": "pii_image_url_1",
+					"choices": []map[string]any{{
+						"message": map[string]any{"role": "assistant", "content": "ok"},
+					}},
+					"usage": map[string]any{"prompt_tokens": 8, "completion_tokens": 1, "total_tokens": 9},
+				})
+			}))
+			defer upstream.Close()
+
+			filter := testPIIFilterConfig("redact_only")
+			filter.ApplyTo.ImageURLs = tc.imageURLs
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Models["default"] = ModelGroup{
+				Strategy:  "static",
+				PIIFilter: filter,
+				Targets: []Target{{
+					Provider:        "mock",
+					Model:           "mock-model",
+					InputModalities: []string{"text", "image"},
+				}},
+			}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			body := `{
+			  "model":"default",
+			  "messages":[{
+			    "role":"user",
+			    "content":[
+			      {"type":"text","text":"Read this image."},
+			      {"type":"image_url","image_url":{"url":"https://example.com/jane.doe@example.com/receipt.png"}}
+			    ]
+			  }],
+			  "max_tokens":64,
+			  "stream":false
+			}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			msgs := upstreamBody["messages"].([]any)
+			parts := msgs[0].(map[string]any)["content"].([]any)
+			imagePart := parts[1].(map[string]any)
+			imageURL := imagePart["image_url"].(map[string]any)["url"].(string)
+			if !strings.Contains(imageURL, tc.wantURLPart) || strings.Contains(imageURL, tc.blockURL) {
+				t.Fatalf("image URL=%q, want %q and not %q", imageURL, tc.wantURLPart, tc.blockURL)
+			}
+		})
 	}
 }
 

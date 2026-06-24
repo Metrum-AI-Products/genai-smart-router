@@ -44,14 +44,12 @@ func applyPIIFilter(req *IRRequest, cfg PIIFilterConfig) (piiFilterResult, error
 		limit = 200
 	}
 	state := &piiRedactionState{
-		rules:  rules,
-		limit:  limit,
-		result: &result,
+		rules:          rules,
+		limit:          limit,
+		result:         &result,
+		placeholderFor: map[string]string{},
 	}
 	apply := normalizePIIApplyTo(cfg.ApplyTo)
-	if req.Raw != nil && len(req.Tools) > 0 {
-		req.Raw = redactRawPayload(req.Raw, state, apply)
-	}
 	if apply.system {
 		req.System = state.redact(req.System)
 	}
@@ -60,6 +58,9 @@ func applyPIIFilter(req *IRRequest, cfg PIIFilterConfig) (piiFilterResult, error
 			for i := range req.InputParts {
 				if req.InputParts[i].Type == "text" {
 					req.InputParts[i].Text = state.redact(req.InputParts[i].Text)
+				}
+				if req.InputParts[i].Type == "image" && apply.imageURLs {
+					req.InputParts[i].ImageURL = state.redact(req.InputParts[i].ImageURL)
 				}
 			}
 			req.Input = textFromIRParts(req.InputParts)
@@ -79,6 +80,9 @@ func applyPIIFilter(req *IRRequest, cfg PIIFilterConfig) (piiFilterResult, error
 					if req.Messages[i].Parts[j].Type == "text" {
 						req.Messages[i].Parts[j].Text = state.redact(req.Messages[i].Parts[j].Text)
 					}
+					if req.Messages[i].Parts[j].Type == "image" && apply.imageURLs {
+						req.Messages[i].Parts[j].ImageURL = state.redact(req.Messages[i].Parts[j].ImageURL)
+					}
 				}
 				req.Messages[i].Content = textFromIRParts(req.Messages[i].Parts)
 			} else {
@@ -90,6 +94,9 @@ func applyPIIFilter(req *IRRequest, cfg PIIFilterConfig) (piiFilterResult, error
 				}
 			}
 		}
+	}
+	if req.Raw != nil {
+		req.Raw = redactRawPayload(req.Raw, state, apply)
 	}
 	if result.Replacements > 0 {
 		result.Applied = true
@@ -204,25 +211,34 @@ func boolDefault(v *bool, fallback bool) bool {
 }
 
 type piiRedactionState struct {
-	rules  []compiledPIIRule
-	limit  int
-	result *piiFilterResult
+	rules          []compiledPIIRule
+	limit          int
+	result         *piiFilterResult
+	placeholderFor map[string]string
 }
 
 func (s *piiRedactionState) redact(text string) string {
-	if text == "" || s == nil || s.result == nil || s.result.Replacements >= s.limit {
+	if text == "" || s == nil || s.result == nil {
 		return text
 	}
 	for _, rule := range s.rules {
-		if text == "" || s.result.Replacements >= s.limit {
+		if text == "" {
 			return text
 		}
 		text = rule.re.ReplaceAllStringFunc(text, func(match string) string {
-			if match == "" || s.result.Replacements >= s.limit {
+			if match == "" {
+				return match
+			}
+			placeholderKey := rule.name + "\x00" + match
+			if placeholder := s.placeholderFor[placeholderKey]; placeholder != "" {
+				return placeholder
+			}
+			if s.result.Replacements >= s.limit {
 				return match
 			}
 			s.result.RuleCounts[rule.name]++
 			placeholder := fmt.Sprintf("[%s_%d]", rule.prefix, s.result.RuleCounts[rule.name])
+			s.placeholderFor[placeholderKey] = placeholder
 			s.result.Replacements++
 			s.result.Placeholders = append(s.result.Placeholders, piiPlaceholder{
 				Placeholder: placeholder,
