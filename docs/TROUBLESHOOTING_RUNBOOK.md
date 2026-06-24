@@ -48,6 +48,8 @@ Check upstream attempt durations, provider status, client timeout settings, rout
 
 Check rpm, tpm, concurrency, and daily/monthly/lifetime request and token caps. Use usage reports to confirm whether the block is expected. Keep caller policies consistent unless there is an explicit product reason for different tiers.
 
+For token-budget rejections, inspect the caller's requested output cap as well as recent actual usage. The router reserves estimated input tokens plus `max_tokens`, `max_completion_tokens`, or `max_output_tokens` before upstream calls, and TPM, daily, monthly, and lifetime checks include other in-flight reservations. A small prompt can be rejected near a budget if it asks for a very large possible output. Failed or canceled upstream calls release the reservation, while successful calls reconcile to actual reported usage.
+
 ### Bad Image Analysis
 
 Separate transport success from task quality. A model can remain active for general VLM routing even if it is not good enough for OCR-specific routing. For OCR routes, require exact-answer image smokes.
@@ -71,4 +73,3 @@ rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrou
 ```
 
 Prefer DB traces for request-level details because logs should remain sanitized and compact.
-

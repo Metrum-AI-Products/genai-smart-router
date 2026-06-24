@@ -348,13 +348,14 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		s.writeAdmissionError(w, rc, ad)
 		return
 	}
+	defer s.quota.ReleaseReservation(rc.caller, ad.Reservation)
 	defer s.quota.Release(rc.caller)
 	rc.rec.RequestedModel = req.Model
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
 	tokens := estimateTokens(req)
 	rc.rec.Usage = Usage{InputTokens: tokens, TotalTokens: tokens}
-	s.quota.RecordTokens(rc.caller, rc.rec.Usage)
+	s.quota.RecordTokens(rc.caller, ad.Reservation, rc.rec.Usage)
 	defer s.finish(rc, http.StatusOK, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"input_tokens": tokens})
 }
@@ -384,7 +385,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.RequestedModel = req.Model
 	rc.rec.Stream = req.Stream
 
-	ad := s.quota.Admit(rc.caller, estimateTokens(req))
+	ad := s.quota.Admit(rc.caller, 0)
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
 		return
@@ -488,6 +489,19 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.trace("cache_bypass", "", dec.Target, 0, 0, "", false, 0)
 	}
 
+	resAd := s.quota.ReserveTokens(rc.caller, reservationEstimate(req, dialect))
+	if !resAd.OK {
+		s.writeAdmissionError(w, rc, resAd)
+		return
+	}
+	defer s.quota.ReleaseReservation(rc.caller, resAd.Reservation)
+	rc.rec.QuotaState = resAd.QuotaState
+	rc.rec.KeyState = resAd.KeyState
+	if resAd.WarningText != "" {
+		w.Header().Add("X-Router-Warning", resAd.WarningText)
+		rc.rec.Warnings = append(rc.rec.Warnings, resAd.WarningText)
+	}
+
 	upstreamStart := time.Now()
 	rc.trace("upstream_start", "", dec.Target, 0, 0, "", false, 0)
 	resp, attempts, fallbackUsed, err := s.callUpstreams(r.Context(), rc, dialect, req, dec)
@@ -507,7 +521,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		if piiRestoreEnabled(group.PIIFilter) {
 			restorePIIPlaceholders(resp, piiResult)
 		}
-		quotaState, keyState := s.quota.RecordTokens(rc.caller, resp.Usage)
+		quotaState, keyState := s.quota.RecordTokens(rc.caller, resAd.Reservation, resp.Usage)
 		rc.rec.QuotaState = quotaState
 		rc.rec.KeyState = keyState
 		rc.rec.Usage = resp.Usage

@@ -78,3 +78,14 @@ func estimateTokens(r *IRRequest) int {
 	}
 	return chars/4 + 1
 }
+
+func reservationEstimate(r *IRRequest, dialect string) int {
+	input := estimateTokens(r)
+	output := 0
+	if r != nil && r.MaxTokens > 0 {
+		output = r.MaxTokens
+	} else if dialect == "anthropic" {
+		output = 1024
+	}
+	return input + output
+}

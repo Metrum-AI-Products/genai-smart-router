@@ -364,6 +364,8 @@ Cache keys intentionally exclude:
 
 Cache hits return a fresh router-owned response ID and do not consume provider credits or persisted caller token quota.
 
+For cache misses and cache-bypassed requests, token-budget admission reserves estimated input tokens plus the requested output cap before calling an upstream provider. Chat Completions caps include `max_tokens` and `max_completion_tokens`; Responses uses `max_output_tokens`; Messages uses `max_tokens` or the router's injected default cap when the caller omits one. In-flight reservations count toward TPM, daily token, monthly token, and lifetime key admission, then reconcile to actual upstream-reported usage on completion.
+
 ## Observability And Usage Reporting
 
 Smart LLM Router produces operational data at three levels:

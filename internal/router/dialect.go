@@ -29,6 +29,9 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 		req.MaxTokens = maxCompletionTokens
 		req.MaxTokensField = "max_completion_tokens"
 	}
+	if maxCompletionTokens, ok := numberAsInt(raw["max_completion_tokens"]); ok && req.MaxTokens == 0 {
+		req.MaxTokens = maxCompletionTokens
+	}
 	if maxOutputTokens, ok := numberAsInt(raw["max_output_tokens"]); ok && req.MaxTokens == 0 {
 		req.MaxTokens = maxOutputTokens
 		req.MaxTokensField = "max_output_tokens"

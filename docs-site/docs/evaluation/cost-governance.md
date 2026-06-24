@@ -53,6 +53,8 @@ GenAI Smart Router can reduce uncontrolled spend through:
 - caching for eligible non-tool requests;
 - target filtering for tools, images, and cap behavior.
 
+Token-budget admission uses a reservation estimate before upstream calls: estimated input tokens plus the caller's requested output cap. This makes `max_tokens`, `max_completion_tokens`, and `max_output_tokens` part of cost governance, not just provider generation controls. In-flight reservations count against TPM, daily token, monthly token, and lifetime key budgets until the request completes, fails, or is canceled; cache hits avoid token reservation and persisted token quota.
+
 Platform teams keep the cost policy explicit: choose which routes are available, set budgets and weights, decide when caching is appropriate, and measure the result with durable usage and cost reports.
 
 ## Savings Analysis

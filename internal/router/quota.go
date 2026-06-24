@@ -17,11 +17,12 @@ type quotaStore struct {
 }
 
 type callerRuntime struct {
-	cfg        CallerConfig
-	allow      map[string]bool
-	inFlight   int
-	reqTimes   []time.Time
-	tokenTimes []tokenEvent
+	cfg                    CallerConfig
+	allow                  map[string]bool
+	inFlight               int
+	inFlightReservedTokens int64
+	reqTimes               []time.Time
+	tokenTimes             []tokenEvent
 }
 
 type tokenEvent struct {
@@ -52,6 +53,12 @@ type admission struct {
 	QuotaState  string
 	KeyState    string
 	WarningText string
+	Reservation *quotaReservation
+}
+
+type quotaReservation struct {
+	tokens int
+	active bool
 }
 
 func newQuotaStore(path string, callers []CallerConfig) (*quotaStore, error) {
@@ -98,19 +105,24 @@ func (q *quotaStore) Admit(c *callerRuntime, estTokens int) admission {
 		return admission{Status: http.StatusTooManyRequests, Reason: "rpm-exceeded", RetryAfter: "60", QuotaState: "ok", KeyState: keyState}
 	}
 	c.tokenTimes = pruneTokens(c.tokenTimes, now.Add(-time.Minute))
-	if c.cfg.Rate.TPM > 0 && sumTokenEvents(c.tokenTimes)+estTokens > c.cfg.Rate.TPM {
-		return admission{Status: http.StatusTooManyRequests, Reason: "tpm-exceeded", RetryAfter: "60", QuotaState: "ok", KeyState: keyState}
-	}
-	if exceedsBudget(c.cfg.Quota.Day.Requests, st.DayRequests+1) || exceedsBudget(c.cfg.Quota.Day.Tokens, st.DayTokens+int64(estTokens)) ||
-		exceedsBudget(c.cfg.Quota.Month.Requests, st.MonthRequests+1) || exceedsBudget(c.cfg.Quota.Month.Tokens, st.MonthTokens+int64(estTokens)) {
+	if exceedsBudget(c.cfg.Quota.Day.Requests, st.DayRequests+1) || exceedsBudget(c.cfg.Quota.Month.Requests, st.MonthRequests+1) {
 		return admission{Status: http.StatusTooManyRequests, Reason: "quota-exhausted", RetryAfter: "3600", QuotaState: "reject", KeyState: keyState}
+	}
+	res, ad := q.reserveTokensLocked(c, st, estTokens, now)
+	if !ad.OK {
+		return ad
 	}
 	c.inFlight++
 	c.reqTimes = append(c.reqTimes, now)
 	st.DayRequests++
 	st.MonthRequests++
-	quotaState, warning := q.quotaState(c.cfg, st, int64(estTokens))
-	return admission{OK: true, Status: http.StatusOK, QuotaState: quotaState, KeyState: keyState, WarningText: warning}
+	reservedEstimate := c.inFlightReservedTokens
+	quotaState, warning := q.quotaState(c.cfg, st, reservedEstimate)
+	keyState = q.keyState(c.cfg, st, 0)
+	if estTokens > 0 {
+		keyState = q.keyState(c.cfg, st, reservedEstimate)
+	}
+	return admission{OK: true, Status: http.StatusOK, QuotaState: quotaState, KeyState: keyState, WarningText: warning, Reservation: res}
 }
 
 func (q *quotaStore) Release(c *callerRuntime) {
@@ -121,13 +133,45 @@ func (q *quotaStore) Release(c *callerRuntime) {
 	}
 }
 
-func (q *quotaStore) RecordTokens(c *callerRuntime, usage Usage) (string, string) {
+func (q *quotaStore) ReleaseReservation(c *callerRuntime, reservation *quotaReservation) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.releaseReservationLocked(c, reservation)
+}
+
+func (q *quotaStore) ReserveTokens(c *callerRuntime, estTokens int) admission {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	now := time.Now().UTC()
+	st := q.stateFor(c.cfg.ID, now)
+	q.resetWindows(st, now)
+	keyState := q.keyState(c.cfg, st, c.inFlightReservedTokens)
+	actualKeyState := q.keyState(c.cfg, st, 0)
+	if st.Disabled || actualKeyState == "exhausted" {
+		st.Disabled = true
+		_ = q.saveLocked()
+		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
+	}
+	if keyState == "exhausted" {
+		return admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
+	}
+	res, ad := q.reserveTokensLocked(c, st, estTokens, now)
+	if !ad.OK {
+		return ad
+	}
+	reservedEstimate := c.inFlightReservedTokens
+	quotaState, warning := q.quotaState(c.cfg, st, reservedEstimate)
+	return admission{OK: true, Status: http.StatusOK, QuotaState: quotaState, KeyState: q.keyState(c.cfg, st, reservedEstimate), WarningText: warning, Reservation: res}
+}
+
+func (q *quotaStore) RecordTokens(c *callerRuntime, reservation *quotaReservation, usage Usage) (string, string) {
 	total := usage.TotalTokens
 	if total == 0 {
 		total = usage.InputTokens + usage.OutputTokens
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.releaseReservationLocked(c, reservation)
 	now := time.Now().UTC()
 	st := q.stateFor(c.cfg.ID, now)
 	q.resetWindows(st, now)
@@ -142,6 +186,39 @@ func (q *quotaStore) RecordTokens(c *callerRuntime, usage Usage) (string, string
 	_ = q.saveLocked()
 	quotaState, _ := q.quotaState(c.cfg, st, 0)
 	return quotaState, keyState
+}
+
+func (q *quotaStore) releaseReservationLocked(c *callerRuntime, reservation *quotaReservation) {
+	if c == nil || reservation == nil || !reservation.active {
+		return
+	}
+	c.inFlightReservedTokens -= int64(reservation.tokens)
+	if c.inFlightReservedTokens < 0 {
+		c.inFlightReservedTokens = 0
+	}
+	reservation.active = false
+}
+
+func (q *quotaStore) reserveTokensLocked(c *callerRuntime, st *callerState, estTokens int, now time.Time) (*quotaReservation, admission) {
+	if estTokens <= 0 {
+		return nil, admission{OK: true, Status: http.StatusOK}
+	}
+	reservedBefore := c.inFlightReservedTokens
+	keyState := q.keyState(c.cfg, st, reservedBefore)
+	c.tokenTimes = pruneTokens(c.tokenTimes, now.Add(-time.Minute))
+	if c.cfg.Rate.TPM > 0 && int64(sumTokenEvents(c.tokenTimes)+estTokens)+reservedBefore > int64(c.cfg.Rate.TPM) {
+		return nil, admission{Status: http.StatusTooManyRequests, Reason: "tpm-exceeded", RetryAfter: "60", QuotaState: "ok", KeyState: keyState}
+	}
+	reservedEstimate := reservedBefore + int64(estTokens)
+	if exceedsBudget(c.cfg.Quota.Day.Tokens, st.DayTokens+reservedEstimate) ||
+		exceedsBudget(c.cfg.Quota.Month.Tokens, st.MonthTokens+reservedEstimate) {
+		return nil, admission{Status: http.StatusTooManyRequests, Reason: "quota-exhausted", RetryAfter: "3600", QuotaState: "reject", KeyState: keyState}
+	}
+	if c.cfg.Key.LifetimeTokens > 0 && st.LifetimeTokens+reservedEstimate > c.cfg.Key.LifetimeTokens {
+		return nil, admission{Status: http.StatusForbidden, Reason: "key-exhausted", QuotaState: "ok", KeyState: "exhausted"}
+	}
+	c.inFlightReservedTokens += int64(estTokens)
+	return &quotaReservation{tokens: estTokens, active: true}, admission{OK: true, Status: http.StatusOK}
 }
 
 func (q *quotaStore) Usage(c *callerRuntime) map[string]any {

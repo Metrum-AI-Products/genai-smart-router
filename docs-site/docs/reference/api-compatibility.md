@@ -39,6 +39,14 @@ If a request includes tools, images, or an explicit max-token cap, the router fi
 
 For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_tokens` are treated as explicit output caps. If a Chat request sends both fields, `max_tokens` takes precedence for router eligibility and normalized upstream forwarding.
 
+## Quotas And Output Caps
+
+Before an upstream call, the router reserves the estimated input tokens plus the requested output budget for token-based admission. Chat Completions requests use `max_tokens` or `max_completion_tokens`, Responses requests use `max_output_tokens`, and Messages requests use `max_tokens`. Messages requests without a caller cap reserve the router default output cap when the router injects one.
+
+TPM, daily token, monthly token, and lifetime key budgets include in-flight reservations. This prevents several concurrent large-cap requests from collectively exceeding a caller's budget. When a request completes, the reservation is reconciled to the actual usage reported by the upstream. Failed or canceled upstream requests release the reservation, and cache hits do not consume persisted token quota.
+
+Use realistic output caps in examples and clients. A small prompt with a very large output cap can be rejected near a token budget because the caller asked the router to reserve that much possible output.
+
 ## Model Names
 
 The `model` field is a router model group, not necessarily a provider model ID. Model group names are deployment-defined. Names shown in examples are examples only.

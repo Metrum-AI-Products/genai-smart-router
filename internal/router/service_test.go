@@ -1165,7 +1165,7 @@ func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
 	defer upstream.Close()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Callers[0].Key.LifetimeTokens = 6
+	cfg.Callers[0].Key.LifetimeTokens = 10
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1173,7 +1173,7 @@ func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
 	defer svc.Close()
 
 	post := func() {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"quota cache prompt"}]}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":4}`))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rr := httptest.NewRecorder()
 		svc.Handler().ServeHTTP(rr, req)
@@ -1190,6 +1190,222 @@ func TestCacheHitDoesNotConsumeLifetimeQuota(t *testing.T) {
 	keyUsage := usage["key"].(map[string]any)
 	if keyUsage["lifetime_tokens"] != int64(5) {
 		t.Fatalf("expected only upstream request to count against lifetime quota: %#v", keyUsage)
+	}
+}
+
+func TestDailyQuotaAdmissionReservesRequestedMaxTokens(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Quota.Day.Tokens = 20
+	cfg.Callers[0].Quota.Month.Tokens = 1000000
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":100}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "quota-exhausted") {
+		t.Fatalf("body=%s, want quota-exhausted", rr.Body.String())
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls=%d, want 0", calls.Load())
+	}
+}
+
+func TestMonthlyQuotaAdmissionReservesRequestedMaxOutputTokens(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Quota.Day.Tokens = 1000000
+	cfg.Callers[0].Quota.Month.Tokens = 20
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"default","input":"hi","max_output_tokens":100}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "quota-exhausted") {
+		t.Fatalf("body=%s, want quota-exhausted", rr.Body.String())
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls=%d, want 0", calls.Load())
+	}
+}
+
+func TestLifetimeAdmissionReservesRequestedMaxCompletionTokens(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Key.LifetimeTokens = 20
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":100}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "key-exhausted") {
+		t.Fatalf("body=%s, want key-exhausted", rr.Body.String())
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls=%d, want 0", calls.Load())
+	}
+}
+
+func TestConcurrentReservationsPreventAggregateTokenOvershoot(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		started <- struct{}{}
+		<-release
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "held",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "held"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Rate.Concurrent = 4
+	cfg.Callers[0].Quota.Day.Tokens = 50
+	cfg.Callers[0].Quota.Month.Tokens = 1000000
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	firstDone := make(chan int, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":40}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		firstDone <- rr.Code
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first request did not reach upstream")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi again"}],"max_tokens":40}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	close(release)
+	if code := <-firstDone; code != http.StatusOK {
+		t.Fatalf("first status=%d", code)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want 1", calls.Load())
+	}
+}
+
+func TestConcurrentLifetimeReservationRejectionDoesNotDisableKey(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Key.LifetimeTokens = 100
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	caller := svc.quota.callers["alice"]
+
+	ad := svc.quota.Admit(caller, 0)
+	if !ad.OK {
+		t.Fatalf("admit failed: %#v", ad)
+	}
+	defer svc.quota.Release(caller)
+	resAd := svc.quota.ReserveTokens(caller, 100)
+	if !resAd.OK {
+		t.Fatalf("initial reserve failed: %#v", resAd)
+	}
+	rejected := svc.quota.ReserveTokens(caller, 1)
+	if rejected.OK || rejected.Status != http.StatusForbidden || rejected.Reason != "key-exhausted" {
+		t.Fatalf("second reserve=%#v, want key-exhausted rejection", rejected)
+	}
+	svc.quota.RecordTokens(caller, resAd.Reservation, Usage{TotalTokens: 5})
+	again := svc.quota.ReserveTokens(caller, 10)
+	if !again.OK {
+		t.Fatalf("key was disabled by reservation-only exhaustion: %#v", again)
+	}
+	svc.quota.ReleaseReservation(caller, again.Reservation)
+}
+
+func TestFailureReleasesTokenReservation(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "temporary", http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Callers[0].Quota.Day.Tokens = 50
+	cfg.Callers[0].Quota.Month.Tokens = 1000000
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	post := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":40}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		return rr.Code
+	}
+	if code := post(); code != http.StatusBadGateway {
+		t.Fatalf("first status=%d", code)
+	}
+	if code := post(); code != http.StatusBadGateway {
+		t.Fatalf("second status=%d", code)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("upstream calls=%d, want 2", calls.Load())
 	}
 }
 
