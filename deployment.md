@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `b938bbc-linux-amd64`
-- Source commit: `b938bbc`
+- Router package/image version: `b34aaf6-linux-amd64`
+- Source commit: `b34aaf6`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,31 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 Security, PII, And Content Capture Package Deployment
+
+- Deployed package/image `smart-llmrouter:b34aaf6-linux-amd64` from source commit `b34aaf6` after PRs #49, #50, #51, #52, and #53 merged.
+- Production package backup: `/opt/smart-llmrouter.backup-security-b34aaf6-20260624T065431Z`.
+- Runtime config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were copied forward from the backup.
+- Verified `sudo docker compose config >/dev/null` and restarted the router with Docker Compose.
+- Verified public `/readyz` and `/version` report version `b34aaf6`, commit `b34aaf6`, build date `2026-06-24T06:50:29Z`, and Go `1.26.4`.
+- Verified hosted docs pages return HTTP 200 with `x-smart-llmrouter-version: b34aaf6`:
+  - `/docs/configuration/router-config`
+  - `/docs/configuration/pii-filtering`
+  - `/docs/configuration/routing-typescript`
+  - `/docs/configuration/external-routing-policy`
+  - `/docs/evaluation/deployment-security-assessment`
+- Verified authenticated public `/v1/models` returned 18 model groups.
+- Verified authenticated public static completion smoke against `baseten-gpt-oss-120b-smoke` returned exactly `OK` through `openai/gpt-oss-120b`.
+- Verified authenticated public weighted `high` completion returned HTTP 200 through `MiniMax-M3`; the model included reasoning text instead of the requested exact `OK`, so the deterministic static smoke above is the acceptance signal for basic completion health.
+- Checked router logs after deployment; only the normal startup line was present.
+- Local pre-deploy validation passed:
+  - `make secret-check`: passed.
+  - `make docs-build`: passed; npm audit still reports the existing 23 moderate docs-site dependency advisories.
+  - `go test ./cmd/... ./internal/...`: 158 tests passed in 6 packages after docs build refreshed embedded docs.
+  - `go test ./...`: 158 tests passed in 6 packages.
+  - `make package-docker VERSION=b34aaf6 COMMIT=b34aaf6`: built linux/amd64 and linux/arm64 Docker packages.
+- Production cleanup: removed uploaded package and temporary Docker load log, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-24 Public Docs Refresh Package Deployment
 
@@ -113,7 +138,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:b938bbc-linux-amd64
+compose-router-1   smart-llmrouter:b34aaf6-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
