@@ -2,6 +2,8 @@
 
 Docker packages are intended for AWS EC2 or similar hosts where the source tree is not present and no image registry is required. The router image embeds the customer-facing Docusaurus documentation and serves it under `/docs/`; browser requests to `/` redirect there.
 
+The checked-in `Dockerfile` pins the Go builder image to a patched Go patch release. Keep that tag pinned when updating the toolchain so release images do not silently move onto an unreviewed compiler or standard-library patch level.
+
 ## Build Package
 
 From the development machine:

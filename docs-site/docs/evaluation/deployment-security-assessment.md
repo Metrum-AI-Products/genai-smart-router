@@ -64,12 +64,15 @@ Each deployment should follow the organization's security process for:
 
 - container image vulnerability scanning;
 - dependency scanning for packaged docs and runtime dependencies;
+- verification that release images are built with the pinned Docker builder Go patch version, not a floating language image tag;
 - secret scanning of release artifacts;
 - static analysis or policy review for TypeScript routing scripts;
 - review of third-party script dependencies before packaging;
 - verification that the router does not install packages or fetch dependency code at runtime.
 
-The docs build currently reports npm audit advisories from the Docusaurus dependency tree. Treat those under the deployment's normal dependency-review process and record whether they affect the hosted documentation surface, build-time dependencies, or runtime router path.
+The Docker builder image is pinned to a patched Go toolchain tag so reachable Go standard-library advisories are controlled by the image patch version used for the release build.
+
+As of 2026-06-24, the docs build still reports moderate npm audit advisories through Docusaurus' `gray-matter` dependency on `js-yaml@3`. Docusaurus has no patched dependency path for that finding yet. The affected package is used during documentation build and content parsing, not in the router request path; deployment reviews should record the residual, keep authored docs inputs trusted, and re-run `npm audit --prefix docs-site --audit-level=moderate` when Docusaurus publishes a fix.
 
 ## Security Sign-Off Record
 
