@@ -121,11 +121,8 @@ func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid external_policy.url")
 	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return nil, fmt.Errorf("external_policy.url scheme must be http or https")
-	}
-	if !scriptHostAllowed(u.Hostname(), s.cfg.AllowHosts) {
-		return nil, fmt.Errorf("external policy host %s is not allowed", u.Hostname())
+	if err := validateEgressURL(u, s.cfg.AllowHosts, s.cfg.AllowHTTP, "external policy"); err != nil {
+		return nil, err
 	}
 	method := strings.ToUpper(strings.TrimSpace(s.cfg.Method))
 	if method == "" {
@@ -150,10 +147,10 @@ func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
 	if timeout <= 0 {
 		timeout = externalPolicyDefaultTimeoutMS * time.Millisecond
 	}
-	client := &http.Client{Timeout: timeout}
+	client := newEgressHTTPClient(timeout, s.cfg.AllowHosts, s.cfg.AllowHTTP, "external policy")
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, auditSafeHTTPError(err, "external policy request failed")
 	}
 	defer resp.Body.Close()
 	limit := s.cfg.MaxResponseBytes

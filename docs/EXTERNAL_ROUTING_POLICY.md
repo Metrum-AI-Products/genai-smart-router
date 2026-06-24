@@ -23,6 +23,10 @@ models:
 
 The external routing policy service receives prompt/message context, safe caller metadata, eligible targets, pricing metadata, tool support, modalities, and max-token requirements. It must be treated as trusted infrastructure. It never receives raw router tokens, caller token hashes, provider API keys, or full router config.
 
+Policy URLs should use HTTPS. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly configured for a trusted non-local endpoint. `allow_hosts` is exact-host matching, not a suffix or wildcard rule. Redirects are revalidated before each hop; a redirect to any host outside `allow_hosts`, including a loopback address that was not listed, fails before the redirected service is reached.
+
+The router-level control is hostname and scheme based. Use deployment network policy, firewall rules, or service-mesh egress policy for private-network and CIDR restrictions until native CIDR egress controls are added.
+
 ## Local Demo
 
 Run the committed prompt-size policy service:
@@ -38,6 +42,8 @@ The sample `external-policy-demo` group in `config.example.yaml` points at `http
 - Validate YAML with `rtk go test ./internal/router -run 'ExternalRoutingPolicy|Config'`.
 - Confirm policy service auth is configured through `external_policy.headers`, not source code.
 - Confirm `allow_hosts` contains exact hostnames only.
+- Confirm non-local policy URLs use HTTPS unless `external_policy.allow_http: true` was explicitly approved.
+- Confirm redirects to non-allowlisted hosts fail and do not reach the redirected service.
 - Run a router smoke for a short prompt and a long prompt, then check selected upstream model.
 - Run an image or tool request when the group supports VLM/tool traffic and confirm the policy payload contains only eligible targets.
 - Confirm errors are clear: policy timeout, non-2xx, invalid JSON, and invalid target should return `502 routing-policy-error` unless `on_error: fallback` is explicitly configured.
@@ -45,6 +51,7 @@ The sample `external-policy-demo` group in `config.example.yaml` points at `http
 ## Production Rollout
 
 - Add the policy-backed group catalog-only or with a private caller first.
+- Keep policy egress on HTTPS. If plaintext HTTP is required for trusted internal infrastructure, document the reason for `external_policy.allow_http: true`.
 - Keep `timeout_ms` small, typically 200-500 ms.
 - Prefer `on_error: fail_closed` for policy-sensitive traffic.
 - Use `on_error: fallback` only when the configured target order is explicitly approved as the default policy.

@@ -1941,6 +1941,153 @@ export function route() {
 	}
 }
 
+func TestTypeScriptRoutingRejectsHTTPRedirectOutsideAllowlist(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		redirectTo  func(targetURL string) string
+		wantBlocked string
+	}{
+		{
+			name:        "loopback IP",
+			redirectTo:  func(targetURL string) string { return targetURL + "/secret" },
+			wantBlocked: "host 127.0.0.1 is not allowed",
+		},
+		{
+			name:        "public host",
+			redirectTo:  func(string) string { return "https://example.com/secret" },
+			wantBlocked: "host example.com is not allowed",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var redirectedReached atomic.Bool
+			redirected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				redirectedReached.Store(true)
+				writeJSON(w, http.StatusOK, map[string]any{"tier": "heavy"})
+			}))
+			defer redirected.Close()
+			policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, tt.redirectTo(redirected.URL), http.StatusFound)
+			}))
+			defer policy.Close()
+			policyURL := testURLWithHostname(t, policy.URL, "localhost")
+
+			dir := t.TempDir()
+			scriptPath := filepath.Join(dir, "router.ts")
+			if err := os.WriteFile(scriptPath, []byte(`
+export function route() {
+  router.fetchJSON("`+policyURL+`/route");
+  return { targetIndex: 0 };
+}
+`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatal("upstream should not be called when script policy redirect is blocked")
+			}))
+			defer upstream.Close()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Models["script-http-redirect-blocked"] = ModelGroup{
+				Strategy: "script",
+				Script:   scriptPath,
+				ScriptHTTP: ScriptHTTPConfig{
+					Enabled:    true,
+					AllowHosts: []string{"localhost"},
+					TimeoutMS:  500,
+				},
+				Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+			}
+			cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "script-http-redirect-blocked")
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"script-http-redirect-blocked","messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "routing-failed") {
+				t.Fatalf("unexpected body=%s", rr.Body.String())
+			}
+			if strings.Contains(rr.Body.String(), "/secret") {
+				t.Fatalf("redirect error leaked URL path: %s", rr.Body.String())
+			}
+			if redirectedReached.Load() {
+				t.Fatal("redirected server was reached")
+			}
+		})
+	}
+}
+
+func TestTypeScriptRoutingAllowsHTTPRedirectToAllowedHost(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "script_http_redirect_allowed",
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/route" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0})
+	}))
+	defer policy.Close()
+	policyURL := testURLWithHostname(t, policy.URL, "localhost")
+
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "router.ts")
+	if err := os.WriteFile(scriptPath, []byte(`
+export function route() {
+  const response = router.fetchJSON("`+policyURL+`/route");
+  return { targetIndex: response.body.targetIndex };
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["script-http-redirect-allowed"] = ModelGroup{
+		Strategy: "script",
+		Script:   scriptPath,
+		ScriptHTTP: ScriptHTTPConfig{
+			Enabled:    true,
+			AllowHosts: []string{"localhost"},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "script-http-redirect-allowed")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"script-http-redirect-allowed","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "cheap-model" {
+		t.Fatalf("selected model %q", gotModel)
+	}
+}
+
 func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	var gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2037,6 +2184,131 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	}
 }
 
+func TestExternalRoutingPolicyRejectsHTTPRedirectOutsideAllowlist(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		redirectTo  func(targetURL string) string
+		wantBlocked string
+	}{
+		{
+			name:        "loopback IP",
+			redirectTo:  func(targetURL string) string { return targetURL + "/secret" },
+			wantBlocked: "host 127.0.0.1 is not allowed",
+		},
+		{
+			name:        "public host",
+			redirectTo:  func(string) string { return "https://example.com/secret" },
+			wantBlocked: "host example.com is not allowed",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var redirectedReached atomic.Bool
+			redirected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				redirectedReached.Store(true)
+				writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0})
+			}))
+			defer redirected.Close()
+			policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, tt.redirectTo(redirected.URL), http.StatusFound)
+			}))
+			defer policy.Close()
+			policyURL := testURLWithHostname(t, policy.URL, "localhost")
+
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatal("upstream should not be called when external policy redirect is blocked")
+			}))
+			defer upstream.Close()
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Models["external-policy-redirect-blocked"] = ModelGroup{
+				Strategy: "external",
+				ExternalPolicy: ExternalPolicyConfig{
+					URL:        policyURL + "/route",
+					AllowHosts: []string{"localhost"},
+					TimeoutMS:  500,
+				},
+				Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+			}
+			cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy-redirect-blocked")
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy-redirect-blocked","messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "routing-policy-error") || !strings.Contains(rr.Body.String(), tt.wantBlocked) {
+				t.Fatalf("unexpected body=%s", rr.Body.String())
+			}
+			if strings.Contains(rr.Body.String(), "/secret") {
+				t.Fatalf("redirect error leaked URL path: %s", rr.Body.String())
+			}
+			if redirectedReached.Load() {
+				t.Fatal("redirected server was reached")
+			}
+		})
+	}
+}
+
+func TestExternalRoutingPolicyAllowsHTTPRedirectToAllowedHost(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "external_policy_redirect_allowed",
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/route" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0})
+	}))
+	defer policy.Close()
+	policyURL := testURLWithHostname(t, policy.URL, "localhost")
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy-redirect-allowed"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        policyURL + "/route",
+			AllowHosts: []string{"localhost"},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy-redirect-allowed")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy-redirect-allowed","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotModel != "cheap-model" {
+		t.Fatalf("selected model %q", gotModel)
+	}
+}
+
 func TestExternalRoutingPolicyInvalidDecisionFailsClosed(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("upstream should not be called when external policy returns invalid decision")
@@ -2078,6 +2350,20 @@ func TestExternalRoutingPolicyInvalidDecisionFailsClosed(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "routing-policy-error") {
 		t.Fatalf("missing routing-policy-error: %s", rr.Body.String())
 	}
+}
+
+func testURLWithHostname(t *testing.T, rawURL, hostname string) string {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port := u.Port(); port != "" {
+		u.Host = hostname + ":" + port
+	} else {
+		u.Host = hostname
+	}
+	return u.String()
 }
 
 func TestExternalRoutingPolicyCanFallbackOnError(t *testing.T) {

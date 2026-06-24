@@ -75,6 +75,7 @@ Minimum acceptance:
 - `/metrics` requires `metrics_admin: true`;
 - private upstreams are reachable only through approved network paths;
 - image-fetching VLM services have media-domain restrictions where applicable;
+- TypeScript and external policy egress use exact hostname allowlists, HTTPS by default, approved `allow_http` exceptions only for trusted infrastructure, and redirect revalidation;
 - container/package and dependency scan results are reviewed under the deployment's security process.
 
 ## Client Acceptance

@@ -48,6 +48,15 @@ For private vLLM, SGLang, Baseten-style, or other OpenAI-compatible upstreams:
 - keep private upstream tokens in the deployment environment;
 - configure media-domain restrictions for VLM services that fetch image URLs.
 
+For TypeScript `router.fetchJSON` and `strategy: external` policy egress:
+
+- keep policy services inside trusted infrastructure because they receive routing context and eligible target metadata;
+- use exact hostname allowlists, not suffixes or wildcards;
+- prefer HTTPS for all non-local policy services;
+- approve `script_http.allow_http: true` or `external_policy.allow_http: true` only for trusted internal endpoints that cannot use HTTPS;
+- verify redirects are blocked when they point to non-allowlisted hosts, including loopback addresses that were not listed.
+- enforce private-network and CIDR restrictions with deployment network policy until native router CIDR egress controls are added.
+
 ## API Surface Review
 
 Validate:

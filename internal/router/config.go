@@ -252,6 +252,7 @@ type PIIFilterRule struct {
 type ScriptHTTPConfig struct {
 	Enabled          bool              `yaml:"enabled" json:"enabled"`
 	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
+	AllowHTTP        bool              `yaml:"allow_http" json:"allowHttp"`
 	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
 	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
 	Headers          map[string]string `yaml:"headers" json:"headers"`
@@ -261,6 +262,7 @@ type ExternalPolicyConfig struct {
 	URL              string            `yaml:"url" json:"url"`
 	Method           string            `yaml:"method" json:"method"`
 	AllowHosts       []string          `yaml:"allow_hosts" json:"allowHosts"`
+	AllowHTTP        bool              `yaml:"allow_http" json:"allowHttp"`
 	TimeoutMS        int               `yaml:"timeout_ms" json:"timeoutMs"`
 	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
 	Headers          map[string]string `yaml:"headers" json:"headers"`
@@ -521,6 +523,9 @@ func (c *Config) Validate() error {
 			}
 			if !scriptHostAllowed(policyURL.Hostname(), m.ExternalPolicy.AllowHosts) {
 				return fmt.Errorf("model group %s external_policy.url host %s is not in allow_hosts", name, policyURL.Hostname())
+			}
+			if policyURL.Scheme == "http" && !m.ExternalPolicy.AllowHTTP && !egressHostIsTrustedLocal(policyURL.Hostname()) {
+				return fmt.Errorf("model group %s external_policy.url uses http; set external_policy.allow_http for non-local plaintext policy services", name)
 			}
 			if m.ExternalPolicy.Method != "" && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodGet && strings.ToUpper(strings.TrimSpace(m.ExternalPolicy.Method)) != http.MethodPost {
 				return fmt.Errorf("model group %s external_policy method must be GET or POST", name)
@@ -898,6 +903,7 @@ func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 	return strings.TrimSpace(cfg.URL) == "" &&
 		strings.TrimSpace(cfg.Method) == "" &&
 		len(cfg.AllowHosts) == 0 &&
+		!cfg.AllowHTTP &&
 		cfg.TimeoutMS == 0 &&
 		cfg.MaxResponseBytes == 0 &&
 		len(cfg.Headers) == 0 &&

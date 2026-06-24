@@ -31,6 +31,10 @@ models:
 
 `on_error` defaults to `fail_closed`. Use `fallback` only when the group is allowed to use the normal configured target order if the policy service is unavailable or returns an invalid decision.
 
+Policy URLs use HTTPS by default. Plain HTTP is accepted only for trusted loopback hosts such as `localhost`, `127.0.0.1`, and `::1`, or when `external_policy.allow_http: true` is explicitly set for a trusted non-local endpoint. Redirects are revalidated before they are followed; every hop must keep an allowed `http`/`https` scheme and an exact hostname from `allow_hosts`.
+
+Hostname allowlisting is not a replacement for deployment network controls. Use firewall, service-mesh, or cloud egress policy for private-network and CIDR restrictions until native CIDR egress controls are added.
+
 Callers continue to use the model group name:
 
 ```bash
@@ -148,6 +152,8 @@ Names such as `external-policy-demo`, `cheap`, and `heavy` are examples. Deploym
 
 - Keep policy services inside trusted infrastructure because they receive prompt text, message context, tool schemas, image references or image data, caller metadata, pricing metadata, and target capability metadata.
 - Use exact `allow_hosts`; wildcard host allowlists are not supported.
+- Use HTTPS for non-local policy services. Use `external_policy.allow_http: true` only for an approved trusted internal endpoint; loopback HTTP is reserved for local demos and sidecars.
+- Treat redirects as policy-service egress: a redirect to a non-allowlisted hostname fails before the redirected service is reached.
 - Put policy-service authentication in `external_policy.headers`, not in application requests.
 - Keep `timeout_ms` low because routing happens before any upstream model call.
 - Use `fail_closed` for sensitive routing policy. Use `fallback` only when the configured target order is an acceptable default.

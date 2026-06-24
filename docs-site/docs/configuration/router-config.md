@@ -248,7 +248,7 @@ models:
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
 
-`script_http` is disabled unless explicitly enabled for that model group. `allow_hosts` is deployment-owned and must list exact hostnames the script may call through `router.fetchJSON`. `headers` can carry deployment-owned policy-service authentication such as `Authorization: ${ROUTING_POLICY_AUTH_HEADER}` without exposing it to script code. `timeout_ms` is capped at `5000`; smaller timeouts and response-size limits are recommended because routing happens before the provider request is sent.
+`script_http` is disabled unless explicitly enabled for that model group. `allow_hosts` is deployment-owned and must list exact hostnames the script may call through `router.fetchJSON`. HTTPS is required by default; plaintext HTTP is accepted only for loopback hosts or when `script_http.allow_http: true` is approved for a trusted non-local endpoint. Redirects are revalidated at each hop against the same scheme and exact-host allowlist. `headers` can carry deployment-owned policy-service authentication such as `Authorization: ${ROUTING_POLICY_AUTH_HEADER}` without exposing it to script code. `timeout_ms` is capped at `5000`; smaller timeouts and response-size limits are recommended because routing happens before the provider request is sent.
 
 Relative imports such as `import { scorePrompt } from "./policy"` are bundled from the script directory at router startup. Package local helpers and any third-party dependencies with the deployment; the router does not install packages at runtime.
 
@@ -272,6 +272,8 @@ models:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
 ```
+
+External policy egress uses HTTPS by default, exact-host allowlisting, and redirect revalidation on every hop. Plain HTTP is accepted only for loopback hosts or when `external_policy.allow_http: true` is explicitly approved for trusted internal infrastructure.
 
 The policy service receives normalized request context, safe caller metadata, eligible targets, pricing metadata, tool support, and modality metadata. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
 

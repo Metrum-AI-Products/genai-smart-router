@@ -218,11 +218,8 @@ func (s *scriptStrategy) fetchJSON(rawURL string, options map[string]any) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL")
 	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return nil, fmt.Errorf("URL scheme must be http or https")
-	}
-	if !scriptHostAllowed(u.Hostname(), s.httpConfig.AllowHosts) {
-		return nil, fmt.Errorf("host %s is not allowed", u.Hostname())
+	if err := validateEgressURL(u, s.httpConfig.AllowHosts, s.httpConfig.AllowHTTP, "router.fetchJSON"); err != nil {
+		return nil, err
 	}
 	method := "GET"
 	if rawMethod, ok := options["method"].(string); ok && rawMethod != "" {
@@ -265,10 +262,10 @@ func (s *scriptStrategy) fetchJSON(rawURL string, options map[string]any) (map[s
 	if timeout <= 0 {
 		timeout = 200 * time.Millisecond
 	}
-	client := &http.Client{Timeout: timeout}
+	client := newEgressHTTPClient(timeout, s.httpConfig.AllowHosts, s.httpConfig.AllowHTTP, "router.fetchJSON")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, auditSafeHTTPError(err, "router.fetchJSON request failed")
 	}
 	defer resp.Body.Close()
 	limit := s.httpConfig.MaxResponseBytes

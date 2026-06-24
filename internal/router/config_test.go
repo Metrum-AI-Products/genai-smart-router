@@ -720,6 +720,46 @@ func TestValidateDynamicScoreRejectsUnsafeBounds(t *testing.T) {
 	}
 }
 
+func TestValidateExternalPolicyHTTPRequiresOptInForNonLocalHost(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        "http://routing-policy.internal.example/route",
+			AllowHosts: []string{"routing-policy.internal.example"},
+		},
+		Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "allow_http") {
+		t.Fatalf("Validate() err=%v, want allow_http error", err)
+	}
+
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        "http://routing-policy.internal.example/route",
+			AllowHosts: []string{"routing-policy.internal.example"},
+			AllowHTTP:  true,
+		},
+		Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with allow_http=true: %v", err)
+	}
+
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        "http://127.0.0.1:18090/route",
+			AllowHosts: []string{"127.0.0.1"},
+		},
+		Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() for trusted-local http: %v", err)
+	}
+}
+
 func minimalConfig(t *testing.T) *Config {
 	t.Helper()
 	return &Config{
