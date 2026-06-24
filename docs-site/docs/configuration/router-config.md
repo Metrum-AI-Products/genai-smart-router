@@ -283,7 +283,7 @@ callers:
     user: example-standard
     project: example-project
     environment: prod
-    token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
+    token_sha256: SHA256_HEX_OF_STANDARD_ROUTER_TOKEN
     token_id: rtr_metrum_example-standard_example-project_prod_k20260614
     metrics_admin: false
     allow: [default, fast, small]
@@ -293,7 +293,7 @@ callers:
     user: example-coding
     project: example-project
     environment: prod
-    token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
+    token_sha256: SHA256_HEX_OF_CODING_ROUTER_TOKEN
     token_id: rtr_metrum_example-coding_example-project_prod_k20260614
     metrics_admin: false
     allow: [default, fast, small, medium, high, big-coder]
@@ -303,12 +303,14 @@ callers:
     user: metrics-admin
     project: observability
     environment: prod
-    token_sha256: SHA256_HEX_OF_ROUTER_TOKEN
+    token_sha256: SHA256_HEX_OF_METRICS_ROUTER_TOKEN
     token_id: rtr_metrum_metrics-admin_observability_prod_k20260614
     metrics_admin: true
     allow: []
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
+
+Caller `id`, `token_sha256`, and non-empty `token_id` values must be unique. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values.
 
 Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`.
 

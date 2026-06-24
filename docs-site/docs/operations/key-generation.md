@@ -28,6 +28,8 @@ The tool prints:
 - A public `token_id` used in logs and reports.
 - A `callers:` YAML entry containing `token_sha256`.
 
+Each configured caller `id`, `token_sha256`, and non-empty `token_id` must be unique. Token hashes are checked case-insensitively, and duplicate-hash validation errors identify the caller IDs without printing hash values.
+
 ## Access Patterns
 
 ```yaml

@@ -158,6 +158,75 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsDuplicateCallerIdentifiers(t *testing.T) {
+	const (
+		hashOne = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+		hashTwo = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	)
+	for _, tt := range []struct {
+		name          string
+		callers       []CallerConfig
+		want          string
+		mustNotExpose string
+	}{
+		{
+			name: "duplicate token hash different caller ids",
+			callers: []CallerConfig{
+				{ID: "alice", TokenSHA256: hashOne, Allow: []string{"default"}},
+				{ID: "bob", TokenSHA256: hashOne, Allow: []string{"default"}},
+			},
+			want:          "duplicate caller token_sha256 for callers alice and bob",
+			mustNotExpose: hashOne,
+		},
+		{
+			name: "duplicate caller id different hashes",
+			callers: []CallerConfig{
+				{ID: "alice", TokenSHA256: hashOne, Allow: []string{"default"}},
+				{ID: "alice", TokenSHA256: hashTwo, Allow: []string{"default"}},
+			},
+			want: "duplicate caller id",
+		},
+		{
+			name: "duplicate public token id",
+			callers: []CallerConfig{
+				{ID: "alice", TokenSHA256: hashOne, TokenID: "rtr_metrum_alice_test_dev_k1", Allow: []string{"default"}},
+				{ID: "bob", TokenSHA256: hashTwo, TokenID: "rtr_metrum_alice_test_dev_k1", Allow: []string{"default"}},
+			},
+			want: "duplicate caller token_id for callers alice and bob",
+		},
+		{
+			name: "case insensitive duplicate hash",
+			callers: []CallerConfig{
+				{ID: "alice", TokenSHA256: hashOne, Allow: []string{"default"}},
+				{ID: "bob", TokenSHA256: strings.ToUpper(hashOne), Allow: []string{"default"}},
+			},
+			want:          "duplicate caller token_sha256 for callers alice and bob",
+			mustNotExpose: hashOne,
+		},
+		{
+			name: "duplicate involving metrics admin caller",
+			callers: []CallerConfig{
+				{ID: "metrics-admin", TokenSHA256: hashOne, TokenID: "rtr_metrum_metrics_admin_test_k1", MetricsAdmin: true},
+				{ID: "alice", TokenSHA256: hashOne, TokenID: "rtr_metrum_alice_test_dev_k1", Allow: []string{"default"}},
+			},
+			want:          "duplicate caller token_sha256 for callers metrics-admin and alice",
+			mustNotExpose: hashOne,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Callers = tt.callers
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+			if tt.mustNotExpose != "" && strings.Contains(err.Error(), tt.mustNotExpose) {
+				t.Fatalf("Validate() exposed token hash in error: %v", err)
+			}
+		})
+	}
+}
+
 func TestPIIFilterValidation(t *testing.T) {
 	for _, tt := range []struct {
 		name   string

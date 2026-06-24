@@ -622,10 +622,17 @@ func (c *Config) Validate() error {
 		}
 		c.Models[name] = m
 	}
+	callerIDs := map[string]string{}
+	callerTokenHashes := map[string]string{}
+	callerTokenIDs := map[string]string{}
 	for _, caller := range c.Callers {
 		if caller.ID == "" {
 			return fmt.Errorf("caller missing id")
 		}
+		if previousCallerID, ok := callerIDs[caller.ID]; ok {
+			return fmt.Errorf("duplicate caller id %q for callers %s and %s", caller.ID, previousCallerID, caller.ID)
+		}
+		callerIDs[caller.ID] = caller.ID
 		if caller.User != "" && slugify(caller.User) == "" {
 			return fmt.Errorf("caller %s has invalid user", caller.ID)
 		}
@@ -640,6 +647,17 @@ func (c *Config) Validate() error {
 		}
 		if _, err := hex.DecodeString(caller.TokenSHA256); err != nil {
 			return fmt.Errorf("caller %s has invalid token_sha256: %w", caller.ID, err)
+		}
+		tokenHashKey := strings.ToLower(caller.TokenSHA256)
+		if previousCallerID, ok := callerTokenHashes[tokenHashKey]; ok {
+			return fmt.Errorf("duplicate caller token_sha256 for callers %s and %s", previousCallerID, caller.ID)
+		}
+		callerTokenHashes[tokenHashKey] = caller.ID
+		if caller.TokenID != "" {
+			if previousCallerID, ok := callerTokenIDs[caller.TokenID]; ok {
+				return fmt.Errorf("duplicate caller token_id for callers %s and %s", previousCallerID, caller.ID)
+			}
+			callerTokenIDs[caller.TokenID] = caller.ID
 		}
 		for _, group := range caller.Allow {
 			if _, ok := c.Models[group]; !ok {

@@ -1244,6 +1244,9 @@ models:
     - provider: baseten_anthropic
       model_ref: gpt-oss-120b
 callers:
+# Each caller id, token_sha256, and non-empty token_id must be unique. Token
+# hashes are compared case-insensitively, and duplicate-hash validation errors
+# name the caller ids without printing the hash value.
 - id: standard-dev
   user: standard
   project: metrum-insights
