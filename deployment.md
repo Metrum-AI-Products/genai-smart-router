@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-22
+Last deployed: 2026-06-24
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-22
 
 ## Deployed Version
 
-- Router package/image version: `7659981-linux-amd64`
-- Source commit: `7659981`
+- Router package/image version: `566956f-linux-amd64`
+- Source commit: `566956f`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,27 @@ Last deployed: 2026-06-22
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 Dynamic Score Routing Package Deployment
+
+- Deployed package/image `smart-llmrouter:566956f-linux-amd64` from source commit `566956f` after PR #31 merged.
+- Production package backup: `/opt/smart-llmrouter.backup.dynamic-score-566956f-20260624T022305Z`.
+- Runtime config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were copied forward from the backup.
+- Verified `sudo docker compose config >/dev/null` and restarted the router with Docker Compose.
+- Verified `/readyz` and `/version` report version `566956f`, commit `566956f`, build date `2026-06-24T02:19:02Z`.
+- Verified hosted docs page `/docs/configuration/dynamic-score-routing` returns HTTP 200 with `x-smart-llmrouter-version: 566956f`.
+- Verified authenticated `/v1/models` returned 18 model groups.
+- Verified authenticated production chat smoke against `high` returned `OK` through `openai/gpt-oss-120b`.
+- Local pre-deploy validation passed:
+  - `go test ./...`: 113 tests passed in 6 packages.
+  - `make docs-build`: passed; npm audit still reports existing docs-site dependency advisories.
+  - `make package-docker VERSION=566956f COMMIT=566956f`: built linux/amd64 and linux/arm64 Docker packages.
+- Harbor production validation:
+  - Full default Harbor matrix `aider/polyglot_python_two-bucket` ran through production using the reusable Harbor caller, agents `codex` and `claude-code`, groups `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+  - Initial full matrix case `harbor-prod-566956f-20260624T022347Z`: Codex passed 6/6; Claude Code passed `default`, `medium`, `high`, and `big-coder`, while `fast` and `small` completed without Harbor exceptions but scored reward `0`.
+  - Clean rerun case `harbor-prod-566956f-rerun-failed-20260624T025300Z`: Claude Code `fast` and `small` both passed with reward `1` and zero errors.
+  - Production usage report generated on the host at `logs/harbor-dynamic-score-566956f-20260624T022347Z.md`.
+- Production cleanup: removed uploaded package and temporary unpack directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-22 Baseten GPT OSS 120B Replacement
 
@@ -76,7 +97,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:7659981-linux-amd64
+compose-router-1   smart-llmrouter:566956f-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
