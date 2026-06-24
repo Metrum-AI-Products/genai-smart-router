@@ -15,10 +15,14 @@ IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 
-.PHONY: test docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test secret-check docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
-test:
+test: secret-check
 	go test ./...
+
+secret-check:
+	python3 scripts/check_env_example_secrets.py
+	python3 scripts/check_env_example_secrets_test.py
 
 docs-build:
 	cd $(DOCS_SITE_DIR) && npm ci && DOCS_ROUTER_VERSION=$(VERSION) DOCS_ROUTER_BUILD_DATE=$(BUILD_DATE) npm run build

@@ -111,7 +111,7 @@ go run ./cmd/router-token-gen generate \
 
 Save the printed `token` value as the caller's bearer token, and copy the generated `callers:` entry into `config.yaml`. Tokens use the traceable prefix `rtr_metrum_<user>_<project>_<env>_<key>_<secret>`, while the router stores only `token_sha256` and logs/exports only `token_id`. Each caller `id`, `token_sha256`, and non-empty `token_id` must be unique; token hashes are checked case-insensitively.
 
-Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the template. The example file intentionally contains empty provider-key placeholders only. Fill the ignored local `env.json`, inject variables from your process manager, or use your deployment secret manager; do not place real provider keys in checked-in examples.
+Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
 ```bash
 go run ./cmd/router --config config.yaml

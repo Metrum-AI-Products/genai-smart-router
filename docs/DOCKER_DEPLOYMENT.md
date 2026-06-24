@@ -109,7 +109,7 @@ server:
 state_path: /app/state/router-state.json
 ```
 
-Edit `compose/config/env.json` with provider keys, or inject the same variables through your container secret manager or compose environment. `config/env.example.json` is only an empty placeholder template. Do not commit or publish runtime `env.json`, compose overrides containing real keys, or modified examples with real values.
+Edit `compose/config/env.json` with provider keys, or inject the same variables through your container secret manager or compose environment. `config/env.example.json` is only an empty placeholder template checked by `make secret-check`. Do not commit or publish runtime `env.json`, compose overrides containing real keys, or modified examples with real values.
 
 The packaged compose file includes `postgres:18-bookworm` for the usage DB. It listens only on the internal Docker network at `postgres:5432` by default. Compose fails during `docker compose config` if `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, or `ROUTER_USAGE_DB_DSN` are missing. Generate a strong random database password, store it in `compose/.env` as `POSTGRES_PASSWORD`, and use the same value in `ROUTER_USAGE_DB_DSN`.
 

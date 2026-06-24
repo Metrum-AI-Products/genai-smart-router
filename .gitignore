@@ -1,5 +1,9 @@
 .env
+**/.env
 env.json
+**/env.json
+!env.example.json
+!**/env.example.json
 config.production.yaml
 ROUTER_TOKENS_*.txt
 ROUTER_TOKEN*.txt

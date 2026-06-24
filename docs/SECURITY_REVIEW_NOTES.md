@@ -5,6 +5,7 @@ This document records product security expectations for implementation and opera
 ## Secrets
 
 Never commit or print provider API keys, raw router tokens, token hashes, full production config, `env.json`, `ROUTER_TOKEN*.txt`, or production DB dumps.
+Keep `env.example.json` placeholder-only and run `make secret-check` before publishing changes that touch runtime configuration or package contents. Real provider keys belong in ignored `env.json`, process environment, or the deployment secret manager.
 
 Provider keys stay server-side. Caller tokens authenticate to the router and are checked before provider calls.
 
