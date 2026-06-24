@@ -21,6 +21,24 @@ server:
     retention_days: 30
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
+  # Browser-admin HTTP Basic authentication is disabled by default. It only
+  # establishes an admin subject; authorization still requires explicit grants
+  # and will be handled by Casbin for broader admin surfaces.
+  admin_auth:
+    basic:
+      enabled: false
+      realm: GenAI Smart Router Admin
+      allow_insecure_http: false
+      trusted_proxy_cidrs: []
+      users: []
+      # Example enabling shape, using a deployment secret for the bcrypt hash:
+      # users:
+      # - username: admin
+      #   password_hash_env: SMART_ROUTER_ADMIN_PASSWORD_HASH
+      #   subject: basic:admin
+      #   domain: example/prod
+      #   permissions:
+      #   - admin:auth:read
   # Governed content capture is disabled by default. Enabling it stores redacted
   # request/response/upstream-error content in separate relational tables keyed
   # by request_id. It is not diagnostics, metrics, or usage reporting.

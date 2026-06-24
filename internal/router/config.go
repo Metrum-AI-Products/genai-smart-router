@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,12 +30,33 @@ type Config struct {
 type ServerConfig struct {
 	Listen            string               `yaml:"listen"`
 	DefaultModelGroup string               `yaml:"default_model_group"`
+	AdminAuth         AdminAuthConfig      `yaml:"admin_auth"`
 	Cache             CacheConfig          `yaml:"cache"`
 	Logging           LoggingConfig        `yaml:"logging"`
 	UsageDB           UsageDBConfig        `yaml:"usage_db"`
 	Upstream          UpstreamConfig       `yaml:"upstream"`
 	Diagnostics       DiagnosticsConfig    `yaml:"diagnostics"`
 	ContentCapture    ContentCaptureConfig `yaml:"content_capture"`
+}
+
+type AdminAuthConfig struct {
+	Basic AdminBasicAuthConfig `yaml:"basic" json:"basic"`
+}
+
+type AdminBasicAuthConfig struct {
+	Enabled           bool                 `yaml:"enabled" json:"enabled"`
+	Realm             string               `yaml:"realm" json:"realm"`
+	AllowInsecureHTTP bool                 `yaml:"allow_insecure_http" json:"allowInsecureHttp"`
+	TrustedProxyCIDRs []string             `yaml:"trusted_proxy_cidrs" json:"trustedProxyCidrs"`
+	Users             []AdminBasicAuthUser `yaml:"users" json:"users"`
+}
+
+type AdminBasicAuthUser struct {
+	Username        string   `yaml:"username" json:"username"`
+	PasswordHashEnv string   `yaml:"password_hash_env" json:"passwordHashEnv,omitempty"`
+	Subject         string   `yaml:"subject" json:"subject"`
+	Domain          string   `yaml:"domain" json:"domain"`
+	Permissions     []string `yaml:"permissions" json:"permissions,omitempty"`
 }
 
 type UpstreamConfig struct {
@@ -425,6 +448,9 @@ func (c *Config) setDefaults() {
 	if c.Server.Listen == "" {
 		c.Server.Listen = ":8080"
 	}
+	if c.Server.AdminAuth.Basic.Realm == "" {
+		c.Server.AdminAuth.Basic.Realm = "GenAI Smart Router Admin"
+	}
 	if c.Server.Cache.MaxBytes == 0 {
 		c.Server.Cache.MaxBytes = 128 << 20
 	}
@@ -488,6 +514,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.Diagnostics.MaxErrorBytes < 0 {
 		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
+	}
+	if err := validateAdminAuth(c.Server.AdminAuth); err != nil {
+		return err
 	}
 	if err := validateContentCapture("server content_capture", c.Server.ContentCapture); err != nil {
 		return err
@@ -717,6 +746,92 @@ func (c *Config) Validate() error {
 		}
 		if err := validateContentCapture("caller "+caller.ID+" content_capture", caller.ContentCapture); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateAdminAuth(cfg AdminAuthConfig) error {
+	basic := cfg.Basic
+	if !basic.Enabled {
+		if len(basic.Users) > 0 {
+			return fmt.Errorf("server admin_auth.basic users configured but basic auth is disabled")
+		}
+		return nil
+	}
+	realm := strings.TrimSpace(basic.Realm)
+	if realm == "" {
+		realm = "GenAI Smart Router Admin"
+	}
+	if strings.ContainsAny(realm, "\"\\\r\n") {
+		return fmt.Errorf("server admin_auth.basic realm contains unsupported characters")
+	}
+	if len(basic.Users) == 0 {
+		return fmt.Errorf("server admin_auth.basic requires at least one user when enabled")
+	}
+	for _, cidr := range basic.TrustedProxyCIDRs {
+		trimmed := strings.TrimSpace(cidr)
+		if trimmed == "" {
+			return fmt.Errorf("server admin_auth.basic trusted_proxy_cidrs contains an empty value")
+		}
+		if _, _, err := net.ParseCIDR(trimmed); err != nil {
+			return fmt.Errorf("server admin_auth.basic trusted_proxy_cidrs contains invalid CIDR %q: %w", trimmed, err)
+		}
+	}
+	usernames := map[string]bool{}
+	subjects := map[string]bool{}
+	for i, user := range basic.Users {
+		label := fmt.Sprintf("server admin_auth.basic users[%d]", i)
+		username := strings.TrimSpace(user.Username)
+		if username == "" {
+			return fmt.Errorf("%s username is required", label)
+		}
+		if strings.ContainsAny(username, ":\r\n") {
+			return fmt.Errorf("%s username contains unsupported characters", label)
+		}
+		if usernames[username] {
+			return fmt.Errorf("server admin_auth.basic duplicate username %q", username)
+		}
+		usernames[username] = true
+		envName := strings.TrimSpace(user.PasswordHashEnv)
+		if envName == "" {
+			return fmt.Errorf("%s requires password_hash_env", label)
+		}
+		if !validEnvName(envName) {
+			return fmt.Errorf("%s password_hash_env is invalid", label)
+		}
+		hash, ok := os.LookupEnv(envName)
+		hash = strings.TrimSpace(hash)
+		if !ok || hash == "" {
+			return fmt.Errorf("%s password_hash_env %s is not set", label, envName)
+		}
+		if _, err := bcrypt.Cost([]byte(hash)); err != nil {
+			return fmt.Errorf("%s password hash must be bcrypt: %w", label, err)
+		}
+		subject := strings.TrimSpace(user.Subject)
+		if subject == "" {
+			subject = "basic:" + username
+		}
+		if !strings.HasPrefix(subject, "basic:") {
+			return fmt.Errorf("%s subject must start with basic:", label)
+		}
+		if strings.ContainsAny(subject, "\r\n") {
+			return fmt.Errorf("%s subject contains unsupported characters", label)
+		}
+		if subjects[subject] {
+			return fmt.Errorf("server admin_auth.basic duplicate subject %q", subject)
+		}
+		subjects[subject] = true
+		if strings.TrimSpace(user.Domain) == "" {
+			return fmt.Errorf("%s domain is required", label)
+		}
+		for _, permission := range user.Permissions {
+			if strings.TrimSpace(permission) == "" {
+				return fmt.Errorf("%s permissions contains an empty value", label)
+			}
+			if strings.ContainsAny(permission, " \t\r\n") {
+				return fmt.Errorf("%s permission %q contains whitespace", label, permission)
+			}
 		}
 	}
 	return nil

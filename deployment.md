@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `0d5003e-linux-amd64`
-- Source commit: `0d5003e`
+- Router package/image version: `d7ec9a2-linux-amd64`
+- Source commit: `d7ec9a2`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,31 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 HTTP Basic Admin Authentication Deployment
+
+- Deployed package/image `smart-llmrouter:1e26c71-linux-amd64` from source commit `1e26c71` for issue #72.
+- Added disabled-by-default `server.admin_auth.basic` support to the product, plus `GET /admin/auth/check` as the first protected browser-admin identity validation endpoint.
+- Added internal and Docusaurus documentation for Basic Auth setup, bcrypt hash generation, TLS/reverse-proxy behavior, smoke tests, rollback, and the AuthN/AuthZ boundary.
+- Production package backup: `/opt/smart-llmrouter.backup.basic-auth-1e26c71-20260624T195321Z`.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.basic-auth-20260624T195430Z`.
+- Production env backup: `/opt/smart-llmrouter/compose/config/env.json.bak.basic-auth-20260624T195430Z`.
+- Enabled production Basic Auth with username `admin`, an env-backed bcrypt hash in `SMART_ROUTER_ADMIN_PASSWORD_HASH`, subject `basic:admin`, domain `metrum/prod`, and the current stub permission `admin:auth:read`.
+- Verified public `/readyz` reports version `1e26c71`, commit `1e26c71`, and build date `2026-06-24T19:49:20Z`.
+- Verified hosted docs `/docs/configuration/admin-authentication` returns HTTP 200 with `x-smart-llmrouter-version: 1e26c71`.
+- Verified public `/admin/auth/check` returns `401` with `WWW-Authenticate` and `Cache-Control: no-store` for missing credentials.
+- Verified public `/admin/auth/check` returns `401` with no sensitive detail for invalid credentials.
+- Verified public `/admin/auth/check` returns `200` with safe subject metadata for the configured admin credentials.
+- Verified existing bearer-token `/v1/models` behavior still works after enabling Basic Auth.
+- Local validation: `go test ./...` passed with 206 tests in 6 packages; `make docs-qa` passed; `make secret-check` passed; local e2e covered enabled Basic Auth missing/bad/valid credential paths.
+- Production cleanup: removed uploaded package, removed the duplicate previous-active switch directory, kept timestamped backups, and ran `sudo docker system prune -f` with the deployment healthy.
+- Review follow-up deployment: deployed package/image `smart-llmrouter:d7ec9a2-linux-amd64` from source commit `d7ec9a2` to require env-backed password hashes only and trust `X-Forwarded-Proto: https` only from configured proxy CIDRs.
+- Review follow-up package backup: `/opt/smart-llmrouter.backup.basic-auth-reviewfix-d7ec9a2-20260624T201140Z`.
+- Review follow-up config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.basic-auth-trusted-proxy-20260624T201207Z`.
+- Production Basic Auth now sets `trusted_proxy_cidrs` to the compose proxy subnet `172.18.0.0/16`.
+- Verified public `/readyz` reports version `d7ec9a2`, commit `d7ec9a2`, and build date `2026-06-24T20:07:59Z`.
+- Re-verified public `/admin/auth/check` missing credentials -> `401`, invalid credentials -> `401`, valid admin credentials -> `200`, with no-store headers.
+- Re-verified existing bearer-token `/v1/models` behavior still works and returns 18 models.
 
 ## 2026-06-24 OpenRouter Gemma Cap And Crusoe GLM Production Config Update
 

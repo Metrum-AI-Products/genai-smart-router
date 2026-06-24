@@ -415,6 +415,13 @@ server:
     retention_days: 30
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
+  admin_auth:
+    basic:
+      enabled: false
+      realm: GenAI Smart Router Admin
+      allow_insecure_http: false
+      trusted_proxy_cidrs: []
+      users: []
   content_capture:
     enabled: false
     retention_days: 30
@@ -439,6 +446,8 @@ Image-bearing requests also bypass response caching. Usage logs and the usage da
 Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. See [PII Filtering](./pii-filtering).
 
 Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture and still redacts prompt-like fields, nested upstream bodies, and secret-shaped values before JSONL or usage DB persistence.
+
+Browser-admin HTTP Basic authentication is configured under `server.admin_auth.basic` and remains disabled unless an operator explicitly enables it. Basic Auth establishes a subject such as `basic:admin` for `/admin/*` routes; it is separate from router caller tokens for `/v1/*` and from metrics-admin caller tokens for `/metrics`. Keep password hashes in environment variables, and configure `trusted_proxy_cidrs` if a reverse proxy forwards HTTPS state. See [Admin Authentication](./admin-authentication) for bcrypt hash setup, TLS requirements, and the current `/admin/auth/check` validation endpoint.
 
 Governed content capture is separate from diagnostics and remains disabled unless `server.content_capture.enabled: true` and at least one scope is enabled. Captured rows live in `request_content_captures`, allowlisted headers in `request_content_headers`, and delete/purge audit events in `request_content_audit_events`. Rows are keyed by `request_id` for joins to usage metadata. Built-in secret redaction and configured `redaction_patterns` run before storage; `redact_before_storage: false` is rejected. Header capture is allowlist-only and rejects authorization, API-key, token, secret, cookie, and key-like header names. The current foundation supports retention purge and delete-by-request maintenance; KMS/encryption-at-rest and content export/read APIs are follow-up work, and `encryption.enabled: true` is rejected until implemented.
 

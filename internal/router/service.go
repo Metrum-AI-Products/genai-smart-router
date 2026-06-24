@@ -17,12 +17,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"sort"
 	"strings"
 	"time"
 
 	"smart-llmrouter/internal/buildinfo"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service struct {
@@ -30,6 +33,7 @@ type Service struct {
 	mux          *http.ServeMux
 	httpClient   *http.Client
 	callersBySum map[string]*callerRuntime
+	adminBasic   map[string]adminBasicRuntime
 	quota        *quotaStore
 	cache        *responseCache
 	logger       *requestLogger
@@ -37,6 +41,14 @@ type Service struct {
 	metrics      *metricsStore
 	scripts      map[string]*scriptStrategy
 	observations *dynamicObservationStore
+}
+
+type adminBasicRuntime struct {
+	username    string
+	hash        []byte
+	subject     string
+	domain      string
+	permissions map[string]bool
 }
 
 type decision struct {
@@ -119,6 +131,7 @@ func New(cfg *Config) (*Service, error) {
 		mux:          http.NewServeMux(),
 		httpClient:   &http.Client{Timeout: time.Duration(cfg.Server.Upstream.TimeoutMS) * time.Millisecond},
 		callersBySum: map[string]*callerRuntime{},
+		adminBasic:   map[string]adminBasicRuntime{},
 		quota:        quota,
 		cache:        newCache(cfg.Server.Cache),
 		logger:       logger,
@@ -135,6 +148,24 @@ func New(cfg *Config) (*Service, error) {
 	}
 	for _, rt := range quota.callers {
 		s.callersBySum[strings.ToLower(rt.cfg.TokenSHA256)] = rt
+	}
+	for _, user := range cfg.Server.AdminAuth.Basic.Users {
+		subject := strings.TrimSpace(user.Subject)
+		if subject == "" {
+			subject = "basic:" + strings.TrimSpace(user.Username)
+		}
+		hash := strings.TrimSpace(os.Getenv(strings.TrimSpace(user.PasswordHashEnv)))
+		perms := map[string]bool{}
+		for _, permission := range user.Permissions {
+			perms[strings.TrimSpace(permission)] = true
+		}
+		s.adminBasic[strings.TrimSpace(user.Username)] = adminBasicRuntime{
+			username:    strings.TrimSpace(user.Username),
+			hash:        []byte(hash),
+			subject:     subject,
+			domain:      strings.TrimSpace(user.Domain),
+			permissions: perms,
+		}
 	}
 	s.routes()
 	return s, nil
@@ -167,6 +198,7 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
+	s.mux.HandleFunc("GET /admin/auth/check", s.handleAdminAuthCheck)
 	s.mux.HandleFunc("DELETE /v1/content-captures/{request_id}", s.handleContentCaptureDelete)
 	s.mux.HandleFunc("POST /v1/content-captures/purge-expired", s.handleContentCapturePurgeExpired)
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
@@ -268,6 +300,23 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, s.metrics.Prometheus())
+}
+
+func (s *Service) handleAdminAuthCheck(w http.ResponseWriter, r *http.Request) {
+	subject, ok := s.authenticateAdminBasic(w, r)
+	if !ok {
+		return
+	}
+	if !subject.permissions["admin:auth:read"] {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "admin-forbidden", "message": "admin-forbidden"}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"source":  "basic",
+		"subject": subject.subject,
+		"domain":  subject.domain,
+	})
 }
 
 func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Request) {
@@ -669,6 +718,92 @@ func (s *Service) authenticate(header, apiKey string) (*callerRuntime, string, e
 		}
 	}
 	return nil, "invalid-token", errors.New("unknown token")
+}
+
+func (s *Service) authenticateAdminBasic(w http.ResponseWriter, r *http.Request) (adminBasicRuntime, bool) {
+	s.setAdminAuthHeaders(w)
+	if s == nil || !s.cfg.Server.AdminAuth.Basic.Enabled {
+		http.NotFound(w, r)
+		return adminBasicRuntime{}, false
+	}
+	if !s.cfg.Server.AdminAuth.Basic.AllowInsecureHTTP && !requestIsHTTPS(r, s.cfg.Server.AdminAuth.Basic.TrustedProxyCIDRs) {
+		s.adminBasicChallenge(w)
+		return adminBasicRuntime{}, false
+	}
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		s.adminBasicChallenge(w)
+		return adminBasicRuntime{}, false
+	}
+	subject, found := s.findAdminBasicUser(username)
+	hash := subject.hash
+	if !found {
+		hash = adminBasicDummyHash()
+	}
+	passwordOK := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
+	if !found || !passwordOK {
+		s.adminBasicChallenge(w)
+		return adminBasicRuntime{}, false
+	}
+	return subject, true
+}
+
+func (s *Service) findAdminBasicUser(username string) (adminBasicRuntime, bool) {
+	var matched adminBasicRuntime
+	found := 0
+	for configured, subject := range s.adminBasic {
+		if subtle.ConstantTimeCompare([]byte(configured), []byte(username)) == 1 {
+			matched = subject
+			found = 1
+		}
+	}
+	return matched, found == 1
+}
+
+func (s *Service) setAdminAuthHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+func (s *Service) adminBasicChallenge(w http.ResponseWriter) {
+	realm := "GenAI Smart Router Admin"
+	if s != nil && strings.TrimSpace(s.cfg.Server.AdminAuth.Basic.Realm) != "" {
+		realm = strings.TrimSpace(s.cfg.Server.AdminAuth.Basic.Realm)
+	}
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s", charset="UTF-8"`, realm))
+	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"type": "unauthorized", "message": "unauthorized"}})
+}
+
+func requestIsHTTPS(r *http.Request, trustedProxyCIDRs []string) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		return false
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range trustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(cidr))
+		if err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func adminBasicDummyHash() []byte {
+	return []byte("$2a$10$PEWHfUFcvCRVUkh/hggt6eUYdDlrFr0cfzXvIXtLDKpS5uTtYq65i")
 }
 
 func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, tokenID string) (decision, error) {

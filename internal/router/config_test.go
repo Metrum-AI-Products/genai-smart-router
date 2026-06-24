@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -404,6 +405,132 @@ func TestPIIFilterValidation(t *testing.T) {
 			err := cfg.Validate()
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdminBasicAuthValidation(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	for _, tt := range []struct {
+		name      string
+		configure func(*Config)
+		want      string
+	}{
+		{
+			name: "disabled default",
+		},
+		{
+			name: "disabled but users configured",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/dev"}}
+			},
+			want: "users configured but basic auth is disabled",
+		},
+		{
+			name: "enabled without users",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Basic.Enabled = true
+			},
+			want: "requires at least one user",
+		},
+		{
+			name: "duplicate usernames",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{
+					{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/dev"},
+					{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/dev"},
+				}
+			},
+			want: "duplicate username",
+		},
+		{
+			name: "missing env reference",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", Domain: "local/dev"}}
+			},
+			want: "requires password_hash_env",
+		},
+		{
+			name: "invalid env hash",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_INVALID", "not-a-hash")
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_INVALID", Domain: "local/dev"}}
+			},
+			want: "password hash must be bcrypt",
+		},
+		{
+			name: "env hash",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/dev"}}
+			},
+		},
+		{
+			name: "missing env hash",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_MISSING", Domain: "local/dev"}}
+			},
+			want: "password_hash_env SMART_ROUTER_ADMIN_PASSWORD_HASH_MISSING is not set",
+		},
+		{
+			name: "missing domain",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST"}}
+			},
+			want: "domain is required",
+		},
+		{
+			name: "invalid trusted proxy cidr",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.TrustedProxyCIDRs = []string{"not-a-cidr"}
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/dev"}}
+			},
+			want: "invalid CIDR",
+		},
+		{
+			name: "valid configured subject and permission",
+			configure: func(cfg *Config) {
+				t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+				cfg.Server.AdminAuth.Basic.Enabled = true
+				cfg.Server.AdminAuth.Basic.TrustedProxyCIDRs = []string{"127.0.0.1/32"}
+				cfg.Server.AdminAuth.Basic.Users = []AdminBasicAuthUser{{
+					Username:        "admin",
+					PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+					Subject:         "basic:admin",
+					Domain:          "local/dev",
+					Permissions:     []string{"admin:auth:read"},
+				}}
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			if tt.configure != nil {
+				tt.configure(cfg)
+			}
+			err := cfg.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() err=%v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+			if strings.Contains(err.Error(), hash) {
+				t.Fatalf("Validate() exposed password hash: %v", err)
 			}
 		})
 	}
@@ -960,4 +1087,13 @@ func minimalConfig(t *testing.T) *Config {
 			Allow:       []string{"default"},
 		}},
 	}
+}
+
+func mustBcryptHash(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(hash)
 }

@@ -18,10 +18,13 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 | `/v1/models` | OpenAI-style model discovery | Client setup and allow-list discovery |
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
 | `/readyz`, `/healthz`, `/version` | Router operational endpoints | Load balancers and operators |
+| `/admin/auth/check` | Browser-admin Basic Auth validation stub | Operators enabling browser-admin surfaces |
 
 `/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
 Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` and `POST /v1/content-captures/purge-expired` require a caller token configured with `content_admin: true` and never return captured content.
+
+`/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
 
 ## Compatibility Matrix
 

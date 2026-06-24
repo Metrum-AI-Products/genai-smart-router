@@ -116,6 +116,184 @@ func TestAuthAcceptsXAPIKeyForAnthropicStyleClients(t *testing.T) {
 	}
 }
 
+func TestAdminBasicAuthCheckDisabledIsNotPublic(t *testing.T) {
+	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/auth/check", nil)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("WWW-Authenticate") != "" {
+		t.Fatalf("disabled admin auth sent challenge: %q", rr.Header().Get("WWW-Authenticate"))
+	}
+}
+
+func TestAdminBasicAuthCheckChallengesAndAuthorizes(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		Realm:             "Unit Test Admin",
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+			Permissions:     []string{"admin:auth:read"},
+		}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for _, tt := range []struct {
+		name       string
+		username   string
+		password   string
+		setAuth    bool
+		wantStatus int
+	}{
+		{name: "missing", wantStatus: http.StatusUnauthorized},
+		{name: "bad username", username: "operator", password: "yell-yell-yum", setAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "bad password", username: "admin", password: "wrong", setAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "valid", username: "admin", password: "yell-yell-yum", setAuth: true, wantStatus: http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/admin/auth/check", nil)
+			if tt.setAuth {
+				req.SetBasicAuth(tt.username, tt.password)
+			}
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if rr.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("missing no-store cache header: %#v", rr.Header())
+			}
+			if tt.wantStatus == http.StatusUnauthorized && !strings.Contains(rr.Header().Get("WWW-Authenticate"), `Basic realm="Unit Test Admin"`) {
+				t.Fatalf("missing Basic challenge: %#v", rr.Header())
+			}
+			if strings.Contains(rr.Body.String(), "yell-yell-yum") || strings.Contains(rr.Body.String(), hash) {
+				t.Fatalf("admin auth response exposed credential material: %s", rr.Body.String())
+			}
+			if tt.wantStatus == http.StatusOK {
+				var body map[string]any
+				if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body["subject"] != "basic:admin" || body["domain"] != "local/test" || body["source"] != "basic" {
+					t.Fatalf("unexpected subject response: %#v", body)
+				}
+			}
+		})
+	}
+}
+
+func TestAdminBasicAuthCheckRequiresPermissionAndHTTPS(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled: true,
+		Realm:   "Unit Test Admin",
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+		}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/admin/auth/check", nil)
+	httpReq.SetBasicAuth("admin", "yell-yell-yum")
+	httpRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(httpRR, httpReq)
+	if httpRR.Code != http.StatusUnauthorized {
+		t.Fatalf("plain http status=%d body=%s", httpRR.Code, httpRR.Body.String())
+	}
+
+	httpsReq := httptest.NewRequest(http.MethodGet, "/admin/auth/check", nil)
+	httpsReq.Header.Set("X-Forwarded-Proto", "https")
+	httpsReq.SetBasicAuth("admin", "yell-yell-yum")
+	httpsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(httpsRR, httpsReq)
+	if httpsRR.Code != http.StatusUnauthorized {
+		t.Fatalf("untrusted forwarded proto status=%d body=%s", httpsRR.Code, httpsRR.Body.String())
+	}
+
+	cfg.Server.AdminAuth.Basic.TrustedProxyCIDRs = []string{"192.0.2.0/24"}
+	svcTrusted, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svcTrusted.Close()
+	trustedReq := httptest.NewRequest(http.MethodGet, "/admin/auth/check", nil)
+	trustedReq.Header.Set("X-Forwarded-Proto", "https")
+	trustedReq.SetBasicAuth("admin", "yell-yell-yum")
+	trustedRR := httptest.NewRecorder()
+	svcTrusted.Handler().ServeHTTP(trustedRR, trustedReq)
+	if trustedRR.Code != http.StatusForbidden {
+		t.Fatalf("missing permission status=%d body=%s", trustedRR.Code, trustedRR.Body.String())
+	}
+	if !strings.Contains(trustedRR.Body.String(), "admin-forbidden") {
+		t.Fatalf("missing admin-forbidden body: %s", trustedRR.Body.String())
+	}
+}
+
+func TestAdminBasicAuthDoesNotChangeProxyBearerAuth(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_admin_basic_proxy",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", mustBcryptHash(t, "yell-yell-yum"))
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		Realm:             "Unit Test Admin",
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+			Permissions:     []string{"admin:auth:read"},
+		}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()

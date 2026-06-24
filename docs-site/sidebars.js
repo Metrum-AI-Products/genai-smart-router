@@ -20,6 +20,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "configuration/router-config",
+        "configuration/admin-authentication",
         "configuration/pii-filtering",
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",

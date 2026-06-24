@@ -16,6 +16,7 @@ Confirm:
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
 - metrics-admin access uses separate caller tokens with `metrics_admin: true`;
 - content-capture maintenance access, when enabled by policy, uses separate caller tokens with `content_admin: true`.
+- browser-admin Basic Auth, when enabled, uses bcrypt hashes from deployment secrets, requires HTTPS in production, trusts forwarded HTTPS state only from configured proxy CIDRs, and maps to stable subjects such as `basic:admin`; see [Admin Authentication](../configuration/admin-authentication).
 
 Acceptance checks:
 

@@ -9,6 +9,8 @@ Keep `env.example.json` placeholder-only and run `make secret-check` before publ
 
 Provider keys stay server-side. Caller tokens authenticate to the router and are checked before provider calls.
 
+Browser-admin HTTP Basic authentication is separate from router caller tokens. It is disabled by default, must use bcrypt password hashes from deployment secrets or environment variables, and must run over HTTPS in production. If TLS terminates at a reverse proxy, `X-Forwarded-Proto: https` is trusted only from configured proxy CIDRs. Basic Auth establishes a subject such as `basic:admin`; it does not grant broader admin permissions by itself. `/metrics` remains caller-token protected with `metrics_admin: true`.
+
 ## Tenant And Caller Isolation
 
 Caller tokens carry allow lists, quota policy, and metadata such as user, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups.

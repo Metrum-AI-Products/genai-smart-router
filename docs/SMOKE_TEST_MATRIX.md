@@ -9,6 +9,7 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 | Config validation | YAML parse and `docker compose config` |
 | Health/deploy | `/readyz`, `/version`, router logs |
 | Auth/allow list | `/v1/models` with caller token |
+| Admin Basic Auth | `/admin/auth/check` with missing, bad, and valid Basic credentials when enabled |
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |

@@ -700,6 +700,8 @@ curl -H "Authorization: Bearer $METRICS_ADMIN_ROUTER_TOKEN" http://127.0.0.1:808
 
 `/metrics` is intentionally restricted to caller entries with `metrics_admin: true`; normal application keys receive `403 metrics-forbidden`. Use `/v1/usage` and durable usage reports for caller-scoped usage views.
 
+Browser-admin HTTP Basic authentication is configured under `server.admin_auth.basic` and is disabled by default. When enabled, `GET /admin/auth/check` validates the first admin identity path: missing or invalid Basic credentials receive `401`, valid credentials without the stub permission receive `403 admin-forbidden`, and valid credentials with `admin:auth:read` receive safe subject metadata. Basic Auth establishes identity such as `basic:admin`; it does not grant broader admin permissions by itself. See [docs/ADMIN_AUTH.md](docs/ADMIN_AUTH.md).
+
 Version checks:
 
 ```bash

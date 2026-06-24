@@ -13,6 +13,7 @@ GenAI Smart Router is designed to keep provider credentials, private upstream en
 - Full routing config and target weights.
 - Caller token hashes.
 - Metrics-admin credentials.
+- Browser-admin password hashes and identity policy.
 - TypeScript routing script files and external policy service authentication.
 
 Callers receive a router endpoint, a router-issued token, and the model groups their token may request.
@@ -29,6 +30,12 @@ Router-issued caller tokens can encode:
 - metrics-admin privilege when an operator token is intentionally created.
 
 The `/v1/models` response is filtered by the caller token. Requests for unlisted groups fail before an upstream provider key is used.
+
+## Browser Admin Identity
+
+Deployments can enable HTTP Basic authentication for `/admin/*` routes. It is disabled by default, uses bcrypt password hashes from deployment secrets or environment variables, and requires HTTPS unless explicitly allowed for local development. When TLS terminates at a reverse proxy, configure `trusted_proxy_cidrs` so forwarded HTTPS state is accepted only from that proxy path.
+
+Basic Auth establishes a subject such as `basic:admin`; it does not grant access by username alone. Broader admin permissions should be handled by the deployment authorization policy, with Casbin as the intended policy layer.
 
 ## Diagnostics And Data Handling
 
