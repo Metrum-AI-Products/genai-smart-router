@@ -1,5 +1,7 @@
 # Production Runbook
 
+Internal note: this runbook is private operational material and is intentionally not included in binary or Docker release packages. Keep package-safe deployment guidance in `docs/DEPLOYMENT.md` and `docs/DOCKER_DEPLOYMENT.md`.
+
 This runbook is for the current Metrum-managed engineering deployment. Smart LLM Router can also run on-prem or in an enterprise cloud account with different hostnames, model groups, providers, and caller policies.
 
 ## Current Managed Deployment

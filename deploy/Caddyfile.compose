@@ -2,7 +2,7 @@
 	email {$CADDY_EMAIL:chetan@metrum.ai}
 }
 
-{$ROUTER_HOSTNAME:llm-api-engg.metrum.ai} {
+{$ROUTER_HOSTNAME:router.example.com} {
 	encode zstd gzip
 
 	header {

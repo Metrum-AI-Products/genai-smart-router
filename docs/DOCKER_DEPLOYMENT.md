@@ -36,9 +36,19 @@ config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
 docs/DOCKER_DEPLOYMENT.md
+docs/DYNAMIC_SCORE_ROUTING.md
+docs/EXTERNAL_ROUTING_POLICY.md
+docs/PII_FILTERING.md
+docs/PRODUCT_CAPABILITY_MATRIX.md
+docs/SECURITY_REVIEW_NOTES.md
+docs/SELF_HOSTED_UPSTREAMS.md
+docs/SMOKE_TEST_MATRIX.md
 docs/solution-brief.md
 docs/USAGE_DB_DESIGN.md
+docs/USAGE_REPORTING_PLAYBOOK.md
 ```
+
+Package docs are copied only from `scripts/package_docs_allowlist.txt`. The package build validates the resulting tarball and fails if it contains private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, or raw token/provider-key patterns.
 
 ## AWS EC2 Host Setup
 

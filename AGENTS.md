@@ -178,6 +178,7 @@ For code changes that affect runtime behavior or embedded hosted docs:
 3. Commit source/docs changes before packaging so `VERSION=$(git describe --tags --always --dirty)` is a stable commit tag and not `-dirty`.
 4. Build both Docker package architectures:
    - `rtk make package-docker`
+   Package targets copy Markdown only from `scripts/package_docs_allowlist.txt` and run package-content validation. Do not add private production runbooks, private host/IP markers, SSH usernames/key paths, live production compose config/env/token paths, raw router tokens, token hashes, or provider keys to release artifacts.
 5. Copy the package matching the production host CPU architecture, currently `dist/smart-llmrouter-<version>-docker-linux-amd64.tar.gz`, to the host with `scp`.
 6. On the host:
    - back up `/opt/smart-llmrouter` to `/opt/smart-llmrouter.backup.<purpose>-<UTC timestamp>`

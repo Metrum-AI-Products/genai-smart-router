@@ -443,6 +443,8 @@ cd /opt/smart-llmrouter
 sudo docker load -i images/smart-llmrouter-<version>-linux-amd64.tar
 ```
 
+Package builds copy Markdown only from `scripts/package_docs_allowlist.txt` and run content validation against the tarball. Internal production runbooks and notes with private host/IP markers, SSH usernames/key paths, live compose config/env/token paths, or raw token/provider-key patterns must stay in this repository's private operational docs and must not be added to package artifacts.
+
 After unpacking a new package, copy forward the live config, env, state, logs, and token from the backup unless intentionally rotating them:
 
 ```bash
@@ -1173,7 +1175,7 @@ Documentation changes:
 
 - Added hosted Docusaurus pages for API compatibility, error reference, model metadata, and provider/model onboarding.
 - Added internal runbooks for production deployment, troubleshooting, smoke testing, usage reporting, and security review notes.
-- Updated packaging so release packages include every `docs/*.md` internal document.
+- Historical packaging note: this deployment packaged every `docs/*.md` internal document. Superseded on 2026-06-24 by explicit package-doc allowlisting and package-content validation that keeps private production runbooks out of release artifacts.
 - Updated `AGENTS.md` documentation expectations so future changes maintain both external product docs and internal operator docs.
 
 Production backup:

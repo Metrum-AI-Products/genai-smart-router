@@ -16,15 +16,27 @@ Each tarball contains:
 ```text
 bin/router
 bin/router-token-gen
+bin/router-usage-report
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
 docs/DOCKER_DEPLOYMENT.md
+docs/DYNAMIC_SCORE_ROUTING.md
+docs/EXTERNAL_ROUTING_POLICY.md
+docs/PII_FILTERING.md
+docs/PRODUCT_CAPABILITY_MATRIX.md
+docs/SECURITY_REVIEW_NOTES.md
+docs/SELF_HOSTED_UPSTREAMS.md
+docs/SMOKE_TEST_MATRIX.md
+docs/USAGE_DB_DESIGN.md
+docs/USAGE_REPORTING_PLAYBOOK.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
+
+Package docs are an explicit allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages.
 
 The config and routing script are packaged together so this command works after unpacking:
 
@@ -52,17 +64,17 @@ make package-docker
 
 Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host.
 
-## Example Internal Development Host
+## Example Deployment Host
 
-One internal Metrum-operated deployment target:
+Use a deployment-owned hostname for the router, for example:
 
 ```text
-llm-api-engg.metrum.ai
+router.example.com
 ```
 
 The service is externally reachable, but model and usage endpoints require a valid router caller token, and `/metrics` requires a caller token configured with `metrics_admin: true`. Caddy terminates TLS and reverse-proxies to the router on localhost.
 
-DNS for that example host is managed in DigitalOcean. For other enterprise, on-prem, or Metrum-managed deployments, use that deployment's hostname and DNS provider. Create or update an `A` record pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
+Use the DNS provider for the deployment environment. Create or update an `A` record pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
 
 ## Host Layout
 

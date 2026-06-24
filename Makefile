@@ -14,6 +14,7 @@ IMAGE_NAME ?= smart-llmrouter
 IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
+PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
 
 .PHONY: test secret-check docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
@@ -23,6 +24,7 @@ test: secret-check
 secret-check:
 	python3 scripts/check_env_example_secrets.py
 	python3 scripts/check_env_example_secrets_test.py
+	python3 scripts/validate_package_contents_test.py
 
 docs-build:
 	cd $(DOCS_SITE_DIR) && npm ci && DOCS_ROUTER_VERSION=$(VERSION) DOCS_ROUTER_BUILD_DATE=$(BUILD_DATE) npm run build
@@ -71,13 +73,16 @@ package-one-no-docs:
 	cp config.example.yaml $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/config/config.example.yaml
 	cp env.example.json $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/config/env.example.json
 	cp scripts/router.ts $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/config/scripts/router.ts
-	cp README.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/README.md
-	cp docs/*.md $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/
+	while IFS= read -r doc; do \
+		case "$$doc" in ""|\#*) continue ;; esac; \
+		cp "$$doc" "$(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/docs/$$(basename "$$doc")"; \
+	done < $(PACKAGE_DOC_ALLOWLIST)
 	cp deploy/Caddyfile $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/caddy/Caddyfile
 	find $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH) -type d -exec chmod 0755 {} \;
 	find $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH) -type f -exec chmod 0644 {} \;
 	chmod 0755 $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/bin/router $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/bin/router-token-gen $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)/bin/router-usage-report
 	tar --owner=0 --group=0 --numeric-owner -C $(DIST_DIR)/pkg -czf $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz $(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)
+	python3 scripts/validate_package_contents.py --allowlist $(PACKAGE_DOC_ALLOWLIST) $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz
 
 package-all: docs-build
 	$(MAKE) package-one-no-docs GOOS=linux GOARCH=amd64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
@@ -108,11 +113,14 @@ package-docker-one-no-docs:
 	cp config.example.yaml $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/config/config.example.yaml
 	cp env.example.json $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/config/env.example.json
 	cp scripts/router.ts $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/config/scripts/router.ts
-	cp README.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/README.md
-	cp docs/*.md $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/
+	while IFS= read -r doc; do \
+		case "$$doc" in ""|\#*) continue ;; esac; \
+		cp "$$doc" "$(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/docs/$$(basename "$$doc")"; \
+	done < $(PACKAGE_DOC_ALLOWLIST)
 	find $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH) -type d -exec chmod 0755 {} \;
 	find $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH) -type f -exec chmod 0644 {} \;
 	tar --owner=0 --group=0 --numeric-owner -C $(DIST_DIR)/docker -czf $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH).tar.gz $(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)
+	python3 scripts/validate_package_contents.py --allowlist $(PACKAGE_DOC_ALLOWLIST) $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH).tar.gz
 
 package-docker-all: docs-build
 	$(MAKE) package-docker-one-no-docs GOOS=linux GOARCH=amd64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)

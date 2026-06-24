@@ -1,0 +1,14 @@
+# Source docs copied into binary and Docker release packages.
+README.md
+docs/DEPLOYMENT.md
+docs/DOCKER_DEPLOYMENT.md
+docs/DYNAMIC_SCORE_ROUTING.md
+docs/EXTERNAL_ROUTING_POLICY.md
+docs/PII_FILTERING.md
+docs/PRODUCT_CAPABILITY_MATRIX.md
+docs/SECURITY_REVIEW_NOTES.md
+docs/SELF_HOSTED_UPSTREAMS.md
+docs/SMOKE_TEST_MATRIX.md
+docs/USAGE_DB_DESIGN.md
+docs/USAGE_REPORTING_PLAYBOOK.md
+docs/solution-brief.md

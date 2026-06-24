@@ -1,8 +1,8 @@
 {
-	email chetan@metrum.ai
+	email admin@example.com
 }
 
-llm-api-engg.metrum.ai {
+router.example.com {
 	encode zstd gzip
 
 	header {

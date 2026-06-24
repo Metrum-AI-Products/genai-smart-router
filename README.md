@@ -65,9 +65,21 @@ config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
+docs/DOCKER_DEPLOYMENT.md
+docs/DYNAMIC_SCORE_ROUTING.md
+docs/EXTERNAL_ROUTING_POLICY.md
+docs/PII_FILTERING.md
+docs/PRODUCT_CAPABILITY_MATRIX.md
+docs/SECURITY_REVIEW_NOTES.md
+docs/SELF_HOSTED_UPSTREAMS.md
+docs/SMOKE_TEST_MATRIX.md
+docs/USAGE_DB_DESIGN.md
+docs/USAGE_REPORTING_PLAYBOOK.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
+
+Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. Private production runbooks, private host details, SSH paths, live compose config paths, and raw token/provider-key patterns are blocked by package validation.
 
 The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/healthz`, and `/readyz` keep precedence.
 
@@ -83,7 +95,19 @@ compose/.env.example
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-docs/*.md
+docs/README.md
+docs/DEPLOYMENT.md
+docs/DOCKER_DEPLOYMENT.md
+docs/DYNAMIC_SCORE_ROUTING.md
+docs/EXTERNAL_ROUTING_POLICY.md
+docs/PII_FILTERING.md
+docs/PRODUCT_CAPABILITY_MATRIX.md
+docs/SECURITY_REVIEW_NOTES.md
+docs/SELF_HOSTED_UPSTREAMS.md
+docs/SMOKE_TEST_MATRIX.md
+docs/USAGE_DB_DESIGN.md
+docs/USAGE_REPORTING_PLAYBOOK.md
+docs/solution-brief.md
 ```
 
 The packaged config expects the routing script at `config/scripts/router.ts`, so the standard packaged run command is:
