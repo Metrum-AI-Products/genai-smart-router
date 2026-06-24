@@ -61,7 +61,7 @@ Core capabilities:
 - Server-side provider key injection, keeping upstream credentials out of client machines and application code.
 - Caller API tokens with traceable public prefixes, hashed token storage, per-caller allow lists, rate limits, quotas, and lifetime token budgets.
 - Configurable deployment-defined model groups. Names such as `small`, `medium`, `high`, `default`, `fast`, `big-coder`, or `vision` are example/reference deployment names, not product-required names.
-- Routing strategies including static, weighted, failover, latency-oriented, cost-oriented, semantic stub classification, and TypeScript-driven custom policy.
+- Routing strategies including static, weighted, failover, generic dynamic-score policy, TypeScript-driven custom policy, external policy services, and legacy latency/cost/semantic options.
 - In-process LRU plus TTL cache for eligible unary responses.
 - Structured request logs, Prometheus-compatible metrics, and durable relational usage reporting with request-time pricing/cost fields.
 - Markdown usage reports by time period with per-key, per-model, hourly, daily, throughput, cost, and cache summaries.

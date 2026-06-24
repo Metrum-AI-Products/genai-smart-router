@@ -69,6 +69,7 @@ These instructions apply to the whole repository.
    - `rtk rg -n "old-model|old-provider|old-image-tag" README.md docs deployment.md config.example.yaml internal scripts`
    - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs deployment.md internal scripts`
 10. When feature-branch work is complete and thoroughly tested, always prepare to create a GitHub pull request into the upstream repository. Before creating the PR, confirm with the user and ask whether the PR should target the upstream default branch or a different branch.
+11. When addressing GitHub PR review comments, push the code fixes and also add replies on the PR comments explaining how each actionable thread was addressed, including the relevant commit or test coverage. Do not resolve threads unless explicitly asked.
 
 ## Live Provider Testing
 

@@ -22,6 +22,7 @@ const sidebars = {
         "configuration/pii-filtering",
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",
+        "configuration/dynamic-score-routing",
         "configuration/routing-typescript",
         "configuration/external-routing-policy",
       ],

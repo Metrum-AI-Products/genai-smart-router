@@ -40,6 +40,8 @@ External TypeScript policy calls are disabled unless a script model group enable
 
 For standalone policy services, prefer `strategy: external` with `external_policy.url`, exact `allow_hosts`, low `timeout_ms`, response-size limits, and config-owned auth headers. The external routing policy service receives normalized request context and eligible target metadata, returns `targetIndex` or `target`, and is validated before any upstream provider call. See `docs/EXTERNAL_ROUTING_POLICY.md`.
 
+For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and rolls back by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
+
 Docker Compose packages are built separately:
 
 ```bash

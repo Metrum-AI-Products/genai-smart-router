@@ -36,15 +36,17 @@ type Service struct {
 	usage        *usageStore
 	metrics      *metricsStore
 	scripts      map[string]*scriptStrategy
+	observations *dynamicObservationStore
 }
 
 type decision struct {
-	Target      Target
-	Fallbacks   []Target
-	ClassLabel  *string
-	Strategy    string
-	GroupName   string
-	TargetIndex int
+	Target        Target
+	Fallbacks     []Target
+	ClassLabel    *string
+	Strategy      string
+	GroupName     string
+	TargetIndex   int
+	DecisionTrace string
 }
 
 type routingEligibilityError struct {
@@ -122,6 +124,7 @@ func New(cfg *Config) (*Service, error) {
 		usage:        usage,
 		metrics:      newMetricsStore(),
 		scripts:      map[string]*scriptStrategy{},
+		observations: newDynamicObservationStore(),
 	}
 	if err := s.loadScripts(); err != nil {
 		_ = quota.Close()
@@ -402,6 +405,9 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.ImageInputPricePerImageUSD = dec.Target.ImageInputPricePerImageUSD
 	rc.rec.PricingSource = dec.Target.PricingSource
 	rc.rec.PricingUpdatedAt = dec.Target.PricingUpdatedAt
+	if dec.DecisionTrace != "" {
+		rc.trace("routing_decision", dec.DecisionTrace, dec.Target, 0, 0, "", false, 0)
+	}
 
 	key := cacheKey(req, dec.Target)
 	if cacheable(req) {
@@ -513,6 +519,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		rc.rec.Error = code
 	}
 	rc.rec.LatencyMS = time.Since(rc.start).Milliseconds()
+	s.recordDynamicObservation(rc.rec)
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
@@ -619,6 +626,8 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 				return i < j
 			})
 		}
+	case "dynamic_score":
+		return s.pickDynamicScore(groupName, group, req, callerDialect, targets)
 	case "script":
 		strat := s.scripts[groupName]
 		if strat == nil {

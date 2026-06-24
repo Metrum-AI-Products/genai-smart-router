@@ -11,7 +11,7 @@ This page summarizes GenAI Smart Router capabilities for enterprise deployments.
 | Area | Capability |
 |---|---|
 | API compatibility | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, filtered `/v1/models`, caller `/v1/usage`, health/version endpoints |
-| Routing | Static, weighted, failover, and TypeScript-scripted model group routing |
+| Routing | Static, weighted, failover, dynamic-score, TypeScript-scripted, and external-policy model group routing |
 | Caller governance | Router-issued caller tokens, per-key allow lists, rate limits, token budgets, concurrency limits |
 | Provider control | Server-side provider keys, deployment-defined provider catalogs, active targets separate from catalog metadata |
 | Tools | Dialect-specific tool metadata and request filtering for OpenAI Chat, OpenAI Responses, and Anthropic Messages |

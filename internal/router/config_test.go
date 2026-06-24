@@ -418,6 +418,15 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "adaptive-agent" {
+			if group.Strategy != "dynamic_score" || len(group.Targets) != 3 || len(group.RoutingPolicy.DynamicScore.ScoreTerms) != 2 {
+				t.Fatalf("example config adaptive-agent=%#v, want dynamic_score reference group with three targets and score terms", group)
+			}
+			if group.RoutingPolicy.DynamicScore.MinObservations != 20 {
+				t.Fatalf("adaptive-agent min_observations=%d, want 20", group.RoutingPolicy.DynamicScore.MinObservations)
+			}
+			continue
+		}
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
@@ -452,13 +461,13 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
-		"baseten:nvidia/Nemotron-120B-A12B":           "nvidia/Nemotron-120B-A12B",
-		"baseten:openai/gpt-oss-120b":                 "openai/gpt-oss-120b",
-		"baseten:zai-org/GLM-5.2":                     "zai-org/GLM-5.2",
-		"minimax:MiniMax-M3":                          "MiniMax-M3",
-		"kimi:kimi-k2.7-code":                         "kimi-k2.7-code",
-		"openrouter:google/gemma-4-26b-a4b-it:nitro":  "google/gemma-4-26b-a4b-it:nitro",
-		"openai:gpt-5.4-nano":                         "gpt-5.4-nano",
+		"baseten:nvidia/Nemotron-120B-A12B":          "nvidia/Nemotron-120B-A12B",
+		"baseten:openai/gpt-oss-120b":                "openai/gpt-oss-120b",
+		"baseten:zai-org/GLM-5.2":                    "zai-org/GLM-5.2",
+		"minimax:MiniMax-M3":                         "MiniMax-M3",
+		"kimi:kimi-k2.7-code":                        "kimi-k2.7-code",
+		"openrouter:google/gemma-4-26b-a4b-it:nitro": "google/gemma-4-26b-a4b-it:nitro",
+		"openai:gpt-5.4-nano":                        "gpt-5.4-nano",
 	}
 	for name, model := range want {
 		found := false
@@ -612,6 +621,34 @@ func violatesCurrentRoutingPolicy(target Target) bool {
 		return true
 	}
 	return false
+}
+
+func TestValidateDynamicScoreRejectsUnsafeBounds(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "dynamic_score",
+		RoutingPolicy: RoutingPolicyConfig{DynamicScore: DynamicScoreConfig{
+			MaxScoreAdjustmentPercent: 101,
+		}},
+		Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "max_score_adjustment_percent") {
+		t.Fatalf("Validate() err=%v, want max_score_adjustment_percent error", err)
+	}
+
+	cfg = minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "dynamic_score",
+		RoutingPolicy: RoutingPolicyConfig{DynamicScore: DynamicScoreConfig{
+			Signals: DynamicScoreSignals{
+				PromptFeatures: DynamicSignalPromptFeatures{Enabled: true, MaxScanBytes: 70000},
+			},
+		}},
+		Targets: []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "max_scan_bytes") {
+		t.Fatalf("Validate() err=%v, want max_scan_bytes error", err)
+	}
 }
 
 func minimalConfig(t *testing.T) *Config {

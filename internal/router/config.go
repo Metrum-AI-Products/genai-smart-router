@@ -112,9 +112,117 @@ type ModelGroup struct {
 	Script           string               `yaml:"script"`
 	ScriptHTTP       ScriptHTTPConfig     `yaml:"script_http"`
 	ExternalPolicy   ExternalPolicyConfig `yaml:"external_policy"`
+	RoutingPolicy    RoutingPolicyConfig  `yaml:"routing_policy"`
 	PIIFilter        PIIFilterConfig      `yaml:"pii_filter"`
 	AttemptTimeoutMS int                  `yaml:"attempt_timeout_ms"`
 	Targets          []Target             `yaml:"targets"`
+}
+
+type RoutingPolicyConfig struct {
+	DynamicScore DynamicScoreConfig `yaml:"dynamic_score" json:"dynamicScore,omitempty"`
+}
+
+type DynamicScoreConfig struct {
+	ColdStartPolicy           string                    `yaml:"cold_start_policy" json:"coldStartPolicy,omitempty"`
+	MinObservations           int                       `yaml:"min_observations" json:"minObservations,omitempty"`
+	ObservationWindowSeconds  int                       `yaml:"observation_window_seconds" json:"observationWindowSeconds,omitempty"`
+	MaxScoreAdjustmentPercent float64                   `yaml:"max_score_adjustment_percent" json:"maxScoreAdjustmentPercent,omitempty"`
+	LowConfidenceFallback     string                    `yaml:"low_confidence_fallback" json:"lowConfidenceFallback,omitempty"`
+	HardFilters               DynamicScoreHardFilters   `yaml:"hard_filters" json:"hardFilters,omitempty"`
+	Signals                   DynamicScoreSignals       `yaml:"signals" json:"signals,omitempty"`
+	ScoreTerms                []DynamicScoreTerm        `yaml:"score_terms" json:"scoreTerms,omitempty"`
+	Thresholds                DynamicScoreThresholds    `yaml:"thresholds" json:"thresholds,omitempty"`
+	EvaluationMetadata        []DynamicEvaluationTarget `yaml:"evaluation_metadata" json:"evaluationMetadata,omitempty"`
+}
+
+type DynamicScoreHardFilters struct {
+	RequireRequestedAPISkin                bool `yaml:"require_requested_api_skin" json:"requireRequestedApiSkin,omitempty"`
+	RequireInputModalities                 bool `yaml:"require_input_modalities" json:"requireInputModalities,omitempty"`
+	RequireToolSupportWhenToolsPresent     bool `yaml:"require_tool_support_when_tools_present" json:"requireToolSupportWhenToolsPresent,omitempty"`
+	RequireForcedToolChoiceSupport         bool `yaml:"require_forced_tool_choice_support" json:"requireForcedToolChoiceSupport,omitempty"`
+	RequireStructuredOutputSupport         bool `yaml:"require_structured_output_support" json:"requireStructuredOutputSupport,omitempty"`
+	RequireHonorsMaxTokensWhenCallerCapped bool `yaml:"require_honors_max_tokens_when_caller_capped" json:"requireHonorsMaxTokensWhenCallerCapped,omitempty"`
+}
+
+type DynamicScoreSignals struct {
+	RequestShape        DynamicSignalRequestShape        `yaml:"request_shape" json:"requestShape,omitempty"`
+	PromptFeatures      DynamicSignalPromptFeatures      `yaml:"prompt_features" json:"promptFeatures,omitempty"`
+	Complexity          DynamicSignalComplexity          `yaml:"complexity" json:"complexity,omitempty"`
+	ObservedPerformance DynamicSignalObservedPerformance `yaml:"observed_performance" json:"observedPerformance,omitempty"`
+	Cost                DynamicSignalNamedFields         `yaml:"cost" json:"cost,omitempty"`
+	BudgetPressure      DynamicSignalBudgetPressure      `yaml:"budget_pressure" json:"budgetPressure,omitempty"`
+	EvaluationMetadata  DynamicSignalEvaluationMetadata  `yaml:"evaluation_metadata" json:"evaluationMetadata,omitempty"`
+	RecentPenalties     DynamicSignalRecentPenalties     `yaml:"recent_penalties" json:"recentPenalties,omitempty"`
+}
+
+type DynamicSignalRequestShape struct {
+	Enabled bool     `yaml:"enabled" json:"enabled,omitempty"`
+	Fields  []string `yaml:"fields" json:"fields,omitempty"`
+}
+
+type DynamicSignalPromptFeatures struct {
+	Enabled      bool     `yaml:"enabled" json:"enabled,omitempty"`
+	MaxScanBytes int      `yaml:"max_scan_bytes" json:"maxScanBytes,omitempty"`
+	Features     []string `yaml:"features" json:"features,omitempty"`
+}
+
+type DynamicSignalComplexity struct {
+	Enabled bool               `yaml:"enabled" json:"enabled,omitempty"`
+	Weights map[string]float64 `yaml:"weights" json:"weights,omitempty"`
+}
+
+type DynamicSignalObservedPerformance struct {
+	Enabled bool     `yaml:"enabled" json:"enabled,omitempty"`
+	Fields  []string `yaml:"fields" json:"fields,omitempty"`
+}
+
+type DynamicSignalNamedFields struct {
+	Enabled bool     `yaml:"enabled" json:"enabled,omitempty"`
+	Fields  []string `yaml:"fields" json:"fields,omitempty"`
+}
+
+type DynamicSignalBudgetPressure struct {
+	Enabled bool     `yaml:"enabled" json:"enabled,omitempty"`
+	Buckets []string `yaml:"buckets" json:"buckets,omitempty"`
+}
+
+type DynamicSignalEvaluationMetadata struct {
+	Enabled    bool     `yaml:"enabled" json:"enabled,omitempty"`
+	MaxAgeDays int      `yaml:"max_age_days" json:"maxAgeDays,omitempty"`
+	Fields     []string `yaml:"fields" json:"fields,omitempty"`
+}
+
+type DynamicSignalRecentPenalties struct {
+	Enabled    bool     `yaml:"enabled" json:"enabled,omitempty"`
+	TTLSeconds int      `yaml:"ttl_seconds" json:"ttlSeconds,omitempty"`
+	Reasons    []string `yaml:"reasons" json:"reasons,omitempty"`
+}
+
+type DynamicScoreTerm struct {
+	Name        string             `yaml:"name" json:"name,omitempty"`
+	When        map[string]any     `yaml:"when" json:"when,omitempty"`
+	RequireTags []string           `yaml:"require_tags" json:"requireTags,omitempty"`
+	PreferTags  []string           `yaml:"prefer_tags" json:"preferTags,omitempty"`
+	Expression  string             `yaml:"expression" json:"expression,omitempty"`
+	Weights     map[string]float64 `yaml:"weights" json:"weights,omitempty"`
+}
+
+type DynamicScoreThresholds struct {
+	MaxErrorRate             *float64 `yaml:"max_error_rate" json:"maxErrorRate,omitempty"`
+	MaxTimeoutRate           *float64 `yaml:"max_timeout_rate" json:"maxTimeoutRate,omitempty"`
+	MaxP95LatencyMS          *float64 `yaml:"max_p95_latency_ms" json:"maxP95LatencyMs,omitempty"`
+	MaxTTFBMS                *float64 `yaml:"max_ttfb_ms" json:"maxTtfbMs,omitempty"`
+	MinOutputTokensPerSecond *float64 `yaml:"min_output_tokens_per_second" json:"minOutputTokensPerSecond,omitempty"`
+}
+
+type DynamicEvaluationTarget struct {
+	Provider       string   `yaml:"provider" json:"provider,omitempty"`
+	Model          string   `yaml:"model" json:"model,omitempty"`
+	QualityScore   float64  `yaml:"quality_score" json:"qualityScore,omitempty"`
+	PassRate       float64  `yaml:"pass_rate" json:"passRate,omitempty"`
+	Workload       string   `yaml:"workload" json:"workload,omitempty"`
+	ValidationDate string   `yaml:"validation_date" json:"validationDate,omitempty"`
+	Tags           []string `yaml:"tags" json:"tags,omitempty"`
 }
 
 type PIIFilterConfig struct {
@@ -168,6 +276,7 @@ type Target struct {
 	ToolOnly                           bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
 	TimeoutMS                          int            `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
 	DefaultThinking                    map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Tags                               []string       `yaml:"tags" json:"tags,omitempty"`
 	Weight                             int            `yaml:"weight" json:"weight"`
 	RPM                                int            `yaml:"rpm" json:"rpm"`
 	Tier                               string         `yaml:"tier" json:"tier"`
@@ -441,6 +550,11 @@ func (c *Config) Validate() error {
 		if m.AttemptTimeoutMS < 0 {
 			return fmt.Errorf("model group %s attempt_timeout_ms cannot be negative", name)
 		}
+		if strings.EqualFold(m.Strategy, "dynamic_score") {
+			if err := validateDynamicScorePolicy(name, m.RoutingPolicy.DynamicScore); err != nil {
+				return err
+			}
+		}
 		if err := validatePIIFilter(name, m.PIIFilter); err != nil {
 			return err
 		}
@@ -572,6 +686,77 @@ func validatePIIFilter(group string, cfg PIIFilterConfig) error {
 		}
 		if normalizePlaceholderPrefix(rule.PlaceholderPrefix) == "" {
 			return fmt.Errorf("model group %s pii_filter rule %s missing placeholder_prefix", group, name)
+		}
+	}
+	return nil
+}
+
+func validateDynamicScorePolicy(group string, cfg DynamicScoreConfig) error {
+	switch strings.ToLower(strings.TrimSpace(cfg.ColdStartPolicy)) {
+	case "", "configured_weight":
+	default:
+		return fmt.Errorf("model group %s dynamic_score cold_start_policy must be configured_weight", group)
+	}
+	if cfg.MinObservations < 0 {
+		return fmt.Errorf("model group %s dynamic_score min_observations cannot be negative", group)
+	}
+	if cfg.ObservationWindowSeconds < 0 {
+		return fmt.Errorf("model group %s dynamic_score observation_window_seconds cannot be negative", group)
+	}
+	if cfg.MaxScoreAdjustmentPercent < 0 || cfg.MaxScoreAdjustmentPercent > 100 {
+		return fmt.Errorf("model group %s dynamic_score max_score_adjustment_percent must be between 0 and 100", group)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.LowConfidenceFallback)) {
+	case "", "configured_weight", "weighted":
+	default:
+		return fmt.Errorf("model group %s dynamic_score low_confidence_fallback must be configured_weight or weighted", group)
+	}
+	if cfg.Signals.PromptFeatures.MaxScanBytes < 0 {
+		return fmt.Errorf("model group %s dynamic_score prompt_features.max_scan_bytes cannot be negative", group)
+	}
+	if cfg.Signals.PromptFeatures.MaxScanBytes > 65536 {
+		return fmt.Errorf("model group %s dynamic_score prompt_features.max_scan_bytes must be <= 65536", group)
+	}
+	if cfg.Signals.RecentPenalties.TTLSeconds < 0 {
+		return fmt.Errorf("model group %s dynamic_score recent_penalties.ttl_seconds cannot be negative", group)
+	}
+	if cfg.Signals.EvaluationMetadata.MaxAgeDays < 0 {
+		return fmt.Errorf("model group %s dynamic_score evaluation_metadata.max_age_days cannot be negative", group)
+	}
+	for _, threshold := range []struct {
+		name  string
+		value *float64
+	}{
+		{"max_error_rate", cfg.Thresholds.MaxErrorRate},
+		{"max_timeout_rate", cfg.Thresholds.MaxTimeoutRate},
+	} {
+		if threshold.value != nil && (*threshold.value < 0 || *threshold.value > 1) {
+			return fmt.Errorf("model group %s dynamic_score threshold %s must be between 0 and 1", group, threshold.name)
+		}
+	}
+	for _, threshold := range []struct {
+		name  string
+		value *float64
+	}{
+		{"max_p95_latency_ms", cfg.Thresholds.MaxP95LatencyMS},
+		{"max_ttfb_ms", cfg.Thresholds.MaxTTFBMS},
+		{"min_output_tokens_per_second", cfg.Thresholds.MinOutputTokensPerSecond},
+	} {
+		if threshold.value != nil && *threshold.value < 0 {
+			return fmt.Errorf("model group %s dynamic_score threshold %s cannot be negative", group, threshold.name)
+		}
+	}
+	for _, term := range cfg.ScoreTerms {
+		if strings.TrimSpace(term.Expression) == "" && len(term.Weights) == 0 && len(term.RequireTags) == 0 && len(term.PreferTags) == 0 {
+			return fmt.Errorf("model group %s dynamic_score score term %s has no expression, weights, or tag preference", group, term.Name)
+		}
+	}
+	for _, eval := range cfg.EvaluationMetadata {
+		if strings.TrimSpace(eval.Provider) == "" || strings.TrimSpace(eval.Model) == "" {
+			return fmt.Errorf("model group %s dynamic_score evaluation_metadata entries require provider and model", group)
+		}
+		if eval.QualityScore < 0 || eval.QualityScore > 1 || eval.PassRate < 0 || eval.PassRate > 1 {
+			return fmt.Errorf("model group %s dynamic_score evaluation scores must be between 0 and 1", group)
 		}
 	}
 	return nil

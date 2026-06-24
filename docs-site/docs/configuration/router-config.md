@@ -227,6 +227,8 @@ models:
 
 ## Scripted Routing Options
 
+Use `strategy: dynamic_score` when a group should adapt inside its own target list using bounded request-shape, prompt-feature, cost, observed-performance, reliability, and evaluation metadata signals. The strategy never scores targets from another model group; callers still request one allowed deployment-defined group. See [Dynamic Score Routing](./dynamic-score-routing) for configuration, diagnostics, rollout, and rollback guidance.
+
 Use `strategy: script` when a model group should choose a target with TypeScript policy. Script paths are resolved relative to the config file.
 
 ```yaml

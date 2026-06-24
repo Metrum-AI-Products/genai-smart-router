@@ -1,0 +1,86 @@
+# Dynamic Score Routing Runbook
+
+`strategy: dynamic_score` is a model-group-local routing strategy. It lets operators combine reusable scalar signals without adding one Go strategy per policy idea.
+
+## Configuration Contract
+
+Callers still request one deployment-defined model group. The router authenticates the caller, checks the caller token allow list, loads only that requested group's `targets[]`, applies request eligibility filters, and then scores only those group-local targets.
+
+Dynamic scoring must not be used to cross from one model group contract into another. If a cheaper or faster target belongs in the policy, add and validate that target in the requested group.
+
+```yaml
+models:
+  adaptive-agent:
+    strategy: dynamic_score
+    targets:
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 60, tags: [validated, coding, tool_capable] }
+      - { provider: minimax, model_ref: m3, weight: 25, tags: [validated, low_cost, tool_capable] }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 5, tags: [fallback] }
+    routing_policy:
+      dynamic_score:
+        cold_start_policy: configured_weight
+        min_observations: 20
+        observation_window_seconds: 600
+        max_score_adjustment_percent: 70
+        signals:
+          request_shape: { enabled: true }
+          prompt_features:
+            enabled: true
+            max_scan_bytes: 16384
+            features: [code, diff, stack_trace, summarize, extract, security_review, tool_agent]
+          complexity: { enabled: true }
+          observed_performance: { enabled: true }
+          cost: { enabled: true }
+          evaluation_metadata: { enabled: true }
+        score_terms:
+          - name: cheapest_fast_enough
+            when: { complexity_lte: standard }
+            expression: "0.45 * cost_score + 0.25 * latency_score + 0.20 * throughput_score + 0.10 * reliability_score"
+        thresholds:
+          max_error_rate: 0.03
+          max_timeout_rate: 0.02
+          max_p95_latency_ms: 10000
+```
+
+## Validation
+
+Before rollout, validate the group targets the same way as weighted routing:
+
+- Direct upstream text smoke for each provider/model/dialect.
+- Direct tool smoke before claiming tool support.
+- Direct image smoke plus router-level image smoke before marking `input_modalities: [text, image]`.
+- Router-level smoke for each API skin that will be used by clients.
+- Explicit low-budget cap smoke, including `max_tokens: 1`, to confirm unsafe targets are skipped when `honors_max_tokens: false`.
+
+Then run a fixed request matrix against the dynamic group:
+
+- simple text;
+- code/debug prompt;
+- tool request;
+- forced tool request where supported;
+- image request where supported;
+- structured-output request where supported;
+- low explicit max-token cap.
+
+Drive enough traffic to pass `min_observations` and verify selection changes from deterministic configured-weight cold start to score-based selection.
+
+## Diagnostics
+
+Use request logs, usage DB, and trace events. The `routing_decision` trace event contains safe scalar metadata only:
+
+- strategy and mode;
+- enabled signal names;
+- request-shape buckets;
+- candidate count;
+- selected provider/model;
+- score bucket and observation count;
+- cold-start flag.
+
+Diagnostics must not include raw prompts, images, tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
+
+## Rollout And Rollback
+
+Roll out first on a dedicated test group with interchangeable validated targets and a non-sensitive caller token allowed only to that group. Compare p95 latency, error rate, fallbacks, cost, and selected target mix against the weighted baseline.
+
+Rollback is config-only: switch the model group `strategy` to `weighted`, lower strict thresholds, or remove score terms. After production config changes, follow the normal timestamped-backup, compose validation, restart, health check, authenticated smoke, and stale-doc search process.
+

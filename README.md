@@ -8,7 +8,7 @@ Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
 - Anthropic token-count estimate endpoint for Claude Code startup.
 - Bearer-token auth using configured SHA-256 token hashes.
-- Config-driven model groups and static, weighted, failover, latency, cost, and stub semantic routing.
+- Config-driven model groups and static, weighted, failover, generic dynamic-score, script, external-policy, latency, cost, and stub semantic routing.
 - TypeScript routing scripts for custom model-selection logic inside the Go router.
 - External routing policy services for standalone web-service target selection with safe request, caller, target, pricing, tool, and modality context.
 - Separate caller dialects from upstream provider adapters: callers can use Anthropic/OpenAI wire formats while targets route to Anthropic, OpenAI-compatible providers, or Replicate.
@@ -356,6 +356,57 @@ models:
 ```
 
 Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; those requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
+
+## Dynamic Score Routing
+
+Use `strategy: dynamic_score` when a deployment wants one configurable per-group policy instead of separate hardcoded strategies for cheap-fast routing, latency-aware routing, workload complexity, budget pressure, or evaluation-backed quality preferences. Callers still request a model group they are allowed to use. The router authenticates the caller, validates that group access, filters only that group's `targets[]` for API dialect, tool support, modalities, and explicit max-token safety, then scores only the remaining targets in that same group.
+
+```yaml
+models:
+  adaptive-agent:
+    strategy: dynamic_score
+    targets:
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 60, tags: [validated, coding, tool_capable] }
+      - { provider: minimax, model_ref: m3, weight: 25, tags: [validated, low_cost, tool_capable] }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 5, tags: [fallback] }
+    routing_policy:
+      dynamic_score:
+        cold_start_policy: configured_weight
+        min_observations: 20
+        observation_window_seconds: 600
+        max_score_adjustment_percent: 70
+        hard_filters:
+          require_requested_api_skin: true
+          require_input_modalities: true
+          require_tool_support_when_tools_present: true
+          require_honors_max_tokens_when_caller_capped: true
+        signals:
+          request_shape: { enabled: true }
+          prompt_features:
+            enabled: true
+            max_scan_bytes: 16384
+            features: [code, diff, stack_trace, summarize, extract, security_review, tool_agent]
+          complexity: { enabled: true }
+          observed_performance: { enabled: true }
+          cost: { enabled: true }
+          evaluation_metadata: { enabled: true }
+        score_terms:
+          - name: cheapest_fast_enough
+            when: { complexity_lte: standard }
+            expression: "0.45 * cost_score + 0.25 * latency_score + 0.20 * throughput_score + 0.10 * reliability_score"
+          - name: complex_quality_floor
+            when: { complexity_gte: complex }
+            require_tags: [validated]
+            expression: "0.45 * eval_quality_score + 0.25 * reliability_score + 0.20 * latency_score + 0.10 * cost_score"
+        thresholds:
+          max_error_rate: 0.03
+          max_timeout_rate: 0.02
+          max_p95_latency_ms: 10000
+```
+
+Cold start is deterministic: until `min_observations` is reached, targets are ordered by configured group-local weight. After that, the router uses in-memory rolling observations for latency, throughput, error rate, timeout rate, and fallback rate; it does not read the usage database on the hot path. Decision traces contain only safe scalar metadata such as enabled signal names, request-shape buckets, candidate count, selected provider/model, score bucket, observation count, and cold-start mode. They must not contain raw prompts, images, tool outputs, router tokens, token hashes, provider keys, or full upstream headers.
+
+Rollout should start on a deployment-defined test group with interchangeable validated targets. Use mock or local router smokes for simple text, code/debug prompts, tool calls, forced tool calls, image requests when supported, structured-output requests when supported, and low `max_tokens` caps. Roll back by switching the group strategy to `weighted` or by removing score terms and thresholds that are too strict for the workload.
 
 For OpenAI Chat tool clients, for example Warp Agent, configure the client with:
 
