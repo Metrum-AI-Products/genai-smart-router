@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `b34aaf6-linux-amd64`
-- Source commit: `b34aaf6`
+- Router package/image version: `704148a-linux-amd64`
+- Source commit: `704148a`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,23 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 Max Tokens, Quota Reservations, And Package Docs Deployment
+
+- Deployed package/image `smart-llmrouter:704148a-linux-amd64` from source commit `704148a` after PRs #55, #56, and #57 merged.
+- Production package backup: `/opt/smart-llmrouter.backup-issues-15-17-704148a-20260624T135313Z`.
+- Runtime config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were copied forward from the backup.
+- Verified `sudo docker compose config >/dev/null` and restarted the router with Docker Compose.
+- Verified public `/readyz` and `/version` report version `704148a`, commit `704148a`, build date `2026-06-24T13:49:09Z`, and Go `1.26.4`.
+- Verified hosted docs page `/docs/reference/api-compatibility` returns HTTP 200 with `x-smart-llmrouter-version: 704148a`.
+- Verified authenticated public `/v1/models` returned 18 model groups.
+- Verified authenticated public `high` completion returned exactly `OK` through `openai/gpt-oss-120b`.
+- Local pre-deploy validation passed:
+  - `make secret-check`: passed.
+  - `make docs-build VERSION=704148a COMMIT=704148a`: passed; npm audit still reports the existing 23 moderate docs-site dependency advisories.
+  - `go test ./...`: 170 tests passed in 6 packages after docs build refreshed embedded docs.
+  - `make package-docker VERSION=704148a COMMIT=704148a`: built and validated linux/amd64 and linux/arm64 Docker packages.
+- Production cleanup: removed uploaded package, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-24 Security, PII, And Content Capture Package Deployment
 
@@ -138,7 +155,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:b34aaf6-linux-amd64
+compose-router-1   smart-llmrouter:704148a-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
