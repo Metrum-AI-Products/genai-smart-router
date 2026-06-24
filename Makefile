@@ -15,7 +15,7 @@ IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 
-.PHONY: test docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test:
 	go test ./...
@@ -97,6 +97,7 @@ package-docker-one-no-docs:
 	$(MAKE) docker-image-no-docs GOOS=$(GOOS) GOARCH=$(GOARCH) DOCKER_PLATFORM=linux/$(GOARCH) IMAGE_TAG=$(VERSION)-$(GOOS)-$(GOARCH) VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 	$(DOCKER) save $(IMAGE_NAME):$(VERSION)-$(GOOS)-$(GOARCH) -o $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/images/$(IMAGE_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar
 	cp deploy/docker-compose.yml $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/compose/docker-compose.yml
+	cp deploy/docker-compose.postgres-localhost.yml $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/compose/docker-compose.postgres-localhost.yml
 	cp deploy/Caddyfile.compose $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/compose/Caddyfile.compose
 	cp deploy/compose.env.example $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/compose/.env.example
 	sed 's/^SMART_LLMROUTER_VERSION=.*/SMART_LLMROUTER_VERSION=$(VERSION)-$(GOOS)-$(GOARCH)/' deploy/compose.env.example > $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)/compose/.env
@@ -112,6 +113,9 @@ package-docker-one-no-docs:
 package-docker-all: docs-build
 	$(MAKE) package-docker-one-no-docs GOOS=linux GOARCH=amd64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 	$(MAKE) package-docker-one-no-docs GOOS=linux GOARCH=arm64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
+
+compose-security-check:
+	bash scripts/check_compose_security.sh
 
 e2e-mock:
 	$(MAKE) -C examples/cli-e2e-c clean test

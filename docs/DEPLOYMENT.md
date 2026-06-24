@@ -121,7 +121,7 @@ server:
     dsn: ${ROUTER_USAGE_DB_DSN}
 ```
 
-The compose Postgres service listens on `postgres:5432` internally and publishes host port `15432` by default for admin access.
+The compose Postgres service listens on `postgres:5432` internally and is not host-published by default. Compose deployments must set `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, and `ROUTER_USAGE_DB_DSN` explicitly in `compose/.env`; `SMART_LLMROUTER_VERSION` must be the concrete package image tag, not `latest`. If local host access to the database is required for administration, include `docker-compose.postgres-localhost.yml` so Postgres binds only to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}`.
 
 Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, and `XAI_API_KEY`.
 

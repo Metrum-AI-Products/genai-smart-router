@@ -8,7 +8,7 @@ This document is for maintainers. The external solution brief should describe ca
 - Supported drivers are `sqlite` and `postgres`.
 - Local/default config uses SQLite at `server.usage_db.path`.
 - Docker Compose production uses Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`.
-- The packaged compose service uses the official `postgres:18-bookworm` image and publishes host port `15432` by default.
+- The packaged compose service uses the official `postgres:18-bookworm` image and listens only on the internal Docker network by default. Host access requires the explicit localhost-only compose override.
 
 ## Relational Schema Rule
 

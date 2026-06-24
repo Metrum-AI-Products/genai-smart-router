@@ -16,6 +16,13 @@ HTTP_PORT="${COMPOSE_E2E_HTTP_PORT:-18080}"
 BASE_URL="http://127.0.0.1:${HTTP_PORT}"
 IMAGE_TAG="${COMPOSE_E2E_IMAGE_TAG:-compose-e2e}"
 KEEP_WORKDIR="${KEEP_LIVE_E2E_WORKDIR:-0}"
+POSTGRES_PASSWORD="${COMPOSE_E2E_POSTGRES_PASSWORD:-$(python3 - <<'PY'
+import secrets
+
+print(secrets.token_hex(24))
+PY
+)}"
+ROUTER_USAGE_DB_DSN="${COMPOSE_E2E_USAGE_DB_DSN:-host=postgres port=5432 user=llmrouter password=${POSTGRES_PASSWORD} dbname=llmrouter sslmode=disable TimeZone=UTC}"
 
 cleanup() {
   if [[ "$KEEP_WORKDIR" == "1" ]]; then
@@ -148,6 +155,8 @@ ROUTER_HOSTNAME=:80
 CADDY_EMAIL=engg@metrum.ai
 CADDY_HTTP_PORT=${HTTP_PORT}
 CADDY_HTTPS_PORT=18443
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+ROUTER_USAGE_DB_DSN=${ROUTER_USAGE_DB_DSN}
 ENV
 
 docker buildx build --load -t "smart-llmrouter:${IMAGE_TAG}" "$ROOT"

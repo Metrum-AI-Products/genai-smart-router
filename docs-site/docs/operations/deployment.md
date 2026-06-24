@@ -31,6 +31,8 @@ flowchart TB
 | Routing script | Optional TypeScript policy plus packaged helper/dependency files |
 | Usage database | Durable reporting and cost-management data |
 
+Docker Compose packages pin the router container with `SMART_LLMROUTER_VERSION` and require explicit Postgres credentials in `compose/.env`. Set `POSTGRES_PASSWORD` to a strong random value and use the same value in `ROUTER_USAGE_DB_DSN`; missing values cause `docker compose config` to fail before deployment. The packaged Postgres service is internal-only by default. If an operator needs host-side database access for administration, use the packaged localhost override so the database binds to `127.0.0.1`, not the public host interface.
+
 Enterprise deployments often route to internally hosted vLLM or SGLang services. Configure each service as an OpenAI-compatible provider with a private `/v1` base URL, keep its access token in the deployment environment, and expose only router model groups to callers. Validate each internal upstream directly and through the router before adding it to a production model group.
 
 TypeScript routing scripts are loaded from the deployment filesystem. Package local helper imports and any locked third-party dependencies with the script directory, or deploy a pre-bundled script artifact. The router does not install npm packages at runtime.

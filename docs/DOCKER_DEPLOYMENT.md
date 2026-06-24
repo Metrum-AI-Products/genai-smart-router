@@ -24,6 +24,7 @@ Each package contains:
 ```text
 images/smart-llmrouter-<version>-linux-<arch>.tar
 compose/docker-compose.yml
+compose/docker-compose.postgres-localhost.yml
 compose/Caddyfile.compose
 compose/.env
 compose/.env.example
@@ -108,7 +109,15 @@ state_path: /app/state/router-state.json
 
 Edit `compose/config/env.json` with provider keys. Do not commit or publish this file.
 
-The packaged compose file includes `postgres:18-bookworm` for the usage DB. It listens inside Docker on `postgres:5432` and publishes host port `${POSTGRES_HOST_PORT:-15432}` for admin access. Use a strong `POSTGRES_PASSWORD` and keep `ROUTER_USAGE_DB_DSN` in `compose/.env`.
+The packaged compose file includes `postgres:18-bookworm` for the usage DB. It listens only on the internal Docker network at `postgres:5432` by default. Compose fails during `docker compose config` if `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, or `ROUTER_USAGE_DB_DSN` are missing. Generate a strong random database password, store it in `compose/.env` as `POSTGRES_PASSWORD`, and use the same value in `ROUTER_USAGE_DB_DSN`.
+
+If temporary host access to Postgres is required for local administration, include the explicit localhost-only override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres-localhost.yml up -d
+```
+
+That override binds Postgres to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}` on the deployment host. Do not publish Postgres on `0.0.0.0`.
 
 The response cache is in-memory inside the router container. Restarting the container clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage are persisted per request in the usage DB.
 
@@ -140,6 +149,18 @@ ROUTER_HOSTNAME=your-router.example.com
 CADDY_EMAIL=chetan@metrum.ai
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
+POSTGRES_DB=llmrouter
+POSTGRES_USER=llmrouter
+POSTGRES_PASSWORD=<strong-random-db-password>
+ROUTER_USAGE_DB_DSN=host=postgres port=5432 user=llmrouter password=<strong-random-db-password> dbname=llmrouter sslmode=disable TimeZone=UTC
+```
+
+`SMART_LLMROUTER_VERSION` must match the image tag loaded from the package, such as `<version>-linux-amd64` or `<version>-linux-arm64`; it must not be `latest`.
+
+Validate the rendered compose model before starting:
+
+```bash
+docker compose config >/dev/null
 ```
 
 Start:

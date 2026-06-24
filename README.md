@@ -76,6 +76,7 @@ Docker packages contain prebuilt image tarballs plus compose deployment assets:
 ```text
 images/smart-llmrouter-<version>-linux-<arch>.tar
 compose/docker-compose.yml
+compose/docker-compose.postgres-localhost.yml
 compose/Caddyfile.compose
 compose/.env
 compose/.env.example
@@ -93,7 +94,7 @@ bin/router --config config/config.yaml
 
 See `docs/DEPLOYMENT.md` for binary deployment guidance with Caddy TLS termination.
 
-For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs for linux/amd64 and linux/arm64, `docker-compose.yml`, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
+For Docker Compose deployments on AWS/EC2-style hosts, use `make package-docker` and follow `docs/DOCKER_DEPLOYMENT.md`. Docker packages include prebuilt image tarballs for linux/amd64 and linux/arm64, `docker-compose.yml`, an optional localhost-only Postgres override, Caddy config, router config templates, and docs; the target host does not need this source tree or a registry pull.
 
 ## Run From Source
 
