@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `704148a-linux-amd64`
-- Source commit: `704148a`
+- Router package/image version: `d43ef7d-linux-amd64`
+- Source commit: `d43ef7d`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -155,7 +155,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:704148a-linux-amd64
+compose-router-1   smart-llmrouter:d43ef7d-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
@@ -1418,6 +1418,50 @@ temporary production external-policy smoke:
   long prompt selected minimax/MiniMax-M3 with strategy external, status 200
 temporary external-policy-smoke group and policy-service container were removed after validation
 production cleanup: removed uploaded package and /tmp/smart-llmrouter-* scratch files, removed older smart-llmrouter Docker images while keeping current e1f7749 and previous 99088b7 rollback image, ran sudo docker system prune -f
+```
+
+### 2026-06-24 Structured-output routing and Harbor validation deployment
+
+Package `smart-llmrouter:d43ef7d-linux-amd64` was deployed to production to bring the structured-output routing, documentation, and smoke-validation changes from `origin/main` into the Metrum engineering deployment.
+
+Source commit: `d43ef7d` (`Add structured output smoke validation`)
+
+Runtime and validation changes:
+
+- Deployed the latest router package containing structured-output request eligibility, docs, and validation updates.
+- Ran production Harbor e2e validation for `aider/polyglot_python_two-bucket` across Codex CLI and Claude Code CLI for `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+- Used the reusable production Harbor caller for the matrix; no per-run production caller tokens were created.
+- Created GitHub issue #65 to track caller-visible handling of upstream balance exhaustion, quota, and provider rate-limit failures after OpenRouter credits were exhausted during the first validation pass.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup-d43ef7d-20260624T162206Z
+```
+
+Validation:
+
+```text
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+go test ./cmd/... ./internal/...: passed, 188 tests
+go test ./...: passed, 188 tests
+make package-docker produced dist/smart-llmrouter-d43ef7d-docker-linux-amd64.tar.gz
+package SHA-256: 4145ecd6e6f4dd9f93c1e82c8a4fb886839de1fa7742584e70c1d15f7007bf3e
+Harbor production e2e:
+  Claude Code default/fast/small: passed, reward 1, errors 0
+  Claude Code medium/high/big-coder: passed, reward 1, errors 0
+  Codex high/big-coder: passed, reward 1, errors 0
+  Codex default/fast: passed on serialized rerun after OpenRouter credits were restored, reward 1, errors 0
+  Codex small/medium: passed on second serialized rerun after cooldown, reward 1, errors 0
+  Earlier Codex rows produced verifier-pass or early-process failures while OpenRouter credits/rate limits were exhausted; follow-up is tracked in issue #65
+production Harbor usage report generated: /opt/smart-llmrouter/compose/logs/harbor-predeploy-20260624T154224Z-20260624T160418Z.md
+production /readyz after deploy: 200, version d43ef7d, build_date 2026-06-24T15:41:01Z
+production /version after deploy: d43ef7d, build_date 2026-06-24T15:41:01Z, go1.26.4 linux/amd64
+hosted docs /docs/reference/api-compatibility returned 200 with d43ef7d version headers
+production authenticated /v1/models returned 18 visible model groups
+production authenticated chat smoke against `high`: HTTP 200, returned OK
+production structured-output chat smoke against `high`: HTTP 200, returned {"status":"ok"}
+production cleanup: removed uploaded package and ran sudo docker system prune -f
 ```
 
 ### 2026-06-23 Usage report performance sections deployment
