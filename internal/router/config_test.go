@@ -3,8 +3,10 @@ package router
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -28,6 +30,36 @@ func TestLoadEnvJSONSetsMissingValuesOnly(t *testing.T) {
 	}
 	if got := os.Getenv("ROUTER_KEEP_ENV"); got != "existing" {
 		t.Fatalf("ROUTER_KEEP_ENV overwritten: %q", got)
+	}
+}
+
+func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
+	root := filepath.Join("..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "env.example.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		t.Fatalf("env.example.json must remain valid JSON: %v", err)
+	}
+
+	liveSecretRe := regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{16,}|sk-or-v1-[A-Za-z0-9_-]{16,}|xai-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9_]{16,}|[A-Za-z0-9_-]{32,})`)
+	for name, value := range values {
+		if strings.HasSuffix(name, "_API_KEY") && value != "" {
+			t.Fatalf("env.example.json %s must be an empty placeholder", name)
+		}
+		if liveSecretRe.MatchString(value) {
+			t.Fatalf("env.example.json %s contains a live-looking secret value", name)
+		}
+	}
+
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains("\n"+string(gitignore)+"\n", "\nenv.json\n") {
+		t.Fatal(".gitignore must keep real env.json out of source control")
 	}
 }
 

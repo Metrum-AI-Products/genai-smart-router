@@ -77,7 +77,7 @@ Recommended paths:
 /etc/caddy/Caddyfile
 ```
 
-Use `env.json` for provider API keys on the deployment host. Keep it mode `0600` and do not place it in a web-served path.
+Use `env.json` or a deployment secret manager for provider API keys on the deployment host. The packaged `env.example.json` contains empty placeholders only; copy it as a shape template, then populate the protected runtime `env.json` or inject the same variables from the service environment. Keep runtime `env.json` mode `0600` and do not place it in a web-served path.
 
 The response cache is process-local. Restarting the router clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache telemetry is durable because each usage row stores cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage.
 
@@ -123,7 +123,7 @@ server:
 
 The compose Postgres service listens on `postgres:5432` internally and is not host-published by default. Compose deployments must set `SMART_LLMROUTER_VERSION`, `POSTGRES_PASSWORD`, and `ROUTER_USAGE_DB_DSN` explicitly in `compose/.env`; `SMART_LLMROUTER_VERSION` must be the concrete package image tag, not `latest`. If local host access to the database is required for administration, include `docker-compose.postgres-localhost.yml` so Postgres binds only to `127.0.0.1:${POSTGRES_HOST_PORT:-15432}`.
 
-Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, and `XAI_API_KEY`.
+Edit `/opt/smart-llmrouter/config/env.json` with provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MOONSHOT_API_KEY`, `MINIMAX_API_KEY`, and `XAI_API_KEY`, or provide those variables through the host's secret manager or service environment. Do not copy real values back into `env.example.json`.
 
 Generate a caller token and append the generated caller block to `config.yaml`:
 
