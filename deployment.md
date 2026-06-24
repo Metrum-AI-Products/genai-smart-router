@@ -32,6 +32,22 @@ Last deployed: 2026-06-24
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-24 Crusoe Gemma `big-coder` Production Config Update
+
+- Updated production config to add Crusoe Managed Inference `google/gemma-4-31b-it` to the ordinary-text `big-coder` weighted route at 20%.
+- Rebalanced existing normal targets so the non-tool total remains 100: Baseten GPT OSS 120B 18%, MiniMax-M3 30%, Baseten Nemotron 120B 2%, Baseten GLM 5.2 6%, Kimi K2.7 Code 23%, OpenAI GPT-5.4 Nano 1%, Crusoe Gemma 4 31B-it 20%.
+- Kept the existing Crusoe Gemma OpenAI Chat `tool_only` target separate for tool-bearing OpenAI Chat requests; Anthropic-compatible Gemma fallbacks were not replaced.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.crusoe-gemma-20260624T173317Z`.
+- Production env backup: `/opt/smart-llmrouter/compose/config/env.json.bak.20260624T173235Z`.
+- Added `CRUSOE_API_KEY` to production `env.json` without printing the key.
+- Direct Crusoe Gemma smoke from the production host returned HTTP 200 from `google/gemma-4-31b-it` with `OK`.
+- Verified `sudo docker compose config >/dev/null`, restarted the router, and confirmed `/readyz` returned 200 for version `d43ef7d`.
+- Verified local `config.production.yaml` SHA-256 matched remote `/opt/smart-llmrouter/compose/config/config.yaml`.
+- Public endpoint structured-output `big-coder` smoke selected `google/gemma-4-31b-it` on attempt 3 and returned `{"status":"ok"}`.
+- Production request log for the Crusoe `big-coder` smoke showed status 200, attempts 1, `fallback_used=false`, and Crusoe pricing/cost fields.
+- Removed temporary uploaded config from `/tmp`.
+- Local validation: focused config tests passed; `go test ./...` passed with 188 tests in 6 packages; `make docs-build` passed, with npm still reporting existing docs-site dependency advisories.
+
 ## 2026-06-24 Max Tokens, Quota Reservations, And Package Docs Deployment
 
 - Deployed package/image `smart-llmrouter:704148a-linux-amd64` from source commit `704148a` after PRs #55, #56, and #57 merged.
