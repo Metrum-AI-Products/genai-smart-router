@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `566956f-linux-amd64`
-- Source commit: `566956f`
+- Router package/image version: `b938bbc-linux-amd64`
+- Source commit: `b938bbc`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,22 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 Public Docs Refresh Package Deployment
+
+- Deployed package/image `smart-llmrouter:b938bbc-linux-amd64` from source commit `b938bbc` after PR #34 merged.
+- Production package backup: `/opt/smart-llmrouter.backup-docs-b938bbc-20260624T033455Z`.
+- Runtime config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were copied forward from the backup.
+- Verified `sudo docker compose config >/dev/null` and restarted the router with Docker Compose.
+- Verified `/readyz` and `/version` report version `b938bbc`, commit `b938bbc`, build date `2026-06-24T03:31:04Z`.
+- Verified hosted docs pages `/docs/evaluation/evaluate-smart-router` and `/docs/evaluation/security-and-trust` return HTTP 200 with `x-smart-llmrouter-version: b938bbc`.
+- Verified authenticated `/v1/models` returned 18 model groups.
+- Verified authenticated production chat smoke against `high` returned `OK` through `openai/gpt-oss-120b`.
+- Local pre-deploy validation passed:
+  - `go test ./...`: 113 tests passed in 6 packages.
+  - `make docs-build`: passed; npm audit still reports existing docs-site dependency advisories.
+  - `make package-docker VERSION=b938bbc COMMIT=b938bbc`: built linux/amd64 and linux/arm64 Docker packages.
+- Production cleanup: removed uploaded package and temporary unpack directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-24 Dynamic Score Routing Package Deployment
 
@@ -97,7 +113,7 @@ sudo docker compose logs --tail=100 caddy
 Expected containers:
 
 ```text
-compose-router-1   smart-llmrouter:566956f-linux-amd64
+compose-router-1   smart-llmrouter:b938bbc-linux-amd64
 compose-postgres-1 postgres:18-bookworm
 compose-caddy-1    caddy:2-alpine
 ```
