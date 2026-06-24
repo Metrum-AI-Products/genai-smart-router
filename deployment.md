@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `d43ef7d-linux-amd64`
-- Source commit: `d43ef7d`
+- Router package/image version: `4459ba1-linux-amd64`
+- Source commit: `4459ba1`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,21 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-24 Public Docs Refresh Package Deployment
+
+- Deployed package/image `smart-llmrouter:4459ba1-linux-amd64` from source commit `4459ba1` after PR #70 merged.
+- Production package backup: `/opt/smart-llmrouter.backup.refresh-4459ba1-20260624T182001Z`.
+- Runtime config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were copied forward from the backup.
+- Verified `sudo docker compose config >/dev/null` and restarted the router with Docker Compose.
+- Verified public `/readyz` reports version `4459ba1`, commit `4459ba1`, and build date `2026-06-24T18:16:11Z`.
+- Verified hosted docs `/docs/` returns HTTP 200 with `x-smart-llmrouter-version: 4459ba1`.
+- Verified authenticated public `high` completion returned `OK` with a realistic `max_tokens: 128` budget. A tiny `max_tokens: 16` probe returned a valid response envelope and usage but empty content from `openai/gpt-oss-120b`.
+- Local pre-deploy validation passed:
+  - `go test ./cmd/... ./internal/...`: 188 tests passed in 6 packages.
+  - `make docs-build`: passed; npm audit still reports the existing 23 moderate docs-site dependency advisories.
+  - `make package-docker`: built and validated linux/amd64 and linux/arm64 Docker packages.
+- Production cleanup: removed uploaded package, removed the duplicate previous-active switch directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-24 Crusoe Gemma `big-coder` Production Config Update
 
