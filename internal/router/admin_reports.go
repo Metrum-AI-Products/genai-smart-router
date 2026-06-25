@@ -391,6 +391,9 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/export.md") || strings.HasSuffix(r.URL.Path, "/export.csv") {
 		action = "export"
 	}
+	if strings.HasPrefix(relPath, "/api/request/") {
+		action = authzActionDrilldown
+	}
 	object := authzObjectAdminReports
 	if securityReport {
 		object = authzObjectSecurityReports

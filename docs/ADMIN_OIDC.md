@@ -48,7 +48,7 @@ server:
       enabled: true
       policy:
         - g, user:alice@example.com, reports_admin, example/prod
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
 ```
 
 `client_id_env` and `client_secret_env` name environment variables; do not put OIDC client secrets directly in YAML. The router validates issuer, audience, expiry, nonce, state, ID-token signature/JWKS, allowed email domain, and configured claim names before creating a session.

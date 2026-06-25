@@ -35,6 +35,7 @@ const (
 	authzObjectContentCapture  = "content:capture"
 	authzActionRead            = "read"
 	authzActionExport          = "export"
+	authzActionDrilldown       = "drilldown"
 	authzActionDelete          = "delete"
 	authzActionPurge           = "purge"
 	authzRoleMetricsAdmin      = "metrics_admin"

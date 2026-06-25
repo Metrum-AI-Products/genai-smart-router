@@ -200,10 +200,10 @@ server:
         - g, user:alice@example.com, reports_admin, example/prod
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
 ```
 
-The report surface checks object `admin:reports` with action `read` for pages, JSON APIs, static assets, and request drilldown. Markdown export checks action `export`.
+The report surface checks object `admin:reports` with action `read` for pages, aggregate JSON APIs, and static assets. Markdown export checks action `export`. Request detail under `/admin/reports/api/request/<request_id>` checks action `drilldown`.
 
 Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete`, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants at startup.
 
@@ -254,6 +254,7 @@ g, basic:admin, reports_admin, example/prod
 g, user:alice@example.com, reports_admin, example/prod
 p, reports_admin, example/prod, admin:reports, read
 p, reports_admin, example/prod, admin:reports, export
+p, reports_admin, example/prod, admin:reports, drilldown
 ```
 
 The username is not the authorization rule. The stable subject, domain, object, and action should be the policy inputs.

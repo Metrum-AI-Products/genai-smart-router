@@ -20,7 +20,7 @@ The authorization model is domain-aware RBAC:
 sub = authenticated subject, such as caller:ops-key, basic:reports-admin, or user:alice@example.com
 dom = deployment, project, or environment domain, such as example/prod
 obj = resource class, such as metrics, admin:reports, or content:capture
-act = action, such as read, export, delete, or purge
+act = action, such as read, export, drilldown, delete, or purge
 ```
 
 ## Configuration
@@ -52,7 +52,7 @@ server:
         - g, user:alice@example.com, reports_admin, example/prod
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
 ```
 
 Use placeholder-like subjects in examples and keep secrets out of policy. Policy must not include raw router tokens, token hashes, provider keys, passwords, password hashes, prompts, images, tool outputs, or full deployment config.
@@ -110,12 +110,12 @@ Operators may instead grant the same resource/actions through explicit policy. M
 
 `/admin/reports/*` checks object `admin:reports`.
 
-Pages, JSON APIs, static report assets, request drilldown, and Markdown export all enforce server-side authorization. A reports administrator needs policy similar to:
+Pages, aggregate JSON APIs, static report assets, request drilldown, and Markdown export all enforce server-side authorization. Request detail uses the separate `drilldown` action. A reports administrator needs policy similar to:
 
 ```text
 g, basic:reports-admin, reports_admin, example/prod
 g, user:alice@example.com, reports_admin, example/prod
-p, reports_admin, example/prod, admin:reports, read|export
+p, reports_admin, example/prod, admin:reports, read|export|drilldown
 ```
 
 OIDC sessions with `subject_claim: email` produce subjects like `user:alice@example.com` in the configured `server.admin_auth.oidc.domain`. Non-email subject claims produce `oidc:<claim value>`. Groups and email domains are identity attributes; grant roles through policy instead of hardcoding permissions in handlers.

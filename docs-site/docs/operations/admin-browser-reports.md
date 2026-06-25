@@ -8,7 +8,7 @@ Admin browser reports are an authenticated operational surface for usage, perfor
 
 ## Access Model
 
-Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
+Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
 
 ```yaml
 server:
@@ -26,7 +26,7 @@ server:
       policy:
         - g, basic:admin, reports_admin, example/prod
         - g, user:alice@example.com, reports_admin, example/prod
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
         - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true

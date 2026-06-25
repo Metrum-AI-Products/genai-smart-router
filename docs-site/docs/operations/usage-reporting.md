@@ -26,7 +26,7 @@ Generated reports are Markdown files with structured tables for usage, cost, lat
 
 ## Browser Admin Reports
 
-When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
+When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, aggregate API, export, and drilldown route. Request detail uses the separate `admin:reports` `drilldown` action.
 
 The dashboard includes a dark/light mode toggle. The preference is stored in browser `localStorage`, and first visits follow the browser's system color-scheme preference.
 
@@ -41,7 +41,7 @@ server:
       policy:
         - g, basic:admin, reports_admin, example/prod
         - g, user:alice@example.com, reports_admin, example/prod
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
         - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true

@@ -323,12 +323,7 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !rc.caller.cfg.MetricsAdmin {
-		code := "metrics-forbidden"
-		s.writeError(w, rc, http.StatusForbidden, code)
-		return
-	}
-	if !s.authorizer.enforce(authzSubjectForCaller(rc.caller), authzObjectMetrics, authzActionRead) {
+	if !s.authorizeCaller(rc.caller, authzObjectMetrics, authzActionRead) {
 		code := "metrics-forbidden"
 		s.writeError(w, rc, http.StatusForbidden, code)
 		return

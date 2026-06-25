@@ -17,7 +17,7 @@ The router uses a domain-aware RBAC model:
 sub = authenticated subject, for example caller:ops-key, basic:admin, or user:alice@example.com
 dom = deployment/project/environment domain, for example example/prod
 obj = resource class, for example metrics, admin:reports, admin:security_reports, or content:capture
-act = action, for example read, export, delete, or purge
+act = action, for example read, export, drilldown, delete, or purge
 ```
 
 The built-in model is mirrored in `config/authz/model.example.conf`.
@@ -51,7 +51,7 @@ server:
         - g, user:alice@example.com, reports_admin, example/prod
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
-        - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
         - p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
@@ -150,11 +150,11 @@ Browser admin reports use object `admin:reports`; security access report APIs an
 ```text
 g, basic:reports-admin, reports_admin, example/prod
 g, user:alice@example.com, reports_admin, example/prod
-p, reports_admin, example/prod, admin:reports, read|export
+p, reports_admin, example/prod, admin:reports, read|export|drilldown
 p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
-Every report page, JSON API, static asset, request drilldown, and Markdown export checks Casbin on the server side. Browser UI gating is not sufficient.
+Every report page, aggregate JSON API, static asset, request drilldown, and Markdown export checks Casbin on the server side. Browser UI gating is not sufficient. Request detail under `/admin/reports/api/request/<request_id>` requires the `admin:reports` `drilldown` action; page and aggregate API access requires `read`, and Markdown export requires `export`.
 
 ## Rollout
 

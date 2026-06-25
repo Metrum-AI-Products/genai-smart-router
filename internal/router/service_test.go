@@ -529,13 +529,19 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
 			Subject:         "basic:admin",
 			Domain:          "local/test",
+		}, {
+			Username:        "reader",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:reader",
+			Domain:          "local/test",
 		}},
 	}
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
 		Enabled: true,
 		Policy: []string{
 			"g, basic:admin, reports_admin, local/test",
-			"p, reports_admin, local/test, admin:reports, read|export",
+			"p, reports_admin, local/test, admin:reports, read|export|drilldown",
+			"p, basic:reader, local/test, admin:reports, read",
 		},
 	}
 	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 1, ExportMarkdown: true}
@@ -817,6 +823,21 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		t.Fatalf("summary request rows len=%d, want max_rows cap 1: %#v", len(requests), body)
 	}
 	requestID := requests[0].(map[string]any)["requestId"].(string)
+	readerSummary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	readerSummary.SetBasicAuth("reader", "yell-yell-yum")
+	readerSummaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(readerSummaryRR, readerSummary)
+	if readerSummaryRR.Code != http.StatusOK {
+		t.Fatalf("reader summary status=%d body=%s", readerSummaryRR.Code, readerSummaryRR.Body.String())
+	}
+	readerDetail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/"+url.PathEscape(requestID), nil)
+	readerDetail.SetBasicAuth("reader", "yell-yell-yum")
+	readerDetailRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(readerDetailRR, readerDetail)
+	if readerDetailRR.Code != http.StatusForbidden || !strings.Contains(readerDetailRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("reader detail status=%d body=%s", readerDetailRR.Code, readerDetailRR.Body.String())
+	}
+
 	detail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/"+url.PathEscape(requestID), nil)
 	detail.SetBasicAuth("admin", "yell-yell-yum")
 	detailRR := httptest.NewRecorder()
@@ -1195,7 +1216,7 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 		Policy: []string{
 			"g, basic:admin, reports_admin, local/test",
 			"p, basic:reader, local/test, admin:security_reports, read",
-			"p, reports_admin, local/test, admin:reports, read|export",
+			"p, reports_admin, local/test, admin:reports, read|export|drilldown",
 			"p, reports_admin, local/test, admin:security_reports, read|export",
 		},
 	}
@@ -3472,7 +3493,7 @@ func TestCasbinAuthorizationForMetricsAndReports(t *testing.T) {
 		"g, caller:alice, metrics_admin, metrum-insights/test",
 		"p, metrics_admin, metrum-insights/test, metrics, read",
 		"g, basic:reports, reports_admin, local/test",
-		"p, reports_admin, local/test, admin:reports, read|export",
+		"p, reports_admin, local/test, admin:reports, read|export|drilldown",
 		"",
 	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
@@ -3500,11 +3521,11 @@ func TestCasbinAuthorizationForMetricsAndReports(t *testing.T) {
 	metricsReq.Header.Set("Authorization", "Bearer "+testToken)
 	metricsRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(metricsRR, metricsReq)
-	if metricsRR.Code != http.StatusForbidden {
+	if metricsRR.Code != http.StatusOK {
 		t.Fatalf("policy metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), "metrics-forbidden") {
-		t.Fatalf("policy metrics missing metrics-forbidden: %s", metricsRR.Body.String())
+	if !strings.Contains(metricsRR.Body.String(), "smart_llmrouter_build_info") {
+		t.Fatalf("policy metrics missing metrics output: %s", metricsRR.Body.String())
 	}
 
 	reportsReq := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
@@ -6916,7 +6937,7 @@ func TestContentCaptureMaintenanceUsesCasbinAuthorization(t *testing.T) {
 			"g, caller:reports-only, reports_admin, platform/prod",
 			"g, caller:content-wrong-domain, content_admin, platform/prod",
 			"p, content_admin, platform/prod, content:capture, delete|purge",
-			"p, reports_admin, platform/prod, admin:reports, read|export",
+			"p, reports_admin, platform/prod, admin:reports, read|export|drilldown",
 		},
 	}
 	contentToken := "rtr_content_policy_test_token"
