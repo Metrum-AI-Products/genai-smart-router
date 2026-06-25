@@ -1625,6 +1625,33 @@ production Harbor filtered report for caller harbor/harbor/prod generated 14 req
 production cleanup: removed uploaded package, removed /opt/smart-llmrouter.replaced.refresh-97d796d-20260625T034812Z, ran sudo docker system prune -f
 ```
 
+### 2026-06-25 Production admin reports enablement
+
+Enabled the authenticated browser admin reports surface in the live production config after the `97d796d` package deployment.
+
+Live config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.enable-admin-reports-20260625T035706Z
+```
+
+Config changes:
+
+- Enabled `server.admin_reports` at `/admin/reports`.
+- Enabled static Casbin authorization under `server.admin_auth.authorization`.
+- Granted the existing `basic:admin` subject in domain `metrum/prod` `admin:reports` `read|export`.
+- Synced ignored local `config.production.yaml` from the live host after validation.
+
+Validation:
+
+```text
+production /readyz after config restart: 200, version 97d796d
+production /admin/reports/ with Basic admin credentials: 200 HTML
+production /admin/reports/api/summary?since=24h with Basic admin credentials: 200 JSON with production request totals
+production /admin/reports/export.md?since=1h with Basic admin credentials: 200 Markdown report
+ordinary router caller token against /admin/reports/api/summary?since=24h: 403 reports-forbidden
+```
+
 ### 2026-06-23 Harbor case study context docs deployment
 
 Package `smart-llmrouter:6b3c1fc-linux-amd64` was deployed to production to update the hosted Docusaurus Harbor case study with clearer product context for outcome-based model-group evaluation.
