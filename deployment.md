@@ -1595,6 +1595,36 @@ production authenticated chat smoke with realistic token budget returned HTTP 20
 production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
 ```
 
+### 2026-06-25 Auth, reporting, and upstream-error production refresh
+
+Package `smart-llmrouter:97d796d-linux-amd64` was deployed to production after merging the account key lifecycle, upstream quota-error, Casbin authorization, content-capture authorization, DB-backed authz policy, and OIDC admin-session PRs.
+
+Source commit: `97d796d`
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-97d796d-20260625T034812Z
+```
+
+Validation:
+
+```text
+go test ./cmd/... ./internal/...: passed, 277 tests
+make secret-check: passed
+make package-docker from clean tracked worktree: passed for linux/amd64 and linux/arm64 packages
+production /readyz after deploy: 200, version 97d796d, build_date 2026-06-25T03:44:18Z
+production /version after deploy: 97d796d, build_date 2026-06-25T03:44:18Z, go1.26.4 linux/amd64
+hosted docs /docs/overview returned 200 with 97d796d version headers
+production authenticated chat smoke against high with max_tokens 256 returned HTTP 200 and content OK
+browser admin auth check with the configured Basic admin user returned 200 safe subject metadata
+browser admin reports returned 404 because server.admin_reports is not enabled in the preserved production config
+production router-usage-report --since 1h generated a report with Downstream User Performance, Upstream Endpoint Performance, and Per-Request Throughput sections
+production Harbor e2e smoke case harbor-prod-97d796d-20260625T035100Z passed for codex/small and claude-code/small with reward 1 and zero Harbor verifier errors
+production Harbor filtered report for caller harbor/harbor/prod generated 14 requests, 0 errors, 140951 tokens, and 0 fallbacks for the Harbor smoke window
+production cleanup: removed uploaded package, removed /opt/smart-llmrouter.replaced.refresh-97d796d-20260625T034812Z, ran sudo docker system prune -f
+```
+
 ### 2026-06-23 Harbor case study context docs deployment
 
 Package `smart-llmrouter:6b3c1fc-linux-amd64` was deployed to production to update the hosted Docusaurus Harbor case study with clearer product context for outcome-based model-group evaluation.
