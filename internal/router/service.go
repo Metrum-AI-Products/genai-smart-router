@@ -80,7 +80,11 @@ type requestContext struct {
 	caller               *callerRuntime
 	dialect              string
 	client               string
+	clientIP             clientIPInfo
+	method               string
+	pathTemplate         string
 	rec                  logRecord
+	securityRecorded     bool
 	traceSeq             int
 	sanitizeTraceMessage func(string, string) string
 }
@@ -336,13 +340,16 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 func (s *Service) handleAdminAuthCheck(w http.ResponseWriter, r *http.Request) {
 	basic, ok := s.authenticateAdminBasic(w, r)
 	if !ok {
+		s.recordAdminSecurityAccess(r, adminAuthSubject{}, http.StatusUnauthorized, "admin-auth-failed", "admin:auth", authzActionRead)
 		return
 	}
 	subject := adminAuthSubjectForBasic(basic)
 	if !subject.permissions["admin:auth:read"] {
+		s.recordAdminSecurityAccess(r, subject, http.StatusForbidden, "admin-forbidden", "admin:auth", authzActionRead)
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "admin-forbidden", "message": "admin-forbidden"}})
 		return
 	}
+	s.recordAdminSecurityAccess(r, subject, http.StatusOK, "", "admin:auth", authzActionRead)
 	writeJSON(w, http.StatusOK, safeAdminSubjectResponse(subject))
 }
 
@@ -616,17 +623,21 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	id := requestID()
 	w.Header().Set("X-Request-Id", id)
 	caller, tokenID, err := s.authenticate(r.Header.Get("Authorization"), r.Header.Get("X-API-Key"))
+	ipInfo := resolveClientIP(r, s.cfg.Server.ClientIP)
 	rc := &requestContext{
 		id:                   id,
 		start:                time.Now(),
 		caller:               caller,
 		dialect:              dialect,
 		client:               inferClient(r),
+		clientIP:             ipInfo,
+		method:               r.Method,
+		pathTemplate:         requestPathTemplate(r),
 		sanitizeTraceMessage: s.sanitizeDiagnosticTraceMessage,
 		rec: logRecord{
 			RequestID:      id,
 			Client:         inferClient(r),
-			CallerIP:       callerIP(r),
+			CallerIP:       ipInfo.Address,
 			InboundDialect: dialect,
 			Cache:          "bypass",
 			QuotaState:     "ok",
@@ -680,6 +691,14 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.metrics.Observe(rc.rec)
 	s.logger.Emit(rc.rec)
 	s.usage.Emit(rc.rec)
+	if !rc.securityRecorded {
+		codeText := ""
+		if rc.rec.Error != nil {
+			codeText = *rc.rec.Error
+		}
+		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
+		rc.securityRecorded = true
+	}
 }
 
 func (s *Service) diagnosticsEnabled() bool {
@@ -2000,32 +2019,7 @@ func inferClient(r *http.Request) string {
 }
 
 func callerIP(r *http.Request) string {
-	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
-		for _, value := range r.Header.Values(header) {
-			for _, part := range strings.Split(value, ",") {
-				host := strings.TrimSpace(part)
-				if host == "" {
-					continue
-				}
-				if ip := net.ParseIP(host); ip != nil {
-					return ip.String()
-				}
-				if h, _, err := net.SplitHostPort(host); err == nil {
-					if ip := net.ParseIP(h); ip != nil {
-						return ip.String()
-					}
-				}
-			}
-		}
-	}
-	host := r.RemoteAddr
-	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		host = h
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String()
-	}
-	return host
+	return resolveClientIP(r, ClientIPConfig{}).Address
 }
 
 func targetDialect(provider ProviderConfig, target Target) string {

@@ -29,15 +29,16 @@ m = (g(r.sub, p.sub, r.dom) || r.sub == p.sub) && r.dom == p.dom && keyMatch2(r.
 `
 
 const (
-	authzObjectMetrics        = "metrics"
-	authzObjectAdminReports   = "admin:reports"
-	authzObjectContentCapture = "content:capture"
-	authzActionRead           = "read"
-	authzActionExport         = "export"
-	authzActionDelete         = "delete"
-	authzActionPurge          = "purge"
-	authzRoleMetricsAdmin     = "metrics_admin"
-	authzRoleContentAdmin     = "content_admin"
+	authzObjectMetrics         = "metrics"
+	authzObjectAdminReports    = "admin:reports"
+	authzObjectSecurityReports = "admin:security_reports"
+	authzObjectContentCapture  = "content:capture"
+	authzActionRead            = "read"
+	authzActionExport          = "export"
+	authzActionDelete          = "delete"
+	authzActionPurge           = "purge"
+	authzRoleMetricsAdmin      = "metrics_admin"
+	authzRoleContentAdmin      = "content_admin"
 )
 
 type authorizationSubject struct {

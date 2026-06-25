@@ -8,7 +8,7 @@ Admin browser reports are an authenticated operational surface for usage, perfor
 
 ## Access Model
 
-Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`.
+Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
 
 ```yaml
 server:
@@ -27,6 +27,7 @@ server:
         - g, basic:admin, reports_admin, example/prod
         - g, user:alice@example.com, reports_admin, example/prod
         - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true
     path_prefix: /admin/reports
@@ -47,6 +48,16 @@ server:
         output_price_per_million_usd: 25.00
         pricing_source: https://docs.anthropic.com/en/docs/about-claude/pricing
         pricing_updated_at: "2026-06-25"
+    security:
+      enabled: true
+      retention_days: 90
+  client_ip:
+    trusted_proxy_cidrs:
+      - 10.0.0.0/8
+    header_order:
+      - X-Forwarded-For
+      - X-Real-IP
+    store_ip: true
 ```
 
 Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invalid Basic credentials or missing/invalid OIDC sessions receive `401`.
@@ -56,6 +67,14 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 The browser UI displays requests, errors, tokens, cost, savings, latency, TTFB, upstream/downstream throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, model-group usage by user, public token IDs, caller metadata, quota/key states, routing strategy summaries, capability usage, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
+
+## Security Access Reports
+
+When `server.admin_reports.security.enabled: true`, the router persists safe scalar access events in the usage database for authorized API calls, missing or invalid caller-token attempts, caller authorization failures, model access denials, metrics/report/content authorization failures, Basic admin auth checks, and admin report reads/exports. The Security tab shows event outcome, reason, surface, safe caller/admin identity, public token ID, client, trusted-proxy-derived IP metadata, and input/output/total token counts where a completed model request reported usage.
+
+Security reports use the same browser shell and chart contract as usage reports, but their API routes require `admin:security_reports` `read` or `export`. CSV export is available at `/admin/reports/security/export.csv` and includes only safe scalar fields.
+
+Configure `server.client_ip.trusted_proxy_cidrs` before relying on IP-based security triage. The router ignores `X-Forwarded-For` and `X-Real-IP` unless the direct remote address is in a trusted proxy CIDR. If no trusted proxy matches, reports use the direct remote address. Set `store_ip: false` only when deployment policy forbids IP storage; the report will then omit IP addresses and keep source/classification metadata best-effort.
 
 ## Shared Usability
 
@@ -94,6 +113,7 @@ The current browser surface includes:
 - Project chargeback.
 - Capability usage for image/VLM, streaming, PII filter, cacheable, and dialect signals available in usage rows.
 - Anomalies from deterministic usage signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, and non-ok quota/key states.
+- Security access events for authorized and unauthorized access paths when enabled.
 - Recent requests and request-ID drilldown.
 
 ## Charts

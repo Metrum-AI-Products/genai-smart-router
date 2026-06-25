@@ -42,6 +42,7 @@ server:
         - g, basic:admin, reports_admin, example/prod
         - g, user:alice@example.com, reports_admin, example/prod
         - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true
     default_since: 24h
@@ -60,6 +61,9 @@ server:
         output_price_per_million_usd: 25.00
         pricing_source: https://docs.anthropic.com/en/docs/about-claude/pricing
         pricing_updated_at: "2026-06-25"
+    security:
+      enabled: true
+      retention_days: 90
 ```
 
 Common endpoints:
@@ -68,6 +72,8 @@ Common endpoints:
 - `/admin/reports/api/summary?since=24h` returns totals, grouped tables, bounded request rows, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
 - `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and anomaly signals.
+- `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
+- `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
 - `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, and terminal error rows.
 - `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.

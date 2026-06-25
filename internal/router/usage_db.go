@@ -38,6 +38,22 @@ type UsageReportOptions struct {
 	Client            string
 }
 
+type SecurityReportOptions struct {
+	From          time.Time
+	To            time.Time
+	Limit         int
+	Outcome       string
+	ReasonCode    string
+	Surface       string
+	IPAddress     string
+	CallerID      string
+	CallerUser    string
+	CallerProject string
+	TokenID       string
+	AdminSubject  string
+	Client        string
+}
+
 type usageRow struct {
 	TS                                 time.Time
 	RequestID                          string
@@ -99,6 +115,42 @@ type usageRow struct {
 	QuotaState                         string
 	KeyState                           string
 	Error                              string
+}
+
+type securityAccessEvent struct {
+	TS                  time.Time
+	RequestID           string
+	EventType           string
+	Surface             string
+	HTTPMethod          string
+	PathTemplate        string
+	StatusCode          int
+	Outcome             string
+	ReasonCode          string
+	AuthSubject         string
+	AuthSource          string
+	CallerID            string
+	CallerUser          string
+	CallerProject       string
+	CallerEnvironment   string
+	TokenID             string
+	AdminSubject        string
+	AdminDomain         string
+	Client              string
+	UserAgentFamily     string
+	IPAddress           string
+	IPVersion           int
+	IPSource            string
+	TrustedProxyApplied bool
+	RequestIsPrivate    bool
+	RequestIsLoopback   bool
+	RequestIsReserved   bool
+	ModelGroup          string
+	RequestedModel      string
+	ResolvedGroup       string
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
 }
 
 type usageRecord struct {
@@ -166,6 +218,47 @@ type usageRecord struct {
 
 func (usageRecord) TableName() string {
 	return "request_usage"
+}
+
+type securityAccessEventRecord struct {
+	ID                  uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	TS                  string `gorm:"column:ts;type:text;not null;index:idx_security_access_ts"`
+	RequestID           string `gorm:"column:request_id;type:text;not null;index:idx_security_access_request"`
+	EventType           string `gorm:"column:event_type;type:text;not null;index:idx_security_access_event_type,priority:1"`
+	Surface             string `gorm:"column:surface;type:text;not null;index:idx_security_access_surface"`
+	HTTPMethod          string `gorm:"column:http_method;type:text;not null"`
+	PathTemplate        string `gorm:"column:path_template;type:text;not null"`
+	StatusCode          int    `gorm:"column:status_code;not null;index:idx_security_access_status"`
+	Outcome             string `gorm:"column:outcome;type:text;not null;index:idx_security_access_outcome,priority:1"`
+	ReasonCode          string `gorm:"column:reason_code;type:text;not null;index:idx_security_access_reason,priority:1"`
+	AuthSubject         string `gorm:"column:auth_subject;type:text;not null"`
+	AuthSource          string `gorm:"column:auth_source;type:text;not null"`
+	CallerID            string `gorm:"column:caller_id;type:text;not null;index:idx_security_access_caller,priority:1"`
+	CallerUser          string `gorm:"column:caller_user;type:text;not null"`
+	CallerProject       string `gorm:"column:caller_project;type:text;not null;index:idx_security_access_project,priority:1"`
+	CallerEnvironment   string `gorm:"column:caller_environment;type:text;not null"`
+	TokenID             string `gorm:"column:token_id;type:text;not null;index:idx_security_access_token,priority:1"`
+	AdminSubject        string `gorm:"column:admin_subject;type:text;not null;index:idx_security_access_admin,priority:1"`
+	AdminDomain         string `gorm:"column:admin_domain;type:text;not null"`
+	Client              string `gorm:"column:client;type:text;not null"`
+	UserAgentFamily     string `gorm:"column:user_agent_family;type:text;not null"`
+	IPAddress           string `gorm:"column:ip_address;type:text;not null;index:idx_security_access_ip,priority:1"`
+	IPVersion           int    `gorm:"column:ip_version;not null"`
+	IPSource            string `gorm:"column:ip_source;type:text;not null"`
+	TrustedProxyApplied bool   `gorm:"column:trusted_proxy_applied;not null"`
+	RequestIsPrivate    bool   `gorm:"column:request_is_private;not null"`
+	RequestIsLoopback   bool   `gorm:"column:request_is_loopback;not null"`
+	RequestIsReserved   bool   `gorm:"column:request_is_reserved;not null"`
+	ModelGroup          string `gorm:"column:model_group;type:text;not null;index:idx_security_access_group"`
+	RequestedModel      string `gorm:"column:requested_model;type:text;not null"`
+	ResolvedGroup       string `gorm:"column:resolved_group;type:text;not null"`
+	InputTokens         int    `gorm:"column:input_tokens;not null;default:0"`
+	OutputTokens        int    `gorm:"column:output_tokens;not null;default:0"`
+	TotalTokens         int    `gorm:"column:total_tokens;not null;default:0"`
+}
+
+func (securityAccessEventRecord) TableName() string {
+	return "security_access_events"
 }
 
 type requestAttemptRecord struct {
@@ -365,6 +458,7 @@ func (s *usageStore) migrate() error {
 		&authzPolicyRuleRecord{},
 		&authzRoleLinkRecord{},
 		&authzPolicyAuditEventRecord{},
+		&securityAccessEventRecord{},
 	); err != nil {
 		return err
 	}
@@ -389,6 +483,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"authz_policy_rules",
 		"authz_role_links",
 		"authz_policy_audit_events",
+		"security_access_events",
 	}
 	switch db.Dialector.Name() {
 	case "sqlite":
@@ -405,7 +500,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -713,6 +808,86 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 	}, nil
 }
 
+func securityAccessRecordFromEvent(event securityAccessEvent) *securityAccessEventRecord {
+	return &securityAccessEventRecord{
+		TS:                  formatUsageTime(event.TS),
+		RequestID:           event.RequestID,
+		EventType:           event.EventType,
+		Surface:             event.Surface,
+		HTTPMethod:          event.HTTPMethod,
+		PathTemplate:        event.PathTemplate,
+		StatusCode:          event.StatusCode,
+		Outcome:             event.Outcome,
+		ReasonCode:          event.ReasonCode,
+		AuthSubject:         event.AuthSubject,
+		AuthSource:          event.AuthSource,
+		CallerID:            event.CallerID,
+		CallerUser:          event.CallerUser,
+		CallerProject:       event.CallerProject,
+		CallerEnvironment:   event.CallerEnvironment,
+		TokenID:             event.TokenID,
+		AdminSubject:        event.AdminSubject,
+		AdminDomain:         event.AdminDomain,
+		Client:              event.Client,
+		UserAgentFamily:     event.UserAgentFamily,
+		IPAddress:           event.IPAddress,
+		IPVersion:           event.IPVersion,
+		IPSource:            event.IPSource,
+		TrustedProxyApplied: event.TrustedProxyApplied,
+		RequestIsPrivate:    event.RequestIsPrivate,
+		RequestIsLoopback:   event.RequestIsLoopback,
+		RequestIsReserved:   event.RequestIsReserved,
+		ModelGroup:          event.ModelGroup,
+		RequestedModel:      event.RequestedModel,
+		ResolvedGroup:       event.ResolvedGroup,
+		InputTokens:         event.InputTokens,
+		OutputTokens:        event.OutputTokens,
+		TotalTokens:         event.TotalTokens,
+	}
+}
+
+func securityAccessEventFromRecord(record securityAccessEventRecord) (securityAccessEvent, error) {
+	ts, err := parseUsageTime(record.TS)
+	if err != nil {
+		return securityAccessEvent{}, err
+	}
+	return securityAccessEvent{
+		TS:                  ts,
+		RequestID:           record.RequestID,
+		EventType:           record.EventType,
+		Surface:             record.Surface,
+		HTTPMethod:          record.HTTPMethod,
+		PathTemplate:        record.PathTemplate,
+		StatusCode:          record.StatusCode,
+		Outcome:             record.Outcome,
+		ReasonCode:          record.ReasonCode,
+		AuthSubject:         record.AuthSubject,
+		AuthSource:          record.AuthSource,
+		CallerID:            record.CallerID,
+		CallerUser:          record.CallerUser,
+		CallerProject:       record.CallerProject,
+		CallerEnvironment:   record.CallerEnvironment,
+		TokenID:             record.TokenID,
+		AdminSubject:        record.AdminSubject,
+		AdminDomain:         record.AdminDomain,
+		Client:              record.Client,
+		UserAgentFamily:     record.UserAgentFamily,
+		IPAddress:           record.IPAddress,
+		IPVersion:           record.IPVersion,
+		IPSource:            record.IPSource,
+		TrustedProxyApplied: record.TrustedProxyApplied,
+		RequestIsPrivate:    record.RequestIsPrivate,
+		RequestIsLoopback:   record.RequestIsLoopback,
+		RequestIsReserved:   record.RequestIsReserved,
+		ModelGroup:          record.ModelGroup,
+		RequestedModel:      record.RequestedModel,
+		ResolvedGroup:       record.ResolvedGroup,
+		InputTokens:         record.InputTokens,
+		OutputTokens:        record.OutputTokens,
+		TotalTokens:         record.TotalTokens,
+	}, nil
+}
+
 func ImportUsageJSONL(dbPath, logPath string) (int, error) {
 	return ImportUsageJSONLTo(UsageDBConfig{Driver: "sqlite", Path: dbPath}, logPath)
 }
@@ -815,6 +990,74 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	out := make([]usageRow, 0, len(records))
 	for _, record := range records {
 		row, err := rowFromUsageRecord(record)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+func (s *usageStore) EmitSecurityAccessEvent(event securityAccessEvent) {
+	if s == nil || s.db == nil {
+		return
+	}
+	if event.TS.IsZero() {
+		event.TS = time.Now().UTC()
+	}
+	_ = s.db.Create(securityAccessRecordFromEvent(event)).Error
+}
+
+func (s *usageStore) PurgeSecurityAccessEventsBefore(cutoff time.Time) {
+	if s == nil || s.db == nil || cutoff.IsZero() {
+		return
+	}
+	_ = s.db.Where("ts < ?", formatUsageTime(cutoff.UTC())).Delete(&securityAccessEventRecord{}).Error
+}
+
+func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securityAccessEvent, error) {
+	var records []securityAccessEventRecord
+	q := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
+	if opts.Outcome != "" {
+		q = q.Where("outcome = ?", opts.Outcome)
+	}
+	if opts.ReasonCode != "" {
+		q = q.Where("reason_code = ?", opts.ReasonCode)
+	}
+	if opts.Surface != "" {
+		q = q.Where("surface = ?", opts.Surface)
+	}
+	if opts.IPAddress != "" {
+		q = q.Where("ip_address = ?", opts.IPAddress)
+	}
+	if opts.CallerID != "" {
+		q = q.Where("caller_id = ?", opts.CallerID)
+	}
+	if opts.CallerUser != "" {
+		q = q.Where("caller_user = ?", opts.CallerUser)
+	}
+	if opts.CallerProject != "" {
+		q = q.Where("caller_project = ?", opts.CallerProject)
+	}
+	if opts.TokenID != "" {
+		q = q.Where("token_id = ?", opts.TokenID)
+	}
+	if opts.AdminSubject != "" {
+		q = q.Where("admin_subject = ?", opts.AdminSubject)
+	}
+	if opts.Client != "" {
+		q = q.Where("client = ?", opts.Client)
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	if err := q.Order("ts DESC").Limit(limit).Find(&records).Error; err != nil {
+		return nil, err
+	}
+	out := make([]securityAccessEvent, 0, len(records))
+	for _, record := range records {
+		row, err := securityAccessEventFromRecord(record)
 		if err != nil {
 			return nil, err
 		}

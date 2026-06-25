@@ -37,6 +37,7 @@ type ServerConfig struct {
 	DefaultModelGroup string               `yaml:"default_model_group"`
 	AdminAuth         AdminAuthConfig      `yaml:"admin_auth"`
 	AdminReports      AdminReportsConfig   `yaml:"admin_reports"`
+	ClientIP          ClientIPConfig       `yaml:"client_ip" json:"client_ip"`
 	Cache             CacheConfig          `yaml:"cache"`
 	Logging           LoggingConfig        `yaml:"logging"`
 	UsageDB           UsageDBConfig        `yaml:"usage_db"`
@@ -67,6 +68,18 @@ type AdminReportsConfig struct {
 	MaxRows        int                         `yaml:"max_rows" json:"max_rows"`
 	ExportMarkdown bool                        `yaml:"export_markdown" json:"export_markdown"`
 	Baselines      []AdminReportBaselineConfig `yaml:"baselines" json:"baselines"`
+	Security       AdminSecurityReportsConfig  `yaml:"security" json:"security"`
+}
+
+type AdminSecurityReportsConfig struct {
+	Enabled       bool `yaml:"enabled" json:"enabled"`
+	RetentionDays int  `yaml:"retention_days" json:"retention_days"`
+}
+
+type ClientIPConfig struct {
+	TrustedProxyCIDRs []string `yaml:"trusted_proxy_cidrs" json:"trusted_proxy_cidrs"`
+	HeaderOrder       []string `yaml:"header_order" json:"header_order"`
+	StoreIP           *bool    `yaml:"store_ip" json:"store_ip"`
 }
 
 type AdminReportBaselineConfig struct {
@@ -572,8 +585,18 @@ func (c *Config) setDefaults() {
 	if c.Server.AdminReports.MaxRows == 0 {
 		c.Server.AdminReports.MaxRows = 500
 	}
+	if c.Server.AdminReports.Security.RetentionDays == 0 {
+		c.Server.AdminReports.Security.RetentionDays = 90
+	}
 	if len(c.Server.AdminReports.Baselines) == 0 {
 		c.Server.AdminReports.Baselines = defaultAdminReportBaselines()
+	}
+	if len(c.Server.ClientIP.HeaderOrder) == 0 {
+		c.Server.ClientIP.HeaderOrder = []string{"X-Forwarded-For", "X-Real-IP"}
+	}
+	if c.Server.ClientIP.StoreIP == nil {
+		storeIP := true
+		c.Server.ClientIP.StoreIP = &storeIP
 	}
 	if c.Server.Cache.MaxBytes == 0 {
 		c.Server.Cache.MaxBytes = 128 << 20
@@ -665,6 +688,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := validateAdminReports(c.Server.AdminReports, c.Server.AdminAuth, c.Server.UsageDB); err != nil {
+		return err
+	}
+	if err := validateClientIP(c.Server.ClientIP); err != nil {
 		return err
 	}
 	if err := validateContentCapture("server content_capture", c.Server.ContentCapture); err != nil {
@@ -1252,6 +1278,12 @@ func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage Us
 	if cfg.MaxRows <= 0 || cfg.MaxRows > 10000 {
 		return fmt.Errorf("server admin_reports max_rows must be between 1 and 10000")
 	}
+	if cfg.Security.RetentionDays == 0 {
+		cfg.Security.RetentionDays = 90
+	}
+	if cfg.Security.RetentionDays < 1 || cfg.Security.RetentionDays > 3660 {
+		return fmt.Errorf("server admin_reports security retention_days must be between 1 and 3660")
+	}
 	if len(cfg.Baselines) == 0 {
 		cfg.Baselines = defaultAdminReportBaselines()
 	}
@@ -1289,6 +1321,24 @@ func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage Us
 	}
 	if !auth.Authorization.Enabled {
 		return fmt.Errorf("server admin_reports requires server.admin_auth.authorization enabled")
+	}
+	return nil
+}
+
+func validateClientIP(cfg ClientIPConfig) error {
+	for i, cidr := range cfg.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
+			return fmt.Errorf("server client_ip trusted_proxy_cidrs[%d] is invalid", i)
+		}
+	}
+	for i, header := range cfg.HeaderOrder {
+		switch strings.ToLower(strings.TrimSpace(header)) {
+		case "x-forwarded-for", "x-real-ip":
+		case "":
+			return fmt.Errorf("server client_ip header_order[%d] is empty", i)
+		default:
+			return fmt.Errorf("server client_ip header_order[%d] must be X-Forwarded-For or X-Real-IP", i)
+		}
 	}
 	return nil
 }

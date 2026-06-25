@@ -25,6 +25,7 @@ const genericTabs = {
   "client-breakdown": { endpoint: "client-breakdown", title: "Client breakdown" },
   "project-chargeback": { endpoint: "project-chargeback", title: "Project chargeback" },
   "capability-usage": { endpoint: "capability-usage", title: "Capability usage" },
+  "security-events": { endpoint: "security/events", title: "Security access", security: true },
   anomalies: { endpoint: "anomalies", title: "Anomalies" }
 };
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
@@ -337,11 +338,16 @@ function renderGeneric(tab, report) {
   document.querySelector("#detailPanel").hidden = true;
   document.querySelector("#refreshState").textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
   if (report.period) document.querySelector("#period").textContent = `${report.period.from} to ${report.period.to}`;
-  if (report.summary) renderGenericSummary(report.summary);
+  if (report.summary) {
+    if (cfg.security) renderSecuritySummary(report.summary); else renderGenericSummary(report.summary);
+  }
   renderGenericCharts(report);
   if (cfg.requests) {
     currentTableRows = report.requests || [];
     currentTableColumns = requestColumns();
+  } else if (cfg.security) {
+    currentTableRows = report.rows || [];
+    currentTableColumns = securityColumns();
   } else {
     currentTableRows = report.rows || [];
     currentTableColumns = scalarColumns(report);
@@ -357,6 +363,17 @@ function renderGenericSummary(s) {
     ["Cost", usd.format(s.costUsd || 0)],
     ["Avg latency", `${fmt.format(s.avgLatencyMs || 0)} ms`],
     ["Fallbacks", fmt.format(s.fallbacks || 0)]
+  ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+}
+
+function renderSecuritySummary(s) {
+  document.querySelector("#summary").innerHTML = [
+    ["Events", fmt.format(s.events || 0)],
+    ["Allowed", fmt.format(s.allowed || 0)],
+    ["Unauthorized", fmt.format(s.unauthorized || 0)],
+    ["Forbidden", fmt.format(s.forbidden || 0)],
+    ["Denied", fmt.format(s.denied || 0)],
+    ["Unique IPs", fmt.format(s.uniqueIps || 0)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
 }
 
@@ -531,6 +548,28 @@ function requestColumns() {
   ];
 }
 
+function securityColumns() {
+  return [
+    { key: "timeUtc", label: "Time" },
+    { key: "eventType", label: "Event" },
+    { key: "surface", label: "Surface" },
+    { key: "outcome", label: "Outcome" },
+    { key: "reason", label: "Reason" },
+    { key: "status", label: "Status" },
+    { key: "requestId", label: "Request", request: true },
+    { key: "callerUser", label: "User" },
+    { key: "project", label: "Project" },
+    { key: "tokenId", label: "Key", copy: true },
+    { key: "adminSubject", label: "Admin" },
+    { key: "ipAddress", label: "IP", copy: true },
+    { key: "ipSource", label: "IP source" },
+    { key: "client", label: "Client" },
+    { key: "inputTokens", label: "Input" },
+    { key: "outputTokens", label: "Output" },
+    { key: "totalTokens", label: "Total tokens" }
+  ];
+}
+
 function aggregateRows(rows) {
   return `<thead><tr><th>Key</th><th>Requests</th><th>Errors</th><th>Tokens</th><th>Cost</th><th>Attempts</th><th>Fallbacks</th><th>Avg latency</th></tr></thead><tbody>` +
     rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.errors}</td><td>${r.tokens}</td><td>${usd.format(r.costUsd)}</td><td>${r.attempts}</td><td>${r.fallbacks}</td><td>${r.avgLatencyMs} ms</td></tr>`).join("") +
@@ -595,6 +634,10 @@ restoreURLState();
 load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 
 function exportCSV() {
+  if (genericTabs[activeTab] && genericTabs[activeTab].security) {
+    window.location.href = `security/export.csv?${qs()}`;
+    return;
+  }
   const rows = visibleRows();
   const columns = currentTableColumns || [];
   if (!rows.length || !columns.length) return;

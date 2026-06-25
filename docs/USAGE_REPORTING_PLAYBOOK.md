@@ -27,6 +27,8 @@ router-usage-report \
 
 Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded Metrum-branded HTML/CSS/JavaScript/logo/font/chart assets from the router binary without CDN dependencies.
 
+Security access reports can be enabled with `server.admin_reports.security.enabled: true`. They persist safe scalar access events for authorized calls, unauthorized caller-token attempts, report/metrics/content authorization failures, and Basic admin auth checks. Grant `admin:security_reports` separately from `admin:reports`, configure `server.client_ip.trusted_proxy_cidrs` before trusting forwarded IP headers, and verify exports contain no bearer tokens, token hashes, provider keys, prompts, images, raw cookies, or OIDC tokens.
+
 Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page includes a browser-local dark/light mode toggle; the selected preference is stored only in that browser. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
 
 The browser summary API returns chart descriptors with stable IDs, axis labels, units, series names, semantic color keys, and scalar points. Operators should use the charts for quick trend reading and the matching tables or Markdown export for exact reviewable values. Chart responses must remain safe aggregates only and must not include prompts, image payloads, tool outputs, bearer tokens, token hashes, provider keys, full config, or raw upstream bodies.
@@ -43,6 +45,15 @@ curl -i -u admin:<password> \
 ```
 
 Verify the branded `/admin/reports/` shell loads for an authorized browser-admin user, the dark/light toggle persists after reload, ordinary router caller tokens receive `403 reports-forbidden`, and `/docs/` remains public product documentation with no report data.
+
+For security reports, also smoke:
+
+```bash
+curl -i -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/security/events?since=24h&limit=50"
+```
+
+Expected: `200` JSON with safe access-event rows for a subject authorized for `admin:security_reports`. A Basic/OIDC subject that only has `admin:reports` must receive `403 reports-forbidden`.
 
 Filtered benchmark or project report:
 

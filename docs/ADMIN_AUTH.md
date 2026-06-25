@@ -100,11 +100,15 @@ server:
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
         - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true
     default_since: 24h
     max_range: 31d
     max_rows: 500
+    security:
+      enabled: false
+      retention_days: 90
 ```
 
 Use `allow_insecure_http: true` only for local loopback testing. Production deployments should terminate TLS at the reverse proxy and pass `X-Forwarded-Proto: https` to the router. Set `trusted_proxy_cidrs` to the reverse proxy network only; do not trust forwarded headers from arbitrary clients.
@@ -136,6 +140,8 @@ curl -i -u admin:replace-with-the-admin-password "$ROUTER_BASE_URL/admin/reports
 ```
 
 Expected: `200` JSON with safe usage, cost, latency, cache, fallback, and provider/model aggregates. Ordinary router caller tokens should receive `403 reports-forbidden`.
+
+If `server.admin_reports.security.enabled: true`, smoke `/admin/reports/api/security/events?since=24h` with a subject granted `admin:security_reports` `read`. A subject with only `admin:reports` must receive `403 reports-forbidden`.
 
 OIDC deployments should smoke the browser flow:
 

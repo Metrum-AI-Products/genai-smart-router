@@ -2,6 +2,7 @@ package router
 
 import (
 	"embed"
+	"encoding/csv"
 	"io/fs"
 	"net/http"
 	"path"
@@ -56,6 +57,58 @@ type adminScalarReportResponse struct {
 	Charts       []adminReportChart       `json:"charts,omitempty"`
 	Requests     []adminReportRequest     `json:"requests,omitempty"`
 	GeneratedUTC string                   `json:"generatedUtc"`
+}
+
+type adminSecurityReportResponse struct {
+	Period       adminReportPeriod       `json:"period"`
+	Report       string                  `json:"report"`
+	Summary      adminSecuritySummary    `json:"summary"`
+	Rows         []adminSecurityEventRow `json:"rows"`
+	Charts       []adminReportChart      `json:"charts,omitempty"`
+	GeneratedUTC string                  `json:"generatedUtc"`
+}
+
+type adminSecuritySummary struct {
+	Events       int64 `json:"events"`
+	Allowed      int64 `json:"allowed"`
+	Unauthorized int64 `json:"unauthorized"`
+	Forbidden    int64 `json:"forbidden"`
+	Denied       int64 `json:"denied"`
+	Errors       int64 `json:"errors"`
+	UniqueIPs    int64 `json:"uniqueIps"`
+}
+
+type adminSecurityEventRow struct {
+	TimeUTC             string `json:"timeUtc"`
+	RequestID           string `json:"requestId,omitempty"`
+	EventType           string `json:"eventType"`
+	Surface             string `json:"surface"`
+	Method              string `json:"method"`
+	Path                string `json:"path"`
+	Status              int    `json:"status"`
+	Outcome             string `json:"outcome"`
+	Reason              string `json:"reason"`
+	AuthSubject         string `json:"authSubject,omitempty"`
+	AuthSource          string `json:"authSource"`
+	CallerID            string `json:"callerId,omitempty"`
+	CallerUser          string `json:"callerUser,omitempty"`
+	Project             string `json:"project,omitempty"`
+	TokenID             string `json:"tokenId,omitempty"`
+	AdminSubject        string `json:"adminSubject,omitempty"`
+	Client              string `json:"client,omitempty"`
+	UserAgentFamily     string `json:"userAgentFamily,omitempty"`
+	IPAddress           string `json:"ipAddress,omitempty"`
+	IPSource            string `json:"ipSource,omitempty"`
+	TrustedProxyApplied bool   `json:"trustedProxyApplied"`
+	PrivateIP           bool   `json:"privateIp"`
+	LoopbackIP          bool   `json:"loopbackIp"`
+	ReservedIP          bool   `json:"reservedIp"`
+	ModelGroup          string `json:"modelGroup,omitempty"`
+	RequestedModel      string `json:"requestedModel,omitempty"`
+	ResolvedGroup       string `json:"resolvedGroup,omitempty"`
+	InputTokens         int    `json:"inputTokens"`
+	OutputTokens        int    `json:"outputTokens"`
+	TotalTokens         int    `json:"totalTokens"`
 }
 
 type adminScalarReportRow struct {
@@ -326,20 +379,29 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if s.adminReportBearerForbidden(w, r) {
 		return
 	}
+	prefix := cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)
+	relPath := strings.TrimPrefix(r.URL.Path, prefix)
+	securityReport := strings.HasPrefix(relPath, "/api/security/") || strings.HasPrefix(relPath, "/security/")
 	subject, ok := s.authenticateAdminSubject(w, r)
 	if !ok {
+		s.recordAdminSecurityAccess(r, adminAuthSubject{}, http.StatusUnauthorized, "unauthorized", authzObjectAdminReports, authzActionRead)
 		return
 	}
 	action := "read"
-	if strings.HasSuffix(r.URL.Path, "/export.md") {
+	if strings.HasSuffix(r.URL.Path, "/export.md") || strings.HasSuffix(r.URL.Path, "/export.csv") {
 		action = "export"
 	}
-	if !s.authorizeAdmin(subject, authzObjectAdminReports, action) {
+	object := authzObjectAdminReports
+	if securityReport {
+		object = authzObjectSecurityReports
+	}
+	if !s.authorizeAdmin(subject, object, action) {
+		s.recordAdminSecurityAccess(r, subject, http.StatusForbidden, "reports-forbidden", object, action)
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
 		return
 	}
+	s.recordAdminSecurityAccess(r, subject, http.StatusOK, "", object, action)
 	s.setAdminReportHeaders(w, strings.HasPrefix(r.URL.Path, cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)+"/static/"))
-	prefix := cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)
 	scalarSpec, scalarOK := adminScalarEndpointSpecs(strings.TrimPrefix(r.URL.Path, prefix))
 	switch {
 	case r.URL.Path == prefix:
@@ -368,6 +430,22 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAdminScalarEndpoint(w, r, scalarSpec)
+	case r.URL.Path == prefix+"/api/security/events" || r.URL.Path == prefix+"/api/security/overview":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		if !s.requireAdminSecurityReports(w) {
+			return
+		}
+		s.handleAdminSecurityEvents(w, r)
+	case r.URL.Path == prefix+"/security/export.csv":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		if !s.requireAdminSecurityReports(w) {
+			return
+		}
+		s.handleAdminSecurityCSV(w, r)
 	case r.URL.Path == prefix+"/api/requests":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -419,6 +497,14 @@ func (s *Service) requireAdminReportUsageStore(w http.ResponseWriter) bool {
 	return false
 }
 
+func (s *Service) requireAdminSecurityReports(w http.ResponseWriter) bool {
+	if s.cfg.Server.AdminReports.Security.Enabled {
+		return true
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"type": "security-reports-disabled", "message": "security-reports-disabled"}})
+	return false
+}
+
 func (s *Service) adminReportBearerForbidden(w http.ResponseWriter, r *http.Request) bool {
 	hasBearer := strings.HasPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ")
 	hasAPIKey := strings.TrimSpace(r.Header.Get("X-API-Key")) != ""
@@ -430,6 +516,8 @@ func (s *Service) adminReportBearerForbidden(w http.ResponseWriter, r *http.Requ
 		return false
 	}
 	s.setAdminReportHeaders(w, false)
+	subject := authzSubjectForCaller(caller)
+	s.recordAdminSecurityAccess(r, adminAuthSubject{subject: subject.subject, domain: subject.domain, source: "caller_token"}, http.StatusForbidden, "reports-forbidden", authzObjectAdminReports, authzActionRead)
 	writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
 	return true
 }
@@ -513,6 +601,40 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
+}
+
+func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request) {
+	opts, filters, ok := s.parseAdminSecurityFilters(w, r)
+	if !ok {
+		return
+	}
+	events, err := s.usage.securityAccessEvents(opts)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	writeJSON(w, http.StatusOK, buildAdminSecurityReportResponse(filters, events))
+}
+
+func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request) {
+	opts, _, ok := s.parseAdminSecurityFilters(w, r)
+	if !ok {
+		return
+	}
+	events, err := s.usage.securityAccessEvents(opts)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="security-access-events.csv"`)
+	w.WriteHeader(http.StatusOK)
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"time_utc", "request_id", "event_type", "surface", "method", "path", "status", "outcome", "reason", "auth_subject", "auth_source", "caller_id", "caller_user", "project", "token_id", "admin_subject", "client", "user_agent_family", "ip_address", "ip_source", "trusted_proxy_applied", "private_ip", "loopback_ip", "reserved_ip", "model_group", "requested_model", "resolved_group", "input_tokens", "output_tokens", "total_tokens"})
+	for _, row := range adminSecurityRows(events) {
+		_ = cw.Write([]string{row.TimeUTC, row.RequestID, row.EventType, row.Surface, row.Method, row.Path, strconv.Itoa(row.Status), row.Outcome, row.Reason, row.AuthSubject, row.AuthSource, row.CallerID, row.CallerUser, row.Project, row.TokenID, row.AdminSubject, row.Client, row.UserAgentFamily, row.IPAddress, row.IPSource, strconv.FormatBool(row.TrustedProxyApplied), strconv.FormatBool(row.PrivateIP), strconv.FormatBool(row.LoopbackIP), strconv.FormatBool(row.ReservedIP), row.ModelGroup, row.RequestedModel, row.ResolvedGroup, strconv.Itoa(row.InputTokens), strconv.Itoa(row.OutputTokens), strconv.Itoa(row.TotalTokens)})
+	}
+	cw.Flush()
 }
 
 func (s *Service) parseAdminSavingsBaseline(w http.ResponseWriter, r *http.Request) (adminSavingsBaselineDTO, bool) {
@@ -697,6 +819,30 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 	return adminReportFilters{From: from, To: to, UsageReportOptions: opts, Limit: limit}, true
 }
 
+func (s *Service) parseAdminSecurityFilters(w http.ResponseWriter, r *http.Request) (SecurityReportOptions, adminReportFilters, bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, true)
+	if !ok {
+		return SecurityReportOptions{}, adminReportFilters{}, false
+	}
+	q := r.URL.Query()
+	opts := SecurityReportOptions{
+		From:          filters.From,
+		To:            filters.To,
+		Limit:         filters.Limit,
+		Outcome:       strings.TrimSpace(q.Get("outcome")),
+		ReasonCode:    strings.TrimSpace(q.Get("reason_code")),
+		Surface:       strings.TrimSpace(q.Get("surface")),
+		IPAddress:     strings.TrimSpace(q.Get("ip_address")),
+		CallerID:      strings.TrimSpace(q.Get("caller_id")),
+		CallerUser:    strings.TrimSpace(q.Get("caller_user")),
+		CallerProject: strings.TrimSpace(q.Get("caller_project")),
+		TokenID:       strings.TrimSpace(q.Get("token_id")),
+		AdminSubject:  strings.TrimSpace(q.Get("admin_subject")),
+		Client:        strings.TrimSpace(q.Get("client")),
+	}
+	return opts, filters, true
+}
+
 func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) adminReportResponse {
 	total := &agg{}
 	byHour := map[string]*agg{}
@@ -727,6 +873,114 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		Requests:     adminRecentRequestsFromRows(rows, filters.Limit),
 		GeneratedUTC: generatedAt,
 	}
+}
+
+func buildAdminSecurityReportResponse(filters adminReportFilters, events []securityAccessEvent) adminSecurityReportResponse {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	rows := adminSecurityRows(events)
+	return adminSecurityReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       "security-events",
+		Summary:      adminSecuritySummaryFromEvents(events),
+		Rows:         rows,
+		Charts:       adminSecurityCharts(filters, generatedAt, rows),
+		GeneratedUTC: generatedAt,
+	}
+}
+
+func adminSecurityRows(events []securityAccessEvent) []adminSecurityEventRow {
+	rows := make([]adminSecurityEventRow, 0, len(events))
+	for _, event := range events {
+		rows = append(rows, adminSecurityEventRow{
+			TimeUTC:             formatUsageTime(event.TS),
+			RequestID:           event.RequestID,
+			EventType:           event.EventType,
+			Surface:             event.Surface,
+			Method:              event.HTTPMethod,
+			Path:                event.PathTemplate,
+			Status:              event.StatusCode,
+			Outcome:             event.Outcome,
+			Reason:              event.ReasonCode,
+			AuthSubject:         event.AuthSubject,
+			AuthSource:          event.AuthSource,
+			CallerID:            event.CallerID,
+			CallerUser:          event.CallerUser,
+			Project:             event.CallerProject,
+			TokenID:             event.TokenID,
+			AdminSubject:        event.AdminSubject,
+			Client:              event.Client,
+			UserAgentFamily:     event.UserAgentFamily,
+			IPAddress:           event.IPAddress,
+			IPSource:            event.IPSource,
+			TrustedProxyApplied: event.TrustedProxyApplied,
+			PrivateIP:           event.RequestIsPrivate,
+			LoopbackIP:          event.RequestIsLoopback,
+			ReservedIP:          event.RequestIsReserved,
+			ModelGroup:          event.ModelGroup,
+			RequestedModel:      event.RequestedModel,
+			ResolvedGroup:       event.ResolvedGroup,
+			InputTokens:         event.InputTokens,
+			OutputTokens:        event.OutputTokens,
+			TotalTokens:         event.TotalTokens,
+		})
+	}
+	return rows
+}
+
+func adminSecuritySummaryFromEvents(events []securityAccessEvent) adminSecuritySummary {
+	ips := map[string]bool{}
+	var summary adminSecuritySummary
+	for _, event := range events {
+		summary.Events++
+		if event.IPAddress != "" {
+			ips[event.IPAddress] = true
+		}
+		switch event.Outcome {
+		case "allowed":
+			summary.Allowed++
+		case "unauthorized":
+			summary.Unauthorized++
+		case "forbidden":
+			summary.Forbidden++
+		case "denied":
+			summary.Denied++
+		case "error":
+			summary.Errors++
+		}
+	}
+	summary.UniqueIPs = int64(len(ips))
+	return summary
+}
+
+func adminSecurityCharts(filters adminReportFilters, generatedAt string, rows []adminSecurityEventRow) []adminReportChart {
+	byOutcome := map[string]float64{}
+	bySurface := map[string]float64{}
+	byReason := map[string]float64{}
+	for _, row := range rows {
+		byOutcome[defaultString(row.Outcome, "unknown")]++
+		bySurface[defaultString(row.Surface, "unknown")]++
+		if row.Reason != "" {
+			byReason[row.Reason]++
+		}
+	}
+	return []adminReportChart{
+		adminCategoryChart(filters, generatedAt, "security_outcomes", "Security outcomes", "Outcome", "Events", "count", []adminReportChartSeries{adminSeriesFromCounts("Events", "count", "magenta", byOutcome)}),
+		adminCategoryChart(filters, generatedAt, "security_surfaces", "Security surfaces", "Surface", "Events", "count", []adminReportChartSeries{adminSeriesFromCounts("Events", "count", "blue", bySurface)}),
+		adminCategoryChart(filters, generatedAt, "security_reasons", "Security reasons", "Reason", "Events", "count", []adminReportChartSeries{adminSeriesFromCounts("Events", "count", "red", byReason)}),
+	}
+}
+
+func adminSeriesFromCounts(name, unit, colorKey string, counts map[string]float64) adminReportChartSeries {
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	points := make([]adminReportChartPoint, 0, len(keys))
+	for _, key := range keys {
+		points = append(points, adminReportChartPoint{X: key, Y: counts[key]})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
 }
 
 func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, baseline adminSavingsBaselineDTO, baselines []adminSavingsBaselineDTO) adminSavingsResponse {

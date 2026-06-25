@@ -16,7 +16,7 @@ The router uses a domain-aware RBAC model:
 ```text
 sub = authenticated subject, for example caller:ops-key, basic:admin, or user:alice@example.com
 dom = deployment/project/environment domain, for example example/prod
-obj = resource class, for example metrics, admin:reports, or content:capture
+obj = resource class, for example metrics, admin:reports, admin:security_reports, or content:capture
 act = action, for example read, export, delete, or purge
 ```
 
@@ -52,6 +52,7 @@ server:
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
         - p, reports_admin, example/prod, admin:reports, read|export
+        - p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
 Policy files and inline policy must contain only safe identifiers. Never put raw router tokens, token hashes, provider keys, passwords, password hashes, raw prompts, raw images, raw tool outputs, or full production config values in policy.
@@ -144,12 +145,13 @@ p, content_admin, example/prod, content:capture, delete|purge
 
 ## Admin Reports
 
-Browser admin reports use object `admin:reports`:
+Browser admin reports use object `admin:reports`; security access report APIs and CSV export use `admin:security_reports`:
 
 ```text
 g, basic:reports-admin, reports_admin, example/prod
 g, user:alice@example.com, reports_admin, example/prod
 p, reports_admin, example/prod, admin:reports, read|export
+p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
 Every report page, JSON API, static asset, request drilldown, and Markdown export checks Casbin on the server side. Browser UI gating is not sufficient.
@@ -162,6 +164,7 @@ Every report page, JSON API, static asset, request drilldown, and Markdown expor
 4. Smoke `/metrics` with a metrics-admin caller.
 5. Smoke `/metrics` with an ordinary caller and expect `403 metrics-forbidden`.
 6. If browser reports are enabled, smoke `/admin/reports/api/summary?since=24h` with an authorized Basic or OIDC session subject.
+7. If security reports are enabled, smoke `/admin/reports/api/security/events?since=24h` with a subject that has `admin:security_reports` `read`, then verify a subject without that policy receives `403 reports-forbidden`.
 
 For DB-backed rollout, first create a draft policy set in a non-production environment, validate and activate it, set `server.admin_auth.authorization.source: db`, restart, and repeat the metrics/report smokes. Keep the previously active policy retired rather than deleting it so rollback is available.
 

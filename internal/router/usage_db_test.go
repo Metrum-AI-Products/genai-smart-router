@@ -168,7 +168,7 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		Name string
 		Type string
 	}
-	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events"} {
+	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events", "security_access_events"} {
 		var cols []col
 		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {
 			t.Fatal(err)

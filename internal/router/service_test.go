@@ -1129,6 +1129,167 @@ func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {
 	}
 }
 
+func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "up_security",
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.ClientIP = ClientIPConfig{TrustedProxyCIDRs: []string{"192.0.2.0/24"}, HeaderOrder: []string{"X-Forwarded-For", "X-Real-IP"}}
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		Realm:             "Unit Test Admin",
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+		}, {
+			Username:        "reader",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:reader",
+			Domain:          "local/test",
+		}},
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy: []string{
+			"g, basic:admin, reports_admin, local/test",
+			"p, basic:reader, local/test, admin:security_reports, read",
+			"p, reports_admin, local/test, admin:reports, read|export",
+			"p, reports_admin, local/test, admin:security_reports, read|export",
+		},
+	}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 50, ExportMarkdown: true, Security: AdminSecurityReportsConfig{Enabled: true, RetentionDays: 30}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	svc.usage.EmitSecurityAccessEvent(securityAccessEvent{
+		TS:         time.Now().UTC().Add(-60 * 24 * time.Hour),
+		RequestID:  "req_old_security",
+		EventType:  "api_auth_failed",
+		Surface:    "v1_chat_completions",
+		StatusCode: http.StatusUnauthorized,
+		Outcome:    "unauthorized",
+		ReasonCode: "invalid-token",
+		IPAddress:  "198.51.100.1",
+	})
+
+	invalid := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	invalid.RemoteAddr = "192.0.2.10:1234"
+	invalid.Header.Set("X-Forwarded-For", "203.0.113.55, 192.0.2.10")
+	invalid.Header.Set("Authorization", "Bearer invalid-secret-token")
+	invalidRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(invalidRR, invalid)
+	if invalidRR.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid status=%d body=%s", invalidRR.Code, invalidRR.Body.String())
+	}
+
+	okReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	okReq.Header.Set("Authorization", "Bearer "+testToken)
+	okRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(okRR, okReq)
+	if okRR.Code != http.StatusOK {
+		t.Fatalf("ok status=%d body=%s", okRR.Code, okRR.Body.String())
+	}
+	usageReq := httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+	usageReq.Header.Set("Authorization", "Bearer "+testToken)
+	usageRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(usageRR, usageReq)
+	if usageRR.Code != http.StatusOK {
+		t.Fatalf("usage status=%d body=%s", usageRR.Code, usageRR.Body.String())
+	}
+
+	ordinary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/security/events?since=24h", nil)
+	ordinary.Header.Set("Authorization", "Bearer "+testToken)
+	ordinaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ordinaryRR, ordinary)
+	if ordinaryRR.Code != http.StatusForbidden || !strings.Contains(ordinaryRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("ordinary security status=%d body=%s", ordinaryRR.Code, ordinaryRR.Body.String())
+	}
+
+	report := httptest.NewRequest(http.MethodGet, "/admin/reports/api/security/events?since=24h&limit=50", nil)
+	report.SetBasicAuth("admin", "yell-yell-yum")
+	reportRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(reportRR, report)
+	if reportRR.Code != http.StatusOK {
+		t.Fatalf("security report status=%d body=%s", reportRR.Code, reportRR.Body.String())
+	}
+	body := mustJSONMap(t, reportRR.Body.String())
+	rows := body["rows"].([]any)
+	if len(rows) == 0 {
+		t.Fatalf("security report has no rows: %#v", body)
+	}
+	foundInvalid := false
+	foundAllowed := false
+	foundUsage := false
+	for _, raw := range rows {
+		row := raw.(map[string]any)
+		if row["requestId"] == "req_old_security" {
+			t.Fatalf("old security event was not purged: %#v", row)
+		}
+		if row["reason"] == "invalid-token" {
+			foundInvalid = true
+			if row["ipAddress"] != "203.0.113.55" || row["ipSource"] != "x-forwarded-for" || row["trustedProxyApplied"] != true {
+				t.Fatalf("invalid-token row missing trusted proxy IP metadata: %#v", row)
+			}
+		}
+		if row["outcome"] == "allowed" && row["surface"] == "v1_chat_completions" {
+			foundAllowed = true
+			if row["inputTokens"].(float64) <= 0 || row["outputTokens"].(float64) <= 0 {
+				t.Fatalf("allowed row missing token split: %#v", row)
+			}
+		}
+		if row["surface"] == "v1_usage" {
+			foundUsage = true
+			if row["method"] != http.MethodGet || row["path"] != "/v1/usage" {
+				t.Fatalf("usage row missing method/path: %#v", row)
+			}
+		}
+	}
+	if !foundInvalid || !foundAllowed || !foundUsage {
+		t.Fatalf("missing expected security rows invalid=%v allowed=%v usage=%v rows=%#v", foundInvalid, foundAllowed, foundUsage, rows)
+	}
+	readerCSV := httptest.NewRequest(http.MethodGet, "/admin/reports/security/export.csv?since=24h", nil)
+	readerCSV.SetBasicAuth("reader", "yell-yell-yum")
+	readerCSVRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(readerCSVRR, readerCSV)
+	if readerCSVRR.Code != http.StatusForbidden || !strings.Contains(readerCSVRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("reader csv status=%d body=%s", readerCSVRR.Code, readerCSVRR.Body.String())
+	}
+	csvReq := httptest.NewRequest(http.MethodGet, "/admin/reports/security/export.csv?since=24h", nil)
+	csvReq.SetBasicAuth("admin", "yell-yell-yum")
+	csvRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(csvRR, csvReq)
+	if csvRR.Code != http.StatusOK || !strings.Contains(csvRR.Body.String(), "input_tokens,output_tokens,total_tokens") {
+		t.Fatalf("csv status=%d body=%s", csvRR.Code, csvRR.Body.String())
+	}
+	allEvents, err := svc.usage.securityAccessEvents(SecurityReportOptions{From: time.Now().UTC().Add(-365 * 24 * time.Hour), To: time.Now().UTC().Add(time.Hour), Limit: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range allEvents {
+		if event.RequestID == "req_old_security" {
+			t.Fatalf("old security event was not purged from store: %#v", event)
+		}
+	}
+	for _, forbidden := range []string{"invalid-secret-token", testToken, "token_sha256", "provider-key", "messages"} {
+		if strings.Contains(reportRR.Body.String(), forbidden) {
+			t.Fatalf("security report leaked %q: %s", forbidden, reportRR.Body.String())
+		}
+	}
+}
+
 func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()
@@ -3077,6 +3238,7 @@ func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	group.Targets[0].PricingSource = "https://example.test/pricing"
 	group.Targets[0].PricingUpdatedAt = "2026-06-17"
 	cfg.Models["default"] = group
+	cfg.Server.ClientIP.TrustedProxyCIDRs = []string{"192.0.2.0/24"}
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

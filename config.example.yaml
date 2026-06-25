@@ -79,6 +79,7 @@ server:
       # - p, metrics_admin, example/prod, metrics, read
       # - p, content_admin, example/prod, content:capture, delete|purge
       # - p, reports_admin, example/prod, admin:reports, read|export
+      # - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: false
     path_prefix: /admin/reports
@@ -101,6 +102,15 @@ server:
         pricing_source: https://docs.anthropic.com/en/docs/about-claude/pricing
         pricing_updated_at: "2026-06-25"
         notes: Anthropic Claude API standard token pricing checked on 2026-06-25; fast mode and batch pricing are separate.
+    security:
+      enabled: false
+      retention_days: 90
+  client_ip:
+    trusted_proxy_cidrs: []
+    header_order:
+      - X-Forwarded-For
+      - X-Real-IP
+    store_ip: true
   # Governed content capture is disabled by default. Enabling it stores redacted
   # request/response/upstream-error content in separate relational tables keyed
   # by request_id. It is not diagnostics, metrics, or usage reporting.
