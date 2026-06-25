@@ -23,6 +23,19 @@ router-usage-report \
   --out /app/logs/usage-24h.md
 ```
 
+Daily rollup foundation:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --from 2026-06-14 \
+  --to 2026-06-15 \
+  --rollup
+```
+
+This writes scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` from stored `request_usage` rows for the selected UTC `[from,to)` window. Daily rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, and validation status, so chargeback and provider-performance reports do not need raw request detail after a window is closed. Measures include input/output/total tokens, input image count, input image tokens, cost, latency, throughput, cache, fallback, and error counts. Draft reruns replace the same draft run for that exact window. Add `--rollup-finalize` only after review; finalized windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This first rollup slice does not implement raw usage purge or legal hold.
+
 ## Browser Admin Reports
 
 Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded Metrum-branded HTML/CSS/JavaScript/logo/font/chart assets from the router binary without CDN dependencies.

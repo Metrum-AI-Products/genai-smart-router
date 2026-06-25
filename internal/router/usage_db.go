@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,24 @@ type UsageReportOptions struct {
 	CallerEnvironment string
 	ResolvedGroup     string
 	Client            string
+}
+
+type UsageRollupOptions struct {
+	Driver   string
+	DBPath   string
+	DSN      string
+	From     time.Time
+	To       time.Time
+	Finalize bool
+}
+
+type UsageRollupResult struct {
+	RunID              uint
+	Status             string
+	WindowStart        time.Time
+	WindowEnd          time.Time
+	SourceRequestCount int64
+	DailyRows          int64
 }
 
 type SecurityReportOptions struct {
@@ -278,6 +297,106 @@ type securityAccessEventRecord struct {
 
 func (securityAccessEventRecord) TableName() string {
 	return "security_access_events"
+}
+
+type usageRollupRunRecord struct {
+	ID                 uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	RollupType         string `gorm:"column:rollup_type;type:text;not null;index:idx_usage_rollup_run_window,priority:1;uniqueIndex:idx_usage_rollup_run_unique,priority:1"`
+	Status             string `gorm:"column:status;type:text;not null;index:idx_usage_rollup_run_status;uniqueIndex:idx_usage_rollup_run_unique,priority:2"`
+	WindowStart        string `gorm:"column:window_start;type:text;not null;index:idx_usage_rollup_run_window,priority:2;uniqueIndex:idx_usage_rollup_run_unique,priority:3"`
+	WindowEnd          string `gorm:"column:window_end;type:text;not null;index:idx_usage_rollup_run_window,priority:3;uniqueIndex:idx_usage_rollup_run_unique,priority:4"`
+	SourceTable        string `gorm:"column:source_table;type:text;not null"`
+	SourceRequestCount int64  `gorm:"column:source_request_count;not null;default:0"`
+	DailyRowCount      int64  `gorm:"column:daily_row_count;not null;default:0"`
+	StartedAt          string `gorm:"column:started_at;type:text;not null"`
+	CompletedAt        string `gorm:"column:completed_at;type:text;not null"`
+	FinalizedAt        string `gorm:"column:finalized_at;type:text;not null;default:''"`
+}
+
+func (usageRollupRunRecord) TableName() string {
+	return "usage_rollup_runs"
+}
+
+type usageRollupDailyRecord struct {
+	ID                                uint                 `gorm:"column:id;primaryKey;autoIncrement"`
+	RunID                             uint                 `gorm:"column:run_id;not null;index:idx_usage_rollup_daily_run;uniqueIndex:idx_usage_rollup_daily_unique,priority:1"`
+	RollupType                        string               `gorm:"column:rollup_type;type:text;not null;index:idx_usage_rollup_daily_day,priority:1"`
+	Status                            string               `gorm:"column:status;type:text;not null;index:idx_usage_rollup_daily_status"`
+	DayUTC                            string               `gorm:"column:day_utc;type:text;not null;index:idx_usage_rollup_daily_day,priority:2;uniqueIndex:idx_usage_rollup_daily_unique,priority:2"`
+	WindowStart                       string               `gorm:"column:window_start;type:text;not null"`
+	WindowEnd                         string               `gorm:"column:window_end;type:text;not null"`
+	SourceTable                       string               `gorm:"column:source_table;type:text;not null"`
+	CallerID                          string               `gorm:"column:caller_id;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:3"`
+	CallerUser                        string               `gorm:"column:caller_user;type:text;not null;default:'';index:idx_usage_rollup_daily_caller,priority:1;uniqueIndex:idx_usage_rollup_daily_unique,priority:4"`
+	CallerProject                     string               `gorm:"column:caller_project;type:text;not null;default:'';index:idx_usage_rollup_daily_caller,priority:2;uniqueIndex:idx_usage_rollup_daily_unique,priority:5"`
+	CallerEnvironment                 string               `gorm:"column:caller_environment;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:6"`
+	TokenID                           string               `gorm:"column:token_id;type:text;not null;default:'';index:idx_usage_rollup_daily_token;uniqueIndex:idx_usage_rollup_daily_unique,priority:7"`
+	Client                            string               `gorm:"column:client;type:text;not null;default:'';index:idx_usage_rollup_daily_client;uniqueIndex:idx_usage_rollup_daily_unique,priority:8"`
+	InboundDialect                    string               `gorm:"column:inbound_dialect;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:9"`
+	RequestedModel                    string               `gorm:"column:requested_model;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:10"`
+	ResolvedGroup                     string               `gorm:"column:resolved_group;type:text;not null;default:'';index:idx_usage_rollup_daily_group;uniqueIndex:idx_usage_rollup_daily_unique,priority:11"`
+	Strategy                          string               `gorm:"column:strategy;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:12"`
+	TargetProvider                    string               `gorm:"column:target_provider;type:text;not null;default:'';index:idx_usage_rollup_daily_provider_model,priority:1;uniqueIndex:idx_usage_rollup_daily_unique,priority:13"`
+	TargetModel                       string               `gorm:"column:target_model;type:text;not null;default:'';index:idx_usage_rollup_daily_provider_model,priority:2;uniqueIndex:idx_usage_rollup_daily_unique,priority:14"`
+	TargetDialect                     string               `gorm:"column:target_dialect;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:15"`
+	StatusClass                       string               `gorm:"column:status_class;type:text;not null;default:'';index:idx_usage_rollup_daily_status_class;uniqueIndex:idx_usage_rollup_daily_unique,priority:16"`
+	Stream                            bool                 `gorm:"column:stream;not null;default:false;uniqueIndex:idx_usage_rollup_daily_unique,priority:17"`
+	Cache                             string               `gorm:"column:cache;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:18"`
+	InputHasImage                     bool                 `gorm:"column:input_has_image;not null;default:false;uniqueIndex:idx_usage_rollup_daily_unique,priority:19"`
+	PIIFilterApplied                  bool                 `gorm:"column:pii_filter_applied;not null;default:false;uniqueIndex:idx_usage_rollup_daily_unique,priority:20"`
+	ContractBucket                    string               `gorm:"column:contract_bucket;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:21"`
+	TargetValidationStatus            string               `gorm:"column:target_validation_status;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_daily_unique,priority:22"`
+	SourceRequestCount                int64                `gorm:"column:source_request_count;not null;default:0"`
+	ErrorCount                        int64                `gorm:"column:error_count;not null;default:0"`
+	StreamCount                       int64                `gorm:"column:stream_count;not null;default:0"`
+	CacheHitCount                     int64                `gorm:"column:cache_hit_count;not null;default:0"`
+	CacheMissCount                    int64                `gorm:"column:cache_miss_count;not null;default:0"`
+	CacheBypassCount                  int64                `gorm:"column:cache_bypass_count;not null;default:0"`
+	FallbackCount                     int64                `gorm:"column:fallback_count;not null;default:0"`
+	AttemptCount                      int64                `gorm:"column:attempt_count;not null;default:0"`
+	InputTokens                       int64                `gorm:"column:input_tokens;not null;default:0"`
+	OutputTokens                      int64                `gorm:"column:output_tokens;not null;default:0"`
+	TotalTokens                       int64                `gorm:"column:total_tokens;not null;default:0"`
+	InputImageCount                   int64                `gorm:"column:input_image_count;not null;default:0"`
+	InputImageTokens                  int64                `gorm:"column:input_image_tokens;not null;default:0"`
+	InputCostUSD                      float64              `gorm:"column:input_cost_usd;not null;default:0"`
+	ImageCostUSD                      float64              `gorm:"column:image_cost_usd;not null;default:0"`
+	OutputCostUSD                     float64              `gorm:"column:output_cost_usd;not null;default:0"`
+	TotalCostUSD                      float64              `gorm:"column:total_cost_usd;not null;default:0"`
+	UpstreamReportedInputCostUSD      float64              `gorm:"column:upstream_reported_input_cost_usd;not null;default:0"`
+	UpstreamReportedOutputCostUSD     float64              `gorm:"column:upstream_reported_output_cost_usd;not null;default:0"`
+	UpstreamReportedTotalCostUSD      float64              `gorm:"column:upstream_reported_total_cost_usd;not null;default:0"`
+	LatencyMSSum                      int64                `gorm:"column:latency_ms_sum;not null;default:0"`
+	LatencyMSMax                      int64                `gorm:"column:latency_ms_max;not null;default:0"`
+	TTFBMSSum                         int64                `gorm:"column:ttfb_ms_sum;not null;default:0"`
+	TTFBMSCount                       int64                `gorm:"column:ttfb_ms_count;not null;default:0"`
+	TTFBMSMax                         int64                `gorm:"column:ttfb_ms_max;not null;default:0"`
+	UpstreamMSSum                     int64                `gorm:"column:upstream_duration_ms_sum;not null;default:0"`
+	UpstreamMSCount                   int64                `gorm:"column:upstream_duration_ms_count;not null;default:0"`
+	UpstreamMSMax                     int64                `gorm:"column:upstream_duration_ms_max;not null;default:0"`
+	DownstreamMSSum                   int64                `gorm:"column:downstream_duration_ms_sum;not null;default:0"`
+	DownstreamMSCount                 int64                `gorm:"column:downstream_duration_ms_count;not null;default:0"`
+	DownstreamMSMax                   int64                `gorm:"column:downstream_duration_ms_max;not null;default:0"`
+	UpstreamOutputTokensPerSecSum     float64              `gorm:"column:upstream_output_tokens_per_sec_sum;not null;default:0"`
+	UpstreamOutputTokensPerSecCount   int64                `gorm:"column:upstream_output_tokens_per_sec_count;not null;default:0"`
+	UpstreamTotalTokensPerSecSum      float64              `gorm:"column:upstream_total_tokens_per_sec_sum;not null;default:0"`
+	UpstreamTotalTokensPerSecCount    int64                `gorm:"column:upstream_total_tokens_per_sec_count;not null;default:0"`
+	DownstreamOutputTokensPerSecSum   float64              `gorm:"column:downstream_output_tokens_per_sec_sum;not null;default:0"`
+	DownstreamOutputTokensPerSecCount int64                `gorm:"column:downstream_output_tokens_per_sec_count;not null;default:0"`
+	DownstreamTotalTokensPerSecSum    float64              `gorm:"column:downstream_total_tokens_per_sec_sum;not null;default:0"`
+	DownstreamTotalTokensPerSecCount  int64                `gorm:"column:downstream_total_tokens_per_sec_count;not null;default:0"`
+	CacheSnapshotCount                int64                `gorm:"column:cache_snapshot_count;not null;default:0"`
+	CacheItemsMax                     int64                `gorm:"column:cache_items_max;not null;default:0"`
+	CacheBytesSum                     int64                `gorm:"column:cache_bytes_sum;not null;default:0"`
+	CacheBytesMax                     int64                `gorm:"column:cache_bytes_max;not null;default:0"`
+	CacheMaxBytesLatest               int64                `gorm:"column:cache_max_bytes_latest;not null;default:0"`
+	CacheOccupancyPctSum              float64              `gorm:"column:cache_occupancy_pct_sum;not null;default:0"`
+	CacheOccupancyPctMax              float64              `gorm:"column:cache_occupancy_pct_max;not null;default:0"`
+	UsageRollupRun                    usageRollupRunRecord `gorm:"foreignKey:RunID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+func (usageRollupDailyRecord) TableName() string {
+	return "usage_rollup_daily"
 }
 
 type requestAttemptRecord struct {
@@ -569,6 +688,8 @@ func (s *usageStore) migrate() error {
 		&authzRoleLinkRecord{},
 		&authzPolicyAuditEventRecord{},
 		&securityAccessEventRecord{},
+		&usageRollupRunRecord{},
+		&usageRollupDailyRecord{},
 	); err != nil {
 		return err
 	}
@@ -599,6 +720,8 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"authz_role_links",
 		"authz_policy_audit_events",
 		"security_access_events",
+		"usage_rollup_runs",
+		"usage_rollup_daily",
 	}
 	switch db.Dialector.Name() {
 	case "sqlite":
@@ -615,7 +738,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1178,6 +1301,291 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	}
 	decisionSummary := store.decisionTelemetrySummary(rows)
 	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary), nil
+}
+
+func GenerateUsageRollup(opts UsageRollupOptions) (UsageRollupResult, error) {
+	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
+	if driver == "sqlite" && opts.DBPath == "" {
+		return UsageRollupResult{}, errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
+		return UsageRollupResult{}, errors.New("usage db dsn is required")
+	}
+	if opts.To.IsZero() || opts.From.IsZero() {
+		return UsageRollupResult{}, errors.New("from and to are required")
+	}
+	opts.From = opts.From.UTC()
+	opts.To = opts.To.UTC()
+	if !opts.From.Before(opts.To) {
+		return UsageRollupResult{}, errors.New("from must be before to")
+	}
+	store, err := OpenUsageStore(UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN})
+	if err != nil {
+		return UsageRollupResult{}, err
+	}
+	defer store.Close()
+	return store.generateUsageRollup(opts)
+}
+
+func (s *usageStore) generateUsageRollup(opts UsageRollupOptions) (UsageRollupResult, error) {
+	if s == nil || s.db == nil {
+		return UsageRollupResult{}, errors.New("usage store is not open")
+	}
+	opts.From = opts.From.UTC()
+	opts.To = opts.To.UTC()
+	if !opts.From.Before(opts.To) {
+		return UsageRollupResult{}, errors.New("from must be before to")
+	}
+	rows, err := s.rows(UsageReportOptions{From: opts.From, To: opts.To})
+	if err != nil {
+		return UsageRollupResult{}, err
+	}
+	status := "draft"
+	if opts.Finalize {
+		status = "finalized"
+	}
+	now := formatUsageTime(time.Now().UTC())
+	windowStart := formatUsageTime(opts.From)
+	windowEnd := formatUsageTime(opts.To)
+	daily := dailyRollupRecords(rows, status, windowStart, windowEnd)
+	result := UsageRollupResult{
+		Status:             status,
+		WindowStart:        opts.From,
+		WindowEnd:          opts.To,
+		SourceRequestCount: int64(len(rows)),
+		DailyRows:          int64(len(daily)),
+	}
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var overlappingFinalized int64
+		if err := tx.Model(&usageRollupRunRecord{}).
+			Where("rollup_type = ? AND status = ? AND window_start < ? AND window_end > ?", "daily", "finalized", windowEnd, windowStart).
+			Count(&overlappingFinalized).Error; err != nil {
+			return err
+		}
+		if overlappingFinalized > 0 {
+			return errors.New("usage rollup window overlaps a finalized window")
+		}
+		var run usageRollupRunRecord
+		err := tx.Where("rollup_type = ? AND window_start = ? AND window_end = ? AND status = ?", "daily", windowStart, windowEnd, "draft").First(&run).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			run = usageRollupRunRecord{
+				RollupType:  "daily",
+				Status:      status,
+				WindowStart: windowStart,
+				WindowEnd:   windowEnd,
+				SourceTable: "request_usage",
+				StartedAt:   now,
+			}
+			if err := tx.Create(&run).Error; err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		default:
+			if err := tx.Where("run_id = ?", run.ID).Delete(&usageRollupDailyRecord{}).Error; err != nil {
+				return err
+			}
+		}
+		run.Status = status
+		run.SourceTable = "request_usage"
+		run.SourceRequestCount = int64(len(rows))
+		run.DailyRowCount = int64(len(daily))
+		run.CompletedAt = now
+		if opts.Finalize {
+			run.FinalizedAt = now
+		}
+		if err := tx.Save(&run).Error; err != nil {
+			return err
+		}
+		for i := range daily {
+			daily[i].RunID = run.ID
+			if err := tx.Create(&daily[i]).Error; err != nil {
+				return err
+			}
+		}
+		result.RunID = run.ID
+		return nil
+	})
+	if err != nil {
+		return UsageRollupResult{}, err
+	}
+	return result, nil
+}
+
+func dailyRollupRecords(rows []usageRow, status, windowStart, windowEnd string) []usageRollupDailyRecord {
+	byDimension := map[string]*usageRollupDailyRecord{}
+	for _, row := range rows {
+		day := row.TS.UTC().Format("2006-01-02")
+		key := dailyRollupDimensionKey(day, row)
+		rec := byDimension[key]
+		if rec == nil {
+			rec = &usageRollupDailyRecord{
+				RollupType:             "daily",
+				Status:                 status,
+				DayUTC:                 day,
+				WindowStart:            windowStart,
+				WindowEnd:              windowEnd,
+				SourceTable:            "request_usage",
+				CallerID:               row.CallerID,
+				CallerUser:             row.CallerUser,
+				CallerProject:          row.CallerProject,
+				CallerEnvironment:      row.CallerEnvironment,
+				TokenID:                row.TokenID,
+				Client:                 row.Client,
+				InboundDialect:         row.InboundDialect,
+				RequestedModel:         row.RequestedModel,
+				ResolvedGroup:          row.ResolvedGroup,
+				Strategy:               row.Strategy,
+				TargetProvider:         row.TargetProvider,
+				TargetModel:            row.TargetModel,
+				TargetDialect:          row.TargetDialect,
+				StatusClass:            usageStatusClass(row.Status),
+				Stream:                 row.Stream,
+				Cache:                  row.Cache,
+				InputHasImage:          row.InputHasImage,
+				PIIFilterApplied:       row.PIIFilterApplied,
+				ContractBucket:         row.ContractBucket,
+				TargetValidationStatus: row.TargetValidationStatus,
+			}
+			byDimension[key] = rec
+		}
+		addUsageRowToDailyRollup(rec, row)
+	}
+	keys := make([]string, 0, len(byDimension))
+	for key := range byDimension {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]usageRollupDailyRecord, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, *byDimension[key])
+	}
+	return out
+}
+
+func dailyRollupDimensionKey(day string, row usageRow) string {
+	parts := []string{
+		day,
+		row.CallerID,
+		row.CallerUser,
+		row.CallerProject,
+		row.CallerEnvironment,
+		row.TokenID,
+		row.Client,
+		row.InboundDialect,
+		row.RequestedModel,
+		row.ResolvedGroup,
+		row.Strategy,
+		row.TargetProvider,
+		row.TargetModel,
+		row.TargetDialect,
+		usageStatusClass(row.Status),
+		strconv.FormatBool(row.Stream),
+		row.Cache,
+		strconv.FormatBool(row.InputHasImage),
+		strconv.FormatBool(row.PIIFilterApplied),
+		row.ContractBucket,
+		row.TargetValidationStatus,
+	}
+	return strings.Join(parts, "\x1f")
+}
+
+func usageStatusClass(status int) string {
+	if status <= 0 {
+		return "unknown"
+	}
+	return fmt.Sprintf("%dxx", status/100)
+}
+
+func addUsageRowToDailyRollup(rec *usageRollupDailyRecord, row usageRow) {
+	rec.SourceRequestCount++
+	if row.Status >= 400 {
+		rec.ErrorCount++
+	}
+	if row.Stream {
+		rec.StreamCount++
+	}
+	switch row.Cache {
+	case "hit":
+		rec.CacheHitCount++
+	case "miss":
+		rec.CacheMissCount++
+	default:
+		rec.CacheBypassCount++
+	}
+	if row.FallbackUsed {
+		rec.FallbackCount++
+	}
+	rec.AttemptCount += int64(row.Attempts)
+	rec.InputTokens += int64(row.InputTokens)
+	rec.OutputTokens += int64(row.OutputTokens)
+	total := row.TotalTokens
+	if total == 0 {
+		total = row.InputTokens + row.OutputTokens
+	}
+	rec.TotalTokens += int64(total)
+	rec.InputImageCount += int64(row.InputImageCount)
+	rec.InputImageTokens += int64(row.InputImageTokens)
+	rec.InputCostUSD += row.InputCostUSD
+	rec.ImageCostUSD += row.ImageCostUSD
+	rec.OutputCostUSD += row.OutputCostUSD
+	rec.TotalCostUSD += row.TotalCostUSD
+	rec.UpstreamReportedInputCostUSD += row.UpstreamReportedInputCostUSD
+	rec.UpstreamReportedOutputCostUSD += row.UpstreamReportedOutputCostUSD
+	rec.UpstreamReportedTotalCostUSD += row.UpstreamReportedTotalCostUSD
+	rec.LatencyMSSum += row.LatencyMS
+	if row.LatencyMS > rec.LatencyMSMax {
+		rec.LatencyMSMax = row.LatencyMS
+	}
+	if row.TTFBMS != nil {
+		rec.TTFBMSSum += *row.TTFBMS
+		rec.TTFBMSCount++
+		if *row.TTFBMS > rec.TTFBMSMax {
+			rec.TTFBMSMax = *row.TTFBMS
+		}
+	}
+	if row.UpstreamMS != nil {
+		rec.UpstreamMSSum += *row.UpstreamMS
+		rec.UpstreamMSCount++
+		if *row.UpstreamMS > rec.UpstreamMSMax {
+			rec.UpstreamMSMax = *row.UpstreamMS
+		}
+	}
+	if row.DownstreamMS != nil {
+		rec.DownstreamMSSum += *row.DownstreamMS
+		rec.DownstreamMSCount++
+		if *row.DownstreamMS > rec.DownstreamMSMax {
+			rec.DownstreamMSMax = *row.DownstreamMS
+		}
+	}
+	addFloatToRollup(row.UpstreamOutputTPS, &rec.UpstreamOutputTokensPerSecSum, &rec.UpstreamOutputTokensPerSecCount)
+	addFloatToRollup(row.UpstreamTotalTPS, &rec.UpstreamTotalTokensPerSecSum, &rec.UpstreamTotalTokensPerSecCount)
+	addFloatToRollup(row.DownstreamOutputTPS, &rec.DownstreamOutputTokensPerSecSum, &rec.DownstreamOutputTokensPerSecCount)
+	addFloatToRollup(row.DownstreamTotalTPS, &rec.DownstreamTotalTokensPerSecSum, &rec.DownstreamTotalTokensPerSecCount)
+	if row.CacheEnabled || row.CacheMaxBytes > 0 {
+		rec.CacheSnapshotCount++
+		if row.CacheItems > rec.CacheItemsMax {
+			rec.CacheItemsMax = row.CacheItems
+		}
+		rec.CacheBytesSum += row.CacheBytes
+		if row.CacheBytes > rec.CacheBytesMax {
+			rec.CacheBytesMax = row.CacheBytes
+		}
+		rec.CacheMaxBytesLatest = row.CacheMaxBytes
+		rec.CacheOccupancyPctSum += row.CacheOccupancyPct
+		if row.CacheOccupancyPct > rec.CacheOccupancyPctMax {
+			rec.CacheOccupancyPctMax = row.CacheOccupancyPct
+		}
+	}
+}
+
+func addFloatToRollup(v *float64, sum *float64, count *int64) {
+	if v == nil {
+		return
+	}
+	*sum += *v
+	*count++
 }
 
 func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetrySummary {

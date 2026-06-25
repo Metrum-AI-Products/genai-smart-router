@@ -819,6 +819,9 @@ For routine browser inspection, deployments may enable `/admin/reports/`. The br
 --resolved-group GROUP
                 Filter to one resolved router model group.
 --client CLIENT Filter to one client, such as codex or claude-code.
+--rollup        Generate daily relational rollup rows for the selected period instead of markdown.
+--rollup-finalize
+                Mark the selected rollup window immutable after generation.
 ```
 
 Generate a markdown report for the last 24 hours:

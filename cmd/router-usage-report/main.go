@@ -30,6 +30,8 @@ func main() {
 	callerEnvironment := flag.String("caller-environment", "", "filter report to one caller environment")
 	resolvedGroup := flag.String("resolved-group", "", "filter report to one resolved router model group")
 	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
+	rollup := flag.Bool("rollup", false, "generate a daily usage rollup instead of markdown")
+	rollupFinalize := flag.Bool("rollup-finalize", false, "finalize the generated rollup window; finalized windows are immutable")
 	flag.Parse()
 
 	to := time.Now().UTC()
@@ -53,6 +55,24 @@ func main() {
 			die("parse --since: %v", err)
 		}
 		from = to.Add(-d)
+	}
+
+	if *rollup {
+		result, err := router.GenerateUsageRollup(router.UsageRollupOptions{
+			Driver:   *driver,
+			DBPath:   *dbPath,
+			DSN:      *dsn,
+			From:     from,
+			To:       to,
+			Finalize: *rollupFinalize,
+		})
+		if err != nil {
+			die("generate rollup: %v", err)
+		}
+		fmt.Printf("usage rollup %s run_id=%d window=%s..%s source_requests=%d daily_rows=%d\n",
+			result.Status, result.RunID, result.WindowStart.Format(time.RFC3339), result.WindowEnd.Format(time.RFC3339),
+			result.SourceRequestCount, result.DailyRows)
+		return
 	}
 
 	md, err := router.GenerateUsageMarkdown(router.UsageReportOptions{

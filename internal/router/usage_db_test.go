@@ -1,6 +1,7 @@
 package router
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,6 +195,231 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	}
 }
 
+func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	ttfb := int64(25)
+	upstream := int64(90)
+	downstream := int64(10)
+	upstreamTPS := 12.5
+	downstreamTPS := 25.0
+	rows := []usageRow{
+		{
+			TS:                            from.Add(time.Hour),
+			RequestID:                     "req_rollup_1",
+			CallerID:                      "caller-alice",
+			CallerUser:                    "alice",
+			CallerProject:                 "analytics",
+			CallerEnvironment:             "prod",
+			TokenID:                       "rtr_alice",
+			Client:                        "codex",
+			InboundDialect:                "openai-chat",
+			RequestedModel:                "default",
+			ResolvedGroup:                 "default",
+			Strategy:                      "weighted",
+			TargetProvider:                "mock",
+			TargetModel:                   "model-a",
+			TargetDialect:                 "openai-chat",
+			Cache:                         "miss",
+			Status:                        200,
+			Attempts:                      1,
+			LatencyMS:                     100,
+			TTFBMS:                        &ttfb,
+			UpstreamMS:                    &upstream,
+			DownstreamMS:                  &downstream,
+			UpstreamOutputTPS:             &upstreamTPS,
+			DownstreamOutputTPS:           &downstreamTPS,
+			InputTokens:                   10,
+			OutputTokens:                  5,
+			TotalTokens:                   15,
+			InputCostUSD:                  0.10,
+			ImageCostUSD:                  0.02,
+			OutputCostUSD:                 0.20,
+			TotalCostUSD:                  0.32,
+			UpstreamReportedInputCostUSD:  0.11,
+			UpstreamReportedOutputCostUSD: 0.21,
+			UpstreamReportedTotalCostUSD:  0.33,
+			InputHasImage:                 true,
+			InputImageCount:               2,
+			InputImageTokens:              321,
+			PIIFilterApplied:              true,
+			ContractBucket:                "ok",
+			TargetValidationStatus:        "validated",
+			CacheEnabled:                  true,
+			CacheItems:                    3,
+			CacheBytes:                    1000,
+			CacheMaxBytes:                 4000,
+			CacheOccupancyPct:             25,
+		},
+		{
+			TS:                from.Add(2 * time.Hour),
+			RequestID:         "req_rollup_2",
+			CallerID:          "caller-bob",
+			CallerUser:        "bob",
+			CallerProject:     "platform",
+			CallerEnvironment: "prod",
+			TokenID:           "rtr_bob",
+			Client:            "claude-code",
+			InboundDialect:    "anthropic",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			Strategy:          "failover",
+			TargetProvider:    "mock",
+			TargetModel:       "model-b",
+			TargetDialect:     "openai-chat",
+			Stream:            true,
+			Cache:             "hit",
+			Status:            502,
+			Attempts:          2,
+			FallbackUsed:      true,
+			LatencyMS:         250,
+			InputTokens:       4,
+			OutputTokens:      6,
+			InputCostUSD:      0.04,
+			OutputCostUSD:     0.06,
+			TotalCostUSD:      0.10,
+		},
+		{
+			TS:             to.Add(time.Hour),
+			RequestID:      "req_rollup_outside",
+			CallerUser:     "outside",
+			TokenID:        "rtr_outside",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			Cache:          "miss",
+			Status:         200,
+			Attempts:       1,
+			LatencyMS:      999,
+			InputTokens:    100,
+			OutputTokens:   100,
+			TotalTokens:    200,
+		},
+	}
+	for _, row := range rows {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "draft" || result.SourceRequestCount != 2 || result.DailyRows != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	var dailyRows []usageRollupDailyRecord
+	if err := store.db.Where("run_id = ?", result.RunID).Order("token_id ASC").Find(&dailyRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(dailyRows) != 2 {
+		t.Fatalf("got %d rollup rows, want 2: %#v", len(dailyRows), dailyRows)
+	}
+	alice := dailyRows[0]
+	bob := dailyRows[1]
+	if alice.TokenID != "rtr_alice" || alice.CallerUser != "alice" || alice.CallerProject != "analytics" || alice.Client != "codex" || alice.TargetModel != "model-a" || !alice.InputHasImage || !alice.PIIFilterApplied || alice.ContractBucket != "ok" || alice.TargetValidationStatus != "validated" {
+		t.Fatalf("alice dimension row lost fields: %#v", alice)
+	}
+	if bob.TokenID != "rtr_bob" || bob.CallerUser != "bob" || bob.CallerProject != "platform" || bob.Client != "claude-code" || bob.TargetModel != "model-b" || bob.StatusClass != "5xx" || !bob.Stream || bob.Cache != "hit" {
+		t.Fatalf("bob dimension row lost fields: %#v", bob)
+	}
+	if alice.DayUTC != "2026-06-14" || alice.SourceRequestCount != 1 || alice.ErrorCount != 0 || alice.StreamCount != 0 {
+		t.Fatalf("unexpected alice counts: %#v", alice)
+	}
+	if bob.DayUTC != "2026-06-14" || bob.SourceRequestCount != 1 || bob.ErrorCount != 1 || bob.StreamCount != 1 {
+		t.Fatalf("unexpected bob counts: %#v", bob)
+	}
+	if alice.CacheMissCount != 1 || bob.CacheHitCount != 1 || bob.FallbackCount != 1 || alice.AttemptCount+bob.AttemptCount != 3 {
+		t.Fatalf("unexpected cache/fallback/attempt rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	if alice.InputTokens+bob.InputTokens != 14 || alice.OutputTokens+bob.OutputTokens != 11 || alice.TotalTokens+bob.TotalTokens != 25 {
+		t.Fatalf("unexpected token rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	if alice.InputImageCount+bob.InputImageCount != 2 || alice.InputImageTokens+bob.InputImageTokens != 321 {
+		t.Fatalf("unexpected image rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	assertNear(t, alice.InputCostUSD+bob.InputCostUSD, 0.14, "input cost")
+	assertNear(t, alice.ImageCostUSD+bob.ImageCostUSD, 0.02, "image cost")
+	assertNear(t, alice.OutputCostUSD+bob.OutputCostUSD, 0.26, "output cost")
+	assertNear(t, alice.TotalCostUSD+bob.TotalCostUSD, 0.42, "total cost")
+	assertNear(t, alice.UpstreamReportedInputCostUSD+bob.UpstreamReportedInputCostUSD, 0.11, "upstream input cost")
+	assertNear(t, alice.UpstreamReportedOutputCostUSD+bob.UpstreamReportedOutputCostUSD, 0.21, "upstream output cost")
+	assertNear(t, alice.UpstreamReportedTotalCostUSD+bob.UpstreamReportedTotalCostUSD, 0.33, "upstream total cost")
+	if alice.LatencyMSSum+bob.LatencyMSSum != 350 || maxInt64(alice.LatencyMSMax, bob.LatencyMSMax) != 250 || alice.TTFBMSSum+bob.TTFBMSSum != 25 || alice.TTFBMSCount+bob.TTFBMSCount != 1 || maxInt64(alice.TTFBMSMax, bob.TTFBMSMax) != 25 {
+		t.Fatalf("unexpected latency rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	if alice.UpstreamMSSum+bob.UpstreamMSSum != 90 || alice.UpstreamMSCount+bob.UpstreamMSCount != 1 || maxInt64(alice.UpstreamMSMax, bob.UpstreamMSMax) != 90 || alice.DownstreamMSSum+bob.DownstreamMSSum != 10 || alice.DownstreamMSCount+bob.DownstreamMSCount != 1 || maxInt64(alice.DownstreamMSMax, bob.DownstreamMSMax) != 10 {
+		t.Fatalf("unexpected duration rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	if alice.UpstreamOutputTokensPerSecSum+bob.UpstreamOutputTokensPerSecSum != 12.5 || alice.UpstreamOutputTokensPerSecCount+bob.UpstreamOutputTokensPerSecCount != 1 || alice.DownstreamOutputTokensPerSecSum+bob.DownstreamOutputTokensPerSecSum != 25 || alice.DownstreamOutputTokensPerSecCount+bob.DownstreamOutputTokensPerSecCount != 1 {
+		t.Fatalf("unexpected throughput rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	if alice.CacheSnapshotCount+bob.CacheSnapshotCount != 1 || maxInt64(alice.CacheItemsMax, bob.CacheItemsMax) != 3 || alice.CacheBytesSum+bob.CacheBytesSum != 1000 || maxInt64(alice.CacheBytesMax, bob.CacheBytesMax) != 1000 || alice.CacheMaxBytesLatest != 4000 || alice.CacheOccupancyPctSum+bob.CacheOccupancyPctSum != 25 || maxFloat64(alice.CacheOccupancyPctMax, bob.CacheOccupancyPctMax) != 25 {
+		t.Fatalf("unexpected cache snapshot rollup: alice=%#v bob=%#v", alice, bob)
+	}
+
+	third := rows[1]
+	third.RequestID = "req_rollup_3"
+	third.TS = from.Add(3 * time.Hour)
+	if err := store.db.Create(recordFromRow(third)).Error; err != nil {
+		t.Fatal(err)
+	}
+	rerun, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerun.RunID != result.RunID || rerun.SourceRequestCount != 3 {
+		t.Fatalf("draft rerun did not replace same run: first=%#v rerun=%#v", result, rerun)
+	}
+	var dailyCount int64
+	if err := store.db.Model(&usageRollupDailyRecord{}).Where("run_id = ?", result.RunID).Count(&dailyCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dailyCount != 2 {
+		t.Fatalf("draft rerun left %d daily rows, want 2", dailyCount)
+	}
+
+	finalized, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to, Finalize: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalized.RunID != result.RunID || finalized.Status != "finalized" || finalized.SourceRequestCount != 3 {
+		t.Fatalf("unexpected finalized result: %#v", finalized)
+	}
+	if _, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to}); err == nil || !strings.Contains(err.Error(), "overlaps a finalized window") {
+		t.Fatalf("draft rerun after finalize err=%v, want finalized immutability", err)
+	}
+	if _, err := store.generateUsageRollup(UsageRollupOptions{From: from.Add(12 * time.Hour), To: to.Add(12 * time.Hour), Finalize: true}); err == nil || !strings.Contains(err.Error(), "overlaps a finalized window") {
+		t.Fatalf("overlapping finalized window err=%v, want overlap rejection", err)
+	}
+}
+
+func assertNear(t *testing.T, got, want float64, label string) {
+	t.Helper()
+	if math.Abs(got-want) > 0.000000001 {
+		t.Fatalf("%s=%f, want %f", label, got, want)
+	}
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func maxFloat64(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {
@@ -218,6 +444,8 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"request_content_headers",
 		"request_content_audit_events",
 		"security_access_events",
+		"usage_rollup_runs",
+		"usage_rollup_daily",
 	} {
 		var cols []col
 		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {

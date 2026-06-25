@@ -27,6 +27,13 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 
 These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
 
+Usage rollups are generated from stored `request_usage` rows and also follow the scalar relational rule:
+
+- `usage_rollup_runs`: one row per generated daily rollup window, with draft/finalized status, UTC source window, source table name, source request count, daily row count, and generation timestamps.
+- `usage_rollup_daily`: scalar aggregate rows per UTC day and reporting dimension in the rollup window, keyed to `usage_rollup_runs`. Dimensions include caller ID/user/project/environment, token ID, client, inbound dialect, requested model, resolved group, routing strategy, upstream provider/model/dialect, status class, stream flag, cache outcome, image-input flag, PII-filter flag, contract bucket, and target-validation status. Measures include request/error/cache/fallback/attempt counts, input/output/total tokens, input image count, input image tokens, request-time calculated and upstream-reported cost sums, latency/duration sums/counts/maxima, throughput sums/counts, and cache snapshot sums/maxima.
+
+Draft rollups for the same exact window may be regenerated idempotently. Finalized rollup windows are immutable, and new rollup runs are rejected if their window overlaps an existing finalized daily window. Raw request purge and legal hold behavior are not part of this first rollup foundation.
+
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
 - `request_decision_shape_features`: one row per safe request-shape feature such as caller dialect, stream flag, tool count, image count, structured-output flag, max-token flag, and cacheability.
@@ -85,6 +92,7 @@ Durable across container restarts when volumes are preserved:
 - decision telemetry rows when `server.decision_telemetry.enabled: true`.
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
 - authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
+- usage rollup run and daily aggregate rows after an operator generates them.
 
 Not durable across router restarts:
 

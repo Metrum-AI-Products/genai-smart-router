@@ -24,6 +24,21 @@ router-usage-report \
 
 Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
 
+## Generate Daily Rollups
+
+Administrators can generate a bounded daily rollup from stored request-time usage rows:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --from 2026-06-14 \
+  --to 2026-06-15 \
+  --rollup
+```
+
+The command writes relational scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` for the selected UTC `[from,to)` window. Daily rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, and validation-status dimensions alongside input/output/total token, input image count, input image token, cost, latency, throughput, cache, fallback, and error measures. Draft reruns replace the same draft run for that exact window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This initial rollup helper does not purge raw request rows and does not implement legal hold.
+
 ## Browser Admin Reports
 
 When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, aggregate API, export, and drilldown route. Request detail uses the separate `admin:reports` `drilldown` action.
