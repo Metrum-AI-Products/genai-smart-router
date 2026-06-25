@@ -16,8 +16,8 @@ Last deployed: 2026-06-25
 
 ## Deployed Version
 
-- Router package/image version: `87bbf64-linux-amd64`
-- Source commit: `87bbf64`
+- Router package/image version: `7698fd1-linux-amd64`
+- Source commit: `7698fd1`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,23 @@ Last deployed: 2026-06-25
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-25 Retention Dry-Run Package Refresh
+
+- Deployed package/image `smart-llmrouter:7698fd1-linux-amd64` from source commit `7698fd1` after PR #126 merged.
+- Production package backup: `/opt/smart-llmrouter.backup.harbor-local-validated-20260625T220015Z`.
+- Production config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were carried forward unchanged.
+- Local Harbor validation before deployment:
+  - Full Harbor matrix `aider/polyglot_python_two-bucket` ran against a local router on commit `7698fd1` using the reusable Harbor caller, agents `codex` and `claude-code`, and groups `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+  - Corrected Docker-bridge case `harbor-local-7698fd1-dockerbridge-20260625T212124Z`: 11/12 cells passed with reward `1` and zero errors; `claude-code/high` completed with reward `0`.
+  - Clean rerun case `harbor-local-7698fd1-rerun-claude-high-20260625T215319Z`: `claude-code/high` passed with reward `1` and zero errors.
+- `go test ./cmd/... ./internal/...` passed with 315 tests across 6 packages.
+- `make package-docker` passed for linux/amd64 and linux/arm64 package artifacts; package content validation passed.
+- Verified production `/readyz` reports version `7698fd1`, commit `7698fd1`, and build date `2026-06-25T21:56:22Z`.
+- Verified hosted `/docs/evaluation/harbor-case-study` returns 200 with `x-smart-llmrouter-version: 7698fd1`.
+- Verified authenticated `/v1/models` for the reusable Harbor caller includes the six Harbor validation groups.
+- Verified authenticated production `/v1/chat/completions` against `high` returned HTTP 200 with a concrete upstream model and `finish_reason: stop`.
+- Production cleanup: removed the uploaded package and superseded temporary deployment directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
 ## 2026-06-25 Aditya TPM Limit Increase
 
