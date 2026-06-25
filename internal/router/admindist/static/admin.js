@@ -1,8 +1,66 @@
 const charts = {};
 let activeTab = "groups";
+let lastReport = null;
 
+const themeKey = "metrum-admin-reports-theme";
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 6 });
+
+function storedTheme() {
+  try {
+    const value = window.localStorage.getItem(themeKey);
+    return value === "light" || value === "dark" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function systemTheme() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme || storedTheme() || systemTheme();
+}
+
+function setStoredTheme(theme) {
+  try {
+    window.localStorage.setItem(themeKey, theme);
+  } catch {
+    // Theme persistence is best effort; the selected theme still applies for this page.
+  }
+}
+
+function applyTheme(theme, persist) {
+  document.documentElement.dataset.theme = theme;
+  if (persist) setStoredTheme(theme);
+  const toggle = document.querySelector("#themeToggle");
+  if (toggle) {
+    const isDark = theme === "dark";
+    toggle.textContent = isDark ? "Light" : "Dark";
+    toggle.setAttribute("aria-pressed", String(isDark));
+    toggle.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
+  }
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function palette() {
+  return {
+    red: cssVar("--metrum-red"),
+    pink: cssVar("--metrum-pink"),
+    magenta: cssVar("--metrum-magenta"),
+    purple: cssVar("--metrum-purple"),
+    violet: cssVar("--metrum-violet"),
+    blue: cssVar("--metrum-blue"),
+    success: cssVar("--success"),
+    warning: cssVar("--warning"),
+    grid: cssVar("--chart-grid"),
+    text: cssVar("--chart-text")
+  };
+}
 
 function qs() {
   const data = new FormData(document.querySelector("#filters"));
@@ -23,6 +81,7 @@ async function load() {
 }
 
 function render(report) {
+  lastReport = report;
   document.querySelector("#period").textContent = `${report.period.from} to ${report.period.to}`;
   const s = report.summary;
   document.querySelector("#summary").innerHTML = [
@@ -33,18 +92,30 @@ function render(report) {
     ["Avg latency", `${fmt.format(s.avgLatencyMs)} ms`],
     ["Fallbacks", fmt.format(s.fallbacks)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
-  chart("requestsChart", report.series.map(x => x.timeUtc), [{ label: "Requests", data: report.series.map(x => x.requests), borderColor: "#1f6feb" }]);
-  chart("costChart", report.series.map(x => x.timeUtc), [{ label: "Cost", data: report.series.map(x => x.costUsd), borderColor: "#d97706" }]);
-  chart("latencyChart", report.series.map(x => x.timeUtc), [{ label: "Latency", data: report.series.map(x => x.latencyMs), borderColor: "#7c3aed" }, { label: "TTFB", data: report.series.map(x => x.ttfbMs), borderColor: "#059669" }]);
-  chart("cacheChart", report.series.map(x => x.timeUtc), [{ label: "Hits", data: report.series.map(x => x.cacheHits), borderColor: "#059669" }, { label: "Misses", data: report.series.map(x => x.cacheMisses), borderColor: "#d97706" }, { label: "Bypass", data: report.series.map(x => x.cacheBypass), borderColor: "#6b7280" }]);
-  chart("providerChart", report.byProvider.map(x => x.key), [{ label: "Tokens", data: report.byProvider.map(x => x.tokens), borderColor: "#0f766e" }]);
-  chart("errorChart", report.series.map(x => x.timeUtc), [{ label: "Errors", data: report.series.map(x => x.errors), borderColor: "#dc2626" }, { label: "Fallbacks", data: report.series.map(x => x.fallbacks), borderColor: "#d97706" }]);
+  renderCharts(report);
   renderTable(report);
 }
 
-function chart(id, labels, datasets) {
+function renderCharts(report) {
+  const c = palette();
+  chart("requestsChart", report.series.map(x => x.timeUtc), [{ label: "Requests", data: report.series.map(x => x.requests), borderColor: c.magenta }], c);
+  chart("costChart", report.series.map(x => x.timeUtc), [{ label: "Cost", data: report.series.map(x => x.costUsd), borderColor: c.red }], c);
+  chart("latencyChart", report.series.map(x => x.timeUtc), [{ label: "Latency", data: report.series.map(x => x.latencyMs), borderColor: c.violet }, { label: "TTFB", data: report.series.map(x => x.ttfbMs), borderColor: c.blue }], c);
+  chart("cacheChart", report.series.map(x => x.timeUtc), [{ label: "Hits", data: report.series.map(x => x.cacheHits), borderColor: c.success }, { label: "Misses", data: report.series.map(x => x.cacheMisses), borderColor: c.warning }, { label: "Bypass", data: report.series.map(x => x.cacheBypass), borderColor: c.text }], c);
+  chart("providerChart", report.byProvider.map(x => x.key), [{ label: "Tokens", data: report.byProvider.map(x => x.tokens), borderColor: c.purple }], c);
+  chart("errorChart", report.series.map(x => x.timeUtc), [{ label: "Errors", data: report.series.map(x => x.errors), borderColor: c.red }, { label: "Fallbacks", data: report.series.map(x => x.fallbacks), borderColor: c.warning }], c);
+}
+
+function chart(id, labels, datasets, colors) {
   if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(document.getElementById(id), { type: "line", data: { labels, datasets } });
+  charts[id] = new Chart(document.getElementById(id), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      gridColor: colors.grid,
+      textColor: colors.text
+    }
+  });
 }
 
 function renderTable(report) {
@@ -69,6 +140,12 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+document.querySelector("#themeToggle").addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  applyTheme(next, true);
+  if (lastReport) renderCharts(lastReport);
+});
+
 document.querySelector("#filters").addEventListener("submit", event => {
   event.preventDefault();
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
@@ -79,4 +156,6 @@ document.querySelectorAll(".tabs button").forEach(button => button.addEventListe
   activeTab = button.dataset.tab;
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 }));
+
+applyTheme(storedTheme() || systemTheme(), false);
 load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);

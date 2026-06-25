@@ -4,7 +4,7 @@ title: Admin Browser Reports
 
 # Admin Browser Reports
 
-Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`.
+Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`. The browser dashboard uses Metrum branding, local embedded assets, and a dark/light mode toggle for authorized administrators.
 
 ## Access Model
 
@@ -46,9 +46,11 @@ Responses do not include raw router tokens, token hashes, provider keys, raw pro
 
 ## Embedded Assets
 
-The admin HTML, CSS, JavaScript, and local chart bundle are embedded in the router binary. The UI does not depend on external CDNs. Charts are assistive; the same data is available in tables and Markdown export.
+The admin HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle are embedded in the router binary. The UI does not depend on external CDNs or runtime access to the Metrum website. Charts are assistive; the same data is available in tables and Markdown export.
 
 Admin pages and APIs send no-store cache headers. Static admin assets may use private cache headers and contain no report data.
+
+The dark/light theme preference is stored in browser `localStorage`; it does not change server-side reporting data or authorization policy. First visits follow the browser's system color-scheme preference.
 
 ## Smoke Test
 

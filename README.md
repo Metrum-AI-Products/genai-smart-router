@@ -702,7 +702,7 @@ curl -H "Authorization: Bearer $METRICS_ADMIN_ROUTER_TOKEN" http://127.0.0.1:808
 
 Browser-admin HTTP Basic authentication is configured under `server.admin_auth.basic` and is disabled by default. When enabled, `GET /admin/auth/check` validates the first admin identity path: missing or invalid Basic credentials receive `401`, valid credentials without the stub permission receive `403 admin-forbidden`, and valid credentials with `admin:auth:read` receive safe subject metadata. Basic Auth establishes identity such as `basic:admin`; it does not grant broader admin permissions by itself. See [docs/ADMIN_AUTH.md](docs/ADMIN_AUTH.md).
 
-Administrator browser reports can be enabled under `server.admin_reports` and are served under `/admin/reports/`. They require browser-admin identity plus Casbin policy under `server.admin_auth.authorization`, expose safe usage/performance/cost/cache/fallback/report data, and keep Markdown export available at `/admin/reports/export.md`. See [docs/AUTHORIZATION.md](docs/AUTHORIZATION.md) for metrics, content-capture maintenance, and report policy examples. Ordinary router caller tokens receive `403 reports-forbidden`.
+Administrator browser reports can be enabled under `server.admin_reports` and are served under `/admin/reports/`. They require browser-admin identity plus Casbin policy under `server.admin_auth.authorization`, expose safe usage/performance/cost/cache/fallback/report data through a Metrum-branded browser dashboard with a local dark/light mode preference, and keep Markdown export available at `/admin/reports/export.md`. See [docs/AUTHORIZATION.md](docs/AUTHORIZATION.md) for metrics, content-capture maintenance, and report policy examples. Ordinary router caller tokens receive `403 reports-forbidden`.
 
 Authorization policy can come from a deployment-owned file/inline config with `server.admin_auth.authorization.source: static`, or from a validated active policy set in the usage DB with `source: db`. DB-backed policy mode fails closed when no single valid active policy set exists, keeps static policy support intact, and records create, activation, rollback, and validation-failure audit events with safe scalar fields only.
 
@@ -731,7 +731,7 @@ Each request row stores the configured input/output price per million tokens for
 
 The JSONL file is useful for raw audit/debugging. The relational DB is the source for periodic reports. In container deployments using SQLite, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`. In Postgres deployments, the report tool reads from the configured DSN.
 
-For routine browser inspection, deployments may enable `/admin/reports/`. The browser report UI is disabled by default, embedded in the router binary, uses local chart assets, and calls bounded JSON APIs over the same relational usage DB. The CLI remains the supported path for automation, incident exports, and headless workflows.
+For routine browser inspection, deployments may enable `/admin/reports/`. The browser report UI is disabled by default, embedded in the router binary, uses local Metrum logo/font/chart assets, and calls bounded JSON APIs over the same relational usage DB. The browser-local dark/light mode toggle affects only presentation. The CLI remains the supported path for automation, incident exports, and headless workflows.
 
 `router-usage-report` flags:
 

@@ -3,24 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smart Router Admin Reports</title>
+  <title>Metrum Smart Router Admin Reports</title>
   <link rel="stylesheet" href="static/admin.css">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <div>
-        <h1>Admin Reports</h1>
-        <p id="period">Loading report data</p>
+      <div class="brand">
+        <img class="brand-logo" src="static/metrum_logo_white_new.png" alt="Metrum AI">
+        <div>
+          <p class="eyebrow">GenAI Smart Router</p>
+          <h1>Admin Reports</h1>
+          <p id="period">Loading report data</p>
+        </div>
       </div>
-      <form id="filters" class="filters">
-        <label>Since <input name="since" value="24h" autocomplete="off"></label>
-        <label>Project <input name="caller_project" placeholder="any"></label>
-        <label>Group <input name="resolved_group" placeholder="any"></label>
-        <label>Client <input name="client" placeholder="any"></label>
-        <button type="submit">Apply</button>
-        <a id="export" class="button" href="export.md?since=24h">Markdown</a>
-      </form>
+      <div class="topbar-actions">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false">Dark</button>
+        <form id="filters" class="filters">
+          <label>Since <input name="since" value="24h" autocomplete="off"></label>
+          <label>Project <input name="caller_project" placeholder="any"></label>
+          <label>Group <input name="resolved_group" placeholder="any"></label>
+          <label>Client <input name="client" placeholder="any"></label>
+          <button type="submit">Apply</button>
+          <a id="export" class="button" href="export.md?since=24h">Markdown</a>
+        </form>
+      </div>
     </header>
     <section id="summary" class="summary"></section>
     <section class="charts">

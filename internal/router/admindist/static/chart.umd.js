@@ -16,7 +16,8 @@ window.Chart = class {
     const datasets = (this.config.data && this.config.data.datasets) || [];
     const values = datasets.flatMap((set) => set.data || []).map(Number);
     const max = Math.max(1, ...values);
-    ctx.strokeStyle = "#c7cdd5";
+    const options = this.config.options || {};
+    ctx.strokeStyle = options.gridColor || "#cc28af";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(32, 12);
@@ -25,7 +26,7 @@ window.Chart = class {
     ctx.stroke();
     datasets.forEach((set, setIndex) => {
       const data = (set.data || []).map(Number);
-      const color = set.borderColor || set.backgroundColor || ["#1f6feb", "#d97706", "#059669"][setIndex % 3];
+      const color = set.borderColor || set.backgroundColor || ["#cc28af", "#ff3132", "#465cda"][setIndex % 3];
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = 2;

@@ -622,7 +622,13 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	ui.SetBasicAuth("admin", "yell-yell-yum")
 	uiRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(uiRR, ui)
-	if uiRR.Code != http.StatusOK || !strings.Contains(uiRR.Body.String(), "Admin Reports") || strings.Contains(uiRR.Body.String(), "https://") {
+	uiBody := uiRR.Body.String()
+	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`} {
+		if !strings.Contains(uiBody, want) {
+			t.Fatalf("ui missing %q: status=%d body=%s", want, uiRR.Code, uiBody)
+		}
+	}
+	if uiRR.Code != http.StatusOK || strings.Contains(uiBody, "https://") {
 		t.Fatalf("ui status=%d body=%s", uiRR.Code, uiRR.Body.String())
 	}
 
@@ -632,6 +638,30 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	svc.Handler().ServeHTTP(assetRR, asset)
 	if assetRR.Code != http.StatusOK || !strings.Contains(assetRR.Body.String(), "window.Chart") {
 		t.Fatalf("asset status=%d body=%s", assetRR.Code, assetRR.Body.String())
+	}
+
+	css := httptest.NewRequest(http.MethodGet, "/admin/reports/static/admin.css", nil)
+	css.SetBasicAuth("admin", "yell-yell-yum")
+	cssRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(cssRR, css)
+	if cssRR.Code != http.StatusOK || !strings.Contains(cssRR.Body.String(), "--metrum-purple: #cc28af") || strings.Contains(cssRR.Body.String(), "#1f6feb") {
+		t.Fatalf("css status=%d body=%s", cssRR.Code, cssRR.Body.String())
+	}
+
+	js := httptest.NewRequest(http.MethodGet, "/admin/reports/static/admin.js", nil)
+	js.SetBasicAuth("admin", "yell-yell-yum")
+	jsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(jsRR, js)
+	if jsRR.Code != http.StatusOK || !strings.Contains(jsRR.Body.String(), "metrum-admin-reports-theme") || !strings.Contains(jsRR.Body.String(), "localStorage") {
+		t.Fatalf("js status=%d body=%s", jsRR.Code, jsRR.Body.String())
+	}
+
+	logo := httptest.NewRequest(http.MethodGet, "/admin/reports/static/metrum_logo_white_new.png", nil)
+	logo.SetBasicAuth("admin", "yell-yell-yum")
+	logoRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(logoRR, logo)
+	if logoRR.Code != http.StatusOK || logoRR.Body.Len() == 0 {
+		t.Fatalf("logo status=%d len=%d", logoRR.Code, logoRR.Body.Len())
 	}
 
 	exportReq := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?since=24h", nil)

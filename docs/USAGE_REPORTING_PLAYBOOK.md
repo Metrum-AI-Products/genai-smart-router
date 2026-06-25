@@ -25,9 +25,9 @@ router-usage-report \
 
 ## Browser Admin Reports
 
-Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded HTML/CSS/JavaScript/chart assets from the router binary without CDN dependencies.
+Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded Metrum-branded HTML/CSS/JavaScript/logo/font/chart assets from the router binary without CDN dependencies.
 
-Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
+Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page includes a browser-local dark/light mode toggle; the selected preference is stored only in that browser. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
 
 Smoke an enabled deployment:
 
@@ -36,7 +36,7 @@ curl -i -u admin:<password> \
   "$ROUTER_BASE_URL/admin/reports/api/summary?since=24h"
 ```
 
-Verify ordinary router caller tokens receive `403 reports-forbidden` and that `/docs/` remains public product documentation with no report data.
+Verify the branded `/admin/reports/` shell loads for an authorized browser-admin user, the dark/light toggle persists after reload, ordinary router caller tokens receive `403 reports-forbidden`, and `/docs/` remains public product documentation with no report data.
 
 Filtered benchmark or project report:
 
