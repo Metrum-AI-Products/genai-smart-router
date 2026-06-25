@@ -628,6 +628,51 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			t.Fatalf("summary leaked %q: %s", forbidden, summaryRR.Body.String())
 		}
 	}
+
+	savings := httptest.NewRequest(http.MethodGet, "/admin/reports/api/savings?since=24h&baseline=gpt-5.5", nil)
+	savings.SetBasicAuth("admin", "yell-yell-yum")
+	savingsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(savingsRR, savings)
+	if savingsRR.Code != http.StatusOK {
+		t.Fatalf("savings status=%d body=%s", savingsRR.Code, savingsRR.Body.String())
+	}
+	var savingsBody map[string]any
+	if err := json.Unmarshal(savingsRR.Body.Bytes(), &savingsBody); err != nil {
+		t.Fatal(err)
+	}
+	baseline := savingsBody["baseline"].(map[string]any)
+	if baseline["baseline_id"] != "gpt-5.5" || baseline["pricing_source"] == "" || baseline["pricing_updated_at"] == "" {
+		t.Fatalf("savings baseline missing source metadata: %#v", baseline)
+	}
+	savingsSummary := savingsBody["summary"].(map[string]any)
+	if savingsSummary["baseline_cost_usd"].(float64) <= 0 {
+		t.Fatalf("savings baseline cost was not calculated from stored tokens: %#v", savingsSummary)
+	}
+	if len(savingsBody["charts"].([]any)) == 0 || len(savingsBody["byGroup"].([]any)) == 0 {
+		t.Fatalf("savings missing charts or group rows: %#v", savingsBody)
+	}
+	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "messages"} {
+		if strings.Contains(savingsRR.Body.String(), forbidden) {
+			t.Fatalf("savings leaked %q: %s", forbidden, savingsRR.Body.String())
+		}
+	}
+
+	custom := httptest.NewRequest(http.MethodGet, "/admin/reports/api/savings?since=24h&baseline=custom&baseline_input_price_per_million_usd=1&baseline_output_price_per_million_usd=2", nil)
+	custom.SetBasicAuth("admin", "yell-yell-yum")
+	customRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(customRR, custom)
+	if customRR.Code != http.StatusOK || !strings.Contains(customRR.Body.String(), `"custom":true`) {
+		t.Fatalf("custom savings status=%d body=%s", customRR.Code, customRR.Body.String())
+	}
+
+	badCustom := httptest.NewRequest(http.MethodGet, "/admin/reports/api/savings?since=24h&baseline=custom&baseline_input_price_per_million_usd=-1&baseline_output_price_per_million_usd=2", nil)
+	badCustom.SetBasicAuth("admin", "yell-yell-yum")
+	badCustomRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(badCustomRR, badCustom)
+	if badCustomRR.Code != http.StatusBadRequest {
+		t.Fatalf("bad custom savings status=%d body=%s", badCustomRR.Code, badCustomRR.Body.String())
+	}
+
 	requests := body["requests"].([]any)
 	if len(requests) != 1 {
 		t.Fatalf("summary request rows len=%d, want max_rows cap 1: %#v", len(requests), body)
@@ -691,7 +736,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if jsRR.Code != http.StatusOK || !strings.Contains(jsRR.Body.String(), "metrum-admin-reports-theme") || !strings.Contains(jsRR.Body.String(), "localStorage") {
 		t.Fatalf("js status=%d body=%s", jsRR.Code, jsRR.Body.String())
 	}
-	for _, want := range []string{"formatUnit", "renderChartSpecs", "color_key"} {
+	for _, want := range []string{"formatUnit", "renderChartSpecs", "color_key", "api/savings", "savingsRows"} {
 		if !strings.Contains(jsRR.Body.String(), want) {
 			t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
 		}

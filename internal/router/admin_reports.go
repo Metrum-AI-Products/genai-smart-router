@@ -35,6 +35,41 @@ type adminReportResponse struct {
 	GeneratedUTC string                `json:"generatedUtc"`
 }
 
+type adminSavingsResponse struct {
+	Period       adminReportPeriod         `json:"period"`
+	Baseline     adminSavingsBaselineDTO   `json:"baseline"`
+	Baselines    []adminSavingsBaselineDTO `json:"baselines"`
+	Summary      adminSavingsRow           `json:"summary"`
+	ByTime       []adminSavingsRow         `json:"byTime"`
+	ByGroup      []adminSavingsRow         `json:"byGroup"`
+	Charts       []adminReportChart        `json:"charts"`
+	Warnings     []string                  `json:"warnings,omitempty"`
+	GeneratedUTC string                    `json:"generatedUtc"`
+}
+
+type adminSavingsBaselineDTO struct {
+	BaselineID                       string  `json:"baseline_id"`
+	BaselineName                     string  `json:"baseline_name"`
+	PricingSource                    string  `json:"pricing_source"`
+	PricingUpdatedAt                 string  `json:"pricing_updated_at"`
+	BaselineInputPricePerMillionUSD  float64 `json:"baseline_input_price_per_million_usd"`
+	BaselineOutputPricePerMillionUSD float64 `json:"baseline_output_price_per_million_usd"`
+	Notes                            string  `json:"notes,omitempty"`
+	Custom                           bool    `json:"custom,omitempty"`
+}
+
+type adminSavingsRow struct {
+	Key             string  `json:"key"`
+	Requests        int64   `json:"requests"`
+	InputTokens     int64   `json:"input_tokens"`
+	OutputTokens    int64   `json:"output_tokens"`
+	TotalTokens     int64   `json:"total_tokens"`
+	ActualCostUSD   float64 `json:"actual_cost_usd"`
+	BaselineCostUSD float64 `json:"baseline_cost_usd"`
+	SavingsUSD      float64 `json:"savings_usd"`
+	SavingsPct      float64 `json:"savings_pct"`
+}
+
 type adminReportPeriod struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -251,6 +286,11 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAdminReportSummary(w, r)
+	case r.URL.Path == prefix+"/api/savings":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminReportSavings(w, r)
 	case r.URL.Path == prefix+"/api/requests":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -335,6 +375,79 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, buildAdminReportResponse(filters, rows))
+}
+
+func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Request) {
+	filters, ok := s.parseAdminReportFilters(w, r, false)
+	if !ok {
+		return
+	}
+	baseline, ok := s.parseAdminSavingsBaseline(w, r)
+	if !ok {
+		return
+	}
+	rows, err := s.usage.rows(filters.UsageReportOptions)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	writeJSON(w, http.StatusOK, buildAdminSavingsResponse(filters, rows, baseline, s.adminSavingsBaselines()))
+}
+
+func (s *Service) parseAdminSavingsBaseline(w http.ResponseWriter, r *http.Request) (adminSavingsBaselineDTO, bool) {
+	q := r.URL.Query()
+	if strings.EqualFold(strings.TrimSpace(q.Get("baseline")), "custom") {
+		name := strings.TrimSpace(q.Get("baseline_name"))
+		if name == "" {
+			name = "Custom baseline"
+		}
+		input, errIn := strconv.ParseFloat(strings.TrimSpace(q.Get("baseline_input_price_per_million_usd")), 64)
+		output, errOut := strconv.ParseFloat(strings.TrimSpace(q.Get("baseline_output_price_per_million_usd")), 64)
+		if errIn != nil || errOut != nil || input < 0 || output < 0 || input > 100000 || output > 100000 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid custom baseline pricing"}})
+			return adminSavingsBaselineDTO{}, false
+		}
+		return adminSavingsBaselineDTO{
+			BaselineID:                       "custom",
+			BaselineName:                     name,
+			PricingSource:                    "custom-session",
+			PricingUpdatedAt:                 formatUsageTime(time.Now().UTC()),
+			BaselineInputPricePerMillionUSD:  input,
+			BaselineOutputPricePerMillionUSD: output,
+			Custom:                           true,
+		}, true
+	}
+	baselineID := strings.TrimSpace(q.Get("baseline"))
+	if baselineID == "" {
+		baselineID = "gpt-5.5"
+	}
+	for _, baseline := range s.adminSavingsBaselines() {
+		if baseline.BaselineID == baselineID {
+			return baseline, true
+		}
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "unknown savings baseline"}})
+	return adminSavingsBaselineDTO{}, false
+}
+
+func (s *Service) adminSavingsBaselines() []adminSavingsBaselineDTO {
+	configured := s.cfg.Server.AdminReports.Baselines
+	if len(configured) == 0 {
+		configured = defaultAdminReportBaselines()
+	}
+	out := make([]adminSavingsBaselineDTO, 0, len(configured))
+	for _, baseline := range configured {
+		out = append(out, adminSavingsBaselineDTO{
+			BaselineID:                       baseline.ID,
+			BaselineName:                     baseline.Name,
+			PricingSource:                    baseline.PricingSource,
+			PricingUpdatedAt:                 baseline.PricingUpdatedAt,
+			BaselineInputPricePerMillionUSD:  baseline.InputPricePerMillionUSD,
+			BaselineOutputPricePerMillionUSD: baseline.OutputPricePerMillionUSD,
+			Notes:                            baseline.Notes,
+		})
+	}
+	return out
 }
 
 func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Request) {
@@ -493,6 +606,147 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		Requests:     adminRecentRequestsFromRows(rows, filters.Limit),
 		GeneratedUTC: generatedAt,
 	}
+}
+
+func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, baseline adminSavingsBaselineDTO, baselines []adminSavingsBaselineDTO) adminSavingsResponse {
+	total := &adminSavingsAgg{}
+	byHour := map[string]*adminSavingsAgg{}
+	byGroup := map[string]*adminSavingsAgg{}
+	missingTokens := 0
+	missingActualCost := 0
+	for _, row := range rows {
+		if row.InputTokens == 0 && row.OutputTokens == 0 && row.TotalTokens == 0 {
+			missingTokens++
+		}
+		if row.TotalCostUSD == 0 && (row.InputTokens > 0 || row.OutputTokens > 0 || row.TotalTokens > 0) {
+			missingActualCost++
+		}
+		total.add(row, baseline)
+		adminSavingsAggFor(byHour, row.TS.UTC().Truncate(time.Hour).Format(time.RFC3339)).add(row, baseline)
+		adminSavingsAggFor(byGroup, defaultString(row.ResolvedGroup, row.RequestedModel)).add(row, baseline)
+	}
+	generatedAt := formatUsageTime(time.Now().UTC())
+	byTime := adminSavingsRowsFromAgg(byHour)
+	warnings := []string{}
+	if missingTokens > 0 {
+		warnings = append(warnings, strconv.Itoa(missingTokens)+" row(s) had no stored input/output token usage")
+	}
+	if missingActualCost > 0 {
+		warnings = append(warnings, strconv.Itoa(missingActualCost)+" row(s) had token usage but zero stored actual cost")
+	}
+	return adminSavingsResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Baseline:     baseline,
+		Baselines:    baselines,
+		Summary:      total.row("total"),
+		ByTime:       byTime,
+		ByGroup:      adminSavingsRowsFromAgg(byGroup),
+		Charts:       adminSavingsCharts(filters, generatedAt, byTime),
+		Warnings:     warnings,
+		GeneratedUTC: generatedAt,
+	}
+}
+
+type adminSavingsAgg struct {
+	Requests        int64
+	InputTokens     int64
+	OutputTokens    int64
+	TotalTokens     int64
+	ActualCostUSD   float64
+	BaselineCostUSD float64
+}
+
+func adminSavingsAggFor(data map[string]*adminSavingsAgg, key string) *adminSavingsAgg {
+	if data[key] == nil {
+		data[key] = &adminSavingsAgg{}
+	}
+	return data[key]
+}
+
+func (a *adminSavingsAgg) add(row usageRow, baseline adminSavingsBaselineDTO) {
+	a.Requests++
+	a.InputTokens += int64(row.InputTokens)
+	a.OutputTokens += int64(row.OutputTokens)
+	a.TotalTokens += int64(totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}))
+	a.ActualCostUSD += row.TotalCostUSD
+	a.BaselineCostUSD += adminBaselineCost(row, baseline)
+}
+
+func (a *adminSavingsAgg) row(key string) adminSavingsRow {
+	savings := a.BaselineCostUSD - a.ActualCostUSD
+	return adminSavingsRow{
+		Key:             key,
+		Requests:        a.Requests,
+		InputTokens:     a.InputTokens,
+		OutputTokens:    a.OutputTokens,
+		TotalTokens:     a.TotalTokens,
+		ActualCostUSD:   a.ActualCostUSD,
+		BaselineCostUSD: a.BaselineCostUSD,
+		SavingsUSD:      savings,
+		SavingsPct:      ratioPctFloat(savings, a.BaselineCostUSD),
+	}
+}
+
+func adminBaselineCost(row usageRow, baseline adminSavingsBaselineDTO) float64 {
+	return (float64(row.InputTokens) / 1_000_000 * baseline.BaselineInputPricePerMillionUSD) +
+		(float64(row.OutputTokens) / 1_000_000 * baseline.BaselineOutputPricePerMillionUSD)
+}
+
+func ratioPctFloat(part, total float64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return part / total * 100
+}
+
+func adminSavingsRowsFromAgg(data map[string]*adminSavingsAgg) []adminSavingsRow {
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]adminSavingsRow, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, data[key].row(key))
+	}
+	return out
+}
+
+func adminSavingsCharts(filters adminReportFilters, generatedAt string, rows []adminSavingsRow) []adminReportChart {
+	return []adminReportChart{
+		adminTimeSavingsChart(filters, generatedAt, "savings_cost", "Actual vs baseline cost", "USD", "usd", []adminReportChartSeries{
+			adminSavingsChartSeries("Actual cost", "usd", "red", rows, func(row adminSavingsRow) float64 { return row.ActualCostUSD }),
+			adminSavingsChartSeries("Baseline cost", "usd", "blue", rows, func(row adminSavingsRow) float64 { return row.BaselineCostUSD }),
+		}),
+		adminTimeSavingsChart(filters, generatedAt, "savings_usd", "Savings over time", "USD", "usd", []adminReportChartSeries{
+			adminSavingsChartSeries("Savings", "usd", "magenta", rows, func(row adminSavingsRow) float64 { return row.SavingsUSD }),
+		}),
+		adminTimeSavingsChart(filters, generatedAt, "savings_pct", "Savings rate over time", "Percent", "percent", []adminReportChartSeries{
+			adminSavingsChartSeries("Savings rate", "percent", "purple", rows, func(row adminSavingsRow) float64 { return row.SavingsPct }),
+		}),
+	}
+}
+
+func adminTimeSavingsChart(filters adminReportFilters, generatedAt, id, title, yLabel, yUnit string, series []adminReportChartSeries) adminReportChart {
+	return adminReportChart{
+		ChartID:     id,
+		Title:       title,
+		XAxis:       adminReportChartAxis{Label: "Time", Type: "time", Unit: "UTC hour"},
+		YAxis:       adminReportChartAxis{Label: yLabel, Type: "linear", Unit: yUnit},
+		Series:      series,
+		GeneratedAt: generatedAt,
+		From:        formatUsageTime(filters.From),
+		To:          formatUsageTime(filters.To),
+		Filters:     adminFilterDTO(filters),
+	}
+}
+
+func adminSavingsChartSeries(name, unit, colorKey string, rows []adminSavingsRow, value func(adminSavingsRow) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, adminReportChartPoint{X: row.Key, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
 }
 
 func adminRecentRequestsFromRows(rows []usageRow, limit int) []adminReportRequest {

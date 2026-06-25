@@ -86,6 +86,21 @@ server:
     max_range: 31d
     max_rows: 500
     export_markdown: true
+    baselines:
+      - id: gpt-5.5
+        name: GPT-5.5
+        input_price_per_million_usd: 5.00
+        output_price_per_million_usd: 30.00
+        pricing_source: https://developers.openai.com/api/docs/pricing
+        pricing_updated_at: "2026-06-25"
+        notes: OpenAI API standard text token pricing checked on 2026-06-25.
+      - id: claude-opus-4.8
+        name: Claude Opus 4.8
+        input_price_per_million_usd: 5.00
+        output_price_per_million_usd: 25.00
+        pricing_source: https://docs.anthropic.com/en/docs/about-claude/pricing
+        pricing_updated_at: "2026-06-25"
+        notes: Anthropic Claude API standard token pricing checked on 2026-06-25; fast mode and batch pricing are separate.
   # Governed content capture is disabled by default. Enabling it stores redacted
   # request/response/upstream-error content in separate relational tables keyed
   # by request_id. It is not diagnostics, metrics, or usage reporting.

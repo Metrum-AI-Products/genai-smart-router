@@ -60,12 +60,23 @@ type AdminAuthorizationConfig struct {
 }
 
 type AdminReportsConfig struct {
-	Enabled        bool   `yaml:"enabled" json:"enabled"`
-	PathPrefix     string `yaml:"path_prefix" json:"path_prefix"`
-	DefaultSince   string `yaml:"default_since" json:"default_since"`
-	MaxRange       string `yaml:"max_range" json:"max_range"`
-	MaxRows        int    `yaml:"max_rows" json:"max_rows"`
-	ExportMarkdown bool   `yaml:"export_markdown" json:"export_markdown"`
+	Enabled        bool                        `yaml:"enabled" json:"enabled"`
+	PathPrefix     string                      `yaml:"path_prefix" json:"path_prefix"`
+	DefaultSince   string                      `yaml:"default_since" json:"default_since"`
+	MaxRange       string                      `yaml:"max_range" json:"max_range"`
+	MaxRows        int                         `yaml:"max_rows" json:"max_rows"`
+	ExportMarkdown bool                        `yaml:"export_markdown" json:"export_markdown"`
+	Baselines      []AdminReportBaselineConfig `yaml:"baselines" json:"baselines"`
+}
+
+type AdminReportBaselineConfig struct {
+	ID                       string  `yaml:"id" json:"id"`
+	Name                     string  `yaml:"name" json:"name"`
+	PricingSource            string  `yaml:"pricing_source" json:"pricing_source"`
+	PricingUpdatedAt         string  `yaml:"pricing_updated_at" json:"pricing_updated_at"`
+	InputPricePerMillionUSD  float64 `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd"`
+	OutputPricePerMillionUSD float64 `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd"`
+	Notes                    string  `yaml:"notes" json:"notes"`
 }
 
 type AdminBasicAuthConfig struct {
@@ -560,6 +571,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.AdminReports.MaxRows == 0 {
 		c.Server.AdminReports.MaxRows = 500
+	}
+	if len(c.Server.AdminReports.Baselines) == 0 {
+		c.Server.AdminReports.Baselines = defaultAdminReportBaselines()
 	}
 	if c.Server.Cache.MaxBytes == 0 {
 		c.Server.Cache.MaxBytes = 128 << 20
@@ -1238,6 +1252,32 @@ func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage Us
 	if cfg.MaxRows <= 0 || cfg.MaxRows > 10000 {
 		return fmt.Errorf("server admin_reports max_rows must be between 1 and 10000")
 	}
+	if len(cfg.Baselines) == 0 {
+		cfg.Baselines = defaultAdminReportBaselines()
+	}
+	seenBaselines := map[string]bool{}
+	for i, baseline := range cfg.Baselines {
+		id := strings.TrimSpace(baseline.ID)
+		if id == "" {
+			return fmt.Errorf("server admin_reports baselines[%d] id is required", i)
+		}
+		if seenBaselines[id] {
+			return fmt.Errorf("server admin_reports baselines[%d] id %q is duplicated", i, id)
+		}
+		seenBaselines[id] = true
+		if strings.TrimSpace(baseline.Name) == "" {
+			return fmt.Errorf("server admin_reports baselines[%d] name is required", i)
+		}
+		if strings.TrimSpace(baseline.PricingSource) == "" || strings.TrimSpace(baseline.PricingUpdatedAt) == "" {
+			return fmt.Errorf("server admin_reports baselines[%d] pricing_source and pricing_updated_at are required", i)
+		}
+		if baseline.InputPricePerMillionUSD < 0 || baseline.OutputPricePerMillionUSD < 0 {
+			return fmt.Errorf("server admin_reports baselines[%d] prices must be nonnegative", i)
+		}
+		if baseline.InputPricePerMillionUSD > 100000 || baseline.OutputPricePerMillionUSD > 100000 {
+			return fmt.Errorf("server admin_reports baselines[%d] prices are unreasonably high", i)
+		}
+	}
 	if !cfg.Enabled {
 		return nil
 	}
@@ -1251,6 +1291,29 @@ func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage Us
 		return fmt.Errorf("server admin_reports requires server.admin_auth.authorization enabled")
 	}
 	return nil
+}
+
+func defaultAdminReportBaselines() []AdminReportBaselineConfig {
+	return []AdminReportBaselineConfig{
+		{
+			ID:                       "gpt-5.5",
+			Name:                     "GPT-5.5",
+			PricingSource:            "https://developers.openai.com/api/docs/pricing",
+			PricingUpdatedAt:         "2026-06-25",
+			InputPricePerMillionUSD:  5.00,
+			OutputPricePerMillionUSD: 30.00,
+			Notes:                    "OpenAI API standard text token pricing checked on 2026-06-25.",
+		},
+		{
+			ID:                       "claude-opus-4.8",
+			Name:                     "Claude Opus 4.8",
+			PricingSource:            "https://docs.anthropic.com/en/docs/about-claude/pricing",
+			PricingUpdatedAt:         "2026-06-25",
+			InputPricePerMillionUSD:  5.00,
+			OutputPricePerMillionUSD: 25.00,
+			Notes:                    "Anthropic Claude API standard token pricing checked on 2026-06-25; fast mode and batch pricing are separate.",
+		},
+	}
 }
 
 func cleanAdminReportsPrefix(prefix string) string {

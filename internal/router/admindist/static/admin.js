@@ -1,6 +1,7 @@
 const charts = {};
 let activeTab = "groups";
 let lastReport = null;
+let lastSavings = null;
 
 const themeKey = "metrum-admin-reports-theme";
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
@@ -89,6 +90,15 @@ function qs() {
   return params;
 }
 
+function savingsQS() {
+  const params = qs();
+  const data = new FormData(document.querySelector("#savingsFilters"));
+  for (const [key, value] of data.entries()) {
+    if (String(value).trim()) params.set(key, String(value).trim());
+  }
+  return params;
+}
+
 async function load() {
   const params = qs();
   document.querySelector("#export").href = `export.md?${params}`;
@@ -96,6 +106,14 @@ async function load() {
   if (!res.ok) throw new Error(`report request failed: ${res.status}`);
   const report = await res.json();
   render(report);
+}
+
+async function loadSavings() {
+  const params = savingsQS();
+  const res = await fetch(`api/savings?${params}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`savings request failed: ${res.status}`);
+  const report = await res.json();
+  renderSavings(report);
 }
 
 function render(report) {
@@ -138,6 +156,13 @@ function renderChartSpecs(specs) {
   chartFromSpec("errorChart", byID.errors_fallbacks);
 }
 
+function renderSavingsChartSpecs(specs) {
+  const byID = Object.fromEntries(specs.map(spec => [spec.chart_id, spec]));
+  chartFromSpec("savingsCostChart", byID.savings_cost);
+  chartFromSpec("savingsUsdChart", byID.savings_usd);
+  chartFromSpec("savingsPctChart", byID.savings_pct);
+}
+
 function chartFromSpec(id, spec) {
   if (!spec) return;
   const canvas = document.getElementById(id);
@@ -172,9 +197,52 @@ function chart(id, labels, datasets, colors, spec) {
 }
 
 function renderTable(report) {
+  const savingsPanel = document.querySelector("#savingsPanel");
+  savingsPanel.hidden = activeTab !== "savings";
+  if (activeTab === "savings") {
+    document.querySelector("#tables").innerHTML = "";
+    loadSavings().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+    return;
+  }
   const source = activeTab === "providers" ? report.byProvider : activeTab === "tokens" ? report.byToken : activeTab === "requests" ? report.requests : report.byGroup;
   const rows = activeTab === "requests" ? requestRows(source) : aggregateRows(source);
   document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${rows}</table></div>`;
+}
+
+function renderSavings(report) {
+  lastSavings = report;
+  populateBaselines(report.baselines || [], report.baseline && report.baseline.baseline_id);
+  const s = report.summary || {};
+  document.querySelector("#savingsSummary").innerHTML = [
+    ["Actual cost", usd.format(s.actual_cost_usd || 0)],
+    ["Baseline cost", usd.format(s.baseline_cost_usd || 0)],
+    ["Savings", usd.format(s.savings_usd || 0)],
+    ["Savings rate", formatUnit(s.savings_pct || 0, "percent", true)],
+    ["Input tokens", fmt.format(s.input_tokens || 0)],
+    ["Output tokens", fmt.format(s.output_tokens || 0)]
+  ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+  renderSavingsChartSpecs(report.charts || []);
+  const warnings = report.warnings || [];
+  document.querySelector("#savingsWarnings").innerHTML = warnings.length ? `<div class="warnings">${warnings.map(w => `<div class="warning">${esc(w)}</div>`).join("")}</div>` : "";
+  document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${savingsRows(report.byGroup || [])}</table></div>`;
+}
+
+function populateBaselines(baselines, selected) {
+  const select = document.querySelector("#baselineSelect");
+  if (select.options.length && select.dataset.loaded === "true") {
+    select.value = selected || select.value;
+    return;
+  }
+  select.innerHTML = baselines.map(b => `<option value="${esc(b.baseline_id)}">${esc(b.baseline_name)}</option>`).join("") +
+    `<option value="custom">Custom session baseline</option>`;
+  select.dataset.loaded = "true";
+  select.value = selected || "gpt-5.5";
+}
+
+function savingsRows(rows) {
+  return `<thead><tr><th>Model group</th><th>Requests</th><th>Input</th><th>Output</th><th>Total tokens</th><th>Actual cost</th><th>Baseline cost</th><th>Savings</th><th>Savings %</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.input_tokens}</td><td>${r.output_tokens}</td><td>${r.total_tokens}</td><td>${usd.format(r.actual_cost_usd)}</td><td>${usd.format(r.baseline_cost_usd)}</td><td>${usd.format(r.savings_usd)}</td><td>${formatUnit(r.savings_pct, "percent", true)}</td></tr>`).join("") +
+    `</tbody>`;
 }
 
 function aggregateRows(rows) {
@@ -197,6 +265,7 @@ document.querySelector("#themeToggle").addEventListener("click", () => {
   const next = currentTheme() === "dark" ? "light" : "dark";
   applyTheme(next, true);
   if (lastReport) renderCharts(lastReport);
+  if (lastSavings) renderSavingsChartSpecs(lastSavings.charts || []);
 });
 
 document.querySelector("#filters").addEventListener("submit", event => {
@@ -209,6 +278,10 @@ document.querySelectorAll(".tabs button").forEach(button => button.addEventListe
   activeTab = button.dataset.tab;
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 }));
+document.querySelector("#savingsFilters").addEventListener("submit", event => {
+  event.preventDefault();
+  loadSavings().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+});
 
 applyTheme(storedTheme() || systemTheme(), false);
 load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);

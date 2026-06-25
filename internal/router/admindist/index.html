@@ -42,8 +42,25 @@
       <button type="button" data-tab="groups" class="active">Groups</button>
       <button type="button" data-tab="providers">Providers</button>
       <button type="button" data-tab="tokens">Keys</button>
+      <button type="button" data-tab="savings">Savings</button>
       <button type="button" data-tab="requests">Requests</button>
     </nav>
+    <section id="savingsPanel" class="savings-panel" hidden>
+      <form id="savingsFilters" class="savings-controls">
+        <label>Baseline <select name="baseline" id="baselineSelect"></select></label>
+        <label>Name <input name="baseline_name" placeholder="Custom baseline"></label>
+        <label>Input USD/M <input name="baseline_input_price_per_million_usd" inputmode="decimal" placeholder="5.00"></label>
+        <label>Output USD/M <input name="baseline_output_price_per_million_usd" inputmode="decimal" placeholder="30.00"></label>
+        <button type="submit">Apply baseline</button>
+      </form>
+      <section id="savingsSummary" class="summary"></section>
+      <section class="charts savings-charts">
+        <figure><figcaption>Actual vs baseline cost</figcaption><canvas id="savingsCostChart"></canvas></figure>
+        <figure><figcaption>Savings over time</figcaption><canvas id="savingsUsdChart"></canvas></figure>
+        <figure><figcaption>Savings rate over time</figcaption><canvas id="savingsPctChart"></canvas></figure>
+      </section>
+      <div id="savingsWarnings"></div>
+    </section>
     <section id="tables"></section>
   </main>
   <script src="static/chart.umd.js"></script>
