@@ -57,6 +57,29 @@ curl -i -u admin:<password> \
 
 Expected: `200` JSON with safe access-event rows for a subject authorized for `admin:security_reports`. A Basic/OIDC subject that only has `admin:reports` must receive `403 reports-forbidden`.
 
+## Decision Telemetry
+
+Decision telemetry is disabled by default. Enable it only when operators need request-by-request explainability for target eligibility, selected routing decisions, or cache bypass analysis:
+
+```yaml
+server:
+  decision_telemetry:
+    enabled: true
+    max_candidates: 64
+    max_filter_reasons: 256
+    record_candidates: true
+    record_cache_reasons: true
+```
+
+When enabled, usage reports include a Decision Telemetry Summary with row counts and top strategy, filter-reason, and cache-reason buckets. The rows are normalized and joinable by `request_id`; they do not store prompts, image payloads, tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, or full config.
+
+Smoke after enabling:
+
+1. Send a normal text request and confirm `request_target_candidates` has bounded candidate rows and `request_routing_decisions` has the selected strategy/target.
+2. Send a negative request to a group with no compatible target, for example a tool request to a target without `tool_support`, and confirm `502 no-eligible-target` plus a safe `request_target_filter_reasons.reason` such as `tool-support`.
+3. Send a request with `Cache-Control: no-cache` and confirm `request_cache_reasons.reason = cache-request-no-cache`.
+4. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
+
 Filtered benchmark or project report:
 
 ```bash

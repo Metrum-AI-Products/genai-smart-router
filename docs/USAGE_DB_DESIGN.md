@@ -27,6 +27,16 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 
 These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
 
+Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
+
+- `request_decision_shape_features`: one row per safe request-shape feature such as caller dialect, stream flag, tool count, image count, structured-output flag, max-token flag, and cacheability.
+- `request_target_candidates`: one row per bounded group target candidate with provider, model, dialect, configured weight, tool-only flag, eligibility flag, and selected flag.
+- `request_target_filter_reasons`: one row per bounded candidate filter bucket, such as `tool-only-target`, `tool-support`, `dialect-tool-passthrough`, `structured-output-support`, `max-tokens-honored`, or `contract-*`.
+- `request_routing_decisions`: one row per selected routing decision with strategy, selected candidate index, provider, model, dialect, fallback count, and optional safe class label.
+- `request_cache_reasons`: one row per cache decision bucket, such as `cache-hit`, `cache-miss`, `cache-request-no-cache`, `cache-tool-request`, `cache-image-request`, `cache-structured-output`, `cache-streaming`, or `cache-temperature`.
+
+Decision telemetry must not store prompt text, image URLs or bytes, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, or routing script raw request mirrors. Keep new reason names stable, lowercase, and safe for reports.
+
 Governed content-capture tables are separate from diagnostics and also follow the relational-only rule:
 
 - `request_content_captures`: redacted request, response, and upstream-error content rows with scalar request/route metadata, retention timestamp, redaction counts, and truncation flags.
@@ -57,6 +67,7 @@ Each request row stores:
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
 - PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
+- optional decision telemetry traceability: child rows keyed by request ID for request-shape features, candidate eligibility, filter buckets, routing decisions, and cache reason buckets when `server.decision_telemetry.enabled: true`.
 - optional governed content-capture traceability: separate content rows keyed by request ID only when `server.content_capture.enabled` and a capture scope are configured.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.
@@ -71,6 +82,7 @@ Durable across container restarts when volumes are preserved:
 - JSONL request logs.
 - per-request timing, TPS, and cache snapshot fields.
 - diagnostic attempt, trace, and terminal error rows when diagnostics are enabled.
+- decision telemetry rows when `server.decision_telemetry.enabled: true`.
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
 - authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
 

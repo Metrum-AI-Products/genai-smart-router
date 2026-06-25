@@ -110,6 +110,42 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 	}
 }
 
+func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	raw := strings.Join([]string{
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_decision","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"bypass","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"quota_state":"ok","key_state":"active","warnings":[],"decision_shape_features":[{"seq":1,"name":"has_tools","bool_value":true}],"decision_candidates":[{"candidate_index":0,"group_target_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","eligible":true,"selected":true}],"decision_filter_reasons":[{"seq":1,"candidate_index":1,"stage":"request_shape","reason":"tool-support"}],"routing_decisions":[{"seq":1,"strategy":"static","selected_candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","fallback_count":0}],"cache_reasons":[{"seq":1,"status":"bypass","reason":"cache-tool-request","candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat"}]}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	md, err := GenerateUsageMarkdown(UsageReportOptions{
+		DBPath:  dbPath,
+		LogPath: logPath,
+		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## Decision Telemetry Summary",
+		"| 1 | 1 | 1 | 1 | 1 |",
+		"### Routing Decisions By Strategy",
+		"| static | 1 |",
+		"### Target Filter Reasons",
+		"| tool-support | 1 |",
+		"### Cache Decision Reasons",
+		"| cache-tool-request | 1 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("report missing %q:\n%s", want, md)
+		}
+	}
+}
+
 func TestUsageReportFiltersRows(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "requests.jsonl")
@@ -168,7 +204,21 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		Name string
 		Type string
 	}
-	for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events", "security_access_events"} {
+	for _, table := range []string{
+		"request_usage",
+		"request_attempts",
+		"request_trace_events",
+		"request_decision_shape_features",
+		"request_target_candidates",
+		"request_target_filter_reasons",
+		"request_routing_decisions",
+		"request_cache_reasons",
+		"request_errors",
+		"request_content_captures",
+		"request_content_headers",
+		"request_content_audit_events",
+		"security_access_events",
+	} {
 		var cols []col
 		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {
 			t.Fatal(err)
@@ -183,6 +233,52 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestDecisionTelemetryTablesReferenceRequestUsage(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, table := range []string{
+		"request_decision_shape_features",
+		"request_target_candidates",
+		"request_target_filter_reasons",
+		"request_routing_decisions",
+		"request_cache_reasons",
+	} {
+		assertRequestUsageForeignKey(t, store, table)
+	}
+}
+
+func assertRequestUsageForeignKey(t *testing.T, store *usageStore, table string) {
+	t.Helper()
+	type fkRow struct {
+		Table string
+		From  string
+		To    string
+	}
+	var rows []fkRow
+	query := map[string]string{
+		"request_decision_shape_features": "PRAGMA foreign_key_list(request_decision_shape_features)",
+		"request_target_candidates":       "PRAGMA foreign_key_list(request_target_candidates)",
+		"request_target_filter_reasons":   "PRAGMA foreign_key_list(request_target_filter_reasons)",
+		"request_routing_decisions":       "PRAGMA foreign_key_list(request_routing_decisions)",
+		"request_cache_reasons":           "PRAGMA foreign_key_list(request_cache_reasons)",
+	}[table]
+	if query == "" {
+		t.Fatalf("unknown table %s", table)
+	}
+	if err := store.db.Raw(query).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Table == "request_usage" && row.From == "request_id" && row.To == "request_id" {
+			return
+		}
+	}
+	t.Fatalf("%s does not reference request_usage(request_id): %#v", table, rows)
 }
 
 func TestContentCaptureRetentionPurgeDeletesRowsAndAudits(t *testing.T) {

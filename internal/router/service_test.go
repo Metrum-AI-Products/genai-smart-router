@@ -7058,6 +7058,187 @@ func TestUpstreamAttemptTimeoutReturnsGatewayTimeoutAndDiagnostics(t *testing.T)
 	}
 }
 
+func TestDecisionTelemetryDisabledByDefault(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_decision_default",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	svc := newTestService(t, upstream.URL, "provider-key")
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	assertDecisionTelemetryCounts(t, svc, 0, 0, 0, 0, 0)
+}
+
+func TestDecisionTelemetryEnabledRecordsTextCandidateAndDecision(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_decision_enabled",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.DecisionTelemetry.Enabled = true
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	assertDecisionTelemetryCounts(t, svc, 10, 1, 0, 1, 1)
+	var selected int64
+	if err := svc.usage.db.Model(&decisionTargetCandidateRecord{}).Where("selected = ?", true).Count(&selected).Error; err != nil {
+		t.Fatal(err)
+	}
+	if selected != 1 {
+		t.Fatalf("selected candidate rows=%d, want 1", selected)
+	}
+	var decision routingDecisionRecord
+	if err := svc.usage.db.First(&decision).Error; err != nil {
+		t.Fatal(err)
+	}
+	if decision.Strategy != "static" || decision.Provider != "mock" || decision.Model != "mock-model" || decision.SelectedCandidateIndex != 0 {
+		t.Fatalf("unexpected routing decision: %#v", decision)
+	}
+}
+
+func TestDecisionTelemetryRecordsNoEligibleFilterReason(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "tool-only", ToolOnly: true}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	assertDecisionTelemetryCounts(t, svc, 10, 1, 1, 0, 0)
+	assertDecisionFilterReason(t, svc, "tool-only-target")
+}
+
+func TestDecisionTelemetryRecordsToolSupportFilterReason(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "plain-chat"}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"default","messages":[{"role":"user","content":"weather"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{}}}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	assertDecisionTelemetryCounts(t, svc, 10, 1, 1, 0, 0)
+	assertDecisionFilterReason(t, svc, "tool-support")
+}
+
+func TestDecisionTelemetryRecordsCacheBypassReason(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_cache_bypass",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.DecisionTelemetry.Enabled = true
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Cache-Control", "no-cache")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var reason decisionCacheReasonRecord
+	if err := svc.usage.db.First(&reason).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reason.Status != "bypass" || reason.Reason != "cache-request-no-cache" {
+		t.Fatalf("unexpected cache reason: %#v", reason)
+	}
+}
+
+func assertDecisionTelemetryCounts(t *testing.T, svc *Service, shape, candidates, filters, decisions, cacheReasons int64) {
+	t.Helper()
+	got := []struct {
+		name  string
+		want  int64
+		model any
+	}{
+		{name: "shape", want: shape, model: &decisionShapeFeatureRecord{}},
+		{name: "candidates", want: candidates, model: &decisionTargetCandidateRecord{}},
+		{name: "filters", want: filters, model: &decisionTargetFilterReasonRecord{}},
+		{name: "decisions", want: decisions, model: &routingDecisionRecord{}},
+		{name: "cache reasons", want: cacheReasons, model: &decisionCacheReasonRecord{}},
+	}
+	for _, item := range got {
+		var count int64
+		if err := svc.usage.db.Model(item.model).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != item.want {
+			t.Fatalf("%s rows=%d, want %d", item.name, count, item.want)
+		}
+	}
+}
+
+func assertDecisionFilterReason(t *testing.T, svc *Service, want string) {
+	t.Helper()
+	var count int64
+	if err := svc.usage.db.Model(&decisionTargetFilterReasonRecord{}).Where("reason = ?", want).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("filter reason %q count=%d, want 1", want, count)
+	}
+}
+
 const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {

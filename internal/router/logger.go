@@ -15,77 +15,82 @@ type requestLogger struct {
 }
 
 type logRecord struct {
-	TS                                 string             `json:"ts"`
-	RequestID                          string             `json:"request_id"`
-	CallerID                           string             `json:"caller_id"`
-	CallerUser                         string             `json:"caller_user"`
-	CallerProject                      string             `json:"caller_project"`
-	CallerEnvironment                  string             `json:"caller_environment"`
-	CallerIP                           string             `json:"caller_ip"`
-	TokenID                            string             `json:"token_id"`
-	Client                             string             `json:"client"`
-	InboundDialect                     string             `json:"inbound_dialect"`
-	RequestedModel                     string             `json:"requested_model"`
-	ResolvedGroup                      string             `json:"resolved_group"`
-	Strategy                           string             `json:"strategy"`
-	ClassLabel                         *string            `json:"class_label"`
-	TargetProvider                     string             `json:"target_provider"`
-	TargetModel                        string             `json:"target_model"`
-	TargetDialect                      string             `json:"target_dialect"`
-	Stream                             bool               `json:"stream"`
-	Cache                              string             `json:"cache"`
-	Status                             int                `json:"status"`
-	Attempts                           int                `json:"attempts"`
-	FallbackUsed                       bool               `json:"fallback_used"`
-	LatencyMS                          int64              `json:"latency_ms"`
-	TTFBMS                             *int64             `json:"ttfb_ms"`
-	UpstreamMS                         *int64             `json:"upstream_duration_ms"`
-	DownstreamMS                       *int64             `json:"downstream_duration_ms"`
-	UpstreamOutputTPS                  *float64           `json:"upstream_output_tokens_per_sec"`
-	UpstreamTotalTPS                   *float64           `json:"upstream_total_tokens_per_sec"`
-	DownstreamOutputTPS                *float64           `json:"downstream_output_tokens_per_sec"`
-	DownstreamTotalTPS                 *float64           `json:"downstream_total_tokens_per_sec"`
-	Usage                              Usage              `json:"usage"`
-	InputHasImage                      bool               `json:"input_has_image,omitempty"`
-	InputImageCount                    int                `json:"input_image_count,omitempty"`
-	InputImageTokens                   int                `json:"input_image_tokens,omitempty"`
-	PIIFilterApplied                   bool               `json:"pii_filter_applied,omitempty"`
-	PIIFilterMode                      string             `json:"pii_filter_mode,omitempty"`
-	PIIFilterReplacements              int                `json:"pii_filter_replacements,omitempty"`
-	PIIFilterRuleCount                 int                `json:"pii_filter_rule_count,omitempty"`
-	ContractPresent                    bool               `json:"contract_present,omitempty"`
-	ContractBucket                     string             `json:"contract_bucket,omitempty"`
-	ContractFailureReason              string             `json:"contract_failure_reason,omitempty"`
-	ContractWorkload                   string             `json:"contract_workload,omitempty"`
-	TargetValidationStatus             string             `json:"target_validation_status,omitempty"`
-	TargetValidationWorkload           string             `json:"target_validation_workload,omitempty"`
-	TargetValidationAgeBucket          string             `json:"target_validation_age_bucket,omitempty"`
-	InputPricePerMillionUSD            float64            `json:"input_price_per_million_usd,omitempty"`
-	OutputPricePerMillionUSD           float64            `json:"output_price_per_million_usd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64            `json:"image_input_price_per_million_tokens_usd,omitempty"`
-	ImageInputPricePerImageUSD         float64            `json:"image_input_price_per_image_usd,omitempty"`
-	InputCostUSD                       float64            `json:"input_cost_usd,omitempty"`
-	ImageCostUSD                       float64            `json:"image_cost_usd,omitempty"`
-	OutputCostUSD                      float64            `json:"output_cost_usd,omitempty"`
-	TotalCostUSD                       float64            `json:"total_cost_usd,omitempty"`
-	UpstreamReportedInputCostUSD       float64            `json:"upstream_reported_input_cost_usd,omitempty"`
-	UpstreamReportedOutputCostUSD      float64            `json:"upstream_reported_output_cost_usd,omitempty"`
-	UpstreamReportedTotalCostUSD       float64            `json:"upstream_reported_total_cost_usd,omitempty"`
-	PricingSource                      string             `json:"pricing_source,omitempty"`
-	PricingUpdatedAt                   string             `json:"pricing_updated_at,omitempty"`
-	CacheEnabled                       bool               `json:"cache_enabled"`
-	CacheItems                         int64              `json:"cache_items"`
-	CacheBytes                         int64              `json:"cache_bytes"`
-	CacheMaxBytes                      int64              `json:"cache_max_bytes"`
-	CacheOccupancyPct                  float64            `json:"cache_occupancy_pct"`
-	QuotaState                         string             `json:"quota_state"`
-	KeyState                           string             `json:"key_state"`
-	Warnings                           []string           `json:"warnings"`
-	Error                              *string            `json:"error"`
-	ErrorClass                         string             `json:"error_class,omitempty"`
-	ErrorMessage                       string             `json:"error_message,omitempty"`
-	AttemptsDetail                     []attemptLogRecord `json:"attempts_detail,omitempty"`
-	TraceEvents                        []traceLogRecord   `json:"trace_events,omitempty"`
+	TS                                 string                          `json:"ts"`
+	RequestID                          string                          `json:"request_id"`
+	CallerID                           string                          `json:"caller_id"`
+	CallerUser                         string                          `json:"caller_user"`
+	CallerProject                      string                          `json:"caller_project"`
+	CallerEnvironment                  string                          `json:"caller_environment"`
+	CallerIP                           string                          `json:"caller_ip"`
+	TokenID                            string                          `json:"token_id"`
+	Client                             string                          `json:"client"`
+	InboundDialect                     string                          `json:"inbound_dialect"`
+	RequestedModel                     string                          `json:"requested_model"`
+	ResolvedGroup                      string                          `json:"resolved_group"`
+	Strategy                           string                          `json:"strategy"`
+	ClassLabel                         *string                         `json:"class_label"`
+	TargetProvider                     string                          `json:"target_provider"`
+	TargetModel                        string                          `json:"target_model"`
+	TargetDialect                      string                          `json:"target_dialect"`
+	Stream                             bool                            `json:"stream"`
+	Cache                              string                          `json:"cache"`
+	Status                             int                             `json:"status"`
+	Attempts                           int                             `json:"attempts"`
+	FallbackUsed                       bool                            `json:"fallback_used"`
+	LatencyMS                          int64                           `json:"latency_ms"`
+	TTFBMS                             *int64                          `json:"ttfb_ms"`
+	UpstreamMS                         *int64                          `json:"upstream_duration_ms"`
+	DownstreamMS                       *int64                          `json:"downstream_duration_ms"`
+	UpstreamOutputTPS                  *float64                        `json:"upstream_output_tokens_per_sec"`
+	UpstreamTotalTPS                   *float64                        `json:"upstream_total_tokens_per_sec"`
+	DownstreamOutputTPS                *float64                        `json:"downstream_output_tokens_per_sec"`
+	DownstreamTotalTPS                 *float64                        `json:"downstream_total_tokens_per_sec"`
+	Usage                              Usage                           `json:"usage"`
+	InputHasImage                      bool                            `json:"input_has_image,omitempty"`
+	InputImageCount                    int                             `json:"input_image_count,omitempty"`
+	InputImageTokens                   int                             `json:"input_image_tokens,omitempty"`
+	PIIFilterApplied                   bool                            `json:"pii_filter_applied,omitempty"`
+	PIIFilterMode                      string                          `json:"pii_filter_mode,omitempty"`
+	PIIFilterReplacements              int                             `json:"pii_filter_replacements,omitempty"`
+	PIIFilterRuleCount                 int                             `json:"pii_filter_rule_count,omitempty"`
+	ContractPresent                    bool                            `json:"contract_present,omitempty"`
+	ContractBucket                     string                          `json:"contract_bucket,omitempty"`
+	ContractFailureReason              string                          `json:"contract_failure_reason,omitempty"`
+	ContractWorkload                   string                          `json:"contract_workload,omitempty"`
+	TargetValidationStatus             string                          `json:"target_validation_status,omitempty"`
+	TargetValidationWorkload           string                          `json:"target_validation_workload,omitempty"`
+	TargetValidationAgeBucket          string                          `json:"target_validation_age_bucket,omitempty"`
+	InputPricePerMillionUSD            float64                         `json:"input_price_per_million_usd,omitempty"`
+	OutputPricePerMillionUSD           float64                         `json:"output_price_per_million_usd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64                         `json:"image_input_price_per_million_tokens_usd,omitempty"`
+	ImageInputPricePerImageUSD         float64                         `json:"image_input_price_per_image_usd,omitempty"`
+	InputCostUSD                       float64                         `json:"input_cost_usd,omitempty"`
+	ImageCostUSD                       float64                         `json:"image_cost_usd,omitempty"`
+	OutputCostUSD                      float64                         `json:"output_cost_usd,omitempty"`
+	TotalCostUSD                       float64                         `json:"total_cost_usd,omitempty"`
+	UpstreamReportedInputCostUSD       float64                         `json:"upstream_reported_input_cost_usd,omitempty"`
+	UpstreamReportedOutputCostUSD      float64                         `json:"upstream_reported_output_cost_usd,omitempty"`
+	UpstreamReportedTotalCostUSD       float64                         `json:"upstream_reported_total_cost_usd,omitempty"`
+	PricingSource                      string                          `json:"pricing_source,omitempty"`
+	PricingUpdatedAt                   string                          `json:"pricing_updated_at,omitempty"`
+	CacheEnabled                       bool                            `json:"cache_enabled"`
+	CacheItems                         int64                           `json:"cache_items"`
+	CacheBytes                         int64                           `json:"cache_bytes"`
+	CacheMaxBytes                      int64                           `json:"cache_max_bytes"`
+	CacheOccupancyPct                  float64                         `json:"cache_occupancy_pct"`
+	QuotaState                         string                          `json:"quota_state"`
+	KeyState                           string                          `json:"key_state"`
+	Warnings                           []string                        `json:"warnings"`
+	Error                              *string                         `json:"error"`
+	ErrorClass                         string                          `json:"error_class,omitempty"`
+	ErrorMessage                       string                          `json:"error_message,omitempty"`
+	AttemptsDetail                     []attemptLogRecord              `json:"attempts_detail,omitempty"`
+	TraceEvents                        []traceLogRecord                `json:"trace_events,omitempty"`
+	DecisionShapeFeatures              []decisionShapeFeatureLogRecord `json:"decision_shape_features,omitempty"`
+	DecisionCandidates                 []decisionCandidateLogRecord    `json:"decision_candidates,omitempty"`
+	DecisionFilterReasons              []decisionFilterReasonLogRecord `json:"decision_filter_reasons,omitempty"`
+	RoutingDecisions                   []routingDecisionLogRecord      `json:"routing_decisions,omitempty"`
+	CacheReasons                       []cacheReasonLogRecord          `json:"cache_reasons,omitempty"`
 }
 
 type attemptLogRecord struct {
@@ -122,6 +127,55 @@ type traceLogRecord struct {
 	ErrorClass string `json:"error_class,omitempty"`
 	Retryable  bool   `json:"retryable,omitempty"`
 	Attempt    int    `json:"attempt,omitempty"`
+}
+
+type decisionShapeFeatureLogRecord struct {
+	Seq       int    `json:"seq"`
+	Name      string `json:"name"`
+	BoolValue bool   `json:"bool_value,omitempty"`
+	IntValue  int    `json:"int_value,omitempty"`
+	TextValue string `json:"text_value,omitempty"`
+}
+
+type decisionCandidateLogRecord struct {
+	CandidateIndex   int    `json:"candidate_index"`
+	GroupTargetIndex int    `json:"group_target_index"`
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	ModelRef         string `json:"model_ref,omitempty"`
+	Dialect          string `json:"dialect"`
+	Weight           int    `json:"weight,omitempty"`
+	ToolOnly         bool   `json:"tool_only,omitempty"`
+	Eligible         bool   `json:"eligible"`
+	Selected         bool   `json:"selected,omitempty"`
+}
+
+type decisionFilterReasonLogRecord struct {
+	Seq            int    `json:"seq"`
+	CandidateIndex int    `json:"candidate_index"`
+	Stage          string `json:"stage"`
+	Reason         string `json:"reason"`
+}
+
+type routingDecisionLogRecord struct {
+	Seq                    int     `json:"seq"`
+	Strategy               string  `json:"strategy"`
+	SelectedCandidateIndex int     `json:"selected_candidate_index"`
+	Provider               string  `json:"provider"`
+	Model                  string  `json:"model"`
+	Dialect                string  `json:"dialect"`
+	FallbackCount          int     `json:"fallback_count"`
+	ClassLabel             *string `json:"class_label,omitempty"`
+}
+
+type cacheReasonLogRecord struct {
+	Seq            int    `json:"seq"`
+	Status         string `json:"status"`
+	Reason         string `json:"reason"`
+	CandidateIndex int    `json:"candidate_index"`
+	Provider       string `json:"provider,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Dialect        string `json:"dialect,omitempty"`
 }
 
 func newRequestLogger(path string) (*requestLogger, error) {

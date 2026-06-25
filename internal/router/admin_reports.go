@@ -764,8 +764,9 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
+	decisionSummary := s.usage.decisionTelemetrySummary(rows)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows)))
+	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary)))
 }
 
 func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, withLimit bool) (adminReportFilters, bool) {

@@ -472,6 +472,12 @@ server:
     enabled: true
     driver: postgres
     dsn: ${ROUTER_USAGE_DB_DSN}
+  decision_telemetry:
+    enabled: false
+    max_candidates: 64
+    max_filter_reasons: 256
+    record_candidates: true
+    record_cache_reasons: true
   upstream:
     timeout_ms: 600000
     default_attempt_timeout_ms: 0
@@ -520,6 +526,10 @@ server:
       enabled: false
       kms_key_id: ""
 ```
+
+`server.decision_telemetry` is optional and disabled by default. When enabled, the router writes normalized scalar rows keyed by request ID for request-shape features, bounded target candidates, safe target-filter reason buckets, selected routing decisions, and cache reason buckets. It is intended for operator explainability and usage-report summaries; caller responses keep the same behavior.
+
+Decision telemetry does not store prompt text, image bytes or URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, or raw routing-script request mirrors. Use `max_candidates` and `max_filter_reasons` to bound per-request row volume, and set `record_candidates` or `record_cache_reasons` to `false` when a deployment wants only the lighter routing-decision rows.
 
 The cache is intended for eligible deterministic unary responses. Tool-bearing agent requests bypass cache because tool output can depend on live shell and filesystem state.
 

@@ -102,6 +102,7 @@ Reports include:
 - Usage by external provider and model.
 - Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
+- Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, and cache decision reason buckets.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.
 
@@ -112,9 +113,10 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 - `request_usage` for the terminal request status, selected target, token counts, and cost fields.
 - `request_attempts` for each upstream provider/model attempt, status code, duration, timeout/cancel flags, retryability, and sanitized error class/message.
 - `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
+- `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled.
 - `request_errors` for the terminal sanitized error summary.
 
-Diagnostic rows do not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized upstream response bodies.
+Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies.
 
 Governed content capture is separate from diagnostics. It is disabled by default and, when enabled by the deployment operator, writes redacted request/response/upstream-error content to dedicated relational tables keyed by `request_id`. Maintenance operations require Casbin authorization for `content:capture`: `DELETE /v1/content-captures/<request_id>` uses action `delete`, and `POST /v1/content-captures/purge-expired` uses action `purge`. Existing `content_admin: true` caller entries remain compatible. Both operations write audit rows. Usage reports remain metadata-oriented and do not print captured content.
 
@@ -132,6 +134,10 @@ router-usage-report \
 ```
 
 Reports use public token IDs and aggregated usage fields. They do not expose raw router tokens or raw provider API keys.
+
+## Decision Telemetry Smoke
+
+Decision telemetry is disabled unless the deployment sets `server.decision_telemetry.enabled: true`. After enabling it, administrators should run a text request, a negative no-eligible-target request such as a tool request against a target without tool support, and a `Cache-Control: no-cache` request. Then generate a Markdown report and confirm it includes a Decision Telemetry Summary with safe buckets such as `static`, `tool-support`, or `cache-request-no-cache`.
 
 ## Performance Triage
 

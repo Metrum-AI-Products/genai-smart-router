@@ -523,6 +523,8 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	}
 	captureDecision := s.contentCaptureFor(rc.caller, req.Model, group)
 	s.captureRequestContent(rc, req, r.Header, captureDecision)
+	s.recordDecisionShape(rc, req, dialect)
+	s.recordEligibilityTelemetry(rc, req.Model, group, req, dialect)
 	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
 		var eligibilityErr routingEligibilityError
@@ -538,6 +540,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusBadGateway, "routing-failed")
 		return
 	}
+	s.recordRoutingDecisionTelemetry(rc, dec)
 	rc.rec.ResolvedGroup = req.Model
 	rc.rec.Strategy = dec.Strategy
 	rc.rec.ClassLabel = dec.ClassLabel
@@ -572,6 +575,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 				restorePIIPlaceholders(cached, piiResult)
 			}
 			rc.rec.Cache = "hit"
+			s.recordCacheReasonTelemetry(rc, "hit", "cache-hit", dec.Target)
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
 			rc.trace("cache_hit", "", dec.Target, 0, http.StatusOK, "", false, 0)
@@ -581,9 +585,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			return
 		}
 		rc.rec.Cache = "miss"
+		s.recordCacheReasonTelemetry(rc, "miss", "cache-miss", dec.Target)
 		rc.trace("cache_miss", "", dec.Target, 0, 0, "", false, 0)
 	} else {
 		rc.rec.Cache = "bypass"
+		s.recordCacheReasonTelemetry(rc, "bypass", cacheBypassReason(req), dec.Target)
 		rc.trace("cache_bypass", "", dec.Target, 0, 0, "", false, 0)
 	}
 

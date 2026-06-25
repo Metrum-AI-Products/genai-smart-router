@@ -161,73 +161,78 @@ type securityAccessEvent struct {
 }
 
 type usageRecord struct {
-	RequestID                          string   `gorm:"column:request_id;primaryKey;type:text"`
-	TS                                 string   `gorm:"column:ts;type:text;not null;index:idx_request_usage_ts"`
-	CallerID                           string   `gorm:"column:caller_id;type:text;not null"`
-	CallerUser                         string   `gorm:"column:caller_user;type:text;not null"`
-	CallerProject                      string   `gorm:"column:caller_project;type:text;not null"`
-	CallerEnvironment                  string   `gorm:"column:caller_environment;type:text;not null"`
-	CallerIP                           string   `gorm:"column:caller_ip;type:text;index:idx_request_usage_caller_ip,priority:1"`
-	TokenID                            string   `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
-	Client                             string   `gorm:"column:client;type:text;not null"`
-	InboundDialect                     string   `gorm:"column:inbound_dialect;type:text;not null"`
-	RequestedModel                     string   `gorm:"column:requested_model;type:text;not null"`
-	ResolvedGroup                      string   `gorm:"column:resolved_group;type:text;not null;index:idx_request_usage_group,priority:1"`
-	Strategy                           string   `gorm:"column:strategy;type:text;not null"`
-	TargetProvider                     string   `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
-	TargetModel                        string   `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
-	TargetDialect                      string   `gorm:"column:target_dialect;type:text;not null"`
-	Stream                             bool     `gorm:"column:stream;not null"`
-	Cache                              string   `gorm:"column:cache;type:text;not null"`
-	Status                             int      `gorm:"column:status;not null"`
-	Attempts                           int      `gorm:"column:attempts;not null"`
-	FallbackUsed                       bool     `gorm:"column:fallback_used;not null"`
-	LatencyMS                          int64    `gorm:"column:latency_ms;not null"`
-	TTFBMS                             *int64   `gorm:"column:ttfb_ms"`
-	UpstreamMS                         *int64   `gorm:"column:upstream_duration_ms"`
-	DownstreamMS                       *int64   `gorm:"column:downstream_duration_ms"`
-	UpstreamOutputTPS                  *float64 `gorm:"column:upstream_output_tokens_per_sec"`
-	UpstreamTotalTPS                   *float64 `gorm:"column:upstream_total_tokens_per_sec"`
-	DownstreamOutputTPS                *float64 `gorm:"column:downstream_output_tokens_per_sec"`
-	DownstreamTotalTPS                 *float64 `gorm:"column:downstream_total_tokens_per_sec"`
-	InputTokens                        int      `gorm:"column:input_tokens;not null"`
-	OutputTokens                       int      `gorm:"column:output_tokens;not null"`
-	TotalTokens                        int      `gorm:"column:total_tokens;not null"`
-	InputHasImage                      bool     `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
-	InputImageCount                    int      `gorm:"column:input_image_count;not null;default:0"`
-	InputImageTokens                   int      `gorm:"column:input_image_tokens;not null;default:0"`
-	PIIFilterApplied                   bool     `gorm:"column:pii_filter_applied;not null;default:false;index:idx_request_usage_pii_filter"`
-	PIIFilterMode                      string   `gorm:"column:pii_filter_mode;type:text;not null;default:''"`
-	PIIFilterReplacements              int      `gorm:"column:pii_filter_replacements;not null;default:0"`
-	PIIFilterRuleCount                 int      `gorm:"column:pii_filter_rule_count;not null;default:0"`
-	ContractPresent                    bool     `gorm:"column:contract_present;not null;default:false;index:idx_request_usage_contract"`
-	ContractBucket                     string   `gorm:"column:contract_bucket;type:text;not null;default:'';index:idx_request_usage_contract_bucket"`
-	ContractFailureReason              string   `gorm:"column:contract_failure_reason;type:text;not null;default:'';index:idx_request_usage_contract_failure"`
-	ContractWorkload                   string   `gorm:"column:contract_workload;type:text;not null;default:'';index:idx_request_usage_contract_workload"`
-	TargetValidationStatus             string   `gorm:"column:target_validation_status;type:text;not null;default:'';index:idx_request_usage_validation_status"`
-	TargetValidationWorkload           string   `gorm:"column:target_validation_workload;type:text;not null;default:'';index:idx_request_usage_validation_workload"`
-	TargetValidationAgeBucket          string   `gorm:"column:target_validation_age_bucket;type:text;not null;default:'';index:idx_request_usage_validation_age"`
-	InputPricePerMillionUSD            float64  `gorm:"column:input_price_per_million_usd;not null;default:0"`
-	OutputPricePerMillionUSD           float64  `gorm:"column:output_price_per_million_usd;not null;default:0"`
-	ImageInputPricePerMillionTokensUSD float64  `gorm:"column:image_input_price_per_million_tokens_usd;not null;default:0"`
-	ImageInputPricePerImageUSD         float64  `gorm:"column:image_input_price_per_image_usd;not null;default:0"`
-	InputCostUSD                       float64  `gorm:"column:input_cost_usd;not null;default:0"`
-	ImageCostUSD                       float64  `gorm:"column:image_cost_usd;not null;default:0"`
-	OutputCostUSD                      float64  `gorm:"column:output_cost_usd;not null;default:0"`
-	TotalCostUSD                       float64  `gorm:"column:total_cost_usd;not null;default:0"`
-	UpstreamReportedInputCostUSD       float64  `gorm:"column:upstream_reported_input_cost_usd;not null;default:0"`
-	UpstreamReportedOutputCostUSD      float64  `gorm:"column:upstream_reported_output_cost_usd;not null;default:0"`
-	UpstreamReportedTotalCostUSD       float64  `gorm:"column:upstream_reported_total_cost_usd;not null;default:0"`
-	PricingSource                      string   `gorm:"column:pricing_source;type:text;not null;default:''"`
-	PricingUpdatedAt                   string   `gorm:"column:pricing_updated_at;type:text;not null;default:''"`
-	CacheEnabled                       bool     `gorm:"column:cache_enabled;not null"`
-	CacheItems                         int64    `gorm:"column:cache_items;not null"`
-	CacheBytes                         int64    `gorm:"column:cache_bytes;not null"`
-	CacheMaxBytes                      int64    `gorm:"column:cache_max_bytes;not null"`
-	CacheOccupancyPct                  float64  `gorm:"column:cache_occupancy_pct;not null"`
-	QuotaState                         string   `gorm:"column:quota_state;type:text;not null"`
-	KeyState                           string   `gorm:"column:key_state;type:text;not null"`
-	Error                              string   `gorm:"column:error;type:text;not null"`
+	RequestID                          string                             `gorm:"column:request_id;primaryKey;type:text"`
+	TS                                 string                             `gorm:"column:ts;type:text;not null;index:idx_request_usage_ts"`
+	CallerID                           string                             `gorm:"column:caller_id;type:text;not null"`
+	CallerUser                         string                             `gorm:"column:caller_user;type:text;not null"`
+	CallerProject                      string                             `gorm:"column:caller_project;type:text;not null"`
+	CallerEnvironment                  string                             `gorm:"column:caller_environment;type:text;not null"`
+	CallerIP                           string                             `gorm:"column:caller_ip;type:text;index:idx_request_usage_caller_ip,priority:1"`
+	TokenID                            string                             `gorm:"column:token_id;type:text;not null;index:idx_request_usage_token,priority:1"`
+	Client                             string                             `gorm:"column:client;type:text;not null"`
+	InboundDialect                     string                             `gorm:"column:inbound_dialect;type:text;not null"`
+	RequestedModel                     string                             `gorm:"column:requested_model;type:text;not null"`
+	ResolvedGroup                      string                             `gorm:"column:resolved_group;type:text;not null;index:idx_request_usage_group,priority:1"`
+	Strategy                           string                             `gorm:"column:strategy;type:text;not null"`
+	TargetProvider                     string                             `gorm:"column:target_provider;type:text;not null;index:idx_request_usage_provider_model,priority:1"`
+	TargetModel                        string                             `gorm:"column:target_model;type:text;not null;index:idx_request_usage_provider_model,priority:2"`
+	TargetDialect                      string                             `gorm:"column:target_dialect;type:text;not null"`
+	Stream                             bool                               `gorm:"column:stream;not null"`
+	Cache                              string                             `gorm:"column:cache;type:text;not null"`
+	Status                             int                                `gorm:"column:status;not null"`
+	Attempts                           int                                `gorm:"column:attempts;not null"`
+	FallbackUsed                       bool                               `gorm:"column:fallback_used;not null"`
+	LatencyMS                          int64                              `gorm:"column:latency_ms;not null"`
+	TTFBMS                             *int64                             `gorm:"column:ttfb_ms"`
+	UpstreamMS                         *int64                             `gorm:"column:upstream_duration_ms"`
+	DownstreamMS                       *int64                             `gorm:"column:downstream_duration_ms"`
+	UpstreamOutputTPS                  *float64                           `gorm:"column:upstream_output_tokens_per_sec"`
+	UpstreamTotalTPS                   *float64                           `gorm:"column:upstream_total_tokens_per_sec"`
+	DownstreamOutputTPS                *float64                           `gorm:"column:downstream_output_tokens_per_sec"`
+	DownstreamTotalTPS                 *float64                           `gorm:"column:downstream_total_tokens_per_sec"`
+	InputTokens                        int                                `gorm:"column:input_tokens;not null"`
+	OutputTokens                       int                                `gorm:"column:output_tokens;not null"`
+	TotalTokens                        int                                `gorm:"column:total_tokens;not null"`
+	InputHasImage                      bool                               `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
+	InputImageCount                    int                                `gorm:"column:input_image_count;not null;default:0"`
+	InputImageTokens                   int                                `gorm:"column:input_image_tokens;not null;default:0"`
+	PIIFilterApplied                   bool                               `gorm:"column:pii_filter_applied;not null;default:false;index:idx_request_usage_pii_filter"`
+	PIIFilterMode                      string                             `gorm:"column:pii_filter_mode;type:text;not null;default:''"`
+	PIIFilterReplacements              int                                `gorm:"column:pii_filter_replacements;not null;default:0"`
+	PIIFilterRuleCount                 int                                `gorm:"column:pii_filter_rule_count;not null;default:0"`
+	ContractPresent                    bool                               `gorm:"column:contract_present;not null;default:false;index:idx_request_usage_contract"`
+	ContractBucket                     string                             `gorm:"column:contract_bucket;type:text;not null;default:'';index:idx_request_usage_contract_bucket"`
+	ContractFailureReason              string                             `gorm:"column:contract_failure_reason;type:text;not null;default:'';index:idx_request_usage_contract_failure"`
+	ContractWorkload                   string                             `gorm:"column:contract_workload;type:text;not null;default:'';index:idx_request_usage_contract_workload"`
+	TargetValidationStatus             string                             `gorm:"column:target_validation_status;type:text;not null;default:'';index:idx_request_usage_validation_status"`
+	TargetValidationWorkload           string                             `gorm:"column:target_validation_workload;type:text;not null;default:'';index:idx_request_usage_validation_workload"`
+	TargetValidationAgeBucket          string                             `gorm:"column:target_validation_age_bucket;type:text;not null;default:'';index:idx_request_usage_validation_age"`
+	InputPricePerMillionUSD            float64                            `gorm:"column:input_price_per_million_usd;not null;default:0"`
+	OutputPricePerMillionUSD           float64                            `gorm:"column:output_price_per_million_usd;not null;default:0"`
+	ImageInputPricePerMillionTokensUSD float64                            `gorm:"column:image_input_price_per_million_tokens_usd;not null;default:0"`
+	ImageInputPricePerImageUSD         float64                            `gorm:"column:image_input_price_per_image_usd;not null;default:0"`
+	InputCostUSD                       float64                            `gorm:"column:input_cost_usd;not null;default:0"`
+	ImageCostUSD                       float64                            `gorm:"column:image_cost_usd;not null;default:0"`
+	OutputCostUSD                      float64                            `gorm:"column:output_cost_usd;not null;default:0"`
+	TotalCostUSD                       float64                            `gorm:"column:total_cost_usd;not null;default:0"`
+	UpstreamReportedInputCostUSD       float64                            `gorm:"column:upstream_reported_input_cost_usd;not null;default:0"`
+	UpstreamReportedOutputCostUSD      float64                            `gorm:"column:upstream_reported_output_cost_usd;not null;default:0"`
+	UpstreamReportedTotalCostUSD       float64                            `gorm:"column:upstream_reported_total_cost_usd;not null;default:0"`
+	PricingSource                      string                             `gorm:"column:pricing_source;type:text;not null;default:''"`
+	PricingUpdatedAt                   string                             `gorm:"column:pricing_updated_at;type:text;not null;default:''"`
+	CacheEnabled                       bool                               `gorm:"column:cache_enabled;not null"`
+	CacheItems                         int64                              `gorm:"column:cache_items;not null"`
+	CacheBytes                         int64                              `gorm:"column:cache_bytes;not null"`
+	CacheMaxBytes                      int64                              `gorm:"column:cache_max_bytes;not null"`
+	CacheOccupancyPct                  float64                            `gorm:"column:cache_occupancy_pct;not null"`
+	QuotaState                         string                             `gorm:"column:quota_state;type:text;not null"`
+	KeyState                           string                             `gorm:"column:key_state;type:text;not null"`
+	Error                              string                             `gorm:"column:error;type:text;not null"`
+	DecisionShapeFeatures              []decisionShapeFeatureRecord       `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	DecisionCandidates                 []decisionTargetCandidateRecord    `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	DecisionFilterReasons              []decisionTargetFilterReasonRecord `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	RoutingDecisions                   []routingDecisionRecord            `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	DecisionCacheReasons               []decisionCacheReasonRecord        `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 func (usageRecord) TableName() string {
@@ -321,6 +326,80 @@ func (requestTraceEventRecord) TableName() string {
 	return "request_trace_events"
 }
 
+type decisionShapeFeatureRecord struct {
+	RequestID   string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_shape_request"`
+	Seq         int    `gorm:"column:seq;primaryKey;not null"`
+	FeatureName string `gorm:"column:feature_name;type:text;not null;index:idx_decision_shape_feature"`
+	BoolValue   bool   `gorm:"column:bool_value;not null"`
+	IntValue    int    `gorm:"column:int_value;not null"`
+	TextValue   string `gorm:"column:text_value;type:text;not null"`
+}
+
+func (decisionShapeFeatureRecord) TableName() string {
+	return "request_decision_shape_features"
+}
+
+type decisionTargetCandidateRecord struct {
+	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_candidate_request"`
+	CandidateIndex   int    `gorm:"column:candidate_index;primaryKey;not null"`
+	GroupTargetIndex int    `gorm:"column:group_target_index;not null"`
+	Provider         string `gorm:"column:provider;type:text;not null;index:idx_decision_candidate_provider_model,priority:1"`
+	Model            string `gorm:"column:model;type:text;not null;index:idx_decision_candidate_provider_model,priority:2"`
+	ModelRef         string `gorm:"column:model_ref;type:text;not null"`
+	Dialect          string `gorm:"column:dialect;type:text;not null"`
+	Weight           int    `gorm:"column:weight;not null"`
+	ToolOnly         bool   `gorm:"column:tool_only;not null"`
+	Eligible         bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible"`
+	Selected         bool   `gorm:"column:selected;not null;index:idx_decision_candidate_selected"`
+}
+
+func (decisionTargetCandidateRecord) TableName() string {
+	return "request_target_candidates"
+}
+
+type decisionTargetFilterReasonRecord struct {
+	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_filter_request"`
+	Seq            int    `gorm:"column:seq;primaryKey;not null"`
+	CandidateIndex int    `gorm:"column:candidate_index;not null;index:idx_decision_filter_candidate"`
+	Stage          string `gorm:"column:stage;type:text;not null;index:idx_decision_filter_stage"`
+	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_filter_reason"`
+}
+
+func (decisionTargetFilterReasonRecord) TableName() string {
+	return "request_target_filter_reasons"
+}
+
+type routingDecisionRecord struct {
+	RequestID              string `gorm:"column:request_id;primaryKey;type:text;index:idx_routing_decision_request"`
+	Seq                    int    `gorm:"column:seq;primaryKey;not null"`
+	Strategy               string `gorm:"column:strategy;type:text;not null;index:idx_routing_decision_strategy"`
+	SelectedCandidateIndex int    `gorm:"column:selected_candidate_index;not null"`
+	Provider               string `gorm:"column:provider;type:text;not null;index:idx_routing_decision_provider_model,priority:1"`
+	Model                  string `gorm:"column:model;type:text;not null;index:idx_routing_decision_provider_model,priority:2"`
+	Dialect                string `gorm:"column:dialect;type:text;not null"`
+	FallbackCount          int    `gorm:"column:fallback_count;not null"`
+	ClassLabel             string `gorm:"column:class_label;type:text;not null"`
+}
+
+func (routingDecisionRecord) TableName() string {
+	return "request_routing_decisions"
+}
+
+type decisionCacheReasonRecord struct {
+	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_cache_request"`
+	Seq            int    `gorm:"column:seq;primaryKey;not null"`
+	Status         string `gorm:"column:status;type:text;not null;index:idx_decision_cache_status"`
+	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_cache_reason"`
+	CandidateIndex int    `gorm:"column:candidate_index;not null"`
+	Provider       string `gorm:"column:provider;type:text;not null"`
+	Model          string `gorm:"column:model;type:text;not null"`
+	Dialect        string `gorm:"column:dialect;type:text;not null"`
+}
+
+func (decisionCacheReasonRecord) TableName() string {
+	return "request_cache_reasons"
+}
+
 type requestErrorRecord struct {
 	RequestID    string `gorm:"column:request_id;primaryKey;type:text"`
 	TS           string `gorm:"column:ts;type:text;not null;index:idx_request_error_ts"`
@@ -383,6 +462,17 @@ type agg struct {
 	CacheBytesSum            int64
 	CacheOccupancySum        float64
 	CacheSnapshotCount       int64
+}
+
+type decisionTelemetrySummary struct {
+	ShapeFeatures  int64
+	Candidates     int64
+	FilterReasons  int64
+	Decisions      int64
+	CacheReasons   int64
+	ByStrategy     map[string]int64
+	ByFilterReason map[string]int64
+	ByCacheReason  map[string]int64
 }
 
 func newUsageStore(cfg UsageDBConfig) (*usageStore, error) {
@@ -464,6 +554,11 @@ func (s *usageStore) migrate() error {
 		&usageRecord{},
 		&requestAttemptRecord{},
 		&requestTraceEventRecord{},
+		&decisionShapeFeatureRecord{},
+		&decisionTargetCandidateRecord{},
+		&decisionTargetFilterReasonRecord{},
+		&routingDecisionRecord{},
+		&decisionCacheReasonRecord{},
 		&requestErrorRecord{},
 		&contentCaptureRecord{},
 		&contentCaptureHeaderRecord{},
@@ -489,6 +584,11 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_usage",
 		"request_attempts",
 		"request_trace_events",
+		"request_decision_shape_features",
+		"request_target_candidates",
+		"request_target_filter_reasons",
+		"request_routing_decisions",
+		"request_cache_reasons",
 		"request_errors",
 		"request_content_captures",
 		"request_content_headers",
@@ -514,7 +614,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -538,6 +638,21 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	for _, event := range rec.TraceEvents {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(traceRecordFromLog(rec.RequestID, event)).Error
+	}
+	for _, feature := range rec.DecisionShapeFeatures {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionShapeFeatureRecordFromLog(rec.RequestID, feature)).Error
+	}
+	for _, candidate := range rec.DecisionCandidates {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionCandidateRecordFromLog(rec.RequestID, candidate)).Error
+	}
+	for _, reason := range rec.DecisionFilterReasons {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionFilterReasonRecordFromLog(rec.RequestID, reason)).Error
+	}
+	for _, decision := range rec.RoutingDecisions {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(routingDecisionRecordFromLog(rec.RequestID, decision)).Error
+	}
+	for _, reason := range rec.CacheReasons {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionCacheReasonRecordFromLog(rec.RequestID, reason)).Error
 	}
 	if rec.Error != nil {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(errorRecordFromLog(rec)).Error
@@ -583,6 +698,74 @@ func traceRecordFromLog(requestID string, rec traceLogRecord) *requestTraceEvent
 		ErrorClass: rec.ErrorClass,
 		Retryable:  rec.Retryable,
 		Attempt:    rec.Attempt,
+	}
+}
+
+func decisionShapeFeatureRecordFromLog(requestID string, rec decisionShapeFeatureLogRecord) *decisionShapeFeatureRecord {
+	return &decisionShapeFeatureRecord{
+		RequestID:   requestID,
+		Seq:         rec.Seq,
+		FeatureName: rec.Name,
+		BoolValue:   rec.BoolValue,
+		IntValue:    rec.IntValue,
+		TextValue:   rec.TextValue,
+	}
+}
+
+func decisionCandidateRecordFromLog(requestID string, rec decisionCandidateLogRecord) *decisionTargetCandidateRecord {
+	return &decisionTargetCandidateRecord{
+		RequestID:        requestID,
+		CandidateIndex:   rec.CandidateIndex,
+		GroupTargetIndex: rec.GroupTargetIndex,
+		Provider:         rec.Provider,
+		Model:            rec.Model,
+		ModelRef:         rec.ModelRef,
+		Dialect:          rec.Dialect,
+		Weight:           rec.Weight,
+		ToolOnly:         rec.ToolOnly,
+		Eligible:         rec.Eligible,
+		Selected:         rec.Selected,
+	}
+}
+
+func decisionFilterReasonRecordFromLog(requestID string, rec decisionFilterReasonLogRecord) *decisionTargetFilterReasonRecord {
+	return &decisionTargetFilterReasonRecord{
+		RequestID:      requestID,
+		Seq:            rec.Seq,
+		CandidateIndex: rec.CandidateIndex,
+		Stage:          rec.Stage,
+		Reason:         rec.Reason,
+	}
+}
+
+func routingDecisionRecordFromLog(requestID string, rec routingDecisionLogRecord) *routingDecisionRecord {
+	classLabel := ""
+	if rec.ClassLabel != nil {
+		classLabel = *rec.ClassLabel
+	}
+	return &routingDecisionRecord{
+		RequestID:              requestID,
+		Seq:                    rec.Seq,
+		Strategy:               rec.Strategy,
+		SelectedCandidateIndex: rec.SelectedCandidateIndex,
+		Provider:               rec.Provider,
+		Model:                  rec.Model,
+		Dialect:                rec.Dialect,
+		FallbackCount:          rec.FallbackCount,
+		ClassLabel:             classLabel,
+	}
+}
+
+func decisionCacheReasonRecordFromLog(requestID string, rec cacheReasonLogRecord) *decisionCacheReasonRecord {
+	return &decisionCacheReasonRecord{
+		RequestID:      requestID,
+		Seq:            rec.Seq,
+		Status:         rec.Status,
+		Reason:         rec.Reason,
+		CandidateIndex: rec.CandidateIndex,
+		Provider:       rec.Provider,
+		Model:          rec.Model,
+		Dialect:        rec.Dialect,
 	}
 }
 
@@ -992,7 +1175,53 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return renderUsageMarkdown(opts.From, opts.To, rows), nil
+	decisionSummary := store.decisionTelemetrySummary(rows)
+	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary), nil
+}
+
+func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetrySummary {
+	summary := decisionTelemetrySummary{
+		ByStrategy:     map[string]int64{},
+		ByFilterReason: map[string]int64{},
+		ByCacheReason:  map[string]int64{},
+	}
+	if s == nil || s.db == nil || len(rows) == 0 {
+		return summary
+	}
+	requestIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.RequestID != "" {
+			requestIDs = append(requestIDs, row.RequestID)
+		}
+	}
+	if len(requestIDs) == 0 {
+		return summary
+	}
+	_ = s.db.Model(&decisionShapeFeatureRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.ShapeFeatures).Error
+	_ = s.db.Model(&decisionTargetCandidateRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.Candidates).Error
+	_ = s.db.Model(&decisionTargetFilterReasonRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.FilterReasons).Error
+	_ = s.db.Model(&routingDecisionRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.Decisions).Error
+	_ = s.db.Model(&decisionCacheReasonRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.CacheReasons).Error
+	type countRow struct {
+		Key   string
+		Count int64
+	}
+	var strategies []countRow
+	_ = s.db.Model(&routingDecisionRecord{}).Select("strategy AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("strategy").Scan(&strategies).Error
+	for _, row := range strategies {
+		summary.ByStrategy[defaultString(row.Key, "unknown")] = row.Count
+	}
+	var filterReasons []countRow
+	_ = s.db.Model(&decisionTargetFilterReasonRecord{}).Select("reason AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("reason").Scan(&filterReasons).Error
+	for _, row := range filterReasons {
+		summary.ByFilterReason[defaultString(row.Key, "unknown")] = row.Count
+	}
+	var cacheReasons []countRow
+	_ = s.db.Model(&decisionCacheReasonRecord{}).Select("reason AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("reason").Scan(&cacheReasons).Error
+	for _, row := range cacheReasons {
+		summary.ByCacheReason[defaultString(row.Key, "unknown")] = row.Count
+	}
+	return summary
 }
 
 func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
@@ -1101,7 +1330,7 @@ func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securit
 	return out, nil
 }
 
-func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
+func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary) string {
 	total := &agg{}
 	byToken := map[string]*agg{}
 	byTokenMeta := map[string]usageRow{}
@@ -1173,6 +1402,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow) string {
 		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
 
 	writeCacheSummary(&b, total)
+	writeDecisionTelemetrySummary(&b, decisionSummary)
 	writeDownstreamUserPerformanceTable(&b, byDownstreamUser)
 	writeUpstreamEndpointPerformanceTable(&b, byUpstreamEndpoint)
 	writeRequestThroughputTable(&b, rows)
@@ -1333,6 +1563,33 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 		fmtPct(total.CacheOccupancyLatest), fmtPct(avgFloat(total.CacheOccupancySum, total.CacheSnapshotCount)), fmtPct(total.CacheOccupancyMax))
 }
 
+func writeDecisionTelemetrySummary(b *strings.Builder, summary decisionTelemetrySummary) {
+	if summary.ShapeFeatures == 0 && summary.Candidates == 0 && summary.FilterReasons == 0 && summary.Decisions == 0 && summary.CacheReasons == 0 {
+		return
+	}
+	fmt.Fprintln(b, "## Decision Telemetry Summary")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| Shape Feature Rows | Candidate Rows | Filter Reason Rows | Routing Decision Rows | Cache Reason Rows |")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|")
+	fmt.Fprintf(b, "| %d | %d | %d | %d | %d |\n\n", summary.ShapeFeatures, summary.Candidates, summary.FilterReasons, summary.Decisions, summary.CacheReasons)
+	writeCountTable(b, "Routing Decisions By Strategy", "Strategy", summary.ByStrategy)
+	writeCountTable(b, "Target Filter Reasons", "Reason", summary.ByFilterReason)
+	writeCountTable(b, "Cache Decision Reasons", "Reason", summary.ByCacheReason)
+}
+
+func writeCountTable(b *strings.Builder, title, keyHeader string, counts map[string]int64) {
+	if len(counts) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### %s\n\n", title)
+	fmt.Fprintf(b, "| %s | Count |\n", keyHeader)
+	fmt.Fprintln(b, "|---|---:|")
+	for _, key := range sortedCountKeys(counts) {
+		fmt.Fprintf(b, "| %s | %d |\n", esc(key), counts[key])
+	}
+	fmt.Fprintln(b)
+}
+
 func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*agg) {
 	fmt.Fprintln(b, "## Downstream User Performance")
 	fmt.Fprintln(b)
@@ -1417,6 +1674,20 @@ func sortedAggKeys(m map[string]*agg) []string {
 			return ai.Calls > aj.Calls
 		}
 		return keys[i] < keys[j]
+	})
+	return keys
+}
+
+func sortedCountKeys(m map[string]int64) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if m[keys[i]] == m[keys[j]] {
+			return keys[i] < keys[j]
+		}
+		return m[keys[i]] > m[keys[j]]
 	})
 	return keys
 }

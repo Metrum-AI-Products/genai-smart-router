@@ -33,17 +33,18 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen            string               `yaml:"listen"`
-	DefaultModelGroup string               `yaml:"default_model_group"`
-	AdminAuth         AdminAuthConfig      `yaml:"admin_auth"`
-	AdminReports      AdminReportsConfig   `yaml:"admin_reports"`
-	ClientIP          ClientIPConfig       `yaml:"client_ip" json:"client_ip"`
-	Cache             CacheConfig          `yaml:"cache"`
-	Logging           LoggingConfig        `yaml:"logging"`
-	UsageDB           UsageDBConfig        `yaml:"usage_db"`
-	Upstream          UpstreamConfig       `yaml:"upstream"`
-	Diagnostics       DiagnosticsConfig    `yaml:"diagnostics"`
-	ContentCapture    ContentCaptureConfig `yaml:"content_capture"`
+	Listen            string                  `yaml:"listen"`
+	DefaultModelGroup string                  `yaml:"default_model_group"`
+	AdminAuth         AdminAuthConfig         `yaml:"admin_auth"`
+	AdminReports      AdminReportsConfig      `yaml:"admin_reports"`
+	ClientIP          ClientIPConfig          `yaml:"client_ip" json:"client_ip"`
+	Cache             CacheConfig             `yaml:"cache"`
+	Logging           LoggingConfig           `yaml:"logging"`
+	UsageDB           UsageDBConfig           `yaml:"usage_db"`
+	Upstream          UpstreamConfig          `yaml:"upstream"`
+	Diagnostics       DiagnosticsConfig       `yaml:"diagnostics"`
+	ContentCapture    ContentCaptureConfig    `yaml:"content_capture"`
+	DecisionTelemetry DecisionTelemetryConfig `yaml:"decision_telemetry"`
 }
 
 type AdminAuthConfig struct {
@@ -183,6 +184,14 @@ type UsageDBConfig struct {
 	Path   string `yaml:"path"`
 	DSN    string `yaml:"dsn"`
 	Enable *bool  `yaml:"enabled"`
+}
+
+type DecisionTelemetryConfig struct {
+	Enabled            bool  `yaml:"enabled" json:"enabled"`
+	MaxCandidates      int   `yaml:"max_candidates" json:"max_candidates"`
+	MaxFilterReasons   int   `yaml:"max_filter_reasons" json:"max_filter_reasons"`
+	RecordCandidates   *bool `yaml:"record_candidates" json:"record_candidates"`
+	RecordCacheReasons *bool `yaml:"record_cache_reasons" json:"record_cache_reasons"`
 }
 
 type ProviderConfig struct {
@@ -691,6 +700,20 @@ func (c *Config) setDefaults() {
 	if c.Server.Diagnostics.MaxErrorBytes == 0 {
 		c.Server.Diagnostics.MaxErrorBytes = 2048
 	}
+	if c.Server.DecisionTelemetry.MaxCandidates == 0 {
+		c.Server.DecisionTelemetry.MaxCandidates = 64
+	}
+	if c.Server.DecisionTelemetry.MaxFilterReasons == 0 {
+		c.Server.DecisionTelemetry.MaxFilterReasons = 256
+	}
+	if c.Server.DecisionTelemetry.RecordCandidates == nil {
+		record := true
+		c.Server.DecisionTelemetry.RecordCandidates = &record
+	}
+	if c.Server.DecisionTelemetry.RecordCacheReasons == nil {
+		record := true
+		c.Server.DecisionTelemetry.RecordCacheReasons = &record
+	}
 	defaultContentCaptureConfig(&c.Server.ContentCapture)
 	for i := range c.Users {
 		c.Users[i].ID = normalizeAccountID(c.Users[i].ID)
@@ -738,6 +761,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.Diagnostics.MaxErrorBytes < 0 {
 		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
+	}
+	if c.Server.DecisionTelemetry.MaxCandidates < 0 || c.Server.DecisionTelemetry.MaxCandidates > 1000 {
+		return fmt.Errorf("server decision_telemetry max_candidates must be between 1 and 1000 when set")
+	}
+	if c.Server.DecisionTelemetry.MaxFilterReasons < 0 || c.Server.DecisionTelemetry.MaxFilterReasons > 10000 {
+		return fmt.Errorf("server decision_telemetry max_filter_reasons must be between 1 and 10000 when set")
+	}
+	if c.Server.DecisionTelemetry.Enabled && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
+		return fmt.Errorf("server decision_telemetry requires usage_db enabled")
 	}
 	if err := validateAdminAuth(c.Server.AdminAuth, c.Server.UsageDB); err != nil {
 		return err
