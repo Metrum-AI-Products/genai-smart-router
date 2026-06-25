@@ -5460,6 +5460,272 @@ func TestUpstreamFailureReturnsActionableError(t *testing.T) {
 	}
 }
 
+func TestUpstreamStatusClassifiesQuotaRateBillingFailures(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		body      string
+		wantClass string
+		wantRetry bool
+		forbidden []string
+	}{
+		{
+			name:      "openrouter credits exhausted",
+			status:    http.StatusTooManyRequests,
+			body:      `{"error":{"message":"This request requires more credits than your account balance allows for account acct_live_secret","code":429}}`,
+			wantClass: "upstream_quota_exhausted",
+			wantRetry: true,
+			forbidden: []string{"acct_live_secret", "account balance allows"},
+		},
+		{
+			name:      "insufficient balance",
+			status:    http.StatusPaymentRequired,
+			body:      `{"error":{"message":"insufficient balance for provider account provider_account_123"}}`,
+			wantClass: "upstream_quota_exhausted",
+			wantRetry: true,
+			forbidden: []string{"provider_account_123", "insufficient balance"},
+		},
+		{
+			name:      "quota exceeded",
+			status:    http.StatusForbidden,
+			body:      `{"error":{"type":"quota_exceeded","message":"monthly quota exceeded"}}`,
+			wantClass: "upstream_quota_exhausted",
+			wantRetry: true,
+			forbidden: []string{"monthly quota exceeded"},
+		},
+		{
+			name:      "billing disabled",
+			status:    http.StatusForbidden,
+			body:      `{"error":{"code":"billing_disabled","message":"billing disabled for customer cust_secret"}}`,
+			wantClass: "upstream_quota_exhausted",
+			wantRetry: true,
+			forbidden: []string{"cust_secret", "billing disabled for customer"},
+		},
+		{
+			name:      "ordinary rate limit",
+			status:    http.StatusTooManyRequests,
+			body:      `{"error":{"message":"rate limit exceeded"}}`,
+			wantClass: "upstream_rate_limited",
+			wantRetry: true,
+		},
+		{
+			name:      "ordinary upstream 5xx",
+			status:    http.StatusBadGateway,
+			body:      `{"error":{"message":"temporary outage"}}`,
+			wantClass: "upstream_status_5xx",
+			wantRetry: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyUpstreamStatus(tc.status, []byte(tc.body))
+			if got.Class != tc.wantClass || got.Retryable != tc.wantRetry || got.StatusCode != tc.status {
+				t.Fatalf("classified=%#v, want class=%s retry=%v status=%d", got, tc.wantClass, tc.wantRetry, tc.status)
+			}
+			if tc.wantClass == "upstream_quota_exhausted" {
+				if !strings.Contains(got.Message, "quota, credits, or billing") {
+					t.Fatalf("message=%q, want actionable quota/billing text", got.Message)
+				}
+				for _, forbidden := range tc.forbidden {
+					if strings.Contains(got.Message, forbidden) {
+						t.Fatalf("message leaked %q: %s", forbidden, got.Message)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestUpstreamQuotaExhaustionReturnsSanitizedErrorAcrossSurfaces(t *testing.T) {
+	const (
+		accountID   = "acct_provider_secret_123"
+		providerKey = "sk-provider-secret-1234567890"
+		tokenHash   = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	)
+	cases := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "chat",
+			path: "/v1/chat/completions",
+			body: `{"model":"default","messages":[{"role":"user","content":"hi"}]}`,
+		},
+		{
+			name: "responses",
+			path: "/v1/responses",
+			body: `{"model":"default","input":"hi","max_output_tokens":16}`,
+		},
+		{
+			name: "messages",
+			path: "/v1/messages",
+			body: `{"model":"default","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, http.StatusPaymentRequired, map[string]any{
+					"error": map[string]any{
+						"message":          "insufficient credits for provider account " + accountID,
+						"provider_api_key": providerKey,
+						"token_hash":       tokenHash,
+						"raw_body":         "caller prompt should not appear",
+					},
+				})
+			}))
+			defer upstream.Close()
+
+			svc := newTestService(t, upstream.URL, "provider-key")
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			body := rr.Body.String()
+			for _, want := range []string{`"type":"upstream-quota-exhausted"`, `"request_id"`, "quota, credits, or billing"} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("body missing %q: %s", want, body)
+				}
+			}
+			for _, forbidden := range []string{accountID, providerKey, tokenHash, "caller prompt should not appear", "insufficient credits for provider account"} {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("body leaked %q: %s", forbidden, body)
+				}
+			}
+
+			var attempts []requestAttemptRecord
+			if err := svc.usage.db.Find(&attempts).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_quota_exhausted" || !attempts[0].Retryable {
+				t.Fatalf("unexpected attempts: %#v", attempts)
+			}
+			for _, forbidden := range []string{accountID, providerKey, tokenHash, "caller prompt should not appear"} {
+				if strings.Contains(attempts[0].ErrorMessage, forbidden) {
+					t.Fatalf("attempt leaked %q: %#v", forbidden, attempts[0])
+				}
+			}
+			var errors []requestErrorRecord
+			if err := svc.usage.db.Find(&errors).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(errors) != 1 || errors[0].ErrorType != "upstream-quota-exhausted" || errors[0].Status != http.StatusServiceUnavailable || !errors[0].Retryable {
+				t.Fatalf("unexpected error rows: %#v", errors)
+			}
+		})
+	}
+}
+
+func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "credit-empty":
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error": map[string]any{
+					"message":    "OpenRouter credits exhausted for account acct_live_secret",
+					"account_id": "acct_live_secret",
+				},
+			})
+		case "healthy-model":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "up_fallback_success",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "fallback ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+			})
+		default:
+			t.Fatalf("unexpected upstream model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "credit-empty"},
+		{Provider: "mock", Model: "healthy-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "fallback ok") || strings.Contains(rr.Body.String(), "acct_live_secret") {
+		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Order("attempt_index ASC").Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("attempt rows=%d: %#v", len(attempts), attempts)
+	}
+	if attempts[0].ErrorClass != "upstream_quota_exhausted" || attempts[0].FallbackReason != "upstream_quota_exhausted" || !attempts[0].Retryable || attempts[0].Selected {
+		t.Fatalf("unexpected failed attempt: %#v", attempts[0])
+	}
+	if strings.Contains(attempts[0].ErrorMessage, "acct_live_secret") || strings.Contains(attempts[0].ErrorMessage, "OpenRouter credits exhausted") {
+		t.Fatalf("failed attempt leaked upstream body: %#v", attempts[0])
+	}
+	if !attempts[1].Selected || attempts[1].ErrorClass != "" || attempts[1].Model != "healthy-model" {
+		t.Fatalf("unexpected fallback attempt: %#v", attempts[1])
+	}
+	var rows []usageRecord
+	if err := svc.usage.db.Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Status != http.StatusOK || !rows[0].FallbackUsed || rows[0].Attempts != 2 || rows[0].Error != "" {
+		t.Fatalf("unexpected usage rows: %#v", rows)
+	}
+	var errors []requestErrorRecord
+	if err := svc.usage.db.Find(&errors).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(errors) != 0 {
+		t.Fatalf("unexpected error rows for fallback success: %#v", errors)
+	}
+}
+
+func TestUpstreamFailureResponseDoesNotLabelMixedAttemptsAsQuota(t *testing.T) {
+	rc := &requestContext{rec: logRecord{AttemptsDetail: []attemptLogRecord{
+		{ErrorClass: "upstream_timeout"},
+		{ErrorClass: "upstream_quota_exhausted"},
+	}}}
+	code, status := upstreamFailureResponse(upstreamError{Class: "upstream_quota_exhausted"}, rc)
+	if code != "upstream-failed" || status != http.StatusBadGateway {
+		t.Fatalf("mixed attempts response code=%s status=%d", code, status)
+	}
+
+	rc = &requestContext{rec: logRecord{AttemptsDetail: []attemptLogRecord{
+		{ErrorClass: "upstream_quota_exhausted"},
+		{ErrorClass: "upstream_quota_exhausted"},
+	}}}
+	code, status = upstreamFailureResponse(upstreamError{Class: "upstream_quota_exhausted"}, rc)
+	if code != "upstream-quota-exhausted" || status != http.StatusServiceUnavailable {
+		t.Fatalf("quota attempts response code=%s status=%d", code, status)
+	}
+}
+
 func TestDiagnosticsSanitizeUpstreamErrorBeforePersistence(t *testing.T) {
 	const (
 		echoedPrompt = "prompt-like user text: summarize confidential launch notes"

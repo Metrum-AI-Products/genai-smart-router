@@ -1073,20 +1073,25 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	attempt.StatusCode = httpResp.StatusCode
 	if httpResp.StatusCode == http.StatusTooManyRequests || httpResp.StatusCode >= 500 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
-		attempt.ErrorClass = statusErrorClass(httpResp.StatusCode)
-		attempt.ErrorMessage = upstreamStatusMessage(httpResp.StatusCode, raw)
-		attempt.Retryable = true
-		return nil, attempt, upstreamError{Class: attempt.ErrorClass, Message: attempt.ErrorMessage, StatusCode: httpResp.StatusCode, Retryable: true, ResponseLen: attempt.ResponseBytes}
+		attempt.ErrorClass = upErr.Class
+		attempt.ErrorMessage = upErr.Message
+		attempt.Retryable = upErr.Retryable
+		upErr.ResponseLen = attempt.ResponseBytes
+		return nil, attempt, upErr
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
-		attempt.ErrorClass = statusErrorClass(httpResp.StatusCode)
-		attempt.ErrorMessage = upstreamStatusMessage(httpResp.StatusCode, raw)
-		return nil, attempt, upstreamError{Class: attempt.ErrorClass, Message: attempt.ErrorMessage, StatusCode: httpResp.StatusCode, ResponseLen: attempt.ResponseBytes}
+		attempt.ErrorClass = upErr.Class
+		attempt.ErrorMessage = upErr.Message
+		attempt.Retryable = upErr.Retryable
+		upErr.ResponseLen = attempt.ResponseBytes
+		return nil, attempt, upErr
 	}
 	raw, err := io.ReadAll(httpResp.Body)
 	if err != nil {
@@ -1141,8 +1146,20 @@ func (s *Service) diagnosticMaxErrorBytes() int {
 	return s.cfg.Server.Diagnostics.MaxErrorBytes
 }
 
-func statusErrorClass(status int) string {
+func classifyUpstreamStatus(status int, raw []byte) upstreamError {
+	class := statusErrorClass(status, raw)
+	return upstreamError{
+		Class:      class,
+		Message:    upstreamStatusMessage(status, raw, class),
+		StatusCode: status,
+		Retryable:  class == "upstream_quota_exhausted" || class == "upstream_rate_limited" || status >= 500,
+	}
+}
+
+func statusErrorClass(status int, raw []byte) string {
 	switch {
+	case upstreamBodyIndicatesQuotaExhausted(status, raw):
+		return "upstream_quota_exhausted"
 	case status == http.StatusTooManyRequests:
 		return "upstream_rate_limited"
 	case status >= 500:
@@ -1152,13 +1169,59 @@ func statusErrorClass(status int) string {
 	}
 }
 
-func upstreamStatusMessage(status int, raw []byte) string {
+func upstreamStatusMessage(status int, raw []byte, class string) string {
+	if class == "upstream_quota_exhausted" {
+		return fmt.Sprintf("upstream status %d upstream provider quota, credits, or billing limit exhausted", status)
+	}
 	msg := fmt.Sprintf("upstream status %d", status)
 	snippet := strings.TrimSpace(string(raw))
 	if snippet == "" {
 		return msg
 	}
 	return msg + ": " + snippet
+}
+
+func upstreamBodyIndicatesQuotaExhausted(status int, raw []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(string(raw)))
+	if status == http.StatusPaymentRequired {
+		return true
+	}
+	if text == "" {
+		return false
+	}
+	normalized := strings.NewReplacer("-", "_", " ", "_").Replace(text)
+	quotaMarkers := []string{
+		"insufficient_quota",
+		"quota_exceeded",
+		"quota_exhausted",
+		"billing_hard_limit_reached",
+		"billing_not_active",
+		"billing_disabled",
+		"billing_limit",
+		"insufficient_credit",
+		"insufficient_credits",
+		"not_enough_credit",
+		"not_enough_credits",
+		"credit_exhausted",
+		"credits_exhausted",
+		"credit_balance",
+		"exhausted_credit",
+		"exhausted_credits",
+		"insufficient_balance",
+		"balance_exhausted",
+		"balance_too_low",
+		"payment_required",
+		"payment_method",
+		"spend_limit",
+		"usage_limit",
+		"account_balance",
+	}
+	for _, marker := range quotaMarkers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyContextError(err error) upstreamError {
@@ -1201,7 +1264,7 @@ func classifyError(err error) upstreamError {
 
 func errorTypeRetryable(errorType string) bool {
 	switch errorType {
-	case "upstream-timeout", "upstream-rate-limited", "upstream-failed":
+	case "upstream-timeout", "upstream-rate-limited", "upstream-quota-exhausted", "upstream-failed":
 		return true
 	default:
 		return false
@@ -1805,7 +1868,7 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 			"model":    targets[i].Model,
 		})
 	}
-	message := fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", req.Model, attempts)
+	message := callerUpstreamFailureMessage(code, req.Model, attempts)
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"type":    code,
@@ -1830,11 +1893,20 @@ func upstreamFailureResponse(err upstreamError, rc *requestContext) (string, int
 		return "client-canceled", 499
 	case err.TimedOut || err.Class == "upstream_timeout":
 		return "upstream-timeout", http.StatusGatewayTimeout
-	case err.Class == "upstream_rate_limited" || attemptsAllClass(rc, "upstream_rate_limited"):
+	case attemptsAllClassOrLast(rc, err, "upstream_quota_exhausted"):
+		return "upstream-quota-exhausted", http.StatusServiceUnavailable
+	case attemptsAllClassOrLast(rc, err, "upstream_rate_limited"):
 		return "upstream-rate-limited", http.StatusServiceUnavailable
 	default:
 		return "upstream-failed", http.StatusBadGateway
 	}
+}
+
+func attemptsAllClassOrLast(rc *requestContext, err upstreamError, class string) bool {
+	if rc == nil || len(rc.rec.AttemptsDetail) == 0 {
+		return err.Class == class
+	}
+	return attemptsAllClass(rc, class)
 }
 
 func attemptsAllClass(rc *requestContext, class string) bool {
@@ -1847,6 +1919,19 @@ func attemptsAllClass(rc *requestContext, class string) bool {
 		}
 	}
 	return true
+}
+
+func callerUpstreamFailureMessage(code, model string, attempts int) string {
+	switch code {
+	case "upstream-quota-exhausted":
+		return fmt.Sprintf("upstream provider quota, credits, or billing limits were exhausted for model %q after %d attempt(s); retry later or contact the router operator with the request_id", model, attempts)
+	case "upstream-rate-limited":
+		return fmt.Sprintf("upstream providers were rate limited for model %q after %d attempt(s); retry later or contact the router operator with the request_id", model, attempts)
+	case "upstream-timeout":
+		return fmt.Sprintf("upstream providers timed out for model %q after %d attempt(s); retry with a smaller request or contact the router operator with the request_id", model, attempts)
+	default:
+		return fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", model, attempts)
+	}
 }
 
 func sanitizeUpstreamError(err error) string {

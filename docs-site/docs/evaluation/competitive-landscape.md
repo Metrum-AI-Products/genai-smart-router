@@ -62,7 +62,7 @@ Examples:
 - **Custom policy without client rewrites:** TypeScript policies can route by prompt size, caller key metadata, project, environment, requested API dialect, tool requirement, image presence, cache eligibility, model health, or external policy-service response. For example, a deployment can keep one caller-visible group while sending short prompts to a fast low-cost model, long prompts to a long-context model, tool requests to tool-validated targets, and image requests to VLM-validated targets.
 - **Outcome-oriented model mix:** the Harbor case study shows how the router can validate agentic coding runs by reward score, cost drivers, latency, fallback use, cache behavior, throughput, and selected provider/model. That feedback loop helps teams choose the lowest-cost mix that still preserves the desired task outcome for each model group.
 - **Fast operational rollout:** new upstreams can be added catalog-only, smoke-tested directly, tested through a private router group, then introduced at low weight in active groups. Rollback is usually a config weight change rather than a client migration.
-- **Actionable failures:** caller-facing errors include request IDs and structured reasons such as `no-eligible-target`, `upstream-timeout`, `upstream-rate-limited`, or `quota-exceeded`, giving operators a direct path to traces and provider attempts.
+- **Actionable failures:** caller-facing errors include request IDs and structured reasons such as `no-eligible-target`, `upstream-timeout`, `upstream-rate-limited`, `upstream-quota-exhausted`, or `quota-exceeded`, giving operators a direct path to traces and provider attempts.
 
 ## Deployment Fit
 

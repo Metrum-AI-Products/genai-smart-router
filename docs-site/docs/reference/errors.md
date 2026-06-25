@@ -21,7 +21,9 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `pii-filter-blocked` | 400 | The requested model group is configured to reject requests that match PII filter rules. | Remove the sensitive value or use an approved workflow. | Review the model group's `pii_filter` rules and mode. |
 | `pii-filter-failed` | 502 | The router could not apply the configured PII filter. | Retry after the administrator resolves configuration. | Check regex validation, filter limits, and request shape. |
 | `no-eligible-target` | 502 | No configured upstream target satisfies the request requirements. | Try a different allowed group only if instructed. | Add or enable a target that supports the requested dialect, tools, modalities, and cap behavior. |
-| `upstream-error` | 502 | The selected upstream failed and no fallback succeeded. | Retry if the task is idempotent. | Inspect request attempts and provider status. |
+| `upstream-rate-limited` | 503 | All eligible upstream attempts were rejected by provider-side rate limits. | Retry later with backoff, or contact the administrator with the request ID if it persists. | Inspect `request_attempts`, provider status, and upstream rate-limit policy. |
+| `upstream-quota-exhausted` | 503 | All eligible upstream attempts failed because a provider reported exhausted balance, credits, quota, billing, or payment state. | Retry later only after the provider account is funded or quota is restored; include the request ID when escalating. | Inspect `request_attempts` for `upstream_quota_exhausted`, then verify provider account balance, billing, quota, and entitlement state. |
+| `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class. | Retry if the task is idempotent. | Inspect request attempts, fallback behavior, and provider status. |
 | `upstream-timeout` | 504 | The upstream did not complete within configured timeout. | Retry with a smaller task or larger timeout if available. | Tune timeout, fallback, provider mix, or client token budget. |
 | `metrics-forbidden` | 403 | `/metrics` was requested with a caller token that is not authorized for metrics. | Use `/v1/usage` for caller usage. | Grant metrics access through Casbin policy or an existing `metrics_admin: true` operator caller. |
 | `reports-forbidden` | 403 | `/admin/reports/*` was requested without an authorized admin subject. | Do not call admin report endpoints from application clients. | Grant Casbin `admin:reports` read/export policy only to approved admin subjects. |
@@ -50,6 +52,32 @@ If a caller sets `max_tokens`, OpenAI Chat `max_completion_tokens`, or Responses
 
 Explicit output caps also affect quota admission. The router reserves estimated input tokens plus `max_tokens`, `max_completion_tokens`, or `max_output_tokens` before upstream calls, then reconciles the reservation to actual usage when the request finishes. Failed or canceled upstream calls release the reservation, and cache hits do not consume persisted token quota.
 
+## Upstream Provider Quota And Billing Errors
+
+Provider-side balance, credit, quota, billing, and payment failures are distinct from caller-token `quota-exceeded` responses. The router first tries eligible fallback targets. If a fallback succeeds, the caller receives the successful response and diagnostics record the failed attempt. If every eligible attempt fails with provider quota or billing signals, the caller receives `503 upstream-quota-exhausted`.
+
+Safe example:
+
+```json
+{
+  "error": {
+    "type": "upstream-quota-exhausted",
+    "message": "upstream provider quota, credits, or billing limits were exhausted for model \"default\" after 2 attempt(s); retry later or contact the router operator with the request_id",
+    "details": {
+      "model": "default",
+      "dialect": "openai-chat",
+      "attempts": 2,
+      "last_error": "upstream status 402 upstream provider quota, credits, or billing limit exhausted",
+      "retryable": true,
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "fallbackUsed": true
+    }
+  }
+}
+```
+
+The error body is sanitized. It does not include provider account identifiers, raw upstream response bodies, upstream headers, provider API keys, router tokens, token hashes, prompts, images, or tool output.
+
 ## Troubleshooting With Request IDs
 
 Administrators can use `X-Request-Id` to inspect:
@@ -60,5 +88,7 @@ Administrators can use `X-Request-Id` to inspect:
 - `request_errors` for sanitized terminal error summaries.
 
 Diagnostic rows exclude prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies.
+
+For provider quota or billing incidents, look for `request_attempts.error_class = 'upstream_quota_exhausted'` and terminal `request_errors.error_type = 'upstream-quota-exhausted'`. A successful request can still have an `upstream_quota_exhausted` attempt row when fallback succeeded.
 
 If governed content capture is enabled by an operator, captured content lives in separate content-capture tables and remains outside usage reports and diagnostics. Delete and retention-purge maintenance endpoints require `content:capture` `delete`/`purge` authorization.

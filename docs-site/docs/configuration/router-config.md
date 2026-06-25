@@ -533,7 +533,7 @@ curl -X POST "$SMART_ROUTER_BASE_URL/v1/content-captures/purge-expired" \
   -H "Authorization: Bearer $CONTENT_ADMIN_ROUTER_TOKEN"
 ```
 
-Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. Exhausted upstream timeouts return `504 upstream-timeout`; exhausted provider rate limits return `503 upstream-rate-limited`; other exhausted upstream failures return `502 upstream-failed`.
+Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. If every eligible attempt fails, exhausted upstream timeouts return `504 upstream-timeout`, provider rate limits return `503 upstream-rate-limited`, provider balance/credit/quota/billing exhaustion returns `503 upstream-quota-exhausted`, and other exhausted upstream failures return `502 upstream-failed`. Fallback targets are attempted before the router returns one of these terminal errors.
 
 Cataloged vision models are not automatically active routes. Keep a vision candidate catalog-only until it passes the exact direct upstream and router-level image smoke for the intended task and API dialect.
 
