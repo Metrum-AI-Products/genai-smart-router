@@ -16,8 +16,8 @@ Last deployed: 2026-06-25
 
 ## Deployed Version
 
-- Router package/image version: `e087c8c-linux-amd64`
-- Source commit: `e087c8c`
+- Router package/image version: `3e9aa55-linux-amd64`
+- Source commit: `3e9aa55`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-06-25
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-25 Model-Group Contracts Deployment
+
+- Deployed package/image `smart-llmrouter:3e9aa55-linux-amd64` from source commit `3e9aa55` after PR #118 merged.
+- Added optional model-group contract configuration, target validation metadata, contract-aware eligibility, safe usage/report fields, and internal plus Docusaurus documentation.
+- Production package backup: `/opt/smart-llmrouter.backup.model-group-contracts-20260625T143222Z`.
+- Production config was carried forward unchanged; no production groups were configured with new contract fields during this refresh.
+- Verified public `/readyz` reports version `3e9aa55`, commit `3e9aa55`, and build date `2026-06-25T14:28:37Z`.
+- Verified public `/version` reports version `3e9aa55`, commit `3e9aa55`, build date `2026-06-25T14:28:37Z`, and Go `1.26.4` on `linux/amd64`.
+- Verified hosted `/docs/configuration/model-group-contracts` returns 200.
+- Verified authenticated `/v1/models` returns the caller's allowed model groups.
+- Verified authenticated `/admin/reports/api/contract-buckets?since=24h&limit=10` returns the contract-buckets report shape.
+- Verified authenticated `/v1/chat/completions` against the `high` group returned HTTP 200 with content `OK` after a realistic output cap.
+- Production cleanup: removed the uploaded package, removed temporary unpack files, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
+
+Validation before deploy:
+
+```text
+go test ./cmd/... ./internal/...: passed, 297 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package content validation: passed
+```
 
 ## 2026-06-25 Admin Anomaly Reports Refresh
 
