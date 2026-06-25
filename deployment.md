@@ -16,8 +16,8 @@ Last deployed: 2026-06-25
 
 ## Deployed Version
 
-- Router package/image version: `0af2002-linux-amd64`
-- Source commit: `0af2002`
+- Router package/image version: `e087c8c-linux-amd64`
+- Source commit: `e087c8c`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-06-25
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-25 Admin Anomaly Reports Refresh
+
+- Deployed package/image `smart-llmrouter:e087c8c-linux-amd64` from source commit `e087c8c` after PR #116 merged.
+- Fixed admin anomaly reports so normal `active` key state is not classified as `key-active`.
+- Fixed non-savings scalar report tabs so `Baseline`, `Savings`, and `Savings %` columns render only for savings-backed reports.
+- Production package backup: `/opt/smart-llmrouter.backup.anomaly-reports-20260625T064739Z`.
+- Production config was carried forward unchanged from the previous admin-report deployment.
+- Verified public `/readyz` reports version `e087c8c`, commit `e087c8c`, and build date `2026-06-25T06:43:56Z`.
+- Verified public `/version` reports version `e087c8c`, commit `e087c8c`, build date `2026-06-25T06:43:56Z`, and Go `1.26.4` on `linux/amd64`.
+- Verified hosted `/docs/` returns 200 after the embedded Docusaurus rebuild.
+- Verified authenticated `/admin/reports/api/anomalies?since=24h&limit=50` returns anomaly rows with no `key-active` rows and no baseline/savings fields.
+- Verified authenticated `/admin/reports/api/savings-by-user?since=24h&limit=5` still returns a selected baseline and savings fields.
+- Production cleanup: removed the uploaded package, removed temporary unpack files, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
+
+Validation before deploy:
+
+```text
+go test ./cmd/... ./internal/...: passed, 280 tests
+make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package content validation: passed
+```
 
 ## 2026-06-25 Admin Browser Reports Package Deployment
 
