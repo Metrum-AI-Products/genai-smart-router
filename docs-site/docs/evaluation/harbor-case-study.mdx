@@ -150,7 +150,7 @@ The absolute dollar values are for this single benchmark run, but the percentage
 
 ## Usage By External Model
 
-| Provider route | Model | Calls | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+| Provider route | Model | Calls | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Kimi Anthropic-compatible | `kimi-k2.7-code` | 8 | 172,326 | 39,300 | 3,490 | 9 | 1 | 26.37 | 12,642 |
 | MiniMax OpenAI-compatible | `MiniMax-M3` | 22 | 456,843 | 452,073 | 4,770 | 22 | 0 | 35.06 | 4,929 |
@@ -215,14 +215,14 @@ The three zero-token requests in the scoped report were setup/model-discovery ca
 
 ### Usage By Agent Token
 
-| Agent token | Calls | Errors | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+| Agent token | Calls | Errors | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Codex CLI / `default` | 10 | 0 | 80,076 | 77,886 | 2,190 | 8 | 0 | 41.80 | 4,087 |
 | Claude Code CLI / `default` | 9 | 0 | 109,688 | 68,343 | 2,689 | 8 | 0 | 32.42 | 6,753 |
 
 ### Usage By External Model
 
-| Provider route | Model | Calls | Tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
+| Provider route | Model | Calls | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | MiniMax OpenAI-compatible | `MiniMax-M3` | 6 | 53,584 | 52,034 | 1,550 | 6 | 0 | 39.48 | 5,057 |
 | MiniMax Anthropic-compatible | `MiniMax-M3` | 5 | 46,770 | 44,272 | 2,498 | 5 | 0 | 38.26 | 10,408 |

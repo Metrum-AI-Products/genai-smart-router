@@ -164,7 +164,7 @@ export default function HarborCharts() {
             data={{
               labels: goSublistCostLabels,
               datasets: [
-                { label: "Tokens", data: goSublistTokens, backgroundColor: "#cc28af" },
+                { label: "Total Tokens", data: goSublistTokens, backgroundColor: "#cc28af" },
               ],
             }}
           />

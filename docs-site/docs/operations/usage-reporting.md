@@ -92,8 +92,8 @@ Reports include:
 
 - Calls, errors, status codes, latency, and upstream attempts.
 - Input tokens, output tokens, total tokens, and throughput.
-- Downstream user performance grouped by user, project, environment, and client, including average/max latency, TTFB, downstream duration, and downstream token throughput.
-- Upstream endpoint performance grouped by provider, model, and API dialect, including average/max upstream duration, latency, TTFB, attempts, fallbacks, cost, and upstream token throughput.
+- Downstream user performance grouped by user, project, environment, and client, including average/max latency, TTFB, downstream duration, downstream write output token throughput, and downstream write total token throughput.
+- Upstream endpoint performance grouped by provider, model, and API dialect, including average/max upstream duration, latency, TTFB, attempts, fallbacks, input/output/total cost, upstream output token throughput, and upstream total token throughput.
 - Request-time input/output token prices and calculated input/output/total USD cost.
 - Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
@@ -141,9 +141,9 @@ Decision telemetry is disabled unless the deployment sets `server.decision_telem
 
 ## Performance Triage
 
-Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
+Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Downstream throughput is labeled as downstream write output/total tok/s because it measures what the router writes back to the caller. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low upstream output/total token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
 
-Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
+Cost fields are captured when each request finishes. Admin rows expose input cost, output cost, and total cost where the report groups usage rows, especially provider/model mix. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
 
 For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image chargeback. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.
 

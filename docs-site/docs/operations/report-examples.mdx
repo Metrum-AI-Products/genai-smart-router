@@ -49,7 +49,7 @@ The daily view is useful for spend reviews, quota planning, rollout comparisons,
 
 This excerpt answers: which caller cohorts are driving spend, savings, token volume, and latency?
 
-| Caller cohort | Project | Client | Calls | Errors | Input tokens | Output tokens | Router cost | Reference cost | Savings | Avg latency ms | Max latency ms | Avg downstream output tok/s |
+| Caller cohort | Project | Client | Calls | Errors | Input tokens | Output tokens | Router cost | Reference cost | Savings | Avg latency ms | Max latency ms | Avg downstream write output tok/s |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Team A | Project A | Client A | 1,634 | 65 | 187,520,679 | 802,818 | $64.50 | $961.69 | $897.19 | 13,442 | 121,148 | 509,579.56 |
 | Team B | Project B | Client B | 1,014 | 21 | 175,094,108 | 292,520 | $63.80 | $884.25 | $820.44 | 7,849 | 120,462 | 291,263.34 |
@@ -64,7 +64,7 @@ The caller view supports chargeback, quota reviews, and support triage. For exam
 
 This excerpt answers: which anonymized upstream endpoint/API combinations are slow, error-prone, or fallback-heavy?
 
-| Endpoint | API shape | Calls | Errors | Attempts | Fallbacks | Tokens | Router cost | Avg upstream ms | Max upstream ms | Avg upstream output tok/s | Avg latency ms |
+| Endpoint | API shape | Calls | Errors | Attempts | Fallbacks | Total tokens | Router cost | Avg upstream ms | Max upstream ms | Avg upstream output tok/s | Avg latency ms |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Endpoint A | API A | 5 | 1 | 11 | 1 | 6,742 | $0.01 | 42,969 | 132,688 | 46.75 | 42,972 |
 | Endpoint B | API B | 561 | 57 | 700 | 47 | 33,287,316 | $1.31 | 36,077 | 303,067 | 22.66 | 36,208 |

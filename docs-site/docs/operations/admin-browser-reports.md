@@ -64,7 +64,7 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 
 ## What It Shows
 
-The browser UI displays requests, errors, tokens, cost, savings, latency, TTFB, upstream/downstream throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, model-group usage by user, public token IDs, caller metadata, quota/key states, routing strategy summaries, contract buckets, target validation buckets, capability usage, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
+The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, model-group usage by user, public token IDs, caller metadata, quota/key states, routing strategy summaries, contract buckets, target validation buckets, capability usage, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
 
@@ -102,7 +102,7 @@ The current browser surface includes:
 - Savings by user, key, and model group.
 - Model groups by user.
 - Usage by API key.
-- Provider and model mix.
+- Provider and model mix. This tab reports actual provider/model usage, input/output/total tokens, input/output/total cost, latency, and throughput. It does not include baseline or savings fields by default; use the Savings tabs when a hypothetical baseline comparison is needed.
 - Latency and throughput.
 - Errors and fallbacks.
 - Cache.
@@ -118,7 +118,7 @@ The current browser surface includes:
 
 ## Charts
 
-Summary responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range, and active safe filters. The browser dashboard uses that contract to render axes, unit-aware tick labels, legends, and hover tooltips. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages.
+Summary responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range, and active safe filters. The browser dashboard uses that contract to render axes, unit-aware tick labels, legends, and hover tooltips. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages. Tables label totals explicitly as Total Tokens and Total cost whenever input/output breakdowns are present.
 
 Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
 

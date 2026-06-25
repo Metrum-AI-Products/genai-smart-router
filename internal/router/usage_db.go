@@ -431,6 +431,7 @@ type agg struct {
 	OutputTokens             int64
 	TotalTokens              int64
 	InputCostUSD             float64
+	ImageCostUSD             float64
 	OutputCostUSD            float64
 	TotalCostUSD             float64
 	LatencyMS                int64
@@ -1388,7 +1389,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
 	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
 	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)
-	fmt.Fprintf(&b, "- Tokens: `%d` total, `%d` input, `%d` output\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
+	fmt.Fprintf(&b, "- Total Tokens: `%d` total, `%d` input, `%d` output\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
 	fmt.Fprintf(&b, "- Cost: `$%s` total, `$%s` input, `$%s` output\n", fmtUSD(total.TotalCostUSD), fmtUSD(total.InputCostUSD), fmtUSD(total.OutputCostUSD))
 	fmt.Fprintf(&b, "- Cache: `%d` hits, `%d` misses, `%d` bypass\n", total.CacheHits, total.CacheMisses, total.CacheBypass)
 	fmt.Fprintf(&b, "- Upstream attempts: `%d`; fallbacks: `%d`; streaming requests: `%d`\n", total.Attempts, total.Fallbacks, total.Streams)
@@ -1441,6 +1442,7 @@ func (a *agg) add(row usageRow) {
 	a.InputTokens += int64(row.InputTokens)
 	a.OutputTokens += int64(row.OutputTokens)
 	a.InputCostUSD += row.InputCostUSD
+	a.ImageCostUSD += row.ImageCostUSD
 	a.OutputCostUSD += row.OutputCostUSD
 	a.TotalCostUSD += row.TotalCostUSD
 	total := row.TotalTokens
@@ -1499,7 +1501,7 @@ func (a *agg) add(row usageRow) {
 
 func writeTokenTable(b *strings.Builder, title string, data map[string]*agg, meta map[string]usageRow) {
 	fmt.Fprintf(b, "## %s\n\n", title)
-	fmt.Fprintln(b, "| Token ID | Owner User | Project | Env | Caller ID | Calls | Errors | Tokens | Input | Output | Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Output tok/s | Avg Latency ms | Max Latency ms |")
+	fmt.Fprintln(b, "| Token ID | Owner User | Project | Env | Caller ID | Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Total Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Write Output tok/s | Avg Latency ms | Max Latency ms |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeys(data) {
 		row := meta[key]
@@ -1521,7 +1523,7 @@ func writeAggTable(b *strings.Builder, title string, keyHeaders []string, data m
 	for _, h := range keyHeaders {
 		fmt.Fprintf(b, "| %s ", h)
 	}
-	fmt.Fprintln(b, "| Calls | Errors | Tokens | Input | Output | Cost USD | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
+	fmt.Fprintln(b, "| Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Total Cost USD | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Write Output tok/s | Avg Downstream Write Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
 	for range keyHeaders {
 		fmt.Fprint(b, "|---")
 	}
@@ -1593,7 +1595,7 @@ func writeCountTable(b *strings.Builder, title, keyHeader string, counts map[str
 func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*agg) {
 	fmt.Fprintln(b, "## Downstream User Performance")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Owner User | Project | Env | Client | Calls | Errors | Streams | Tokens | Output | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Downstream ms | Max Downstream ms | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Fallbacks |")
+	fmt.Fprintln(b, "| Owner User | Project | Env | Client | Calls | Errors | Streams | Total Tokens | Output Tokens | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Downstream ms | Max Downstream ms | Avg Downstream Write Output tok/s | Avg Downstream Write Total tok/s | Fallbacks |")
 	fmt.Fprintln(b, "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.LatencyMS, a.Calls) }) {
 		parts := splitKey4(key)
@@ -1616,7 +1618,7 @@ func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*ag
 func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*agg) {
 	fmt.Fprintln(b, "## Upstream Endpoint Performance")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Provider | Model | Dialect | Calls | Errors | Attempts | Fallbacks | Streams | Tokens | Output | Cost USD | Avg Upstream ms | Max Upstream ms | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Upstream Output tok/s | Avg Upstream Total tok/s |")
+	fmt.Fprintln(b, "| Provider | Model | Dialect | Calls | Errors | Attempts | Fallbacks | Streams | Total Tokens | Output Tokens | Total Cost USD | Avg Upstream ms | Max Upstream ms | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Upstream Output tok/s | Avg Upstream Total tok/s |")
 	fmt.Fprintln(b, "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.UpstreamMS, a.UpstreamMSCount) }) {
 		parts := splitKey3(key)
@@ -1638,7 +1640,7 @@ func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*
 func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
 	fmt.Fprintln(b, "## Per-Request Throughput")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output | Total | Cost USD | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Output tok/s | Downstream Total tok/s |")
+	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output Tokens | Total Tokens | Total Cost USD | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Write Output tok/s | Downstream Write Total tok/s |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, row := range rows {
 		fmt.Fprintf(b, "| %s | `%s` | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | $%s | %s | %s | %s | %s | %s | %s |\n",

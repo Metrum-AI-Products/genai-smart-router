@@ -112,48 +112,55 @@ type adminSecurityEventRow struct {
 }
 
 type adminScalarReportRow struct {
-	Key                       string   `json:"key"`
-	SecondaryKey              string   `json:"secondaryKey,omitempty"`
-	Requests                  int64    `json:"requests"`
-	Errors                    int64    `json:"errors"`
-	ErrorRatePct              float64  `json:"errorRatePct"`
-	Streams                   int64    `json:"streams"`
-	Attempts                  int64    `json:"attempts"`
-	Fallbacks                 int64    `json:"fallbacks"`
-	FallbackRatePct           float64  `json:"fallbackRatePct"`
-	CacheHits                 int64    `json:"cacheHits"`
-	CacheMisses               int64    `json:"cacheMisses"`
-	CacheBypass               int64    `json:"cacheBypass"`
-	CacheHitRatePct           float64  `json:"cacheHitRatePct"`
-	InputTokens               int64    `json:"inputTokens"`
-	OutputTokens              int64    `json:"outputTokens"`
-	Tokens                    int64    `json:"tokens"`
-	InputImageCount           int64    `json:"inputImageCount"`
-	InputImageTokens          int64    `json:"inputImageTokens"`
-	PIIFilteredRequests       int64    `json:"piiFilteredRequests"`
-	PIIFilterReplacements     int64    `json:"piiFilterReplacements"`
-	CostUSD                   float64  `json:"costUsd"`
-	InputCostUSD              float64  `json:"inputCostUsd"`
-	OutputCostUSD             float64  `json:"outputCostUsd"`
-	UpstreamReportedCostUSD   float64  `json:"upstreamReportedCostUsd"`
-	BaselineCostUSD           *float64 `json:"baselineCostUsd,omitempty"`
-	SavingsUSD                *float64 `json:"savingsUsd,omitempty"`
-	SavingsPct                *float64 `json:"savingsPct,omitempty"`
-	AvgCostUSD                float64  `json:"avgCostUsd"`
-	AvgLatencyMS              int64    `json:"avgLatencyMs"`
-	MaxLatencyMS              int64    `json:"maxLatencyMs"`
-	AvgTTFBMS                 int64    `json:"avgTtfbMs"`
-	MaxTTFBMS                 int64    `json:"maxTtfbMs"`
-	AvgUpstreamMS             int64    `json:"avgUpstreamMs"`
-	MaxUpstreamMS             int64    `json:"maxUpstreamMs"`
-	AvgDownstreamMS           int64    `json:"avgDownstreamMs"`
-	MaxDownstreamMS           int64    `json:"maxDownstreamMs"`
-	AvgUpstreamTokensPerSec   float64  `json:"avgUpstreamTokensPerSec"`
-	AvgDownstreamTokensPerSec float64  `json:"avgDownstreamTokensPerSec"`
-	LatestCacheItems          int64    `json:"latestCacheItems"`
-	LatestCacheBytes          int64    `json:"latestCacheBytes"`
-	LatestCacheMaxBytes       int64    `json:"latestCacheMaxBytes"`
-	LatestCacheOccupancyPct   float64  `json:"latestCacheOccupancyPct"`
+	Key                                  string   `json:"key"`
+	SecondaryKey                         string   `json:"secondaryKey,omitempty"`
+	Requests                             int64    `json:"requests"`
+	Errors                               int64    `json:"errors"`
+	ErrorRatePct                         float64  `json:"errorRatePct"`
+	Streams                              int64    `json:"streams"`
+	Attempts                             int64    `json:"attempts"`
+	Fallbacks                            int64    `json:"fallbacks"`
+	FallbackRatePct                      float64  `json:"fallbackRatePct"`
+	CacheHits                            int64    `json:"cacheHits"`
+	CacheMisses                          int64    `json:"cacheMisses"`
+	CacheBypass                          int64    `json:"cacheBypass"`
+	CacheHitRatePct                      float64  `json:"cacheHitRatePct"`
+	InputTokens                          int64    `json:"inputTokens"`
+	OutputTokens                         int64    `json:"outputTokens"`
+	Tokens                               int64    `json:"tokens"`
+	TotalTokens                          int64    `json:"totalTokens"`
+	InputImageCount                      int64    `json:"inputImageCount"`
+	InputImageTokens                     int64    `json:"inputImageTokens"`
+	PIIFilteredRequests                  int64    `json:"piiFilteredRequests"`
+	PIIFilterReplacements                int64    `json:"piiFilterReplacements"`
+	CostUSD                              float64  `json:"costUsd"`
+	InputCostUSD                         float64  `json:"inputCostUsd"`
+	ImageCostUSD                         float64  `json:"imageCostUsd"`
+	OutputCostUSD                        float64  `json:"outputCostUsd"`
+	TotalCostUSD                         float64  `json:"totalCostUsd"`
+	UpstreamReportedCostUSD              float64  `json:"upstreamReportedCostUsd"`
+	BaselineCostUSD                      *float64 `json:"baselineCostUsd,omitempty"`
+	SavingsUSD                           *float64 `json:"savingsUsd,omitempty"`
+	SavingsPct                           *float64 `json:"savingsPct,omitempty"`
+	AvgCostUSD                           float64  `json:"avgCostUsd"`
+	AvgLatencyMS                         int64    `json:"avgLatencyMs"`
+	MaxLatencyMS                         int64    `json:"maxLatencyMs"`
+	AvgTTFBMS                            int64    `json:"avgTtfbMs"`
+	MaxTTFBMS                            int64    `json:"maxTtfbMs"`
+	AvgUpstreamMS                        int64    `json:"avgUpstreamMs"`
+	MaxUpstreamMS                        int64    `json:"maxUpstreamMs"`
+	AvgDownstreamMS                      int64    `json:"avgDownstreamMs"`
+	MaxDownstreamMS                      int64    `json:"maxDownstreamMs"`
+	AvgUpstreamTokensPerSec              float64  `json:"avgUpstreamTokensPerSec"`
+	AvgUpstreamOutputTokensPerSec        float64  `json:"avgUpstreamOutputTokensPerSec"`
+	AvgUpstreamTotalTokensPerSec         float64  `json:"avgUpstreamTotalTokensPerSec"`
+	AvgDownstreamTokensPerSec            float64  `json:"avgDownstreamTokensPerSec"`
+	AvgDownstreamWriteOutputTokensPerSec float64  `json:"avgDownstreamWriteOutputTokensPerSec"`
+	AvgDownstreamWriteTotalTokensPerSec  float64  `json:"avgDownstreamWriteTotalTokensPerSec"`
+	LatestCacheItems                     int64    `json:"latestCacheItems"`
+	LatestCacheBytes                     int64    `json:"latestCacheBytes"`
+	LatestCacheMaxBytes                  int64    `json:"latestCacheMaxBytes"`
+	LatestCacheOccupancyPct              float64  `json:"latestCacheOccupancyPct"`
 }
 
 type adminSavingsBaselineDTO struct {
@@ -185,20 +192,29 @@ type adminReportPeriod struct {
 }
 
 type adminReportSummary struct {
-	Requests         int64   `json:"requests"`
-	Errors           int64   `json:"errors"`
-	Tokens           int64   `json:"tokens"`
-	InputTokens      int64   `json:"inputTokens"`
-	OutputTokens     int64   `json:"outputTokens"`
-	CostUSD          float64 `json:"costUsd"`
-	Attempts         int64   `json:"attempts"`
-	Fallbacks        int64   `json:"fallbacks"`
-	Streams          int64   `json:"streams"`
-	AvgLatencyMS     int64   `json:"avgLatencyMs"`
-	MaxLatencyMS     int64   `json:"maxLatencyMs"`
-	AvgTTFBMS        int64   `json:"avgTtfbMs"`
-	AvgUpstreamTPS   float64 `json:"avgUpstreamTokensPerSec"`
-	AvgDownstreamTPS float64 `json:"avgDownstreamTokensPerSec"`
+	Requests                    int64   `json:"requests"`
+	Errors                      int64   `json:"errors"`
+	Tokens                      int64   `json:"tokens"`
+	TotalTokens                 int64   `json:"totalTokens"`
+	InputTokens                 int64   `json:"inputTokens"`
+	OutputTokens                int64   `json:"outputTokens"`
+	CostUSD                     float64 `json:"costUsd"`
+	InputCostUSD                float64 `json:"inputCostUsd"`
+	ImageCostUSD                float64 `json:"imageCostUsd"`
+	OutputCostUSD               float64 `json:"outputCostUsd"`
+	TotalCostUSD                float64 `json:"totalCostUsd"`
+	Attempts                    int64   `json:"attempts"`
+	Fallbacks                   int64   `json:"fallbacks"`
+	Streams                     int64   `json:"streams"`
+	AvgLatencyMS                int64   `json:"avgLatencyMs"`
+	MaxLatencyMS                int64   `json:"maxLatencyMs"`
+	AvgTTFBMS                   int64   `json:"avgTtfbMs"`
+	AvgUpstreamTPS              float64 `json:"avgUpstreamTokensPerSec"`
+	AvgUpstreamOutputTPS        float64 `json:"avgUpstreamOutputTokensPerSec"`
+	AvgUpstreamTotalTPS         float64 `json:"avgUpstreamTotalTokensPerSec"`
+	AvgDownstreamTPS            float64 `json:"avgDownstreamTokensPerSec"`
+	AvgDownstreamWriteOutputTPS float64 `json:"avgDownstreamWriteOutputTokensPerSec"`
+	AvgDownstreamWriteTotalTPS  float64 `json:"avgDownstreamWriteTotalTokensPerSec"`
 }
 
 type adminReportCache struct {
@@ -267,17 +283,22 @@ type adminReportFilterDTO struct {
 }
 
 type adminReportTableRow struct {
-	Key          string  `json:"key"`
-	Requests     int64   `json:"requests"`
-	Errors       int64   `json:"errors"`
-	Tokens       int64   `json:"tokens"`
-	InputTokens  int64   `json:"inputTokens"`
-	OutputTokens int64   `json:"outputTokens"`
-	CostUSD      float64 `json:"costUsd"`
-	Attempts     int64   `json:"attempts"`
-	Fallbacks    int64   `json:"fallbacks"`
-	AvgLatencyMS int64   `json:"avgLatencyMs"`
-	MaxLatencyMS int64   `json:"maxLatencyMs"`
+	Key           string  `json:"key"`
+	Requests      int64   `json:"requests"`
+	Errors        int64   `json:"errors"`
+	Tokens        int64   `json:"tokens"`
+	TotalTokens   int64   `json:"totalTokens"`
+	InputTokens   int64   `json:"inputTokens"`
+	OutputTokens  int64   `json:"outputTokens"`
+	CostUSD       float64 `json:"costUsd"`
+	InputCostUSD  float64 `json:"inputCostUsd"`
+	ImageCostUSD  float64 `json:"imageCostUsd"`
+	OutputCostUSD float64 `json:"outputCostUsd"`
+	TotalCostUSD  float64 `json:"totalCostUsd"`
+	Attempts      int64   `json:"attempts"`
+	Fallbacks     int64   `json:"fallbacks"`
+	AvgLatencyMS  int64   `json:"avgLatencyMs"`
+	MaxLatencyMS  int64   `json:"maxLatencyMs"`
 }
 
 type adminReportRequest struct {
@@ -304,9 +325,11 @@ type adminReportRequest struct {
 	UpstreamMS   *int64  `json:"upstreamMs,omitempty"`
 	DownstreamMS *int64  `json:"downstreamMs,omitempty"`
 	Tokens       int     `json:"tokens"`
+	TotalTokens  int     `json:"totalTokens"`
 	InputTokens  int     `json:"inputTokens"`
 	OutputTokens int     `json:"outputTokens"`
 	CostUSD      float64 `json:"costUsd"`
+	TotalCostUSD float64 `json:"totalCostUsd"`
 }
 
 type adminReportAttempt struct {
@@ -1120,45 +1143,52 @@ func (a *adminScalarAgg) row() adminScalarReportRow {
 	cacheable := a.Agg.CacheHits + a.Agg.CacheMisses
 	savings := a.BaselineCostUSD - a.Agg.TotalCostUSD
 	row := adminScalarReportRow{
-		Key:                       a.Key,
-		SecondaryKey:              a.SecondaryKey,
-		Requests:                  a.Agg.Calls,
-		Errors:                    a.Agg.Errors,
-		ErrorRatePct:              ratioPct(a.Agg.Errors, a.Agg.Calls),
-		Streams:                   a.Agg.Streams,
-		Attempts:                  a.Agg.Attempts,
-		Fallbacks:                 a.Agg.Fallbacks,
-		FallbackRatePct:           ratioPct(a.Agg.Fallbacks, a.Agg.Calls),
-		CacheHits:                 a.Agg.CacheHits,
-		CacheMisses:               a.Agg.CacheMisses,
-		CacheBypass:               a.Agg.CacheBypass,
-		CacheHitRatePct:           ratioPct(a.Agg.CacheHits, cacheable),
-		InputTokens:               a.Agg.InputTokens,
-		OutputTokens:              a.Agg.OutputTokens,
-		Tokens:                    a.Agg.TotalTokens,
-		InputImageCount:           a.InputImageCount,
-		InputImageTokens:          a.InputImageTokens,
-		PIIFilteredRequests:       a.PIIFilteredRequests,
-		PIIFilterReplacements:     a.PIIFilterReplacements,
-		CostUSD:                   a.Agg.TotalCostUSD,
-		InputCostUSD:              a.Agg.InputCostUSD,
-		OutputCostUSD:             a.Agg.OutputCostUSD,
-		UpstreamReportedCostUSD:   a.UpstreamReportedCostUSD,
-		AvgCostUSD:                avgFloat(a.Agg.TotalCostUSD, a.Agg.Calls),
-		AvgLatencyMS:              avg(a.Agg.LatencyMS, a.Agg.Calls),
-		MaxLatencyMS:              a.Agg.MaxLatencyMS,
-		AvgTTFBMS:                 avg(a.Agg.TTFBMS, a.Agg.TTFBCount),
-		MaxTTFBMS:                 a.Agg.MaxTTFBMS,
-		AvgUpstreamMS:             avg(a.Agg.UpstreamMS, a.Agg.UpstreamMSCount),
-		MaxUpstreamMS:             a.Agg.MaxUpstreamMS,
-		AvgDownstreamMS:           avg(a.Agg.DownstreamMS, a.Agg.DownstreamMSCount),
-		MaxDownstreamMS:           a.Agg.MaxDownstreamMS,
-		AvgUpstreamTokensPerSec:   avgFloat(a.Agg.UpstreamOutputTPS, a.Agg.UpstreamOutputTPSCount),
-		AvgDownstreamTokensPerSec: avgFloat(a.Agg.DownstreamOutputTPS, a.Agg.DownstreamOutputTPSCount),
-		LatestCacheItems:          a.Agg.CacheItemsLatest,
-		LatestCacheBytes:          a.Agg.CacheBytesLatest,
-		LatestCacheMaxBytes:       a.Agg.CacheMaxBytesLatest,
-		LatestCacheOccupancyPct:   a.Agg.CacheOccupancyLatest,
+		Key:                                  a.Key,
+		SecondaryKey:                         a.SecondaryKey,
+		Requests:                             a.Agg.Calls,
+		Errors:                               a.Agg.Errors,
+		ErrorRatePct:                         ratioPct(a.Agg.Errors, a.Agg.Calls),
+		Streams:                              a.Agg.Streams,
+		Attempts:                             a.Agg.Attempts,
+		Fallbacks:                            a.Agg.Fallbacks,
+		FallbackRatePct:                      ratioPct(a.Agg.Fallbacks, a.Agg.Calls),
+		CacheHits:                            a.Agg.CacheHits,
+		CacheMisses:                          a.Agg.CacheMisses,
+		CacheBypass:                          a.Agg.CacheBypass,
+		CacheHitRatePct:                      ratioPct(a.Agg.CacheHits, cacheable),
+		InputTokens:                          a.Agg.InputTokens,
+		OutputTokens:                         a.Agg.OutputTokens,
+		Tokens:                               a.Agg.TotalTokens,
+		TotalTokens:                          a.Agg.TotalTokens,
+		InputImageCount:                      a.InputImageCount,
+		InputImageTokens:                     a.InputImageTokens,
+		PIIFilteredRequests:                  a.PIIFilteredRequests,
+		PIIFilterReplacements:                a.PIIFilterReplacements,
+		CostUSD:                              a.Agg.TotalCostUSD,
+		InputCostUSD:                         a.Agg.InputCostUSD,
+		ImageCostUSD:                         a.Agg.ImageCostUSD,
+		OutputCostUSD:                        a.Agg.OutputCostUSD,
+		TotalCostUSD:                         a.Agg.TotalCostUSD,
+		UpstreamReportedCostUSD:              a.UpstreamReportedCostUSD,
+		AvgCostUSD:                           avgFloat(a.Agg.TotalCostUSD, a.Agg.Calls),
+		AvgLatencyMS:                         avg(a.Agg.LatencyMS, a.Agg.Calls),
+		MaxLatencyMS:                         a.Agg.MaxLatencyMS,
+		AvgTTFBMS:                            avg(a.Agg.TTFBMS, a.Agg.TTFBCount),
+		MaxTTFBMS:                            a.Agg.MaxTTFBMS,
+		AvgUpstreamMS:                        avg(a.Agg.UpstreamMS, a.Agg.UpstreamMSCount),
+		MaxUpstreamMS:                        a.Agg.MaxUpstreamMS,
+		AvgDownstreamMS:                      avg(a.Agg.DownstreamMS, a.Agg.DownstreamMSCount),
+		MaxDownstreamMS:                      a.Agg.MaxDownstreamMS,
+		AvgUpstreamTokensPerSec:              avgFloat(a.Agg.UpstreamOutputTPS, a.Agg.UpstreamOutputTPSCount),
+		AvgUpstreamOutputTokensPerSec:        avgFloat(a.Agg.UpstreamOutputTPS, a.Agg.UpstreamOutputTPSCount),
+		AvgUpstreamTotalTokensPerSec:         avgFloat(a.Agg.UpstreamTotalTPS, a.Agg.UpstreamTotalTPSCount),
+		AvgDownstreamTokensPerSec:            avgFloat(a.Agg.DownstreamOutputTPS, a.Agg.DownstreamOutputTPSCount),
+		AvgDownstreamWriteOutputTokensPerSec: avgFloat(a.Agg.DownstreamOutputTPS, a.Agg.DownstreamOutputTPSCount),
+		AvgDownstreamWriteTotalTokensPerSec:  avgFloat(a.Agg.DownstreamTotalTPS, a.Agg.DownstreamTotalTPSCount),
+		LatestCacheItems:                     a.Agg.CacheItemsLatest,
+		LatestCacheBytes:                     a.Agg.CacheBytesLatest,
+		LatestCacheMaxBytes:                  a.Agg.CacheMaxBytesLatest,
+		LatestCacheOccupancyPct:              a.Agg.CacheOccupancyLatest,
 	}
 	if a.HasBaseline {
 		savingsPct := ratioPctFloat(savings, a.BaselineCostUSD)
@@ -1383,8 +1413,10 @@ func adminScalarCharts(filters adminReportFilters, generatedAt string, spec admi
 			adminChartSeriesFromScalarRows("Fallbacks", "count", "warning", rows, func(row adminScalarReportRow) float64 { return float64(row.Fallbacks) }),
 		}))
 	default:
-		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_tokens", spec.Report+" tokens", "Key", "Tokens", "tokens", []adminReportChartSeries{
-			adminChartSeriesFromScalarRows("Tokens", "tokens", "purple", rows, func(row adminScalarReportRow) float64 { return float64(row.Tokens) }),
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_tokens", spec.Report+" token volume", "Key", "Token count", "tokens", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Input Tokens", "tokens", "blue", rows, func(row adminScalarReportRow) float64 { return float64(row.InputTokens) }),
+			adminChartSeriesFromScalarRows("Output Tokens", "tokens", "magenta", rows, func(row adminScalarReportRow) float64 { return float64(row.OutputTokens) }),
+			adminChartSeriesFromScalarRows("Total Tokens", "tokens", "purple", rows, func(row adminScalarReportRow) float64 { return float64(row.TotalTokens) }),
 		}))
 	}
 	return charts
@@ -1515,20 +1547,27 @@ func addAdminAgg(m map[string]*agg, key string, row usageRow) {
 
 func adminSummaryFromAgg(a *agg) adminReportSummary {
 	return adminReportSummary{
-		Requests:         a.Calls,
-		Errors:           a.Errors,
-		Tokens:           a.TotalTokens,
-		InputTokens:      a.InputTokens,
-		OutputTokens:     a.OutputTokens,
-		CostUSD:          a.TotalCostUSD,
-		Attempts:         a.Attempts,
-		Fallbacks:        a.Fallbacks,
-		Streams:          a.Streams,
-		AvgLatencyMS:     avg(a.LatencyMS, a.Calls),
-		MaxLatencyMS:     a.MaxLatencyMS,
-		AvgTTFBMS:        avg(a.TTFBMS, a.TTFBCount),
-		AvgUpstreamTPS:   avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount),
-		AvgDownstreamTPS: avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount),
+		Requests:                    a.Calls,
+		Errors:                      a.Errors,
+		Tokens:                      a.TotalTokens,
+		TotalTokens:                 a.TotalTokens,
+		InputTokens:                 a.InputTokens,
+		OutputTokens:                a.OutputTokens,
+		CostUSD:                     a.TotalCostUSD,
+		TotalCostUSD:                a.TotalCostUSD,
+		ImageCostUSD:                a.ImageCostUSD,
+		Attempts:                    a.Attempts,
+		Fallbacks:                   a.Fallbacks,
+		Streams:                     a.Streams,
+		AvgLatencyMS:                avg(a.LatencyMS, a.Calls),
+		MaxLatencyMS:                a.MaxLatencyMS,
+		AvgTTFBMS:                   avg(a.TTFBMS, a.TTFBCount),
+		AvgUpstreamTPS:              avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount),
+		AvgUpstreamOutputTPS:        avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount),
+		AvgUpstreamTotalTPS:         avgFloat(a.UpstreamTotalTPS, a.UpstreamTotalTPSCount),
+		AvgDownstreamTPS:            avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount),
+		AvgDownstreamWriteOutputTPS: avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount),
+		AvgDownstreamWriteTotalTPS:  avgFloat(a.DownstreamTotalTPS, a.DownstreamTotalTPSCount),
 	}
 }
 
@@ -1550,7 +1589,7 @@ func adminRowsFromAgg(data map[string]*agg) []adminReportTableRow {
 	out := make([]adminReportTableRow, 0, len(data))
 	for _, key := range sortedAggKeys(data) {
 		a := data[key]
-		out = append(out, adminReportTableRow{Key: key, Requests: a.Calls, Errors: a.Errors, Tokens: a.TotalTokens, InputTokens: a.InputTokens, OutputTokens: a.OutputTokens, CostUSD: a.TotalCostUSD, Attempts: a.Attempts, Fallbacks: a.Fallbacks, AvgLatencyMS: avg(a.LatencyMS, a.Calls), MaxLatencyMS: a.MaxLatencyMS})
+		out = append(out, adminReportTableRow{Key: key, Requests: a.Calls, Errors: a.Errors, Tokens: a.TotalTokens, TotalTokens: a.TotalTokens, InputTokens: a.InputTokens, OutputTokens: a.OutputTokens, CostUSD: a.TotalCostUSD, InputCostUSD: a.InputCostUSD, ImageCostUSD: a.ImageCostUSD, OutputCostUSD: a.OutputCostUSD, TotalCostUSD: a.TotalCostUSD, Attempts: a.Attempts, Fallbacks: a.Fallbacks, AvgLatencyMS: avg(a.LatencyMS, a.Calls), MaxLatencyMS: a.MaxLatencyMS})
 	}
 	return out
 }
@@ -1584,8 +1623,10 @@ func adminChartsFromSeries(filters adminReportFilters, generatedAt string, serie
 			adminChartSeriesFromTimeRows("Misses", "count", "warning", series, func(row adminReportSeries) float64 { return float64(row.CacheMisses) }),
 			adminChartSeriesFromTimeRows("Bypass", "count", "text", series, func(row adminReportSeries) float64 { return float64(row.CacheBypass) }),
 		}),
-		adminCategoryChart(filters, generatedAt, "provider_tokens", "Provider Tokens", "Provider / model", "Tokens", "tokens", []adminReportChartSeries{
-			adminChartSeriesFromTableRows("Tokens", "tokens", "purple", providers, func(row adminReportTableRow) float64 { return float64(row.Tokens) }),
+		adminCategoryChart(filters, generatedAt, "provider_tokens", "Provider token volume", "Provider / model", "Token count", "tokens", []adminReportChartSeries{
+			adminChartSeriesFromTableRows("Input Tokens", "tokens", "blue", providers, func(row adminReportTableRow) float64 { return float64(row.InputTokens) }),
+			adminChartSeriesFromTableRows("Output Tokens", "tokens", "magenta", providers, func(row adminReportTableRow) float64 { return float64(row.OutputTokens) }),
+			adminChartSeriesFromTableRows("Total Tokens", "tokens", "purple", providers, func(row adminReportTableRow) float64 { return float64(row.TotalTokens) }),
 		}),
 		adminTimeChart(filters, generatedAt, "errors_fallbacks", "Errors And Fallbacks", "Requests", "count", []adminReportChartSeries{
 			adminChartSeriesFromTimeRows("Errors", "count", "red", series, func(row adminReportSeries) float64 { return float64(row.Errors) }),
@@ -1675,9 +1716,11 @@ func adminRequestFromRow(row usageRow) adminReportRequest {
 		UpstreamMS:   row.UpstreamMS,
 		DownstreamMS: row.DownstreamMS,
 		Tokens:       totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+		TotalTokens:  totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
 		InputTokens:  row.InputTokens,
 		OutputTokens: row.OutputTokens,
 		CostUSD:      row.TotalCostUSD,
+		TotalCostUSD: row.TotalCostUSD,
 	}
 }
 

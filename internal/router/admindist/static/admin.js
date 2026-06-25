@@ -217,8 +217,8 @@ function render(report) {
   document.querySelector("#summary").innerHTML = [
     ["Requests", fmt.format(s.requests)],
     ["Errors", fmt.format(s.errors)],
-    ["Tokens", fmt.format(s.tokens)],
-    ["Cost", usd.format(s.costUsd)],
+    ["Total Tokens", fmt.format(s.totalTokens || s.tokens)],
+    ["Total cost", usd.format(s.totalCostUsd || s.costUsd)],
     ["Avg latency", `${fmt.format(s.avgLatencyMs)} ms`],
     ["Fallbacks", fmt.format(s.fallbacks)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
@@ -233,10 +233,10 @@ function renderCharts(report) {
   }
   const c = palette();
   chart("requestsChart", report.series.map(x => x.timeUtc), [{ label: "Requests", data: report.series.map(x => x.requests), borderColor: c.magenta }], c);
-  chart("costChart", report.series.map(x => x.timeUtc), [{ label: "Cost", data: report.series.map(x => x.costUsd), borderColor: c.red }], c);
+  chart("costChart", report.series.map(x => x.timeUtc), [{ label: "Total cost", data: report.series.map(x => x.costUsd), borderColor: c.red }], c);
   chart("latencyChart", report.series.map(x => x.timeUtc), [{ label: "Latency", data: report.series.map(x => x.latencyMs), borderColor: c.violet }, { label: "TTFB", data: report.series.map(x => x.ttfbMs), borderColor: c.blue }], c);
   chart("cacheChart", report.series.map(x => x.timeUtc), [{ label: "Hits", data: report.series.map(x => x.cacheHits), borderColor: c.success }, { label: "Misses", data: report.series.map(x => x.cacheMisses), borderColor: c.warning }, { label: "Bypass", data: report.series.map(x => x.cacheBypass), borderColor: c.text }], c);
-  chart("providerChart", report.byProvider.map(x => x.key), [{ label: "Tokens", data: report.byProvider.map(x => x.tokens), borderColor: c.purple }], c);
+  chart("providerChart", report.byProvider.map(x => x.key), [{ label: "Total Tokens", data: report.byProvider.map(x => x.totalTokens || x.tokens), borderColor: c.purple }], c);
   chart("errorChart", report.series.map(x => x.timeUtc), [{ label: "Errors", data: report.series.map(x => x.errors), borderColor: c.red }, { label: "Fallbacks", data: report.series.map(x => x.fallbacks), borderColor: c.warning }], c);
 }
 
@@ -320,8 +320,9 @@ function renderSavings(report) {
     ["Baseline cost", usd.format(s.baseline_cost_usd || 0)],
     ["Savings", usd.format(s.savings_usd || 0)],
     ["Savings rate", formatUnit(s.savings_pct || 0, "percent", true)],
-    ["Input tokens", fmt.format(s.input_tokens || 0)],
-    ["Output tokens", fmt.format(s.output_tokens || 0)]
+    ["Input Tokens", fmt.format(s.input_tokens || 0)],
+    ["Output Tokens", fmt.format(s.output_tokens || 0)],
+    ["Total Tokens", fmt.format(s.total_tokens || 0)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
   renderSavingsChartSpecs(report.charts || []);
   const warnings = report.warnings || [];
@@ -362,8 +363,8 @@ function renderGenericSummary(s) {
   document.querySelector("#summary").innerHTML = [
     ["Requests", fmt.format(s.requests || 0)],
     ["Errors", fmt.format(s.errors || 0)],
-    ["Tokens", fmt.format(s.tokens || 0)],
-    ["Cost", usd.format(s.costUsd || 0)],
+    ["Total Tokens", fmt.format(s.totalTokens || s.tokens || 0)],
+    ["Total cost", usd.format(s.totalCostUsd || s.costUsd || 0)],
     ["Avg latency", `${fmt.format(s.avgLatencyMs || 0)} ms`],
     ["Fallbacks", fmt.format(s.fallbacks || 0)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
@@ -479,7 +480,7 @@ function populateBaselines(baselines, selected) {
 }
 
 function savingsRows(rows) {
-  return `<thead><tr><th>Model group</th><th>Requests</th><th>Input</th><th>Output</th><th>Total tokens</th><th>Actual cost</th><th>Baseline cost</th><th>Savings</th><th>Savings %</th></tr></thead><tbody>` +
+  return `<thead><tr><th>Model group</th><th>Requests</th><th>Input Tokens</th><th>Output Tokens</th><th>Total Tokens</th><th>Actual cost</th><th>Baseline cost</th><th>Savings</th><th>Savings %</th></tr></thead><tbody>` +
     rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.input_tokens}</td><td>${r.output_tokens}</td><td>${r.total_tokens}</td><td>${usd.format(r.actual_cost_usd)}</td><td>${usd.format(r.baseline_cost_usd)}</td><td>${usd.format(r.savings_usd)}</td><td>${formatUnit(r.savings_pct, "percent", true)}</td></tr>`).join("") +
     `</tbody>`;
 }
@@ -491,10 +492,13 @@ function scalarColumns(options = {}) {
     { key: "requests", label: "Requests" },
     { key: "errors", label: "Errors" },
     { key: "errorRatePct", label: "Error %", format: v => formatUnit(v, "percent", true) },
-    { key: "tokens", label: "Tokens" },
-    { key: "inputTokens", label: "Input" },
-    { key: "outputTokens", label: "Output" },
-    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) }
+    { key: "totalTokens", label: "Total Tokens" },
+    { key: "inputTokens", label: "Input Tokens" },
+    { key: "outputTokens", label: "Output Tokens" },
+    { key: "inputCostUsd", label: "Input cost", format: v => usd.format(v || 0) },
+    { key: "imageCostUsd", label: "Image cost", format: v => usd.format(v || 0) },
+    { key: "outputCostUsd", label: "Output cost", format: v => usd.format(v || 0) },
+    { key: "totalCostUsd", label: "Total cost", format: v => usd.format(v || 0) }
   ];
   if (options.includeSavings) {
     columns.push(
@@ -505,8 +509,10 @@ function scalarColumns(options = {}) {
   }
   columns.push(
     { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) },
-    { key: "avgUpstreamTokensPerSec", label: "Upstream tok/s", format: v => formatUnit(v, "tok/s", true) },
-    { key: "avgDownstreamTokensPerSec", label: "Downstream tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "avgUpstreamOutputTokensPerSec", label: "Upstream output tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "avgUpstreamTotalTokensPerSec", label: "Upstream total tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "avgDownstreamWriteOutputTokensPerSec", label: "Downstream write output tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "avgDownstreamWriteTotalTokensPerSec", label: "Downstream write total tok/s", format: v => formatUnit(v, "tok/s", true) },
     { key: "cacheHits", label: "Cache hits" },
     { key: "cacheMisses", label: "Cache misses" },
     { key: "fallbacks", label: "Fallbacks" },
@@ -528,8 +534,8 @@ function anomalyColumns() {
     { key: "fallbackRatePct", label: "Fallback %", format: v => formatUnit(v, "percent", true) },
     { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) },
     { key: "maxLatencyMs", label: "Max latency", format: v => formatUnit(v, "ms", true) },
-    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
-    { key: "tokens", label: "Tokens" }
+    { key: "totalCostUsd", label: "Total cost", format: v => usd.format(v || 0) },
+    { key: "totalTokens", label: "Total Tokens" }
   ];
 }
 
@@ -538,8 +544,9 @@ function aggregateColumns() {
     { key: "key", label: "Key", copy: true },
     { key: "requests", label: "Requests" },
     { key: "errors", label: "Errors" },
-    { key: "tokens", label: "Tokens" },
-    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
+    { key: "totalTokens", label: "Total Tokens" },
+    { key: "imageCostUsd", label: "Image cost", format: v => usd.format(v || 0) },
+    { key: "totalCostUsd", label: "Total cost", format: v => usd.format(v || 0) },
     { key: "attempts", label: "Attempts" },
     { key: "fallbacks", label: "Fallbacks" },
     { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) }
@@ -550,9 +557,9 @@ function savingsColumns() {
   return [
     { key: "key", label: "Model group", copy: true },
     { key: "requests", label: "Requests" },
-    { key: "input_tokens", label: "Input" },
-    { key: "output_tokens", label: "Output" },
-    { key: "total_tokens", label: "Total tokens" },
+    { key: "input_tokens", label: "Input Tokens" },
+    { key: "output_tokens", label: "Output Tokens" },
+    { key: "total_tokens", label: "Total Tokens" },
     { key: "actual_cost_usd", label: "Actual cost", format: v => usd.format(v || 0) },
     { key: "baseline_cost_usd", label: "Baseline cost", format: v => usd.format(v || 0) },
     { key: "savings_usd", label: "Savings", format: v => usd.format(v || 0) },
@@ -570,8 +577,8 @@ function requestColumns() {
     { key: "provider", label: "Provider" },
     { key: "model", label: "Model" },
     { key: "status", label: "Status" },
-    { key: "tokens", label: "Tokens" },
-    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) }
+    { key: "totalTokens", label: "Total Tokens" },
+    { key: "totalCostUsd", label: "Total cost", format: v => usd.format(v || 0) }
   ];
 }
 
@@ -591,21 +598,21 @@ function securityColumns() {
     { key: "ipAddress", label: "IP", copy: true },
     { key: "ipSource", label: "IP source" },
     { key: "client", label: "Client" },
-    { key: "inputTokens", label: "Input" },
-    { key: "outputTokens", label: "Output" },
-    { key: "totalTokens", label: "Total tokens" }
+    { key: "inputTokens", label: "Input Tokens" },
+    { key: "outputTokens", label: "Output Tokens" },
+    { key: "totalTokens", label: "Total Tokens" }
   ];
 }
 
 function aggregateRows(rows) {
-  return `<thead><tr><th>Key</th><th>Requests</th><th>Errors</th><th>Tokens</th><th>Cost</th><th>Attempts</th><th>Fallbacks</th><th>Avg latency</th></tr></thead><tbody>` +
-    rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.errors}</td><td>${r.tokens}</td><td>${usd.format(r.costUsd)}</td><td>${r.attempts}</td><td>${r.fallbacks}</td><td>${r.avgLatencyMs} ms</td></tr>`).join("") +
+  return `<thead><tr><th>Key</th><th>Requests</th><th>Errors</th><th>Total Tokens</th><th>Total cost</th><th>Attempts</th><th>Fallbacks</th><th>Avg latency</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.errors}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td><td>${r.attempts}</td><td>${r.fallbacks}</td><td>${r.avgLatencyMs} ms</td></tr>`).join("") +
     `</tbody>`;
 }
 
 function requestRows(rows) {
-  return `<thead><tr><th>Time</th><th>Request</th><th>User</th><th>Project</th><th>Group</th><th>Provider</th><th>Model</th><th>Status</th><th>Tokens</th><th>Cost</th></tr></thead><tbody>` +
-    rows.slice(-100).reverse().map(r => `<tr><td>${esc(r.timeUtc)}</td><td>${esc(r.requestId)}</td><td>${esc(r.callerUser)}</td><td>${esc(r.project)}</td><td>${esc(r.modelGroup)}</td><td>${esc(r.provider)}</td><td>${esc(r.model)}</td><td>${r.status}</td><td>${r.tokens}</td><td>${usd.format(r.costUsd)}</td></tr>`).join("") +
+  return `<thead><tr><th>Time</th><th>Request</th><th>User</th><th>Project</th><th>Group</th><th>Provider</th><th>Model</th><th>Status</th><th>Total Tokens</th><th>Total cost</th></tr></thead><tbody>` +
+    rows.slice(-100).reverse().map(r => `<tr><td>${esc(r.timeUtc)}</td><td>${esc(r.requestId)}</td><td>${esc(r.callerUser)}</td><td>${esc(r.project)}</td><td>${esc(r.modelGroup)}</td><td>${esc(r.provider)}</td><td>${esc(r.model)}</td><td>${r.status}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td></tr>`).join("") +
     `</tbody>`;
 }
 

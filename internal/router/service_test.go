@@ -768,6 +768,18 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			if strings.Contains(path, "savings-by") && row["savingsUsd"] == nil {
 				t.Fatalf("%s missing savings scalar fields: %#v", path, row)
 			}
+			if strings.Contains(path, "provider-model-mix") {
+				for _, key := range []string{"inputTokens", "outputTokens", "totalTokens", "inputCostUsd", "imageCostUsd", "outputCostUsd", "totalCostUsd"} {
+					if _, ok := row[key]; !ok {
+						t.Fatalf("%s missing token/cost transparency field %q: %#v", path, key, row)
+					}
+				}
+				for _, key := range []string{"baseline", "baselineCostUsd", "savingsUsd", "savingsPct"} {
+					if _, ok := row[key]; ok {
+						t.Fatalf("%s exposed baseline/savings field %q by default: %#v", path, key, row)
+					}
+				}
+			}
 			if strings.Contains(path, "anomalies") {
 				for _, key := range []string{"baseline", "baselineCostUsd", "savingsUsd", "savingsPct"} {
 					if _, ok := row[key]; ok {
@@ -780,6 +792,16 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			}
 			if strings.Contains(path, "latency-throughput") && row["avgUpstreamTokensPerSec"].(float64) <= 0 {
 				t.Fatalf("%s missing throughput scalar fields: %#v", path, row)
+			}
+			if strings.Contains(path, "latency-throughput") {
+				for _, key := range []string{"avgUpstreamOutputTokensPerSec", "avgUpstreamTotalTokensPerSec", "avgDownstreamWriteOutputTokensPerSec", "avgDownstreamWriteTotalTokensPerSec"} {
+					if _, ok := row[key].(float64); !ok {
+						t.Fatalf("%s missing explicit throughput field %q: %#v", path, key, row)
+					}
+				}
+				if row["avgDownstreamWriteOutputTokensPerSec"].(float64) <= 0 {
+					t.Fatalf("%s missing downstream write output throughput: %#v", path, row)
+				}
 			}
 			if strings.Contains(path, "capability-usage") {
 				if row["secondaryKey"] == "" {
@@ -901,6 +923,11 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
 		}
 	}
+	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream write output tok/s", "avgDownstreamWriteTotalTokensPerSec"} {
+		if !strings.Contains(jsRR.Body.String(), want) {
+			t.Fatalf("js missing transparent report label/field %q: %s", want, jsRR.Body.String())
+		}
+	}
 
 	logo := httptest.NewRequest(http.MethodGet, "/admin/reports/static/metrum_logo_white_new.png", nil)
 	logo.SetBasicAuth("admin", "yell-yell-yum")
@@ -916,6 +943,11 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	svc.Handler().ServeHTTP(exportRR, exportReq)
 	if exportRR.Code != http.StatusOK || !strings.Contains(exportRR.Body.String(), "# Smart LLM Router Usage Report") {
 		t.Fatalf("export status=%d body=%s", exportRR.Code, exportRR.Body.String())
+	}
+	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream Write Output tok/s", "Upstream Total tok/s"} {
+		if !strings.Contains(exportRR.Body.String(), want) {
+			t.Fatalf("export missing transparent report label %q: %s", want, exportRR.Body.String())
+		}
 	}
 }
 

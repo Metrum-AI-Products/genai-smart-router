@@ -69,7 +69,7 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 
 ### Usage By External Model
 
-|Provider|Model|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|Provider|Model|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |(router)|(metadata)|8|1|0|0|0|0|0|1|n/a|n/a|10|84|
 |kimi_anthropic|kimi-k2.7-code|8|0|172326|39300|3490|9|1|8|26.37|3957.61|12642|55614|
@@ -82,7 +82,7 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 
 ### Usage By Model Group
 
-|Group|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|Group|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |(metadata)|7|0|0|0|0|0|0|0|n/a|n/a|0|0|
 |big-coder|8|0|143710|105590|20456|9|1|8|73.68|1930.38|22925|63119|
@@ -94,14 +94,14 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 
 ### Usage By Agent Client
 
-|Client|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|Client|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |claude-code|27|0|651911|432929|89446|28|1|27|69.36|2689.20|35810|276137|
 |codex|62|1|805228|716391|88837|58|4|55|68.61|2989.26|15258|278090|
 
 ### Usage By Internal Case Token
 
-|User|Requested Model|Token ID|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|User|Requested Model|Token ID|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |claude-code-big-coder|big-coder|rtr_metrum_claude-code-big-coder_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-big-coder|4|0|100765|67275|15826|4|0|4|83.51|1760.73|33218|63119|
 |claude-code-default|default|rtr_metrum_claude-code-default_harbor-algotune-pca_harbor-cleaned-20260615t031649z_harbor-cleaned-20260615t031649z-claude-code-default|6|0|158745|116011|25070|6|0|6|50.26|3000.21|60997|276137|
@@ -124,13 +124,13 @@ All Harbor requests in this run were agent/tool-bearing Codex or Claude Code req
 
 ### Usage By Caller IP
 
-|Caller IP|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|Caller IP|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |69.212.113.95|89|1|1457139|1149320|178283|86|5|82|68.86|2889.24|21493|278090|
 
 ### Hourly Usage
 
-|Hour UTC|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
+|Hour UTC|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Streams|Avg Upstream Output tok/s|Avg Upstream Total tok/s|Avg Latency ms|Max Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |2026-06-15T03:00Z|89|1|1457139|1149320|178283|86|5|82|68.86|2889.24|21493|278090|
 
@@ -166,14 +166,14 @@ Both final trials passed with reward `1.0` and zero Harbor exceptions.
 
 ### Go Sublist Usage By Agent Token
 
-|User|Calls|Errors|Tokens|Input|Output|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
+|User|Calls|Errors|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |codex-default|10|0|80076|77886|2190|8|0|41.80|4087|
 |claude-code-default|9|0|109688|68343|2689|8|0|32.42|6753|
 
 ### Go Sublist Usage By External Model
 
-|Provider|Model|Calls|Tokens|Input|Output|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
+|Provider|Model|Calls|Total Tokens|Input Tokens|Output Tokens|Attempts|Fallbacks|Avg Upstream Output tok/s|Avg Latency ms|
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 |minimax|MiniMax-M3|6|53584|52034|1550|6|0|39.48|5057|
 |minimax_anthropic|MiniMax-M3|5|46770|44272|2498|5|0|38.26|10408|
