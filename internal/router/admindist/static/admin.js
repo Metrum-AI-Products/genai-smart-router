@@ -4,7 +4,9 @@ let lastReport = null;
 
 const themeKey = "metrum-admin-reports-theme";
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 6 });
+const usdCompact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 });
 
 function storedTheme() {
   try {
@@ -62,6 +64,22 @@ function palette() {
   };
 }
 
+function colorFor(key) {
+  const c = palette();
+  return c[key] || c.magenta;
+}
+
+function formatUnit(value, unit, exact) {
+  const n = Number(value) || 0;
+  if (unit === "usd") return exact ? usd.format(n) : usdCompact.format(n);
+  if (unit === "tokens" || unit === "count") return exact ? fmt.format(n) : compact.format(n);
+  if (unit === "ms") return n >= 1000 ? `${fmt.format(n / 1000)} s` : `${fmt.format(n)} ms`;
+  if (unit === "seconds") return `${fmt.format(n)} s`;
+  if (unit === "tok/s") return `${fmt.format(n)} tok/s`;
+  if (unit === "percent") return `${fmt.format(n)}%`;
+  return fmt.format(n);
+}
+
 function qs() {
   const data = new FormData(document.querySelector("#filters"));
   const params = new URLSearchParams();
@@ -97,6 +115,10 @@ function render(report) {
 }
 
 function renderCharts(report) {
+  if (Array.isArray(report.charts) && report.charts.length) {
+    renderChartSpecs(report.charts);
+    return;
+  }
   const c = palette();
   chart("requestsChart", report.series.map(x => x.timeUtc), [{ label: "Requests", data: report.series.map(x => x.requests), borderColor: c.magenta }], c);
   chart("costChart", report.series.map(x => x.timeUtc), [{ label: "Cost", data: report.series.map(x => x.costUsd), borderColor: c.red }], c);
@@ -106,14 +128,45 @@ function renderCharts(report) {
   chart("errorChart", report.series.map(x => x.timeUtc), [{ label: "Errors", data: report.series.map(x => x.errors), borderColor: c.red }, { label: "Fallbacks", data: report.series.map(x => x.fallbacks), borderColor: c.warning }], c);
 }
 
-function chart(id, labels, datasets, colors) {
+function renderChartSpecs(specs) {
+  const byID = Object.fromEntries(specs.map(spec => [spec.chart_id, spec]));
+  chartFromSpec("requestsChart", byID.requests);
+  chartFromSpec("costChart", byID.cost);
+  chartFromSpec("latencyChart", byID.latency);
+  chartFromSpec("cacheChart", byID.cache);
+  chartFromSpec("providerChart", byID.provider_tokens);
+  chartFromSpec("errorChart", byID.errors_fallbacks);
+}
+
+function chartFromSpec(id, spec) {
+  if (!spec) return;
+  const canvas = document.getElementById(id);
+  const figure = canvas.closest("figure");
+  const caption = figure && figure.querySelector("figcaption");
+  if (caption) caption.textContent = spec.title;
+  const labels = (((spec.series || [])[0] || {}).points || []).map(point => point.x);
+  const datasets = (spec.series || []).map(item => ({
+    label: item.name,
+    data: (item.points || []).map(point => point.y),
+    borderColor: colorFor(item.color_key),
+    backgroundColor: colorFor(item.color_key),
+    unit: item.unit,
+    colorKey: item.color_key
+  }));
+  chart(id, labels, datasets, palette(), spec);
+}
+
+function chart(id, labels, datasets, colors, spec) {
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), {
     type: "line",
     data: { labels, datasets },
     options: {
       gridColor: colors.grid,
-      textColor: colors.text
+      textColor: colors.text,
+      xAxis: spec ? spec.x_axis : { label: "Time", unit: "UTC hour" },
+      yAxis: spec ? spec.y_axis : { label: "", unit: "" },
+      formatValue: formatUnit
     }
   });
 }

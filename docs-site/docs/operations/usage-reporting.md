@@ -52,10 +52,12 @@ server:
 Common endpoints:
 
 - `/admin/reports/` renders the browser shell.
-- `/admin/reports/api/summary?since=24h` returns totals, charts, grouped tables, and bounded request rows.
+- `/admin/reports/api/summary?since=24h` returns totals, grouped tables, bounded request rows, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
 - `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, and terminal error rows.
 - `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.
+
+The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
 
 ## Report Dimensions
 

@@ -29,6 +29,8 @@ Deployments can enable authenticated browser reports under `/admin/reports/` for
 
 Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page includes a browser-local dark/light mode toggle; the selected preference is stored only in that browser. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
 
+The browser summary API returns chart descriptors with stable IDs, axis labels, units, series names, semantic color keys, and scalar points. Operators should use the charts for quick trend reading and the matching tables or Markdown export for exact reviewable values. Chart responses must remain safe aggregates only and must not include prompts, image payloads, tool outputs, bearer tokens, token hashes, provider keys, full config, or raw upstream bodies.
+
 Smoke an enabled deployment:
 
 ```bash

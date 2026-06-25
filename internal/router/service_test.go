@@ -587,6 +587,42 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if body["summary"].(map[string]any)["requests"].(float64) < 2 {
 		t.Fatalf("summary did not include request: %#v", body)
 	}
+	charts := body["charts"].([]any)
+	if len(charts) == 0 {
+		t.Fatalf("summary missing chart contract: %#v", body)
+	}
+	firstChart := charts[0].(map[string]any)
+	for _, key := range []string{"chart_id", "title", "x_axis", "y_axis", "series", "generated_at", "from", "to", "filters"} {
+		if _, ok := firstChart[key]; !ok {
+			t.Fatalf("chart missing %s: %#v", key, firstChart)
+		}
+	}
+	xAxis := firstChart["x_axis"].(map[string]any)
+	yAxis := firstChart["y_axis"].(map[string]any)
+	if xAxis["label"] == "" || xAxis["type"] == "" || yAxis["label"] == "" || yAxis["unit"] == "" {
+		t.Fatalf("chart axes missing labels/units: %#v %#v", xAxis, yAxis)
+	}
+	chartSeries := firstChart["series"].([]any)
+	if len(chartSeries) == 0 {
+		t.Fatalf("chart missing series: %#v", firstChart)
+	}
+	series0 := chartSeries[0].(map[string]any)
+	for _, key := range []string{"name", "unit", "color_key", "points"} {
+		if _, ok := series0[key]; !ok {
+			t.Fatalf("chart series missing %s: %#v", key, series0)
+		}
+	}
+	points := series0["points"].([]any)
+	if len(points) == 0 {
+		t.Fatalf("chart series missing scalar points: %#v", series0)
+	}
+	point0 := points[0].(map[string]any)
+	if point0["x"] == "" {
+		t.Fatalf("chart point missing x: %#v", point0)
+	}
+	if _, ok := point0["y"].(float64); !ok {
+		t.Fatalf("chart point y is not numeric: %#v", point0)
+	}
 	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "messages"} {
 		if strings.Contains(summaryRR.Body.String(), forbidden) {
 			t.Fatalf("summary leaked %q: %s", forbidden, summaryRR.Body.String())
@@ -654,6 +690,11 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	svc.Handler().ServeHTTP(jsRR, js)
 	if jsRR.Code != http.StatusOK || !strings.Contains(jsRR.Body.String(), "metrum-admin-reports-theme") || !strings.Contains(jsRR.Body.String(), "localStorage") {
 		t.Fatalf("js status=%d body=%s", jsRR.Code, jsRR.Body.String())
+	}
+	for _, want := range []string{"formatUnit", "renderChartSpecs", "color_key"} {
+		if !strings.Contains(jsRR.Body.String(), want) {
+			t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
+		}
 	}
 
 	logo := httptest.NewRequest(http.MethodGet, "/admin/reports/static/metrum_logo_white_new.png", nil)

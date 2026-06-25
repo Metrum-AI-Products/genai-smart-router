@@ -25,6 +25,7 @@ type adminReportResponse struct {
 	Period       adminReportPeriod     `json:"period"`
 	Summary      adminReportSummary    `json:"summary"`
 	Series       []adminReportSeries   `json:"series"`
+	Charts       []adminReportChart    `json:"charts"`
 	ByToken      []adminReportTableRow `json:"byToken"`
 	ByGroup      []adminReportTableRow `json:"byGroup"`
 	ByProvider   []adminReportTableRow `json:"byProvider"`
@@ -79,6 +80,46 @@ type adminReportSeries struct {
 	CacheMisses int64   `json:"cacheMisses"`
 	CacheBypass int64   `json:"cacheBypass"`
 	Fallbacks   int64   `json:"fallbacks"`
+}
+
+type adminReportChart struct {
+	ChartID     string                   `json:"chart_id"`
+	Title       string                   `json:"title"`
+	XAxis       adminReportChartAxis     `json:"x_axis"`
+	YAxis       adminReportChartAxis     `json:"y_axis"`
+	Series      []adminReportChartSeries `json:"series"`
+	GeneratedAt string                   `json:"generated_at"`
+	From        string                   `json:"from"`
+	To          string                   `json:"to"`
+	Filters     adminReportFilterDTO     `json:"filters"`
+}
+
+type adminReportChartAxis struct {
+	Label string `json:"label"`
+	Type  string `json:"type"`
+	Unit  string `json:"unit,omitempty"`
+}
+
+type adminReportChartSeries struct {
+	Name     string                  `json:"name"`
+	Unit     string                  `json:"unit"`
+	ColorKey string                  `json:"color_key"`
+	Points   []adminReportChartPoint `json:"points"`
+}
+
+type adminReportChartPoint struct {
+	X string  `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type adminReportFilterDTO struct {
+	TokenID           string `json:"token_id,omitempty"`
+	TokenIDPrefix     string `json:"token_id_prefix,omitempty"`
+	CallerUser        string `json:"caller_user,omitempty"`
+	CallerProject     string `json:"caller_project,omitempty"`
+	CallerEnvironment string `json:"caller_environment,omitempty"`
+	ResolvedGroup     string `json:"resolved_group,omitempty"`
+	Client            string `json:"client,omitempty"`
 }
 
 type adminReportTableRow struct {
@@ -316,6 +357,7 @@ func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Reque
 	resp.ByProvider = nil
 	resp.ByStatus = nil
 	resp.Series = nil
+	resp.Charts = nil
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -436,17 +478,20 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		addAdminAgg(byProvider, joinKey(defaultString(row.TargetProvider, "unknown"), defaultString(row.TargetModel, "unknown")), row)
 		addAdminAgg(byStatus, strconv.Itoa(row.Status), row)
 	}
+	series := adminSeriesFromAgg(byHour)
+	generatedAt := formatUsageTime(time.Now().UTC())
 	return adminReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Summary:      adminSummaryFromAgg(total),
-		Series:       adminSeriesFromAgg(byHour),
+		Series:       series,
+		Charts:       adminChartsFromSeries(filters, generatedAt, series, adminRowsFromAgg(byProvider)),
 		ByToken:      adminRowsFromAgg(byToken),
 		ByGroup:      adminRowsFromAgg(byGroup),
 		ByProvider:   adminRowsFromAgg(byProvider),
 		ByStatus:     adminRowsFromAgg(byStatus),
 		Cache:        adminCacheFromAgg(total),
 		Requests:     adminRecentRequestsFromRows(rows, filters.Limit),
-		GeneratedUTC: formatUsageTime(time.Now().UTC()),
+		GeneratedUTC: generatedAt,
 	}
 }
 
@@ -522,6 +567,90 @@ func adminSeriesFromAgg(data map[string]*agg) []adminReportSeries {
 		out = append(out, adminReportSeries{TimeUTC: key, Requests: a.Calls, Errors: a.Errors, CostUSD: a.TotalCostUSD, Tokens: a.TotalTokens, LatencyMS: avg(a.LatencyMS, a.Calls), TTFBMS: avg(a.TTFBMS, a.TTFBCount), CacheHits: a.CacheHits, CacheMisses: a.CacheMisses, CacheBypass: a.CacheBypass, Fallbacks: a.Fallbacks})
 	}
 	return out
+}
+
+func adminChartsFromSeries(filters adminReportFilters, generatedAt string, series []adminReportSeries, providers []adminReportTableRow) []adminReportChart {
+	return []adminReportChart{
+		adminTimeChart(filters, generatedAt, "requests", "Requests", "Requests", "count", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Requests", "count", "magenta", series, func(row adminReportSeries) float64 { return float64(row.Requests) }),
+			adminChartSeriesFromTimeRows("Errors", "count", "red", series, func(row adminReportSeries) float64 { return float64(row.Errors) }),
+		}),
+		adminTimeChart(filters, generatedAt, "cost", "Cost", "USD", "usd", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Cost", "usd", "red", series, func(row adminReportSeries) float64 { return row.CostUSD }),
+		}),
+		adminTimeChart(filters, generatedAt, "latency", "Latency", "Milliseconds", "ms", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Latency", "ms", "violet", series, func(row adminReportSeries) float64 { return float64(row.LatencyMS) }),
+			adminChartSeriesFromTimeRows("TTFB", "ms", "blue", series, func(row adminReportSeries) float64 { return float64(row.TTFBMS) }),
+		}),
+		adminTimeChart(filters, generatedAt, "cache", "Cache", "Requests", "count", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Hits", "count", "success", series, func(row adminReportSeries) float64 { return float64(row.CacheHits) }),
+			adminChartSeriesFromTimeRows("Misses", "count", "warning", series, func(row adminReportSeries) float64 { return float64(row.CacheMisses) }),
+			adminChartSeriesFromTimeRows("Bypass", "count", "text", series, func(row adminReportSeries) float64 { return float64(row.CacheBypass) }),
+		}),
+		adminCategoryChart(filters, generatedAt, "provider_tokens", "Provider Tokens", "Provider / model", "Tokens", "tokens", []adminReportChartSeries{
+			adminChartSeriesFromTableRows("Tokens", "tokens", "purple", providers, func(row adminReportTableRow) float64 { return float64(row.Tokens) }),
+		}),
+		adminTimeChart(filters, generatedAt, "errors_fallbacks", "Errors And Fallbacks", "Requests", "count", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Errors", "count", "red", series, func(row adminReportSeries) float64 { return float64(row.Errors) }),
+			adminChartSeriesFromTimeRows("Fallbacks", "count", "warning", series, func(row adminReportSeries) float64 { return float64(row.Fallbacks) }),
+		}),
+	}
+}
+
+func adminTimeChart(filters adminReportFilters, generatedAt, id, title, yLabel, yUnit string, chartSeries []adminReportChartSeries) adminReportChart {
+	return adminReportChart{
+		ChartID:     id,
+		Title:       title,
+		XAxis:       adminReportChartAxis{Label: "Time", Type: "time", Unit: "UTC hour"},
+		YAxis:       adminReportChartAxis{Label: yLabel, Type: "linear", Unit: yUnit},
+		Series:      chartSeries,
+		GeneratedAt: generatedAt,
+		From:        formatUsageTime(filters.From),
+		To:          formatUsageTime(filters.To),
+		Filters:     adminFilterDTO(filters),
+	}
+}
+
+func adminCategoryChart(filters adminReportFilters, generatedAt, id, title, xLabel, yLabel, yUnit string, chartSeries []adminReportChartSeries) adminReportChart {
+	return adminReportChart{
+		ChartID:     id,
+		Title:       title,
+		XAxis:       adminReportChartAxis{Label: xLabel, Type: "category"},
+		YAxis:       adminReportChartAxis{Label: yLabel, Type: "linear", Unit: yUnit},
+		Series:      chartSeries,
+		GeneratedAt: generatedAt,
+		From:        formatUsageTime(filters.From),
+		To:          formatUsageTime(filters.To),
+		Filters:     adminFilterDTO(filters),
+	}
+}
+
+func adminChartSeriesFromTimeRows(name, unit, colorKey string, rows []adminReportSeries, value func(adminReportSeries) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, adminReportChartPoint{X: row.TimeUTC, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
+}
+
+func adminChartSeriesFromTableRows(name, unit, colorKey string, rows []adminReportTableRow, value func(adminReportTableRow) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, adminReportChartPoint{X: row.Key, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
+}
+
+func adminFilterDTO(filters adminReportFilters) adminReportFilterDTO {
+	return adminReportFilterDTO{
+		TokenID:           filters.TokenID,
+		TokenIDPrefix:     filters.TokenIDPrefix,
+		CallerUser:        filters.CallerUser,
+		CallerProject:     filters.CallerProject,
+		CallerEnvironment: filters.CallerEnvironment,
+		ResolvedGroup:     filters.ResolvedGroup,
+		Client:            filters.Client,
+	}
 }
 
 func adminRequestFromRow(row usageRow) adminReportRequest {

@@ -2,28 +2,71 @@ window.Chart = class {
   constructor(canvas, config) {
     this.canvas = canvas;
     this.config = config || {};
+    this.points = [];
+    this.hidden = new Set();
+    this.tooltip = this.ensureTooltip();
+    this.onMove = this.onMove.bind(this);
+    this.onLeave = this.onLeave.bind(this);
+    this.canvas.addEventListener("mousemove", this.onMove);
+    this.canvas.addEventListener("mouseleave", this.onLeave);
     this.draw();
   }
-  destroy() {}
+
+  destroy() {
+    this.canvas.removeEventListener("mousemove", this.onMove);
+    this.canvas.removeEventListener("mouseleave", this.onLeave);
+    if (this.tooltip) this.tooltip.remove();
+    const legend = this.legendElement();
+    if (legend) legend.remove();
+  }
+
   draw() {
     const ctx = this.canvas.getContext("2d");
     const width = this.canvas.clientWidth || 320;
     const height = this.canvas.clientHeight || 180;
-    this.canvas.width = width * devicePixelRatio;
-    this.canvas.height = height * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const ratio = window.devicePixelRatio || 1;
+    this.canvas.width = width * ratio;
+    this.canvas.height = height * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    const datasets = (this.config.data && this.config.data.datasets) || [];
-    const values = datasets.flatMap((set) => set.data || []).map(Number);
-    const max = Math.max(1, ...values);
+    this.points = [];
+
     const options = this.config.options || {};
-    ctx.strokeStyle = options.gridColor || "#cc28af";
+    const datasets = ((this.config.data && this.config.data.datasets) || []).filter((_, index) => !this.hidden.has(index));
+    const labels = (this.config.data && this.config.data.labels) || [];
+    this.renderLegend();
+
+    const values = datasets.flatMap((set) => set.data || []).map(Number).filter(Number.isFinite);
+    const max = Math.max(1, ...values);
+    const plot = { left: 50, top: 18, right: width - 12, bottom: height - 40 };
+    const textColor = options.textColor || "#555b67";
+    const gridColor = options.gridColor || "#cc28af";
+    const yUnit = options.yAxis && options.yAxis.unit;
+    const format = options.formatValue || ((value) => String(value));
+
+    ctx.font = "11px MetrumMono, ui-monospace, monospace";
+    ctx.fillStyle = textColor;
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(32, 12);
-    ctx.lineTo(32, height - 24);
-    ctx.lineTo(width - 8, height - 24);
-    ctx.stroke();
+
+    for (let i = 0; i <= 3; i++) {
+      const y = plot.bottom - ((plot.bottom - plot.top) * i) / 3;
+      const value = (max * i) / 3;
+      ctx.globalAlpha = i === 0 ? 1 : 0.42;
+      ctx.beginPath();
+      ctx.moveTo(plot.left, y);
+      ctx.lineTo(plot.right, y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillText(format(value, yUnit, false), 4, y + 4);
+    }
+
+    if (!values.length) {
+      ctx.fillText("No data for selected filters", plot.left, plot.top + 22);
+      this.drawAxisLabels(ctx, plot, width, height, textColor);
+      return;
+    }
+
     datasets.forEach((set, setIndex) => {
       const data = (set.data || []).map(Number);
       const color = set.borderColor || set.backgroundColor || ["#cc28af", "#ff3132", "#465cda"][setIndex % 3];
@@ -32,18 +75,109 @@ window.Chart = class {
       ctx.lineWidth = 2;
       ctx.beginPath();
       data.forEach((value, index) => {
-        const x = 32 + (index * Math.max(1, width - 48)) / Math.max(1, data.length - 1);
-        const y = height - 24 - (value / max) * Math.max(1, height - 40);
+        const x = plot.left + (index * Math.max(1, plot.right - plot.left)) / Math.max(1, data.length - 1);
+        const y = plot.bottom - (value / max) * Math.max(1, plot.bottom - plot.top);
         if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        this.points.push({ x, y, value, label: labels[index] || "", series: set.label || "", unit: set.unit || yUnit || "", color });
       });
       ctx.stroke();
       data.forEach((value, index) => {
-        const x = 32 + (index * Math.max(1, width - 48)) / Math.max(1, data.length - 1);
-        const y = height - 24 - (value / max) * Math.max(1, height - 40);
+        const x = plot.left + (index * Math.max(1, plot.right - plot.left)) / Math.max(1, data.length - 1);
+        const y = plot.bottom - (value / max) * Math.max(1, plot.bottom - plot.top);
         ctx.beginPath();
-        ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        ctx.arc(x, y, 2.8, 0, Math.PI * 2);
         ctx.fill();
       });
     });
+
+    this.drawAxisLabels(ctx, plot, width, height, textColor);
+  }
+
+  drawAxisLabels(ctx, plot, width, height, textColor) {
+    const options = this.config.options || {};
+    const xAxis = options.xAxis || {};
+    const yAxis = options.yAxis || {};
+    ctx.fillStyle = textColor;
+    ctx.font = "11px MetrumMono, ui-monospace, monospace";
+    const xLabel = [xAxis.label, xAxis.unit].filter(Boolean).join(" · ");
+    const yLabel = [yAxis.label, yAxis.unit].filter(Boolean).join(" · ");
+    if (xLabel) ctx.fillText(xLabel, plot.left, height - 12);
+    if (yLabel) {
+      ctx.save();
+      ctx.translate(12, plot.bottom - 4);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(yLabel, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  renderLegend() {
+    const datasets = (this.config.data && this.config.data.datasets) || [];
+    let legend = this.legendElement();
+    if (!legend) {
+      legend = document.createElement("div");
+      legend.className = "chart-legend";
+      this.canvas.insertAdjacentElement("afterend", legend);
+    }
+    legend.innerHTML = "";
+    datasets.forEach((set, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "legend-item";
+      item.setAttribute("aria-pressed", String(!this.hidden.has(index)));
+      item.innerHTML = `<span style="background:${set.borderColor || set.backgroundColor}"></span>${this.escape(set.label || `Series ${index + 1}`)}`;
+      item.addEventListener("click", () => {
+        if (this.hidden.has(index)) this.hidden.delete(index); else this.hidden.add(index);
+        this.draw();
+      });
+      legend.appendChild(item);
+    });
+  }
+
+  legendElement() {
+    const next = this.canvas.nextElementSibling;
+    return next && next.classList.contains("chart-legend") ? next : null;
+  }
+
+  ensureTooltip() {
+    const tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+    return tooltip;
+  }
+
+  onMove(event) {
+    if (!this.points.length) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    let nearest = null;
+    let distance = Infinity;
+    for (const point of this.points) {
+      const d = Math.hypot(point.x - x, point.y - y);
+      if (d < distance) {
+        distance = d;
+        nearest = point;
+      }
+    }
+    if (!nearest || distance > 32) {
+      this.onLeave();
+      return;
+    }
+    const options = this.config.options || {};
+    const format = options.formatValue || ((value) => String(value));
+    this.tooltip.hidden = false;
+    this.tooltip.innerHTML = `<strong>${this.escape(nearest.series)}</strong><span>${this.escape(nearest.label)}</span><span>${this.escape(format(nearest.value, nearest.unit, true))}</span>`;
+    this.tooltip.style.left = `${event.clientX + 12}px`;
+    this.tooltip.style.top = `${event.clientY + 12}px`;
+  }
+
+  onLeave() {
+    if (this.tooltip) this.tooltip.hidden = true;
+  }
+
+  escape(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 };

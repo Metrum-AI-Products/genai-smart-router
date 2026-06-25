@@ -289,6 +289,60 @@ canvas {
   display: block;
 }
 
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-family: "MetrumMono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.legend-item[aria-pressed="false"] {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.legend-item span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  gap: 3px;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.chart-tooltip strong {
+  font-size: 12px;
+}
+
+.chart-tooltip span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
