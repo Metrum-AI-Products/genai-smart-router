@@ -1394,9 +1394,6 @@ func targetSupportsInputModalities(target Target, required []string) bool {
 func targetSupportsTools(target Target, dialect string) bool {
 	switch dialect {
 	case "openai-responses":
-		if toolSupportEmpty(target.ToolSupport) {
-			return true
-		}
 		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
 	case "anthropic":
 		if toolSupportEmpty(target.ToolSupport) {

@@ -1468,7 +1468,7 @@ func TestEmbeddedDocsFallbackDoesNotMaskAPIRoutes(t *testing.T) {
 func TestModelsEndpointMarksAgentToolsSmokeAsToolCapable(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
-	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "tool-model", Dialect: "openai-responses"}}}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "tool-model", Dialect: "openai-responses", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
 	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
 	svc, err := New(cfg)
 	if err != nil {
@@ -1672,7 +1672,7 @@ func TestOpenAIResponsesToolPassthroughPreservesToolsAndRawOutput(t *testing.T) 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Provider["openai"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
-	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool"}}}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
 	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
 	svc, err := New(cfg)
 	if err != nil {
@@ -2330,7 +2330,7 @@ func TestToolRequestsBypassCache(t *testing.T) {
 	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
 	cfg.Server.Cache.Enabled = true
 	cfg.Provider["openai"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
-	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool"}}}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai", Model: "gpt-tool", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
 	cfg.Callers[0].Allow = []string{"agent-tools-smoke"}
 	svc, err := New(cfg)
 	if err != nil {
@@ -5876,7 +5876,7 @@ func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
 
 	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
 	cfg.Provider["minimax"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "minimax-key"}
-	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "minimax", Model: "MiniMax-M3", Dialect: "openai-responses"}}}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "minimax", Model: "MiniMax-M3", Dialect: "openai-responses", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "agent-tools-smoke")
 	svc, err := New(cfg)
 	if err != nil {
@@ -5894,6 +5894,40 @@ func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
 	}
 	if gotPath != "/v1/responses" || gotModel != "MiniMax-M3" {
 		t.Fatalf("path/model=%s/%s, want /v1/responses MiniMax-M3", gotPath, gotModel)
+	}
+}
+
+func TestResponsesToolPassthroughRequiresExplicitTargetSupport(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-no-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "responses", Model: "responses-plain"}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-no-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"responses-no-tools","input":"hi","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("body=%s, want no-eligible-target", rr.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("upstream called for Responses tool request without explicit tool support")
 	}
 }
 
@@ -5924,7 +5958,7 @@ func TestResponsesToolPassthroughCanUseOpenRouterResponsesTarget(t *testing.T) {
 		Dialect: "openai-responses",
 		APIKey:  "openrouter-key",
 		Models: map[string]ProviderModel{
-			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1},
+			"qwen3-coder-30b-nitro": {Model: "qwen/qwen3-coder-30b-a3b-instruct:nitro", Weight: 1, ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}},
 		},
 	}
 	cfg.Models["agent-tools-smoke-openrouter"] = ModelGroup{

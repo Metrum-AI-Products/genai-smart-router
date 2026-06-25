@@ -32,6 +32,19 @@ Last deployed: 2026-06-25
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-25 Direct OpenAI Vision Rebalance
+
+- Applied a config-only production update to catalog direct OpenAI `gpt-5.4`, add the exact-route `openai-gpt54-vision-smoke` group, and rebalance the hosted `vision` group away from OpenRouter-hosted Claude Sonnet 4.6.
+- Production `vision` changed OpenRouter Chat Claude Sonnet 4.6 from weight 15 to 5, added direct OpenAI `gpt-5.4` at weight 30, and changed OpenRouter Anthropic Claude Sonnet 4.6 from weight 30 to 10.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.direct-openai-vision-20260625T152956Z`.
+- Local `config.production.yaml` SHA-256 matched the remote deployed config SHA-256: `4683706d2e184551195b79975be25fda0cfe24943bc384c2da0853f7d9fab8e1`.
+- Verified `/readyz` returned healthy on package/image `smart-llmrouter:3e9aa55-linux-amd64`.
+- Verified authenticated `/v1/models` for the reusable Harbor caller includes `openai-gpt54-vision-smoke` and `vision`.
+- Verified authenticated production `/v1/responses` text smoke against `openai-gpt54-vision-smoke` selected `gpt-5.4` and returned `OK`.
+- Verified authenticated production `/v1/responses` receipt-image smoke against `openai-gpt54-vision-smoke` selected `gpt-5.4` and returned `Rite Aid`.
+- Verified authenticated production `/v1/chat/completions` receipt-image smoke against `openai-gpt54-vision-smoke` selected `gpt-5.4`; one uncapped/non-temperature-pinned run returned `CVS/pharmacy`, then three `temperature: 0` repeats returned `Rite Aid`. Keep the rollout moderate and monitor image OCR quality before increasing further.
+- Follow-up review safety patch removed unvalidated `openai_responses: [function]` metadata from `gpt-5.4` and deployed a production config sentinel `tool_support.provider_hosted: [vision_validated_only]` so the current production binary also treats `gpt-5.4` as tool-ineligible until the stricter code fix ships. Backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.direct-openai-vision-tool-sentinel-20260625T155900Z`. Verified tool-bearing `/v1/responses` requests to `openai-gpt54-vision-smoke` return `502 no-eligible-target`; verified image OCR still returns `Rite Aid`. Local and remote config SHA-256 matched: `8c98adfef4bb1177de258093c6aabd5b38e013dab016de89004d8e2271e6b29b`.
+
 ## 2026-06-25 Crusoe Nemotron Omni Smoke Group Config
 
 - Applied a config-only production update to catalog Crusoe `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` and expose the dedicated `crusoe-nemotron-omni-smoke` group to smoke-test callers.

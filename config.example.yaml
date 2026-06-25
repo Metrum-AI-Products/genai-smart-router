@@ -578,6 +578,24 @@ providers:
         tool_support:
           openai_responses:
           - function
+      gpt-5.4:
+        model: gpt-5.4
+        tier: vision
+        input_price_per_million_usd: 2.5
+        output_price_per_million_usd: 15.0
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://developers.openai.com/api/docs/pricing
+        pricing_updated_at: '2026-06-25'
+        pricing_notes: Direct OpenAI Responses text and receipt-image OCR smokes passed
+          on 2026-06-25 for the current project, returning OK and Rite Aid respectively.
+          Added as a direct-provider vision target to reduce reliance on OpenRouter-hosted
+          Anthropic vision traffic. OpenAI gpt-5.4-mini was not enabled for this project;
+          gpt-5-nano, gpt-5-mini, gpt-4.1-nano, gpt-4o-mini, and gpt-5.4-nano did
+          not pass the same receipt OCR acceptance gate on 2026-06-25.
   anthropic:
     base_url: https://api.anthropic.com
     dialect: anthropic
@@ -935,6 +953,11 @@ models:
     targets:
     - provider: crusoe
       model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
+  openai-gpt54-vision-smoke:
+    strategy: static
+    targets:
+    - provider: openai
+      model_ref: gpt-5.4
   vision:
     strategy: weighted
     targets:
@@ -943,7 +966,10 @@ models:
       weight: 77
     - provider: openrouter
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 15
+      weight: 5
+    - provider: openai
+      model_ref: gpt-5.4
+      weight: 30
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 8
@@ -958,7 +984,7 @@ models:
       weight: 2
     - provider: openrouter_anthropic
       model_ref: openrouter-claude-sonnet-4-6
-      weight: 30
+      weight: 10
     - provider: openrouter_anthropic
       model_ref: openrouter-xai-grok-4-3
       weight: 5
@@ -1699,6 +1725,7 @@ callers:
   - crusoe-smoke
   - crusoe-gemma-smoke
   - crusoe-nemotron-omni-smoke
+  - openai-gpt54-vision-smoke
   rate:
     rpm: 120
     tpm: 200000

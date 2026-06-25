@@ -266,7 +266,8 @@ models:
     strategy: weighted
     targets:
       - { provider: xai, model_ref: grok-4-3, weight: 77 }
-      - { provider: openrouter, model_ref: claude-sonnet-4-6, weight: 15 }
+      - { provider: openai, model_ref: gpt-5.4, weight: 30 }
+      - { provider: openrouter, model_ref: claude-sonnet-4-6, weight: 5 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 8 }
 
   default:

@@ -1127,6 +1127,18 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "openai-gpt54-vision-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openai" || group.Targets[0].Model != "gpt-5.4" {
+				t.Fatalf("example config openai-gpt54-vision-smoke=%#v, want static OpenAI GPT-5.4 target", group)
+			}
+			if !stringSliceContains(group.Targets[0].InputModalities, "image") {
+				t.Fatalf("example config openai-gpt54-vision-smoke missing image modality: %#v", group.Targets[0].InputModalities)
+			}
+			if len(group.Targets[0].ToolSupport.OpenAIResponses) != 0 {
+				t.Fatalf("example config openai-gpt54-vision-smoke has unvalidated Responses tool metadata: %#v", group.Targets[0].ToolSupport)
+			}
+			continue
+		}
 		if name == "warp-agent-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "nvidia/Nemotron-120B-A12B" {
 				t.Fatalf("example config warp-agent-smoke=%#v, want static Baseten Nemotron OpenAI Chat tool target", group)
@@ -1144,8 +1156,8 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 					t.Fatalf("example config vision target lacks image modality: %#v", target)
 				}
 			}
-			if !seen["xai:grok-4.3"] || !seen["openai:gpt-5.4-nano"] {
-				t.Fatalf("example config vision targets=%#v, want xAI Grok 4.3 and OpenAI GPT-5.4 Nano", group.Targets)
+			if !seen["xai:grok-4.3"] || !seen["openai:gpt-5.4"] || !seen["openai:gpt-5.4-nano"] {
+				t.Fatalf("example config vision targets=%#v, want xAI Grok 4.3, OpenAI GPT-5.4, and OpenAI GPT-5.4 Nano", group.Targets)
 			}
 			continue
 		}
@@ -1174,7 +1186,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}

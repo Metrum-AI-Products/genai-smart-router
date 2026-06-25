@@ -28,6 +28,16 @@ providers:
         output_modalities: [text]
         pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
         pricing_updated_at: "2026-06-17"
+      gpt-5-4:
+        model: gpt-5.4
+        tier: vision
+        input_price_per_million_usd: 2.50
+        output_price_per_million_usd: 15.00
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://developers.openai.com/api/docs/pricing
+        pricing_updated_at: "2026-06-25"
+        pricing_notes: Direct Responses text and receipt-image OCR smokes passed on 2026-06-25; use as a direct-provider replacement for OpenRouter-hosted Anthropic vision weight when the deployment accepts the cost profile
 
   xai:
     base_url: https://api.x.ai/v1
@@ -75,8 +85,8 @@ models:
       - provider: xai
         model_ref: grok-4-3
         weight: 65
-      - provider: openrouter
-        model_ref: openrouter-claude-sonnet-4-6
+      - provider: openai
+        model_ref: gpt-5-4
         weight: 27
       - provider: openai
         model_ref: gpt-5-4-nano
@@ -84,6 +94,8 @@ models:
 ```
 
 Use `image_input_price_per_million_tokens_usd` when the provider reports image tokens. Use `image_input_price_per_image_usd` for internal chargeback or providers that bill per image. If neither image-specific field is set, image tokens use the normal input-token price.
+
+Price alone is not sufficient for promotion. Validate the exact account, model ID, API dialect, image payload shape, and task quality before adding a target to broad `vision` traffic. A candidate that accepts images but misses the expected OCR answer, leaks reasoning into a strict extraction response, or supports only data-URL images while common clients send remote image URLs should remain catalog-only or in a dedicated smoke group.
 
 For capped requests, keep model quality and cap enforcement separate. A model can pass a realistic image-analysis smoke and still be unsafe for requests where the caller explicitly sets a small output cap such as OpenAI Chat `max_tokens` or `max_completion_tokens`, Responses `max_output_tokens`, or Anthropic Messages `max_tokens`. If a target returns far more output than requested, keep it cataloged but set `honors_max_tokens: false` on the catalog entry or target override; the router will skip it for capped requests and continue using other eligible VLM targets.
 
