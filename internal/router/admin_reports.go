@@ -47,6 +47,62 @@ type adminSavingsResponse struct {
 	GeneratedUTC string                    `json:"generatedUtc"`
 }
 
+type adminScalarReportResponse struct {
+	Period       adminReportPeriod        `json:"period"`
+	Report       string                   `json:"report"`
+	Baseline     *adminSavingsBaselineDTO `json:"baseline,omitempty"`
+	Summary      adminReportSummary       `json:"summary"`
+	Rows         []adminScalarReportRow   `json:"rows"`
+	Charts       []adminReportChart       `json:"charts,omitempty"`
+	Requests     []adminReportRequest     `json:"requests,omitempty"`
+	GeneratedUTC string                   `json:"generatedUtc"`
+}
+
+type adminScalarReportRow struct {
+	Key                       string  `json:"key"`
+	SecondaryKey              string  `json:"secondaryKey,omitempty"`
+	Requests                  int64   `json:"requests"`
+	Errors                    int64   `json:"errors"`
+	ErrorRatePct              float64 `json:"errorRatePct"`
+	Streams                   int64   `json:"streams"`
+	Attempts                  int64   `json:"attempts"`
+	Fallbacks                 int64   `json:"fallbacks"`
+	FallbackRatePct           float64 `json:"fallbackRatePct"`
+	CacheHits                 int64   `json:"cacheHits"`
+	CacheMisses               int64   `json:"cacheMisses"`
+	CacheBypass               int64   `json:"cacheBypass"`
+	CacheHitRatePct           float64 `json:"cacheHitRatePct"`
+	InputTokens               int64   `json:"inputTokens"`
+	OutputTokens              int64   `json:"outputTokens"`
+	Tokens                    int64   `json:"tokens"`
+	InputImageCount           int64   `json:"inputImageCount"`
+	InputImageTokens          int64   `json:"inputImageTokens"`
+	PIIFilteredRequests       int64   `json:"piiFilteredRequests"`
+	PIIFilterReplacements     int64   `json:"piiFilterReplacements"`
+	CostUSD                   float64 `json:"costUsd"`
+	InputCostUSD              float64 `json:"inputCostUsd"`
+	OutputCostUSD             float64 `json:"outputCostUsd"`
+	UpstreamReportedCostUSD   float64 `json:"upstreamReportedCostUsd"`
+	BaselineCostUSD           float64 `json:"baselineCostUsd,omitempty"`
+	SavingsUSD                float64 `json:"savingsUsd,omitempty"`
+	SavingsPct                float64 `json:"savingsPct,omitempty"`
+	AvgCostUSD                float64 `json:"avgCostUsd"`
+	AvgLatencyMS              int64   `json:"avgLatencyMs"`
+	MaxLatencyMS              int64   `json:"maxLatencyMs"`
+	AvgTTFBMS                 int64   `json:"avgTtfbMs"`
+	MaxTTFBMS                 int64   `json:"maxTtfbMs"`
+	AvgUpstreamMS             int64   `json:"avgUpstreamMs"`
+	MaxUpstreamMS             int64   `json:"maxUpstreamMs"`
+	AvgDownstreamMS           int64   `json:"avgDownstreamMs"`
+	MaxDownstreamMS           int64   `json:"maxDownstreamMs"`
+	AvgUpstreamTokensPerSec   float64 `json:"avgUpstreamTokensPerSec"`
+	AvgDownstreamTokensPerSec float64 `json:"avgDownstreamTokensPerSec"`
+	LatestCacheItems          int64   `json:"latestCacheItems"`
+	LatestCacheBytes          int64   `json:"latestCacheBytes"`
+	LatestCacheMaxBytes       int64   `json:"latestCacheMaxBytes"`
+	LatestCacheOccupancyPct   float64 `json:"latestCacheOccupancyPct"`
+}
+
 type adminSavingsBaselineDTO struct {
 	BaselineID                       string  `json:"baseline_id"`
 	BaselineName                     string  `json:"baseline_name"`
@@ -252,6 +308,16 @@ type adminReportError struct {
 	Dialect      string `json:"dialect"`
 }
 
+type adminScalarEndpointSpec struct {
+	Report       string
+	Dimension    string
+	Secondary    string
+	Sort         string
+	Requests     bool
+	Anomalies    bool
+	WithBaseline bool
+}
+
 func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.Server.AdminReports.Enabled {
 		http.NotFound(w, r)
@@ -274,6 +340,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setAdminReportHeaders(w, strings.HasPrefix(r.URL.Path, cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)+"/static/"))
 	prefix := cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)
+	scalarSpec, scalarOK := adminScalarEndpointSpecs(strings.TrimPrefix(r.URL.Path, prefix))
 	switch {
 	case r.URL.Path == prefix:
 		http.Redirect(w, r, prefix+"/", http.StatusTemporaryRedirect)
@@ -286,11 +353,21 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAdminReportSummary(w, r)
+	case r.URL.Path == prefix+"/api/overview":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminReportSummary(w, r)
 	case r.URL.Path == prefix+"/api/savings":
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
 		s.handleAdminReportSavings(w, r)
+	case scalarOK:
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminScalarEndpoint(w, r, scalarSpec)
 	case r.URL.Path == prefix+"/api/requests":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -309,6 +386,29 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
+	specs := map[string]adminScalarEndpointSpec{
+		"/api/savings-by-user":      {Report: "savings-by-user", Dimension: "caller_user", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-key":       {Report: "savings-by-key", Dimension: "token_id", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-group":     {Report: "savings-by-group", Dimension: "model_group", Sort: "savings", WithBaseline: true},
+		"/api/model-groups-by-user": {Report: "model-groups-by-user", Dimension: "caller_user", Secondary: "model_group", Sort: "requests"},
+		"/api/usage-by-key":         {Report: "usage-by-key", Dimension: "token_id", Sort: "cost"},
+		"/api/provider-model-mix":   {Report: "provider-model-mix", Dimension: "provider_model", Secondary: "dialect", Sort: "tokens"},
+		"/api/latency-throughput":   {Report: "latency-throughput", Dimension: "provider_model", Secondary: "client", Sort: "latency"},
+		"/api/errors-fallbacks":     {Report: "errors-fallbacks", Dimension: "status_error", Secondary: "provider_model", Sort: "errors"},
+		"/api/cache":                {Report: "cache", Dimension: "cache", Secondary: "model_group", Sort: "requests"},
+		"/api/quotas-budgets":       {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
+		"/api/routing-decisions":    {Report: "routing-decisions", Dimension: "routing_decision", Secondary: "provider_model", Sort: "requests"},
+		"/api/expensive-requests":   {Report: "expensive-requests", Sort: "cost", Requests: true},
+		"/api/client-breakdown":     {Report: "client-breakdown", Dimension: "client", Secondary: "inbound_dialect", Sort: "requests"},
+		"/api/project-chargeback":   {Report: "project-chargeback", Dimension: "project", Secondary: "environment", Sort: "cost"},
+		"/api/capability-usage":     {Report: "capability-usage", Dimension: "capability", Secondary: "model_group", Sort: "image"},
+		"/api/anomalies":            {Report: "anomalies", Dimension: "anomaly", Secondary: "provider_model", Sort: "requests", Anomalies: true},
+	}
+	spec, ok := specs[path]
+	return spec, ok
 }
 
 func (s *Service) requireAdminReportUsageStore(w http.ResponseWriter) bool {
@@ -392,6 +492,27 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, buildAdminSavingsResponse(filters, rows, baseline, s.adminSavingsBaselines()))
+}
+
+func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Request, spec adminScalarEndpointSpec) {
+	filters, ok := s.parseAdminReportFilters(w, r, spec.Requests)
+	if !ok {
+		return
+	}
+	rows, err := s.usage.rows(filters.UsageReportOptions)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	var baseline adminSavingsBaselineDTO
+	if spec.WithBaseline {
+		var baselineOK bool
+		baseline, baselineOK = s.parseAdminSavingsBaseline(w, r)
+		if !baselineOK {
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
 }
 
 func (s *Service) parseAdminSavingsBaseline(w http.ResponseWriter, r *http.Request) (adminSavingsBaselineDTO, bool) {
@@ -645,6 +766,340 @@ func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, base
 		Warnings:     warnings,
 		GeneratedUTC: generatedAt,
 	}
+}
+
+func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) adminScalarReportResponse {
+	total := &agg{}
+	for _, row := range rows {
+		total.add(row)
+	}
+	generatedAt := formatUsageTime(time.Now().UTC())
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		GeneratedUTC: generatedAt,
+	}
+	if baseline.BaselineID != "" {
+		resp.Baseline = &baseline
+	}
+	if spec.Requests {
+		requestRows := append([]usageRow(nil), rows...)
+		sort.Slice(requestRows, func(i, j int) bool {
+			if requestRows[i].TotalCostUSD == requestRows[j].TotalCostUSD {
+				return requestRows[i].TS.After(requestRows[j].TS)
+			}
+			return requestRows[i].TotalCostUSD > requestRows[j].TotalCostUSD
+		})
+		if len(requestRows) > filters.Limit {
+			requestRows = requestRows[:filters.Limit]
+		}
+		resp.Requests = make([]adminReportRequest, 0, len(requestRows))
+		for _, row := range requestRows {
+			resp.Requests = append(resp.Requests, adminRequestFromRow(row))
+		}
+		return resp
+	}
+	table := map[string]*adminScalarAgg{}
+	for _, row := range rows {
+		keys := adminScalarKeys(row, spec)
+		if len(keys) == 0 {
+			continue
+		}
+		for _, key := range keys {
+			if key.Key == "" {
+				key.Key = "unknown"
+			}
+			mapKey := joinKey(key.Key, key.Secondary)
+			if table[mapKey] == nil {
+				table[mapKey] = &adminScalarAgg{Key: key.Key, SecondaryKey: key.Secondary}
+			}
+			table[mapKey].add(row, baseline)
+		}
+	}
+	resp.Rows = adminScalarRowsFromAgg(table, spec.Sort, filters.Limit)
+	resp.Charts = adminScalarCharts(filters, generatedAt, spec, resp.Rows)
+	return resp
+}
+
+type adminScalarKey struct {
+	Key       string
+	Secondary string
+}
+
+type adminScalarAgg struct {
+	Key                     string
+	SecondaryKey            string
+	Agg                     agg
+	InputImageCount         int64
+	InputImageTokens        int64
+	PIIFilteredRequests     int64
+	PIIFilterReplacements   int64
+	UpstreamReportedCostUSD float64
+	BaselineCostUSD         float64
+}
+
+func (a *adminScalarAgg) add(row usageRow, baseline adminSavingsBaselineDTO) {
+	a.Agg.add(row)
+	a.InputImageCount += int64(row.InputImageCount)
+	a.InputImageTokens += int64(row.InputImageTokens)
+	if row.PIIFilterApplied {
+		a.PIIFilteredRequests++
+	}
+	a.PIIFilterReplacements += int64(row.PIIFilterReplacements)
+	a.UpstreamReportedCostUSD += row.UpstreamReportedTotalCostUSD
+	if baseline.BaselineID != "" {
+		a.BaselineCostUSD += adminBaselineCost(row, baseline)
+	}
+}
+
+func (a *adminScalarAgg) row() adminScalarReportRow {
+	cacheable := a.Agg.CacheHits + a.Agg.CacheMisses
+	savings := a.BaselineCostUSD - a.Agg.TotalCostUSD
+	return adminScalarReportRow{
+		Key:                       a.Key,
+		SecondaryKey:              a.SecondaryKey,
+		Requests:                  a.Agg.Calls,
+		Errors:                    a.Agg.Errors,
+		ErrorRatePct:              ratioPct(a.Agg.Errors, a.Agg.Calls),
+		Streams:                   a.Agg.Streams,
+		Attempts:                  a.Agg.Attempts,
+		Fallbacks:                 a.Agg.Fallbacks,
+		FallbackRatePct:           ratioPct(a.Agg.Fallbacks, a.Agg.Calls),
+		CacheHits:                 a.Agg.CacheHits,
+		CacheMisses:               a.Agg.CacheMisses,
+		CacheBypass:               a.Agg.CacheBypass,
+		CacheHitRatePct:           ratioPct(a.Agg.CacheHits, cacheable),
+		InputTokens:               a.Agg.InputTokens,
+		OutputTokens:              a.Agg.OutputTokens,
+		Tokens:                    a.Agg.TotalTokens,
+		InputImageCount:           a.InputImageCount,
+		InputImageTokens:          a.InputImageTokens,
+		PIIFilteredRequests:       a.PIIFilteredRequests,
+		PIIFilterReplacements:     a.PIIFilterReplacements,
+		CostUSD:                   a.Agg.TotalCostUSD,
+		InputCostUSD:              a.Agg.InputCostUSD,
+		OutputCostUSD:             a.Agg.OutputCostUSD,
+		UpstreamReportedCostUSD:   a.UpstreamReportedCostUSD,
+		BaselineCostUSD:           a.BaselineCostUSD,
+		SavingsUSD:                savings,
+		SavingsPct:                ratioPctFloat(savings, a.BaselineCostUSD),
+		AvgCostUSD:                avgFloat(a.Agg.TotalCostUSD, a.Agg.Calls),
+		AvgLatencyMS:              avg(a.Agg.LatencyMS, a.Agg.Calls),
+		MaxLatencyMS:              a.Agg.MaxLatencyMS,
+		AvgTTFBMS:                 avg(a.Agg.TTFBMS, a.Agg.TTFBCount),
+		MaxTTFBMS:                 a.Agg.MaxTTFBMS,
+		AvgUpstreamMS:             avg(a.Agg.UpstreamMS, a.Agg.UpstreamMSCount),
+		MaxUpstreamMS:             a.Agg.MaxUpstreamMS,
+		AvgDownstreamMS:           avg(a.Agg.DownstreamMS, a.Agg.DownstreamMSCount),
+		MaxDownstreamMS:           a.Agg.MaxDownstreamMS,
+		AvgUpstreamTokensPerSec:   avgFloat(a.Agg.UpstreamOutputTPS, a.Agg.UpstreamOutputTPSCount),
+		AvgDownstreamTokensPerSec: avgFloat(a.Agg.DownstreamOutputTPS, a.Agg.DownstreamOutputTPSCount),
+		LatestCacheItems:          a.Agg.CacheItemsLatest,
+		LatestCacheBytes:          a.Agg.CacheBytesLatest,
+		LatestCacheMaxBytes:       a.Agg.CacheMaxBytesLatest,
+		LatestCacheOccupancyPct:   a.Agg.CacheOccupancyLatest,
+	}
+}
+
+func adminScalarRowsFromAgg(data map[string]*adminScalarAgg, sortBy string, limit int) []adminScalarReportRow {
+	out := make([]adminScalarReportRow, 0, len(data))
+	for _, a := range data {
+		out = append(out, a.row())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		switch sortBy {
+		case "savings":
+			if out[i].SavingsUSD != out[j].SavingsUSD {
+				return out[i].SavingsUSD > out[j].SavingsUSD
+			}
+		case "cost":
+			if out[i].CostUSD != out[j].CostUSD {
+				return out[i].CostUSD > out[j].CostUSD
+			}
+		case "tokens":
+			if out[i].Tokens != out[j].Tokens {
+				return out[i].Tokens > out[j].Tokens
+			}
+		case "latency":
+			if out[i].AvgLatencyMS != out[j].AvgLatencyMS {
+				return out[i].AvgLatencyMS > out[j].AvgLatencyMS
+			}
+		case "errors":
+			if out[i].Errors != out[j].Errors {
+				return out[i].Errors > out[j].Errors
+			}
+		case "image":
+			if out[i].InputImageCount != out[j].InputImageCount {
+				return out[i].InputImageCount > out[j].InputImageCount
+			}
+		default:
+			if out[i].Requests != out[j].Requests {
+				return out[i].Requests > out[j].Requests
+			}
+		}
+		if out[i].Key == out[j].Key {
+			return out[i].SecondaryKey < out[j].SecondaryKey
+		}
+		return out[i].Key < out[j].Key
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
+	}
+	return out
+}
+
+func adminScalarKeys(row usageRow, spec adminScalarEndpointSpec) []adminScalarKey {
+	if spec.Anomalies {
+		return adminAnomalyKeys(row, spec)
+	}
+	if spec.Dimension == "capability" {
+		secondary := adminScalarDimension(row, spec.Secondary)
+		caps := adminCapabilityKeys(row)
+		keys := make([]adminScalarKey, 0, len(caps))
+		for _, cap := range caps {
+			keys = append(keys, adminScalarKey{Key: cap, Secondary: secondary})
+		}
+		return keys
+	}
+	key := adminScalarDimension(row, spec.Dimension)
+	secondary := adminScalarDimension(row, spec.Secondary)
+	return []adminScalarKey{{Key: key, Secondary: secondary}}
+}
+
+func adminScalarDimension(row usageRow, dimension string) string {
+	switch dimension {
+	case "":
+		return ""
+	case "caller_user":
+		return defaultString(row.CallerUser, "unknown")
+	case "token_id":
+		return defaultString(row.TokenID, "unknown")
+	case "model_group":
+		return defaultString(row.ResolvedGroup, row.RequestedModel)
+	case "provider_model":
+		return joinKey(defaultString(row.TargetProvider, "unknown"), defaultString(row.TargetModel, "unknown"))
+	case "dialect":
+		return defaultString(row.TargetDialect, "unknown")
+	case "client":
+		return defaultString(row.Client, "unknown")
+	case "inbound_dialect":
+		return defaultString(row.InboundDialect, "unknown")
+	case "status_error":
+		errorKey := "ok"
+		if row.Status >= 400 {
+			errorKey = defaultString(row.Error, "error")
+		}
+		return joinKey(strconv.Itoa(row.Status), errorKey)
+	case "cache":
+		return defaultString(row.Cache, "bypass")
+	case "quota_key_state":
+		return joinKey(defaultString(row.QuotaState, "unknown"), defaultString(row.KeyState, "unknown"))
+	case "routing_decision":
+		return joinKey(defaultString(row.Strategy, "unknown"), defaultString(row.ResolvedGroup, row.RequestedModel))
+	case "project":
+		return defaultString(row.CallerProject, "unknown")
+	case "environment":
+		return defaultString(row.CallerEnvironment, "unknown")
+	case "capability":
+		return "capability"
+	default:
+		return "unknown"
+	}
+}
+
+func adminCapabilityKeys(row usageRow) []string {
+	caps := []string{}
+	if row.InputHasImage || row.InputImageCount > 0 || row.InputImageTokens > 0 {
+		caps = append(caps, "image-input")
+	}
+	if row.Stream {
+		caps = append(caps, "streaming")
+	}
+	if row.PIIFilterApplied {
+		caps = append(caps, "pii-filtered")
+	}
+	if row.Cache == "hit" || row.Cache == "miss" {
+		caps = append(caps, "cacheable")
+	}
+	if row.TargetDialect != "" {
+		caps = append(caps, "dialect:"+row.TargetDialect)
+	}
+	if len(caps) == 0 {
+		caps = append(caps, "text")
+	}
+	return caps
+}
+
+func adminChartSeriesFromScalarRows(name, unit, colorKey string, rows []adminScalarReportRow, value func(adminScalarReportRow) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		key := row.Key
+		if row.SecondaryKey != "" {
+			key = joinKey(row.Key, row.SecondaryKey)
+		}
+		points = append(points, adminReportChartPoint{X: key, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
+}
+
+func adminAnomalyKeys(row usageRow, spec adminScalarEndpointSpec) []adminScalarKey {
+	secondary := adminScalarDimension(row, spec.Secondary)
+	keys := []adminScalarKey{}
+	if row.Status >= 400 {
+		keys = append(keys, adminScalarKey{Key: "error", Secondary: secondary})
+	}
+	if row.FallbackUsed {
+		keys = append(keys, adminScalarKey{Key: "fallback", Secondary: secondary})
+	}
+	if row.Attempts > 1 {
+		keys = append(keys, adminScalarKey{Key: "multi-attempt", Secondary: secondary})
+	}
+	if row.LatencyMS >= 30000 {
+		keys = append(keys, adminScalarKey{Key: "slow-request", Secondary: secondary})
+	}
+	if row.TotalCostUSD >= 1 {
+		keys = append(keys, adminScalarKey{Key: "expensive-request", Secondary: secondary})
+	}
+	if row.QuotaState != "" && row.QuotaState != "ok" {
+		keys = append(keys, adminScalarKey{Key: "quota-" + row.QuotaState, Secondary: secondary})
+	}
+	if row.KeyState != "" && row.KeyState != "ok" {
+		keys = append(keys, adminScalarKey{Key: "key-" + row.KeyState, Secondary: secondary})
+	}
+	return keys
+}
+
+func adminScalarCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminScalarReportRow) []adminReportChart {
+	if len(rows) == 0 {
+		return nil
+	}
+	charts := []adminReportChart{
+		adminCategoryChart(filters, generatedAt, spec.Report+"_requests", spec.Report+" requests", "Key", "Requests", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Requests", "count", "magenta", rows, func(row adminScalarReportRow) float64 { return float64(row.Requests) }),
+		}),
+	}
+	switch spec.Sort {
+	case "cost", "savings":
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_cost", spec.Report+" cost", "Key", "USD", "usd", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Cost", "usd", "red", rows, func(row adminScalarReportRow) float64 { return row.CostUSD }),
+		}))
+	case "latency":
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_latency", spec.Report+" latency", "Key", "Milliseconds", "ms", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Avg latency", "ms", "violet", rows, func(row adminScalarReportRow) float64 { return float64(row.AvgLatencyMS) }),
+			adminChartSeriesFromScalarRows("Max latency", "ms", "red", rows, func(row adminScalarReportRow) float64 { return float64(row.MaxLatencyMS) }),
+		}))
+	case "errors":
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_errors", spec.Report+" errors", "Key", "Errors", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Errors", "count", "red", rows, func(row adminScalarReportRow) float64 { return float64(row.Errors) }),
+			adminChartSeriesFromScalarRows("Fallbacks", "count", "warning", rows, func(row adminScalarReportRow) float64 { return float64(row.Fallbacks) }),
+		}))
+	default:
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_tokens", spec.Report+" tokens", "Key", "Tokens", "tokens", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Tokens", "tokens", "purple", rows, func(row adminScalarReportRow) float64 { return float64(row.Tokens) }),
+		}))
+	}
+	return charts
 }
 
 type adminSavingsAgg struct {

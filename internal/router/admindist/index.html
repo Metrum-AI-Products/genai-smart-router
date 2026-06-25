@@ -39,12 +39,37 @@
       <figure><figcaption>Errors And Fallbacks</figcaption><canvas id="errorChart"></canvas></figure>
     </section>
     <nav class="tabs" aria-label="Report sections">
+      <button type="button" data-tab="overview">Overview</button>
       <button type="button" data-tab="groups" class="active">Groups</button>
       <button type="button" data-tab="providers">Providers</button>
       <button type="button" data-tab="tokens">Keys</button>
       <button type="button" data-tab="savings">Savings</button>
+      <button type="button" data-tab="savings-by-user">Savings by user</button>
+      <button type="button" data-tab="savings-by-key">Savings by key</button>
+      <button type="button" data-tab="savings-by-group">Savings by group</button>
+      <button type="button" data-tab="model-groups-by-user">User groups</button>
+      <button type="button" data-tab="usage-by-key">Key usage</button>
+      <button type="button" data-tab="provider-model-mix">Provider/model</button>
+      <button type="button" data-tab="latency-throughput">Latency</button>
+      <button type="button" data-tab="errors-fallbacks">Errors</button>
+      <button type="button" data-tab="cache-report">Cache</button>
+      <button type="button" data-tab="quotas-budgets">Quotas</button>
+      <button type="button" data-tab="routing-decisions">Routing</button>
+      <button type="button" data-tab="expensive-requests">Expensive</button>
+      <button type="button" data-tab="client-breakdown">Clients</button>
+      <button type="button" data-tab="project-chargeback">Projects</button>
+      <button type="button" data-tab="capability-usage">Capabilities</button>
+      <button type="button" data-tab="anomalies">Anomalies</button>
       <button type="button" data-tab="requests">Requests</button>
     </nav>
+    <section id="reportTools" class="report-tools">
+      <label>Search <input id="tableSearch" autocomplete="off" placeholder="filter visible rows"></label>
+      <label>Rows <select id="pageSize"><option>25</option><option selected>50</option><option>100</option></select></label>
+      <button id="refreshReport" type="button">Refresh</button>
+      <button id="copyLink" type="button">Copy link</button>
+      <button id="exportCsv" type="button">CSV</button>
+      <span id="refreshState" class="refresh-state"></span>
+    </section>
     <section id="savingsPanel" class="savings-panel" hidden>
       <form id="savingsFilters" class="savings-controls">
         <label>Baseline <select name="baseline" id="baselineSelect"></select></label>
@@ -61,6 +86,7 @@
       </section>
       <div id="savingsWarnings"></div>
     </section>
+    <section id="detailPanel" class="detail-panel" hidden></section>
     <section id="tables"></section>
   </main>
   <script src="static/chart.umd.js"></script>

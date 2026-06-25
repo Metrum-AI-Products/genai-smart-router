@@ -53,9 +53,48 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 
 ## What It Shows
 
-The browser UI displays requests, errors, tokens, cost, latency, TTFB, upstream/downstream throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, public token IDs, caller metadata, status codes, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
+The browser UI displays requests, errors, tokens, cost, savings, latency, TTFB, upstream/downstream throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, model-group usage by user, public token IDs, caller metadata, quota/key states, routing strategy summaries, capability usage, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
+
+## Shared Usability
+
+The browser report shell provides shared controls for every tab:
+
+- time range filters from the top filter bar;
+- selected tab and search stored in shareable URL query parameters;
+- client-side search across visible safe scalar fields;
+- sortable table headers;
+- bounded page-size selection;
+- manual refresh with last-refresh state;
+- copy buttons for identifiers such as public token IDs, groups, providers, and request IDs;
+- request-ID drilldown from request rows;
+- CSV export of the visible table data;
+- consistent loading, empty, and error states.
+
+These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, or unsanitized upstream responses.
+
+## Report Tabs
+
+The current browser surface includes:
+
+- Overview: high-level usage, cost, latency, cache, fallback, and provider trends.
+- Savings: actual request-time cost compared with selected source-dated baseline prices.
+- Savings by user, key, and model group.
+- Model groups by user.
+- Usage by API key.
+- Provider and model mix.
+- Latency and throughput.
+- Errors and fallbacks.
+- Cache.
+- Quotas and budgets.
+- Routing decisions.
+- Expensive requests.
+- Client breakdown.
+- Project chargeback.
+- Capability usage for image/VLM, streaming, PII filter, cacheable, and dialect signals available in usage rows.
+- Anomalies from deterministic usage signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, and non-ok quota/key states.
+- Recent requests and request-ID drilldown.
 
 ## Charts
 

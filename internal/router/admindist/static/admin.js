@@ -2,8 +2,31 @@ const charts = {};
 let activeTab = "groups";
 let lastReport = null;
 let lastSavings = null;
+let lastGeneric = null;
+let currentTableRows = [];
+let currentTableColumns = [];
+let currentSort = { key: "", direction: "desc" };
 
 const themeKey = "metrum-admin-reports-theme";
+const genericTabs = {
+  overview: { endpoint: "overview", title: "Overview" },
+  "savings-by-user": { endpoint: "savings-by-user", title: "Savings by user", savings: true },
+  "savings-by-key": { endpoint: "savings-by-key", title: "Savings by key", savings: true },
+  "savings-by-group": { endpoint: "savings-by-group", title: "Savings by model group", savings: true },
+  "model-groups-by-user": { endpoint: "model-groups-by-user", title: "Model groups by user" },
+  "usage-by-key": { endpoint: "usage-by-key", title: "Usage per API key" },
+  "provider-model-mix": { endpoint: "provider-model-mix", title: "Provider and model mix" },
+  "latency-throughput": { endpoint: "latency-throughput", title: "Latency and throughput" },
+  "errors-fallbacks": { endpoint: "errors-fallbacks", title: "Errors and fallbacks" },
+  "cache-report": { endpoint: "cache", title: "Cache" },
+  "quotas-budgets": { endpoint: "quotas-budgets", title: "Quotas and budgets" },
+  "routing-decisions": { endpoint: "routing-decisions", title: "Routing decisions" },
+  "expensive-requests": { endpoint: "expensive-requests", title: "Expensive requests", requests: true },
+  "client-breakdown": { endpoint: "client-breakdown", title: "Client breakdown" },
+  "project-chargeback": { endpoint: "project-chargeback", title: "Project chargeback" },
+  "capability-usage": { endpoint: "capability-usage", title: "Capability usage" },
+  anomalies: { endpoint: "anomalies", title: "Anomalies" }
+};
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 6 });
@@ -87,7 +110,28 @@ function qs() {
   for (const [key, value] of data.entries()) {
     if (String(value).trim()) params.set(key, String(value).trim());
   }
+  const limit = document.querySelector("#pageSize") && document.querySelector("#pageSize").value;
+  if (limit) params.set("limit", limit);
   return params;
+}
+
+function syncFormToURL(url, selector) {
+  const form = document.querySelector(selector);
+  if (!form) return;
+  for (const field of form.querySelectorAll("[name]")) {
+    const key = field.name;
+    const value = String(field.value || "").trim();
+    if (value) url.searchParams.set(key, value); else url.searchParams.delete(key);
+  }
+}
+
+function restoreFormFromURL(selector, params) {
+  const form = document.querySelector(selector);
+  if (!form) return;
+  for (const field of form.querySelectorAll("[name]")) {
+    const value = params.get(field.name);
+    if (value !== null) field.value = value;
+  }
 }
 
 function savingsQS() {
@@ -114,6 +158,55 @@ async function loadSavings() {
   if (!res.ok) throw new Error(`savings request failed: ${res.status}`);
   const report = await res.json();
   renderSavings(report);
+}
+
+async function loadGeneric(tab = activeTab) {
+  const cfg = genericTabs[tab];
+  if (!cfg) return;
+  const params = cfg.savings ? savingsQS() : qs();
+  const res = await fetch(`api/${cfg.endpoint}?${params}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`${cfg.title} request failed: ${res.status}`);
+  const report = await res.json();
+  renderGeneric(tab, report);
+}
+
+function updateURLState() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("tab", activeTab);
+  syncFormToURL(url, "#filters");
+  if (activeTab === "savings" || genericTabs[activeTab] && genericTabs[activeTab].savings) {
+    syncFormToURL(url, "#savingsFilters");
+  }
+  const search = document.querySelector("#tableSearch").value.trim();
+  if (search) url.searchParams.set("search", search); else url.searchParams.delete("search");
+  const limit = document.querySelector("#pageSize").value;
+  if (limit) url.searchParams.set("limit", limit);
+  if (currentSort.key) {
+    url.searchParams.set("sort", currentSort.key);
+    url.searchParams.set("direction", currentSort.direction);
+  } else {
+    url.searchParams.delete("sort");
+    url.searchParams.delete("direction");
+  }
+  history.replaceState(null, "", url);
+}
+
+function restoreURLState() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  if (tab && (genericTabs[tab] || ["groups", "providers", "tokens", "savings", "requests"].includes(tab))) {
+    activeTab = tab;
+  }
+  const search = params.get("search");
+  if (search) document.querySelector("#tableSearch").value = search;
+  const limit = params.get("limit");
+  if (limit) document.querySelector("#pageSize").value = limit;
+  const sort = params.get("sort");
+  const direction = params.get("direction");
+  if (sort) currentSort = { key: sort, direction: direction === "asc" ? "asc" : "desc" };
+  restoreFormFromURL("#filters", params);
+  restoreFormFromURL("#savingsFilters", params);
+  document.querySelectorAll(".tabs button").forEach(button => button.classList.toggle("active", button.dataset.tab === activeTab));
 }
 
 function render(report) {
@@ -199,6 +292,12 @@ function chart(id, labels, datasets, colors, spec) {
 function renderTable(report) {
   const savingsPanel = document.querySelector("#savingsPanel");
   savingsPanel.hidden = activeTab !== "savings";
+  document.querySelector("#detailPanel").hidden = true;
+  if (genericTabs[activeTab]) {
+    document.querySelector("#tables").innerHTML = "";
+    loadGeneric(activeTab).catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+    return;
+  }
   if (activeTab === "savings") {
     document.querySelector("#tables").innerHTML = "";
     loadSavings().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
@@ -207,6 +306,8 @@ function renderTable(report) {
   const source = activeTab === "providers" ? report.byProvider : activeTab === "tokens" ? report.byToken : activeTab === "requests" ? report.requests : report.byGroup;
   const rows = activeTab === "requests" ? requestRows(source) : aggregateRows(source);
   document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${rows}</table></div>`;
+  currentTableRows = source || [];
+  currentTableColumns = activeTab === "requests" ? requestColumns() : aggregateColumns();
 }
 
 function renderSavings(report) {
@@ -225,6 +326,124 @@ function renderSavings(report) {
   const warnings = report.warnings || [];
   document.querySelector("#savingsWarnings").innerHTML = warnings.length ? `<div class="warnings">${warnings.map(w => `<div class="warning">${esc(w)}</div>`).join("")}</div>` : "";
   document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${savingsRows(report.byGroup || [])}</table></div>`;
+  currentTableRows = report.byGroup || [];
+  currentTableColumns = savingsColumns();
+}
+
+function renderGeneric(tab, report) {
+  lastGeneric = { tab, report };
+  const cfg = genericTabs[tab];
+  document.querySelector("#savingsPanel").hidden = !cfg.savings;
+  document.querySelector("#detailPanel").hidden = true;
+  document.querySelector("#refreshState").textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
+  if (report.period) document.querySelector("#period").textContent = `${report.period.from} to ${report.period.to}`;
+  if (report.summary) renderGenericSummary(report.summary);
+  renderGenericCharts(report);
+  if (cfg.requests) {
+    currentTableRows = report.requests || [];
+    currentTableColumns = requestColumns();
+  } else {
+    currentTableRows = report.rows || [];
+    currentTableColumns = scalarColumns(report);
+  }
+  renderSharedTable();
+}
+
+function renderGenericSummary(s) {
+  document.querySelector("#summary").innerHTML = [
+    ["Requests", fmt.format(s.requests || 0)],
+    ["Errors", fmt.format(s.errors || 0)],
+    ["Tokens", fmt.format(s.tokens || 0)],
+    ["Cost", usd.format(s.costUsd || 0)],
+    ["Avg latency", `${fmt.format(s.avgLatencyMs || 0)} ms`],
+    ["Fallbacks", fmt.format(s.fallbacks || 0)]
+  ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+}
+
+function renderGenericCharts(report) {
+  const charts = report.charts || [];
+  const slots = ["requestsChart", "costChart", "latencyChart", "cacheChart", "providerChart", "errorChart"];
+  slots.forEach((id, index) => {
+    if (charts[index]) chartFromSpec(id, charts[index]); else clearChart(id);
+  });
+}
+
+function clearChart(id) {
+  if (charts[id]) {
+    charts[id].destroy();
+    delete charts[id];
+  }
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const figure = canvas.closest("figure");
+  const caption = figure && figure.querySelector("figcaption");
+  if (caption) caption.textContent = "No chart";
+}
+
+function renderSharedTable() {
+  const rows = visibleRows();
+  if (!rows.length) {
+    document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table><tbody><tr><td>No rows match the current filters.</td></tr></tbody></table></div>`;
+    return;
+  }
+  const head = currentTableColumns.map(col => `<th><button type="button" class="sort-button" data-sort="${esc(col.key)}">${esc(col.label)}${currentSort.key === col.key ? ` ${currentSort.direction === "asc" ? "▲" : "▼"}` : ""}</button></th>`).join("");
+  const body = rows.map(row => `<tr>${currentTableColumns.map(col => `<td>${formatCell(row, col)}</td>`).join("")}</tr>`).join("");
+  document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  document.querySelectorAll(".sort-button").forEach(button => button.addEventListener("click", () => {
+    const key = button.dataset.sort;
+    currentSort = { key, direction: currentSort.key === key && currentSort.direction === "desc" ? "asc" : "desc" };
+    renderSharedTable();
+    updateURLState();
+  }));
+  document.querySelectorAll("[data-copy]").forEach(button => button.addEventListener("click", () => navigator.clipboard && navigator.clipboard.writeText(button.dataset.copy)));
+  document.querySelectorAll("[data-request-id]").forEach(button => button.addEventListener("click", () => loadRequestDetail(button.dataset.requestId)));
+}
+
+function visibleRows() {
+  const search = document.querySelector("#tableSearch").value.trim().toLowerCase();
+  let rows = currentTableRows.slice();
+  if (search) {
+    rows = rows.filter(row => JSON.stringify(row).toLowerCase().includes(search));
+  }
+  if (currentSort.key) {
+    const direction = currentSort.direction === "asc" ? 1 : -1;
+    rows.sort((a, b) => compareValues(a[currentSort.key], b[currentSort.key]) * direction);
+  }
+  const limit = Number(document.querySelector("#pageSize").value) || 50;
+  return rows.slice(0, limit);
+}
+
+function compareValues(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb ? 0 : na > nb ? 1 : -1;
+  return String(a ?? "").localeCompare(String(b ?? ""));
+}
+
+function formatCell(row, col) {
+  const value = row[col.key];
+  const formatted = col.format ? col.format(value, row) : esc(value ?? "");
+  if (col.copy && value) return `${formatted}<button type="button" class="copy-button" data-copy="${esc(value)}">Copy</button>`;
+  if (col.request && value) return `<button type="button" class="copy-button" data-request-id="${esc(value)}">${esc(value)}</button>`;
+  return formatted;
+}
+
+async function loadRequestDetail(requestID) {
+  const res = await fetch(`api/request/${encodeURIComponent(requestID)}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`request detail failed: ${res.status}`);
+  const detail = await res.json();
+  const panel = document.querySelector("#detailPanel");
+  panel.hidden = false;
+  panel.innerHTML = `<h2>Request ${esc(requestID)}</h2>${detailTable("Usage", detail.request)}${detailTable("Attempts", detail.attempts || [])}${detailTable("Trace", detail.trace || [])}${detailTable("Errors", detail.errors || [])}`;
+}
+
+function detailTable(title, data) {
+  const rows = Array.isArray(data) ? data : [data];
+  if (!rows.length || !rows[0]) return "";
+  const keys = Object.keys(rows[0]);
+  return `<h3>${esc(title)}</h3><div class="tablewrap"><table><thead><tr>${keys.map(k => `<th>${esc(k)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${keys.map(k => `<td>${esc(row[k] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
 function populateBaselines(baselines, selected) {
@@ -243,6 +462,73 @@ function savingsRows(rows) {
   return `<thead><tr><th>Model group</th><th>Requests</th><th>Input</th><th>Output</th><th>Total tokens</th><th>Actual cost</th><th>Baseline cost</th><th>Savings</th><th>Savings %</th></tr></thead><tbody>` +
     rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.input_tokens}</td><td>${r.output_tokens}</td><td>${r.total_tokens}</td><td>${usd.format(r.actual_cost_usd)}</td><td>${usd.format(r.baseline_cost_usd)}</td><td>${usd.format(r.savings_usd)}</td><td>${formatUnit(r.savings_pct, "percent", true)}</td></tr>`).join("") +
     `</tbody>`;
+}
+
+function scalarColumns() {
+  return [
+    { key: "key", label: "Key", copy: true },
+    { key: "secondaryKey", label: "Secondary", copy: true },
+    { key: "requests", label: "Requests" },
+    { key: "errors", label: "Errors" },
+    { key: "errorRatePct", label: "Error %", format: v => formatUnit(v, "percent", true) },
+    { key: "tokens", label: "Tokens" },
+    { key: "inputTokens", label: "Input" },
+    { key: "outputTokens", label: "Output" },
+    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
+    { key: "baselineCostUsd", label: "Baseline", format: v => v == null ? "" : usd.format(v || 0) },
+    { key: "savingsUsd", label: "Savings", format: v => v == null ? "" : usd.format(v || 0) },
+    { key: "savingsPct", label: "Savings %", format: v => v == null ? "" : formatUnit(v, "percent", true) },
+    { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) },
+    { key: "avgUpstreamTokensPerSec", label: "Upstream tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "avgDownstreamTokensPerSec", label: "Downstream tok/s", format: v => formatUnit(v, "tok/s", true) },
+    { key: "cacheHits", label: "Cache hits" },
+    { key: "cacheMisses", label: "Cache misses" },
+    { key: "fallbacks", label: "Fallbacks" },
+    { key: "inputImageCount", label: "Images" },
+    { key: "piiFilteredRequests", label: "PII filtered" }
+  ];
+}
+
+function aggregateColumns() {
+  return [
+    { key: "key", label: "Key", copy: true },
+    { key: "requests", label: "Requests" },
+    { key: "errors", label: "Errors" },
+    { key: "tokens", label: "Tokens" },
+    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
+    { key: "attempts", label: "Attempts" },
+    { key: "fallbacks", label: "Fallbacks" },
+    { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) }
+  ];
+}
+
+function savingsColumns() {
+  return [
+    { key: "key", label: "Model group", copy: true },
+    { key: "requests", label: "Requests" },
+    { key: "input_tokens", label: "Input" },
+    { key: "output_tokens", label: "Output" },
+    { key: "total_tokens", label: "Total tokens" },
+    { key: "actual_cost_usd", label: "Actual cost", format: v => usd.format(v || 0) },
+    { key: "baseline_cost_usd", label: "Baseline cost", format: v => usd.format(v || 0) },
+    { key: "savings_usd", label: "Savings", format: v => usd.format(v || 0) },
+    { key: "savings_pct", label: "Savings %", format: v => formatUnit(v, "percent", true) }
+  ];
+}
+
+function requestColumns() {
+  return [
+    { key: "timeUtc", label: "Time" },
+    { key: "requestId", label: "Request", request: true },
+    { key: "callerUser", label: "User" },
+    { key: "project", label: "Project" },
+    { key: "modelGroup", label: "Group" },
+    { key: "provider", label: "Provider" },
+    { key: "model", label: "Model" },
+    { key: "status", label: "Status" },
+    { key: "tokens", label: "Tokens" },
+    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) }
+  ];
 }
 
 function aggregateRows(rows) {
@@ -270,18 +556,58 @@ document.querySelector("#themeToggle").addEventListener("click", () => {
 
 document.querySelector("#filters").addEventListener("submit", event => {
   event.preventDefault();
+  updateURLState();
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 });
 document.querySelectorAll(".tabs button").forEach(button => button.addEventListener("click", () => {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
   button.classList.add("active");
   activeTab = button.dataset.tab;
+  currentSort = { key: "", direction: "desc" };
+  updateURLState();
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 }));
 document.querySelector("#savingsFilters").addEventListener("submit", event => {
   event.preventDefault();
+  updateURLState();
   loadSavings().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 });
+document.querySelector("#tableSearch").addEventListener("input", () => {
+  updateURLState();
+  renderSharedTable();
+});
+document.querySelector("#pageSize").addEventListener("change", () => {
+  updateURLState();
+  if (genericTabs[activeTab]) loadGeneric(activeTab).catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+  else renderSharedTable();
+});
+document.querySelector("#refreshReport").addEventListener("click", () => {
+  load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+});
+document.querySelector("#copyLink").addEventListener("click", () => {
+  updateURLState();
+  if (navigator.clipboard) navigator.clipboard.writeText(window.location.href);
+});
+document.querySelector("#exportCsv").addEventListener("click", () => exportCSV());
 
 applyTheme(storedTheme() || systemTheme(), false);
+restoreURLState();
 load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
+
+function exportCSV() {
+  const rows = visibleRows();
+  const columns = currentTableColumns || [];
+  if (!rows.length || !columns.length) return;
+  const csv = [columns.map(col => csvCell(col.label)).join(",")].concat(rows.map(row => columns.map(col => csvCell(row[col.key])).join(","))).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `admin-report-${activeTab}-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}

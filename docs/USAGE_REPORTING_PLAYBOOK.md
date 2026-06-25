@@ -31,6 +31,10 @@ Use it when an operator needs quick usage, cost, latency, cache, fallback, provi
 
 The browser summary API returns chart descriptors with stable IDs, axis labels, units, series names, semantic color keys, and scalar points. Operators should use the charts for quick trend reading and the matching tables or Markdown export for exact reviewable values. Chart responses must remain safe aggregates only and must not include prompts, image payloads, tool outputs, bearer tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
+The browser shell includes shared usability controls for report tabs: selected tab/search state in the URL, safe-field search, sortable table headers, bounded page size, manual refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible table columns. Smoke these controls after deployment with an authorized browser-admin user, then verify ordinary caller tokens still receive `403 reports-forbidden`.
+
+Expanded tabs use safe scalar usage rows for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and deterministic anomaly signals.
+
 Smoke an enabled deployment:
 
 ```bash

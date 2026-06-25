@@ -554,6 +554,63 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			t.Fatalf("model status=%d body=%s", modelRR.Code, modelRR.Body.String())
 		}
 	}
+	errType := "upstream-timeout"
+	ttfbMS := int64(125)
+	upstreamMS := int64(30100)
+	downstreamMS := int64(250)
+	upstreamTPS := 42.5
+	downstreamTPS := 39.25
+	svc.usage.Emit(logRecord{
+		TS:                           time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
+		RequestID:                    "admin-report-synthetic-expensive",
+		CallerID:                     "alice",
+		CallerUser:                   "alice",
+		CallerProject:                "metrum-insights",
+		CallerEnvironment:            "test",
+		CallerIP:                     "203.0.113.10",
+		TokenID:                      "rtr_alice_test",
+		Client:                       "codex-cli",
+		InboundDialect:               "openai-responses",
+		RequestedModel:               "default",
+		ResolvedGroup:                "default",
+		Strategy:                     "weighted",
+		TargetProvider:               "mock",
+		TargetModel:                  "mock-model",
+		TargetDialect:                "openai",
+		Stream:                       true,
+		Cache:                        "hit",
+		Status:                       504,
+		Attempts:                     2,
+		FallbackUsed:                 true,
+		LatencyMS:                    30150,
+		TTFBMS:                       &ttfbMS,
+		UpstreamMS:                   &upstreamMS,
+		DownstreamMS:                 &downstreamMS,
+		UpstreamOutputTPS:            &upstreamTPS,
+		DownstreamOutputTPS:          &downstreamTPS,
+		Usage:                        Usage{InputTokens: 1_000_000, OutputTokens: 500_000, TotalTokens: 1_500_000},
+		InputHasImage:                true,
+		InputImageCount:              1,
+		InputImageTokens:             1234,
+		PIIFilterApplied:             true,
+		PIIFilterMode:                "redact",
+		PIIFilterReplacements:        2,
+		PIIFilterRuleCount:           1,
+		InputCostUSD:                 1.25,
+		OutputCostUSD:                1.25,
+		TotalCostUSD:                 2.50,
+		UpstreamReportedTotalCostUSD: 2.75,
+		CacheEnabled:                 true,
+		CacheItems:                   7,
+		CacheBytes:                   4096,
+		CacheMaxBytes:                8192,
+		CacheOccupancyPct:            50,
+		QuotaState:                   "soft_limit",
+		KeyState:                     "ok",
+		Error:                        &errType,
+		ErrorClass:                   "timeout",
+		ErrorMessage:                 "redacted provider-key should not be returned",
+	})
 
 	unauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
 	unauthRR := httptest.NewRecorder()
@@ -655,6 +712,78 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		if strings.Contains(savingsRR.Body.String(), forbidden) {
 			t.Fatalf("savings leaked %q: %s", forbidden, savingsRR.Body.String())
 		}
+	}
+
+	reportPaths := []string{
+		"/admin/reports/api/overview?since=24h",
+		"/admin/reports/api/savings-by-user?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/savings-by-key?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/savings-by-group?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/model-groups-by-user?since=24h",
+		"/admin/reports/api/usage-by-key?since=24h",
+		"/admin/reports/api/provider-model-mix?since=24h",
+		"/admin/reports/api/latency-throughput?since=24h",
+		"/admin/reports/api/errors-fallbacks?since=24h",
+		"/admin/reports/api/cache?since=24h",
+		"/admin/reports/api/quotas-budgets?since=24h",
+		"/admin/reports/api/routing-decisions?since=24h",
+		"/admin/reports/api/expensive-requests?since=24h&limit=1",
+		"/admin/reports/api/client-breakdown?since=24h",
+		"/admin/reports/api/project-chargeback?since=24h",
+		"/admin/reports/api/capability-usage?since=24h&limit=10",
+		"/admin/reports/api/anomalies?since=24h",
+	}
+	for _, path := range reportPaths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.SetBasicAuth("admin", "yell-yell-yum")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", path, rr.Code, rr.Body.String())
+		}
+		body := mustJSONMap(t, rr.Body.String())
+		if body["period"] == nil || body["summary"] == nil || body["generatedUtc"] == "" {
+			t.Fatalf("%s missing common report shape: %#v", path, body)
+		}
+		if strings.Contains(path, "expensive-requests") {
+			requestRows := body["requests"].([]any)
+			if len(requestRows) != 1 || requestRows[0].(map[string]any)["requestId"] != "admin-report-synthetic-expensive" {
+				t.Fatalf("%s did not return bounded cost-sorted requests: %#v", path, body)
+			}
+		} else if !strings.Contains(path, "overview") {
+			rows := body["rows"].([]any)
+			if len(rows) == 0 || len(rows) > 1 {
+				t.Fatalf("%s rows len=%d, want bounded nonempty rows: %#v", path, len(rows), body)
+			}
+			row := rows[0].(map[string]any)
+			if row["key"] == "" || row["requests"].(float64) <= 0 {
+				t.Fatalf("%s missing scalar row key/request count: %#v", path, row)
+			}
+			if strings.Contains(path, "savings-by") && row["savingsUsd"] == nil {
+				t.Fatalf("%s missing savings scalar fields: %#v", path, row)
+			}
+			if strings.Contains(path, "latency-throughput") && row["avgUpstreamTokensPerSec"].(float64) <= 0 {
+				t.Fatalf("%s missing throughput scalar fields: %#v", path, row)
+			}
+			if strings.Contains(path, "capability-usage") {
+				if row["secondaryKey"] == "" {
+					t.Fatalf("%s missing capability secondary group: %#v", path, row)
+				}
+			}
+		}
+		for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "messages"} {
+			if strings.Contains(rr.Body.String(), forbidden) {
+				t.Fatalf("%s leaked %q: %s", path, forbidden, rr.Body.String())
+			}
+		}
+	}
+
+	forbiddenScalar := httptest.NewRequest(http.MethodGet, "/admin/reports/api/provider-model-mix?since=24h", nil)
+	forbiddenScalar.Header.Set("Authorization", "Bearer "+testToken)
+	forbiddenScalarRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(forbiddenScalarRR, forbiddenScalar)
+	if forbiddenScalarRR.Code != http.StatusForbidden || !strings.Contains(forbiddenScalarRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("ordinary scalar report status=%d body=%s", forbiddenScalarRR.Code, forbiddenScalarRR.Body.String())
 	}
 
 	custom := httptest.NewRequest(http.MethodGet, "/admin/reports/api/savings?since=24h&baseline=custom&baseline_input_price_per_million_usd=1&baseline_output_price_per_million_usd=2", nil)
@@ -929,6 +1058,44 @@ func loginTestOIDCAdmin(t *testing.T, svc *Service, issuer *fakeOIDCIssuer) *htt
 
 func testBoolPtr(v bool) *bool {
 	return &v
+}
+
+func TestAdminCapabilityUsageReportsEverySignal(t *testing.T) {
+	rows := buildAdminScalarReportResponse(
+		adminReportFilters{
+			From:  time.Now().UTC().Add(-time.Hour),
+			To:    time.Now().UTC(),
+			Limit: 20,
+		},
+		[]usageRow{{
+			RequestID:        "req_capability",
+			TS:               time.Now().UTC(),
+			ResolvedGroup:    "default",
+			TargetDialect:    "openai-responses",
+			Stream:           true,
+			Cache:            "hit",
+			InputHasImage:    true,
+			InputImageCount:  1,
+			InputImageTokens: 12,
+			PIIFilterApplied: true,
+			InputTokens:      10,
+			OutputTokens:     5,
+			TotalTokens:      15,
+			Status:           200,
+			Attempts:         1,
+		}},
+		adminScalarEndpointSpec{Report: "capability-usage", Dimension: "capability", Secondary: "model_group", Sort: "requests"},
+		adminSavingsBaselineDTO{},
+	).Rows
+	got := map[string]bool{}
+	for _, row := range rows {
+		got[row.Key] = true
+	}
+	for _, want := range []string{"image-input", "streaming", "pii-filtered", "cacheable", "dialect:openai-responses"} {
+		if !got[want] {
+			t.Fatalf("missing capability %q in %#v", want, rows)
+		}
+	}
 }
 
 func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {

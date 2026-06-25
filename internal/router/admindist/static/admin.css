@@ -405,6 +405,56 @@ canvas {
   border-color: var(--text);
 }
 
+.report-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(90px, 0.25fr) repeat(3, auto) minmax(120px, auto);
+  gap: 8px;
+  align-items: end;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.report-tools label {
+  color: var(--muted);
+}
+
+.report-tools input,
+.report-tools select {
+  border-color: var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.refresh-state {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.detail-panel h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.copy-button {
+  min-height: 26px;
+  padding: 3px 7px;
+  margin-left: 6px;
+  border-color: var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 11px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -471,6 +521,7 @@ th {
 
   .filters,
   .savings-controls,
+  .report-tools,
   .summary,
   .charts {
     grid-template-columns: 1fr;
