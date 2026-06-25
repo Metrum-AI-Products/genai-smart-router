@@ -16,8 +16,8 @@ Last deployed: 2026-06-25
 
 ## Deployed Version
 
-- Router package/image version: `3e9aa55-linux-amd64`
-- Source commit: `3e9aa55`
+- Router package/image version: `87bbf64-linux-amd64`
+- Source commit: `87bbf64`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-06-25
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-25 Aditya TPM Limit Increase
+
+- Applied a config-only production update for caller `aditya-metrum-insights-prod`, increasing `rate.tpm` from `1200000` to `5000000`.
+- Reason: Aditya's Cursor `big-coder` traffic hit `429 tpm-exceeded` during a burst of large-context requests around 150K-161K input tokens each.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.aditya-tpm-5m-20260625T203717Z`.
+- Local `config.production.yaml` SHA-256 matched the remote deployed config SHA-256: `34a6218e35e3cadf3cac84a7ee09b17e32f03d7979fc0ebd419d6c649f11b187`.
+- Verified `/readyz` returned healthy on package/image `smart-llmrouter:87bbf64-linux-amd64`.
+- Verified local production snapshot shows `rate: { rpm: 240, tpm: 5000000, concurrent: 16 }` for the caller.
+
+## 2026-06-25 Crusoe Big-Coder Nemotron Replacement
+
+- Applied a config-only production update to replace active `big-coder` Crusoe `google/gemma-4-31b-it` targets with Crusoe `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B`.
+- The replacement follows repeated production upstream 400s from Crusoe Gemma under Cursor/opencode `big-coder` traffic. Crusoe's 2026-04-28 Nemotron 3 Nano Omni announcement positions Nemotron 3 Nano Omni 30B A3B Reasoning for multimodal document, GUI-agent, video/audio, and text reasoning workloads with a 256K-token context: `https://www.crusoe.ai/resources/blog/nvidia-nemotron-3-nano-omni-now-available`.
+- Production `big-coder` initially replaced both Crusoe Gemma entries with Crusoe Nemotron 3 Nano Omni 30B A3B Reasoning.
+- Follow-up PR review fix made the active Crusoe Nemotron `big-coder` target text-only with `input_modalities: [text]` and removed the ineligible Crusoe Nemotron `tool_only` target. Nemotron 3 Nano Omni 30B A3B Reasoning is advertised as multimodal, but the current production OCR smoke did not pass, and the catalog does not claim Crusoe OpenAI Chat tool support for this model until a dedicated tool smoke passes.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.crusoe-gemma-to-nemotron-20260625T200255Z`.
+- Production follow-up backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.crusoe-nemotron-text-only-20260625T201714Z`.
+- Local `config.production.yaml` SHA-256 matched the remote deployed config SHA-256: `e672dae86045158e560191f4990dbb04a10a98d4879e1cc16cd8ffbc37b39a8d`.
+- Verified `/readyz` returned healthy on package/image `smart-llmrouter:87bbf64-linux-amd64`.
+- Verified live `big-coder` config contains one active Crusoe `nemotron-3-nano-omni-reasoning-30b-a3b` target with `input_modalities: [text]` and no active Crusoe `gemma-4-31b-it` or Crusoe Nemotron `tool_only` target.
+- Verified authenticated production text smoke against `crusoe-nemotron-omni-smoke` selected `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` and returned `OK`.
+- Latest smoke usage row recorded HTTP 200, 348 ms total latency, 346 ms upstream duration, 112.72 upstream output tokens/sec, 170.52 upstream total tokens/sec, 20 input tokens, 39 output tokens, 59 total tokens, and no fallback.
 
 ## 2026-06-25 Direct OpenAI Vision Rebalance
 

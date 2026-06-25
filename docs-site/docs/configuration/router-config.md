@@ -289,12 +289,11 @@ models:
       - { provider: baseten, model_ref: gpt-oss-120b, weight: 18 }
       - { provider: minimax, model_ref: m3, weight: 30 }
       - { provider: kimi, model_ref: kimi-k2-7-code, weight: 23 }
-      - { provider: crusoe, model_ref: gemma-4-31b-it, weight: 20 }
+      - { provider: crusoe, model_ref: nemotron-3-nano-omni-reasoning-30b-a3b, weight: 20, input_modalities: [text] }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 2 }
       - { provider: baseten, model_ref: glm-5-2, weight: 6 }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
       - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
-      - { provider: crusoe, model_ref: gemma-4-31b-it, tool_only: true, weight: 2 }
 ```
 
 ## Scripted Routing Options

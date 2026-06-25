@@ -1515,8 +1515,9 @@ models:
       model_ref: gpt-5.4-nano
       weight: 1
     - provider: crusoe
-      model_ref: gemma-4-31b-it
+      model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
       weight: 20
+      input_modalities: [text]
     - provider: minimax
       model_ref: m3
       weight: 5
@@ -1535,10 +1536,6 @@ models:
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 2
-      tool_only: true
-    - provider: crusoe
-      model_ref: gemma-4-31b-it
       weight: 2
       tool_only: true
     - provider: openrouter_responses
