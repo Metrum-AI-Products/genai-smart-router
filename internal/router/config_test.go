@@ -1115,6 +1115,18 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "crusoe-nemotron-omni-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "crusoe" || group.Targets[0].Model != "nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B" {
+				t.Fatalf("example config crusoe-nemotron-omni-smoke=%#v, want static Crusoe Nemotron 3 Nano Omni target", group)
+			}
+			if !stringSliceContains(group.Targets[0].InputModalities, "image") {
+				t.Fatalf("example config crusoe-nemotron-omni-smoke missing image modality: %#v", group.Targets[0].InputModalities)
+			}
+			if len(group.Targets[0].ToolSupport.OpenAIChat) != 0 {
+				t.Fatalf("example config crusoe-nemotron-omni-smoke has unvalidated tool metadata: %#v", group.Targets[0].ToolSupport)
+			}
+			continue
+		}
 		if name == "warp-agent-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten" || group.Targets[0].Model != "nvidia/Nemotron-120B-A12B" {
 				t.Fatalf("example config warp-agent-smoke=%#v, want static Baseten Nemotron OpenAI Chat tool target", group)
@@ -1162,7 +1174,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}

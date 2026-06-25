@@ -19,7 +19,7 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 
 Hosted OpenAI-compatible providers such as Crusoe Managed Inference use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.
 
-For Crusoe, public docs checked on 2026-06-24 list `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and `meta-llama/Llama-3.3-70B-Instruct` as the quickstart model. Direct validation on 2026-06-24 required an explicit `User-Agent`; configure one under provider `headers`. Use `CRUSOE_API_KEY` only from a protected environment or ignored `env.json`; never print it.
+For Crusoe, public docs checked on 2026-06-24 list `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and `meta-llama/Llama-3.3-70B-Instruct` as the quickstart model. Direct validation on 2026-06-24 required an explicit `User-Agent`; configure one under provider `headers`. Use `CRUSOE_API_KEY` only from a protected environment or ignored `env.json`; never print it. On 2026-06-25, `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` was available in the account and passed direct text/cap smokes, but direct receipt-image smokes returned incorrect or non-merchant answers, so it must remain limited to a dedicated smoke group until OCR/workload validation passes.
 
 Direct checks before any active route:
 
@@ -48,6 +48,18 @@ curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
 ```
 
 Run OpenAI Chat tool, forced `tool_choice`, and `response_format` structured-output checks only for models intended to serve those request shapes. Add `tool_support.openai_chat` entries only after both direct Crusoe and router-level smokes pass for the exact model. Keep Crusoe out of Codex Responses and Claude Code Anthropic groups unless Crusoe exposes and passes those exact skins.
+
+For Crusoe VLM candidates, add an image smoke before broad routing:
+
+```bash
+curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${CRUSOE_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<crusoe-model-id>","messages":[{"role":"user","content":[{"type":"text","text":"Read the receipt image carefully. Reply with only the merchant/store chain name printed on the receipt."},{"type":"image_url","image_url":{"url":"https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"}}]}],"max_tokens":512,"stream":false}'
+```
+
+Accepting an image is not enough for production `vision` traffic. The response must satisfy the deployment's quality gate, for example returning the expected receipt merchant for OCR validation, and the router-level smoke must log image request metadata and request-time pricing.
 
 Router-level checks for a dedicated Crusoe smoke group:
 

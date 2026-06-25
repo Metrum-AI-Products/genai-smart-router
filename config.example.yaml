@@ -375,6 +375,27 @@ providers:
           Super 120B-A12B-FP8 at $0.30/M input, $2.40/M output, and $0.15/M cached tokens.
           Catalog-only until entitlement, direct smokes, router smokes, and workload validation
           pass.
+      nemotron-3-nano-omni-reasoning-30b-a3b:
+        model: nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B
+        tier: vision
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.83
+        image_input_price_per_million_tokens_usd: 0.3
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://www.crusoe.ai/cloud/pricing
+        pricing_updated_at: '2026-06-25'
+        pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists Nemotron
+          3 Nano Omni 30B A3B Reasoning for text, image, and video at $0.30/M input,
+          $1.83/M output, and $0.30/M cached tokens. Direct Crusoe text smoke passed
+          on 2026-06-25, and max_tokens=1 was honored with finish=length and no final
+          content. Direct image receipt smokes accepted the image but did not pass the
+          OCR acceptance gate, returning non-merchant or incorrect answers at realistic
+          budgets. Keep this target in the dedicated smoke group and out of broad
+          active vision routing until router-level OCR and workload validation pass.
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -909,6 +930,11 @@ models:
     targets:
     - provider: crusoe
       model_ref: gemma-4-31b-it
+  crusoe-nemotron-omni-smoke:
+    strategy: static
+    targets:
+    - provider: crusoe
+      model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
   vision:
     strategy: weighted
     targets:
@@ -1672,6 +1698,7 @@ callers:
   - baseten-gpt-oss-120b-claude-smoke
   - crusoe-smoke
   - crusoe-gemma-smoke
+  - crusoe-nemotron-omni-smoke
   rate:
     rpm: 120
     tpm: 200000

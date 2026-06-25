@@ -32,6 +32,18 @@ Last deployed: 2026-06-25
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-25 Crusoe Nemotron Omni Smoke Group Config
+
+- Applied a config-only production update to catalog Crusoe `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` and expose the dedicated `crusoe-nemotron-omni-smoke` group to smoke-test callers.
+- The broad `vision` group was not changed because direct and router-level receipt-image smokes accepted the image but did not pass OCR quality validation.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.crusoe-nemotron-omni-20260625T151243Z`.
+- Local `config.production.yaml` SHA-256 matched the remote deployed config SHA-256: `3c940868945617726ffd2ba9efc88aee5792c6be38724bb51bc420d98f283810`.
+- Verified `/readyz` returned healthy on package/image `smart-llmrouter:3e9aa55-linux-amd64`.
+- Verified authenticated `/v1/models` for the reusable Harbor caller includes `crusoe-nemotron-omni-smoke`.
+- Verified authenticated production text smoke against `crusoe-nemotron-omni-smoke` selected `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` and returned `OK`.
+- Verified authenticated production receipt-image smoke against `crusoe-nemotron-omni-smoke` selected the same model and returned HTTP 200 with `finish_reason=length` and empty content, matching local validation and confirming it should remain smoke-only.
+- Operational note: after replacing `config/config.yaml`, keep it readable by the router container UID/GID `65532`; a root-owned `0640` file caused a temporary startup loop until ownership was corrected.
+
 ## 2026-06-25 Model-Group Contracts Deployment
 
 - Deployed package/image `smart-llmrouter:3e9aa55-linux-amd64` from source commit `3e9aa55` after PR #118 merged.
