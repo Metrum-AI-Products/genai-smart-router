@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-24
+Last deployed: 2026-06-25
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-24
 
 ## Deployed Version
 
-- Router package/image version: `d7ec9a2-linux-amd64`
-- Source commit: `d7ec9a2`
+- Router package/image version: `0af2002-linux-amd64`
+- Source commit: `0af2002`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,27 @@ Last deployed: 2026-06-24
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-25 Admin Browser Reports Package Deployment
+
+- Deployed package/image `smart-llmrouter:0af2002-linux-amd64` from source commit `0af2002` after PR #79 merged.
+- Production package backup: `/opt/smart-llmrouter.backup-refresh-0af2002-20260625T020054Z`.
+- Production config was carried forward unchanged; `server.admin_reports.enabled` remains disabled in the live deployment.
+- Verified public `/readyz` reports version `0af2002`, commit `0af2002`, and build date `2026-06-25T01:57:00Z`.
+- Verified public `/version` reports version `0af2002`, commit `0af2002`, build date `2026-06-25T01:57:00Z`, and Go `1.26.4` on `linux/amd64`.
+- Verified hosted docs `/docs/operations/admin-browser-reports` returns 200 with `x-smart-llmrouter-version: 0af2002`.
+- Verified authenticated `/v1/models` returns an OpenAI-compatible model list.
+- Verified authenticated `/v1/chat/completions` against the `high` group returned HTTP 200.
+- Verified unauthenticated `/admin/reports/` returns 404 because the production admin report surface is still disabled.
+- Production cleanup: removed the uploaded package, removed the duplicate previous-active switch directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
+
+Validation before deploy:
+
+```text
+go test ./cmd/... ./internal/...: passed, 223 tests
+make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package content validation: passed
+```
 
 ## 2026-06-24 HTTP Basic Admin Authentication Deployment
 
