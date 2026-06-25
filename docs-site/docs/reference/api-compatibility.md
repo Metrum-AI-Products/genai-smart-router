@@ -24,7 +24,7 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 `/metrics` is an operator telemetry API. It requires a caller token whose subject is authorized for `metrics` `read`; existing `metrics_admin: true` caller entries receive compatible Casbin grants at startup.
 
-Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. A configured key with `status: disabled` returns `403 key-disabled` after token match. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
+Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. Configured inactive keys return safe status-specific `403` errors after token match, including `key-disabled`, `key-suspended`, `key-expired`, and `key-rotated`. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
 
 Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete`; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants. These endpoints never return captured content.
 

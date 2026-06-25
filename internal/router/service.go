@@ -772,15 +772,32 @@ func (c *callerRuntime) authPolicyError() error {
 	}
 	switch {
 	case normalizeStatusDefault(c.keyStatus) != accountStatusActive:
-		return authPolicyError{status: http.StatusForbidden, code: "key-disabled"}
+		return authPolicyError{status: http.StatusForbidden, code: statusAuthCode("key", normalizeStatusDefault(c.keyStatus))}
 	case normalizeStatusDefault(c.ownerUserStatus) != accountStatusActive:
-		return authPolicyError{status: http.StatusForbidden, code: "user-disabled"}
+		return authPolicyError{status: http.StatusForbidden, code: statusAuthCode("user", normalizeStatusDefault(c.ownerUserStatus))}
 	case normalizeStatusDefault(c.projectStatus) != accountStatusActive:
-		return authPolicyError{status: http.StatusForbidden, code: "project-disabled"}
+		return authPolicyError{status: http.StatusForbidden, code: statusAuthCode("project", normalizeStatusDefault(c.projectStatus))}
 	case normalizeStatusDefault(c.membershipStatus) != accountStatusActive:
-		return authPolicyError{status: http.StatusForbidden, code: "membership-disabled"}
+		return authPolicyError{status: http.StatusForbidden, code: statusAuthCode("membership", normalizeStatusDefault(c.membershipStatus))}
 	default:
 		return nil
+	}
+}
+
+func statusAuthCode(entity, status string) string {
+	switch normalizeStatusDefault(status) {
+	case accountStatusSuspended:
+		return entity + "-suspended"
+	case accountStatusRemoved:
+		return entity + "-removed"
+	case accountStatusArchived:
+		return entity + "-archived"
+	case keyStatusExpired:
+		return entity + "-expired"
+	case keyStatusRotated:
+		return entity + "-rotated"
+	default:
+		return entity + "-disabled"
 	}
 }
 

@@ -151,7 +151,7 @@ Generate a caller token and append the generated caller block to `config.yaml`:
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Save the printed `token` value for the client. Add or verify the referenced `users`, `projects`, and `project_memberships` entries before restart; every key must reference an active owner user, project, and membership. The router config stores only `token_sha256` and `token_id`. Each account id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization; token hashes are checked case-insensitively.
+Save the printed `token` value for the client. Add or verify the referenced `users`, `projects`, and `project_memberships` entries before restart; every key must reference an active owner user, project, and membership. The router config stores only `token_sha256` and `token_id`. Each account id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization; token hashes are checked case-insensitively. User, project, and membership statuses support `active`, `disabled`, `suspended`, `removed`, and `archived`; caller key statuses also support `expired` and `rotated`.
 
 Use `--allow` to restrict each generated key to specific internal model groups. Model group names are deployment-defined; any names shown in examples are reference deployment names only. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
 

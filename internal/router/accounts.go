@@ -6,9 +6,13 @@ import (
 )
 
 const (
-	accountStatusActive   = "active"
-	accountStatusDisabled = "disabled"
-	accountStatusArchived = "archived"
+	accountStatusActive    = "active"
+	accountStatusDisabled  = "disabled"
+	accountStatusSuspended = "suspended"
+	accountStatusRemoved   = "removed"
+	accountStatusArchived  = "archived"
+	keyStatusExpired       = "expired"
+	keyStatusRotated       = "rotated"
 )
 
 type accountDirectory struct {
@@ -224,7 +228,19 @@ func normalizeStatusDefault(v string) string {
 
 func validAccountStatus(v string) bool {
 	switch v {
-	case accountStatusActive, accountStatusDisabled, accountStatusArchived:
+	case accountStatusActive, accountStatusDisabled, accountStatusSuspended, accountStatusRemoved, accountStatusArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+func validCallerKeyStatus(v string) bool {
+	if validAccountStatus(v) {
+		return true
+	}
+	switch v {
+	case keyStatusExpired, keyStatusRotated:
 		return true
 	default:
 		return false

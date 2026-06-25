@@ -991,7 +991,7 @@ func (a *agg) add(row usageRow) {
 
 func writeTokenTable(b *strings.Builder, title string, data map[string]*agg, meta map[string]usageRow) {
 	fmt.Fprintf(b, "## %s\n\n", title)
-	fmt.Fprintln(b, "| Token ID | User | Project | Env | Caller ID | Calls | Errors | Tokens | Input | Output | Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Output tok/s | Avg Latency ms | Max Latency ms |")
+	fmt.Fprintln(b, "| Token ID | Owner User | Project | Env | Caller ID | Calls | Errors | Tokens | Input | Output | Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Output tok/s | Avg Latency ms | Max Latency ms |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeys(data) {
 		row := meta[key]
@@ -1058,7 +1058,7 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*agg) {
 	fmt.Fprintln(b, "## Downstream User Performance")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| User | Project | Env | Client | Calls | Errors | Streams | Tokens | Output | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Downstream ms | Max Downstream ms | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Fallbacks |")
+	fmt.Fprintln(b, "| Owner User | Project | Env | Client | Calls | Errors | Streams | Tokens | Output | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Downstream ms | Max Downstream ms | Avg Downstream Output tok/s | Avg Downstream Total tok/s | Fallbacks |")
 	fmt.Fprintln(b, "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.LatencyMS, a.Calls) }) {
 		parts := splitKey4(key)

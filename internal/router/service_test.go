@@ -96,30 +96,42 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	}
 }
 
-func TestAuthRejectsDisabledCallerKeyAfterTokenMatch(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("upstream must not be called for disabled key")
-	}))
-	defer upstream.Close()
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
-	cfg.Users = []UserConfig{{ID: "alice"}}
-	cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
-	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Role: "developer"}}
-	cfg.Callers[0].OwnerUser = "alice"
-	cfg.Callers[0].Status = "disabled"
-	svc, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
+func TestAuthRejectsInactiveCallerKeyAfterTokenMatch(t *testing.T) {
+	for _, tt := range []struct {
+		status string
+		code   string
+	}{
+		{status: "disabled", code: "key-disabled"},
+		{status: "suspended", code: "key-suspended"},
+		{status: "expired", code: "key-expired"},
+		{status: "rotated", code: "key-rotated"},
+	} {
+		t.Run(tt.status, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatal("upstream must not be called for inactive key")
+			}))
+			defer upstream.Close()
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Users = []UserConfig{{ID: "alice"}}
+			cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
+			cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Role: "developer"}}
+			cfg.Callers[0].OwnerUser = "alice"
+			cfg.Callers[0].Status = tt.status
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
 
-	svc.Handler().ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "key-disabled") {
-		t.Fatalf("status=%d body=%s, want key-disabled", rr.Code, rr.Body.String())
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), tt.code) {
+				t.Fatalf("status=%d body=%s, want %s", rr.Code, rr.Body.String(), tt.code)
+			}
+		})
 	}
 }
 

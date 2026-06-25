@@ -214,15 +214,31 @@ func TestExplicitAccountsValidateCallerOwnership(t *testing.T) {
 }
 
 func TestExplicitAccountsRejectInactiveMembership(t *testing.T) {
-	cfg := minimalConfig(t)
-	cfg.Users = []UserConfig{{ID: "alice"}}
-	cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
-	cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Status: "disabled"}}
-	cfg.Callers[0].OwnerUser = "alice"
-	cfg.Callers[0].Project = "metrum-insights"
-	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "non-active membership") {
-		t.Fatalf("Validate() error=%v, want inactive membership rejection", err)
+	for _, status := range []string{"disabled", "suspended", "removed", "archived"} {
+		t.Run(status, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Users = []UserConfig{{ID: "alice"}}
+			cfg.Projects = []ProjectConfig{{ID: "metrum-insights"}}
+			cfg.ProjectMemberships = []ProjectMembershipConfig{{UserID: "alice", Project: "metrum-insights", Status: status}}
+			cfg.Callers[0].OwnerUser = "alice"
+			cfg.Callers[0].Project = "metrum-insights"
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), "non-active membership") {
+				t.Fatalf("Validate() error=%v, want inactive membership rejection", err)
+			}
+		})
+	}
+}
+
+func TestCallerKeyLifecycleStatusesValidate(t *testing.T) {
+	for _, status := range []string{"active", "disabled", "suspended", "removed", "archived", "expired", "rotated"} {
+		t.Run(status, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Callers[0].Status = status
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() status %q: %v", status, err)
+			}
+		})
 	}
 }
 

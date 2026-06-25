@@ -15,7 +15,7 @@ Admin browser reports under `/admin/reports/*` are disabled by default. When ena
 
 ## Tenant And Caller Isolation
 
-Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and disabled keys are rejected after token match with a safe `403 key-disabled` error.
+Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and inactive keys are rejected after token match with safe status-specific `403` errors such as `key-disabled`, `key-suspended`, `key-expired`, or `key-rotated`.
 
 `/metrics` is global operational telemetry. It must only be accessible to caller subjects authorized for `metrics` `read`; ordinary caller tokens must use `/v1/usage` or generated usage reports.
 

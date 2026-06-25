@@ -865,7 +865,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("caller %s has invalid environment", caller.ID)
 		}
 		status := normalizeStatusDefault(caller.Status)
-		if !validAccountStatus(status) {
+		if !validCallerKeyStatus(status) {
 			return fmt.Errorf("caller %s has invalid status %q", caller.ID, caller.Status)
 		}
 		if caller.TokenSHA256 == "" || len(caller.TokenSHA256) != sha256.Size*2 {

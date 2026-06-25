@@ -38,6 +38,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"Tokens: `178` total, `132` input, `46` output",
 		"Cost: `$0.000531` total, `$0.000207` input, `$0.000324` output",
 		"rtr_metrum_clay_metrum-insights_prod_k20260614",
+		"| Token ID | Owner User | Project | Env | Caller ID |",
 		"| openai | gpt-5.4 | 1 | 0 | 140 | 100 | 40 | $0.000520 |",
 		"| minimax | MiniMax-M3 | 1 | 1 | 20 | 20 | 0 | $0.000006 |",
 		"| 2026-06-14 02:00 | 2 | 1 | 38 | 32 | 6 | $0.000011 |",

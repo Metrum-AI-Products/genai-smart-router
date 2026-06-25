@@ -1496,6 +1496,8 @@ models:
 users:
 # Account identities are explicit and stable. Caller keys reference user ids
 # with owner_user; legacy callers[].user is still accepted as a deprecated alias.
+# User, project, and membership statuses support active, disabled, suspended,
+# removed, and archived. Caller key statuses also support expired and rotated.
 - id: standard
   name: Standard API Caller
   type: service_account

@@ -133,7 +133,7 @@ go run ./cmd/router-token-gen generate \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Save the printed `token` value as the caller's bearer token, add the owner to `users`, add the project to `projects`, add an active `project_memberships` row, and copy the generated `callers:` key entry into `config.yaml`. Tokens use a traceable public prefix plus a random secret suffix, while the router stores only `token_sha256` and logs/exports only `token_id`. Identity and authorization come from the explicit account sections and the key's `owner_user`/`project` references, not from parsing the token prefix. Each user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization; token hashes are checked case-insensitively.
+Save the printed `token` value as the caller's bearer token, add the owner to `users`, add the project to `projects`, add an active `project_memberships` row, and copy the generated `callers:` key entry into `config.yaml`. Tokens use a traceable public prefix plus a random secret suffix, while the router stores only `token_sha256` and logs/exports only `token_id`. Identity and authorization come from the explicit account sections and the key's `owner_user`/`project` references, not from parsing the token prefix. Each user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization; token hashes are checked case-insensitively. User, project, and membership statuses support `active`, `disabled`, `suspended`, `removed`, and `archived`; caller key statuses also support `expired` and `rotated`.
 
 Provider keys are read from `env.json` in this project before `${VAR}` references in `config.yaml` are expanded. Real `env.json` is gitignored; use `env.example.json` as the placeholder-only template. Do not paste production or personal provider keys into tracked examples; store real values in ignored `env.json`, the shell environment, or your deployment secret manager. Run `make secret-check` before publishing changes that touch tracked env examples.
 
@@ -807,7 +807,7 @@ Generate a report for one benchmark or case study by caller project/environment:
   --out harbor-agentic-usage.md
 ```
 
-Reports include totals, external provider/model usage, internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, downstream user performance, upstream provider/model/dialect performance, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
+Reports include totals, external provider/model usage, internal router API key usage by `token_id`/owner user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, downstream user performance, upstream provider/model/dialect performance, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
 
 Durability:
 
