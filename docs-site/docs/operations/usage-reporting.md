@@ -71,7 +71,7 @@ Common endpoints:
 - `/admin/reports/` renders the browser shell.
 - `/admin/reports/api/summary?since=24h` returns totals, grouped tables, bounded request rows, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
-- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and anomaly signals.
+- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
 - `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
@@ -81,6 +81,8 @@ Common endpoints:
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
 
 Savings reports use stored request-time actual cost fields for actual spend. Only the hypothetical baseline cost is calculated at report time from stored input/output token counts and selected baseline prices. Built-in baseline prices are source-dated in `server.admin_reports.baselines`; revalidate provider pricing before using savings figures in contractual or customer-facing claims. Custom browser-session baselines can be supplied with `baseline=custom`, `baseline_input_price_per_million_usd`, and `baseline_output_price_per_million_usd`.
+
+Anomaly reports are deterministic operational triage views rather than machine-learning anomaly detection. The built-in rules group errors, fallbacks, multi-attempt requests, slow requests, expensive requests, quota warning/reject states, and abnormal key states such as disabled, revoked, expired, or suspended; normal active key state is not anomalous.
 
 The browser shell adds shared usability controls across tabs: URL-backed selected tab and search state, visible-table search, sortable headers, bounded page-size selection, refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible safe scalar columns. Server endpoints remain authenticated and bounded; the browser controls do not expose or persist bearer tokens.
 

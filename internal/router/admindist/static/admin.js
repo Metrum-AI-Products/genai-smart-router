@@ -348,9 +348,12 @@ function renderGeneric(tab, report) {
   } else if (cfg.security) {
     currentTableRows = report.rows || [];
     currentTableColumns = securityColumns();
+  } else if (tab === "anomalies") {
+    currentTableRows = report.rows || [];
+    currentTableColumns = anomalyColumns();
   } else {
     currentTableRows = report.rows || [];
-    currentTableColumns = scalarColumns(report);
+    currentTableColumns = scalarColumns({ includeSavings: cfg.savings });
   }
   renderSharedTable();
 }
@@ -481,8 +484,8 @@ function savingsRows(rows) {
     `</tbody>`;
 }
 
-function scalarColumns() {
-  return [
+function scalarColumns(options = {}) {
+  const columns = [
     { key: "key", label: "Key", copy: true },
     { key: "secondaryKey", label: "Secondary", copy: true },
     { key: "requests", label: "Requests" },
@@ -491,10 +494,16 @@ function scalarColumns() {
     { key: "tokens", label: "Tokens" },
     { key: "inputTokens", label: "Input" },
     { key: "outputTokens", label: "Output" },
-    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
+    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) }
+  ];
+  if (options.includeSavings) {
+    columns.push(
     { key: "baselineCostUsd", label: "Baseline", format: v => v == null ? "" : usd.format(v || 0) },
     { key: "savingsUsd", label: "Savings", format: v => v == null ? "" : usd.format(v || 0) },
-    { key: "savingsPct", label: "Savings %", format: v => v == null ? "" : formatUnit(v, "percent", true) },
+      { key: "savingsPct", label: "Savings %", format: v => v == null ? "" : formatUnit(v, "percent", true) }
+    );
+  }
+  columns.push(
     { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) },
     { key: "avgUpstreamTokensPerSec", label: "Upstream tok/s", format: v => formatUnit(v, "tok/s", true) },
     { key: "avgDownstreamTokensPerSec", label: "Downstream tok/s", format: v => formatUnit(v, "tok/s", true) },
@@ -503,6 +512,24 @@ function scalarColumns() {
     { key: "fallbacks", label: "Fallbacks" },
     { key: "inputImageCount", label: "Images" },
     { key: "piiFilteredRequests", label: "PII filtered" }
+  );
+  return columns;
+}
+
+function anomalyColumns() {
+  return [
+    { key: "key", label: "Signal", copy: true },
+    { key: "secondaryKey", label: "Provider/model", copy: true },
+    { key: "requests", label: "Requests" },
+    { key: "errors", label: "Errors" },
+    { key: "errorRatePct", label: "Error %", format: v => formatUnit(v, "percent", true) },
+    { key: "attempts", label: "Attempts" },
+    { key: "fallbacks", label: "Fallbacks" },
+    { key: "fallbackRatePct", label: "Fallback %", format: v => formatUnit(v, "percent", true) },
+    { key: "avgLatencyMs", label: "Avg latency", format: v => formatUnit(v, "ms", true) },
+    { key: "maxLatencyMs", label: "Max latency", format: v => formatUnit(v, "ms", true) },
+    { key: "costUsd", label: "Cost", format: v => usd.format(v || 0) },
+    { key: "tokens", label: "Tokens" }
   ];
 }
 

@@ -112,7 +112,7 @@ The current browser surface includes:
 - Client breakdown.
 - Project chargeback.
 - Capability usage for image/VLM, streaming, PII filter, cacheable, and dialect signals available in usage rows.
-- Anomalies from deterministic usage signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, and non-ok quota/key states.
+- Anomalies from deterministic rule-based operational signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. This tab is not machine-learning anomaly detection; normal active key state is not anomalous, and baseline/savings fields are reserved for savings reports.
 - Security access events for authorized and unauthorized access paths when enabled.
 - Recent requests and request-ID drilldown.
 

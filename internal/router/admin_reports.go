@@ -112,48 +112,48 @@ type adminSecurityEventRow struct {
 }
 
 type adminScalarReportRow struct {
-	Key                       string  `json:"key"`
-	SecondaryKey              string  `json:"secondaryKey,omitempty"`
-	Requests                  int64   `json:"requests"`
-	Errors                    int64   `json:"errors"`
-	ErrorRatePct              float64 `json:"errorRatePct"`
-	Streams                   int64   `json:"streams"`
-	Attempts                  int64   `json:"attempts"`
-	Fallbacks                 int64   `json:"fallbacks"`
-	FallbackRatePct           float64 `json:"fallbackRatePct"`
-	CacheHits                 int64   `json:"cacheHits"`
-	CacheMisses               int64   `json:"cacheMisses"`
-	CacheBypass               int64   `json:"cacheBypass"`
-	CacheHitRatePct           float64 `json:"cacheHitRatePct"`
-	InputTokens               int64   `json:"inputTokens"`
-	OutputTokens              int64   `json:"outputTokens"`
-	Tokens                    int64   `json:"tokens"`
-	InputImageCount           int64   `json:"inputImageCount"`
-	InputImageTokens          int64   `json:"inputImageTokens"`
-	PIIFilteredRequests       int64   `json:"piiFilteredRequests"`
-	PIIFilterReplacements     int64   `json:"piiFilterReplacements"`
-	CostUSD                   float64 `json:"costUsd"`
-	InputCostUSD              float64 `json:"inputCostUsd"`
-	OutputCostUSD             float64 `json:"outputCostUsd"`
-	UpstreamReportedCostUSD   float64 `json:"upstreamReportedCostUsd"`
-	BaselineCostUSD           float64 `json:"baselineCostUsd,omitempty"`
-	SavingsUSD                float64 `json:"savingsUsd,omitempty"`
-	SavingsPct                float64 `json:"savingsPct,omitempty"`
-	AvgCostUSD                float64 `json:"avgCostUsd"`
-	AvgLatencyMS              int64   `json:"avgLatencyMs"`
-	MaxLatencyMS              int64   `json:"maxLatencyMs"`
-	AvgTTFBMS                 int64   `json:"avgTtfbMs"`
-	MaxTTFBMS                 int64   `json:"maxTtfbMs"`
-	AvgUpstreamMS             int64   `json:"avgUpstreamMs"`
-	MaxUpstreamMS             int64   `json:"maxUpstreamMs"`
-	AvgDownstreamMS           int64   `json:"avgDownstreamMs"`
-	MaxDownstreamMS           int64   `json:"maxDownstreamMs"`
-	AvgUpstreamTokensPerSec   float64 `json:"avgUpstreamTokensPerSec"`
-	AvgDownstreamTokensPerSec float64 `json:"avgDownstreamTokensPerSec"`
-	LatestCacheItems          int64   `json:"latestCacheItems"`
-	LatestCacheBytes          int64   `json:"latestCacheBytes"`
-	LatestCacheMaxBytes       int64   `json:"latestCacheMaxBytes"`
-	LatestCacheOccupancyPct   float64 `json:"latestCacheOccupancyPct"`
+	Key                       string   `json:"key"`
+	SecondaryKey              string   `json:"secondaryKey,omitempty"`
+	Requests                  int64    `json:"requests"`
+	Errors                    int64    `json:"errors"`
+	ErrorRatePct              float64  `json:"errorRatePct"`
+	Streams                   int64    `json:"streams"`
+	Attempts                  int64    `json:"attempts"`
+	Fallbacks                 int64    `json:"fallbacks"`
+	FallbackRatePct           float64  `json:"fallbackRatePct"`
+	CacheHits                 int64    `json:"cacheHits"`
+	CacheMisses               int64    `json:"cacheMisses"`
+	CacheBypass               int64    `json:"cacheBypass"`
+	CacheHitRatePct           float64  `json:"cacheHitRatePct"`
+	InputTokens               int64    `json:"inputTokens"`
+	OutputTokens              int64    `json:"outputTokens"`
+	Tokens                    int64    `json:"tokens"`
+	InputImageCount           int64    `json:"inputImageCount"`
+	InputImageTokens          int64    `json:"inputImageTokens"`
+	PIIFilteredRequests       int64    `json:"piiFilteredRequests"`
+	PIIFilterReplacements     int64    `json:"piiFilterReplacements"`
+	CostUSD                   float64  `json:"costUsd"`
+	InputCostUSD              float64  `json:"inputCostUsd"`
+	OutputCostUSD             float64  `json:"outputCostUsd"`
+	UpstreamReportedCostUSD   float64  `json:"upstreamReportedCostUsd"`
+	BaselineCostUSD           *float64 `json:"baselineCostUsd,omitempty"`
+	SavingsUSD                *float64 `json:"savingsUsd,omitempty"`
+	SavingsPct                *float64 `json:"savingsPct,omitempty"`
+	AvgCostUSD                float64  `json:"avgCostUsd"`
+	AvgLatencyMS              int64    `json:"avgLatencyMs"`
+	MaxLatencyMS              int64    `json:"maxLatencyMs"`
+	AvgTTFBMS                 int64    `json:"avgTtfbMs"`
+	MaxTTFBMS                 int64    `json:"maxTtfbMs"`
+	AvgUpstreamMS             int64    `json:"avgUpstreamMs"`
+	MaxUpstreamMS             int64    `json:"maxUpstreamMs"`
+	AvgDownstreamMS           int64    `json:"avgDownstreamMs"`
+	MaxDownstreamMS           int64    `json:"maxDownstreamMs"`
+	AvgUpstreamTokensPerSec   float64  `json:"avgUpstreamTokensPerSec"`
+	AvgDownstreamTokensPerSec float64  `json:"avgDownstreamTokensPerSec"`
+	LatestCacheItems          int64    `json:"latestCacheItems"`
+	LatestCacheBytes          int64    `json:"latestCacheBytes"`
+	LatestCacheMaxBytes       int64    `json:"latestCacheMaxBytes"`
+	LatestCacheOccupancyPct   float64  `json:"latestCacheOccupancyPct"`
 }
 
 type adminSavingsBaselineDTO struct {
@@ -1091,6 +1091,7 @@ type adminScalarAgg struct {
 	PIIFilterReplacements   int64
 	UpstreamReportedCostUSD float64
 	BaselineCostUSD         float64
+	HasBaseline             bool
 }
 
 func (a *adminScalarAgg) add(row usageRow, baseline adminSavingsBaselineDTO) {
@@ -1103,6 +1104,7 @@ func (a *adminScalarAgg) add(row usageRow, baseline adminSavingsBaselineDTO) {
 	a.PIIFilterReplacements += int64(row.PIIFilterReplacements)
 	a.UpstreamReportedCostUSD += row.UpstreamReportedTotalCostUSD
 	if baseline.BaselineID != "" {
+		a.HasBaseline = true
 		a.BaselineCostUSD += adminBaselineCost(row, baseline)
 	}
 }
@@ -1110,7 +1112,7 @@ func (a *adminScalarAgg) add(row usageRow, baseline adminSavingsBaselineDTO) {
 func (a *adminScalarAgg) row() adminScalarReportRow {
 	cacheable := a.Agg.CacheHits + a.Agg.CacheMisses
 	savings := a.BaselineCostUSD - a.Agg.TotalCostUSD
-	return adminScalarReportRow{
+	row := adminScalarReportRow{
 		Key:                       a.Key,
 		SecondaryKey:              a.SecondaryKey,
 		Requests:                  a.Agg.Calls,
@@ -1135,9 +1137,6 @@ func (a *adminScalarAgg) row() adminScalarReportRow {
 		InputCostUSD:              a.Agg.InputCostUSD,
 		OutputCostUSD:             a.Agg.OutputCostUSD,
 		UpstreamReportedCostUSD:   a.UpstreamReportedCostUSD,
-		BaselineCostUSD:           a.BaselineCostUSD,
-		SavingsUSD:                savings,
-		SavingsPct:                ratioPctFloat(savings, a.BaselineCostUSD),
 		AvgCostUSD:                avgFloat(a.Agg.TotalCostUSD, a.Agg.Calls),
 		AvgLatencyMS:              avg(a.Agg.LatencyMS, a.Agg.Calls),
 		MaxLatencyMS:              a.Agg.MaxLatencyMS,
@@ -1154,6 +1153,13 @@ func (a *adminScalarAgg) row() adminScalarReportRow {
 		LatestCacheMaxBytes:       a.Agg.CacheMaxBytesLatest,
 		LatestCacheOccupancyPct:   a.Agg.CacheOccupancyLatest,
 	}
+	if a.HasBaseline {
+		savingsPct := ratioPctFloat(savings, a.BaselineCostUSD)
+		row.BaselineCostUSD = &a.BaselineCostUSD
+		row.SavingsUSD = &savings
+		row.SavingsPct = &savingsPct
+	}
+	return row
 }
 
 func adminScalarRowsFromAgg(data map[string]*adminScalarAgg, sortBy string, limit int) []adminScalarReportRow {
@@ -1164,8 +1170,10 @@ func adminScalarRowsFromAgg(data map[string]*adminScalarAgg, sortBy string, limi
 	sort.Slice(out, func(i, j int) bool {
 		switch sortBy {
 		case "savings":
-			if out[i].SavingsUSD != out[j].SavingsUSD {
-				return out[i].SavingsUSD > out[j].SavingsUSD
+			iSavings := scalarSavingsValue(out[i])
+			jSavings := scalarSavingsValue(out[j])
+			if iSavings != jSavings {
+				return iSavings > jSavings
 			}
 		case "cost":
 			if out[i].CostUSD != out[j].CostUSD {
@@ -1318,10 +1326,17 @@ func adminAnomalyKeys(row usageRow, spec adminScalarEndpointSpec) []adminScalarK
 	if row.QuotaState != "" && row.QuotaState != "ok" {
 		keys = append(keys, adminScalarKey{Key: "quota-" + row.QuotaState, Secondary: secondary})
 	}
-	if row.KeyState != "" && row.KeyState != "ok" {
+	if row.KeyState != "" && row.KeyState != "ok" && row.KeyState != "active" {
 		keys = append(keys, adminScalarKey{Key: "key-" + row.KeyState, Secondary: secondary})
 	}
 	return keys
+}
+
+func scalarSavingsValue(row adminScalarReportRow) float64 {
+	if row.SavingsUSD == nil {
+		return 0
+	}
+	return *row.SavingsUSD
 }
 
 func adminScalarCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminScalarReportRow) []adminReportChart {

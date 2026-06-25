@@ -762,6 +762,16 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			if strings.Contains(path, "savings-by") && row["savingsUsd"] == nil {
 				t.Fatalf("%s missing savings scalar fields: %#v", path, row)
 			}
+			if strings.Contains(path, "anomalies") {
+				for _, key := range []string{"baseline", "baselineCostUsd", "savingsUsd", "savingsPct"} {
+					if _, ok := row[key]; ok {
+						t.Fatalf("%s exposed non-baseline savings field %q: %#v", path, key, row)
+					}
+				}
+				if strings.HasPrefix(fmt.Sprint(row["key"]), "key-active") {
+					t.Fatalf("%s treated active key state as anomalous: %#v", path, row)
+				}
+			}
 			if strings.Contains(path, "latency-throughput") && row["avgUpstreamTokensPerSec"].(float64) <= 0 {
 				t.Fatalf("%s missing throughput scalar fields: %#v", path, row)
 			}
@@ -1095,6 +1105,27 @@ func TestAdminCapabilityUsageReportsEverySignal(t *testing.T) {
 		if !got[want] {
 			t.Fatalf("missing capability %q in %#v", want, rows)
 		}
+	}
+}
+
+func TestAdminAnomalyKeysTreatActiveKeyStateAsNormal(t *testing.T) {
+	spec := adminScalarEndpointSpec{Secondary: "provider_model"}
+	keys := adminAnomalyKeys(usageRow{
+		TargetProvider: "mock",
+		TargetModel:    "mock-model",
+		KeyState:       "active",
+	}, spec)
+	if len(keys) != 0 {
+		t.Fatalf("active key state produced anomalies: %#v", keys)
+	}
+
+	keys = adminAnomalyKeys(usageRow{
+		TargetProvider: "mock",
+		TargetModel:    "mock-model",
+		KeyState:       "disabled",
+	}, spec)
+	if len(keys) != 1 || keys[0].Key != "key-disabled" {
+		t.Fatalf("disabled key state did not produce key-disabled anomaly: %#v", keys)
 	}
 }
 
