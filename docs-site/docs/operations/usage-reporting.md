@@ -37,11 +37,23 @@ router-usage-report \
   --rollup
 ```
 
-The command writes relational scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` for the selected UTC `[from,to)` window. Daily rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, and validation-status dimensions alongside input/output/total token, input image count, input image token, cost, latency, throughput, cache, fallback, and error measures. Draft reruns replace the same draft run for that exact window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This initial rollup helper does not purge raw request rows and does not implement legal hold.
+The command writes relational scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` for the selected UTC `[from,to)` window. Daily rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, and validation-status dimensions alongside input/output/total token, input image count, input image token, cost, latency, throughput, cache, fallback, and error measures. Draft reruns replace the same draft run for that exact window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This initial rollup helper does not purge raw request rows.
+
+## Retention Dry Run
+
+`server.retention` is disabled by default and supports only dry-run/status operation in this foundation. Run it from reviewed router config:
+
+```bash
+router-usage-report \
+  --retention-status \
+  --config /app/config/config.yaml
+```
+
+The command initializes scalar `retention_policy_versions` and `retention_policy_rules`, writes a `retention_jobs` row, and records per-table counts in `retention_job_table_results`. It counts low-risk candidates in diagnostic child tables, `security_access_events`, and content-capture rows, then subtracts active legal holds by data class and timestamp range. `usage_detail` is represented for future raw usage deletion, but candidate rows are blocked unless a finalized daily rollup covers the candidate window. Archive/export, actual delete execution, scheduler support, and full legal-hold admin workflows are future slices.
 
 ## Browser Admin Reports
 
-When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, aggregate API, export, and drilldown route. Request detail uses the separate `admin:reports` `drilldown` action.
+When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
 
 The dashboard includes a dark/light mode toggle. The preference is stored in browser `localStorage`, and first visits follow the browser's system color-scheme preference.
 
@@ -56,7 +68,7 @@ server:
       policy:
         - g, basic:admin, reports_admin, example/prod
         - g, user:alice@example.com, reports_admin, example/prod
-        - p, reports_admin, example/prod, admin:reports, read|export|drilldown
+        - p, reports_admin, example/prod, admin:reports, read|export
         - p, reports_admin, example/prod, admin:security_reports, read|export
   admin_reports:
     enabled: true
@@ -107,8 +119,8 @@ Reports include:
 
 - Calls, errors, status codes, latency, and upstream attempts.
 - Input tokens, output tokens, total tokens, and throughput.
-- Downstream user performance grouped by user, project, environment, and client, including average/max latency, TTFB, downstream duration, downstream write output token throughput, and downstream write total token throughput.
-- Upstream endpoint performance grouped by provider, model, and API dialect, including average/max upstream duration, latency, TTFB, attempts, fallbacks, input/output/total cost, upstream output token throughput, and upstream total token throughput.
+- Downstream user performance grouped by user, project, environment, and client, including average/max latency, TTFB, downstream duration, and downstream token throughput.
+- Upstream endpoint performance grouped by provider, model, and API dialect, including average/max upstream duration, latency, TTFB, attempts, fallbacks, cost, and upstream token throughput.
 - Request-time input/output token prices and calculated input/output/total USD cost.
 - Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
@@ -156,9 +168,9 @@ Decision telemetry is disabled unless the deployment sets `server.decision_telem
 
 ## Performance Triage
 
-Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Downstream throughput is labeled as downstream write output/total tok/s because it measures what the router writes back to the caller. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low upstream output/total token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
+Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
 
-Cost fields are captured when each request finishes. Admin rows expose input cost, output cost, and total cost where the report groups usage rows, especially provider/model mix. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
+Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
 
 For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image chargeback. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.
 

@@ -23,6 +23,7 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Browser admin reports | Implemented first slice | Disabled by default; browser-admin identity plus Casbin policy gates embedded report UI, JSON APIs, request drilldown, and Markdown export under `/admin/reports/`. |
 | Diagnostics tables | Implemented | Attempts, trace events, and sanitized request errors. |
 | Governed content capture foundation | Implemented first slice | Disabled by default; opt-in redacted request/response/upstream-error rows, content-admin delete/purge, retention timestamps, and audit events. KMS/encryption and export/read APIs remain follow-ups. |
+| Commercial retention foundation | Implemented dry-run foundation | Disabled by default; config-derived policy/rule rows, legal-hold schema, dry-run status jobs, and per-table candidate/hold counts. Raw usage purge, archive/export, scheduler, and full admin UI/API workflows remain follow-ups. |
 | Response cache | Implemented | In-process LRU/TTL for eligible non-tool requests. |
 | Prometheus metrics | Implemented | Restricted to caller subjects authorized for `metrics` `read`; existing `metrics_admin: true` callers remain compatible. |
 | Embedded hosted docs | Implemented | Docusaurus output embedded in release binaries. |

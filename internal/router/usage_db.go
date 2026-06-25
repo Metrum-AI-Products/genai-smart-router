@@ -2,6 +2,7 @@ package router
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,6 +56,38 @@ type UsageRollupResult struct {
 	WindowEnd          time.Time
 	SourceRequestCount int64
 	DailyRows          int64
+}
+
+type RetentionStatusOptions struct {
+	Driver      string
+	DBPath      string
+	DSN         string
+	Config      RetentionConfig
+	Now         time.Time
+	RequestedBy string
+}
+
+type RetentionStatusResult struct {
+	JobID           uint
+	PolicyVersionID uint
+	Status          string
+	StartedAt       time.Time
+	CompletedAt     time.Time
+	TableResults    []RetentionTableStatus
+}
+
+type RetentionTableStatus struct {
+	DataClass     string
+	TableName     string
+	Cutoff        time.Time
+	RetentionDays int
+	BatchSize     int
+	CandidateRows int64
+	HeldRows      int64
+	EligibleRows  int64
+	BlockedRows   int64
+	Status        string
+	Message       string
 }
 
 type SecurityReportOptions struct {
@@ -399,6 +432,121 @@ func (usageRollupDailyRecord) TableName() string {
 	return "usage_rollup_daily"
 }
 
+type retentionPolicyVersionRecord struct {
+	ID               uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	Version          string `gorm:"column:version;type:text;not null;uniqueIndex:idx_retention_policy_version"`
+	ConfigHash       string `gorm:"column:config_hash;type:text;not null;index:idx_retention_policy_hash"`
+	Source           string `gorm:"column:source;type:text;not null"`
+	Active           bool   `gorm:"column:active;not null;index:idx_retention_policy_active"`
+	DryRun           bool   `gorm:"column:dry_run;not null"`
+	DefaultBatchSize int    `gorm:"column:default_batch_size;not null"`
+	CreatedAt        string `gorm:"column:created_at;type:text;not null"`
+	ActivatedAt      string `gorm:"column:activated_at;type:text;not null"`
+	DeactivatedAt    string `gorm:"column:deactivated_at;type:text;not null;default:''"`
+	Notes            string `gorm:"column:notes;type:text;not null;default:''"`
+}
+
+func (retentionPolicyVersionRecord) TableName() string {
+	return "retention_policy_versions"
+}
+
+type retentionPolicyRuleRecord struct {
+	ID                     uint                         `gorm:"column:id;primaryKey;autoIncrement"`
+	PolicyVersionID        uint                         `gorm:"column:policy_version_id;not null;index:idx_retention_rule_policy;uniqueIndex:idx_retention_rule_unique,priority:1"`
+	RuleOrder              int                          `gorm:"column:rule_order;not null"`
+	DataClass              string                       `gorm:"column:data_class;type:text;not null;index:idx_retention_rule_class;uniqueIndex:idx_retention_rule_unique,priority:2"`
+	Enabled                bool                         `gorm:"column:enabled;not null;index:idx_retention_rule_enabled"`
+	RetentionDays          int                          `gorm:"column:retention_days;not null"`
+	BatchSize              int                          `gorm:"column:batch_size;not null"`
+	RequireFinalizedRollup bool                         `gorm:"column:require_finalized_rollup;not null"`
+	CreatedAt              string                       `gorm:"column:created_at;type:text;not null"`
+	PolicyVersion          retentionPolicyVersionRecord `gorm:"foreignKey:PolicyVersionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+func (retentionPolicyRuleRecord) TableName() string {
+	return "retention_policy_rules"
+}
+
+type retentionJobRecord struct {
+	ID              uint                         `gorm:"column:id;primaryKey;autoIncrement"`
+	PolicyVersionID uint                         `gorm:"column:policy_version_id;not null;index:idx_retention_job_policy"`
+	Mode            string                       `gorm:"column:mode;type:text;not null;index:idx_retention_job_mode"`
+	Status          string                       `gorm:"column:status;type:text;not null;index:idx_retention_job_status"`
+	DryRun          bool                         `gorm:"column:dry_run;not null"`
+	StartedAt       string                       `gorm:"column:started_at;type:text;not null;index:idx_retention_job_started"`
+	CompletedAt     string                       `gorm:"column:completed_at;type:text;not null;default:''"`
+	RequestedBy     string                       `gorm:"column:requested_by;type:text;not null;default:''"`
+	ErrorMessage    string                       `gorm:"column:error_message;type:text;not null;default:''"`
+	PolicyVersion   retentionPolicyVersionRecord `gorm:"foreignKey:PolicyVersionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+}
+
+func (retentionJobRecord) TableName() string {
+	return "retention_jobs"
+}
+
+type retentionJobTableResultRecord struct {
+	ID            uint               `gorm:"column:id;primaryKey;autoIncrement"`
+	JobID         uint               `gorm:"column:job_id;not null;index:idx_retention_result_job;uniqueIndex:idx_retention_result_unique,priority:1"`
+	DataClass     string             `gorm:"column:data_class;type:text;not null;index:idx_retention_result_class;uniqueIndex:idx_retention_result_unique,priority:2"`
+	StorageTable  string             `gorm:"column:table_name;type:text;not null;uniqueIndex:idx_retention_result_unique,priority:3"`
+	CutoffTS      string             `gorm:"column:cutoff_ts;type:text;not null;index:idx_retention_result_cutoff"`
+	RetentionDays int                `gorm:"column:retention_days;not null"`
+	BatchSize     int                `gorm:"column:batch_size;not null"`
+	CandidateRows int64              `gorm:"column:candidate_rows;not null;default:0"`
+	HeldRows      int64              `gorm:"column:held_rows;not null;default:0"`
+	EligibleRows  int64              `gorm:"column:eligible_rows;not null;default:0"`
+	BlockedRows   int64              `gorm:"column:blocked_rows;not null;default:0"`
+	Status        string             `gorm:"column:status;type:text;not null;index:idx_retention_result_status"`
+	Message       string             `gorm:"column:message;type:text;not null;default:''"`
+	StartedAt     string             `gorm:"column:started_at;type:text;not null"`
+	CompletedAt   string             `gorm:"column:completed_at;type:text;not null"`
+	Job           retentionJobRecord `gorm:"foreignKey:JobID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+func (retentionJobTableResultRecord) TableName() string {
+	return "retention_job_table_results"
+}
+
+type legalHoldRecord struct {
+	ID            uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	HoldID        string `gorm:"column:hold_id;type:text;not null;uniqueIndex:idx_legal_hold_id"`
+	DataClass     string `gorm:"column:data_class;type:text;not null;index:idx_legal_hold_class_range,priority:1"`
+	Active        bool   `gorm:"column:active;not null;index:idx_legal_hold_active"`
+	StartTS       string `gorm:"column:start_ts;type:text;not null;default:'';index:idx_legal_hold_class_range,priority:2"`
+	EndTS         string `gorm:"column:end_ts;type:text;not null;default:'';index:idx_legal_hold_class_range,priority:3"`
+	ReasonCode    string `gorm:"column:reason_code;type:text;not null;default:''"`
+	Subject       string `gorm:"column:subject;type:text;not null;default:''"`
+	CreatedBy     string `gorm:"column:created_by;type:text;not null;default:''"`
+	CreatedAt     string `gorm:"column:created_at;type:text;not null;index:idx_legal_hold_created"`
+	ReleasedBy    string `gorm:"column:released_by;type:text;not null;default:''"`
+	ReleasedAt    string `gorm:"column:released_at;type:text;not null;default:''"`
+	ReleaseReason string `gorm:"column:release_reason;type:text;not null;default:''"`
+	Notes         string `gorm:"column:notes;type:text;not null;default:''"`
+}
+
+func (legalHoldRecord) TableName() string {
+	return "legal_holds"
+}
+
+type legalHoldAuditEventRecord struct {
+	ID             uint   `gorm:"column:id;primaryKey;autoIncrement"`
+	HoldID         string `gorm:"column:hold_id;type:text;not null;index:idx_legal_hold_audit_hold"`
+	EventType      string `gorm:"column:event_type;type:text;not null;index:idx_legal_hold_audit_event"`
+	DataClass      string `gorm:"column:data_class;type:text;not null"`
+	StartTS        string `gorm:"column:start_ts;type:text;not null;default:''"`
+	EndTS          string `gorm:"column:end_ts;type:text;not null;default:''"`
+	PreviousActive bool   `gorm:"column:previous_active;not null"`
+	NewActive      bool   `gorm:"column:new_active;not null"`
+	Actor          string `gorm:"column:actor;type:text;not null;default:''"`
+	ReasonCode     string `gorm:"column:reason_code;type:text;not null;default:''"`
+	Message        string `gorm:"column:message;type:text;not null;default:''"`
+	TS             string `gorm:"column:ts;type:text;not null;index:idx_legal_hold_audit_ts"`
+}
+
+func (legalHoldAuditEventRecord) TableName() string {
+	return "legal_hold_audit_events"
+}
+
 type requestAttemptRecord struct {
 	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_attempt_request"`
 	AttemptIndex     int    `gorm:"column:attempt_index;primaryKey;not null"`
@@ -690,6 +838,12 @@ func (s *usageStore) migrate() error {
 		&securityAccessEventRecord{},
 		&usageRollupRunRecord{},
 		&usageRollupDailyRecord{},
+		&retentionPolicyVersionRecord{},
+		&retentionPolicyRuleRecord{},
+		&retentionJobRecord{},
+		&retentionJobTableResultRecord{},
+		&legalHoldRecord{},
+		&legalHoldAuditEventRecord{},
 	); err != nil {
 		return err
 	}
@@ -722,6 +876,12 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"security_access_events",
 		"usage_rollup_runs",
 		"usage_rollup_daily",
+		"retention_policy_versions",
+		"retention_policy_rules",
+		"retention_jobs",
+		"retention_job_table_results",
+		"legal_holds",
+		"legal_hold_audit_events",
 	}
 	switch db.Dialector.Name() {
 	case "sqlite":
@@ -738,7 +898,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1303,6 +1463,320 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary), nil
 }
 
+func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
+	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
+	if driver == "sqlite" && opts.DBPath == "" {
+		return RetentionStatusResult{}, errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
+		return RetentionStatusResult{}, errors.New("usage db dsn is required")
+	}
+	cfg := opts.Config
+	defaultRetentionConfig(&cfg)
+	if err := validateRetentionConfig(cfg); err != nil {
+		return RetentionStatusResult{}, err
+	}
+	if !cfg.Enabled {
+		return RetentionStatusResult{}, errors.New("server retention is disabled")
+	}
+	if cfg.DryRun == nil || !*cfg.DryRun {
+		return RetentionStatusResult{}, errors.New("retention status only supports dry_run=true")
+	}
+	if opts.Now.IsZero() {
+		opts.Now = time.Now().UTC()
+	}
+	opts.Now = opts.Now.UTC()
+	store, err := OpenUsageStore(UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN})
+	if err != nil {
+		return RetentionStatusResult{}, err
+	}
+	defer store.Close()
+	return store.runRetentionStatus(opts)
+}
+
+func (s *usageStore) runRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
+	if s == nil || s.db == nil {
+		return RetentionStatusResult{}, errors.New("usage store is not open")
+	}
+	cfg := opts.Config
+	defaultRetentionConfig(&cfg)
+	now := opts.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	startedAt := formatUsageTime(now)
+	result := RetentionStatusResult{Status: "completed", StartedAt: now, CompletedAt: now}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		policy, err := ensureActiveRetentionPolicy(tx, cfg, now)
+		if err != nil {
+			return err
+		}
+		job := retentionJobRecord{
+			PolicyVersionID: policy.ID,
+			Mode:            "status",
+			Status:          "running",
+			DryRun:          true,
+			StartedAt:       startedAt,
+			RequestedBy:     opts.RequestedBy,
+		}
+		if err := tx.Create(&job).Error; err != nil {
+			return err
+		}
+		for _, class := range cfg.Classes {
+			if !retentionClassEnabled(class) {
+				continue
+			}
+			cutoff := now.Add(-time.Duration(class.RetentionDays) * 24 * time.Hour)
+			for _, table := range retentionTablesForClass(class.DataClass) {
+				tableResult, err := dryRunRetentionTable(tx, class, table, cutoff)
+				if err != nil {
+					job.Status = "failed"
+					job.ErrorMessage = err.Error()
+					job.CompletedAt = formatUsageTime(time.Now().UTC())
+					_ = tx.Save(&job).Error
+					return err
+				}
+				row := retentionJobTableResultRecord{
+					JobID:         job.ID,
+					DataClass:     tableResult.DataClass,
+					StorageTable:  tableResult.TableName,
+					CutoffTS:      formatUsageTime(tableResult.Cutoff),
+					RetentionDays: tableResult.RetentionDays,
+					BatchSize:     tableResult.BatchSize,
+					CandidateRows: tableResult.CandidateRows,
+					HeldRows:      tableResult.HeldRows,
+					EligibleRows:  tableResult.EligibleRows,
+					BlockedRows:   tableResult.BlockedRows,
+					Status:        tableResult.Status,
+					Message:       tableResult.Message,
+					StartedAt:     startedAt,
+					CompletedAt:   formatUsageTime(time.Now().UTC()),
+				}
+				if err := tx.Create(&row).Error; err != nil {
+					return err
+				}
+				result.TableResults = append(result.TableResults, tableResult)
+			}
+		}
+		completedAt := time.Now().UTC()
+		job.Status = "completed"
+		job.CompletedAt = formatUsageTime(completedAt)
+		if err := tx.Save(&job).Error; err != nil {
+			return err
+		}
+		result.JobID = job.ID
+		result.PolicyVersionID = policy.ID
+		result.CompletedAt = completedAt
+		return nil
+	})
+	if err != nil {
+		return RetentionStatusResult{}, err
+	}
+	return result, nil
+}
+
+func ensureActiveRetentionPolicy(tx *gorm.DB, cfg RetentionConfig, now time.Time) (retentionPolicyVersionRecord, error) {
+	hash := retentionConfigHash(cfg)
+	var active retentionPolicyVersionRecord
+	err := tx.Where("active = ? AND config_hash = ?", true, hash).First(&active).Error
+	if err == nil {
+		return active, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return retentionPolicyVersionRecord{}, err
+	}
+	ts := formatUsageTime(now)
+	if err := tx.Model(&retentionPolicyVersionRecord{}).
+		Where("active = ?", true).
+		Updates(map[string]any{"active": false, "deactivated_at": ts}).Error; err != nil {
+		return retentionPolicyVersionRecord{}, err
+	}
+	version := "retention-config-" + hash[:12]
+	var policy retentionPolicyVersionRecord
+	err = tx.Where("version = ?", version).First(&policy).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		policy = retentionPolicyVersionRecord{
+			Version:          version,
+			ConfigHash:       hash,
+			Source:           "config",
+			Active:           true,
+			DryRun:           cfg.DryRun != nil && *cfg.DryRun,
+			DefaultBatchSize: cfg.DefaultBatchSize,
+			CreatedAt:        ts,
+			ActivatedAt:      ts,
+			Notes:            "retention foundation dry-run policy",
+		}
+		if err := tx.Create(&policy).Error; err != nil {
+			return retentionPolicyVersionRecord{}, err
+		}
+		for i, class := range cfg.Classes {
+			rule := retentionPolicyRuleRecord{
+				PolicyVersionID:        policy.ID,
+				RuleOrder:              i + 1,
+				DataClass:              class.DataClass,
+				Enabled:                retentionClassEnabled(class),
+				RetentionDays:          class.RetentionDays,
+				BatchSize:              class.BatchSize,
+				RequireFinalizedRollup: class.RequireFinalizedRollup,
+				CreatedAt:              ts,
+			}
+			if err := tx.Create(&rule).Error; err != nil {
+				return retentionPolicyVersionRecord{}, err
+			}
+		}
+	case err != nil:
+		return retentionPolicyVersionRecord{}, err
+	default:
+		policy.Active = true
+		policy.ActivatedAt = ts
+		policy.DeactivatedAt = ""
+		if err := tx.Save(&policy).Error; err != nil {
+			return retentionPolicyVersionRecord{}, err
+		}
+	}
+	return policy, nil
+}
+
+func retentionConfigHash(cfg RetentionConfig) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "enabled=%t\n", cfg.Enabled)
+	fmt.Fprintf(&b, "dry_run=%t\n", cfg.DryRun != nil && *cfg.DryRun)
+	fmt.Fprintf(&b, "default_batch_size=%d\n", cfg.DefaultBatchSize)
+	for i, class := range cfg.Classes {
+		fmt.Fprintf(&b, "class.%03d=%s,%t,%d,%d,%t\n", i, class.DataClass, retentionClassEnabled(class), class.RetentionDays, class.BatchSize, class.RequireFinalizedRollup)
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func retentionClassEnabled(class RetentionClassConfig) bool {
+	return class.Enabled == nil || *class.Enabled
+}
+
+type retentionTableSpec struct {
+	DataClass string
+	TableName string
+	TSColumn  string
+}
+
+func retentionTablesForClass(dataClass string) []retentionTableSpec {
+	switch normalizeRetentionDataClass(dataClass) {
+	case retentionDataClassUsageDiagnostics:
+		return []retentionTableSpec{
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_attempts", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_trace_events", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_errors", TSColumn: "ts"},
+		}
+	case retentionDataClassSecurityAccess:
+		return []retentionTableSpec{{DataClass: retentionDataClassSecurityAccess, TableName: "security_access_events", TSColumn: "ts"}}
+	case retentionDataClassContentCapture:
+		return []retentionTableSpec{{DataClass: retentionDataClassContentCapture, TableName: "request_content_captures", TSColumn: "ts"}}
+	case retentionDataClassUsageDetail:
+		return []retentionTableSpec{{DataClass: retentionDataClassUsageDetail, TableName: "request_usage", TSColumn: "ts"}}
+	default:
+		return nil
+	}
+}
+
+func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retentionTableSpec, cutoff time.Time) (RetentionTableStatus, error) {
+	cutoffText := formatUsageTime(cutoff)
+	candidateRows, err := countRowsBefore(tx, table, cutoffText)
+	if err != nil {
+		return RetentionTableStatus{}, err
+	}
+	heldRows, err := countHeldRowsBefore(tx, table, cutoffText)
+	if err != nil {
+		return RetentionTableStatus{}, err
+	}
+	eligibleRows := candidateRows - heldRows
+	if eligibleRows < 0 {
+		eligibleRows = 0
+	}
+	status := "dry_run"
+	message := "dry run only; no rows deleted"
+	blockedRows := int64(0)
+	if table.DataClass == retentionDataClassUsageDetail && class.RequireFinalizedRollup {
+		ready, err := usageDetailFinalizedRollupReady(tx, cutoffText)
+		if err != nil {
+			return RetentionTableStatus{}, err
+		}
+		if !ready {
+			status = "blocked_rollup_required"
+			message = "future usage_detail delete requires a finalized daily rollup covering the candidate window"
+			blockedRows = eligibleRows
+			eligibleRows = 0
+		}
+	}
+	return RetentionTableStatus{
+		DataClass:     table.DataClass,
+		TableName:     table.TableName,
+		Cutoff:        cutoff,
+		RetentionDays: class.RetentionDays,
+		BatchSize:     class.BatchSize,
+		CandidateRows: candidateRows,
+		HeldRows:      heldRows,
+		EligibleRows:  eligibleRows,
+		BlockedRows:   blockedRows,
+		Status:        status,
+		Message:       message,
+	}, nil
+}
+
+func countRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (int64, error) {
+	var count int64
+	err := tx.Raw(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s < ?", table.TableName, table.TSColumn), cutoff).Scan(&count).Error
+	return count, err
+}
+
+func countHeldRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (int64, error) {
+	var count int64
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s r
+		WHERE r.%s < ?
+		AND EXISTS (
+			SELECT 1 FROM legal_holds h
+			WHERE h.active = ?
+			AND h.data_class = ?
+			AND (h.start_ts = '' OR r.%s >= h.start_ts)
+			AND (h.end_ts = '' OR r.%s < h.end_ts)
+		)`, table.TableName, table.TSColumn, table.TSColumn, table.TSColumn)
+	err := tx.Raw(query, cutoff, true, table.DataClass).Scan(&count).Error
+	return count, err
+}
+
+func usageDetailFinalizedRollupReady(tx *gorm.DB, cutoff string) (bool, error) {
+	var candidate struct {
+		MinTS string
+		Count int64
+	}
+	if err := tx.Raw("SELECT MIN(ts) AS min_ts, COUNT(*) AS count FROM request_usage WHERE ts < ?", cutoff).Scan(&candidate).Error; err != nil {
+		return false, err
+	}
+	if candidate.Count == 0 {
+		return true, nil
+	}
+	var runs []usageRollupRunRecord
+	if err := tx.Model(&usageRollupRunRecord{}).
+		Where("rollup_type = ? AND status = ? AND window_end > ? AND window_start < ?", "daily", "finalized", candidate.MinTS, cutoff).
+		Order("window_start ASC, window_end ASC").
+		Find(&runs).Error; err != nil {
+		return false, err
+	}
+	cursor := candidate.MinTS
+	for _, run := range runs {
+		if run.WindowStart > cursor {
+			return false, nil
+		}
+		if run.WindowEnd > cursor {
+			cursor = run.WindowEnd
+		}
+		if cursor >= cutoff {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func GenerateUsageRollup(opts UsageRollupOptions) (UsageRollupResult, error) {
 	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
 	if driver == "sqlite" && opts.DBPath == "" {
@@ -1797,12 +2271,12 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
 	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
 	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)
-	fmt.Fprintf(&b, "- Total Tokens: `%d` total, `%d` input, `%d` output\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
-	fmt.Fprintf(&b, "- Cost: `$%s` total, `$%s` input, `$%s` output\n", fmtUSD(total.TotalCostUSD), fmtUSD(total.InputCostUSD), fmtUSD(total.OutputCostUSD))
+	fmt.Fprintf(&b, "- Total Tokens: `%d`; Input Tokens: `%d`; Output Tokens: `%d`\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
+	fmt.Fprintf(&b, "- Cost: `$%s` total, `$%s` input, `$%s` image, `$%s` output\n", fmtUSD(total.TotalCostUSD), fmtUSD(total.InputCostUSD), fmtUSD(total.ImageCostUSD), fmtUSD(total.OutputCostUSD))
 	fmt.Fprintf(&b, "- Cache: `%d` hits, `%d` misses, `%d` bypass\n", total.CacheHits, total.CacheMisses, total.CacheBypass)
 	fmt.Fprintf(&b, "- Upstream attempts: `%d`; fallbacks: `%d`; streaming requests: `%d`\n", total.Attempts, total.Fallbacks, total.Streams)
 	fmt.Fprintf(&b, "- Latency: `%d ms` avg, `%d ms` max\n", avg(total.LatencyMS, total.Calls), total.MaxLatencyMS)
-	fmt.Fprintf(&b, "- Throughput: upstream `%s` output tok/s / `%s` total tok/s; downstream `%s` output tok/s / `%s` total tok/s\n",
+	fmt.Fprintf(&b, "- Throughput: upstream `%s` output tok/s / `%s` total tok/s; downstream write `%s` output tok/s / `%s` total tok/s\n",
 		fmtFloat(avgFloat(total.UpstreamOutputTPS, total.UpstreamOutputTPSCount)),
 		fmtFloat(avgFloat(total.UpstreamTotalTPS, total.UpstreamTotalTPSCount)),
 		fmtFloat(avgFloat(total.DownstreamOutputTPS, total.DownstreamOutputTPSCount)),
@@ -1909,7 +2383,7 @@ func (a *agg) add(row usageRow) {
 
 func writeTokenTable(b *strings.Builder, title string, data map[string]*agg, meta map[string]usageRow) {
 	fmt.Fprintf(b, "## %s\n\n", title)
-	fmt.Fprintln(b, "| Token ID | Owner User | Project | Env | Caller ID | Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Total Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Write Output tok/s | Avg Latency ms | Max Latency ms |")
+	fmt.Fprintln(b, "| Token ID | Owner User | Project | Env | Caller ID | Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Cost USD | Cache Hit | Cache Miss | Attempts | Fallbacks | Avg Upstream Output tok/s | Avg Downstream Write Output tok/s | Avg Latency ms | Max Latency ms |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeys(data) {
 		row := meta[key]
@@ -1931,7 +2405,7 @@ func writeAggTable(b *strings.Builder, title string, keyHeaders []string, data m
 	for _, h := range keyHeaders {
 		fmt.Fprintf(b, "| %s ", h)
 	}
-	fmt.Fprintln(b, "| Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Total Cost USD | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Write Output tok/s | Avg Downstream Write Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
+	fmt.Fprintln(b, "| Calls | Errors | Total Tokens | Input Tokens | Output Tokens | Cost USD | Cache Hit | Cache Miss | Cache Bypass | Attempts | Fallbacks | Streams | Avg Upstream Output tok/s | Avg Upstream Total tok/s | Avg Downstream Write Output tok/s | Avg Downstream Write Total tok/s | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms |")
 	for range keyHeaders {
 		fmt.Fprint(b, "|---")
 	}
@@ -2026,7 +2500,7 @@ func writeDownstreamUserPerformanceTable(b *strings.Builder, data map[string]*ag
 func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*agg) {
 	fmt.Fprintln(b, "## Upstream Endpoint Performance")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Provider | Model | Dialect | Calls | Errors | Attempts | Fallbacks | Streams | Total Tokens | Output Tokens | Total Cost USD | Avg Upstream ms | Max Upstream ms | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Upstream Output tok/s | Avg Upstream Total tok/s |")
+	fmt.Fprintln(b, "| Provider | Model | Dialect | Calls | Errors | Attempts | Fallbacks | Streams | Total Tokens | Output Tokens | Cost USD | Avg Upstream ms | Max Upstream ms | Avg Latency ms | Max Latency ms | Avg TTFB ms | Max TTFB ms | Avg Upstream Output tok/s | Avg Upstream Total tok/s |")
 	fmt.Fprintln(b, "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, key := range sortedAggKeysByMetric(data, func(a *agg) int64 { return avg(a.UpstreamMS, a.UpstreamMSCount) }) {
 		parts := splitKey3(key)
@@ -2048,7 +2522,7 @@ func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*
 func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
 	fmt.Fprintln(b, "## Per-Request Throughput")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output Tokens | Total Tokens | Total Cost USD | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Write Output tok/s | Downstream Write Total tok/s |")
+	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output Tokens | Total Tokens | Cost USD | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Write Output tok/s | Downstream Write Total tok/s |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, row := range rows {
 		fmt.Fprintf(b, "| %s | `%s` | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | $%s | %s | %s | %s | %s | %s | %s |\n",

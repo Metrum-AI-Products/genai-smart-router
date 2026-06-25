@@ -139,6 +139,31 @@ server:
     encryption:
       enabled: false
       kms_key_id: ""
+  # Commercial retention foundation. This slice records policy metadata,
+  # legal-hold schema, and dry-run/status jobs only; raw request_usage purge,
+  # archives, scheduler, and admin UI are future work.
+  retention:
+    enabled: false
+    dry_run: true
+    default_batch_size: 500
+    classes:
+      - data_class: usage_diagnostics
+        enabled: true
+        retention_days: 30
+        batch_size: 500
+      - data_class: security_access_events
+        enabled: true
+        retention_days: 90
+        batch_size: 500
+      - data_class: content_capture
+        enabled: true
+        retention_days: 30
+        batch_size: 500
+      - data_class: usage_detail
+        enabled: false
+        retention_days: 365
+        batch_size: 500
+        require_finalized_rollup: true
 state_path: router-state.json
 providers:
   kimi:

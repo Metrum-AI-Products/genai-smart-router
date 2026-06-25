@@ -44,6 +44,7 @@ type ServerConfig struct {
 	Upstream          UpstreamConfig          `yaml:"upstream"`
 	Diagnostics       DiagnosticsConfig       `yaml:"diagnostics"`
 	ContentCapture    ContentCaptureConfig    `yaml:"content_capture"`
+	Retention         RetentionConfig         `yaml:"retention"`
 	DecisionTelemetry DecisionTelemetryConfig `yaml:"decision_telemetry"`
 }
 
@@ -165,6 +166,21 @@ type ContentCaptureRedactionRule struct {
 type ContentCaptureEncryptionConfig struct {
 	Enabled  bool   `yaml:"enabled" json:"enabled"`
 	KMSKeyID string `yaml:"kms_key_id" json:"kms_key_id"`
+}
+
+type RetentionConfig struct {
+	Enabled          bool                   `yaml:"enabled" json:"enabled"`
+	DryRun           *bool                  `yaml:"dry_run" json:"dry_run"`
+	DefaultBatchSize int                    `yaml:"default_batch_size" json:"default_batch_size"`
+	Classes          []RetentionClassConfig `yaml:"classes" json:"classes"`
+}
+
+type RetentionClassConfig struct {
+	DataClass              string `yaml:"data_class" json:"data_class"`
+	Enabled                *bool  `yaml:"enabled" json:"enabled"`
+	RetentionDays          int    `yaml:"retention_days" json:"retention_days"`
+	BatchSize              int    `yaml:"batch_size" json:"batch_size"`
+	RequireFinalizedRollup bool   `yaml:"require_finalized_rollup" json:"require_finalized_rollup"`
 }
 
 type CacheConfig struct {
@@ -715,6 +731,7 @@ func (c *Config) setDefaults() {
 		c.Server.DecisionTelemetry.RecordCacheReasons = &record
 	}
 	defaultContentCaptureConfig(&c.Server.ContentCapture)
+	defaultRetentionConfig(&c.Server.Retention)
 	for i := range c.Users {
 		c.Users[i].ID = normalizeAccountID(c.Users[i].ID)
 		c.Users[i].Status = normalizeStatusDefault(c.Users[i].Status)
@@ -785,6 +802,12 @@ func (c *Config) Validate() error {
 	}
 	if c.contentCaptureEnabled() && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
 		return fmt.Errorf("content_capture requires usage_db enabled")
+	}
+	if err := validateRetentionConfig(c.Server.Retention); err != nil {
+		return err
+	}
+	if c.Server.Retention.Enabled && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
+		return fmt.Errorf("server retention requires usage_db enabled")
 	}
 	if _, err := c.validateAccounts(); err != nil {
 		return err
@@ -1511,6 +1534,47 @@ func defaultContentCaptureConfig(cfg *ContentCaptureConfig) {
 	}
 }
 
+const (
+	retentionDataClassUsageDiagnostics = "usage_diagnostics"
+	retentionDataClassSecurityAccess   = "security_access_events"
+	retentionDataClassContentCapture   = "content_capture"
+	retentionDataClassUsageDetail      = "usage_detail"
+)
+
+func defaultRetentionConfig(cfg *RetentionConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.DryRun == nil {
+		v := true
+		cfg.DryRun = &v
+	}
+	if cfg.DefaultBatchSize == 0 {
+		cfg.DefaultBatchSize = 500
+	}
+	if len(cfg.Classes) == 0 {
+		cfg.Classes = []RetentionClassConfig{
+			{DataClass: retentionDataClassUsageDiagnostics, RetentionDays: 30},
+			{DataClass: retentionDataClassSecurityAccess, RetentionDays: 90},
+			{DataClass: retentionDataClassContentCapture, RetentionDays: 30},
+			{DataClass: retentionDataClassUsageDetail, Enabled: boolPtr(false), RetentionDays: 365, RequireFinalizedRollup: true},
+		}
+	}
+	for i := range cfg.Classes {
+		cfg.Classes[i].DataClass = normalizeRetentionDataClass(cfg.Classes[i].DataClass)
+		if cfg.Classes[i].BatchSize == 0 {
+			cfg.Classes[i].BatchSize = cfg.DefaultBatchSize
+		}
+		if cfg.Classes[i].DataClass == retentionDataClassUsageDetail {
+			cfg.Classes[i].RequireFinalizedRollup = true
+		}
+	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func (c *Config) contentCaptureEnabled() bool {
 	if c == nil {
 		return false
@@ -1564,6 +1628,56 @@ func validateContentCapture(label string, cfg ContentCaptureConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateRetentionConfig(cfg RetentionConfig) error {
+	if !cfg.Enabled && cfg.DryRun == nil && cfg.DefaultBatchSize == 0 && len(cfg.Classes) == 0 {
+		return nil
+	}
+	if cfg.DefaultBatchSize <= 0 {
+		return fmt.Errorf("server retention default_batch_size must be positive")
+	}
+	if cfg.Enabled && cfg.DryRun != nil && !*cfg.DryRun {
+		return fmt.Errorf("server retention dry_run=false is not supported in this foundation")
+	}
+	seen := map[string]bool{}
+	for i, class := range cfg.Classes {
+		label := fmt.Sprintf("server retention classes[%d]", i)
+		dataClass := normalizeRetentionDataClass(class.DataClass)
+		if !knownRetentionDataClass(dataClass) {
+			return fmt.Errorf("%s has unknown data_class %q", label, class.DataClass)
+		}
+		if seen[dataClass] {
+			return fmt.Errorf("%s duplicates data_class %q", label, dataClass)
+		}
+		seen[dataClass] = true
+		if class.RetentionDays <= 0 {
+			return fmt.Errorf("%s retention_days must be positive", label)
+		}
+		if class.BatchSize <= 0 {
+			return fmt.Errorf("%s batch_size must be positive", label)
+		}
+		if dataClass == retentionDataClassUsageDetail && !class.RequireFinalizedRollup {
+			return fmt.Errorf("%s usage_detail requires finalized rollup before future delete", label)
+		}
+	}
+	if cfg.Enabled && len(cfg.Classes) == 0 {
+		return fmt.Errorf("server retention requires at least one class")
+	}
+	return nil
+}
+
+func normalizeRetentionDataClass(v string) string {
+	return strings.ToLower(strings.TrimSpace(v))
+}
+
+func knownRetentionDataClass(v string) bool {
+	switch v {
+	case retentionDataClassUsageDiagnostics, retentionDataClassSecurityAccess, retentionDataClassContentCapture, retentionDataClassUsageDetail:
+		return true
+	default:
+		return false
+	}
 }
 
 func contentCaptureHeaderAllowed(header string) bool {

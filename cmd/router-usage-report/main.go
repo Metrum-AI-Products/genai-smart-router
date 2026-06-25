@@ -32,6 +32,8 @@ func main() {
 	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
 	rollup := flag.Bool("rollup", false, "generate a daily usage rollup instead of markdown")
 	rollupFinalize := flag.Bool("rollup-finalize", false, "finalize the generated rollup window; finalized windows are immutable")
+	retentionStatus := flag.Bool("retention-status", false, "record a dry-run retention status job from --config")
+	configPath := flag.String("config", "", "router config path for --retention-status")
 	flag.Parse()
 
 	to := time.Now().UTC()
@@ -55,6 +57,35 @@ func main() {
 			die("parse --since: %v", err)
 		}
 		from = to.Add(-d)
+	}
+
+	if *retentionStatus {
+		if *configPath == "" {
+			die("--retention-status requires --config")
+		}
+		cfg, err := router.LoadConfig(*configPath)
+		if err != nil {
+			die("load config: %v", err)
+		}
+		result, err := router.GenerateRetentionStatus(router.RetentionStatusOptions{
+			Driver:      cfg.Server.UsageDB.Driver,
+			DBPath:      cfg.Server.UsageDB.Path,
+			DSN:         cfg.Server.UsageDB.DSN,
+			Config:      cfg.Server.Retention,
+			Now:         to,
+			RequestedBy: "router-usage-report",
+		})
+		if err != nil {
+			die("retention status: %v", err)
+		}
+		fmt.Printf("retention status %s job_id=%d policy_version_id=%d completed_at=%s\n",
+			result.Status, result.JobID, result.PolicyVersionID, result.CompletedAt.Format(time.RFC3339))
+		for _, table := range result.TableResults {
+			fmt.Printf("%s %s cutoff=%s candidates=%d held=%d eligible=%d blocked=%d status=%s\n",
+				table.DataClass, table.TableName, table.Cutoff.Format(time.RFC3339), table.CandidateRows, table.HeldRows,
+				table.EligibleRows, table.BlockedRows, table.Status)
+		}
+		return
 	}
 
 	if *rollup {

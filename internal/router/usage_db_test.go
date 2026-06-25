@@ -36,8 +36,8 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"# Smart LLM Router Usage Report",
 		"Requests: `3`",
 		"Errors: `1`",
-		"Tokens: `178` total, `132` input, `46` output",
-		"Cost: `$0.000531` total, `$0.000207` input, `$0.000324` output",
+		"Total Tokens: `178`; Input Tokens: `132`; Output Tokens: `46`",
+		"Cost: `$0.000531` total, `$0.000207` input, `$0.000000` image, `$0.000324` output",
 		"rtr_metrum_clay_metrum-insights_prod_k20260614",
 		"| Token ID | Owner User | Project | Env | Caller ID |",
 		"| openai | gpt-5.4 | 1 | 0 | 140 | 100 | 40 | $0.000520 |",
@@ -99,7 +99,7 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 	}
 	for _, want := range []string{
 		"upstream `50.00` output tok/s / `75.00` total tok/s",
-		"downstream `400.00` output tok/s / `600.00` total tok/s",
+		"downstream write `400.00` output tok/s / `600.00` total tok/s",
 		"| 1 | 1 | 0 | 1 | 0 | 0.00% | 0.00% | 2 | 1024 | 4096 | 25.00% | 25.00% | 25.00% |",
 		"| alice | metrum-insights | test | codex | 1 | 0 | 0 | 15 | 10 | 250 | 250 | 0 | 0 | 25 | 25 | 400.00 | 600.00 | 0 |",
 		"| openai | gpt-5.4-nano | openai-responses | 1 | 0 | 1 | 0 | 0 | 15 | 10 | $0.000013 | 200 | 200 | 250 | 250 | 0 | 0 | 50.00 | 75.00 |",
@@ -176,7 +176,7 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Requests: `1`",
-		"Tokens: `140` total, `100` input, `40` output",
+		"Total Tokens: `140`; Input Tokens: `100`; Output Tokens: `40`",
 		"rtr_metrum_codex-small_harbor-algotune-pca_case-1_k20260614",
 		"| openrouter | deepseek/deepseek-v4-flash:nitro | 1 | 0 | 140 | 100 | 40 | $0.000000 |",
 	} {
@@ -446,6 +446,12 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"security_access_events",
 		"usage_rollup_runs",
 		"usage_rollup_daily",
+		"retention_policy_versions",
+		"retention_policy_rules",
+		"retention_jobs",
+		"retention_job_table_results",
+		"legal_holds",
+		"legal_hold_audit_events",
 	} {
 		var cols []col
 		if err := store.db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&cols).Error; err != nil {
@@ -461,6 +467,175 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestRetentionDryRunWritesJobRecordsAndHonorsLegalHold(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * 24 * time.Hour)
+	fresh := now.Add(-24 * time.Hour)
+	for _, row := range []contentCaptureRecord{
+		{
+			RequestID:      "req_retention_held",
+			TS:             formatUsageTime(old),
+			Scope:          contentCaptureScopeRequest,
+			CallerID:       "alice",
+			TokenID:        "rtr_alice_test",
+			ResolvedGroup:  "default",
+			InboundDialect: "openai-chat",
+			ContentType:    "application/json",
+			ContentText:    "held",
+			ContentBytes:   len("held"),
+			RetentionUntil: formatUsageTime(old.Add(24 * time.Hour)),
+		},
+		{
+			RequestID:      "req_retention_free",
+			TS:             formatUsageTime(old.Add(time.Hour)),
+			Scope:          contentCaptureScopeResponse,
+			CallerID:       "alice",
+			TokenID:        "rtr_alice_test",
+			ResolvedGroup:  "default",
+			InboundDialect: "openai-chat",
+			ContentType:    "application/json",
+			ContentText:    "free",
+			ContentBytes:   len("free"),
+			RetentionUntil: formatUsageTime(old.Add(24 * time.Hour)),
+		},
+		{
+			RequestID:      "req_retention_fresh",
+			TS:             formatUsageTime(fresh),
+			Scope:          contentCaptureScopeRequest,
+			CallerID:       "alice",
+			TokenID:        "rtr_alice_test",
+			ResolvedGroup:  "default",
+			InboundDialect: "openai-chat",
+			ContentType:    "application/json",
+			ContentText:    "fresh",
+			ContentBytes:   len("fresh"),
+			RetentionUntil: formatUsageTime(fresh.Add(24 * time.Hour)),
+		},
+	} {
+		if err := store.db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.db.Create(&legalHoldRecord{
+		HoldID:     "hold-content-1",
+		DataClass:  retentionDataClassContentCapture,
+		Active:     true,
+		StartTS:    formatUsageTime(old.Add(-time.Hour)),
+		EndTS:      formatUsageTime(old.Add(30 * time.Minute)),
+		ReasonCode: "litigation",
+		Subject:    "matter-121",
+		CreatedBy:  "unit-test",
+		CreatedAt:  formatUsageTime(now),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	cfg := retentionTestConfig(retentionDataClassContentCapture, 7)
+	result, err := store.runRetentionStatus(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.JobID == 0 || result.PolicyVersionID == 0 || len(result.TableResults) != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	table := result.TableResults[0]
+	if table.TableName != "request_content_captures" || table.CandidateRows != 2 || table.HeldRows != 1 || table.EligibleRows != 1 || table.BlockedRows != 0 || table.Status != "dry_run" {
+		t.Fatalf("unexpected table result: %#v", table)
+	}
+	var job retentionJobRecord
+	if err := store.db.First(&job, result.JobID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "completed" || !job.DryRun || job.RequestedBy != "unit-test" {
+		t.Fatalf("unexpected job: %#v", job)
+	}
+	var resultRow retentionJobTableResultRecord
+	if err := store.db.Where("job_id = ? AND table_name = ?", result.JobID, "request_content_captures").First(&resultRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	if resultRow.CandidateRows != 2 || resultRow.HeldRows != 1 || resultRow.EligibleRows != 1 {
+		t.Fatalf("unexpected stored result: %#v", resultRow)
+	}
+	var rules int64
+	if err := store.db.Model(&retentionPolicyRuleRecord{}).Where("policy_version_id = ?", result.PolicyVersionID).Count(&rules).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rules != 1 {
+		t.Fatalf("policy rules=%d, want 1", rules)
+	}
+}
+
+func TestRetentionUsageDetailRequiresFinalizedRollupBeforeFutureDelete(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * 24 * time.Hour)
+	cutoff := now.Add(-7 * 24 * time.Hour)
+	if err := store.db.Create(recordFromRow(usageRow{
+		TS:             old,
+		RequestID:      "req_usage_detail_old",
+		CallerID:       "alice",
+		CallerUser:     "alice",
+		TokenID:        "rtr_alice",
+		RequestedModel: "default",
+		ResolvedGroup:  "default",
+		Cache:          "miss",
+		Status:         200,
+		Attempts:       1,
+	})).Error; err != nil {
+		t.Fatal(err)
+	}
+	cfg := retentionTestConfig(retentionDataClassUsageDetail, 7)
+	blocked, err := store.runRetentionStatus(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocked.TableResults) != 1 {
+		t.Fatalf("blocked results: %#v", blocked)
+	}
+	if got := blocked.TableResults[0]; got.Status != "blocked_rollup_required" || got.CandidateRows != 1 || got.EligibleRows != 0 || got.BlockedRows != 1 {
+		t.Fatalf("unexpected blocked usage_detail result: %#v", got)
+	}
+	mid := old.Add(24 * time.Hour)
+	if _, err := store.generateUsageRollup(UsageRollupOptions{From: old.Add(-time.Hour), To: mid, Finalize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.generateUsageRollup(UsageRollupOptions{From: mid, To: cutoff, Finalize: true}); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := store.runRetentionStatus(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ready.TableResults[0]; got.Status != "dry_run" || got.CandidateRows != 1 || got.EligibleRows != 1 || got.BlockedRows != 0 {
+		t.Fatalf("unexpected ready usage_detail result: %#v", got)
+	}
+}
+
+func retentionTestConfig(dataClass string, retentionDays int) RetentionConfig {
+	cfg := RetentionConfig{
+		Enabled:          true,
+		DryRun:           boolPtr(true),
+		DefaultBatchSize: 100,
+		Classes: []RetentionClassConfig{{
+			DataClass:     dataClass,
+			RetentionDays: retentionDays,
+			BatchSize:     50,
+		}},
+	}
+	if dataClass == retentionDataClassUsageDetail {
+		cfg.Classes[0].RequireFinalizedRollup = true
+	}
+	return cfg
 }
 
 func TestDecisionTelemetryTablesReferenceRequestUsage(t *testing.T) {

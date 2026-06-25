@@ -32,7 +32,18 @@ Usage rollups are generated from stored `request_usage` rows and also follow the
 - `usage_rollup_runs`: one row per generated daily rollup window, with draft/finalized status, UTC source window, source table name, source request count, daily row count, and generation timestamps.
 - `usage_rollup_daily`: scalar aggregate rows per UTC day and reporting dimension in the rollup window, keyed to `usage_rollup_runs`. Dimensions include caller ID/user/project/environment, token ID, client, inbound dialect, requested model, resolved group, routing strategy, upstream provider/model/dialect, status class, stream flag, cache outcome, image-input flag, PII-filter flag, contract bucket, and target-validation status. Measures include request/error/cache/fallback/attempt counts, input/output/total tokens, input image count, input image tokens, request-time calculated and upstream-reported cost sums, latency/duration sums/counts/maxima, throughput sums/counts, and cache snapshot sums/maxima.
 
-Draft rollups for the same exact window may be regenerated idempotently. Finalized rollup windows are immutable, and new rollup runs are rejected if their window overlaps an existing finalized daily window. Raw request purge and legal hold behavior are not part of this first rollup foundation.
+Draft rollups for the same exact window may be regenerated idempotently. Finalized rollup windows are immutable, and new rollup runs are rejected if their window overlaps an existing finalized daily window. Raw request purge is not part of the first rollup foundation. The retention foundation uses finalized rollup metadata as a prerequisite before any future `usage_detail` delete can be considered.
+
+Commercial retention tables also follow the scalar relational rule:
+
+- `retention_policy_versions`: active config-derived retention policy versions with a scalar policy hash, dry-run flag, default batch size, and activation timestamps.
+- `retention_policy_rules`: one row per data class rule, with data class, enabled flag, retention days, batch size, and the `usage_detail` finalized-rollup prerequisite.
+- `retention_jobs`: one row per dry-run/status job with policy version, mode, status, requested-by, and timestamps.
+- `retention_job_table_results`: per-job/per-table counts for candidate rows, legal-hold skipped rows, eligible rows, blocked rows, cutoff timestamp, and status.
+- `legal_holds`: active or released holds keyed by hold ID, data class, timestamp range, reason, subject, creator/releaser, and timestamps.
+- `legal_hold_audit_events`: scalar audit rows for hold create/release/update workflows.
+
+The current retention foundation initializes policy rows from `server.retention` and records dry-run counts for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`), `security_access_events`, and `content_capture` (`request_content_captures`). Legal holds are checked by `data_class` and timestamp range when counting skipped rows. It does not delete raw `request_usage`, archive content, schedule jobs, or provide a full admin UI/API for hold lifecycle.
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
@@ -93,6 +104,7 @@ Durable across container restarts when volumes are preserved:
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
 - authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
 - usage rollup run and daily aggregate rows after an operator generates them.
+- retention policy, job result, legal hold, and legal hold audit rows after an operator runs dry-run retention status.
 
 Not durable across router restarts:
 

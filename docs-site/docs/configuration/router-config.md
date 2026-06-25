@@ -524,6 +524,28 @@ server:
     encryption:
       enabled: false
       kms_key_id: ""
+  retention:
+    enabled: false
+    dry_run: true
+    default_batch_size: 500
+    classes:
+      - data_class: usage_diagnostics
+        enabled: true
+        retention_days: 30
+        batch_size: 500
+      - data_class: security_access_events
+        enabled: true
+        retention_days: 90
+        batch_size: 500
+      - data_class: content_capture
+        enabled: true
+        retention_days: 30
+        batch_size: 500
+      - data_class: usage_detail
+        enabled: false
+        retention_days: 365
+        batch_size: 500
+        require_finalized_rollup: true
 ```
 
 `server.decision_telemetry` is optional and disabled by default. When enabled, the router writes normalized scalar rows keyed by request ID for request-shape features, bounded target candidates, safe target-filter reason buckets, selected routing decisions, and cache reason buckets. It is intended for operator explainability and usage-report summaries; caller responses keep the same behavior.
@@ -543,6 +565,8 @@ Browser-admin authentication is configured under `server.admin_auth.basic` and `
 Governed content capture is separate from diagnostics and remains disabled unless `server.content_capture.enabled: true` and at least one scope is enabled. Captured rows live in `request_content_captures`, allowlisted headers in `request_content_headers`, and delete/purge audit events in `request_content_audit_events`. Rows are keyed by `request_id` for joins to usage metadata. Built-in secret redaction and configured `redaction_patterns` run before storage; `redact_before_storage: false` is rejected. Header capture is allowlist-only and rejects authorization, API-key, token, secret, cookie, and key-like header names. The current foundation supports retention purge and delete-by-request maintenance; KMS/encryption-at-rest and content export/read APIs are follow-up work, and `encryption.enabled: true` is rejected until implemented.
 
 Deployments can keep capture disabled globally and enable a scoped override on a specific `callers[]` entry or `models.<group>.content_capture` block for a governed workload. Each enabled block must name at least one capture scope.
+
+Commercial retention policy is configured under `server.retention` and is disabled by default. This foundation accepts only `dry_run: true`; it records policy versions/rules, legal-hold rows, status jobs, and per-table counts without deleting rows. Supported data classes are `usage_diagnostics`, `security_access_events`, `content_capture`, and future `usage_detail`. Legal holds match by `data_class` and timestamp range. `usage_detail` is blocked until a finalized daily rollup covers the candidate window, and raw usage deletion, archives, scheduler, and full admin UI/API workflows remain future slices.
 
 Content-capture maintenance endpoints:
 

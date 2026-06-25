@@ -318,6 +318,100 @@ func TestContentCaptureConfigValidation(t *testing.T) {
 	}
 }
 
+func TestRetentionConfigValidation(t *testing.T) {
+	falseValue := false
+	disabledUsageDB := false
+	for _, tt := range []struct {
+		name string
+		edit func(*Config)
+		want string
+	}{
+		{
+			name: "unknown data class",
+			edit: func(cfg *Config) {
+				cfg.Server.Retention = RetentionConfig{
+					Enabled: true,
+					Classes: []RetentionClassConfig{{DataClass: "raw_prompts", RetentionDays: 30}},
+				}
+				defaultRetentionConfig(&cfg.Server.Retention)
+			},
+			want: "unknown data_class",
+		},
+		{
+			name: "non positive retention days",
+			edit: func(cfg *Config) {
+				cfg.Server.Retention = RetentionConfig{
+					Enabled: true,
+					Classes: []RetentionClassConfig{{DataClass: retentionDataClassContentCapture, RetentionDays: -1}},
+				}
+				defaultRetentionConfig(&cfg.Server.Retention)
+			},
+			want: "retention_days must be positive",
+		},
+		{
+			name: "non positive batch",
+			edit: func(cfg *Config) {
+				cfg.Server.Retention = RetentionConfig{
+					Enabled:          true,
+					DefaultBatchSize: -5,
+					Classes:          []RetentionClassConfig{{DataClass: retentionDataClassContentCapture, RetentionDays: 30, BatchSize: -5}},
+				}
+				defaultRetentionConfig(&cfg.Server.Retention)
+			},
+			want: "default_batch_size must be positive",
+		},
+		{
+			name: "dry run false unsupported",
+			edit: func(cfg *Config) {
+				cfg.Server.Retention = RetentionConfig{
+					Enabled: true,
+					DryRun:  &falseValue,
+					Classes: []RetentionClassConfig{{DataClass: retentionDataClassContentCapture, RetentionDays: 30}},
+				}
+				defaultRetentionConfig(&cfg.Server.Retention)
+			},
+			want: "dry_run=false is not supported",
+		},
+		{
+			name: "usage db disabled",
+			edit: func(cfg *Config) {
+				cfg.Server.UsageDB.Enable = &disabledUsageDB
+				cfg.Server.Retention.Enabled = true
+			},
+			want: "retention requires usage_db enabled",
+		},
+		{
+			name: "usage detail requires finalized rollup",
+			edit: func(cfg *Config) {
+				cfg.Server.Retention = RetentionConfig{
+					Enabled: true,
+					Classes: []RetentionClassConfig{{
+						DataClass:              retentionDataClassUsageDetail,
+						RetentionDays:          365,
+						RequireFinalizedRollup: false,
+					}},
+				}
+				cfg.Server.Retention.DryRun = boolPtr(true)
+				cfg.Server.Retention.DefaultBatchSize = 500
+				for i := range cfg.Server.Retention.Classes {
+					cfg.Server.Retention.Classes[i].BatchSize = 500
+				}
+			},
+			want: "usage_detail requires finalized rollup",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.setDefaults()
+			tt.edit(cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() error=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestExplicitAccountsValidateCallerOwnership(t *testing.T) {
 	cfg := minimalConfig(t)
 	cfg.Users = []UserConfig{{ID: "Alice", Name: "Alice Example"}}

@@ -8,8 +8,8 @@ Report by token ID, caller user/project/environment, model group, provider/model
 
 Performance sections are included for latency triage:
 
-- Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream write output/total token throughput, errors, streams, and fallbacks.
-- Upstream endpoint performance groups by provider, model, and API dialect with average/max upstream duration, latency, TTFB, upstream output/total token throughput, attempts, fallbacks, errors, and input/output/total cost.
+- Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream token throughput, errors, streams, and fallbacks.
+- Upstream endpoint performance groups by provider, model, and API dialect with average/max upstream duration, latency, TTFB, upstream token throughput, attempts, fallbacks, errors, and cost.
 
 ## Common Reports
 
@@ -34,7 +34,17 @@ router-usage-report \
   --rollup
 ```
 
-This writes scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` from stored `request_usage` rows for the selected UTC `[from,to)` window. Daily rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, and validation status, so chargeback and provider-performance reports do not need raw request detail after a window is closed. Measures include input/output/total tokens, input image count, input image tokens, cost, latency, throughput, cache, fallback, and error counts. Draft reruns replace the same draft run for that exact window. Add `--rollup-finalize` only after review; finalized windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This first rollup slice does not implement raw usage purge or legal hold.
+This writes scalar rows to `usage_rollup_runs` and dimensioned `usage_rollup_daily` from stored `request_usage` rows for the selected UTC `[from,to)` window. Daily rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, and validation status, so chargeback and provider-performance reports do not need raw request detail after a window is closed. Measures include input/output/total tokens, input image count, input image tokens, cost, latency, throughput, cache, fallback, and error counts. Draft reruns replace the same draft run for that exact window. Add `--rollup-finalize` only after review; finalized windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This rollup slice does not delete raw usage rows; the retention foundation only uses finalized rollup metadata to block or allow future `usage_detail` delete eligibility.
+
+Retention dry-run status:
+
+```bash
+router-usage-report \
+  --retention-status \
+  --config /app/config/config.yaml
+```
+
+`server.retention` is disabled by default and supports only `dry_run: true` in this foundation. A status run initializes an active config-derived retention policy version/rules and writes `retention_jobs` plus `retention_job_table_results`. It counts candidates for `usage_diagnostics`, `security_access_events`, and `content_capture`, subtracts active `legal_holds` by data class and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. This slice does not execute deletes, archive rows, schedule retention jobs, or provide full legal-hold admin APIs.
 
 ## Browser Admin Reports
 
@@ -48,7 +58,7 @@ The browser summary API returns chart descriptors with stable IDs, axis labels, 
 
 The browser shell includes shared usability controls for report tabs: selected tab/search state in the URL, safe-field search, sortable table headers, bounded page size, manual refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible table columns. Smoke these controls after deployment with an authorized browser-admin user, then verify ordinary caller tokens still receive `403 reports-forbidden`.
 
-Expanded tabs use safe scalar usage rows for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Provider/model mix reports actual input/output/total tokens and input/output/total cost; baseline and savings fields stay out of that tab by default and belong to the savings endpoints.
+Expanded tabs use safe scalar usage rows for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals.
 
 Anomaly reports are operational triage views, not machine-learning anomaly detection. They group requests by deterministic rules such as error responses, fallback use, multiple upstream attempts, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. Normal active key state is not anomalous. Baseline and savings fields belong only to savings reports and should not be interpreted from anomaly report rows.
 
