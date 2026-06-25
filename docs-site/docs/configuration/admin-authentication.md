@@ -137,6 +137,24 @@ If the password is valid but `admin:auth:read` is not granted, the endpoint retu
 }
 ```
 
+## Casbin Authorization For Admin Reports
+
+Browser-admin Basic Auth establishes identity only. Admin reports use Casbin policy under `server.admin_auth.authorization` for authorization decisions.
+
+```yaml
+server:
+  admin_auth:
+    authorization:
+      enabled: true
+      policy:
+        - g, basic:admin, reports_admin, example/prod
+        - p, reports_admin, example/prod, admin:reports, read|export
+```
+
+The report surface checks object `admin:reports` with action `read` for pages, JSON APIs, static assets, and request drilldown. Markdown export checks action `export`.
+
+When reports are enabled under `server.admin_reports`, ordinary router caller tokens are rejected with `403 reports-forbidden` rather than being treated as browser-admin credentials.
+
 Normal model APIs continue to use router caller tokens:
 
 ```bash
@@ -173,9 +191,9 @@ Use `allow_insecure_http: true` only for local development and loopback smoke te
 
 ## Authorization Boundary
 
-Basic Auth establishes a subject such as `basic:admin`; it does not decide what that subject may do. Current stub-route permissions are intentionally small. Broader admin/report authorization should be expressed through the deployment's Casbin policy as those surfaces are enabled.
+Basic Auth establishes a subject such as `basic:admin`; it does not decide what that subject may do. Current stub-route permissions are intentionally small. Admin report authorization is expressed through the deployment's Casbin policy.
 
-Example Casbin-style policy shape for later admin reports:
+Equivalent policy expressed as separate Casbin permission lines:
 
 ```text
 g, basic:admin, reports_admin, example/prod

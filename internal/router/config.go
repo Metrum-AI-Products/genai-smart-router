@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +36,7 @@ type ServerConfig struct {
 	Listen            string               `yaml:"listen"`
 	DefaultModelGroup string               `yaml:"default_model_group"`
 	AdminAuth         AdminAuthConfig      `yaml:"admin_auth"`
+	AdminReports      AdminReportsConfig   `yaml:"admin_reports"`
 	Cache             CacheConfig          `yaml:"cache"`
 	Logging           LoggingConfig        `yaml:"logging"`
 	UsageDB           UsageDBConfig        `yaml:"usage_db"`
@@ -43,7 +46,22 @@ type ServerConfig struct {
 }
 
 type AdminAuthConfig struct {
-	Basic AdminBasicAuthConfig `yaml:"basic" json:"basic"`
+	Basic         AdminBasicAuthConfig     `yaml:"basic" json:"basic"`
+	Authorization AdminAuthorizationConfig `yaml:"authorization" json:"authorization"`
+}
+
+type AdminAuthorizationConfig struct {
+	Enabled bool     `yaml:"enabled" json:"enabled"`
+	Policy  []string `yaml:"policy" json:"policy"`
+}
+
+type AdminReportsConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	PathPrefix     string `yaml:"path_prefix" json:"path_prefix"`
+	DefaultSince   string `yaml:"default_since" json:"default_since"`
+	MaxRange       string `yaml:"max_range" json:"max_range"`
+	MaxRows        int    `yaml:"max_rows" json:"max_rows"`
+	ExportMarkdown bool   `yaml:"export_markdown" json:"export_markdown"`
 }
 
 type AdminBasicAuthConfig struct {
@@ -481,6 +499,18 @@ func (c *Config) setDefaults() {
 	if c.Server.AdminAuth.Basic.Realm == "" {
 		c.Server.AdminAuth.Basic.Realm = "GenAI Smart Router Admin"
 	}
+	if c.Server.AdminReports.PathPrefix == "" {
+		c.Server.AdminReports.PathPrefix = "/admin/reports"
+	}
+	if c.Server.AdminReports.DefaultSince == "" {
+		c.Server.AdminReports.DefaultSince = "24h"
+	}
+	if c.Server.AdminReports.MaxRange == "" {
+		c.Server.AdminReports.MaxRange = "31d"
+	}
+	if c.Server.AdminReports.MaxRows == 0 {
+		c.Server.AdminReports.MaxRows = 500
+	}
 	if c.Server.Cache.MaxBytes == 0 {
 		c.Server.Cache.MaxBytes = 128 << 20
 	}
@@ -568,6 +598,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
 	}
 	if err := validateAdminAuth(c.Server.AdminAuth); err != nil {
+		return err
+	}
+	if err := validateAdminReports(c.Server.AdminReports, c.Server.AdminAuth, c.Server.UsageDB); err != nil {
 		return err
 	}
 	if err := validateContentCapture("server content_capture", c.Server.ContentCapture); err != nil {
@@ -815,6 +848,9 @@ func (c *Config) Validate() error {
 }
 
 func validateAdminAuth(cfg AdminAuthConfig) error {
+	if err := validateAdminAuthorization(cfg.Authorization); err != nil {
+		return err
+	}
 	basic := cfg.Basic
 	if !basic.Enabled {
 		if len(basic.Users) > 0 {
@@ -898,6 +934,127 @@ func validateAdminAuth(cfg AdminAuthConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateAdminAuthorization(cfg AdminAuthorizationConfig) error {
+	if !cfg.Enabled {
+		if len(cfg.Policy) > 0 {
+			return fmt.Errorf("server admin_auth.authorization policy configured but authorization is disabled")
+		}
+		return nil
+	}
+	if len(cfg.Policy) == 0 {
+		return fmt.Errorf("server admin_auth.authorization requires at least one policy line when enabled")
+	}
+	for i, line := range cfg.Policy {
+		fields, err := parseCasbinPolicyLine(line)
+		if err != nil {
+			return fmt.Errorf("server admin_auth.authorization policy[%d] is invalid: %w", i, err)
+		}
+		switch fields[0] {
+		case "p":
+			if len(fields) != 5 {
+				return fmt.Errorf("server admin_auth.authorization policy[%d] p lines require subject, domain, object, action", i)
+			}
+		case "g":
+			if len(fields) != 4 {
+				return fmt.Errorf("server admin_auth.authorization policy[%d] g lines require subject, role, domain", i)
+			}
+		default:
+			return fmt.Errorf("server admin_auth.authorization policy[%d] must start with p or g", i)
+		}
+		for _, field := range fields {
+			if strings.TrimSpace(field) == "" {
+				return fmt.Errorf("server admin_auth.authorization policy[%d] contains an empty field", i)
+			}
+			if strings.ContainsAny(field, "\r\n") {
+				return fmt.Errorf("server admin_auth.authorization policy[%d] contains unsupported characters", i)
+			}
+		}
+	}
+	return nil
+}
+
+func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage UsageDBConfig) error {
+	if strings.TrimSpace(cfg.PathPrefix) == "" {
+		cfg.PathPrefix = "/admin/reports"
+	}
+	if strings.TrimSpace(cfg.DefaultSince) == "" {
+		cfg.DefaultSince = "24h"
+	}
+	if strings.TrimSpace(cfg.MaxRange) == "" {
+		cfg.MaxRange = "31d"
+	}
+	if cfg.MaxRows == 0 {
+		cfg.MaxRows = 500
+	}
+	if strings.TrimSpace(cfg.PathPrefix) == "" {
+		return fmt.Errorf("server admin_reports path_prefix is required")
+	}
+	prefix := cleanAdminReportsPrefix(cfg.PathPrefix)
+	if prefix != "/admin/reports" && !strings.HasPrefix(prefix, "/admin/reports/") {
+		return fmt.Errorf("server admin_reports path_prefix must be /admin/reports or a child path")
+	}
+	defaultSince, err := parseReportDuration(cfg.DefaultSince)
+	if err != nil || defaultSince <= 0 {
+		return fmt.Errorf("server admin_reports default_since is invalid")
+	}
+	maxRange, err := parseReportDuration(cfg.MaxRange)
+	if err != nil || maxRange <= 0 {
+		return fmt.Errorf("server admin_reports max_range is invalid")
+	}
+	if defaultSince > maxRange {
+		return fmt.Errorf("server admin_reports default_since cannot exceed max_range")
+	}
+	if maxRange > 366*24*time.Hour {
+		return fmt.Errorf("server admin_reports max_range must be <= 366d")
+	}
+	if cfg.MaxRows <= 0 || cfg.MaxRows > 10000 {
+		return fmt.Errorf("server admin_reports max_rows must be between 1 and 10000")
+	}
+	if !cfg.Enabled {
+		return nil
+	}
+	if usage.Enable != nil && !*usage.Enable {
+		return fmt.Errorf("server admin_reports requires usage_db enabled")
+	}
+	if !auth.Basic.Enabled {
+		return fmt.Errorf("server admin_reports requires server.admin_auth.basic enabled")
+	}
+	if !auth.Authorization.Enabled {
+		return fmt.Errorf("server admin_reports requires server.admin_auth.authorization enabled")
+	}
+	return nil
+}
+
+func cleanAdminReportsPrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "/admin/reports"
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	prefix = path.Clean(prefix)
+	if prefix == "." {
+		return "/admin/reports"
+	}
+	return prefix
+}
+
+func parseReportDuration(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return 0, fmt.Errorf("empty duration")
+	}
+	if strings.HasSuffix(raw, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(raw, "d"))
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(raw)
 }
 
 func defaultContentCaptureConfig(cfg *ContentCaptureConfig) {

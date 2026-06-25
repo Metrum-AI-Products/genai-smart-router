@@ -36,6 +36,7 @@ const sidebars = {
       items: [
         "operations/key-generation",
         "operations/usage-reporting",
+        "operations/admin-browser-reports",
         "operations/report-examples",
         "operations/deployment",
       ],

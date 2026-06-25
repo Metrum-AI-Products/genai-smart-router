@@ -6,7 +6,7 @@ title: Usage Reporting
 
 GenAI Smart Router records durable usage data for cost management, auditability, and model-group validation.
 
-`router-usage-report` is an Enterprise Edition administrative CLI. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation with access to the usage database. It is not exposed through the public browser documentation site as an interactive tool.
+`router-usage-report` is an Enterprise Edition administrative CLI. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation with access to the usage database. Deployments may also enable the authenticated browser reporting surface at `/admin/reports/`; it is separate from public `/docs/` and requires browser-admin authentication plus Casbin authorization.
 
 <div class="contactBanner">
   <p>For dashboards, reports, or validation design, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -23,6 +23,35 @@ router-usage-report \
 ```
 
 Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
+
+## Browser Admin Reports
+
+When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject can open `/admin/reports/` to inspect the same operational dimensions through embedded browser assets. The router serves the HTML, CSS, JavaScript, and local chart bundle from the binary; no CDN is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
+
+Example policy shape:
+
+```yaml
+server:
+  admin_auth:
+    authorization:
+      enabled: true
+      policy:
+        - g, basic:admin, reports_admin, example/prod
+        - p, reports_admin, example/prod, admin:reports, read|export
+  admin_reports:
+    enabled: true
+    default_since: 24h
+    max_range: 31d
+    max_rows: 500
+```
+
+Common endpoints:
+
+- `/admin/reports/` renders the browser shell.
+- `/admin/reports/api/summary?since=24h` returns totals, charts, grouped tables, and bounded request rows.
+- `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
+- `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, and terminal error rows.
+- `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.
 
 ## Report Dimensions
 

@@ -17,10 +17,10 @@ This page summarizes GenAI Smart Router capabilities for enterprise deployments.
 | Tools | Dialect-specific tool metadata and request filtering for OpenAI Chat, OpenAI Responses, and Anthropic Messages |
 | Images/VLM | Image input detection across supported request shapes and modality-aware target filtering |
 | Cost accounting | Request-time input/output/image prices, calculated cost fields, upstream-reported billed cost fields |
-| Usage reporting | Reports by caller, project, environment, token ID, provider, model, model group, client, status, cache, latency, and token counts |
+| Usage reporting | CLI Markdown reports and optional authenticated browser reports by caller, project, environment, token ID, provider, model, model group, client, status, cache, latency, and token counts |
 | Observability | JSONL logs, relational usage DB, diagnostics child tables, optional governed content-capture tables, metrics-admin Prometheus telemetry |
 | Caching | In-process LRU/TTL cache for eligible non-tool responses with cache snapshots in usage rows |
-| Deployment | Linux binary and Docker Compose packages with embedded product documentation |
+| Deployment | Linux binary and Docker Compose packages with embedded product documentation and optional embedded admin report assets |
 | Agent clients | Codex CLI and Claude Code CLI workflows validated through router-compatible API shapes |
 | Private upstreams | OpenAI-compatible vLLM, SGLang, Baseten-style, and other internal services can be configured as providers |
 

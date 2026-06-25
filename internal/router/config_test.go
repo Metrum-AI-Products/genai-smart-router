@@ -595,6 +595,65 @@ func TestAdminBasicAuthValidation(t *testing.T) {
 	}
 }
 
+func TestAdminReportsConfigValidation(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	for _, tt := range []struct {
+		name      string
+		configure func(*Config)
+		want      string
+	}{
+		{
+			name: "enabled requires basic auth",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, basic:admin, local/test, admin:reports, read"}}
+				cfg.Server.AdminReports.Enabled = true
+			},
+			want: "requires server.admin_auth.basic enabled",
+		},
+		{
+			name: "enabled requires authorization",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{Enabled: true, AllowInsecureHTTP: true, Users: []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", Domain: "local/test"}}}
+				cfg.Server.AdminReports.Enabled = true
+			},
+			want: "requires server.admin_auth.authorization enabled",
+		},
+		{
+			name: "invalid policy",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, only-two-fields"}}
+			},
+			want: "p lines require",
+		},
+		{
+			name: "bad range",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminReports.DefaultSince = "32d"
+				cfg.Server.AdminReports.MaxRange = "31d"
+			},
+			want: "default_since cannot exceed max_range",
+		},
+		{
+			name: "bad rows",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminReports.MaxRows = 10001
+			},
+			want: "max_rows",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.setDefaults()
+			tt.configure(cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestPIIFilterDocumentedYAMLShapeValidates(t *testing.T) {
 	raw := []byte(`
 server:

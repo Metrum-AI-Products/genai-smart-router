@@ -42,6 +42,7 @@ Acceptance checks:
 - Disallowed model groups return `403 model-not-allowed` before any provider call.
 - `/metrics` is available only to metrics-admin tokens.
 - `/v1/usage` or generated reports provide caller-specific usage visibility.
+- If browser admin reports are enabled, `/admin/reports/api/summary?since=24h` succeeds only for a Basic Auth subject allowed by Casbin policy, and an ordinary router caller token receives `403 reports-forbidden`.
 
 ## Model-Group Quality Contracts
 
@@ -73,6 +74,7 @@ Minimum acceptance:
 - caller tokens are stored only as hashes;
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
 - `/metrics` requires `metrics_admin: true`;
+- browser admin reports, when enabled, require Basic Auth plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
 - governed content capture is disabled unless required by policy, and any enabled deployment has `content_admin` isolation, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;
 - image-fetching VLM services have media-domain restrictions where applicable;
@@ -118,6 +120,7 @@ Before production rollout, validate:
 - diagnostic tables and sanitized error rows;
 - quota, budget, RPM, TPM, and concurrency behavior;
 - usage reports grouped by caller, project, environment, model group, provider, model, status, cache, latency, tokens, and cost;
+- optional browser admin reports checked for summary, request drilldown, Markdown export, no-store headers, local static assets, and `403 reports-forbidden` for ordinary caller tokens;
 - cleanup of uploaded packages, replaced deployment trees, stale `/tmp` files, and accumulated Docker artifacts.
 
 Use [Operational Readiness](./operational-acceptance) for a release checklist.

@@ -31,6 +31,7 @@ Run:
 - Codex CLI smoke for Responses-compatible agent workflows;
 - Claude Code smoke for Anthropic Messages-compatible agent workflows;
 - usage report check after traffic.
+- if enabled, browser admin report smoke with Basic Auth plus Casbin authorization, including `/admin/reports/`, `/admin/reports/api/summary?since=24h`, and `/admin/reports/export.md`.
 
 ## Quota And Cost Checks
 
@@ -42,6 +43,7 @@ Validate:
 - request-time input/output/image cost fields populate;
 - upstream-reported billed cost is stored separately when available;
 - reports can group by caller, project, environment, model group, provider, model, status, cache, latency, tokens, and cost.
+- browser reports, when enabled, show the same cost and performance dimensions without exposing raw prompts, token hashes, provider keys, or full config.
 
 ## Troubleshooting Checks
 
@@ -51,6 +53,7 @@ Confirm:
 - `no-eligible-target` explains the missing dialect/tool/modality/cap requirement;
 - upstream timeouts, rate limits, and provider failures are distinguishable in diagnostics;
 - request attempts and trace events are written without raw prompts, raw image payloads, raw tokens, token hashes, or provider keys.
+- ordinary router caller tokens cannot access `/admin/reports/*` and receive `403 reports-forbidden`.
 
 ## Post-Deploy Cleanup
 
@@ -74,3 +77,4 @@ Rollback or isolate a change when:
 - provider error or timeout rate exceeds the group threshold;
 - usage or cost fields stop populating for affected traffic;
 - security controls such as `/metrics` restriction or diagnostics redaction regress.
+- browser report access stops requiring both Basic Auth identity and Casbin authorization.

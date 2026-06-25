@@ -29,18 +29,19 @@ import (
 )
 
 type Service struct {
-	cfg          *Config
-	mux          *http.ServeMux
-	httpClient   *http.Client
-	callersBySum map[string]*callerRuntime
-	adminBasic   map[string]adminBasicRuntime
-	quota        *quotaStore
-	cache        *responseCache
-	logger       *requestLogger
-	usage        *usageStore
-	metrics      *metricsStore
-	scripts      map[string]*scriptStrategy
-	observations *dynamicObservationStore
+	cfg             *Config
+	mux             *http.ServeMux
+	httpClient      *http.Client
+	callersBySum    map[string]*callerRuntime
+	adminBasic      map[string]adminBasicRuntime
+	adminAuthorizer *adminAuthorizer
+	quota           *quotaStore
+	cache           *responseCache
+	logger          *requestLogger
+	usage           *usageStore
+	metrics         *metricsStore
+	scripts         map[string]*scriptStrategy
+	observations    *dynamicObservationStore
 }
 
 type adminBasicRuntime struct {
@@ -140,6 +141,13 @@ func New(cfg *Config) (*Service, error) {
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
 	}
+	s.adminAuthorizer, err = newAdminAuthorizer(cfg.Server.AdminAuth.Authorization)
+	if err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		_ = usage.Close()
+		return nil, err
+	}
 	if err := s.loadScripts(); err != nil {
 		_ = quota.Close()
 		_ = logger.Close()
@@ -199,6 +207,8 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
 	s.mux.HandleFunc("GET /admin/auth/check", s.handleAdminAuthCheck)
+	s.mux.HandleFunc("GET /admin/reports", s.handleAdminReports)
+	s.mux.HandleFunc("GET /admin/reports/", s.handleAdminReports)
 	s.mux.HandleFunc("DELETE /v1/content-captures/{request_id}", s.handleContentCaptureDelete)
 	s.mux.HandleFunc("POST /v1/content-captures/purge-expired", s.handleContentCapturePurgeExpired)
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)

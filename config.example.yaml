@@ -22,8 +22,8 @@ server:
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
   # Browser-admin HTTP Basic authentication is disabled by default. It only
-  # establishes an admin subject; authorization still requires explicit grants
-  # and will be handled by Casbin for broader admin surfaces.
+  # establishes an admin subject; report authorization uses explicit Casbin
+  # grants under server.admin_auth.authorization.
   admin_auth:
     basic:
       enabled: false
@@ -39,6 +39,20 @@ server:
       #   domain: example/prod
       #   permissions:
       #   - admin:auth:read
+    authorization:
+      enabled: false
+      policy: []
+      # Example Casbin policy for admin reports after Basic Auth is enabled:
+      # policy:
+      # - g, basic:admin, reports_admin, example/prod
+      # - p, reports_admin, example/prod, admin:reports, read|export
+  admin_reports:
+    enabled: false
+    path_prefix: /admin/reports
+    default_since: 24h
+    max_range: 31d
+    max_rows: 500
+    export_markdown: true
   # Governed content capture is disabled by default. Enabling it stores redacted
   # request/response/upstream-error content in separate relational tables keyed
   # by request_id. It is not diagnostics, metrics, or usage reporting.

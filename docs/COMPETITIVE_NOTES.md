@@ -12,7 +12,7 @@ Do not position it as:
 
 - a public model marketplace;
 - a generic observability SaaS;
-- a full enterprise admin dashboard with SSO/compliance workflow automation in this repository;
+- a full enterprise admin suite with SSO/session management and compliance workflow automation; the repository includes a focused authenticated browser reporting surface for usage/performance/cost operations;
 - an automatic quality oracle for every model/prompt.
 
 ## Primary Source Baseline
@@ -50,4 +50,3 @@ Avoid or qualify:
 - Claims that competitors lack a feature unless primary docs clearly show that.
 - Claims that Smart LLM Router has enterprise dashboard/SSO/compliance UI features unless implemented.
 - Claims that the router automatically improves quality or cost for every workload.
-

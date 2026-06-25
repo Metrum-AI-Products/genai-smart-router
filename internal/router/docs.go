@@ -66,7 +66,9 @@ func isReservedRouterPath(p string) bool {
 		p == "/healthz" ||
 		p == "/readyz" ||
 		strings.HasPrefix(p, "/v1/") ||
-		p == "/v1"
+		p == "/v1" ||
+		p == "/admin" ||
+		strings.HasPrefix(p, "/admin/")
 }
 
 func serveEmbeddedDoc(w http.ResponseWriter, r *http.Request, root fs.FS, name string) bool {

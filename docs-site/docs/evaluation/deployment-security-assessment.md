@@ -17,6 +17,7 @@ Confirm:
 - metrics-admin access uses separate caller tokens with `metrics_admin: true`;
 - content-capture maintenance access, when enabled by policy, uses separate caller tokens with `content_admin: true`.
 - browser-admin Basic Auth, when enabled, uses bcrypt hashes from deployment secrets, requires HTTPS in production, trusts forwarded HTTPS state only from configured proxy CIDRs, and maps to stable subjects such as `basic:admin`; see [Admin Authentication](../configuration/admin-authentication).
+- browser admin reports, when enabled, require Casbin `admin:reports` policy in addition to Basic Auth identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
 
 Acceptance checks:
 
@@ -24,6 +25,8 @@ Acceptance checks:
 - ordinary caller token receives `403 metrics-forbidden` on `/metrics`;
 - metrics-admin token can scrape `/metrics`;
 - ordinary caller token receives `403 content-forbidden` on content-capture maintenance endpoints;
+- ordinary caller token receives `403 reports-forbidden` on `/admin/reports/*` when reports are enabled;
+- authorized Basic Auth report subject can read `/admin/reports/api/summary?since=24h`;
 - `/v1/models` returns only groups allowed for the presented token.
 
 ## Diagnostics And Data Handling
@@ -69,6 +72,7 @@ Validate:
 - `/readyz` and `/version` expose build metadata without secrets;
 - `/v1/chat/completions`, `/v1/responses`, and `/v1/messages` enforce caller auth, allow lists, quotas, and target eligibility;
 - `/v1/usage` returns caller-appropriate usage visibility;
+- `/admin/reports/*`, when enabled, returns only safe scalar report data and local embedded assets after Basic Auth plus Casbin authorization;
 - `/metrics` is restricted to metrics-admin tokens;
 - no private host paths, SSH details, provider keys, or raw tokens appear in hosted docs.
 

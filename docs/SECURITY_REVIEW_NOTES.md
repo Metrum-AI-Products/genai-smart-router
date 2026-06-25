@@ -11,6 +11,8 @@ Provider keys stay server-side. Caller tokens authenticate to the router and are
 
 Browser-admin HTTP Basic authentication is separate from router caller tokens. It is disabled by default, must use bcrypt password hashes from deployment secrets or environment variables, and must run over HTTPS in production. If TLS terminates at a reverse proxy, `X-Forwarded-Proto: https` is trusted only from configured proxy CIDRs. Basic Auth establishes a subject such as `basic:admin`; it does not grant broader admin permissions by itself. `/metrics` remains caller-token protected with `metrics_admin: true`.
 
+Admin browser reports under `/admin/reports/*` are disabled by default. When enabled, they require Basic Auth identity and Casbin authorization for `admin:reports` on every page, JSON API, request drilldown, static asset request, and Markdown export. Ordinary router caller tokens receive `403 reports-forbidden`. Report responses expose safe scalar usage, cost, latency, cache, fallback, provider/model, public token ID, caller metadata, and sanitized diagnostic fields only; they must not include raw provider keys, raw router tokens, token hashes, raw prompts, raw images, raw tool outputs, full config, or unsanitized upstream bodies.
+
 ## Tenant And Caller Isolation
 
 Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and disabled keys are rejected after token match with a safe `403 key-disabled` error.

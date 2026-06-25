@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -317,6 +318,175 @@ func TestAdminBasicAuthDoesNotChangeProxyBearerAuth(t *testing.T) {
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_admin_reports",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		Realm:             "Unit Test Admin",
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+		}},
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy: []string{
+			"g, basic:admin, reports_admin, local/test",
+			"p, reports_admin, local/test, admin:reports, read|export",
+		},
+	}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 1, ExportMarkdown: true}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for i := 0; i < 2; i++ {
+		modelReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi `+strconv.Itoa(i)+`"}]}`))
+		modelReq.Header.Set("Authorization", "Bearer "+testToken)
+		modelRR := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(modelRR, modelReq)
+		if modelRR.Code != http.StatusOK {
+			t.Fatalf("model status=%d body=%s", modelRR.Code, modelRR.Body.String())
+		}
+	}
+
+	unauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	unauthRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(unauthRR, unauth)
+	if unauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth status=%d body=%s", unauthRR.Code, unauthRR.Body.String())
+	}
+
+	ordinary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	ordinary.Header.Set("Authorization", "Bearer "+testToken)
+	ordinaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ordinaryRR, ordinary)
+	if ordinaryRR.Code != http.StatusForbidden || !strings.Contains(ordinaryRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("ordinary status=%d body=%s", ordinaryRR.Code, ordinaryRR.Body.String())
+	}
+
+	summary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	summary.SetBasicAuth("admin", "yell-yell-yum")
+	summaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(summaryRR, summary)
+	if summaryRR.Code != http.StatusOK {
+		t.Fatalf("summary status=%d body=%s", summaryRR.Code, summaryRR.Body.String())
+	}
+	if summaryRR.Header().Get("Cache-Control") != "no-store" || !strings.Contains(summaryRR.Header().Get("Content-Security-Policy"), "script-src 'self'") {
+		t.Fatalf("missing admin report security headers: %#v", summaryRR.Header())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(summaryRR.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["summary"].(map[string]any)["requests"].(float64) < 2 {
+		t.Fatalf("summary did not include request: %#v", body)
+	}
+	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "messages"} {
+		if strings.Contains(summaryRR.Body.String(), forbidden) {
+			t.Fatalf("summary leaked %q: %s", forbidden, summaryRR.Body.String())
+		}
+	}
+	requests := body["requests"].([]any)
+	if len(requests) != 1 {
+		t.Fatalf("summary request rows len=%d, want max_rows cap 1: %#v", len(requests), body)
+	}
+	requestID := requests[0].(map[string]any)["requestId"].(string)
+	detail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/"+url.PathEscape(requestID), nil)
+	detail.SetBasicAuth("admin", "yell-yell-yum")
+	detailRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(detailRR, detail)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("detail status=%d body=%s", detailRR.Code, detailRR.Body.String())
+	}
+	var detailBody map[string]any
+	if err := json.Unmarshal(detailRR.Body.Bytes(), &detailBody); err != nil {
+		t.Fatal(err)
+	}
+	attempts := detailBody["attempts"].([]any)
+	if len(attempts) == 0 || attempts[0].(map[string]any)["attemptIndex"] == nil {
+		t.Fatalf("detail missing safe attempt DTO fields: %#v", detailBody)
+	}
+	for _, forbidden := range []string{"TokenSHA256", "token_sha256", "provider-key", testToken, "messages"} {
+		if strings.Contains(detailRR.Body.String(), forbidden) {
+			t.Fatalf("detail leaked %q: %s", forbidden, detailRR.Body.String())
+		}
+	}
+
+	ui := httptest.NewRequest(http.MethodGet, "/admin/reports/", nil)
+	ui.SetBasicAuth("admin", "yell-yell-yum")
+	uiRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(uiRR, ui)
+	if uiRR.Code != http.StatusOK || !strings.Contains(uiRR.Body.String(), "Admin Reports") || strings.Contains(uiRR.Body.String(), "https://") {
+		t.Fatalf("ui status=%d body=%s", uiRR.Code, uiRR.Body.String())
+	}
+
+	asset := httptest.NewRequest(http.MethodGet, "/admin/reports/static/chart.umd.js", nil)
+	asset.SetBasicAuth("admin", "yell-yell-yum")
+	assetRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(assetRR, asset)
+	if assetRR.Code != http.StatusOK || !strings.Contains(assetRR.Body.String(), "window.Chart") {
+		t.Fatalf("asset status=%d body=%s", assetRR.Code, assetRR.Body.String())
+	}
+
+	exportReq := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?since=24h", nil)
+	exportReq.SetBasicAuth("admin", "yell-yell-yum")
+	exportRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(exportRR, exportReq)
+	if exportRR.Code != http.StatusOK || !strings.Contains(exportRR.Body.String(), "# Smart LLM Router Usage Report") {
+		t.Fatalf("export status=%d body=%s", exportRR.Code, exportRR.Body.String())
+	}
+}
+
+func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+		}},
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, other, local/test, admin:reports, read"}}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 100}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary", nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "reports-forbidden") {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }

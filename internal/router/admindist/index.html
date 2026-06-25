@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Router Admin Reports</title>
+  <link rel="stylesheet" href="static/admin.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Admin Reports</h1>
+        <p id="period">Loading report data</p>
+      </div>
+      <form id="filters" class="filters">
+        <label>Since <input name="since" value="24h" autocomplete="off"></label>
+        <label>Project <input name="caller_project" placeholder="any"></label>
+        <label>Group <input name="resolved_group" placeholder="any"></label>
+        <label>Client <input name="client" placeholder="any"></label>
+        <button type="submit">Apply</button>
+        <a id="export" class="button" href="export.md?since=24h">Markdown</a>
+      </form>
+    </header>
+    <section id="summary" class="summary"></section>
+    <section class="charts">
+      <figure><figcaption>Requests</figcaption><canvas id="requestsChart"></canvas></figure>
+      <figure><figcaption>Cost</figcaption><canvas id="costChart"></canvas></figure>
+      <figure><figcaption>Latency</figcaption><canvas id="latencyChart"></canvas></figure>
+      <figure><figcaption>Cache</figcaption><canvas id="cacheChart"></canvas></figure>
+      <figure><figcaption>Provider Tokens</figcaption><canvas id="providerChart"></canvas></figure>
+      <figure><figcaption>Errors And Fallbacks</figcaption><canvas id="errorChart"></canvas></figure>
+    </section>
+    <nav class="tabs" aria-label="Report sections">
+      <button type="button" data-tab="groups" class="active">Groups</button>
+      <button type="button" data-tab="providers">Providers</button>
+      <button type="button" data-tab="tokens">Keys</button>
+      <button type="button" data-tab="requests">Requests</button>
+    </nav>
+    <section id="tables"></section>
+  </main>
+  <script src="static/chart.umd.js"></script>
+  <script src="static/admin.js"></script>
+</body>
+</html>

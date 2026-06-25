@@ -10,7 +10,8 @@ This runbook covers the first browser-admin identity option: HTTP Basic authenti
 - Requires HTTPS unless `allow_insecure_http: true` is set for local development.
 - Honors `X-Forwarded-Proto: https` only when the request comes from a configured trusted proxy CIDR.
 - Produces a stable subject such as `basic:admin`.
-- Uses route permissions only for the current stub check route. Broader admin authorization should move to Casbin under issue #71.
+- Uses route permissions only for the current stub check route.
+- Broader admin/report authorization uses Casbin policy under `server.admin_auth.authorization`.
 
 `/metrics` remains protected by caller tokens with `metrics_admin: true`. Basic Auth does not grant metrics access.
 
@@ -52,6 +53,23 @@ server:
             - admin:auth:read
 ```
 
+Authorize report access with Casbin policy:
+
+```yaml
+server:
+  admin_auth:
+    authorization:
+      enabled: true
+      policy:
+        - g, basic:admin, reports_admin, example/prod
+        - p, reports_admin, example/prod, admin:reports, read|export
+  admin_reports:
+    enabled: true
+    default_since: 24h
+    max_range: 31d
+    max_rows: 500
+```
+
 Use `allow_insecure_http: true` only for local loopback testing. Production deployments should terminate TLS at the reverse proxy and pass `X-Forwarded-Proto: https` to the router. Set `trusted_proxy_cidrs` to the reverse proxy network only; do not trust forwarded headers from arbitrary clients.
 
 ## Smoke Test
@@ -73,6 +91,14 @@ curl -i -u admin:replace-with-the-admin-password "$ROUTER_BASE_URL/admin/auth/ch
 Expected: `200` with safe subject metadata such as `basic:admin` and no credential material.
 
 Valid credentials without `admin:auth:read` should return `403 admin-forbidden`.
+
+Authorized report administrators can smoke the browser-report API:
+
+```bash
+curl -i -u admin:replace-with-the-admin-password "$ROUTER_BASE_URL/admin/reports/api/summary?since=24h"
+```
+
+Expected: `200` JSON with safe usage, cost, latency, cache, fallback, and provider/model aggregates. Ordinary router caller tokens should receive `403 reports-forbidden`.
 
 Existing API callers should be unchanged:
 

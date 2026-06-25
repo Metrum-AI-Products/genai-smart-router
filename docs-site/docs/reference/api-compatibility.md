@@ -19,6 +19,7 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
 | `/readyz`, `/healthz`, `/version` | Router operational endpoints | Load balancers and operators |
 | `/admin/auth/check` | Browser-admin Basic Auth validation stub | Operators enabling browser-admin surfaces |
+| `/admin/reports/*` | Router-specific admin reports | Authorized administrators |
 
 `/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
 
@@ -27,6 +28,8 @@ Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401
 Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` and `POST /v1/content-captures/purge-expired` require a caller token configured with `content_admin: true` and never return captured content.
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
+
+`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth for browser-admin identity, and uses Casbin policy decisions for read/export access. Ordinary caller tokens receive `403 reports-forbidden`.
 
 ## Compatibility Matrix
 
