@@ -65,9 +65,11 @@ type decision struct {
 }
 
 type routingEligibilityError struct {
-	Model        string
-	Dialect      string
-	Requirements []string
+	Model           string
+	Dialect         string
+	Requirements    []string
+	ContractPresent bool
+	ContractReason  string
 }
 
 func (e routingEligibilityError) Error() string {
@@ -490,6 +492,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
+	if group.Contract != nil {
+		rc.rec.ContractPresent = true
+		rc.rec.ContractBucket = "pending"
+		rc.rec.ContractWorkload = contractWorkloadLabel(group.Contract)
+	}
 	piiResult, err := applyPIIFilter(req, group.PIIFilter)
 	if err != nil {
 		var blocked piiFilterBlockedError
@@ -539,6 +546,14 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.TargetProvider = dec.Target.Provider
 	rc.rec.TargetModel = dec.Target.Model
 	rc.rec.TargetDialect = targetDialect(s.cfg.Provider[dec.Target.Provider], dec.Target)
+	if group.Contract != nil {
+		rc.rec.ContractBucket = "passed"
+	}
+	if dec.Target.Validation != nil {
+		rc.rec.TargetValidationStatus = strings.ToLower(strings.TrimSpace(dec.Target.Validation.Status))
+		rc.rec.TargetValidationWorkload = strings.TrimSpace(dec.Target.Validation.Workload)
+		rc.rec.TargetValidationAgeBucket = validationAgeBucket(dec.Target.Validation, time.Now().UTC())
+	}
 	rc.rec.InputPricePerMillionUSD = dec.Target.InputPricePerMillionUSD
 	rc.rec.OutputPricePerMillionUSD = dec.Target.OutputPricePerMillionUSD
 	rc.rec.ImageInputPricePerMillionTokensUSD = dec.Target.ImageInputPricePerMillionTokensUSD
@@ -916,6 +931,18 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 			Requirements: routingRequirements(req, callerDialect),
 		}
 	}
+	contractResult := s.targetsForContract(groupName, group, targets, req, callerDialect)
+	targets = contractResult.targets
+	if len(targets) == 0 {
+		requirements := append(routingRequirements(req, callerDialect), defaultString(contractResult.reason, "contract-quality-floor"))
+		return decision{}, routingEligibilityError{
+			Model:           groupName,
+			Dialect:         callerDialect,
+			Requirements:    requirements,
+			ContractPresent: true,
+			ContractReason:  defaultString(contractResult.reason, "contract-quality-floor"),
+		}
+	}
 	strategy := strings.ToLower(group.Strategy)
 	var label *string
 	switch strategy {
@@ -947,10 +974,10 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 		if strat == nil {
 			return decision{}, fmt.Errorf("script strategy %s not loaded", groupName)
 		}
-		return strat.Pick(groupName, req, targets, s.cfg.Provider, caller, tokenID)
+		return strat.Pick(groupName, req, group.Contract, targets, s.cfg.Provider, caller, tokenID)
 	case "external":
 		strat := externalPolicyStrategy{cfg: group.ExternalPolicy}
-		return strat.Pick(groupName, req, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
+		return strat.Pick(groupName, req, group.Contract, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
 	}
@@ -1824,6 +1851,11 @@ func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *reques
 		rc.rec.Error = &code
 		rc.rec.ErrorClass = code
 		rc.rec.ErrorMessage = fmt.Sprintf("no eligible upstream target for %s", err.Model)
+		if err.ContractPresent {
+			rc.rec.ContractPresent = true
+			rc.rec.ContractBucket = "failed"
+			rc.rec.ContractFailureReason = err.ContractReason
+		}
 		s.finish(rc, http.StatusBadGateway, &code)
 	}
 	message := fmt.Sprintf("no eligible upstream target is configured for model %q with %s requests requiring %s", err.Model, err.Dialect, strings.Join(err.Requirements, ", "))

@@ -479,6 +479,9 @@ func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 		"/api/cache":                {Report: "cache", Dimension: "cache", Secondary: "model_group", Sort: "requests"},
 		"/api/quotas-budgets":       {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
 		"/api/routing-decisions":    {Report: "routing-decisions", Dimension: "routing_decision", Secondary: "provider_model", Sort: "requests"},
+		"/api/contract-buckets":     {Report: "contract-buckets", Dimension: "contract_bucket", Secondary: "model_group", Sort: "requests"},
+		"/api/contract-workloads":   {Report: "contract-workloads", Dimension: "contract_workload", Secondary: "model_group", Sort: "requests"},
+		"/api/target-validation":    {Report: "target-validation", Dimension: "target_validation", Secondary: "provider_model", Sort: "requests"},
 		"/api/expensive-requests":   {Report: "expensive-requests", Sort: "cost", Requests: true},
 		"/api/client-breakdown":     {Report: "client-breakdown", Dimension: "client", Secondary: "inbound_dialect", Sort: "requests"},
 		"/api/project-chargeback":   {Report: "project-chargeback", Dimension: "project", Secondary: "environment", Sort: "cost"},
@@ -1259,6 +1262,18 @@ func adminScalarDimension(row usageRow, dimension string) string {
 		return joinKey(defaultString(row.QuotaState, "unknown"), defaultString(row.KeyState, "unknown"))
 	case "routing_decision":
 		return joinKey(defaultString(row.Strategy, "unknown"), defaultString(row.ResolvedGroup, row.RequestedModel))
+	case "contract_bucket":
+		if !row.ContractPresent {
+			return "none"
+		}
+		return defaultString(row.ContractBucket, "unknown")
+	case "contract_workload":
+		if !row.ContractPresent {
+			return "none"
+		}
+		return defaultString(row.ContractWorkload, "unspecified")
+	case "target_validation":
+		return joinKey(defaultString(row.TargetValidationStatus, "missing"), defaultString(row.TargetValidationAgeBucket, "missing"))
 	case "project":
 		return defaultString(row.CallerProject, "unknown")
 	case "environment":

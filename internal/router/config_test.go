@@ -119,6 +119,123 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	}
 }
 
+func TestModelGroupContractValidation(t *testing.T) {
+	score := 0.9
+	passRate := 0.95
+	for _, tt := range []struct {
+		name string
+		edit func(*Config)
+		want string
+	}{
+		{
+			name: "valid contract",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{
+					Strategy: "weighted",
+					Contract: &ModelGroupContract{
+						SupportedAPIShapes: []string{"openai_chat"},
+						IntendedWorkloads:  []string{"support-chat"},
+						RequiredCaps: ContractRequiredCapabilities{
+							InputModalities:  []string{"text"},
+							OutputModalities: []string{"text"},
+							MinContextTokens: 1024,
+						},
+						QualityFloor: ContractQualityFloor{
+							RequireTags:             []string{"validated"},
+							MinEvalQualityScore:     &score,
+							MinEvalPassRate:         &passRate,
+							AllowedValidationStatus: []string{"passed"},
+						},
+					},
+					Targets: []Target{{
+						Provider:      "mock",
+						Model:         "mock-model",
+						ContextTokens: 4096,
+						Tags:          []string{"validated"},
+						Validation:    &TargetValidation{Status: "passed", Workload: "support-chat", ValidatedAt: "2026-06-20", QualityScore: 0.92, PassRate: 0.97, Harness: "unit"},
+					}},
+				}
+			},
+		},
+		{
+			name: "invalid api shape",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{SupportedAPIShapes: []string{"bad_shape"}}, Targets: []Target{{Provider: "mock", Model: "mock-model"}}}
+			},
+			want: "unsupported API shape",
+		},
+		{
+			name: "api shape unavailable",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{SupportedAPIShapes: []string{"anthropic_messages"}}, Targets: []Target{{Provider: "mock", Model: "mock-model", ToolOnly: true}}}
+			},
+			want: "is not served by any target",
+		},
+		{
+			name: "translated plain api shape",
+			edit: func(cfg *Config) {
+				cfg.Provider["mock"] = ProviderConfig{BaseURL: "http://mock", APIKey: "test-key", Dialect: "openai-responses"}
+				cfg.Models["default"] = ModelGroup{
+					Strategy: "static",
+					Contract: &ModelGroupContract{SupportedAPIShapes: []string{"openai_chat"}},
+					Targets:  []Target{{Provider: "mock", Model: "responses-model"}},
+				}
+			},
+		},
+		{
+			name: "invalid modality",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{RequiredCaps: ContractRequiredCapabilities{InputModalities: []string{"smell"}}}, Targets: []Target{{Provider: "mock", Model: "mock-model"}}}
+			},
+			want: "unsupported modality",
+		},
+		{
+			name: "invalid quality score",
+			edit: func(cfg *Config) {
+				bad := 1.1
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{QualityFloor: ContractQualityFloor{MinEvalQualityScore: &bad}}, Targets: []Target{{Provider: "mock", Model: "mock-model"}}}
+			},
+			want: "min_eval_quality_score must be between 0 and 1",
+		},
+		{
+			name: "require tag unavailable",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{QualityFloor: ContractQualityFloor{RequireTags: []string{"validated"}}}, Targets: []Target{{Provider: "mock", Model: "mock-model"}}}
+			},
+			want: "cannot be satisfied",
+		},
+		{
+			name: "tools unavailable",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Contract: &ModelGroupContract{RequiredCaps: ContractRequiredCapabilities{Tools: true}}, Targets: []Target{{Provider: "mock", Model: "mock-model"}}}
+			},
+			want: "cannot be satisfied",
+		},
+		{
+			name: "invalid validation date",
+			edit: func(cfg *Config) {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "mock-model", Validation: &TargetValidation{Status: "passed", Workload: "support", ValidatedAt: "06/20/2026"}}}}
+			},
+			want: "validation.validated_at must be YYYY-MM-DD",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			tt.edit(cfg)
+			err := cfg.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() error=%v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() error=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestContentCaptureConfigValidation(t *testing.T) {
 	falseValue := false
 	for _, tt := range []struct {

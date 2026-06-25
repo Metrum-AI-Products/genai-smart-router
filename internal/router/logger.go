@@ -53,6 +53,13 @@ type logRecord struct {
 	PIIFilterMode                      string             `json:"pii_filter_mode,omitempty"`
 	PIIFilterReplacements              int                `json:"pii_filter_replacements,omitempty"`
 	PIIFilterRuleCount                 int                `json:"pii_filter_rule_count,omitempty"`
+	ContractPresent                    bool               `json:"contract_present,omitempty"`
+	ContractBucket                     string             `json:"contract_bucket,omitempty"`
+	ContractFailureReason              string             `json:"contract_failure_reason,omitempty"`
+	ContractWorkload                   string             `json:"contract_workload,omitempty"`
+	TargetValidationStatus             string             `json:"target_validation_status,omitempty"`
+	TargetValidationWorkload           string             `json:"target_validation_workload,omitempty"`
+	TargetValidationAgeBucket          string             `json:"target_validation_age_bucket,omitempty"`
 	InputPricePerMillionUSD            float64            `json:"input_price_per_million_usd,omitempty"`
 	OutputPricePerMillionUSD           float64            `json:"output_price_per_million_usd,omitempty"`
 	ImageInputPricePerMillionTokensUSD float64            `json:"image_input_price_per_million_tokens_usd,omitempty"`

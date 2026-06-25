@@ -12,6 +12,7 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Per-key allow lists | Implemented | Disallowed model requests return before provider routing. |
 | Rate/usage limits | Implemented | RPM, TPM, concurrency, quota, and lifetime budget fields exist in config/state behavior. |
 | Weighted/failover/static routing | Implemented | Configured under deployment-defined model groups. |
+| Model-group routing contracts | Implemented | Optional `models.<group>.contract` filters group-local targets by declared API surfaces, capability requirements, validation metadata, quality floors, and operational thresholds before strategy selection. |
 | TypeScript routing | Implemented | Scripts run inside router with safe context and optional allowlisted HTTP helper. |
 | External provider keys | Implemented | Provider credentials are server-side env/config values. |
 | Tool-aware routing | Implemented | Tool support metadata is dialect-specific. |

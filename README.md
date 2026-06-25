@@ -506,6 +506,67 @@ Model: <allowed-model-group>
 
 Use whichever deployment-defined model group the caller token allows. If a request includes `tools`, structured-output fields, images, or explicit output caps and no eligible target in that group declares the required support, the router returns `502 no-eligible-target` with a hint to enable an upstream target that supports the requested dialect, tools, structured outputs, modalities, and cap behavior.
 
+### Model Group Contracts
+
+Model groups may declare an optional `contract` that makes the group’s workload, API surfaces, hard capability requirements, validation quality floor, and operational thresholds first-class config. Existing groups without a contract behave as before. Contract enforcement is strictly group-local: after authentication and caller allow-list checks, the router filters only the requested group’s already eligible targets, then runs `static`, `weighted`, `failover`, `dynamic_score`, `script`, or `external` on the remaining targets.
+
+```yaml
+models:
+  support-chat:
+    strategy: weighted
+    contract:
+      display_name: Support chat
+      caller_visible_notes: Deployment-defined low-latency support group.
+      intended_workloads: [support_chat]
+      supported_api_shapes: [openai_chat]
+      required_capabilities:
+        input_modalities: [text]
+        output_modalities: [text]
+        honors_max_tokens_when_caller_capped: true
+      quality_floor:
+        require_tags: [validated]
+        min_eval_quality_score: 0.90
+        min_eval_pass_rate: 0.95
+        max_eval_age_days: 30
+        allowed_validation_status: [passed]
+      operational_targets:
+        max_p95_latency_ms: 10000
+        max_error_rate: 0.03
+        max_timeout_rate: 0.02
+      reporting:
+        expose_workload_labels: true
+        expose_quality_floor_bucket: true
+    targets:
+      - provider: private-gpu
+        model_ref: support-balanced
+        weight: 70
+        tags: [validated, low_latency]
+        validation:
+          status: passed
+          workload: support_chat
+          validated_at: "2026-06-25"
+          quality_score: 0.94
+          pass_rate: 0.98
+          harness: golden-support-set
+      - provider: hosted
+        model_ref: support-fallback
+        weight: 30
+        tags: [validated, fallback]
+        validation:
+          status: passed
+          workload: support_chat
+          validated_at: "2026-06-25"
+          quality_score: 0.92
+          pass_rate: 0.96
+          harness: golden-support-set
+```
+
+Startup validation rejects unsupported API shapes, invalid modalities, impossible validation status values, bad dates, out-of-range quality scores/pass rates, negative thresholds, required tags that no target has, declared API shapes that no target serves, and contracts no target can satisfy. Runtime contract failures return the existing `502 no-eligible-target` style response with safe buckets such as `contract-required-api-shape`, `contract-required-modality`, `contract-quality-floor`, `contract-validation-expired`, or `contract-no-validated-target`.
+
+`dynamic_score` can use target `tags` and `validation.quality_score`/`validation.pass_rate` as evaluation hints. TypeScript and external policy strategies receive the same safe contract and target validation metadata after contract filtering, and returned decisions are validated against the filtered target list. Usage rows store only scalar contract buckets, optional workload labels, and target validation status/workload/age buckets.
+
+Roll out contracts on a deployment-defined test group first. Add validation metadata to each intended target, run text/tool/image/structured-output smokes that match the declared contract, confirm no-eligible failures use safe reason buckets, and verify reports show only safe scalar buckets. Roll back by removing or relaxing the `contract` block, removing a too-strict quality floor, or switching the group back to its previous strategy/weights.
+
 For providers that use Anthropic Messages shape but bearer-token authentication, set `auth_scheme: bearer`:
 
 ```yaml
@@ -583,7 +644,7 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
-Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, eligible target metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. For groups with `pii_filter`, the policy payload is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
+Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. For groups with `pii_filter`, the policy payload is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
 
 ```yaml
 models:
@@ -807,7 +868,7 @@ Generate a report for one benchmark or case study by caller project/environment:
   --out harbor-agentic-usage.md
 ```
 
-Reports include totals, external provider/model usage, internal router API key usage by `token_id`/owner user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, downstream user performance, upstream provider/model/dialect performance, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
+Reports include totals, external provider/model usage, internal router API key usage by `token_id`/owner user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, downstream user performance, upstream provider/model/dialect performance, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, contract pass/fail buckets, optional contract workload labels, target validation buckets, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.
 
 Durability:
 

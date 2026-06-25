@@ -200,6 +200,7 @@ type ProviderModel struct {
 	Model                              string      `yaml:"model" json:"model"`
 	Dialect                            string      `yaml:"dialect" json:"dialect,omitempty"`
 	DisplayName                        string      `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int         `yaml:"context_tokens" json:"contextTokens,omitempty"`
 	InputPricePerMillionUSD            float64     `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
 	OutputPricePerMillionUSD           float64     `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
 	ImageInputPricePerMillionTokensUSD float64     `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
@@ -232,10 +233,52 @@ type ModelGroup struct {
 	ScriptHTTP       ScriptHTTPConfig     `yaml:"script_http"`
 	ExternalPolicy   ExternalPolicyConfig `yaml:"external_policy"`
 	RoutingPolicy    RoutingPolicyConfig  `yaml:"routing_policy"`
+	Contract         *ModelGroupContract  `yaml:"contract" json:"contract,omitempty"`
 	PIIFilter        PIIFilterConfig      `yaml:"pii_filter"`
 	ContentCapture   ContentCaptureConfig `yaml:"content_capture"`
 	AttemptTimeoutMS int                  `yaml:"attempt_timeout_ms"`
 	Targets          []Target             `yaml:"targets"`
+}
+
+type ModelGroupContract struct {
+	DisplayName        string                       `yaml:"display_name" json:"displayName,omitempty"`
+	CallerVisibleNotes string                       `yaml:"caller_visible_notes" json:"callerVisibleNotes,omitempty"`
+	IntendedWorkloads  []string                     `yaml:"intended_workloads" json:"intendedWorkloads,omitempty"`
+	SupportedAPIShapes []string                     `yaml:"supported_api_shapes" json:"supportedApiShapes,omitempty"`
+	RequiredCaps       ContractRequiredCapabilities `yaml:"required_capabilities" json:"requiredCapabilities,omitempty"`
+	QualityFloor       ContractQualityFloor         `yaml:"quality_floor" json:"qualityFloor,omitempty"`
+	OperationalTargets ContractOperationalTargets   `yaml:"operational_targets" json:"operationalTargets,omitempty"`
+	Reporting          ContractReporting            `yaml:"reporting" json:"reporting,omitempty"`
+}
+
+type ContractRequiredCapabilities struct {
+	Tools                           bool     `yaml:"tools" json:"tools,omitempty"`
+	ForcedToolChoice                bool     `yaml:"forced_tool_choice" json:"forcedToolChoice,omitempty"`
+	StructuredOutputs               bool     `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
+	InputModalities                 []string `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                []string `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	MinContextTokens                int      `yaml:"min_context_tokens" json:"minContextTokens,omitempty"`
+	HonorsMaxTokensWhenCallerCapped bool     `yaml:"honors_max_tokens_when_caller_capped" json:"honorsMaxTokensWhenCallerCapped,omitempty"`
+}
+
+type ContractQualityFloor struct {
+	RequireTags             []string `yaml:"require_tags" json:"requireTags,omitempty"`
+	MinEvalQualityScore     *float64 `yaml:"min_eval_quality_score" json:"minEvalQualityScore,omitempty"`
+	MinEvalPassRate         *float64 `yaml:"min_eval_pass_rate" json:"minEvalPassRate,omitempty"`
+	MaxEvalAgeDays          int      `yaml:"max_eval_age_days" json:"maxEvalAgeDays,omitempty"`
+	AllowedValidationStatus []string `yaml:"allowed_validation_status" json:"allowedValidationStatus,omitempty"`
+}
+
+type ContractOperationalTargets struct {
+	MaxP95LatencyMS          *float64 `yaml:"max_p95_latency_ms" json:"maxP95LatencyMs,omitempty"`
+	MaxErrorRate             *float64 `yaml:"max_error_rate" json:"maxErrorRate,omitempty"`
+	MaxTimeoutRate           *float64 `yaml:"max_timeout_rate" json:"maxTimeoutRate,omitempty"`
+	MinOutputTokensPerSecond *float64 `yaml:"min_output_tokens_per_second" json:"minOutputTokensPerSecond,omitempty"`
+}
+
+type ContractReporting struct {
+	ExposeWorkloadLabels     bool `yaml:"expose_workload_labels" json:"exposeWorkloadLabels,omitempty"`
+	ExposeQualityFloorBucket bool `yaml:"expose_quality_floor_bucket" json:"exposeQualityFloorBucket,omitempty"`
 }
 
 type RoutingPolicyConfig struct {
@@ -390,30 +433,42 @@ type ExternalPolicyConfig struct {
 }
 
 type Target struct {
-	Provider                           string         `yaml:"provider" json:"provider"`
-	Model                              string         `yaml:"model" json:"model"`
-	ModelRef                           string         `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect                            string         `yaml:"dialect" json:"dialect"`
-	DisplayName                        string         `yaml:"display_name" json:"displayName,omitempty"`
-	ToolOnly                           bool           `yaml:"tool_only" json:"toolOnly,omitempty"`
-	TimeoutMS                          int            `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
-	DefaultThinking                    map[string]any `yaml:"default_thinking" json:"defaultThinking,omitempty"`
-	Tags                               []string       `yaml:"tags" json:"tags,omitempty"`
-	Weight                             int            `yaml:"weight" json:"weight"`
-	RPM                                int            `yaml:"rpm" json:"rpm"`
-	Tier                               string         `yaml:"tier" json:"tier"`
-	Cost                               int            `yaml:"cost" json:"cost"`
-	InputPricePerMillionUSD            float64        `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64        `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64        `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64        `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string         `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string         `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string         `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport    `yaml:"tool_support" json:"toolSupport,omitempty"`
-	InputModalities                    []string       `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string       `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool          `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	Provider                           string            `yaml:"provider" json:"provider"`
+	Model                              string            `yaml:"model" json:"model"`
+	ModelRef                           string            `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect                            string            `yaml:"dialect" json:"dialect"`
+	DisplayName                        string            `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int               `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	ToolOnly                           bool              `yaml:"tool_only" json:"toolOnly,omitempty"`
+	TimeoutMS                          int               `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
+	DefaultThinking                    map[string]any    `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Tags                               []string          `yaml:"tags" json:"tags,omitempty"`
+	Weight                             int               `yaml:"weight" json:"weight"`
+	RPM                                int               `yaml:"rpm" json:"rpm"`
+	Tier                               string            `yaml:"tier" json:"tier"`
+	Cost                               int               `yaml:"cost" json:"cost"`
+	InputPricePerMillionUSD            float64           `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64           `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64           `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64           `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string            `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string            `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string            `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport       `yaml:"tool_support" json:"toolSupport,omitempty"`
+	InputModalities                    []string          `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string          `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool             `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	Validation                         *TargetValidation `yaml:"validation" json:"validation,omitempty"`
+}
+
+type TargetValidation struct {
+	Status       string  `yaml:"status" json:"status,omitempty"`
+	Workload     string  `yaml:"workload" json:"workload,omitempty"`
+	ValidatedAt  string  `yaml:"validated_at" json:"validatedAt,omitempty"`
+	QualityScore float64 `yaml:"quality_score" json:"qualityScore,omitempty"`
+	PassRate     float64 `yaml:"pass_rate" json:"passRate,omitempty"`
+	Harness      string  `yaml:"harness" json:"harness,omitempty"`
+	Notes        string  `yaml:"notes" json:"notes,omitempty"`
 }
 
 type CallerConfig struct {
@@ -719,6 +774,9 @@ func (c *Config) Validate() error {
 			if model.Dialect != "" && normalizeDialect(model.Dialect) == "" {
 				return fmt.Errorf("provider %s model %s has unsupported dialect %q", name, ref, model.Dialect)
 			}
+			if model.ContextTokens < 0 {
+				return fmt.Errorf("provider %s model %s has negative context_tokens", name, ref)
+			}
 			if model.InputPricePerMillionUSD < 0 {
 				return fmt.Errorf("provider %s model %s has negative input_price_per_million_usd", name, ref)
 			}
@@ -865,6 +923,9 @@ func (c *Config) Validate() error {
 			if resolved.TimeoutMS < 0 {
 				return fmt.Errorf("model group %s target %s timeout_ms cannot be negative", name, resolved.Model)
 			}
+			if resolved.ContextTokens < 0 {
+				return fmt.Errorf("model group %s target %s context_tokens cannot be negative", name, resolved.Model)
+			}
 			if err := validateToolSupport(resolved.ToolSupport); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
 			}
@@ -876,7 +937,13 @@ func (c *Config) Validate() error {
 			}
 			resolved.InputModalities = defaultModalities(resolved.InputModalities)
 			resolved.OutputModalities = defaultModalities(resolved.OutputModalities)
+			if err := validateTargetValidation(name, resolved); err != nil {
+				return err
+			}
 			m.Targets[i] = resolved
+		}
+		if err := c.validateModelGroupContract(name, m); err != nil {
+			return err
 		}
 		c.Models[name] = m
 	}
@@ -1628,6 +1695,9 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	if target.DisplayName == "" {
 		target.DisplayName = catalog.DisplayName
 	}
+	if target.ContextTokens == 0 {
+		target.ContextTokens = catalog.ContextTokens
+	}
 	if target.RPM == 0 {
 		target.RPM = catalog.RPM
 	}
@@ -1696,6 +1766,170 @@ func validateToolSupport(ts ToolSupport) error {
 		}
 	}
 	return nil
+}
+
+func validateTargetValidation(group string, target Target) error {
+	if target.Validation == nil {
+		return nil
+	}
+	v := target.Validation
+	status := strings.ToLower(strings.TrimSpace(v.Status))
+	if status != "" && !validTargetValidationStatus(status) {
+		return fmt.Errorf("model group %s target %s validation.status %q is unsupported", group, target.Model, v.Status)
+	}
+	if v.QualityScore < 0 || v.QualityScore > 1 {
+		return fmt.Errorf("model group %s target %s validation.quality_score must be between 0 and 1", group, target.Model)
+	}
+	if v.PassRate < 0 || v.PassRate > 1 {
+		return fmt.Errorf("model group %s target %s validation.pass_rate must be between 0 and 1", group, target.Model)
+	}
+	if strings.TrimSpace(v.ValidatedAt) != "" {
+		if _, err := time.Parse("2006-01-02", strings.TrimSpace(v.ValidatedAt)); err != nil {
+			return fmt.Errorf("model group %s target %s validation.validated_at must be YYYY-MM-DD", group, target.Model)
+		}
+	}
+	if strings.TrimSpace(v.Workload) == "" && (strings.TrimSpace(v.Status) != "" || strings.TrimSpace(v.Harness) != "" || strings.TrimSpace(v.ValidatedAt) != "" || v.QualityScore != 0 || v.PassRate != 0) {
+		return fmt.Errorf("model group %s target %s validation.workload is required when validation metadata is configured", group, target.Model)
+	}
+	return nil
+}
+
+func validTargetValidationStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "passed", "failed", "pending", "stale", "expired", "skipped":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Config) validateModelGroupContract(group string, model ModelGroup) error {
+	contract := model.Contract
+	if contract == nil {
+		return nil
+	}
+	for _, shape := range contract.SupportedAPIShapes {
+		if normalizeContractAPIShape(shape) == "" {
+			return fmt.Errorf("model group %s contract.supported_api_shapes contains unsupported API shape %q", group, shape)
+		}
+		if !modelGroupHasAPIShapeTarget(c, model, normalizeContractAPIShape(shape)) {
+			return fmt.Errorf("model group %s contract.supported_api_shapes %q is not served by any target", group, shape)
+		}
+	}
+	if err := validateModalities(contract.RequiredCaps.InputModalities); err != nil {
+		return fmt.Errorf("model group %s contract.required_capabilities.input_modalities is invalid: %w", group, err)
+	}
+	if err := validateModalities(contract.RequiredCaps.OutputModalities); err != nil {
+		return fmt.Errorf("model group %s contract.required_capabilities.output_modalities is invalid: %w", group, err)
+	}
+	if contract.RequiredCaps.MinContextTokens < 0 {
+		return fmt.Errorf("model group %s contract.required_capabilities.min_context_tokens cannot be negative", group)
+	}
+	if err := validateOptionalUnitInterval(group, "contract.quality_floor.min_eval_quality_score", contract.QualityFloor.MinEvalQualityScore); err != nil {
+		return err
+	}
+	if err := validateOptionalUnitInterval(group, "contract.quality_floor.min_eval_pass_rate", contract.QualityFloor.MinEvalPassRate); err != nil {
+		return err
+	}
+	if contract.QualityFloor.MaxEvalAgeDays < 0 {
+		return fmt.Errorf("model group %s contract.quality_floor.max_eval_age_days cannot be negative", group)
+	}
+	for _, status := range contract.QualityFloor.AllowedValidationStatus {
+		if !validTargetValidationStatus(status) {
+			return fmt.Errorf("model group %s contract.quality_floor.allowed_validation_status contains unsupported status %q", group, status)
+		}
+	}
+	if err := validateOptionalNonNegative(group, "contract.operational_targets.max_p95_latency_ms", contract.OperationalTargets.MaxP95LatencyMS); err != nil {
+		return err
+	}
+	if err := validateOptionalUnitInterval(group, "contract.operational_targets.max_error_rate", contract.OperationalTargets.MaxErrorRate); err != nil {
+		return err
+	}
+	if err := validateOptionalUnitInterval(group, "contract.operational_targets.max_timeout_rate", contract.OperationalTargets.MaxTimeoutRate); err != nil {
+		return err
+	}
+	if err := validateOptionalNonNegative(group, "contract.operational_targets.min_output_tokens_per_second", contract.OperationalTargets.MinOutputTokensPerSecond); err != nil {
+		return err
+	}
+	for _, tag := range contract.QualityFloor.RequireTags {
+		if strings.TrimSpace(tag) == "" {
+			return fmt.Errorf("model group %s contract.quality_floor.require_tags contains empty tag", group)
+		}
+	}
+	if !contractCanBeSatisfied(c, model, "openai-chat", nil) {
+		return fmt.Errorf("model group %s contract cannot be satisfied by any configured target", group)
+	}
+	for _, tag := range contract.QualityFloor.RequireTags {
+		found := false
+		for _, target := range model.Targets {
+			if targetHasTag(target, tag) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("model group %s contract.quality_floor.require_tags tag %q is not present on any target", group, tag)
+		}
+	}
+	return nil
+}
+
+func validateOptionalUnitInterval(group, field string, value *float64) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 0 || *value > 1 {
+		return fmt.Errorf("model group %s %s must be between 0 and 1", group, field)
+	}
+	return nil
+}
+
+func validateOptionalNonNegative(group, field string, value *float64) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 0 {
+		return fmt.Errorf("model group %s %s cannot be negative", group, field)
+	}
+	return nil
+}
+
+func normalizeContractAPIShape(shape string) string {
+	switch strings.ToLower(strings.TrimSpace(shape)) {
+	case "openai_chat", "openai-chat", "chat":
+		return "openai-chat"
+	case "openai_responses", "openai-responses", "responses":
+		return "openai-responses"
+	case "anthropic_messages", "anthropic", "anthropic-messages":
+		return "anthropic"
+	default:
+		return ""
+	}
+}
+
+func contractCanBeSatisfied(c *Config, model ModelGroup, callerDialect string, req *IRRequest) bool {
+	for _, target := range model.Targets {
+		provider := c.Provider[target.Provider]
+		outDialect := targetDialect(provider, target)
+		if model.Contract == nil || targetPassesContract(model.Contract, target, outDialect, callerDialect, req, dynamicStats{}, time.Now().UTC()) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func modelGroupHasAPIShapeTarget(c *Config, model ModelGroup, dialect string) bool {
+	req := &IRRequest{}
+	for _, target := range model.Targets {
+		outDialect := targetDialect(c.Provider[target.Provider], target)
+		if !target.ToolOnly &&
+			targetSupportsInputModalities(target, requestInputModalities(req)) &&
+			targetSupportsStructuredOutput(target, dialect, outDialect, requestHasStructuredOutput(req)) &&
+			targetHonorsExplicitMaxTokens(target, req) {
+			return true
+		}
+	}
+	return false
 }
 
 func toolSupportEmpty(ts ToolSupport) bool {

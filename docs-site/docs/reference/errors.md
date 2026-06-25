@@ -47,6 +47,8 @@ The `no-eligible-target` response includes a `requirements` list. Examples:
 
 Resolution is usually a configuration update. The model group must contain at least one enabled target whose provider dialect and metadata satisfy those requirements.
 
+When a model group has an optional contract, the same error can include safe `contract-*` requirement buckets. Examples include `contract-required-api-shape`, `contract-required-modality`, `contract-required-tools`, `contract-quality-floor`, `contract-validation-expired`, and `contract-no-validated-target`. These buckets mean the requested group was allowed for the caller, but no target inside that same group satisfied the configured contract after ordinary request eligibility.
+
 ## Max-Token Cap Errors
 
 If a caller sets `max_tokens`, OpenAI Chat `max_completion_tokens`, or Responses `max_output_tokens`, the router skips targets known not to honor output caps when that metadata is configured. Keep a target cataloged but inactive for capped traffic by setting `honors_max_tokens: false` after a failed cap smoke. For OpenAI Chat requests that include both `max_tokens` and `max_completion_tokens`, `max_tokens` takes precedence.

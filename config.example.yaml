@@ -941,19 +941,61 @@ models:
       weight: 3
   adaptive-agent:
     strategy: dynamic_score
+    contract:
+      display_name: Adaptive agent
+      caller_visible_notes: Deployment-defined text and tool-agent group with validated targets.
+      intended_workloads: [coding, tool_agent, repo_analysis]
+      supported_api_shapes: [openai_chat]
+      required_capabilities:
+        input_modalities: [text]
+        output_modalities: [text]
+        honors_max_tokens_when_caller_capped: true
+      quality_floor:
+        require_tags: [validated]
+        min_eval_quality_score: 0.90
+        min_eval_pass_rate: 0.95
+        allowed_validation_status: [passed]
+      operational_targets:
+        max_error_rate: 0.03
+        max_timeout_rate: 0.02
+        max_p95_latency_ms: 10000
+      reporting:
+        expose_workload_labels: true
+        expose_quality_floor_bucket: true
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b
       weight: 60
       tags: [validated, coding, tool_capable]
+      validation:
+        status: passed
+        workload: coding
+        validated_at: "2026-06-22"
+        quality_score: 0.93
+        pass_rate: 0.97
+        harness: harbor
     - provider: minimax
       model_ref: m3
       weight: 25
       tags: [validated, low_cost, tool_capable]
+      validation:
+        status: passed
+        workload: tool_agent
+        validated_at: "2026-06-17"
+        quality_score: 0.91
+        pass_rate: 0.96
+        harness: router-tool-smoke
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 5
-      tags: [fallback]
+      tags: [validated, fallback]
+      validation:
+        status: passed
+        workload: fallback_text
+        validated_at: "2026-06-17"
+        quality_score: 0.90
+        pass_rate: 0.95
+        harness: direct-text-smoke
     routing_policy:
       dynamic_score:
         cold_start_policy: configured_weight

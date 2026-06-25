@@ -4,7 +4,7 @@ title: External Routing Policy Service
 
 # External Routing Policy Service
 
-Use `strategy: external` when a deployment wants routing decisions to come from a standalone policy service instead of from TypeScript running inside the router. Callers still request one deployment-defined model group. The router filters the group to eligible targets, sends safe request context to the policy service, validates the returned target, and then calls the selected upstream.
+Use `strategy: external` when a deployment wants routing decisions to come from a standalone policy service instead of from TypeScript running inside the router. Callers still request one deployment-defined model group. The router filters the group to eligible targets, applies any optional model-group contract, sends safe request context to the policy service, validates the returned target, and then calls the selected upstream.
 
 This is useful when the routing policy should be developed, tested, deployed, and observed as its own service. For smaller local rules, see [TypeScript Routing Policy](./routing-typescript).
 
@@ -96,6 +96,8 @@ The router sends a JSON `POST` body to the policy service:
 `targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, and capped requests skip targets marked as not honoring max tokens.
 
 When the model group has `pii_filter` enabled, the policy body is built from the redacted request object. `request.raw`, `text`, and normalized message/input fields contain placeholders rather than configured raw PII matches. Placeholder mappings stay in router memory for the current request and are not sent to the policy service.
+
+When the group has a model-group contract, the policy body includes safe `contract` metadata and target `validation` metadata. `targets[]` is already filtered by the contract, and policy responses are validated against that eligible list. The policy service cannot select a contract-ineligible fallback.
 
 The router does not send raw router tokens, token hashes, provider API keys, or full deployment config.
 

@@ -94,6 +94,13 @@ type usageRow struct {
 	PIIFilterMode                      string
 	PIIFilterReplacements              int
 	PIIFilterRuleCount                 int
+	ContractPresent                    bool
+	ContractBucket                     string
+	ContractFailureReason              string
+	ContractWorkload                   string
+	TargetValidationStatus             string
+	TargetValidationWorkload           string
+	TargetValidationAgeBucket          string
 	InputPricePerMillionUSD            float64
 	OutputPricePerMillionUSD           float64
 	ImageInputPricePerMillionTokensUSD float64
@@ -193,6 +200,13 @@ type usageRecord struct {
 	PIIFilterMode                      string   `gorm:"column:pii_filter_mode;type:text;not null;default:''"`
 	PIIFilterReplacements              int      `gorm:"column:pii_filter_replacements;not null;default:0"`
 	PIIFilterRuleCount                 int      `gorm:"column:pii_filter_rule_count;not null;default:0"`
+	ContractPresent                    bool     `gorm:"column:contract_present;not null;default:false;index:idx_request_usage_contract"`
+	ContractBucket                     string   `gorm:"column:contract_bucket;type:text;not null;default:'';index:idx_request_usage_contract_bucket"`
+	ContractFailureReason              string   `gorm:"column:contract_failure_reason;type:text;not null;default:'';index:idx_request_usage_contract_failure"`
+	ContractWorkload                   string   `gorm:"column:contract_workload;type:text;not null;default:'';index:idx_request_usage_contract_workload"`
+	TargetValidationStatus             string   `gorm:"column:target_validation_status;type:text;not null;default:'';index:idx_request_usage_validation_status"`
+	TargetValidationWorkload           string   `gorm:"column:target_validation_workload;type:text;not null;default:'';index:idx_request_usage_validation_workload"`
+	TargetValidationAgeBucket          string   `gorm:"column:target_validation_age_bucket;type:text;not null;default:'';index:idx_request_usage_validation_age"`
 	InputPricePerMillionUSD            float64  `gorm:"column:input_price_per_million_usd;not null;default:0"`
 	OutputPricePerMillionUSD           float64  `gorm:"column:output_price_per_million_usd;not null;default:0"`
 	ImageInputPricePerMillionTokensUSD float64  `gorm:"column:image_input_price_per_million_tokens_usd;not null;default:0"`
@@ -650,6 +664,13 @@ func rowFromRecord(rec logRecord) usageRow {
 		PIIFilterMode:                      rec.PIIFilterMode,
 		PIIFilterReplacements:              rec.PIIFilterReplacements,
 		PIIFilterRuleCount:                 rec.PIIFilterRuleCount,
+		ContractPresent:                    rec.ContractPresent,
+		ContractBucket:                     rec.ContractBucket,
+		ContractFailureReason:              rec.ContractFailureReason,
+		ContractWorkload:                   rec.ContractWorkload,
+		TargetValidationStatus:             rec.TargetValidationStatus,
+		TargetValidationWorkload:           rec.TargetValidationWorkload,
+		TargetValidationAgeBucket:          rec.TargetValidationAgeBucket,
 		InputPricePerMillionUSD:            rec.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           rec.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: rec.ImageInputPricePerMillionTokensUSD,
@@ -715,6 +736,13 @@ func recordFromRow(row usageRow) *usageRecord {
 		PIIFilterMode:                      row.PIIFilterMode,
 		PIIFilterReplacements:              row.PIIFilterReplacements,
 		PIIFilterRuleCount:                 row.PIIFilterRuleCount,
+		ContractPresent:                    row.ContractPresent,
+		ContractBucket:                     row.ContractBucket,
+		ContractFailureReason:              row.ContractFailureReason,
+		ContractWorkload:                   row.ContractWorkload,
+		TargetValidationStatus:             row.TargetValidationStatus,
+		TargetValidationWorkload:           row.TargetValidationWorkload,
+		TargetValidationAgeBucket:          row.TargetValidationAgeBucket,
 		InputPricePerMillionUSD:            row.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           row.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: row.ImageInputPricePerMillionTokensUSD,
@@ -784,6 +812,13 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		PIIFilterMode:                      record.PIIFilterMode,
 		PIIFilterReplacements:              record.PIIFilterReplacements,
 		PIIFilterRuleCount:                 record.PIIFilterRuleCount,
+		ContractPresent:                    record.ContractPresent,
+		ContractBucket:                     record.ContractBucket,
+		ContractFailureReason:              record.ContractFailureReason,
+		ContractWorkload:                   record.ContractWorkload,
+		TargetValidationStatus:             record.TargetValidationStatus,
+		TargetValidationWorkload:           record.TargetValidationWorkload,
+		TargetValidationAgeBucket:          record.TargetValidationAgeBucket,
 		InputPricePerMillionUSD:            record.InputPricePerMillionUSD,
 		OutputPricePerMillionUSD:           record.OutputPricePerMillionUSD,
 		ImageInputPricePerMillionTokensUSD: record.ImageInputPricePerMillionTokensUSD,

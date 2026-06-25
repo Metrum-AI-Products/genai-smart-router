@@ -692,6 +692,14 @@ func dynamicEvalScore(target Target, evals []DynamicEvaluationTarget) float64 {
 			return clamp01(eval.PassRate)
 		}
 	}
+	if target.Validation != nil {
+		if target.Validation.QualityScore > 0 {
+			return clamp01(target.Validation.QualityScore)
+		}
+		if target.Validation.PassRate > 0 {
+			return clamp01(target.Validation.PassRate)
+		}
+	}
 	return 0.5
 }
 

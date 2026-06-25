@@ -22,13 +22,14 @@ type scriptStrategy struct {
 }
 
 type scriptInput struct {
-	Group           string         `json:"group"`
-	Request         *IRRequest     `json:"request"`
-	Targets         []scriptTarget `json:"targets"`
-	Caller          *scriptCaller  `json:"caller,omitempty"`
-	Text            string         `json:"text"`
-	InputModalities []string       `json:"inputModalities"`
-	Now             string         `json:"now"`
+	Group           string          `json:"group"`
+	Request         *IRRequest      `json:"request"`
+	Contract        *scriptContract `json:"contract,omitempty"`
+	Targets         []scriptTarget  `json:"targets"`
+	Caller          *scriptCaller   `json:"caller,omitempty"`
+	Text            string          `json:"text"`
+	InputModalities []string        `json:"inputModalities"`
+	Now             string          `json:"now"`
 }
 
 type scriptCaller struct {
@@ -45,30 +46,52 @@ type scriptCaller struct {
 }
 
 type scriptTarget struct {
-	Provider                           string      `json:"provider"`
-	Model                              string      `json:"model"`
-	ModelRef                           string      `json:"modelRef,omitempty"`
-	DisplayName                        string      `json:"displayName,omitempty"`
-	Dialect                            string      `json:"dialect"`
-	BaseURL                            string      `json:"baseUrl"`
-	Weight                             int         `json:"weight"`
-	RPM                                int         `json:"rpm,omitempty"`
-	Tier                               string      `json:"tier,omitempty"`
-	Cost                               int         `json:"cost,omitempty"`
-	InputPricePerMillionUSD            float64     `json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64     `json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64     `json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64     `json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string      `json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string      `json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string      `json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport `json:"toolSupport,omitempty"`
-	InputModalities                    []string    `json:"inputModalities,omitempty"`
-	OutputModalities                   []string    `json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool       `json:"honorsMaxTokens,omitempty"`
-	KeyID                              string      `json:"keyId,omitempty"`
-	APIKeyEnv                          string      `json:"apiKeyEnv,omitempty"`
-	KeyConfigured                      bool        `json:"keyConfigured"`
+	Provider                           string                  `json:"provider"`
+	Model                              string                  `json:"model"`
+	ModelRef                           string                  `json:"modelRef,omitempty"`
+	DisplayName                        string                  `json:"displayName,omitempty"`
+	Dialect                            string                  `json:"dialect"`
+	BaseURL                            string                  `json:"baseUrl"`
+	Weight                             int                     `json:"weight"`
+	RPM                                int                     `json:"rpm,omitempty"`
+	Tier                               string                  `json:"tier,omitempty"`
+	Cost                               int                     `json:"cost,omitempty"`
+	InputPricePerMillionUSD            float64                 `json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64                 `json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64                 `json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64                 `json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string                  `json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string                  `json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string                  `json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport             `json:"toolSupport,omitempty"`
+	InputModalities                    []string                `json:"inputModalities,omitempty"`
+	OutputModalities                   []string                `json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool                   `json:"honorsMaxTokens,omitempty"`
+	Validation                         *scriptTargetValidation `json:"validation,omitempty"`
+	KeyID                              string                  `json:"keyId,omitempty"`
+	APIKeyEnv                          string                  `json:"apiKeyEnv,omitempty"`
+	KeyConfigured                      bool                    `json:"keyConfigured"`
+}
+
+type scriptContract struct {
+	DisplayName        string                       `json:"displayName,omitempty"`
+	CallerVisibleNotes string                       `json:"callerVisibleNotes,omitempty"`
+	IntendedWorkloads  []string                     `json:"intendedWorkloads,omitempty"`
+	SupportedAPIShapes []string                     `json:"supportedApiShapes,omitempty"`
+	RequiredCaps       ContractRequiredCapabilities `json:"requiredCapabilities,omitempty"`
+	QualityFloor       ContractQualityFloor         `json:"qualityFloor,omitempty"`
+	OperationalTargets ContractOperationalTargets   `json:"operationalTargets,omitempty"`
+	Reporting          ContractReporting            `json:"reporting,omitempty"`
+}
+
+type scriptTargetValidation struct {
+	Status       string  `json:"status,omitempty"`
+	Workload     string  `json:"workload,omitempty"`
+	ValidatedAt  string  `json:"validatedAt,omitempty"`
+	QualityScore float64 `json:"qualityScore,omitempty"`
+	PassRate     float64 `json:"passRate,omitempty"`
+	Harness      string  `json:"harness,omitempty"`
+	Notes        string  `json:"notes,omitempty"`
 }
 
 type scriptOutput struct {
@@ -125,7 +148,7 @@ func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig)
 	return &scriptStrategy{path: resolved, program: program, httpConfig: httpConfig}, nil
 }
 
-func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
+func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
 	vm := goja.New()
 	timer := time.AfterFunc(s.timeout(), func() {
 		vm.Interrupt("script routing timed out")
@@ -145,6 +168,7 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, targets []Target, pr
 	input := scriptInput{
 		Group:           group,
 		Request:         req,
+		Contract:        buildScriptContract(contract),
 		Targets:         buildScriptTargets(targets, providers),
 		Caller:          buildScriptCaller(caller, tokenID),
 		Text:            requestText(req),
@@ -369,12 +393,44 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 			InputModalities:                    target.InputModalities,
 			OutputModalities:                   target.OutputModalities,
 			HonorsMaxTokens:                    target.HonorsMaxTokens,
+			Validation:                         buildScriptTargetValidation(target.Validation),
 			KeyID:                              provider.KeyID,
 			APIKeyEnv:                          provider.APIKeyEnv,
 			KeyConfigured:                      provider.APIKey != "",
 		})
 	}
 	return out
+}
+
+func buildScriptContract(contract *ModelGroupContract) *scriptContract {
+	if contract == nil {
+		return nil
+	}
+	return &scriptContract{
+		DisplayName:        contract.DisplayName,
+		CallerVisibleNotes: contract.CallerVisibleNotes,
+		IntendedWorkloads:  append([]string(nil), contract.IntendedWorkloads...),
+		SupportedAPIShapes: append([]string(nil), contract.SupportedAPIShapes...),
+		RequiredCaps:       contract.RequiredCaps,
+		QualityFloor:       contract.QualityFloor,
+		OperationalTargets: contract.OperationalTargets,
+		Reporting:          contract.Reporting,
+	}
+}
+
+func buildScriptTargetValidation(validation *TargetValidation) *scriptTargetValidation {
+	if validation == nil {
+		return nil
+	}
+	return &scriptTargetValidation{
+		Status:       validation.Status,
+		Workload:     validation.Workload,
+		ValidatedAt:  validation.ValidatedAt,
+		QualityScore: validation.QualityScore,
+		PassRate:     validation.PassRate,
+		Harness:      validation.Harness,
+		Notes:        validation.Notes,
+	}
 }
 
 func exportScriptOutput(val goja.Value) (scriptOutput, error) {

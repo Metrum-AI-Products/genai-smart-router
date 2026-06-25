@@ -287,6 +287,8 @@ models:
 
 ## Scripted Routing Options
 
+Model groups can declare optional [model-group contracts](./model-group-contracts) for workload labels, supported API shapes, hard capability requirements, target validation quality floors, and operational thresholds. Contracts filter targets after caller authorization and ordinary request eligibility, before any strategy selects a target.
+
 Use `strategy: dynamic_score` when a group should adapt inside its own target list using bounded request-shape, prompt-feature, cost, observed-performance, reliability, and evaluation metadata signals. The strategy never scores targets from another model group; callers still request one allowed deployment-defined group. See [Dynamic Score Routing](./dynamic-score-routing) for configuration, diagnostics, rollout, and rollback guidance.
 
 Use `strategy: script` when a model group should choose a target with TypeScript policy. Script paths are resolved relative to the config file.
@@ -335,7 +337,7 @@ models:
 
 External policy egress uses HTTPS by default, exact-host allowlisting, and redirect revalidation on every hop. Plain HTTP is accepted only for loopback hosts or when `external_policy.allow_http: true` is explicitly approved for trusted internal infrastructure.
 
-The policy service receives normalized request context, safe caller metadata, eligible targets, pricing metadata, tool support, and modality metadata. For groups with `pii_filter`, that context is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
+The policy service receives normalized request context, safe caller metadata, safe contract metadata when configured, eligible targets, pricing metadata, tool support, validation metadata, and modality metadata. For groups with `pii_filter`, that context is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
 
 ## Caller Tokens And Allow Lists
 

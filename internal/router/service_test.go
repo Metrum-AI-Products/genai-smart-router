@@ -4836,6 +4836,177 @@ func TestExternalRoutingPolicyInvalidDecisionFailsClosed(t *testing.T) {
 	}
 }
 
+func TestModelGroupContractFiltersWeightedTargetsAndRecordsUsage(t *testing.T) {
+	var selectedModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		selectedModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "chatcmpl_contract",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	enabled := true
+	cfg.Server.UsageDB = UsageDBConfig{Enable: &enabled, Path: filepath.Join(dir, "usage.sqlite")}
+	minScore := 0.9
+	cfg.Models["contracted"] = ModelGroup{
+		Strategy: "weighted",
+		Contract: &ModelGroupContract{
+			IntendedWorkloads:  []string{"support-chat"},
+			SupportedAPIShapes: []string{"openai_chat"},
+			QualityFloor: ContractQualityFloor{
+				RequireTags:             []string{"validated"},
+				MinEvalQualityScore:     &minScore,
+				AllowedValidationStatus: []string{"passed"},
+			},
+			Reporting: ContractReporting{ExposeWorkloadLabels: true},
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "low-quality", Weight: 100, Tags: []string{"validated"}, Validation: &TargetValidation{Status: "passed", Workload: "support-chat", ValidatedAt: "2026-06-24", QualityScore: 0.7, PassRate: 1, Harness: "unit"}},
+			{Provider: "mock", Model: "validated", Weight: 1, Tags: []string{"validated"}, Validation: &TargetValidation{Status: "passed", Workload: "support-chat", ValidatedAt: "2026-06-24", QualityScore: 0.95, PassRate: 1, Harness: "unit"}},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "contracted")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"contracted","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if selectedModel != "validated" {
+		t.Fatalf("selected model %q, want validated", selectedModel)
+	}
+	var records []usageRecord
+	if err := svc.usage.db.Find(&records).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("usage rows=%d, want 1", len(records))
+	}
+	row, err := rowFromUsageRecord(records[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !row.ContractPresent || row.ContractBucket != "passed" || row.ContractWorkload != "support-chat" {
+		t.Fatalf("contract usage metadata missing: %#v", row)
+	}
+	if row.TargetValidationStatus != "passed" || row.TargetValidationWorkload != "support-chat" || row.TargetValidationAgeBucket == "" {
+		t.Fatalf("validation usage metadata missing: %#v", row)
+	}
+}
+
+func TestModelGroupContractNoEligibleTargetStaysGroupLocal(t *testing.T) {
+	var calls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Fatal("upstream should not be called when requested group contract has no eligible target")
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["support-chat"] = ModelGroup{
+		Strategy: "static",
+		Contract: &ModelGroupContract{
+			SupportedAPIShapes: []string{"openai_chat"},
+			RequiredCaps:       ContractRequiredCapabilities{InputModalities: []string{"text"}},
+		},
+		Targets: []Target{{Provider: "mock", Model: "support-text", InputModalities: []string{"text"}}},
+	}
+	cfg.Models["receipt-ocr"] = ModelGroup{
+		Strategy: "static",
+		Contract: &ModelGroupContract{
+			SupportedAPIShapes: []string{"openai_chat"},
+			RequiredCaps:       ContractRequiredCapabilities{InputModalities: []string{"image"}},
+		},
+		Targets: []Target{{Provider: "mock", Model: "ocr-image", InputModalities: []string{"text", "image"}}},
+	}
+	cfg.Callers[0].Allow = []string{"support-chat"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"support-chat","messages":[{"role":"user","content":[{"type":"text","text":"read it"},{"type":"image_url","image_url":{"url":"https://example.test/receipt.png"}}]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if calls != 0 {
+		t.Fatalf("upstream calls=%d, want 0", calls)
+	}
+	if strings.Contains(rr.Body.String(), "receipt-ocr") || strings.Contains(rr.Body.String(), "ocr-image") {
+		t.Fatalf("no-eligible-target leaked other group details: %s", rr.Body.String())
+	}
+}
+
+func TestModelGroupContractQualityFloorReasonBuckets(t *testing.T) {
+	minScore := 0.9
+	contract := &ModelGroupContract{
+		SupportedAPIShapes: []string{"openai_chat"},
+		QualityFloor: ContractQualityFloor{
+			RequireTags:             []string{"validated"},
+			MinEvalQualityScore:     &minScore,
+			MaxEvalAgeDays:          30,
+			AllowedValidationStatus: []string{"passed"},
+		},
+	}
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name   string
+		target Target
+		want   string
+	}{
+		{
+			name:   "passes",
+			target: Target{Provider: "mock", Model: "ok", Tags: []string{"validated"}, Validation: &TargetValidation{Status: "passed", Workload: "support", ValidatedAt: "2026-06-24", QualityScore: 0.95}},
+		},
+		{
+			name:   "low score",
+			target: Target{Provider: "mock", Model: "low", Tags: []string{"validated"}, Validation: &TargetValidation{Status: "passed", Workload: "support", ValidatedAt: "2026-06-24", QualityScore: 0.5}},
+			want:   "contract-quality-floor",
+		},
+		{
+			name:   "stale",
+			target: Target{Provider: "mock", Model: "stale", Tags: []string{"validated"}, Validation: &TargetValidation{Status: "passed", Workload: "support", ValidatedAt: "2026-04-01", QualityScore: 0.95}},
+			want:   "contract-validation-expired",
+		},
+		{
+			name:   "missing validation",
+			target: Target{Provider: "mock", Model: "missing", Tags: []string{"validated"}},
+			want:   "contract-no-validated-target",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := targetPassesContract(contract, tt.target, "openai-chat", "openai-chat", &IRRequest{}, dynamicStats{}, now)
+			if got != tt.want {
+				t.Fatalf("reason=%q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func testURLWithHostname(t *testing.T, rawURL, hostname string) string {
 	t.Helper()
 	u, err := url.Parse(rawURL)

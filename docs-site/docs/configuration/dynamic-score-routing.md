@@ -2,7 +2,7 @@
 
 `strategy: dynamic_score` is the built-in configurable routing strategy for model groups that should adapt to request shape, cost, observed performance, reliability, workload complexity, and evaluation metadata without adding custom router code.
 
-The caller-visible contract does not change. A client requests one deployment-defined model group from `/v1/models`, and the caller token must be allowed to use that group. The router then scores only that requested group's eligible `targets[]`. A cheaper or faster target in another group is never considered.
+The caller-visible model group does not change. A client requests one deployment-defined model group from `/v1/models`, and the caller token must be allowed to use that group. The router then scores only that requested group's eligible `targets[]`. A cheaper or faster target in another group is never considered. If the group has an optional [model-group contract](./model-group-contracts), its hard requirements and quality floors run before dynamic scoring.
 
 ## Configuration
 
@@ -78,7 +78,7 @@ After eligibility, `dynamic_score` applies configured thresholds and score terms
 | `throughput_score` | Higher observed output tokens per second ranks higher. |
 | `reliability_score` | Lower error, timeout, and fallback rates rank higher. |
 | `complexity_score` | Bounded request-complexity bucket from prompt size, tools, images, output budget, and enabled prompt features. |
-| `eval_quality_score` | Optional configured evaluation quality or pass-rate metadata for the target. |
+| `eval_quality_score` | Optional configured evaluation quality or pass-rate metadata for the target, including target `validation` metadata when present. |
 
 Cold start is deterministic. Until `min_observations` is reached, targets are ordered by configured group-local weight. After that, score terms are blended with configured weights according to `max_score_adjustment_percent`, so operators can cap how far live signals move traffic away from the declared mix.
 

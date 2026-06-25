@@ -71,7 +71,7 @@ Common endpoints:
 - `/admin/reports/` renders the browser shell.
 - `/admin/reports/api/summary?since=24h` returns totals, grouped tables, bounded request rows, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
-- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
+- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, contract buckets, contract workloads, target validation buckets, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
 - `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
@@ -100,6 +100,7 @@ Reports include:
 - Usage by caller IP and hour.
 - Usage by router model group.
 - Usage by external provider and model.
+- Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.

@@ -18,15 +18,16 @@ type externalPolicyStrategy struct {
 }
 
 type externalPolicyInput struct {
-	Group           string         `json:"group"`
-	Request         *IRRequest     `json:"request"`
-	Requirements    []string       `json:"requirements"`
-	Targets         []scriptTarget `json:"targets"`
-	AllTargets      []scriptTarget `json:"allTargets,omitempty"`
-	Caller          *scriptCaller  `json:"caller,omitempty"`
-	Text            string         `json:"text"`
-	InputModalities []string       `json:"inputModalities"`
-	Now             string         `json:"now"`
+	Group           string          `json:"group"`
+	Request         *IRRequest      `json:"request"`
+	Contract        *scriptContract `json:"contract,omitempty"`
+	Requirements    []string        `json:"requirements"`
+	Targets         []scriptTarget  `json:"targets"`
+	AllTargets      []scriptTarget  `json:"allTargets,omitempty"`
+	Caller          *scriptCaller   `json:"caller,omitempty"`
+	Text            string          `json:"text"`
+	InputModalities []string        `json:"inputModalities"`
+	Now             string          `json:"now"`
 }
 
 type routingPolicyError struct {
@@ -49,8 +50,8 @@ func (e routingPolicyError) Unwrap() error {
 	return e.Err
 }
 
-func (s externalPolicyStrategy) Pick(group string, req *IRRequest, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
-	dec, err := s.pick(group, req, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
+func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+	dec, err := s.pick(group, req, contract, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
 	if err == nil {
 		return dec, nil
 	}
@@ -67,10 +68,11 @@ func (s externalPolicyStrategy) Pick(group string, req *IRRequest, eligibleTarge
 	return decision{}, routingPolicyError{Group: group, Message: err.Error(), Err: err}
 }
 
-func (s externalPolicyStrategy) pick(group string, req *IRRequest, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
 	input := externalPolicyInput{
 		Group:           group,
 		Request:         req,
+		Contract:        buildScriptContract(contract),
 		Requirements:    routingRequirements(req, callerDialect),
 		Targets:         buildScriptTargets(eligibleTargets, providers),
 		AllTargets:      buildScriptTargets(allTargets, providers),
