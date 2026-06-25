@@ -19,17 +19,20 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
 | `/readyz`, `/healthz`, `/version` | Router operational endpoints | Load balancers and operators |
 | `/admin/auth/check` | Browser-admin Basic Auth validation stub | Operators enabling browser-admin surfaces |
+| `/admin/auth/login`, `/admin/auth/callback`, `/admin/auth/me`, `/admin/auth/logout` | Browser-admin OIDC session routes | Operators enabling OIDC browser admin surfaces |
 | `/admin/reports/*` | Router-specific admin reports | Authorized administrators |
 
-`/metrics` is an operator telemetry API. It requires a caller token configured with `metrics_admin: true`.
+`/metrics` is an operator telemetry API. It requires a caller token whose subject is authorized for `metrics` `read`; existing `metrics_admin: true` caller entries receive compatible Casbin grants at startup.
 
 Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. A configured key with `status: disabled` returns `403 key-disabled` after token match. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
 
-Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` and `POST /v1/content-captures/purge-expired` require a caller token configured with `content_admin: true` and never return captured content.
+Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete`; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants. These endpoints never return captured content.
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
 
-`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth for browser-admin identity, and uses Casbin policy decisions for read/export access. Ordinary caller tokens receive `403 reports-forbidden`.
+OIDC admin auth routes are not model APIs. They are available only when `server.admin_auth.oidc.enabled: true`. Login redirects to the IdP, callback creates a server-side session after OIDC verification, `/admin/auth/me` returns safe subject metadata, and logout invalidates the session.
+
+`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses Casbin policy decisions for read/export access. Ordinary caller tokens receive `403 reports-forbidden`.
 
 ## Compatibility Matrix
 

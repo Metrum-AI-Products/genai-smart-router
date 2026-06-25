@@ -19,11 +19,11 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Request-time cost accounting | Implemented | Usage rows/logs include configured price fields and calculated costs. |
 | Upstream-reported billed cost | Implemented where provider returns it | Stored separately from calculated router cost when available. |
 | Usage DB/reporting | Implemented | GORM-backed relational usage storage and markdown report tool. |
-| Browser admin reports | Implemented first slice | Disabled by default; Basic Auth plus Casbin policy gates embedded report UI, JSON APIs, request drilldown, and Markdown export under `/admin/reports/`. |
+| Browser admin reports | Implemented first slice | Disabled by default; browser-admin identity plus Casbin policy gates embedded report UI, JSON APIs, request drilldown, and Markdown export under `/admin/reports/`. |
 | Diagnostics tables | Implemented | Attempts, trace events, and sanitized request errors. |
 | Governed content capture foundation | Implemented first slice | Disabled by default; opt-in redacted request/response/upstream-error rows, content-admin delete/purge, retention timestamps, and audit events. KMS/encryption and export/read APIs remain follow-ups. |
 | Response cache | Implemented | In-process LRU/TTL for eligible non-tool requests. |
-| Prometheus metrics | Implemented | Restricted to `metrics_admin` callers. |
+| Prometheus metrics | Implemented | Restricted to caller subjects authorized for `metrics` `read`; existing `metrics_admin: true` callers remain compatible. |
 | Embedded hosted docs | Implemented | Docusaurus output embedded in release binaries. |
 | Version metadata | Implemented | `/version`, health responses, docs badge, and headers. |
 | Codex CLI smoke | Implemented operationally | Production smokes validate tool file creation. |

@@ -31,7 +31,7 @@ Run:
 - Codex CLI smoke for Responses-compatible agent workflows;
 - Claude Code smoke for Anthropic Messages-compatible agent workflows;
 - usage report check after traffic.
-- if enabled, browser admin report smoke with Basic Auth plus Casbin authorization, including `/admin/reports/`, `/admin/reports/api/summary?since=24h`, and `/admin/reports/export.md`.
+- if enabled, browser admin report smoke with browser-admin identity plus Casbin authorization, including `/admin/reports/`, `/admin/reports/api/summary?since=24h`, and `/admin/reports/export.md`.
 
 ## Quota And Cost Checks
 
@@ -77,4 +77,4 @@ Rollback or isolate a change when:
 - provider error or timeout rate exceeds the group threshold;
 - usage or cost fields stop populating for affected traffic;
 - security controls such as `/metrics` restriction or diagnostics redaction regress.
-- browser report access stops requiring both Basic Auth identity and Casbin authorization.
+- browser report access stops requiring both browser-admin identity and Casbin authorization.

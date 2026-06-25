@@ -105,12 +105,13 @@ func writeFallbackDocs(w http.ResponseWriter) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Metrum Smart LLM Router Docs</title>
+  <title>GenAI Smart Router Docs</title>
 </head>
 <body>
   <main>
-    <h1>Metrum Smart LLM Router Docs</h1>
+    <h1>GenAI Smart Router Docs</h1>
     <p>Run <code>make docs-build</code> before release builds to embed the full Docusaurus site.</p>
+    <p>Solution Brief</p>
   </main>
 </body>
 </html>`))

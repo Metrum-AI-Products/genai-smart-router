@@ -40,9 +40,10 @@ Acceptance checks:
 - Browser docs show the running binary version and build timestamp.
 - `/v1/models` is filtered by the presented caller token.
 - Disallowed model groups return `403 model-not-allowed` before any provider call.
-- `/metrics` is available only to metrics-admin tokens.
+- `/metrics` is available only to caller subjects authorized for `metrics` `read`.
 - `/v1/usage` or generated reports provide caller-specific usage visibility.
-- If browser admin reports are enabled, `/admin/reports/api/summary?since=24h` succeeds only for a Basic Auth subject allowed by Casbin policy, and an ordinary router caller token receives `403 reports-forbidden`.
+- If browser admin reports are enabled, `/admin/reports/api/summary?since=24h` succeeds only for a Basic Auth or OIDC session subject allowed by Casbin policy, and an ordinary router caller token receives `403 reports-forbidden`.
+- If `server.admin_auth.authorization.source: db` is used, a single active validated policy set exists in the usage DB before rollout, malformed policy activation preserves the last known valid set, and rollback to the previous retired set is tested.
 
 ## Model-Group Quality Contracts
 
@@ -73,9 +74,9 @@ Minimum acceptance:
 - provider keys stay server-side;
 - caller tokens are stored only as hashes;
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
-- `/metrics` requires `metrics_admin: true`;
-- browser admin reports, when enabled, require Basic Auth plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
-- governed content capture is disabled unless required by policy, and any enabled deployment has `content_admin` isolation, redaction rules, retention, purge, and backup handling reviewed;
+- `/metrics` requires a caller subject authorized for `metrics` `read`;
+- browser admin reports, when enabled, require browser-admin identity plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
+- governed content capture is disabled unless required by policy, and any enabled deployment has `content:capture` delete/purge authorization, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;
 - image-fetching VLM services have media-domain restrictions where applicable;
 - TypeScript and external policy egress use exact hostname allowlists, HTTPS by default, approved `allow_http` exceptions only for trusted infrastructure, and redirect revalidation;

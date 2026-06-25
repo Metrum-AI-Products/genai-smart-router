@@ -21,6 +21,7 @@ const sidebars = {
       items: [
         "configuration/router-config",
         "configuration/admin-authentication",
+        "configuration/admin-authorization",
         "configuration/pii-filtering",
         "configuration/image-analysis-vlm",
         "configuration/self-hosted-upstreams",

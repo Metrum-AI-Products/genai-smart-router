@@ -9,17 +9,17 @@ Keep `env.example.json` placeholder-only and run `make secret-check` before publ
 
 Provider keys stay server-side. Caller tokens authenticate to the router and are checked before provider calls.
 
-Browser-admin HTTP Basic authentication is separate from router caller tokens. It is disabled by default, must use bcrypt password hashes from deployment secrets or environment variables, and must run over HTTPS in production. If TLS terminates at a reverse proxy, `X-Forwarded-Proto: https` is trusted only from configured proxy CIDRs. Basic Auth establishes a subject such as `basic:admin`; it does not grant broader admin permissions by itself. `/metrics` remains caller-token protected with `metrics_admin: true`.
+Browser-admin authentication is separate from router caller tokens. HTTP Basic and OIDC sessions are disabled by default. Basic must use bcrypt password hashes from deployment secrets or environment variables and HTTPS in production. OIDC must use IdP client credentials from environment variables, Authorization Code with PKCE, server-side sessions, HttpOnly cookies, and production HTTPS redirect URLs. If TLS terminates at a reverse proxy, `X-Forwarded-Proto: https` is trusted only from configured proxy CIDRs. Browser-admin authentication establishes subjects such as `basic:admin` or `user:alice@example.com`; it does not grant broader admin permissions by itself. `/metrics` remains caller-token protected and requires Casbin authorization for `metrics` `read`; existing `metrics_admin: true` callers are converted to equivalent startup grants.
 
-Admin browser reports under `/admin/reports/*` are disabled by default. When enabled, they require Basic Auth identity and Casbin authorization for `admin:reports` on every page, JSON API, request drilldown, static asset request, and Markdown export. Ordinary router caller tokens receive `403 reports-forbidden`. Report responses expose safe scalar usage, cost, latency, cache, fallback, provider/model, public token ID, caller metadata, and sanitized diagnostic fields only; they must not include raw provider keys, raw router tokens, token hashes, raw prompts, raw images, raw tool outputs, full config, or unsanitized upstream bodies.
+Admin browser reports under `/admin/reports/*` are disabled by default. When enabled, they require browser-admin identity and Casbin authorization for `admin:reports` on every page, JSON API, request drilldown, static asset request, and Markdown export. Ordinary router caller tokens receive `403 reports-forbidden`. Report responses expose safe scalar usage, cost, latency, cache, fallback, provider/model, public token ID, caller metadata, and sanitized diagnostic fields only; they must not include raw provider keys, raw router tokens, token hashes, raw prompts, raw images, raw tool outputs, full config, or unsanitized upstream bodies.
 
 ## Tenant And Caller Isolation
 
 Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and disabled keys are rejected after token match with a safe `403 key-disabled` error.
 
-`/metrics` is global operational telemetry. It must only be accessible to tokens configured with `metrics_admin: true`; ordinary caller tokens must use `/v1/usage` or generated usage reports.
+`/metrics` is global operational telemetry. It must only be accessible to caller subjects authorized for `metrics` `read`; ordinary caller tokens must use `/v1/usage` or generated usage reports.
 
-Content-capture maintenance is separate from metrics access. Delete-by-request and retention purge endpoints require `content_admin: true`; metrics-admin tokens do not imply content-admin privileges.
+Content-capture maintenance is separate from metrics access. Delete-by-request and retention purge endpoints require Casbin authorization for `content:capture` `delete` or `purge`; existing `content_admin: true` callers receive compatible startup grants. Metrics-admin tokens do not imply content-admin privileges.
 
 ## Diagnostics And Redaction
 

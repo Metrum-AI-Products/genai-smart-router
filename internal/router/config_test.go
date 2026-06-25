@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -572,6 +573,78 @@ func TestAdminBasicAuthValidation(t *testing.T) {
 				}}
 			},
 		},
+		{
+			name: "oidc missing env",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.OIDC.Enabled = true
+				cfg.Server.AdminAuth.OIDC.IssuerURL = "https://accounts.example.com"
+				cfg.Server.AdminAuth.OIDC.ClientIDEnv = "TEST_OIDC_CLIENT_ID_MISSING"
+				cfg.Server.AdminAuth.OIDC.ClientSecretEnv = "TEST_OIDC_CLIENT_SECRET"
+				cfg.Server.AdminAuth.OIDC.RedirectURL = "https://router.example.com/admin/auth/callback"
+				cfg.Server.AdminAuth.OIDC.Domain = "example/prod"
+				t.Setenv("TEST_OIDC_CLIENT_SECRET", "secret")
+			},
+			want: "client_id_env TEST_OIDC_CLIENT_ID_MISSING is not set",
+		},
+		{
+			name: "oidc invalid redirect",
+			configure: func(cfg *Config) {
+				t.Setenv("TEST_OIDC_CLIENT_ID", "client-id")
+				t.Setenv("TEST_OIDC_CLIENT_SECRET", "secret")
+				cfg.Server.AdminAuth.OIDC.Enabled = true
+				cfg.Server.AdminAuth.OIDC.IssuerURL = "https://accounts.example.com"
+				cfg.Server.AdminAuth.OIDC.ClientIDEnv = "TEST_OIDC_CLIENT_ID"
+				cfg.Server.AdminAuth.OIDC.ClientSecretEnv = "TEST_OIDC_CLIENT_SECRET"
+				cfg.Server.AdminAuth.OIDC.RedirectURL = "http://router.example.com/admin/auth/callback"
+				cfg.Server.AdminAuth.OIDC.Domain = "example/prod"
+			},
+			want: "redirect_url must use https",
+		},
+		{
+			name: "oidc invalid allowed domain",
+			configure: func(cfg *Config) {
+				t.Setenv("TEST_OIDC_CLIENT_ID", "client-id")
+				t.Setenv("TEST_OIDC_CLIENT_SECRET", "secret")
+				cfg.Server.AdminAuth.OIDC.Enabled = true
+				cfg.Server.AdminAuth.OIDC.IssuerURL = "https://accounts.example.com"
+				cfg.Server.AdminAuth.OIDC.ClientIDEnv = "TEST_OIDC_CLIENT_ID"
+				cfg.Server.AdminAuth.OIDC.ClientSecretEnv = "TEST_OIDC_CLIENT_SECRET"
+				cfg.Server.AdminAuth.OIDC.RedirectURL = "https://router.example.com/admin/auth/callback"
+				cfg.Server.AdminAuth.OIDC.AllowedDomains = []string{"@example.com"}
+				cfg.Server.AdminAuth.OIDC.Domain = "example/prod"
+			},
+			want: "allowed domain",
+		},
+		{
+			name: "oidc valid localhost development",
+			configure: func(cfg *Config) {
+				t.Setenv("TEST_OIDC_CLIENT_ID", "client-id")
+				t.Setenv("TEST_OIDC_CLIENT_SECRET", "secret")
+				cfg.Server.AdminAuth.OIDC.Enabled = true
+				cfg.Server.AdminAuth.OIDC.IssuerURL = "http://localhost:8081"
+				cfg.Server.AdminAuth.OIDC.ClientIDEnv = "TEST_OIDC_CLIENT_ID"
+				cfg.Server.AdminAuth.OIDC.ClientSecretEnv = "TEST_OIDC_CLIENT_SECRET"
+				cfg.Server.AdminAuth.OIDC.RedirectURL = "http://localhost:8080/admin/auth/callback"
+				cfg.Server.AdminAuth.OIDC.AllowedDomains = []string{"example.com"}
+				cfg.Server.AdminAuth.OIDC.Domain = "example/prod"
+				cfg.Server.AdminAuth.Sessions = AdminSessionConfig{CookieName: "test_admin_session", TTL: time.Hour, SecureCookies: testBoolPtr(false), SameSite: "lax"}
+			},
+		},
+		{
+			name: "session same_site none requires secure cookies",
+			configure: func(cfg *Config) {
+				t.Setenv("TEST_OIDC_CLIENT_ID", "client-id")
+				t.Setenv("TEST_OIDC_CLIENT_SECRET", "secret")
+				cfg.Server.AdminAuth.OIDC.Enabled = true
+				cfg.Server.AdminAuth.OIDC.IssuerURL = "https://accounts.example.com"
+				cfg.Server.AdminAuth.OIDC.ClientIDEnv = "TEST_OIDC_CLIENT_ID"
+				cfg.Server.AdminAuth.OIDC.ClientSecretEnv = "TEST_OIDC_CLIENT_SECRET"
+				cfg.Server.AdminAuth.OIDC.RedirectURL = "https://router.example.com/admin/auth/callback"
+				cfg.Server.AdminAuth.OIDC.Domain = "example/prod"
+				cfg.Server.AdminAuth.Sessions = AdminSessionConfig{CookieName: "test_admin_session", TTL: time.Hour, SecureCookies: testBoolPtr(false), SameSite: "none"}
+			},
+			want: "same_site none requires secure_cookies",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := minimalConfig(t)
@@ -595,6 +668,66 @@ func TestAdminBasicAuthValidation(t *testing.T) {
 	}
 }
 
+func TestAdminAuthorizationSourceValidation(t *testing.T) {
+	disabled := false
+	for _, tt := range []struct {
+		name      string
+		configure func(*Config)
+		want      string
+	}{
+		{
+			name: "db source allows policy-free config",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "db"}
+			},
+		},
+		{
+			name: "db source requires usage db enabled",
+			configure: func(cfg *Config) {
+				cfg.Server.UsageDB.Enable = &disabled
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "db"}
+			},
+			want: "source db requires usage_db enabled",
+		},
+		{
+			name: "db source rejects inline policy mixing",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "db", Policy: []string{"p, role, local/test, metrics, read"}}
+			},
+			want: "source db cannot combine inline policy or policy_file",
+		},
+		{
+			name: "unknown source rejected",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "elsewhere"}
+			},
+			want: "source must be static or db",
+		},
+		{
+			name: "static policy rejects unsafe fields",
+			configure: func(cfg *Config) {
+				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, bearer secret, local/test, metrics, read"}}
+			},
+			want: "contains unsafe field",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			tt.configure(cfg)
+			err := cfg.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() err=%v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestAdminReportsConfigValidation(t *testing.T) {
 	hash := mustBcryptHash(t, "yell-yell-yum")
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
@@ -604,12 +737,12 @@ func TestAdminReportsConfigValidation(t *testing.T) {
 		want      string
 	}{
 		{
-			name: "enabled requires basic auth",
+			name: "enabled requires browser auth",
 			configure: func(cfg *Config) {
 				cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, basic:admin, local/test, admin:reports, read"}}
 				cfg.Server.AdminReports.Enabled = true
 			},
-			want: "requires server.admin_auth.basic enabled",
+			want: "requires server.admin_auth.basic or server.admin_auth.oidc enabled",
 		},
 		{
 			name: "enabled requires authorization",

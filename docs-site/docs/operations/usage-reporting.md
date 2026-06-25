@@ -26,7 +26,7 @@ Generated reports are Markdown files with structured tables for usage, cost, lat
 
 ## Browser Admin Reports
 
-When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject can open `/admin/reports/` to inspect the same operational dimensions through embedded browser assets. The router serves the HTML, CSS, JavaScript, and local chart bundle from the binary; no CDN is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
+When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through embedded browser assets. The router serves the HTML, CSS, JavaScript, and local chart bundle from the binary; no CDN is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
 
 Example policy shape:
 
@@ -35,8 +35,10 @@ server:
   admin_auth:
     authorization:
       enabled: true
+      source: static
       policy:
         - g, basic:admin, reports_admin, example/prod
+        - g, user:alice@example.com, reports_admin, example/prod
         - p, reports_admin, example/prod, admin:reports, read|export
   admin_reports:
     enabled: true
@@ -82,7 +84,7 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 
 Diagnostic rows do not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized upstream response bodies.
 
-Governed content capture is separate from diagnostics. It is disabled by default and, when enabled by the deployment operator, writes redacted request/response/upstream-error content to dedicated relational tables keyed by `request_id`. Maintenance operations require a caller token with `content_admin: true`: `DELETE /v1/content-captures/<request_id>` removes one request's captured content, and `POST /v1/content-captures/purge-expired` deletes rows past their retention timestamp. Both operations write audit rows. Usage reports remain metadata-oriented and do not print captured content.
+Governed content capture is separate from diagnostics. It is disabled by default and, when enabled by the deployment operator, writes redacted request/response/upstream-error content to dedicated relational tables keyed by `request_id`. Maintenance operations require Casbin authorization for `content:capture`: `DELETE /v1/content-captures/<request_id>` uses action `delete`, and `POST /v1/content-captures/purge-expired` uses action `purge`. Existing `content_admin: true` caller entries remain compatible. Both operations write audit rows. Usage reports remain metadata-oriented and do not print captured content.
 
 ## Filtering
 

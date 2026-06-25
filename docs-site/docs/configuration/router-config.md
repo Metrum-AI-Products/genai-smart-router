@@ -439,7 +439,7 @@ callers:
 
 User ids, project ids, membership pairs, caller `id`, `token_sha256`, and non-empty `token_id` values must be unique after normalization. Each key must reference an active `owner_user`, active `project`, and active project membership. Legacy `callers[].user` is still accepted as a deprecated alias for `owner_user`; if both fields are present they must normalize to the same id. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values.
 
-Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. Disabled keys return `403 key-disabled` after token match; disabled users, projects, or memberships are rejected by config validation before startup. `/metrics` is separate from model access: it returns global operational telemetry only for callers with `metrics_admin: true`; ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content_admin: true`; metrics-admin tokens do not grant content-admin access.
+Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. Disabled keys return `403 key-disabled` after token match; disabled users, projects, or memberships are rejected by config validation before startup. `/metrics` is separate from model access: it returns global operational telemetry only for caller subjects authorized for `metrics` `read`; existing callers with `metrics_admin: true` remain compatible through generated Casbin grants. Ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content:capture` `delete`/`purge` authorization; existing callers with `content_admin: true` remain compatible through generated Casbin grants.
 
 ## Cache And Usage Store
 
@@ -473,6 +473,23 @@ server:
       allow_insecure_http: false
       trusted_proxy_cidrs: []
       users: []
+    oidc:
+      enabled: false
+      issuer_url: https://accounts.google.com
+      client_id_env: GOOGLE_OIDC_CLIENT_ID
+      client_secret_env: GOOGLE_OIDC_CLIENT_SECRET
+      redirect_url: https://router.example.com/admin/auth/callback
+      allowed_domains:
+        - example.com
+      groups_claim: groups
+      email_claim: email
+      subject_claim: email
+      domain: example/prod
+    sessions:
+      cookie_name: smart_router_admin_session
+      ttl: 8h
+      secure_cookies: true
+      same_site: strict
   content_capture:
     enabled: false
     retention_days: 30
@@ -498,13 +515,15 @@ Model groups can enable `pii_filter` to redact configured text expressions befor
 
 Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture and still redacts prompt-like fields, nested upstream bodies, and secret-shaped values before JSONL or usage DB persistence.
 
-Browser-admin HTTP Basic authentication is configured under `server.admin_auth.basic` and remains disabled unless an operator explicitly enables it. Basic Auth establishes a subject such as `basic:admin` for `/admin/*` routes; it is separate from router caller tokens for `/v1/*` and from metrics-admin caller tokens for `/metrics`. Keep password hashes in environment variables, and configure `trusted_proxy_cidrs` if a reverse proxy forwards HTTPS state. See [Admin Authentication](./admin-authentication) for bcrypt hash setup, TLS requirements, and the current `/admin/auth/check` validation endpoint.
+Browser-admin authentication is configured under `server.admin_auth.basic` and `server.admin_auth.oidc`; both remain disabled unless an operator explicitly enables them. Basic Auth establishes subjects such as `basic:admin`. OIDC sessions establish subjects such as `user:alice@example.com` when `subject_claim: email`. Browser-admin identity is separate from router caller tokens for `/v1/*` and from caller-token metrics access for `/metrics`. Keep password hashes and OIDC client secrets in environment variables, configure trusted proxy CIDRs for forwarded HTTPS state, and use secure session cookies in production. See [Admin Authentication](./admin-authentication) for bcrypt hash setup, TLS requirements, and admin auth validation endpoints. See [Admin Authorization](./admin-authorization) for Casbin metrics, content-capture maintenance, and report policy.
 
 Governed content capture is separate from diagnostics and remains disabled unless `server.content_capture.enabled: true` and at least one scope is enabled. Captured rows live in `request_content_captures`, allowlisted headers in `request_content_headers`, and delete/purge audit events in `request_content_audit_events`. Rows are keyed by `request_id` for joins to usage metadata. Built-in secret redaction and configured `redaction_patterns` run before storage; `redact_before_storage: false` is rejected. Header capture is allowlist-only and rejects authorization, API-key, token, secret, cookie, and key-like header names. The current foundation supports retention purge and delete-by-request maintenance; KMS/encryption-at-rest and content export/read APIs are follow-up work, and `encryption.enabled: true` is rejected until implemented.
 
 Deployments can keep capture disabled globally and enable a scoped override on a specific `callers[]` entry or `models.<group>.content_capture` block for a governed workload. Each enabled block must name at least one capture scope.
 
 Content-capture maintenance endpoints:
+
+These endpoints require caller-token subjects authorized for `content:capture`; delete-by-request uses action `delete`, and retention purge uses action `purge`. Existing `content_admin: true` callers receive compatible grants at startup.
 
 ```bash
 curl -X DELETE "$SMART_ROUTER_BASE_URL/v1/content-captures/<request_id>" \

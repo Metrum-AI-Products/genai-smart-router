@@ -1,9 +1,15 @@
 package router
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -322,6 +328,171 @@ func TestAdminBasicAuthDoesNotChangeProxyBearerAuth(t *testing.T) {
 	}
 }
 
+func TestAdminOIDCLoginCallbackMeAndLogout(t *testing.T) {
+	issuer := newFakeOIDCIssuer(t)
+	defer issuer.Close()
+	svc := newTestOIDCAdminService(t, issuer, []string{
+		"p, user:alice@example.com, example/prod, admin:reports, read",
+	})
+	defer svc.Close()
+
+	login := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	loginRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(loginRR, login)
+	if loginRR.Code != http.StatusFound {
+		t.Fatalf("login status=%d body=%s", loginRR.Code, loginRR.Body.String())
+	}
+	location := loginRR.Header().Get("Location")
+	authURL, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parse auth redirect: %v", err)
+	}
+	q := authURL.Query()
+	if q.Get("state") == "" || q.Get("nonce") == "" || q.Get("code_challenge") == "" || q.Get("code_challenge_method") != "S256" {
+		t.Fatalf("login redirect missing OIDC state/nonce/PKCE fields: %s", location)
+	}
+	issuer.nextNonce.Store(q.Get("nonce"))
+
+	callback := httptest.NewRequest(http.MethodGet, "/admin/auth/callback?state="+url.QueryEscape(q.Get("state"))+"&code=ok", nil)
+	callbackRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(callbackRR, callback)
+	if callbackRR.Code != http.StatusFound {
+		t.Fatalf("callback status=%d body=%s", callbackRR.Code, callbackRR.Body.String())
+	}
+	cookies := callbackRR.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("callback cookies=%d, want 1", len(cookies))
+	}
+	sessionCookie := cookies[0]
+	if sessionCookie.Name != "test_admin_session" || !sessionCookie.HttpOnly || sessionCookie.Secure || sessionCookie.Path != "/admin" || sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("unexpected session cookie attributes: %#v", sessionCookie)
+	}
+	if strings.Contains(callbackRR.Body.String(), "id_token") || strings.Contains(callbackRR.Body.String(), "client-secret") {
+		t.Fatalf("callback exposed token or secret material: %s", callbackRR.Body.String())
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/admin/auth/me", nil)
+	me.AddCookie(sessionCookie)
+	meRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(meRR, me)
+	if meRR.Code != http.StatusOK {
+		t.Fatalf("me status=%d body=%s", meRR.Code, meRR.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(meRR.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["source"] != "oidc_session" || body["subject"] != "user:alice@example.com" || body["domain"] != "example/prod" || body["email"] != "alice@example.com" {
+		t.Fatalf("unexpected me response: %#v", body)
+	}
+	if strings.Contains(meRR.Body.String(), "id_token") || strings.Contains(meRR.Body.String(), "client-secret") {
+		t.Fatalf("me response exposed token or secret material: %s", meRR.Body.String())
+	}
+
+	logout := httptest.NewRequest(http.MethodPost, "/admin/auth/logout", nil)
+	logout.AddCookie(sessionCookie)
+	logoutRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(logoutRR, logout)
+	if logoutRR.Code != http.StatusOK {
+		t.Fatalf("logout status=%d body=%s", logoutRR.Code, logoutRR.Body.String())
+	}
+
+	meAfterLogout := httptest.NewRequest(http.MethodGet, "/admin/auth/me", nil)
+	meAfterLogout.AddCookie(sessionCookie)
+	meAfterLogoutRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(meAfterLogoutRR, meAfterLogout)
+	if meAfterLogoutRR.Code != http.StatusUnauthorized {
+		t.Fatalf("me after logout status=%d body=%s", meAfterLogoutRR.Code, meAfterLogoutRR.Body.String())
+	}
+}
+
+func TestAdminOIDCCallbackRejectsBadStateAndDomain(t *testing.T) {
+	issuer := newFakeOIDCIssuer(t)
+	defer issuer.Close()
+	svc := newTestOIDCAdminService(t, issuer, nil)
+	defer svc.Close()
+
+	badState := httptest.NewRequest(http.MethodGet, "/admin/auth/callback?state=bad&code=ok", nil)
+	badStateRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(badStateRR, badState)
+	if badStateRR.Code != http.StatusUnauthorized {
+		t.Fatalf("bad state status=%d body=%s", badStateRR.Code, badStateRR.Body.String())
+	}
+
+	login := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	loginRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(loginRR, login)
+	authURL, err := url.Parse(loginRR.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer.nextNonce.Store(authURL.Query().Get("nonce"))
+	issuer.nextEmail.Store("mallory@other.example")
+	badDomain := httptest.NewRequest(http.MethodGet, "/admin/auth/callback?state="+url.QueryEscape(authURL.Query().Get("state"))+"&code=ok", nil)
+	badDomainRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(badDomainRR, badDomain)
+	if badDomainRR.Code != http.StatusUnauthorized {
+		t.Fatalf("bad domain status=%d body=%s", badDomainRR.Code, badDomainRR.Body.String())
+	}
+	if len(badDomainRR.Result().Cookies()) != 0 {
+		t.Fatalf("bad domain callback set cookies: %#v", badDomainRR.Result().Cookies())
+	}
+}
+
+func TestAdminOIDCStateStoreBoundsPendingLogins(t *testing.T) {
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	store := &adminOIDCStateStore{states: map[string]adminOIDCLoginState{}}
+	for i := 0; i < adminOIDCMaxPendingLogin; i++ {
+		ok := store.put(adminOIDCLoginState{
+			state:     fmt.Sprintf("state-%d", i),
+			nonce:     "nonce",
+			expiresAt: now.Add(adminOIDCLoginTTL),
+		}, now)
+		if !ok {
+			t.Fatalf("state %d was rejected before cap", i)
+		}
+	}
+	if ok := store.put(adminOIDCLoginState{state: "overflow", nonce: "nonce", expiresAt: now.Add(adminOIDCLoginTTL)}, now); ok {
+		t.Fatal("overflow state was accepted")
+	}
+	if ok := store.put(adminOIDCLoginState{state: "after-expiry", nonce: "nonce", expiresAt: now.Add(2 * adminOIDCLoginTTL)}, now.Add(adminOIDCLoginTTL+time.Second)); !ok {
+		t.Fatal("state after pruning expired entries was rejected")
+	}
+}
+
+func TestAdminOIDCSessionAuthorizesReportsWithCasbin(t *testing.T) {
+	issuer := newFakeOIDCIssuer(t)
+	defer issuer.Close()
+	svc := newTestOIDCAdminService(t, issuer, []string{
+		"p, user:alice@example.com, example/prod, admin:reports, read",
+	})
+	defer svc.Close()
+	cookie := loginTestOIDCAdmin(t, svc, issuer)
+
+	report := httptest.NewRequest(http.MethodGet, "/admin/reports/", nil)
+	report.AddCookie(cookie)
+	reportRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(reportRR, report)
+	if reportRR.Code != http.StatusOK {
+		t.Fatalf("authorized report status=%d body=%s", reportRR.Code, reportRR.Body.String())
+	}
+
+	noPolicyIssuer := newFakeOIDCIssuer(t)
+	defer noPolicyIssuer.Close()
+	noPolicySvc := newTestOIDCAdminService(t, noPolicyIssuer, []string{
+		"p, user:bob@example.com, example/prod, admin:reports, read",
+	})
+	defer noPolicySvc.Close()
+	noPolicyCookie := loginTestOIDCAdmin(t, noPolicySvc, noPolicyIssuer)
+	forbidden := httptest.NewRequest(http.MethodGet, "/admin/reports/", nil)
+	forbidden.AddCookie(noPolicyCookie)
+	forbiddenRR := httptest.NewRecorder()
+	noPolicySvc.Handler().ServeHTTP(forbiddenRR, forbidden)
+	if forbiddenRR.Code != http.StatusForbidden || !strings.Contains(forbiddenRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("forbidden report status=%d body=%s", forbiddenRR.Code, forbiddenRR.Body.String())
+	}
+}
+
 func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	hash := mustBcryptHash(t, "yell-yell-yum")
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
@@ -458,6 +629,178 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if exportRR.Code != http.StatusOK || !strings.Contains(exportRR.Body.String(), "# Smart LLM Router Usage Report") {
 		t.Fatalf("export status=%d body=%s", exportRR.Code, exportRR.Body.String())
 	}
+}
+
+type fakeOIDCIssuer struct {
+	server    *httptest.Server
+	key       *rsa.PrivateKey
+	nextNonce atomic.Value
+	nextEmail atomic.Value
+}
+
+func newFakeOIDCIssuer(t *testing.T) *fakeOIDCIssuer {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := &fakeOIDCIssuer{key: key}
+	issuer.nextEmail.Store("alice@example.com")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"issuer":                                issuer.server.URL,
+			"authorization_endpoint":                issuer.server.URL + "/authorize",
+			"token_endpoint":                        issuer.server.URL + "/token",
+			"jwks_uri":                              issuer.server.URL + "/jwks",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+			"response_types_supported":              []string{"code"},
+			"subject_types_supported":               []string{"public"},
+		})
+	})
+	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"keys": []map[string]any{issuer.jwk()}})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse token form: %v", err)
+		}
+		if r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("code") == "" || r.Form.Get("code_verifier") == "" {
+			t.Fatalf("unexpected token request form: %#v", r.Form)
+		}
+		nonce, _ := issuer.nextNonce.Load().(string)
+		email, _ := issuer.nextEmail.Load().(string)
+		idToken := issuer.signIDToken(t, map[string]any{
+			"iss":            issuer.server.URL,
+			"sub":            "stable-subject-1",
+			"aud":            "test-client-id",
+			"exp":            time.Now().Add(time.Hour).Unix(),
+			"iat":            time.Now().Add(-time.Minute).Unix(),
+			"nonce":          nonce,
+			"email":          email,
+			"email_verified": true,
+			"groups":         []string{"admins", "finance"},
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"access_token": "opaque-access-token",
+			"id_token":     idToken,
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+	issuer.server = httptest.NewServer(mux)
+	return issuer
+}
+
+func (i *fakeOIDCIssuer) Close() {
+	i.server.Close()
+}
+
+func (i *fakeOIDCIssuer) URL() string {
+	return i.server.URL
+}
+
+func (i *fakeOIDCIssuer) jwk() map[string]any {
+	n := base64.RawURLEncoding.EncodeToString(i.key.PublicKey.N.Bytes())
+	e := big.NewInt(int64(i.key.PublicKey.E)).Bytes()
+	return map[string]any{
+		"kty": "RSA",
+		"use": "sig",
+		"kid": "test-key",
+		"alg": "RS256",
+		"n":   n,
+		"e":   base64.RawURLEncoding.EncodeToString(e),
+	}
+}
+
+func (i *fakeOIDCIssuer) signIDToken(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	header := map[string]any{"typ": "JWT", "alg": "RS256", "kid": "test-key"}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedClaims := base64.RawURLEncoding.EncodeToString(claimsJSON)
+	unsigned := encodedHeader + "." + encodedClaims
+	sum := sha256.Sum256([]byte(unsigned))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, i.key, crypto.SHA256, sum[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unsigned + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+func newTestOIDCAdminService(t *testing.T, issuer *fakeOIDCIssuer, policy []string) *Service {
+	t.Helper()
+	t.Setenv("TEST_OIDC_CLIENT_ID", "test-client-id")
+	t.Setenv("TEST_OIDC_CLIENT_SECRET", "client-secret")
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.OIDC = AdminOIDCConfig{
+		Enabled:         true,
+		IssuerURL:       issuer.URL(),
+		ClientIDEnv:     "TEST_OIDC_CLIENT_ID",
+		ClientSecretEnv: "TEST_OIDC_CLIENT_SECRET",
+		RedirectURL:     "http://localhost/admin/auth/callback",
+		AllowedDomains:  []string{"example.com"},
+		GroupsClaim:     "groups",
+		EmailClaim:      "email",
+		SubjectClaim:    "email",
+		Domain:          "example/prod",
+	}
+	cfg.Server.AdminAuth.Sessions = AdminSessionConfig{
+		CookieName:    "test_admin_session",
+		TTL:           time.Hour,
+		SecureCookies: testBoolPtr(false),
+		SameSite:      "lax",
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: policy}
+	if len(policy) == 0 {
+		cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, user:nobody@example.com, example/prod, admin:reports, read"}}
+	}
+	cfg.Server.AdminReports.Enabled = true
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
+
+func loginTestOIDCAdmin(t *testing.T, svc *Service, issuer *fakeOIDCIssuer) *http.Cookie {
+	t.Helper()
+	login := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	loginRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(loginRR, login)
+	if loginRR.Code != http.StatusFound {
+		t.Fatalf("login status=%d body=%s", loginRR.Code, loginRR.Body.String())
+	}
+	authURL, err := url.Parse(loginRR.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer.nextNonce.Store(authURL.Query().Get("nonce"))
+	callback := httptest.NewRequest(http.MethodGet, "/admin/auth/callback?state="+url.QueryEscape(authURL.Query().Get("state"))+"&code=ok", nil)
+	callbackRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(callbackRR, callback)
+	if callbackRR.Code != http.StatusFound {
+		t.Fatalf("callback status=%d body=%s", callbackRR.Code, callbackRR.Body.String())
+	}
+	cookies := callbackRR.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("callback cookies=%d", len(cookies))
+	}
+	return cookies[0]
+}
+
+func testBoolPtr(v bool) *bool {
+	return &v
 }
 
 func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {
@@ -2628,6 +2971,86 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestCasbinAuthorizationForMetricsAndReports(t *testing.T) {
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	dir := t.TempDir()
+	policyFile := filepath.Join(dir, "authz-policy.csv")
+	if err := os.WriteFile(policyFile, []byte(strings.Join([]string{
+		"# caller policy loaded from file",
+		"g, caller:alice, metrics_admin, metrum-insights/test",
+		"p, metrics_admin, metrum-insights/test, metrics, read",
+		"g, basic:reports, reports_admin, local/test",
+		"p, reports_admin, local/test, admin:reports, read|export",
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "reports",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:reports",
+			Domain:          "local/test",
+		}},
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, PolicyFile: policyFile}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 100}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsReq.Header.Set("Authorization", "Bearer "+testToken)
+	metricsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(metricsRR, metricsReq)
+	if metricsRR.Code != http.StatusForbidden {
+		t.Fatalf("policy metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), "metrics-forbidden") {
+		t.Fatalf("policy metrics missing metrics-forbidden: %s", metricsRR.Body.String())
+	}
+
+	reportsReq := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	reportsReq.SetBasicAuth("reports", "yell-yell-yum")
+	reportsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(reportsRR, reportsReq)
+	if reportsRR.Code != http.StatusOK {
+		t.Fatalf("reports status=%d body=%s", reportsRR.Code, reportsRR.Body.String())
+	}
+
+	ordinaryReports := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	ordinaryReports.Header.Set("Authorization", "Bearer "+testToken)
+	ordinaryReportsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ordinaryReportsRR, ordinaryReports)
+	if ordinaryReportsRR.Code != http.StatusForbidden || !strings.Contains(ordinaryReportsRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("caller report status=%d body=%s", ordinaryReportsRR.Code, ordinaryReportsRR.Body.String())
+	}
+}
+
+func TestCasbinAuthorizationRejectsMalformedPolicyFile(t *testing.T) {
+	dir := t.TempDir()
+	policyFile := filepath.Join(dir, "authz-policy.csv")
+	if err := os.WriteFile(policyFile, []byte("p, reports_admin, local/test, admin:reports\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, PolicyFile: policyFile}
+	svc, err := New(cfg)
+	if err == nil {
+		svc.Close()
+		t.Fatal("expected malformed policy file to fail service startup")
+	}
+	if !strings.Contains(err.Error(), `p lines require subject, domain, object, action`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -5521,6 +5944,106 @@ func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
 	}
 	if audit.ActorCallerID != "content-admin" || audit.ActorTokenID != "rtr_content_admin_test" || audit.RowsAffected != 1 {
 		t.Fatalf("unexpected audit row: %#v", audit)
+	}
+}
+
+func TestContentCaptureMaintenanceUsesCasbinAuthorization(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy: []string{
+			"g, caller:content-policy, content_admin, platform/prod",
+			"g, caller:reports-only, reports_admin, platform/prod",
+			"g, caller:content-wrong-domain, content_admin, platform/prod",
+			"p, content_admin, platform/prod, content:capture, delete|purge",
+			"p, reports_admin, platform/prod, admin:reports, read|export",
+		},
+	}
+	contentToken := "rtr_content_policy_test_token"
+	reportsToken := "rtr_reports_only_test_token"
+	wrongDomainToken := "rtr_content_wrong_domain_test_token"
+	for _, caller := range []struct {
+		id, token, project, environment string
+	}{
+		{id: "content-policy", token: contentToken, project: "platform", environment: "prod"},
+		{id: "reports-only", token: reportsToken, project: "platform", environment: "prod"},
+		{id: "content-wrong-domain", token: wrongDomainToken, project: "platform", environment: "test"},
+	} {
+		sum := sha256.Sum256([]byte(caller.token))
+		cfg.Callers = append(cfg.Callers, CallerConfig{
+			ID:          caller.id,
+			User:        caller.id,
+			Project:     caller.project,
+			Environment: caller.environment,
+			TokenSHA256: hex.EncodeToString(sum[:]),
+			TokenID:     caller.id,
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		})
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	unauth := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/req_unauth", nil)
+	unauthRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(unauthRR, unauth)
+	if unauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth content delete status=%d body=%s", unauthRR.Code, unauthRR.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name  string
+		token string
+	}{
+		{name: "ordinary caller", token: testToken},
+		{name: "reports only", token: reportsToken},
+		{name: "wrong domain", token: wrongDomainToken},
+	} {
+		req := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/req_denied", nil)
+		req.Header.Set("Authorization", "Bearer "+tc.token)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "content-forbidden") {
+			t.Fatalf("%s content delete status=%d body=%s", tc.name, rr.Code, rr.Body.String())
+		}
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/req_allowed", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+contentToken)
+	deleteRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(deleteRR, deleteReq)
+	if deleteRR.Code != http.StatusOK {
+		t.Fatalf("policy content delete status=%d body=%s", deleteRR.Code, deleteRR.Body.String())
+	}
+
+	purgeReq := httptest.NewRequest(http.MethodPost, "/v1/content-captures/purge-expired", nil)
+	purgeReq.Header.Set("Authorization", "Bearer "+contentToken)
+	purgeRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(purgeRR, purgeReq)
+	if purgeRR.Code != http.StatusOK {
+		t.Fatalf("policy content purge status=%d body=%s", purgeRR.Code, purgeRR.Body.String())
+	}
+}
+
+func TestMalformedCasbinPolicyFailsStartup(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy:  []string{"p, content_admin, platform/prod, content:capture"},
+	}
+	svc, err := New(cfg)
+	if err == nil {
+		svc.Close()
+		t.Fatal("New succeeded with malformed authorization policy")
+	}
+	if !strings.Contains(err.Error(), "p lines require subject, domain, object, action") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

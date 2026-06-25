@@ -72,7 +72,7 @@ Use a deployment-owned hostname for the router, for example:
 router.example.com
 ```
 
-The service is externally reachable, but model and usage endpoints require a valid router caller token, and `/metrics` requires a caller token configured with `metrics_admin: true`. Optional browser admin reports under `/admin/reports/` require Basic Auth plus Casbin authorization and are disabled by default. Caddy terminates TLS and reverse-proxies to the router on localhost.
+The service is externally reachable, but model and usage endpoints require a valid router caller token, and `/metrics` requires a caller token authorized for `metrics` `read`. Existing `metrics_admin: true` caller config is converted to equivalent Casbin grants at startup. Optional browser admin reports under `/admin/reports/` require browser-admin identity plus Casbin authorization and are disabled by default. Caddy terminates TLS and reverse-proxies to the router on localhost.
 
 Use the DNS provider for the deployment environment. Create or update an `A` record pointing to the public IPv4 address of the deployment host. Add an `AAAA` record only if the host has working public IPv6.
 
@@ -226,7 +226,7 @@ curl -H "Authorization: Bearer $ROUTER_TOKEN" "$ROUTER_BASE_URL/v1/models"
 
 On the host, `bin/router --version`, `bin/router-token-gen --version`, and `bin/router-usage-report --version` print the package version, commit, full UTC build timestamp, Go version, OS, and architecture. Hosted browser docs display the package version and build timestamp on every page and return `X-Smart-LLMRouter-*` version headers.
 
-If enabling admin browser reports, first deploy with `server.admin_reports.enabled: false`, then add Basic Auth, Casbin policy for `admin:reports`, and finally enable `server.admin_reports.enabled: true`. Smoke `/admin/reports/api/summary?since=24h` with an authorized Basic user, verify ordinary router tokens receive `403 reports-forbidden`, verify `/docs/` remains public docs only, and roll back by setting `server.admin_reports.enabled: false`.
+If enabling admin browser reports, first deploy with `server.admin_reports.enabled: false`, then add Basic Auth or OIDC, Casbin policy for `admin:reports`, and finally enable `server.admin_reports.enabled: true`. Smoke `/admin/reports/api/summary?since=24h` with an authorized browser-admin user, verify ordinary router tokens receive `403 reports-forbidden`, verify `/docs/` remains public docs only, and roll back by setting `server.admin_reports.enabled: false`. For metrics/report authorization rollout, use `server.admin_auth.authorization.source: static` with `policy_file` or inline `policy`, or `source: db` after a policy set has been validated and activated in the usage DB. Smoke `/metrics` with an authorized caller, verify ordinary callers still receive `403 metrics-forbidden`, and keep a known-good static policy file or retired DB policy set for rollback.
 
 Enterprise deployments can route to internally hosted vLLM or SGLang services by configuring them as OpenAI-compatible providers with private `/v1` base URLs. Validate the upstream `/v1/models` ID, a direct text completion, any intended tool-call path, and the same requests through the router before activating those targets in production groups. Keep model IDs, parser flags, chat templates, server versions, and rollback notes in deployment records. See `docs/SELF_HOSTED_UPSTREAMS.md`.
 

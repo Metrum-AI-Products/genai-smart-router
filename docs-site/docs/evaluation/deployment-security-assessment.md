@@ -14,10 +14,10 @@ Confirm:
 - caller tokens are distributed only to approved users, services, or validation jobs;
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
-- metrics-admin access uses separate caller tokens with `metrics_admin: true`;
-- content-capture maintenance access, when enabled by policy, uses separate caller tokens with `content_admin: true`.
+- metrics-admin access uses separate caller subjects authorized for `metrics` `read`, with existing `metrics_admin: true` callers converted to compatible grants;
+- content-capture maintenance access uses Casbin `content:capture` `delete`/`purge` policy, with existing `content_admin: true` callers converted to compatible grants.
 - browser-admin Basic Auth, when enabled, uses bcrypt hashes from deployment secrets, requires HTTPS in production, trusts forwarded HTTPS state only from configured proxy CIDRs, and maps to stable subjects such as `basic:admin`; see [Admin Authentication](../configuration/admin-authentication).
-- browser admin reports, when enabled, require Casbin `admin:reports` policy in addition to Basic Auth identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
+- browser admin reports, when enabled, require Casbin `admin:reports` policy in addition to browser-admin identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
 
 Acceptance checks:
 
@@ -26,7 +26,7 @@ Acceptance checks:
 - metrics-admin token can scrape `/metrics`;
 - ordinary caller token receives `403 content-forbidden` on content-capture maintenance endpoints;
 - ordinary caller token receives `403 reports-forbidden` on `/admin/reports/*` when reports are enabled;
-- authorized Basic Auth report subject can read `/admin/reports/api/summary?since=24h`;
+- authorized Basic Auth or OIDC session report subject can read `/admin/reports/api/summary?since=24h`;
 - `/v1/models` returns only groups allowed for the presented token.
 
 ## Diagnostics And Data Handling
@@ -43,7 +43,7 @@ Confirm diagnostic records exclude:
 
 Expected diagnostics include request IDs, selected provider/model, attempt summaries, status, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
 
-Governed content capture is disabled by default. If a deployment enables it, confirm captured rows are redacted before storage, keyed by `request_id`, subject to retention purge, and maintained through audited `content_admin` delete/purge operations.
+Governed content capture is disabled by default. If a deployment enables it, confirm captured rows are redacted before storage, keyed by `request_id`, subject to retention purge, and maintained through audited `content:capture` delete/purge operations.
 
 ## Network And Private Upstreams
 
@@ -72,7 +72,7 @@ Validate:
 - `/readyz` and `/version` expose build metadata without secrets;
 - `/v1/chat/completions`, `/v1/responses`, and `/v1/messages` enforce caller auth, allow lists, quotas, and target eligibility;
 - `/v1/usage` returns caller-appropriate usage visibility;
-- `/admin/reports/*`, when enabled, returns only safe scalar report data and local embedded assets after Basic Auth plus Casbin authorization;
+- `/admin/reports/*`, when enabled, returns only safe scalar report data and local embedded assets after browser-admin identity plus Casbin authorization;
 - `/metrics` is restricted to metrics-admin tokens;
 - no private host paths, SSH details, provider keys, or raw tokens appear in hosted docs.
 

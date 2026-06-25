@@ -47,12 +47,16 @@ type ServerConfig struct {
 
 type AdminAuthConfig struct {
 	Basic         AdminBasicAuthConfig     `yaml:"basic" json:"basic"`
+	OIDC          AdminOIDCConfig          `yaml:"oidc" json:"oidc"`
+	Sessions      AdminSessionConfig       `yaml:"sessions" json:"sessions"`
 	Authorization AdminAuthorizationConfig `yaml:"authorization" json:"authorization"`
 }
 
 type AdminAuthorizationConfig struct {
-	Enabled bool     `yaml:"enabled" json:"enabled"`
-	Policy  []string `yaml:"policy" json:"policy"`
+	Enabled    bool     `yaml:"enabled" json:"enabled"`
+	Source     string   `yaml:"source" json:"source"`
+	PolicyFile string   `yaml:"policy_file" json:"policy_file"`
+	Policy     []string `yaml:"policy" json:"policy"`
 }
 
 type AdminReportsConfig struct {
@@ -78,6 +82,27 @@ type AdminBasicAuthUser struct {
 	Subject         string   `yaml:"subject" json:"subject"`
 	Domain          string   `yaml:"domain" json:"domain"`
 	Permissions     []string `yaml:"permissions" json:"permissions,omitempty"`
+}
+
+type AdminOIDCConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`
+	IssuerURL       string   `yaml:"issuer_url" json:"issuerUrl"`
+	ClientIDEnv     string   `yaml:"client_id_env" json:"clientIdEnv"`
+	ClientSecretEnv string   `yaml:"client_secret_env" json:"clientSecretEnv"`
+	RedirectURL     string   `yaml:"redirect_url" json:"redirectUrl"`
+	Scopes          []string `yaml:"scopes" json:"scopes"`
+	AllowedDomains  []string `yaml:"allowed_domains" json:"allowedDomains"`
+	GroupsClaim     string   `yaml:"groups_claim" json:"groupsClaim"`
+	EmailClaim      string   `yaml:"email_claim" json:"emailClaim"`
+	SubjectClaim    string   `yaml:"subject_claim" json:"subjectClaim"`
+	Domain          string   `yaml:"domain" json:"domain"`
+}
+
+type AdminSessionConfig struct {
+	CookieName    string        `yaml:"cookie_name" json:"cookieName"`
+	TTL           time.Duration `yaml:"ttl" json:"ttl"`
+	SecureCookies *bool         `yaml:"secure_cookies" json:"secureCookies"`
+	SameSite      string        `yaml:"same_site" json:"sameSite"`
 }
 
 type UpstreamConfig struct {
@@ -499,6 +524,31 @@ func (c *Config) setDefaults() {
 	if c.Server.AdminAuth.Basic.Realm == "" {
 		c.Server.AdminAuth.Basic.Realm = "GenAI Smart Router Admin"
 	}
+	if c.Server.AdminAuth.OIDC.GroupsClaim == "" {
+		c.Server.AdminAuth.OIDC.GroupsClaim = "groups"
+	}
+	if c.Server.AdminAuth.OIDC.EmailClaim == "" {
+		c.Server.AdminAuth.OIDC.EmailClaim = "email"
+	}
+	if c.Server.AdminAuth.OIDC.SubjectClaim == "" {
+		c.Server.AdminAuth.OIDC.SubjectClaim = "email"
+	}
+	if c.Server.AdminAuth.OIDC.Domain == "" {
+		c.Server.AdminAuth.OIDC.Domain = "default"
+	}
+	if c.Server.AdminAuth.Sessions.CookieName == "" {
+		c.Server.AdminAuth.Sessions.CookieName = "smart_router_admin_session"
+	}
+	if c.Server.AdminAuth.Sessions.TTL == 0 {
+		c.Server.AdminAuth.Sessions.TTL = 8 * time.Hour
+	}
+	if c.Server.AdminAuth.Sessions.SameSite == "" {
+		c.Server.AdminAuth.Sessions.SameSite = "strict"
+	}
+	if c.Server.AdminAuth.Sessions.SecureCookies == nil {
+		secure := true
+		c.Server.AdminAuth.Sessions.SecureCookies = &secure
+	}
 	if c.Server.AdminReports.PathPrefix == "" {
 		c.Server.AdminReports.PathPrefix = "/admin/reports"
 	}
@@ -597,7 +647,7 @@ func (c *Config) Validate() error {
 	if c.Server.Diagnostics.MaxErrorBytes < 0 {
 		return fmt.Errorf("server diagnostics max_error_bytes cannot be negative")
 	}
-	if err := validateAdminAuth(c.Server.AdminAuth); err != nil {
+	if err := validateAdminAuth(c.Server.AdminAuth, c.Server.UsageDB); err != nil {
 		return err
 	}
 	if err := validateAdminReports(c.Server.AdminReports, c.Server.AdminAuth, c.Server.UsageDB); err != nil {
@@ -847,11 +897,23 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func validateAdminAuth(cfg AdminAuthConfig) error {
-	if err := validateAdminAuthorization(cfg.Authorization); err != nil {
+func validateAdminAuth(cfg AdminAuthConfig, usage UsageDBConfig) error {
+	if err := validateAdminAuthorization(cfg.Authorization, usage); err != nil {
 		return err
 	}
-	basic := cfg.Basic
+	if err := validateAdminBasicAuth(cfg.Basic); err != nil {
+		return err
+	}
+	if err := validateAdminOIDC(cfg.OIDC); err != nil {
+		return err
+	}
+	if err := validateAdminSessions(cfg.Sessions, cfg.OIDC.Enabled); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateAdminBasicAuth(basic AdminBasicAuthConfig) error {
 	if !basic.Enabled {
 		if len(basic.Users) > 0 {
 			return fmt.Errorf("server admin_auth.basic users configured but basic auth is disabled")
@@ -936,40 +998,204 @@ func validateAdminAuth(cfg AdminAuthConfig) error {
 	return nil
 }
 
-func validateAdminAuthorization(cfg AdminAuthorizationConfig) error {
+func validateAdminOIDC(oidc AdminOIDCConfig) error {
+	if !oidc.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(oidc.GroupsClaim) == "" {
+		oidc.GroupsClaim = "groups"
+	}
+	if strings.TrimSpace(oidc.EmailClaim) == "" {
+		oidc.EmailClaim = "email"
+	}
+	if strings.TrimSpace(oidc.SubjectClaim) == "" {
+		oidc.SubjectClaim = "email"
+	}
+	if strings.TrimSpace(oidc.Domain) == "" {
+		oidc.Domain = "default"
+	}
+	issuer, err := url.Parse(strings.TrimSpace(oidc.IssuerURL))
+	if err != nil || issuer.Host == "" || issuer.RawQuery != "" || issuer.Fragment != "" {
+		return fmt.Errorf("server admin_auth.oidc issuer_url must be an absolute URL without query or fragment")
+	}
+	if issuer.Scheme != "https" && !(issuer.Scheme == "http" && isLocalhostHost(issuer.Hostname())) {
+		return fmt.Errorf("server admin_auth.oidc issuer_url must use https except for localhost development")
+	}
+	clientIDEnv := strings.TrimSpace(oidc.ClientIDEnv)
+	if clientIDEnv == "" {
+		return fmt.Errorf("server admin_auth.oidc requires client_id_env when enabled")
+	}
+	if !validEnvName(clientIDEnv) {
+		return fmt.Errorf("server admin_auth.oidc client_id_env is invalid")
+	}
+	if strings.TrimSpace(os.Getenv(clientIDEnv)) == "" {
+		return fmt.Errorf("server admin_auth.oidc client_id_env %s is not set", clientIDEnv)
+	}
+	clientSecretEnv := strings.TrimSpace(oidc.ClientSecretEnv)
+	if clientSecretEnv == "" {
+		return fmt.Errorf("server admin_auth.oidc requires client_secret_env when enabled")
+	}
+	if !validEnvName(clientSecretEnv) {
+		return fmt.Errorf("server admin_auth.oidc client_secret_env is invalid")
+	}
+	if strings.TrimSpace(os.Getenv(clientSecretEnv)) == "" {
+		return fmt.Errorf("server admin_auth.oidc client_secret_env %s is not set", clientSecretEnv)
+	}
+	redirect, err := url.Parse(strings.TrimSpace(oidc.RedirectURL))
+	if err != nil || redirect.Host == "" || redirect.RawQuery != "" || redirect.Fragment != "" {
+		return fmt.Errorf("server admin_auth.oidc redirect_url must be an absolute URL without query or fragment")
+	}
+	if redirect.Scheme != "https" && !(redirect.Scheme == "http" && isLocalhostHost(redirect.Hostname())) {
+		return fmt.Errorf("server admin_auth.oidc redirect_url must use https except for localhost development")
+	}
+	if strings.TrimSpace(oidc.Domain) == "" {
+		return fmt.Errorf("server admin_auth.oidc domain is required")
+	}
+	for _, claim := range []struct {
+		name  string
+		value string
+	}{
+		{name: "groups_claim", value: oidc.GroupsClaim},
+		{name: "email_claim", value: oidc.EmailClaim},
+		{name: "subject_claim", value: oidc.SubjectClaim},
+	} {
+		if strings.TrimSpace(claim.value) == "" {
+			return fmt.Errorf("server admin_auth.oidc %s is required", claim.name)
+		}
+		if !validOIDCClaimName(claim.value) {
+			return fmt.Errorf("server admin_auth.oidc %s contains unsupported characters", claim.name)
+		}
+	}
+	seenDomains := map[string]bool{}
+	for _, domain := range oidc.AllowedDomains {
+		trimmed := strings.ToLower(strings.TrimSpace(domain))
+		if trimmed == "" {
+			return fmt.Errorf("server admin_auth.oidc allowed_domains contains an empty value")
+		}
+		if strings.ContainsAny(trimmed, "@:/\\ \t\r\n") {
+			return fmt.Errorf("server admin_auth.oidc allowed domain %q is invalid", domain)
+		}
+		if seenDomains[trimmed] {
+			return fmt.Errorf("server admin_auth.oidc duplicate allowed domain %q", trimmed)
+		}
+		seenDomains[trimmed] = true
+	}
+	for _, scope := range oidc.Scopes {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			return fmt.Errorf("server admin_auth.oidc scopes contains an empty value")
+		}
+		if strings.ContainsAny(trimmed, "\r\n") {
+			return fmt.Errorf("server admin_auth.oidc scope %q contains unsupported characters", scope)
+		}
+	}
+	return nil
+}
+
+func validateAdminSessions(cfg AdminSessionConfig, oidcEnabled bool) error {
+	configured := strings.TrimSpace(cfg.CookieName) != "" || cfg.TTL != 0 || strings.TrimSpace(cfg.SameSite) != "" || cfg.SecureCookies != nil
+	if !oidcEnabled && !configured {
+		return nil
+	}
+	name := strings.TrimSpace(cfg.CookieName)
+	if name == "" {
+		name = "smart_router_admin_session"
+	}
+	if !validCookieName(name) {
+		return fmt.Errorf("server admin_auth.sessions cookie_name is invalid")
+	}
+	ttl := cfg.TTL
+	if ttl == 0 {
+		ttl = 8 * time.Hour
+	}
+	if ttl < time.Minute || ttl > 24*time.Hour {
+		return fmt.Errorf("server admin_auth.sessions ttl must be between 1m and 24h")
+	}
+	sameSite := strings.ToLower(strings.TrimSpace(cfg.SameSite))
+	if sameSite == "" {
+		sameSite = "strict"
+	}
+	switch sameSite {
+	case "strict", "lax":
+	case "none":
+		if cfg.SecureCookies != nil && !*cfg.SecureCookies {
+			return fmt.Errorf("server admin_auth.sessions same_site none requires secure_cookies")
+		}
+	default:
+		return fmt.Errorf("server admin_auth.sessions same_site must be strict, lax, or none")
+	}
+	return nil
+}
+
+func isLocalhostHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+func validOIDCClaimName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r == '_' || r == '-' || r == '.' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validCookieName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r <= 0x20 || r >= 0x7f || strings.ContainsRune("()<>@,;:\\\"/[]?={}", r) {
+			return false
+		}
+	}
+	return true
+}
+
+func validateAdminAuthorization(cfg AdminAuthorizationConfig, usage UsageDBConfig) error {
+	source := strings.ToLower(strings.TrimSpace(cfg.Source))
+	if source == "" {
+		source = "static"
+	}
+	switch source {
+	case "static", "db":
+	default:
+		return fmt.Errorf("server admin_auth.authorization source must be static or db")
+	}
 	if !cfg.Enabled {
-		if len(cfg.Policy) > 0 {
+		if len(cfg.Policy) > 0 || strings.TrimSpace(cfg.PolicyFile) != "" || source == "db" {
 			return fmt.Errorf("server admin_auth.authorization policy configured but authorization is disabled")
 		}
 		return nil
 	}
-	if len(cfg.Policy) == 0 {
-		return fmt.Errorf("server admin_auth.authorization requires at least one policy line when enabled")
+	if strings.ContainsAny(cfg.PolicyFile, "\r\n") {
+		return fmt.Errorf("server admin_auth.authorization policy_file contains unsupported characters")
+	}
+	if source == "db" {
+		if len(cfg.Policy) > 0 || strings.TrimSpace(cfg.PolicyFile) != "" {
+			return fmt.Errorf("server admin_auth.authorization source db cannot combine inline policy or policy_file")
+		}
+		if usage.Enable != nil && !*usage.Enable {
+			return fmt.Errorf("server admin_auth.authorization source db requires usage_db enabled")
+		}
+		return nil
+	}
+	if len(cfg.Policy) == 0 && strings.TrimSpace(cfg.PolicyFile) == "" {
+		return fmt.Errorf("server admin_auth.authorization requires policy or policy_file when enabled")
 	}
 	for i, line := range cfg.Policy {
 		fields, err := parseCasbinPolicyLine(line)
 		if err != nil {
 			return fmt.Errorf("server admin_auth.authorization policy[%d] is invalid: %w", i, err)
 		}
-		switch fields[0] {
-		case "p":
-			if len(fields) != 5 {
-				return fmt.Errorf("server admin_auth.authorization policy[%d] p lines require subject, domain, object, action", i)
-			}
-		case "g":
-			if len(fields) != 4 {
-				return fmt.Errorf("server admin_auth.authorization policy[%d] g lines require subject, role, domain", i)
-			}
-		default:
-			return fmt.Errorf("server admin_auth.authorization policy[%d] must start with p or g", i)
-		}
-		for _, field := range fields {
-			if strings.TrimSpace(field) == "" {
-				return fmt.Errorf("server admin_auth.authorization policy[%d] contains an empty field", i)
-			}
-			if strings.ContainsAny(field, "\r\n") {
-				return fmt.Errorf("server admin_auth.authorization policy[%d] contains unsupported characters", i)
-			}
+		if err := validateCasbinPolicyFields(fields, fmt.Sprintf("server admin_auth.authorization policy[%d]", i)); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1018,8 +1244,8 @@ func validateAdminReports(cfg AdminReportsConfig, auth AdminAuthConfig, usage Us
 	if usage.Enable != nil && !*usage.Enable {
 		return fmt.Errorf("server admin_reports requires usage_db enabled")
 	}
-	if !auth.Basic.Enabled {
-		return fmt.Errorf("server admin_reports requires server.admin_auth.basic enabled")
+	if !auth.Basic.Enabled && !auth.OIDC.Enabled {
+		return fmt.Errorf("server admin_reports requires server.admin_auth.basic or server.admin_auth.oidc enabled")
 	}
 	if !auth.Authorization.Enabled {
 		return fmt.Errorf("server admin_reports requires server.admin_auth.authorization enabled")

@@ -35,6 +35,15 @@ Governed content-capture tables are separate from diagnostics and also follow th
 
 Content-capture rows are keyed by `request_id` so administrators can join them to `request_usage`. This is an explicit opt-in enterprise feature; default usage and diagnostics behavior remains metadata-only.
 
+Casbin policy lifecycle tables also live in the usage DB and follow the same relational-only rule:
+
+- `authz_policy_sets`: one row per versioned policy set with status, creator, and created/activated/retired timestamps.
+- `authz_policy_rules`: one scalar row per Casbin `p` rule with sequence, subject or role, domain, object, action, and effect.
+- `authz_role_links`: one scalar row per Casbin `g` role link with sequence, subject, role, and domain.
+- `authz_policy_audit_events`: create, activation, rollback, and validation-failure audit events with safe actor, request, action, and summary fields.
+
+These tables must not store raw router tokens, token hashes, provider keys, password material, prompts, images, tool outputs, or full config. Policy activation validates rows before status changes, and startup in DB policy mode fails closed when no single valid active policy set exists.
+
 ## Request Metrics
 
 Each request row stores:
@@ -63,6 +72,7 @@ Durable across container restarts when volumes are preserved:
 - per-request timing, TPS, and cache snapshot fields.
 - diagnostic attempt, trace, and terminal error rows when diagnostics are enabled.
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
+- authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
 
 Not durable across router restarts:
 

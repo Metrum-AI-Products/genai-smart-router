@@ -361,6 +361,10 @@ func (s *usageStore) migrate() error {
 		&contentCaptureRecord{},
 		&contentCaptureHeaderRecord{},
 		&contentCaptureAuditRecord{},
+		&authzPolicySetRecord{},
+		&authzPolicyRuleRecord{},
+		&authzRoleLinkRecord{},
+		&authzPolicyAuditEventRecord{},
 	); err != nil {
 		return err
 	}
@@ -373,9 +377,22 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		Type string
 	}
 	var columns []columnInfo
+	tables := []string{
+		"request_usage",
+		"request_attempts",
+		"request_trace_events",
+		"request_errors",
+		"request_content_captures",
+		"request_content_headers",
+		"request_content_audit_events",
+		"authz_policy_sets",
+		"authz_policy_rules",
+		"authz_role_links",
+		"authz_policy_audit_events",
+	}
 	switch db.Dialector.Name() {
 	case "sqlite":
-		for _, table := range []string{"request_usage", "request_attempts", "request_trace_events", "request_errors", "request_content_captures", "request_content_headers", "request_content_audit_events"} {
+		for _, table := range tables {
 			var tableColumns []columnInfo
 			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
 				return err
@@ -388,7 +405,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}

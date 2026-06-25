@@ -8,7 +8,7 @@ Admin browser reports are an authenticated operational surface for usage, perfor
 
 ## Access Model
 
-The first browser identity option is HTTP Basic under `server.admin_auth.basic`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`.
+Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`.
 
 ```yaml
 server:
@@ -22,8 +22,10 @@ server:
           domain: example/prod
     authorization:
       enabled: true
+      source: static
       policy:
         - g, basic:admin, reports_admin, example/prod
+        - g, user:alice@example.com, reports_admin, example/prod
         - p, reports_admin, example/prod, admin:reports, read|export
   admin_reports:
     enabled: true
@@ -34,7 +36,7 @@ server:
     export_markdown: true
 ```
 
-Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invalid Basic credentials receive `401`.
+Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invalid Basic credentials or missing/invalid OIDC sessions receive `401`.
 
 ## What It Shows
 
@@ -56,6 +58,8 @@ curl -i -u admin:replace-with-password \
 ```
 
 Expected for an authorized subject: `200` JSON with `summary`, `series`, grouped tables, and recent request rows.
+
+OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without Casbin policy receives `403 reports-forbidden`.
 
 Expected for an ordinary router token:
 

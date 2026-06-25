@@ -184,7 +184,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if s.adminReportBearerForbidden(w, r) {
 		return
 	}
-	subject, ok := s.authenticateAdminBasic(w, r)
+	subject, ok := s.authenticateAdminSubject(w, r)
 	if !ok {
 		return
 	}
@@ -192,7 +192,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/export.md") {
 		action = "export"
 	}
-	if !s.authorizeAdmin(subject, "admin:reports", action) {
+	if !s.authorizeAdmin(subject, authzObjectAdminReports, action) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
 		return
 	}
@@ -253,11 +253,12 @@ func (s *Service) adminReportBearerForbidden(w http.ResponseWriter, r *http.Requ
 	return true
 }
 
-func (s *Service) authorizeAdmin(subject adminBasicRuntime, object, action string) bool {
-	if s.adminAuthorizer != nil && s.adminAuthorizer.enforce(subject, object, action) {
-		return true
-	}
-	return false
+func (s *Service) authorizeAdmin(subject adminAuthSubject, object, action string) bool {
+	return s.authorizer.enforce(authzSubjectForAdmin(subject), object, action)
+}
+
+func (s *Service) authorizeCaller(caller *callerRuntime, object, action string) bool {
+	return s.authorizer.enforce(authzSubjectForCaller(caller), object, action)
 }
 
 func (s *Service) setAdminReportHeaders(w http.ResponseWriter, static bool) {

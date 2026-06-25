@@ -220,9 +220,9 @@ Add `--caller-user`, `--caller-project`, `--caller-environment`, `--token-id`, `
 
 The report includes internal router API key usage by `token_id`/user/project/environment, caller IP usage, hourly usage by caller IP, external provider/model calls, token totals, request-time USD cost, cache hit/miss/bypass, cache occupancy, attempts, fallbacks, status codes, latency, hourly usage, daily usage, downstream user performance, upstream provider/model/dialect performance, and per-request upstream/downstream tokens/sec. Use the downstream user and upstream endpoint performance sections first when triaging slow UX. It does not include raw router tokens or provider API keys.
 
-Usage rows, throughput fields, request-time pricing/cost fields, and cache snapshots are durable across restarts when the Postgres volume is preserved. The in-memory response cache and `/metrics` process counters reset when the router restarts. `/metrics` is global operational telemetry and is only available to caller tokens configured with `metrics_admin: true`; normal application keys should use `/v1/usage` or usage reports.
+Usage rows, throughput fields, request-time pricing/cost fields, and cache snapshots are durable across restarts when the Postgres volume is preserved. The in-memory response cache and `/metrics` process counters reset when the router restarts. `/metrics` is global operational telemetry and is only available to caller subjects authorized for `metrics` `read`; existing `metrics_admin: true` callers remain compatible through generated Casbin grants. Normal application keys should use `/v1/usage` or usage reports.
 
-For browser report rollout, smoke `/admin/reports/api/summary?since=24h` with an authorized Basic user, confirm ordinary router tokens receive `403 reports-forbidden`, and disable reports by setting `server.admin_reports.enabled: false` if rollback is needed.
+For browser report rollout, smoke `/admin/reports/api/summary?since=24h` with an authorized browser-admin user, confirm ordinary router tokens receive `403 reports-forbidden`, and disable reports by setting `server.admin_reports.enabled: false` if rollback is needed.
 
 To intentionally start production reporting clean after a schema change, stop the stack, back up the Postgres volume or database, remove the Postgres data volume, and start the stack again:
 

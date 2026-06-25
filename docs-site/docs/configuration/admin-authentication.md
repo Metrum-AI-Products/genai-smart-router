@@ -9,9 +9,10 @@ GenAI Smart Router separates caller API authentication from browser-admin authen
 - Router caller tokens authenticate applications and CLI users for `/v1/*` model APIs.
 - Metrics-admin caller tokens read `/metrics`.
 - HTTP Basic can establish a simple browser-admin identity for `/admin/*` routes.
-- Casbin authorization is the intended policy decision layer for broader admin permissions.
+- OIDC can establish browser-admin identity through an enterprise identity provider and a server-side session cookie.
+- Casbin authorization is the policy decision layer for metrics and admin-report permissions. See [Admin Authorization](./admin-authorization).
 
-HTTP Basic is disabled by default and is intended for simple self-hosted deployments, bootstrap access, and early admin-reporting surfaces.
+HTTP Basic and OIDC are disabled by default and can be enabled independently. Basic is useful for simple self-hosted deployments and bootstrap access. OIDC is intended for deployments that want browser administrators to authenticate through an identity provider such as Google Workspace.
 
 ## Basic Auth Configuration
 
@@ -74,6 +75,39 @@ Install the hash as a deployment secret or environment variable before the route
 export SMART_ROUTER_ADMIN_PASSWORD_HASH='$2b$12$replaceWithTheGeneratedHash'
 ```
 
+## OIDC Session Configuration
+
+OIDC uses Authorization Code flow with PKCE. The router verifies the ID token with provider discovery and JWKS, validates state and nonce, then creates a server-side session cookie. The browser receives only the session cookie; raw OIDC tokens are not returned by admin auth responses.
+
+```yaml
+server:
+  admin_auth:
+    oidc:
+      enabled: true
+      issuer_url: https://accounts.google.com
+      client_id_env: GOOGLE_OIDC_CLIENT_ID
+      client_secret_env: GOOGLE_OIDC_CLIENT_SECRET
+      redirect_url: https://router.example.com/admin/auth/callback
+      scopes:
+        - email
+        - profile
+      allowed_domains:
+        - example.com
+      groups_claim: groups
+      email_claim: email
+      subject_claim: email
+      domain: example/prod
+    sessions:
+      cookie_name: smart_router_admin_session
+      ttl: 8h
+      secure_cookies: true
+      same_site: strict
+```
+
+Register `https://router.example.com/admin/auth/callback` with the IdP. Keep `client_id_env` and `client_secret_env` as environment-variable names and store the actual values in deployment secrets.
+
+For Google Workspace, use issuer `https://accounts.google.com`, restrict `allowed_domains` to the approved Workspace domains, and grant Casbin roles to stable subjects such as `user:alice@example.com`. Standard Google ID tokens do not always include group membership; use explicit policy unless a governed groups claim is configured and validated for the deployment.
+
 ## Runtime Behavior
 
 `GET /admin/auth/check` is a protected stub endpoint for validating the first admin identity path.
@@ -86,6 +120,17 @@ export SMART_ROUTER_ADMIN_PASSWORD_HASH='$2b$12$replaceWithTheGeneratedHash'
 | Valid credentials with `admin:auth:read` | `200` with safe subject metadata |
 
 Responses for protected admin routes use no-store cache headers. Passwords and password hashes are not returned.
+
+OIDC browser routes:
+
+| Route | Behavior |
+| --- | --- |
+| `GET /admin/auth/login` | Redirects to the IdP with state, nonce, and PKCE. |
+| `GET /admin/auth/callback` | Verifies the OIDC response and creates a server-side session. |
+| `GET /admin/auth/me` | Returns safe metadata for the active Basic or OIDC admin identity. |
+| `POST /admin/auth/logout` | Deletes the server-side session and expires the admin cookie. |
+
+Invalid or missing sessions return `401`. Valid sessions without a matching Casbin policy receive endpoint-specific `403` responses such as `reports-forbidden`.
 
 ## Smoke Tests
 
@@ -139,19 +184,28 @@ If the password is valid but `admin:auth:read` is not granted, the endpoint retu
 
 ## Casbin Authorization For Admin Reports
 
-Browser-admin Basic Auth establishes identity only. Admin reports use Casbin policy under `server.admin_auth.authorization` for authorization decisions.
+Browser-admin Basic Auth and OIDC sessions establish identity only. Admin reports use Casbin policy under `server.admin_auth.authorization` for authorization decisions. The same authorization layer checks `/metrics` and content-capture maintenance for caller-token subjects.
 
 ```yaml
 server:
   admin_auth:
     authorization:
       enabled: true
+      source: static
+      policy_file: ""
       policy:
+        - g, caller:ops-metrics-key, metrics_admin, example/prod
+        - g, caller:content-admin-key, content_admin, example/prod
         - g, basic:admin, reports_admin, example/prod
+        - g, user:alice@example.com, reports_admin, example/prod
+        - p, metrics_admin, example/prod, metrics, read
+        - p, content_admin, example/prod, content:capture, delete|purge
         - p, reports_admin, example/prod, admin:reports, read|export
 ```
 
 The report surface checks object `admin:reports` with action `read` for pages, JSON APIs, static assets, and request drilldown. Markdown export checks action `export`.
+
+Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete`, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants at startup.
 
 When reports are enabled under `server.admin_reports`, ordinary router caller tokens are rejected with `403 reports-forbidden` rather than being treated as browser-admin credentials.
 
@@ -162,7 +216,7 @@ curl "$ROUTER_BASE_URL/v1/models" \
   -H "Authorization: Bearer $ROUTER_TOKEN"
 ```
 
-Metrics continue to use metrics-admin caller tokens:
+Metrics continue to use caller tokens. Existing `metrics_admin: true` callers receive equivalent Casbin grants at startup:
 
 ```bash
 curl "$ROUTER_BASE_URL/metrics" \
@@ -191,23 +245,22 @@ Use `allow_insecure_http: true` only for local development and loopback smoke te
 
 ## Authorization Boundary
 
-Basic Auth establishes a subject such as `basic:admin`; it does not decide what that subject may do. Current stub-route permissions are intentionally small. Admin report authorization is expressed through the deployment's Casbin policy.
+Basic Auth establishes a subject such as `basic:admin`; OIDC with `subject_claim: email` establishes a subject such as `user:alice@example.com`. Neither decides what that subject may do. Current stub-route permissions are intentionally small. Metrics and admin report authorization are expressed through the deployment's Casbin policy.
 
 Equivalent policy expressed as separate Casbin permission lines:
 
 ```text
 g, basic:admin, reports_admin, example/prod
+g, user:alice@example.com, reports_admin, example/prod
 p, reports_admin, example/prod, admin:reports, read
 p, reports_admin, example/prod, admin:reports, export
 ```
 
 The username is not the authorization rule. The stable subject, domain, object, and action should be the policy inputs.
 
-OIDC and server-side browser sessions are a separate follow-up for deployments that need enterprise identity-provider integration.
-
 ## Rollback
 
-Disable Basic Auth and restart the router:
+Disable the affected browser identity method and restart the router:
 
 ```yaml
 server:
@@ -215,6 +268,8 @@ server:
     basic:
       enabled: false
       users: []
+    oidc:
+      enabled: false
 ```
 
-After rollback, `/admin/auth/check` should return `404`, while `/v1/*` model APIs and `/metrics` keep their existing token behavior.
+After Basic rollback, `/admin/auth/check` should return `404`. After OIDC rollback, `/admin/auth/login`, `/admin/auth/callback`, `/admin/auth/me`, and `/admin/auth/logout` should return `404` unless another admin identity method handles the route. `/v1/*` model APIs and `/metrics` keep their existing token behavior.

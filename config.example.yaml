@@ -22,8 +22,8 @@ server:
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
   # Browser-admin HTTP Basic authentication is disabled by default. It only
-  # establishes an admin subject; report authorization uses explicit Casbin
-  # grants under server.admin_auth.authorization.
+  # establishes an admin subject; control-plane authorization uses explicit
+  # Casbin grants under server.admin_auth.authorization.
   admin_auth:
     basic:
       enabled: false
@@ -39,12 +39,45 @@ server:
       #   domain: example/prod
       #   permissions:
       #   - admin:auth:read
+    oidc:
+      enabled: false
+      issuer_url: https://accounts.google.com
+      client_id_env: GOOGLE_OIDC_CLIENT_ID
+      client_secret_env: GOOGLE_OIDC_CLIENT_SECRET
+      redirect_url: https://router.example.com/admin/auth/callback
+      scopes:
+      - email
+      - profile
+      allowed_domains:
+      - example.com
+      groups_claim: groups
+      email_claim: email
+      subject_claim: email
+      domain: example/prod
+    sessions:
+      cookie_name: smart_router_admin_session
+      ttl: 8h
+      secure_cookies: true
+      same_site: strict
     authorization:
       enabled: false
+      # source: static loads deployment-owned policy_file and inline policy.
+      # source: db loads the single active policy set from the usage DB and
+      # fails closed at startup if no active validated policy set exists.
+      source: static
+      policy_file: ''
       policy: []
-      # Example Casbin policy for admin reports after Basic Auth is enabled:
+      # Example Casbin policy for metrics, admin reports, and content maintenance after AuthN is enabled.
+      # Use policy_file for deployment-owned CSV files, or inline policy for small installs.
+      # For DB-backed policy lifecycle, create policy rows in the usage DB, validate
+      # and activate them through admin-safe tooling, then set source: db.
       # policy:
+      # - g, caller:ops-metrics-key, metrics_admin, example/prod
+      # - g, caller:content-admin-key, content_admin, example/prod
       # - g, basic:admin, reports_admin, example/prod
+      # - g, user:alice@example.com, reports_admin, example/prod
+      # - p, metrics_admin, example/prod, metrics, read
+      # - p, content_admin, example/prod, content:capture, delete|purge
       # - p, reports_admin, example/prod, admin:reports, read|export
   admin_reports:
     enabled: false

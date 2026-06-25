@@ -29,19 +29,21 @@ import (
 )
 
 type Service struct {
-	cfg             *Config
-	mux             *http.ServeMux
-	httpClient      *http.Client
-	callersBySum    map[string]*callerRuntime
-	adminBasic      map[string]adminBasicRuntime
-	adminAuthorizer *adminAuthorizer
-	quota           *quotaStore
-	cache           *responseCache
-	logger          *requestLogger
-	usage           *usageStore
-	metrics         *metricsStore
-	scripts         map[string]*scriptStrategy
-	observations    *dynamicObservationStore
+	cfg          *Config
+	mux          *http.ServeMux
+	httpClient   *http.Client
+	callersBySum map[string]*callerRuntime
+	adminBasic   map[string]adminBasicRuntime
+	adminOIDC    *adminOIDCRuntime
+	adminSession *adminSessionStore
+	authorizer   *authorizer
+	quota        *quotaStore
+	cache        *responseCache
+	logger       *requestLogger
+	usage        *usageStore
+	metrics      *metricsStore
+	scripts      map[string]*scriptStrategy
+	observations *dynamicObservationStore
 }
 
 type adminBasicRuntime struct {
@@ -133,6 +135,7 @@ func New(cfg *Config) (*Service, error) {
 		httpClient:   &http.Client{Timeout: time.Duration(cfg.Server.Upstream.TimeoutMS) * time.Millisecond},
 		callersBySum: map[string]*callerRuntime{},
 		adminBasic:   map[string]adminBasicRuntime{},
+		adminSession: newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
 		quota:        quota,
 		cache:        newCache(cfg.Server.Cache),
 		logger:       logger,
@@ -141,12 +144,21 @@ func New(cfg *Config) (*Service, error) {
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
 	}
-	s.adminAuthorizer, err = newAdminAuthorizer(cfg.Server.AdminAuth.Authorization)
+	s.authorizer, err = newAuthorizer(cfg.Server.AdminAuth.Authorization, quota.callers, usage)
 	if err != nil {
 		_ = quota.Close()
 		_ = logger.Close()
 		_ = usage.Close()
 		return nil, err
+	}
+	if cfg.Server.AdminAuth.OIDC.Enabled {
+		s.adminOIDC, err = newAdminOIDCRuntime(context.Background(), cfg.Server.AdminAuth.OIDC, s.httpClient)
+		if err != nil {
+			_ = quota.Close()
+			_ = logger.Close()
+			_ = usage.Close()
+			return nil, err
+		}
 	}
 	if err := s.loadScripts(); err != nil {
 		_ = quota.Close()
@@ -206,6 +218,10 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
+	s.mux.HandleFunc("GET /admin/auth/login", s.handleAdminOIDCLogin)
+	s.mux.HandleFunc("GET /admin/auth/callback", s.handleAdminOIDCCallback)
+	s.mux.HandleFunc("POST /admin/auth/logout", s.handleAdminOIDCLogout)
+	s.mux.HandleFunc("GET /admin/auth/me", s.handleAdminAuthMe)
 	s.mux.HandleFunc("GET /admin/auth/check", s.handleAdminAuthCheck)
 	s.mux.HandleFunc("GET /admin/reports", s.handleAdminReports)
 	s.mux.HandleFunc("GET /admin/reports/", s.handleAdminReports)
@@ -306,6 +322,11 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, rc, http.StatusForbidden, code)
 		return
 	}
+	if !s.authorizer.enforce(authzSubjectForCaller(rc.caller), authzObjectMetrics, authzActionRead) {
+		code := "metrics-forbidden"
+		s.writeError(w, rc, http.StatusForbidden, code)
+		return
+	}
 	defer s.finish(rc, http.StatusOK, nil)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -313,20 +334,16 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleAdminAuthCheck(w http.ResponseWriter, r *http.Request) {
-	subject, ok := s.authenticateAdminBasic(w, r)
+	basic, ok := s.authenticateAdminBasic(w, r)
 	if !ok {
 		return
 	}
+	subject := adminAuthSubjectForBasic(basic)
 	if !subject.permissions["admin:auth:read"] {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "admin-forbidden", "message": "admin-forbidden"}})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":      true,
-		"source":  "basic",
-		"subject": subject.subject,
-		"domain":  subject.domain,
-	})
+	writeJSON(w, http.StatusOK, safeAdminSubjectResponse(subject))
 }
 
 func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +351,7 @@ func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	if !rc.caller.cfg.ContentAdmin {
+	if !s.authorizeCaller(rc.caller, authzObjectContentCapture, authzActionDelete) {
 		code := "content-forbidden"
 		s.writeError(w, rc, http.StatusForbidden, code)
 		return
@@ -362,7 +379,7 @@ func (s *Service) handleContentCapturePurgeExpired(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	if !rc.caller.cfg.ContentAdmin {
+	if !s.authorizeCaller(rc.caller, authzObjectContentCapture, authzActionPurge) {
 		code := "content-forbidden"
 		s.writeError(w, rc, http.StatusForbidden, code)
 		return
