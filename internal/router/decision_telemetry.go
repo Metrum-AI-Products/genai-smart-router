@@ -31,6 +31,8 @@ func (s *Service) recordDecisionShape(rc *requestContext, req *IRRequest, caller
 	addBoolFeature("structured_output", requestHasStructuredOutput(req))
 	addBoolFeature("max_tokens_set", req.MaxTokens > 0)
 	addTextFeature("max_tokens_field", req.MaxTokensField)
+	addTextFeature("max_token_bucket", maxTokenBucket(req.MaxTokens))
+	addTextFeature("input_token_bucket", contextBucket(estimateTokens(req)))
 	addBoolFeature("cacheable", cacheable(req))
 }
 

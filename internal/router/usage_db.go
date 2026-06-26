@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -64,6 +65,7 @@ type UsageRollupResult struct {
 	WindowEnd          time.Time
 	SourceRequestCount int64
 	DailyRows          int64
+	DecisionBucketRows int64
 }
 
 type RetentionStatusOptions struct {
@@ -182,6 +184,12 @@ type usageRow struct {
 	QuotaState                         string
 	KeyState                           string
 	Error                              string
+	MaxTokenBucket                     string
+	InputTokenBucket                   string
+	AdmissionReason                    string
+	EnabledSignals                     []string
+	ScoreBuckets                       []string
+	ThresholdBuckets                   []string
 }
 
 type securityAccessEvent struct {
@@ -443,6 +451,32 @@ func (usageRollupDailyRecord) TableName() string {
 	return "usage_rollup_daily"
 }
 
+type usageRollupDecisionBucketRecord struct {
+	ID                 uint                 `gorm:"column:id;primaryKey;autoIncrement"`
+	RunID              uint                 `gorm:"column:run_id;not null;index:idx_usage_rollup_decision_run;uniqueIndex:idx_usage_rollup_decision_unique,priority:1"`
+	RollupType         string               `gorm:"column:rollup_type;type:text;not null;index:idx_usage_rollup_decision_day,priority:1"`
+	Status             string               `gorm:"column:status;type:text;not null;index:idx_usage_rollup_decision_status"`
+	DayUTC             string               `gorm:"column:day_utc;type:text;not null;index:idx_usage_rollup_decision_day,priority:2;uniqueIndex:idx_usage_rollup_decision_unique,priority:2"`
+	WindowStart        string               `gorm:"column:window_start;type:text;not null"`
+	WindowEnd          string               `gorm:"column:window_end;type:text;not null"`
+	ResolvedGroup      string               `gorm:"column:resolved_group;type:text;not null;default:'';index:idx_usage_rollup_decision_group;uniqueIndex:idx_usage_rollup_decision_unique,priority:3"`
+	Strategy           string               `gorm:"column:strategy;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_decision_unique,priority:4"`
+	BucketKind         string               `gorm:"column:bucket_kind;type:text;not null;index:idx_usage_rollup_decision_kind;uniqueIndex:idx_usage_rollup_decision_unique,priority:5"`
+	BucketName         string               `gorm:"column:bucket_name;type:text;not null;index:idx_usage_rollup_decision_bucket;uniqueIndex:idx_usage_rollup_decision_unique,priority:6"`
+	SecondaryBucket    string               `gorm:"column:secondary_bucket;type:text;not null;default:'';uniqueIndex:idx_usage_rollup_decision_unique,priority:7"`
+	SourceRequestCount int64                `gorm:"column:source_request_count;not null;default:0"`
+	ErrorCount         int64                `gorm:"column:error_count;not null;default:0"`
+	InputTokens        int64                `gorm:"column:input_tokens;not null;default:0"`
+	OutputTokens       int64                `gorm:"column:output_tokens;not null;default:0"`
+	TotalTokens        int64                `gorm:"column:total_tokens;not null;default:0"`
+	TotalCostUSD       float64              `gorm:"column:total_cost_usd;not null;default:0"`
+	UsageRollupRun     usageRollupRunRecord `gorm:"foreignKey:RunID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+func (usageRollupDecisionBucketRecord) TableName() string {
+	return "usage_rollup_decision_buckets"
+}
+
 type retentionPolicyVersionRecord struct {
 	ID               uint   `gorm:"column:id;primaryKey;autoIncrement"`
 	Version          string `gorm:"column:version;type:text;not null;uniqueIndex:idx_retention_policy_version"`
@@ -690,21 +724,24 @@ func (routingSignalRecord) TableName() string {
 }
 
 type dynamicScoreTermRecord struct {
-	RequestID        string  `gorm:"column:request_id;primaryKey;type:text;index:idx_dynamic_score_term_request" json:"requestId"`
-	Seq              int     `gorm:"column:seq;primaryKey;not null" json:"seq"`
-	CandidateIndex   int     `gorm:"column:candidate_index;not null;index:idx_dynamic_score_term_candidate" json:"candidateIndex"`
-	Rank             int     `gorm:"column:rank;not null;index:idx_dynamic_score_term_rank" json:"rank"`
-	Provider         string  `gorm:"column:provider;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:1" json:"provider"`
-	Model            string  `gorm:"column:model;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:2" json:"model"`
-	Dialect          string  `gorm:"column:dialect;type:text;not null" json:"dialect"`
-	TermName         string  `gorm:"column:term_name;type:text;not null;index:idx_dynamic_score_term_name" json:"termName"`
-	ScoreName        string  `gorm:"column:score_name;type:text;not null;default:'';index:idx_dynamic_score_score_name" json:"scoreName"`
-	Weight           float64 `gorm:"column:weight;not null;default:0" json:"weight"`
-	Value            float64 `gorm:"column:value;not null;default:0" json:"value"`
-	Contribution     float64 `gorm:"column:contribution;not null;default:0" json:"contribution"`
-	FinalScore       float64 `gorm:"column:final_score;not null;default:0" json:"finalScore"`
-	ObservationCount int     `gorm:"column:observation_count;not null;default:0" json:"observationCount"`
-	Selected         bool    `gorm:"column:selected;not null;default:false;index:idx_dynamic_score_term_selected" json:"selected"`
+	RequestID          string  `gorm:"column:request_id;primaryKey;type:text;index:idx_dynamic_score_term_request" json:"requestId"`
+	Seq                int     `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	CandidateIndex     int     `gorm:"column:candidate_index;not null;index:idx_dynamic_score_term_candidate" json:"candidateIndex"`
+	Rank               int     `gorm:"column:rank;not null;index:idx_dynamic_score_term_rank" json:"rank"`
+	Provider           string  `gorm:"column:provider;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:1" json:"provider"`
+	Model              string  `gorm:"column:model;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:2" json:"model"`
+	Dialect            string  `gorm:"column:dialect;type:text;not null" json:"dialect"`
+	TermName           string  `gorm:"column:term_name;type:text;not null;index:idx_dynamic_score_term_name" json:"termName"`
+	ScoreName          string  `gorm:"column:score_name;type:text;not null;default:'';index:idx_dynamic_score_score_name" json:"scoreName"`
+	Weight             float64 `gorm:"column:weight;not null;default:0" json:"weight"`
+	Value              float64 `gorm:"column:value;not null;default:0" json:"value"`
+	Contribution       float64 `gorm:"column:contribution;not null;default:0" json:"contribution"`
+	FinalScore         float64 `gorm:"column:final_score;not null;default:0" json:"finalScore"`
+	ValueBucket        string  `gorm:"column:value_bucket;type:text;not null;default:'';index:idx_dynamic_score_value_bucket" json:"valueBucket"`
+	ContributionBucket string  `gorm:"column:contribution_bucket;type:text;not null;default:'';index:idx_dynamic_score_contribution_bucket" json:"contributionBucket"`
+	FinalScoreBucket   string  `gorm:"column:final_score_bucket;type:text;not null;default:'';index:idx_dynamic_score_final_bucket" json:"finalScoreBucket"`
+	ObservationCount   int     `gorm:"column:observation_count;not null;default:0" json:"observationCount"`
+	Selected           bool    `gorm:"column:selected;not null;default:false;index:idx_dynamic_score_term_selected" json:"selected"`
 }
 
 func (dynamicScoreTermRecord) TableName() string {
@@ -812,17 +849,23 @@ type agg struct {
 }
 
 type decisionTelemetrySummary struct {
-	ShapeFeatures    int64
-	Candidates       int64
-	FilterReasons    int64
-	Decisions        int64
-	RoutingSignals   int64
-	ScoreTerms       int64
-	PolicyExecutions int64
-	CacheReasons     int64
-	ByStrategy       map[string]int64
-	ByFilterReason   map[string]int64
-	ByCacheReason    map[string]int64
+	ShapeFeatures      int64
+	Candidates         int64
+	FilterReasons      int64
+	Decisions          int64
+	RoutingSignals     int64
+	ScoreTerms         int64
+	PolicyExecutions   int64
+	CacheReasons       int64
+	ByStrategy         map[string]int64
+	ByFilterReason     map[string]int64
+	ByCacheReason      map[string]int64
+	ByEnabledSignal    map[string]int64
+	ByScoreBucket      map[string]int64
+	ByThresholdBucket  map[string]int64
+	ByMaxTokenBucket   map[string]int64
+	ByInputTokenBucket map[string]int64
+	ByAdmissionReason  map[string]int64
 }
 
 func newUsageStore(cfg UsageDBConfig) (*usageStore, error) {
@@ -923,6 +966,7 @@ func (s *usageStore) migrate() error {
 		&securityAccessEventRecord{},
 		&usageRollupRunRecord{},
 		&usageRollupDailyRecord{},
+		&usageRollupDecisionBucketRecord{},
 		&retentionPolicyVersionRecord{},
 		&retentionPolicyRuleRecord{},
 		&retentionJobRecord{},
@@ -964,6 +1008,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"security_access_events",
 		"usage_rollup_runs",
 		"usage_rollup_daily",
+		"usage_rollup_decision_buckets",
 		"retention_policy_versions",
 		"retention_policy_rules",
 		"retention_jobs",
@@ -986,7 +1031,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1162,22 +1207,28 @@ func routingSignalRecordFromLog(requestID string, rec routingSignalLogRecord) *r
 }
 
 func dynamicScoreTermRecordFromLog(requestID string, rec dynamicScoreTermLogRecord) *dynamicScoreTermRecord {
+	valueBucket := defaultString(rec.ValueBucket, scoreValueBucket(rec.Value))
+	contributionBucket := defaultString(rec.ContributionBucket, scoreValueBucket(rec.Contribution))
+	finalScoreBucket := defaultString(rec.FinalScoreBucket, scoreValueBucket(rec.FinalScore))
 	return &dynamicScoreTermRecord{
-		RequestID:        requestID,
-		Seq:              rec.Seq,
-		CandidateIndex:   rec.CandidateIndex,
-		Rank:             rec.Rank,
-		Provider:         rec.Provider,
-		Model:            rec.Model,
-		Dialect:          rec.Dialect,
-		TermName:         rec.TermName,
-		ScoreName:        rec.ScoreName,
-		Weight:           rec.Weight,
-		Value:            rec.Value,
-		Contribution:     rec.Contribution,
-		FinalScore:       rec.FinalScore,
-		ObservationCount: rec.ObservationCount,
-		Selected:         rec.Selected,
+		RequestID:          requestID,
+		Seq:                rec.Seq,
+		CandidateIndex:     rec.CandidateIndex,
+		Rank:               rec.Rank,
+		Provider:           rec.Provider,
+		Model:              rec.Model,
+		Dialect:            rec.Dialect,
+		TermName:           rec.TermName,
+		ScoreName:          rec.ScoreName,
+		Weight:             rec.Weight,
+		Value:              rec.Value,
+		Contribution:       rec.Contribution,
+		FinalScore:         rec.FinalScore,
+		ValueBucket:        valueBucket,
+		ContributionBucket: contributionBucket,
+		FinalScoreBucket:   finalScoreBucket,
+		ObservationCount:   rec.ObservationCount,
+		Selected:           rec.Selected,
 	}
 }
 
@@ -2015,12 +2066,14 @@ func (s *usageStore) generateUsageRollup(opts UsageRollupOptions) (UsageRollupRe
 	windowStart := formatUsageTime(opts.From)
 	windowEnd := formatUsageTime(opts.To)
 	daily := dailyRollupRecords(rows, status, windowStart, windowEnd)
+	decisionBuckets := dailyDecisionBucketRollupRecords(rows, status, windowStart, windowEnd)
 	result := UsageRollupResult{
 		Status:             status,
 		WindowStart:        opts.From,
 		WindowEnd:          opts.To,
 		SourceRequestCount: int64(len(rows)),
 		DailyRows:          int64(len(daily)),
+		DecisionBucketRows: int64(len(decisionBuckets)),
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		var overlappingFinalized int64
@@ -2053,6 +2106,9 @@ func (s *usageStore) generateUsageRollup(opts UsageRollupOptions) (UsageRollupRe
 			if err := tx.Where("run_id = ?", run.ID).Delete(&usageRollupDailyRecord{}).Error; err != nil {
 				return err
 			}
+			if err := tx.Where("run_id = ?", run.ID).Delete(&usageRollupDecisionBucketRecord{}).Error; err != nil {
+				return err
+			}
 		}
 		run.Status = status
 		run.SourceTable = "request_usage"
@@ -2071,6 +2127,12 @@ func (s *usageStore) generateUsageRollup(opts UsageRollupOptions) (UsageRollupRe
 				return err
 			}
 		}
+		for i := range decisionBuckets {
+			decisionBuckets[i].RunID = run.ID
+			if err := tx.Create(&decisionBuckets[i]).Error; err != nil {
+				return err
+			}
+		}
 		result.RunID = run.ID
 		return nil
 	})
@@ -2078,6 +2140,79 @@ func (s *usageStore) generateUsageRollup(opts UsageRollupOptions) (UsageRollupRe
 		return UsageRollupResult{}, err
 	}
 	return result, nil
+}
+
+func dailyDecisionBucketRollupRecords(rows []usageRow, status, windowStart, windowEnd string) []usageRollupDecisionBucketRecord {
+	byDimension := map[string]*usageRollupDecisionBucketRecord{}
+	for _, row := range rows {
+		day := row.TS.UTC().Format("2006-01-02")
+		addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "max_token_bucket", defaultString(row.MaxTokenBucket, "unknown"), "")
+		addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "input_token_bucket", defaultString(row.InputTokenBucket, "unknown"), "")
+		addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "admission_reason", defaultString(row.AdmissionReason, "admitted"), "")
+		for _, signal := range row.EnabledSignals {
+			addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "enabled_signal", signal, "")
+		}
+		for _, bucket := range row.ScoreBuckets {
+			parts := splitScoreBucketReportKey(bucket)
+			addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "score_bucket", parts[0], parts[1])
+		}
+		for _, bucket := range row.ThresholdBuckets {
+			addDecisionRollupBucket(byDimension, row, status, windowStart, windowEnd, day, "threshold_bucket", bucket, "")
+		}
+	}
+	keys := make([]string, 0, len(byDimension))
+	for key := range byDimension {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]usageRollupDecisionBucketRecord, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, *byDimension[key])
+	}
+	return out
+}
+
+func addDecisionRollupBucket(m map[string]*usageRollupDecisionBucketRecord, row usageRow, status, windowStart, windowEnd, day, kind, name, secondary string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	key := strings.Join([]string{
+		day,
+		defaultString(row.ResolvedGroup, row.RequestedModel),
+		defaultString(row.Strategy, "unknown"),
+		kind,
+		name,
+		secondary,
+	}, "\x1f")
+	rec := m[key]
+	if rec == nil {
+		rec = &usageRollupDecisionBucketRecord{
+			RollupType:      "daily",
+			Status:          status,
+			DayUTC:          day,
+			WindowStart:     windowStart,
+			WindowEnd:       windowEnd,
+			ResolvedGroup:   defaultString(row.ResolvedGroup, row.RequestedModel),
+			Strategy:        defaultString(row.Strategy, "unknown"),
+			BucketKind:      kind,
+			BucketName:      name,
+			SecondaryBucket: secondary,
+		}
+		m[key] = rec
+	}
+	rec.SourceRequestCount++
+	if row.Status >= 400 {
+		rec.ErrorCount++
+	}
+	rec.InputTokens += int64(row.InputTokens)
+	rec.OutputTokens += int64(row.OutputTokens)
+	total := row.TotalTokens
+	if total == 0 {
+		total = row.InputTokens + row.OutputTokens
+	}
+	rec.TotalTokens += int64(total)
+	rec.TotalCostUSD += row.TotalCostUSD
 }
 
 func dailyRollupRecords(rows []usageRow, status, windowStart, windowEnd string) []usageRollupDailyRecord {
@@ -2257,9 +2392,15 @@ func addFloatToRollup(v *float64, sum *float64, count *int64) {
 
 func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetrySummary {
 	summary := decisionTelemetrySummary{
-		ByStrategy:     map[string]int64{},
-		ByFilterReason: map[string]int64{},
-		ByCacheReason:  map[string]int64{},
+		ByStrategy:         map[string]int64{},
+		ByFilterReason:     map[string]int64{},
+		ByCacheReason:      map[string]int64{},
+		ByEnabledSignal:    map[string]int64{},
+		ByScoreBucket:      map[string]int64{},
+		ByThresholdBucket:  map[string]int64{},
+		ByMaxTokenBucket:   map[string]int64{},
+		ByInputTokenBucket: map[string]int64{},
+		ByAdmissionReason:  map[string]int64{},
 	}
 	if s == nil || s.db == nil || len(rows) == 0 {
 		return summary
@@ -2299,6 +2440,20 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 	_ = s.db.Model(&decisionCacheReasonRecord{}).Select("reason AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("reason").Scan(&cacheReasons).Error
 	for _, row := range cacheReasons {
 		summary.ByCacheReason[defaultString(row.Key, "unknown")] = row.Count
+	}
+	for _, row := range rows {
+		summary.ByMaxTokenBucket[defaultString(row.MaxTokenBucket, "unknown")]++
+		summary.ByInputTokenBucket[defaultString(row.InputTokenBucket, "unknown")]++
+		summary.ByAdmissionReason[defaultString(row.AdmissionReason, "admitted")]++
+		for _, signal := range row.EnabledSignals {
+			summary.ByEnabledSignal[signal]++
+		}
+		for _, bucket := range row.ScoreBuckets {
+			summary.ByScoreBucket[bucket]++
+		}
+		for _, bucket := range row.ThresholdBuckets {
+			summary.ByThresholdBucket[bucket]++
+		}
 	}
 	return summary
 }
@@ -2362,7 +2517,151 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 		}
 		out = append(out, row)
 	}
+	s.loadUsageReportBuckets(out)
 	return out, nil
+}
+
+func (s *usageStore) loadUsageReportBuckets(rows []usageRow) {
+	if s == nil || s.db == nil || len(rows) == 0 {
+		return
+	}
+	requestIDs := make([]string, 0, len(rows))
+	rowByRequestID := map[string]*usageRow{}
+	for i := range rows {
+		rows[i].MaxTokenBucket = "unknown"
+		rows[i].InputTokenBucket = inputTokenBucket(rows[i].InputTokens)
+		rows[i].AdmissionReason = admissionReasonBucket(rows[i])
+		if rows[i].RequestID == "" {
+			continue
+		}
+		requestIDs = append(requestIDs, rows[i].RequestID)
+		rowByRequestID[rows[i].RequestID] = &rows[i]
+	}
+	if len(requestIDs) == 0 {
+		return
+	}
+	var shapes []decisionShapeFeatureRecord
+	_ = s.db.Where("request_id IN ? AND feature_name IN ?", requestIDs, []string{"max_token_bucket", "input_token_bucket"}).Find(&shapes).Error
+	for _, shape := range shapes {
+		row := rowByRequestID[shape.RequestID]
+		if row == nil {
+			continue
+		}
+		switch shape.FeatureName {
+		case "max_token_bucket":
+			row.MaxTokenBucket = defaultString(shape.TextValue, "unknown")
+		case "input_token_bucket":
+			row.InputTokenBucket = defaultString(shape.TextValue, row.InputTokenBucket)
+		}
+	}
+	var signals []routingSignalRecord
+	_ = s.db.Where("request_id IN ? AND strategy = ? AND source = ? AND bool_value = ?", requestIDs, "dynamic_score", "dynamic_score", true).Find(&signals).Error
+	for _, signal := range signals {
+		row := rowByRequestID[signal.RequestID]
+		if row != nil && signal.SignalName != "" {
+			row.EnabledSignals = appendUniqueString(row.EnabledSignals, signal.SignalName)
+		}
+	}
+	var terms []dynamicScoreTermRecord
+	_ = s.db.Where("request_id IN ?", requestIDs).Find(&terms).Error
+	for _, term := range terms {
+		row := rowByRequestID[term.RequestID]
+		if row == nil {
+			continue
+		}
+		valueBucket := defaultString(term.ValueBucket, scoreValueBucket(term.Value))
+		if term.ScoreName != "" && valueBucket != "" {
+			row.ScoreBuckets = appendUniqueString(row.ScoreBuckets, scoreBucketReportKey(term.ScoreName, valueBucket))
+		}
+		finalScoreBucket := defaultString(term.FinalScoreBucket, scoreValueBucket(term.FinalScore))
+		if finalScoreBucket != "" {
+			row.ScoreBuckets = appendUniqueString(row.ScoreBuckets, scoreBucketReportKey("final_score", finalScoreBucket))
+		}
+	}
+	var filterReasons []decisionTargetFilterReasonRecord
+	_ = s.db.Where("request_id IN ?", requestIDs).Find(&filterReasons).Error
+	for _, reason := range filterReasons {
+		row := rowByRequestID[reason.RequestID]
+		if row == nil {
+			continue
+		}
+		switch {
+		case reason.Reason == "max-tokens-honored":
+			row.ThresholdBuckets = appendUniqueString(row.ThresholdBuckets, "max_token_cap_filtered")
+		case reason.Stage == "dynamic_score" && strings.Contains(reason.Reason, "threshold"):
+			row.ThresholdBuckets = appendUniqueString(row.ThresholdBuckets, reason.Reason)
+		}
+	}
+}
+
+func appendUniqueString(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func scoreBucketReportKey(scoreName, bucket string) string {
+	scoreName = strings.TrimSpace(scoreName)
+	bucket = strings.TrimSpace(bucket)
+	if scoreName == "" {
+		return bucket
+	}
+	if bucket == "" {
+		return scoreName
+	}
+	return scoreName + ":" + bucket
+}
+
+func splitScoreBucketReportKey(key string) []string {
+	parts := strings.SplitN(key, ":", 2)
+	if len(parts) == 1 {
+		return []string{parts[0], ""}
+	}
+	return parts
+}
+
+func inputTokenBucket(tokens int) string {
+	switch {
+	case tokens > 100000:
+		return "huge"
+	case tokens > 32000:
+		return "very_large"
+	case tokens > 12000:
+		return "large"
+	case tokens > 3000:
+		return "medium"
+	case tokens > 0:
+		return "small"
+	default:
+		return "unknown"
+	}
+}
+
+func admissionReasonBucket(row usageRow) string {
+	if row.Status == http.StatusTooManyRequests || row.Status == http.StatusForbidden {
+		switch {
+		case row.Error != "":
+			return row.Error
+		case row.QuotaState != "" && row.QuotaState != "ok":
+			return "quota-" + row.QuotaState
+		case row.KeyState != "" && row.KeyState != "ok" && row.KeyState != "active":
+			return "key-" + row.KeyState
+		}
+	}
+	if row.QuotaState != "" && row.QuotaState != "ok" {
+		return "quota-" + row.QuotaState
+	}
+	if row.KeyState != "" && row.KeyState != "ok" && row.KeyState != "active" {
+		return "key-" + row.KeyState
+	}
+	return "admitted"
 }
 
 func (s *usageStore) EmitSecurityAccessEvent(event securityAccessEvent) {
@@ -2679,6 +2978,12 @@ func writeDecisionTelemetrySummary(b *strings.Builder, summary decisionTelemetry
 	writeCountTable(b, "Routing Decisions By Strategy", "Strategy", summary.ByStrategy)
 	writeCountTable(b, "Target Filter Reasons", "Reason", summary.ByFilterReason)
 	writeCountTable(b, "Cache Decision Reasons", "Reason", summary.ByCacheReason)
+	writeCountTable(b, "Dynamic Score Enabled Signals", "Signal", summary.ByEnabledSignal)
+	writeCountTable(b, "Dynamic Score Buckets", "Score / Bucket", summary.ByScoreBucket)
+	writeCountTable(b, "Dynamic Threshold Buckets", "Threshold Bucket", summary.ByThresholdBucket)
+	writeCountTable(b, "Max Token Buckets", "Bucket", summary.ByMaxTokenBucket)
+	writeCountTable(b, "Input Token Buckets", "Bucket", summary.ByInputTokenBucket)
+	writeCountTable(b, "Admission Reasons", "Reason", summary.ByAdmissionReason)
 }
 
 func writeCountTable(b *strings.Builder, title, keyHeader string, counts map[string]int64) {

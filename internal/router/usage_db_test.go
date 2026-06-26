@@ -116,7 +116,7 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 	logPath := filepath.Join(dir, "requests.jsonl")
 	dbPath := filepath.Join(dir, "usage.sqlite")
 	raw := strings.Join([]string{
-		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_decision","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"bypass","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"quota_state":"ok","key_state":"active","warnings":[],"decision_shape_features":[{"seq":1,"name":"has_tools","bool_value":true}],"decision_candidates":[{"candidate_index":0,"group_target_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","context_tokens":8192,"tool_support":true,"structured_output":true,"honors_max_tokens":true,"eligible":true,"selected":true}],"decision_filter_reasons":[{"seq":1,"candidate_index":1,"stage":"request_shape","reason":"tool-support"}],"routing_decisions":[{"seq":1,"strategy":"static","selected_candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","fallback_count":0}],"routing_signals":[{"seq":1,"strategy":"dynamic_score","signal_name":"observed_performance","source":"dynamic_score","bool_value":true}],"dynamic_score_terms":[{"seq":1,"candidate_index":0,"rank":1,"provider":"mock","model":"mock-model","dialect":"openai-chat","term_name":"default","score_name":"latency_score","weight":0.5,"value":0.8,"contribution":0.4,"final_score":0.7,"observation_count":3,"selected":true}],"policy_executions":[{"seq":1,"strategy":"script","policy_kind":"typescript","outcome":"selected","duration_ms":12,"eligible_target_count":1,"selected_candidate_index":0}],"cache_reasons":[{"seq":1,"status":"bypass","reason":"cache-tool-request","candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat"}]}`,
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_decision","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"bypass","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"quota_state":"ok","key_state":"active","warnings":[],"decision_shape_features":[{"seq":1,"name":"has_tools","bool_value":true},{"seq":2,"name":"max_token_bucket","text_value":"tiny"},{"seq":3,"name":"input_token_bucket","text_value":"small"}],"decision_candidates":[{"candidate_index":0,"group_target_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","context_tokens":8192,"tool_support":true,"structured_output":true,"honors_max_tokens":true,"eligible":true,"selected":true}],"decision_filter_reasons":[{"seq":1,"candidate_index":1,"stage":"request_shape","reason":"tool-support"},{"seq":2,"candidate_index":1,"stage":"request_shape","reason":"max-tokens-honored"},{"seq":3,"candidate_index":1,"stage":"dynamic_score","reason":"dynamic_score_thresholds"},{"seq":4,"candidate_index":1,"stage":"contract","reason":"contract-operational-threshold"}],"routing_decisions":[{"seq":1,"strategy":"static","selected_candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","fallback_count":0}],"routing_signals":[{"seq":1,"strategy":"dynamic_score","signal_name":"observed_performance","source":"dynamic_score","bool_value":true}],"dynamic_score_terms":[{"seq":1,"candidate_index":0,"rank":1,"provider":"mock","model":"mock-model","dialect":"openai-chat","term_name":"default","score_name":"latency_score","weight":0.5,"value":0.8,"contribution":0.4,"final_score":0.7,"observation_count":3,"selected":true}],"policy_executions":[{"seq":1,"strategy":"script","policy_kind":"typescript","outcome":"selected","duration_ms":12,"eligible_target_count":1,"selected_candidate_index":0}],"cache_reasons":[{"seq":1,"status":"bypass","reason":"cache-tool-request","candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat"}]}`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
@@ -133,18 +133,49 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## Decision Telemetry Summary",
-		"| 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |",
+		"| 3 | 1 | 4 | 1 | 1 | 1 | 1 | 1 |",
 		"### Routing Decisions By Strategy",
 		"| static | 1 |",
 		"### Target Filter Reasons",
 		"| tool-support | 1 |",
 		"### Cache Decision Reasons",
 		"| cache-tool-request | 1 |",
+		"### Dynamic Score Enabled Signals",
+		"| observed_performance | 1 |",
+		"### Dynamic Score Buckets",
+		"| final_score:medium | 1 |",
+		"| latency_score:high | 1 |",
+		"### Dynamic Threshold Buckets",
+		"| dynamic_score_thresholds | 1 |",
+		"| max_token_cap_filtered | 1 |",
+		"### Max Token Buckets",
+		"| tiny | 1 |",
+		"### Input Token Buckets",
+		"| small | 1 |",
+		"### Admission Reasons",
+		"| admitted | 1 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("report missing %q:\n%s", want, md)
 		}
 	}
+	thresholdSection := markdownSection(md, "### Dynamic Threshold Buckets", "### Max Token Buckets")
+	if strings.Contains(thresholdSection, "| contract-operational-threshold |") {
+		t.Fatalf("contract threshold leaked into dynamic threshold buckets:\n%s", md)
+	}
+}
+
+func markdownSection(md, start, end string) string {
+	startIdx := strings.Index(md, start)
+	if startIdx < 0 {
+		return ""
+	}
+	section := md[startIdx:]
+	endIdx := strings.Index(section[len(start):], end)
+	if endIdx < 0 {
+		return section
+	}
+	return section[:len(start)+endIdx]
 }
 
 func TestDecisionTelemetryPersistsExplicitFalseAndZeroValues(t *testing.T) {
@@ -363,12 +394,45 @@ func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, feature := range []decisionShapeFeatureRecord{
+		{RequestID: "req_rollup_1", Seq: 1, FeatureName: "max_token_bucket", TextValue: "tiny"},
+		{RequestID: "req_rollup_1", Seq: 2, FeatureName: "input_token_bucket", TextValue: "large"},
+		{RequestID: "req_rollup_2", Seq: 1, FeatureName: "max_token_bucket", TextValue: "standard"},
+		{RequestID: "req_rollup_2", Seq: 2, FeatureName: "input_token_bucket", TextValue: "small"},
+	} {
+		if err := store.db.Create(&feature).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, signal := range []routingSignalRecord{
+		{RequestID: "req_rollup_1", Seq: 1, Strategy: "dynamic_score", SignalName: "observed_performance", Source: "dynamic_score", BoolValue: true},
+		{RequestID: "req_rollup_1", Seq: 2, Strategy: "dynamic_score", SignalName: "cost", Source: "dynamic_score", BoolValue: true},
+	} {
+		if err := store.db.Create(&signal).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, term := range []dynamicScoreTermRecord{
+		{RequestID: "req_rollup_1", Seq: 1, CandidateIndex: 0, Rank: 1, Provider: "mock", Model: "model-a", Dialect: "openai-chat", TermName: "default", ScoreName: "latency_score", Value: 0.8, ValueBucket: "high", FinalScore: 0.7, FinalScoreBucket: "medium", Selected: true},
+	} {
+		if err := store.db.Create(&term).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, reason := range []decisionTargetFilterReasonRecord{
+		{RequestID: "req_rollup_2", Seq: 1, CandidateIndex: 1, Stage: "request_shape", Reason: "max-tokens-honored"},
+		{RequestID: "req_rollup_2", Seq: 2, CandidateIndex: 1, Stage: "dynamic_score", Reason: "dynamic_score_thresholds"},
+	} {
+		if err := store.db.Create(&reason).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	result, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "draft" || result.SourceRequestCount != 2 || result.DailyRows != 2 {
+	if result.Status != "draft" || result.SourceRequestCount != 2 || result.DailyRows != 2 || result.DecisionBucketRows == 0 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	var dailyRows []usageRollupDailyRecord
@@ -419,6 +483,29 @@ func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
 	}
 	if alice.CacheSnapshotCount+bob.CacheSnapshotCount != 1 || maxInt64(alice.CacheItemsMax, bob.CacheItemsMax) != 3 || alice.CacheBytesSum+bob.CacheBytesSum != 1000 || maxInt64(alice.CacheBytesMax, bob.CacheBytesMax) != 1000 || alice.CacheMaxBytesLatest != 4000 || alice.CacheOccupancyPctSum+bob.CacheOccupancyPctSum != 25 || maxFloat64(alice.CacheOccupancyPctMax, bob.CacheOccupancyPctMax) != 25 {
 		t.Fatalf("unexpected cache snapshot rollup: alice=%#v bob=%#v", alice, bob)
+	}
+	var bucketRows []usageRollupDecisionBucketRecord
+	if err := store.db.Where("run_id = ?", result.RunID).Find(&bucketRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	rollupBucketCounts := map[string]int64{}
+	for _, row := range bucketRows {
+		rollupBucketCounts[row.BucketKind+"|"+row.BucketName+"|"+row.SecondaryBucket] += row.SourceRequestCount
+	}
+	for _, want := range []string{
+		"max_token_bucket|tiny|",
+		"input_token_bucket|large|",
+		"enabled_signal|observed_performance|",
+		"enabled_signal|cost|",
+		"score_bucket|latency_score|high",
+		"score_bucket|final_score|medium",
+		"threshold_bucket|max_token_cap_filtered|",
+		"threshold_bucket|dynamic_score_thresholds|",
+		"admission_reason|admitted|",
+	} {
+		if rollupBucketCounts[want] == 0 {
+			t.Fatalf("missing decision rollup bucket %q in %#v", want, bucketRows)
+		}
 	}
 
 	third := rows[1]
@@ -507,6 +594,7 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"security_access_events",
 		"usage_rollup_runs",
 		"usage_rollup_daily",
+		"usage_rollup_decision_buckets",
 		"retention_policy_versions",
 		"retention_policy_rules",
 		"retention_jobs",

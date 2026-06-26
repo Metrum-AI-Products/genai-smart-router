@@ -31,6 +31,7 @@ Usage rollups are generated from stored `request_usage` rows and also follow the
 
 - `usage_rollup_runs`: one row per generated daily rollup window, with draft/finalized status, UTC source window, source table name, source request count, daily row count, and generation timestamps.
 - `usage_rollup_daily`: scalar aggregate rows per UTC day and reporting dimension in the rollup window, keyed to `usage_rollup_runs`. Dimensions include caller ID/user/project/environment, token ID, client, inbound dialect, requested model, resolved group, routing strategy, upstream provider/model/dialect, status class, stream flag, cache outcome, image-input flag, PII-filter flag, contract bucket, and target-validation status. Measures include request/error/cache/fallback/attempt counts, input/output/total tokens, input image count, input image tokens, request-time calculated and upstream-reported cost sums, latency/duration sums/counts/maxima, throughput sums/counts, and cache snapshot sums/maxima.
+- `usage_rollup_decision_buckets`: scalar aggregate rows per UTC day, model group, strategy, bucket kind, bucket name, and optional secondary bucket. It preserves report-critical decision buckets after raw request/decision detail retention, including max-token buckets, input-token buckets, quota/admission reason buckets, enabled dynamic-score signal names, dynamic score buckets, and threshold/filter buckets.
 
 Draft rollups for the same exact window may be regenerated idempotently. Finalized rollup windows are immutable, and new rollup runs are rejected if their window overlaps an existing finalized daily window. Raw request purge is not part of the first rollup foundation. The retention foundation uses finalized rollup metadata as a prerequisite before any future `usage_detail` delete can be considered.
 
@@ -47,12 +48,12 @@ The current retention foundation initializes policy rows from `server.retention`
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
-- `request_decision_shape_features`: one row per safe request-shape feature such as caller dialect, stream flag, tool count, image count, structured-output flag, max-token flag, and cacheability.
+- `request_decision_shape_features`: one row per safe request-shape feature such as caller dialect, stream flag, tool count, image count, structured-output flag, max-token flag, max-token bucket, input-token bucket, and cacheability.
 - `request_target_candidates`: one row per bounded group target candidate with provider, model, dialect, configured weight, tool-only flag, scalar capability flags, validation status/age bucket, eligibility flag, and selected flag.
 - `request_target_filter_reasons`: one row per bounded candidate filter bucket, such as `tool-only-target`, `tool-support`, `dialect-tool-passthrough`, `structured-output-support`, `max-tokens-honored`, or `contract-*`.
 - `request_routing_decisions`: one row per selected routing decision with strategy, selected candidate index, provider, model, dialect, fallback count, and optional safe class label.
 - `request_routing_signals`: one row per safe routing signal used by a strategy, such as enabled `dynamic_score` signals and scalar policy knobs.
-- `request_dynamic_score_terms`: one row per bounded dynamic-score candidate/rank/term/score contribution.
+- `request_dynamic_score_terms`: one row per bounded dynamic-score candidate/rank/term/score contribution, including scalar value/contribution/final-score buckets for reporting.
 - `request_policy_executions`: one row per successful script/external policy execution, plus configured external fallback executions when feasible.
 - `request_cache_reasons`: one row per cache decision bucket, such as `cache-hit`, `cache-miss`, `cache-request-no-cache`, `cache-tool-request`, `cache-image-request`, `cache-structured-output`, `cache-streaming`, or `cache-temperature`.
 
@@ -89,6 +90,7 @@ Each request row stores:
 - PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
 - optional decision telemetry traceability: child rows keyed by request ID for request-shape features, candidate eligibility/capability metadata, filter buckets, routing decisions, routing signals, dynamic-score term/ranking rows, policy execution rows, and cache reason buckets when `server.decision_telemetry.enabled: true`.
+- derived report buckets: max-token bucket, input-token bucket, admission reason, enabled dynamic-score signal names, score buckets, and threshold buckets. Multi-value decision buckets are kept as child/rollup rows, never arrays or packed JSON.
 - optional governed content-capture traceability: separate content rows keyed by request ID only when `server.content_capture.enabled` and a capture scope are configured.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.
@@ -106,7 +108,7 @@ Durable across container restarts when volumes are preserved:
 - decision telemetry rows when `server.decision_telemetry.enabled: true`.
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
 - authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
-- usage rollup run and daily aggregate rows after an operator generates them.
+- usage rollup run, daily aggregate rows, and daily decision-bucket rollup rows after an operator generates them.
 - retention policy, job result, legal hold, and legal hold audit rows after an operator runs dry-run retention status.
 
 Not durable across router restarts:

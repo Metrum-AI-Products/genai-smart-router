@@ -193,20 +193,23 @@ type routingSignalLogRecord struct {
 }
 
 type dynamicScoreTermLogRecord struct {
-	Seq              int     `json:"seq"`
-	CandidateIndex   int     `json:"candidate_index"`
-	Rank             int     `json:"rank"`
-	Provider         string  `json:"provider"`
-	Model            string  `json:"model"`
-	Dialect          string  `json:"dialect"`
-	TermName         string  `json:"term_name"`
-	ScoreName        string  `json:"score_name,omitempty"`
-	Weight           float64 `json:"weight,omitempty"`
-	Value            float64 `json:"value,omitempty"`
-	Contribution     float64 `json:"contribution,omitempty"`
-	FinalScore       float64 `json:"final_score,omitempty"`
-	ObservationCount int     `json:"observation_count,omitempty"`
-	Selected         bool    `json:"selected,omitempty"`
+	Seq                int     `json:"seq"`
+	CandidateIndex     int     `json:"candidate_index"`
+	Rank               int     `json:"rank"`
+	Provider           string  `json:"provider"`
+	Model              string  `json:"model"`
+	Dialect            string  `json:"dialect"`
+	TermName           string  `json:"term_name"`
+	ScoreName          string  `json:"score_name,omitempty"`
+	Weight             float64 `json:"weight,omitempty"`
+	Value              float64 `json:"value,omitempty"`
+	Contribution       float64 `json:"contribution,omitempty"`
+	FinalScore         float64 `json:"final_score,omitempty"`
+	ValueBucket        string  `json:"value_bucket,omitempty"`
+	ContributionBucket string  `json:"contribution_bucket,omitempty"`
+	FinalScoreBucket   string  `json:"final_score_bucket,omitempty"`
+	ObservationCount   int     `json:"observation_count,omitempty"`
+	Selected           bool    `json:"selected,omitempty"`
 }
 
 type policyExecutionLogRecord struct {

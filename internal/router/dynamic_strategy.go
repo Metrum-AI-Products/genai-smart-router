@@ -562,6 +562,7 @@ func dynamicRoutingSignalTelemetry(cfg DynamicScoreConfig, strategy string) []ro
 func dynamicColdStartRankingTelemetry(candidates []dynamicCandidate, groupName string) []dynamicScoreTermLogRecord {
 	out := make([]dynamicScoreTermLogRecord, 0, len(candidates))
 	for rank, candidate := range candidates {
+		finalScore := float64(candidate.Target.Weight)
 		out = append(out, dynamicScoreTermLogRecord{
 			Seq:              len(out) + 1,
 			CandidateIndex:   candidate.Index,
@@ -573,7 +574,9 @@ func dynamicColdStartRankingTelemetry(candidates []dynamicCandidate, groupName s
 			ScoreName:        "configured_weight",
 			Weight:           float64(candidate.Target.Weight),
 			Value:            float64(candidate.Target.Weight),
-			FinalScore:       float64(candidate.Target.Weight),
+			FinalScore:       finalScore,
+			ValueBucket:      scoreValueBucket(finalScore),
+			FinalScoreBucket: scoreValueBucket(finalScore),
 			ObservationCount: candidate.Stats.Count,
 			Selected:         rank == 0,
 		})
@@ -600,6 +603,7 @@ func dynamicScoreTermTelemetry(candidates []dynamicCandidate, terms []DynamicSco
 					Dialect:          candidate.Target.Dialect,
 					TermName:         defaultString(term.Name, "default"),
 					FinalScore:       finiteScore(candidate.Final),
+					FinalScoreBucket: scoreValueBucket(candidate.Final),
 					ObservationCount: candidate.Stats.Count,
 					Selected:         rank == 0,
 				})
@@ -608,21 +612,25 @@ func dynamicScoreTermTelemetry(candidates []dynamicCandidate, terms []DynamicSco
 			for name, weight := range weights {
 				scoreName := canonicalScoreName(name)
 				value := candidate.Scores[scoreName]
+				contribution := weight * value
 				out = append(out, dynamicScoreTermLogRecord{
-					Seq:              len(out) + 1,
-					CandidateIndex:   candidate.Index,
-					Rank:             rank + 1,
-					Provider:         candidate.Target.Provider,
-					Model:            candidate.Target.Model,
-					Dialect:          candidate.Target.Dialect,
-					TermName:         defaultString(term.Name, "default"),
-					ScoreName:        scoreName,
-					Weight:           weight,
-					Value:            finiteScore(value),
-					Contribution:     finiteScore(weight * value),
-					FinalScore:       finiteScore(candidate.Final),
-					ObservationCount: candidate.Stats.Count,
-					Selected:         rank == 0,
+					Seq:                len(out) + 1,
+					CandidateIndex:     candidate.Index,
+					Rank:               rank + 1,
+					Provider:           candidate.Target.Provider,
+					Model:              candidate.Target.Model,
+					Dialect:            candidate.Target.Dialect,
+					TermName:           defaultString(term.Name, "default"),
+					ScoreName:          scoreName,
+					Weight:             weight,
+					Value:              finiteScore(value),
+					Contribution:       finiteScore(contribution),
+					FinalScore:         finiteScore(candidate.Final),
+					ValueBucket:        scoreValueBucket(value),
+					ContributionBucket: scoreValueBucket(contribution),
+					FinalScoreBucket:   scoreValueBucket(candidate.Final),
+					ObservationCount:   candidate.Stats.Count,
+					Selected:           rank == 0,
 				})
 			}
 			for _, tag := range term.PreferTags {
@@ -630,20 +638,23 @@ func dynamicScoreTermTelemetry(candidates []dynamicCandidate, terms []DynamicSco
 					continue
 				}
 				out = append(out, dynamicScoreTermLogRecord{
-					Seq:              len(out) + 1,
-					CandidateIndex:   candidate.Index,
-					Rank:             rank + 1,
-					Provider:         candidate.Target.Provider,
-					Model:            candidate.Target.Model,
-					Dialect:          candidate.Target.Dialect,
-					TermName:         defaultString(term.Name, "default"),
-					ScoreName:        "prefer_tag",
-					Weight:           0.05,
-					Value:            1,
-					Contribution:     0.05,
-					FinalScore:       finiteScore(candidate.Final),
-					ObservationCount: candidate.Stats.Count,
-					Selected:         rank == 0,
+					Seq:                len(out) + 1,
+					CandidateIndex:     candidate.Index,
+					Rank:               rank + 1,
+					Provider:           candidate.Target.Provider,
+					Model:              candidate.Target.Model,
+					Dialect:            candidate.Target.Dialect,
+					TermName:           defaultString(term.Name, "default"),
+					ScoreName:          "prefer_tag",
+					Weight:             0.05,
+					Value:              1,
+					Contribution:       0.05,
+					FinalScore:         finiteScore(candidate.Final),
+					ValueBucket:        scoreValueBucket(1),
+					ContributionBucket: scoreValueBucket(0.05),
+					FinalScoreBucket:   scoreValueBucket(candidate.Final),
+					ObservationCount:   candidate.Stats.Count,
+					Selected:           rank == 0,
 				})
 			}
 		}
@@ -657,6 +668,24 @@ func finiteScore(value float64) float64 {
 		return 0
 	}
 	return value
+}
+
+func scoreValueBucket(value float64) string {
+	value = finiteScore(value)
+	switch {
+	case value < 0:
+		return "negative"
+	case value < 0.25:
+		return "very_low"
+	case value < 0.50:
+		return "low"
+	case value < 0.75:
+		return "medium"
+	case value < 1.00:
+		return "high"
+	default:
+		return "top"
+	}
 }
 
 func dynamicSafeShape(req *IRRequest) map[string]any {

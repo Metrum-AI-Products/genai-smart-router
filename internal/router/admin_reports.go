@@ -628,6 +628,12 @@ func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 		"/api/quotas-budgets":            {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
 		"/api/troubleshooting-buckets":   {Report: "troubleshooting-buckets", Dimension: "troubleshooting_bucket", Secondary: "provider_model", Sort: "requests"},
 		"/api/routing-decisions":         {Report: "routing-decisions", Dimension: "routing_decision", Secondary: "provider_model", Sort: "requests"},
+		"/api/dynamic-signals":           {Report: "dynamic-signals", Dimension: "dynamic_signal", Secondary: "model_group", Sort: "requests"},
+		"/api/dynamic-score-buckets":     {Report: "dynamic-score-buckets", Dimension: "dynamic_score_bucket", Secondary: "model_group", Sort: "requests"},
+		"/api/dynamic-thresholds":        {Report: "dynamic-thresholds", Dimension: "dynamic_threshold", Secondary: "model_group", Sort: "requests"},
+		"/api/max-token-buckets":         {Report: "max-token-buckets", Dimension: "max_token_bucket", Secondary: "model_group", Sort: "requests"},
+		"/api/input-token-buckets":       {Report: "input-token-buckets", Dimension: "input_token_bucket", Secondary: "model_group", Sort: "requests"},
+		"/api/admission-reasons":         {Report: "admission-reasons", Dimension: "admission_reason", Secondary: "model_group", Sort: "requests"},
 		"/api/contract-buckets":          {Report: "contract-buckets", Dimension: "contract_bucket", Secondary: "model_group", Sort: "requests"},
 		"/api/contract-workloads":        {Report: "contract-workloads", Dimension: "contract_workload", Secondary: "model_group", Sort: "requests"},
 		"/api/target-validation":         {Report: "target-validation", Dimension: "target_validation", Secondary: "provider_model", Sort: "requests"},
@@ -1661,6 +1667,15 @@ func adminScalarKeys(row usageRow, spec adminScalarEndpointSpec) []adminScalarKe
 		}
 		return keys
 	}
+	if spec.Dimension == "dynamic_signal" || spec.Dimension == "dynamic_score_bucket" || spec.Dimension == "dynamic_threshold" {
+		secondary := adminScalarDimension(row, spec.Secondary)
+		values := adminMultiBucketValues(row, spec.Dimension)
+		keys := make([]adminScalarKey, 0, len(values))
+		for _, value := range values {
+			keys = append(keys, adminScalarKey{Key: value, Secondary: secondary})
+		}
+		return keys
+	}
 	key := adminScalarDimension(row, spec.Dimension)
 	secondary := adminScalarDimension(row, spec.Secondary)
 	return []adminScalarKey{{Key: key, Secondary: secondary}}
@@ -1700,6 +1715,12 @@ func adminScalarDimension(row usageRow, dimension string) string {
 		return joinKey(defaultString(row.QuotaState, "unknown"), defaultString(row.KeyState, "unknown"))
 	case "routing_decision":
 		return joinKey(defaultString(row.Strategy, "unknown"), defaultString(row.ResolvedGroup, row.RequestedModel))
+	case "max_token_bucket":
+		return defaultString(row.MaxTokenBucket, "unknown")
+	case "input_token_bucket":
+		return defaultString(row.InputTokenBucket, "unknown")
+	case "admission_reason":
+		return defaultString(row.AdmissionReason, "admitted")
 	case "contract_bucket":
 		if !row.ContractPresent {
 			return "none"
@@ -1723,6 +1744,23 @@ func adminScalarDimension(row usageRow, dimension string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func adminMultiBucketValues(row usageRow, dimension string) []string {
+	var values []string
+	switch dimension {
+	case "dynamic_signal":
+		values = append(values, row.EnabledSignals...)
+	case "dynamic_score_bucket":
+		values = append(values, row.ScoreBuckets...)
+	case "dynamic_threshold":
+		values = append(values, row.ThresholdBuckets...)
+	}
+	if len(values) == 0 {
+		return []string{"none"}
+	}
+	sort.Strings(values)
+	return values
 }
 
 func adminTroubleshootingBuckets(row usageRow) []string {

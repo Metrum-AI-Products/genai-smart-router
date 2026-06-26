@@ -88,4 +88,6 @@ The strategy uses in-memory rolling observations for latency, upstream duration,
 
 Decision traces are safe scalar diagnostics. They include fields such as strategy, cold-start mode, enabled signal names, request-shape buckets, selected provider/model, score bucket, observation count, and candidate count. They do not include raw prompts, raw images, raw tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
+When decision telemetry is enabled, usage and admin reports expose safe dynamic-score buckets for operations: enabled signal names, score/value/final-score buckets, threshold/filter buckets, max-token cap filtering, max-token buckets, large input-token buckets, and quota/admission reason buckets. Daily rollups preserve those buckets in normalized rows so operators can keep commercial reporting after raw request-level detail expires.
+
 Roll out on a deployment-defined test group with interchangeable validated targets before enabling broad production traffic. Test simple text, code/debug prompts, tool requests, forced tool requests, image requests where supported, structured-output requests where supported, and low explicit max-token caps. Roll back by changing the group strategy to `weighted` or by disabling strict thresholds and score terms.

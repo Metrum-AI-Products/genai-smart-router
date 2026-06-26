@@ -996,7 +996,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	uiRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(uiRR, ui)
 	uiBody := uiRR.Body.String()
-	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`, `name="caller_id"`, `data-tab="provider-catalog-status"`, `data-tab="retention-status"`} {
+	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`, `name="caller_id"`, `data-tab="dynamic-signals"`, `data-tab="dynamic-score-buckets"`, `data-tab="dynamic-thresholds"`, `data-tab="max-token-buckets"`, `data-tab="input-token-buckets"`, `data-tab="admission-reasons"`, `data-tab="provider-catalog-status"`, `data-tab="retention-status"`} {
 		if !strings.Contains(uiBody, want) {
 			t.Fatalf("ui missing %q: status=%d body=%s", want, uiRR.Code, uiBody)
 		}
@@ -7577,7 +7577,7 @@ func TestDecisionTelemetryEnabledRecordsTextCandidateAndDecision(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 10, 1, 0, 1, 1)
+	assertDecisionTelemetryCounts(t, svc, 12, 1, 0, 1, 1)
 	var selected int64
 	if err := svc.usage.db.Model(&decisionTargetCandidateRecord{}).Where("selected = ?", true).Count(&selected).Error; err != nil {
 		t.Fatal(err)
@@ -7611,7 +7611,7 @@ func TestDecisionTelemetryRecordsNoEligibleFilterReason(t *testing.T) {
 	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 10, 1, 1, 0, 0)
+	assertDecisionTelemetryCounts(t, svc, 12, 1, 1, 0, 0)
 	assertDecisionFilterReason(t, svc, "tool-only-target")
 }
 
@@ -7633,7 +7633,7 @@ func TestDecisionTelemetryRecordsToolSupportFilterReason(t *testing.T) {
 	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 10, 1, 1, 0, 0)
+	assertDecisionTelemetryCounts(t, svc, 12, 1, 1, 0, 0)
 	assertDecisionFilterReason(t, svc, "tool-support")
 }
 
