@@ -283,6 +283,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 		internalModalities := s.supportedInputModalitiesForGroup(name)
 		publicModalities := publicModelInputModalities(internalModalities)
 		hasImage := stringSliceContains(internalModalities, "image")
+		reasoningLevels, reasoningSummaries, defaultReasoningLevel := s.reasoningMetadataForGroup(name)
 		data = append(data, map[string]any{
 			"id":                               name,
 			"slug":                             name,
@@ -294,11 +295,11 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"context_window":                   131072,
 			"max_context_window":               131072,
 			"effective_context_window_percent": 95,
-			"default_reasoning_level":          "none",
+			"default_reasoning_level":          defaultReasoningLevel,
 			"default_reasoning_summary":        "none",
 			"default_verbosity":                "low",
-			"supported_reasoning_levels":       []string{},
-			"supports_reasoning_summaries":     false,
+			"supported_reasoning_levels":       reasoningLevels,
+			"supports_reasoning_summaries":     reasoningSummaries,
 			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
 			"supports_search_tool":             false,
 			"supports_image_detail_original":   hasImage,
@@ -1128,7 +1129,7 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
 	} else {
-		upReqBody, err = encodeUpstream(outDialect, target.Model, req)
+		upReqBody, err = encodeUpstreamForTarget(outDialect, target.Model, req, target)
 	}
 	attempt.RequestBytes = int64(len(upReqBody))
 	if err != nil {
@@ -1405,6 +1406,7 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 			if !target.ToolOnly &&
 				targetSupportsInputModalities(target, requiredModalities) &&
 				targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
+				targetCanSatisfyReasoning(target, outDialect, req) &&
 				targetHonorsExplicitMaxTokens(target, req) {
 				out = append(out, target)
 			}
@@ -1419,6 +1421,7 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 			targetSupportsTools(target, outDialect) &&
 			targetSupportsInputModalities(target, requiredModalities) &&
 			targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
+			targetCanSatisfyReasoning(target, outDialect, req) &&
 			targetHonorsExplicitMaxTokens(target, req) {
 			out = append(out, target)
 		}
@@ -1433,6 +1436,9 @@ func routingRequirements(req *IRRequest, callerDialect string) []string {
 	}
 	if requestHasStructuredOutput(req) {
 		requirements = append(requirements, "structured_outputs")
+	}
+	if requestRequiresReasoning(req) {
+		requirements = append(requirements, "reasoning")
 	}
 	if req.MaxTokens > 0 {
 		requirements = append(requirements, "max_tokens")
@@ -1498,11 +1504,11 @@ func targetSupportsStructuredOutput(target Target, callerDialect, outDialect str
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
 	switch dialect {
 	case "anthropic":
-		return encodeAnthropicPassthrough(model, req, target.DefaultThinking)
+		return encodeAnthropicPassthrough(model, req, target)
 	case "openai-chat":
-		return encodeChatPassthrough(model, req)
+		return encodeChatPassthrough(model, req, target)
 	default:
-		return encodeResponsesPassthrough(model, req)
+		return encodeResponsesPassthrough(model, req, target)
 	}
 }
 
@@ -1531,6 +1537,43 @@ func (s *Service) supportedToolsForGroup(name string) []string {
 		}
 	}
 	return []string{"local_shell", "apply_patch"}
+}
+
+func (s *Service) reasoningMetadataForGroup(name string) ([]string, bool, string) {
+	group, ok := s.cfg.Models[name]
+	if !ok {
+		return []string{}, false, "none"
+	}
+	levels := map[string]bool{}
+	summaries := false
+	defaultOn := false
+	for _, target := range group.Targets {
+		if target.ToolOnly || !target.Reasoning.Supported {
+			continue
+		}
+		if target.Reasoning.Control == reasoningControlEffortEnum || target.Reasoning.Control == reasoningControlTokenBudget {
+			levels["low"] = true
+			levels["medium"] = true
+			levels["high"] = true
+		}
+		if target.Reasoning.SupportsSummaries {
+			summaries = true
+		}
+		if target.Reasoning.DefaultOn {
+			defaultOn = true
+		}
+	}
+	out := make([]string, 0, len(levels))
+	for _, level := range []string{"low", "medium", "high"} {
+		if levels[level] {
+			out = append(out, level)
+		}
+	}
+	defaultLevel := "none"
+	if defaultOn && len(out) > 0 {
+		defaultLevel = "medium"
+	}
+	return out, summaries, defaultLevel
 }
 
 func (s *Service) supportedInputModalitiesForGroup(name string) []string {

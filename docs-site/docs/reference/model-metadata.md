@@ -29,6 +29,10 @@ providers:
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
           openai_responses: [function, structured_outputs]
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
 ```
 
 ## Modalities
@@ -72,6 +76,29 @@ Capability labels:
 Tool support and structured-output support are independent. A target may support tools but not structured outputs, structured outputs but not tools, or both. A request containing both tools and structured-output fields needs a target that satisfies both requirements. Unsupported targets are skipped before routing policy selection; if no compatible target remains, callers receive `502 no-eligible-target` and no upstream request is sent.
 
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
+
+## Reasoning And Thinking
+
+Reasoning metadata is target eligibility metadata. It tells the router whether an upstream can safely receive caller reasoning controls such as OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`.
+
+```yaml
+reasoning:
+  supported: true
+  mode: opt_in            # opt_in or always_on
+  control: effort_enum    # effort_enum or token_budget
+  min_budget_tokens: 2048
+  max_budget_tokens: 24576
+  budget_must_be_less_than_max_tokens: true
+  stream_block: thinking
+  rejects_max_tokens: true
+  supports_summaries: true
+```
+
+Declare reasoning support only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, and API skin. OpenAI Chat, OpenAI Responses, and Anthropic Messages reasoning controls are separate validation surfaces.
+
+When a caller explicitly requests reasoning, the router filters the requested model group's targets to reasoning-capable targets before routing policy selection. If none remain, the caller receives `502 no-eligible-target` with `reasoning` in the requirements. Ordinary non-reasoning requests are not forced to reasoning targets unless the deployment configured those targets as part of the group policy.
+
+`control: effort_enum` targets receive low/medium/high effort controls. `control: token_budget` targets receive Anthropic-style token budgets when the target dialect supports them. Cross-dialect translation uses conservative defaults and records safe scalar decision telemetry; it does not persist prompts, tool schemas, router tokens, provider keys, or full config.
 
 ## Pricing And Cost Fields
 

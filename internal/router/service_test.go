@@ -4766,8 +4766,8 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 			Headers:          map[string]string{"Authorization": "Bearer policy-secret"},
 		},
 		Targets: []Target{
-			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 70, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.2},
-			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 30, InputPricePerMillionUSD: 1.0, OutputPricePerMillionUSD: 2.0},
+			{Provider: "mock", Model: "cheap-model", Tier: "cheap", Weight: 70, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.2, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum}},
+			{Provider: "mock", Model: "heavy-model", Tier: "heavy", Weight: 30, InputPricePerMillionUSD: 1.0, OutputPricePerMillionUSD: 2.0, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum}},
 		},
 	}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy")
@@ -4777,7 +4777,7 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	}
 	defer svc.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","messages":[{"role":"user","content":"`+strings.Repeat("large prompt ", 900)+`"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","reasoning_effort":"high","messages":[{"role":"user","content":"`+strings.Repeat("large prompt ", 900)+`"}]}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
@@ -4820,6 +4820,10 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	context, _ := policyPayload["context"].(map[string]any)
 	if context["textChars"].(float64) <= 8000 || context["estimatedTokens"].(float64) <= 0 {
 		t.Fatalf("policy context missing safe size signals: %#v", context)
+	}
+	reasoning, _ := context["reasoning"].(map[string]any)
+	if reasoning["requested"] != true || reasoning["kind"] != "effort" || reasoning["effort"] != "high" || reasoning["source"] != "openai_chat_reasoning_effort" {
+		t.Fatalf("policy context missing safe reasoning signals: %#v", context)
 	}
 }
 
@@ -6054,6 +6058,11 @@ func TestScriptTargetsIncludeProviderMetadataWithoutRawKeys(t *testing.T) {
 		Cost:        3,
 		Dialect:     "openai-responses",
 		DisplayName: "Mock Small",
+		Reasoning: ReasoningSupport{
+			Supported: true,
+			Mode:      reasoningModeOptIn,
+			Control:   reasoningControlEffortEnum,
+		},
 	}}
 	providers := map[string]ProviderConfig{
 		"mock": {
@@ -6074,6 +6083,9 @@ func TestScriptTargetsIncludeProviderMetadataWithoutRawKeys(t *testing.T) {
 	}
 	if got.Weight != 7 || got.KeyID != "mock-key" || got.APIKeyEnv != "MOCK_API_KEY" || !got.KeyConfigured {
 		t.Fatalf("key/weight metadata not populated: %#v", got)
+	}
+	if !got.Reasoning.Supported || got.Reasoning.Mode != reasoningModeOptIn || got.Reasoning.Control != reasoningControlEffortEnum {
+		t.Fatalf("reasoning metadata not populated: %#v", got.Reasoning)
 	}
 	raw, err := json.Marshal(scriptTargets)
 	if err != nil {
@@ -7577,7 +7589,8 @@ func TestDecisionTelemetryEnabledRecordsTextCandidateAndDecision(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 12, 1, 0, 1, 1)
+	assertDecisionTelemetryCounts(t, svc, 18, 1, 0, 1, 1)
+	assertDecisionShapeBool(t, svc, "reasoning_requested", false)
 	var selected int64
 	if err := svc.usage.db.Model(&decisionTargetCandidateRecord{}).Where("selected = ?", true).Count(&selected).Error; err != nil {
 		t.Fatal(err)
@@ -7611,7 +7624,7 @@ func TestDecisionTelemetryRecordsNoEligibleFilterReason(t *testing.T) {
 	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 12, 1, 1, 0, 0)
+	assertDecisionTelemetryCounts(t, svc, 18, 1, 1, 0, 0)
 	assertDecisionFilterReason(t, svc, "tool-only-target")
 }
 
@@ -7633,7 +7646,7 @@ func TestDecisionTelemetryRecordsToolSupportFilterReason(t *testing.T) {
 	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	assertDecisionTelemetryCounts(t, svc, 12, 1, 1, 0, 0)
+	assertDecisionTelemetryCounts(t, svc, 18, 1, 1, 0, 0)
 	assertDecisionFilterReason(t, svc, "tool-support")
 }
 
@@ -7694,6 +7707,17 @@ func assertDecisionTelemetryCounts(t *testing.T, svc *Service, shape, candidates
 		if count != item.want {
 			t.Fatalf("%s rows=%d, want %d", item.name, count, item.want)
 		}
+	}
+}
+
+func assertDecisionShapeBool(t *testing.T, svc *Service, name string, want bool) {
+	t.Helper()
+	var feature decisionShapeFeatureRecord
+	if err := svc.usage.db.Where("feature_name = ?", name).First(&feature).Error; err != nil {
+		t.Fatal(err)
+	}
+	if feature.BoolValue != want {
+		t.Fatalf("decision shape %s=%t, want %t", name, feature.BoolValue, want)
 	}
 }
 

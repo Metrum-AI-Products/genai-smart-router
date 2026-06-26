@@ -55,6 +55,9 @@ func targetPassesContract(contract *ModelGroupContract, target Target, outDialec
 	if caps.StructuredOutputs && !targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema") {
 		return "contract-required-structured-outputs"
 	}
+	if caps.Reasoning && !targetSupportsReasoning(target) {
+		return "contract-required-reasoning"
+	}
 	if len(caps.InputModalities) > 0 && !targetSupportsInputModalities(target, caps.InputModalities) {
 		return "contract-required-modality"
 	}

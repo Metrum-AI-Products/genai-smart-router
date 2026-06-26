@@ -328,6 +328,9 @@ func dynamicPassesHardFilters(target Target, req *IRRequest, callerDialect, outD
 	if filters.RequireStructuredOutputSupport && requestHasStructuredOutput(req) && !targetSupportsCapability(target, callerDialect, "structured_outputs", "json_schema") {
 		return false
 	}
+	if filters.RequireReasoningSupportWhenRequested && requestRequiresReasoning(req) && !targetCanSatisfyReasoning(target, outDialect, req) {
+		return false
+	}
 	return true
 }
 
@@ -689,13 +692,17 @@ func scoreValueBucket(value float64) string {
 }
 
 func dynamicSafeShape(req *IRRequest) map[string]any {
-	return map[string]any{
+	shape := map[string]any{
 		"tools_present":    len(req.Tools) > 0,
 		"image_present":    requestHasImages(req),
 		"stream":           req.Stream,
 		"max_token_bucket": maxTokenBucket(req.MaxTokens),
 		"context_bucket":   contextBucket(estimateTokens(req)),
 	}
+	if summary := buildReasoningSummary(req.Reasoning); summary != nil {
+		shape["reasoning"] = summary
+	}
+	return shape
 }
 
 func dynamicPromptFeatures(req *IRRequest, cfg DynamicSignalPromptFeatures) map[string]bool {

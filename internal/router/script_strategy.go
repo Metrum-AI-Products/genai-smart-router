@@ -24,6 +24,7 @@ type scriptStrategy struct {
 type scriptInput struct {
 	Group           string          `json:"group"`
 	Request         *IRRequest      `json:"request"`
+	Context         requestSummary  `json:"context"`
 	Contract        *scriptContract `json:"contract,omitempty"`
 	Targets         []scriptTarget  `json:"targets"`
 	Caller          *scriptCaller   `json:"caller,omitempty"`
@@ -64,6 +65,7 @@ type scriptTarget struct {
 	PricingUpdatedAt                   string                  `json:"pricingUpdatedAt,omitempty"`
 	PricingNotes                       string                  `json:"pricingNotes,omitempty"`
 	ToolSupport                        ToolSupport             `json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport        `json:"reasoning,omitempty"`
 	InputModalities                    []string                `json:"inputModalities,omitempty"`
 	OutputModalities                   []string                `json:"outputModalities,omitempty"`
 	HonorsMaxTokens                    *bool                   `json:"honorsMaxTokens,omitempty"`
@@ -169,6 +171,7 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroup
 	input := scriptInput{
 		Group:           group,
 		Request:         req,
+		Context:         buildRequestSummary(req, ""),
 		Contract:        buildScriptContract(contract),
 		Targets:         buildScriptTargets(targets, providers),
 		Caller:          buildScriptCaller(caller, tokenID),
@@ -404,6 +407,7 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 			PricingUpdatedAt:                   target.PricingUpdatedAt,
 			PricingNotes:                       target.PricingNotes,
 			ToolSupport:                        target.ToolSupport,
+			Reasoning:                          target.Reasoning,
 			InputModalities:                    target.InputModalities,
 			OutputModalities:                   target.OutputModalities,
 			HonorsMaxTokens:                    target.HonorsMaxTokens,

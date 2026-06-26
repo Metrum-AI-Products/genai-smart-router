@@ -36,6 +36,7 @@ Define these fields for every model group in a deployment:
 | Balanced developer group | day-to-day coding, refactors, tool use, occasional image context | coding task tests pass, tool-call file assertion passes, image-bearing requests select VLM-capable targets |
 | Coding-agent group | Codex CLI, Claude Code, multi-step tool tasks | Harbor reward score meets threshold, created files pass verifier, fallback and timeout rates stay within target |
 | VLM-capable group | OCR, screenshot reasoning, browser-control context | image smoke passes, OCR target accuracy meets threshold, image cost fields populate |
+| Reasoning-capable group | explicit OpenAI reasoning or Anthropic thinking requests | direct and router reasoning smokes pass, requested reasoning controls are forwarded or safely translated, no-compatible-target requests fail before upstream |
 | Private-model group | internal vLLM/SGLang or private GPU workloads | direct upstream and router smokes pass, private endpoint remains hidden from callers, chargeback values populate |
 
 These are examples only. The deployment chooses group names and contracts that match its teams, applications, and governance model.
@@ -65,6 +66,7 @@ Before a group receives broad caller access:
 - router-level smokes pass for each required API shape;
 - tool requests are validated with real tool calls when tools are advertised;
 - image requests are validated with realistic VLM budgets when image modality is advertised;
+- reasoning or thinking requests are validated for each advertised API shape and target control mode;
 - capped request behavior is tested for the caller API's output cap field, including OpenAI Chat `max_completion_tokens`;
 - usage rows include selected provider/model, token counts, status, latency, cache behavior, and cost fields;
 - Harbor or workload-specific validation meets the group success criteria;

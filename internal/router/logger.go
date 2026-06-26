@@ -164,6 +164,11 @@ type decisionCandidateLogRecord struct {
 	ForcedToolChoice bool   `json:"forced_tool_choice,omitempty"`
 	StructuredOutput bool   `json:"structured_output,omitempty"`
 	HonorsMaxTokens  bool   `json:"honors_max_tokens,omitempty"`
+	ReasoningSupport bool   `json:"reasoning_support,omitempty"`
+	ReasoningMode    string `json:"reasoning_mode,omitempty"`
+	ReasoningControl string `json:"reasoning_control,omitempty"`
+	ReasoningDefault bool   `json:"reasoning_default,omitempty"`
+	ReasoningStream  string `json:"reasoning_stream_block,omitempty"`
 	ValidationStatus string `json:"validation_status,omitempty"`
 	ValidationAge    string `json:"validation_age_bucket,omitempty"`
 	Eligible         bool   `json:"eligible"`

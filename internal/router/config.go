@@ -232,21 +232,22 @@ type ProviderConfig struct {
 }
 
 type ProviderModel struct {
-	Model                              string      `yaml:"model" json:"model"`
-	Dialect                            string      `yaml:"dialect" json:"dialect,omitempty"`
-	DisplayName                        string      `yaml:"display_name" json:"displayName,omitempty"`
-	ContextTokens                      int         `yaml:"context_tokens" json:"contextTokens,omitempty"`
-	InputPricePerMillionUSD            float64     `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64     `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64     `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64     `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string      `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string      `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string      `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport `yaml:"tool_support" json:"toolSupport,omitempty"`
-	InputModalities                    []string    `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string    `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool       `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	Model                              string           `yaml:"model" json:"model"`
+	Dialect                            string           `yaml:"dialect" json:"dialect,omitempty"`
+	DisplayName                        string           `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int              `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	InputPricePerMillionUSD            float64          `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64          `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64          `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64          `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string           `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string           `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string           `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport      `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport `yaml:"reasoning" json:"reasoning,omitempty"`
+	InputModalities                    []string         `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string         `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool            `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -260,6 +261,21 @@ type ToolSupport struct {
 	OpenAIResponses   []string `yaml:"openai_responses" json:"openaiResponses,omitempty"`
 	AnthropicMessages []string `yaml:"anthropic_messages" json:"anthropicMessages,omitempty"`
 	ProviderHosted    []string `yaml:"provider_hosted" json:"providerHosted,omitempty"`
+}
+
+type ReasoningSupport struct {
+	Supported                     bool   `yaml:"supported" json:"supported,omitempty"`
+	Mode                          string `yaml:"mode" json:"mode,omitempty"`
+	Control                       string `yaml:"control" json:"control,omitempty"`
+	DefaultOn                     bool   `yaml:"default_on" json:"defaultOn,omitempty"`
+	MinBudgetTokens               int    `yaml:"min_budget_tokens" json:"minBudgetTokens,omitempty"`
+	MaxBudgetTokens               int    `yaml:"max_budget_tokens" json:"maxBudgetTokens,omitempty"`
+	BudgetMustBeLessThanMaxTokens bool   `yaml:"budget_must_be_less_than_max_tokens" json:"budgetMustBeLessThanMaxTokens,omitempty"`
+	StreamBlock                   string `yaml:"stream_block" json:"streamBlock,omitempty"`
+	RejectsMaxTokens              bool   `yaml:"rejects_max_tokens" json:"rejectsMaxTokens,omitempty"`
+	RejectsTemperature            bool   `yaml:"rejects_temperature" json:"rejectsTemperature,omitempty"`
+	RejectsTopP                   bool   `yaml:"rejects_top_p" json:"rejectsTopP,omitempty"`
+	SupportsSummaries             bool   `yaml:"supports_summaries" json:"supportsSummaries,omitempty"`
 }
 
 type ModelGroup struct {
@@ -290,6 +306,7 @@ type ContractRequiredCapabilities struct {
 	Tools                           bool     `yaml:"tools" json:"tools,omitempty"`
 	ForcedToolChoice                bool     `yaml:"forced_tool_choice" json:"forcedToolChoice,omitempty"`
 	StructuredOutputs               bool     `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
+	Reasoning                       bool     `yaml:"reasoning" json:"reasoning,omitempty"`
 	InputModalities                 []string `yaml:"input_modalities" json:"inputModalities,omitempty"`
 	OutputModalities                []string `yaml:"output_modalities" json:"outputModalities,omitempty"`
 	MinContextTokens                int      `yaml:"min_context_tokens" json:"minContextTokens,omitempty"`
@@ -339,6 +356,7 @@ type DynamicScoreHardFilters struct {
 	RequireToolSupportWhenToolsPresent     bool `yaml:"require_tool_support_when_tools_present" json:"requireToolSupportWhenToolsPresent,omitempty"`
 	RequireForcedToolChoiceSupport         bool `yaml:"require_forced_tool_choice_support" json:"requireForcedToolChoiceSupport,omitempty"`
 	RequireStructuredOutputSupport         bool `yaml:"require_structured_output_support" json:"requireStructuredOutputSupport,omitempty"`
+	RequireReasoningSupportWhenRequested   bool `yaml:"require_reasoning_support_when_requested" json:"requireReasoningSupportWhenRequested,omitempty"`
 	RequireHonorsMaxTokensWhenCallerCapped bool `yaml:"require_honors_max_tokens_when_caller_capped" json:"requireHonorsMaxTokensWhenCallerCapped,omitempty"`
 }
 
@@ -491,6 +509,7 @@ type Target struct {
 	PricingUpdatedAt                   string            `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
 	PricingNotes                       string            `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
 	ToolSupport                        ToolSupport       `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport  `yaml:"reasoning" json:"reasoning,omitempty"`
 	InputModalities                    []string          `yaml:"input_modalities" json:"inputModalities,omitempty"`
 	OutputModalities                   []string          `yaml:"output_modalities" json:"outputModalities,omitempty"`
 	HonorsMaxTokens                    *bool             `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
@@ -864,6 +883,9 @@ func (c *Config) Validate() error {
 			if err := validateToolSupport(model.ToolSupport); err != nil {
 				return fmt.Errorf("provider %s model %s has invalid tool_support: %w", name, ref, err)
 			}
+			if err := validateReasoningSupport(model.Reasoning); err != nil {
+				return fmt.Errorf("provider %s model %s has invalid reasoning: %w", name, ref, err)
+			}
 			if err := validateModalities(model.InputModalities); err != nil {
 				return fmt.Errorf("provider %s model %s has invalid input_modalities: %w", name, ref, err)
 			}
@@ -1000,6 +1022,9 @@ func (c *Config) Validate() error {
 			}
 			if err := validateToolSupport(resolved.ToolSupport); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid tool_support: %w", name, resolved.Model, err)
+			}
+			if err := validateReasoningSupport(resolved.Reasoning); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid reasoning: %w", name, resolved.Model, err)
 			}
 			if err := validateModalities(resolved.InputModalities); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid input_modalities: %w", name, resolved.Model, err)
@@ -1917,6 +1942,9 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	if toolSupportEmpty(target.ToolSupport) {
 		target.ToolSupport = catalog.ToolSupport
+	}
+	if reasoningSupportEmpty(target.Reasoning) {
+		target.Reasoning = catalog.Reasoning
 	}
 	if len(target.InputModalities) == 0 {
 		target.InputModalities = catalog.InputModalities

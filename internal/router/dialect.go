@@ -86,10 +86,15 @@ func decodeRequest(dialect string, body []byte, h http.Header) (*IRRequest, erro
 	default:
 		return nil, fmt.Errorf("unknown dialect %s", dialect)
 	}
+	req.Reasoning = detectReasoningIntent(dialect, raw)
 	return req, nil
 }
 
 func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
+	return encodeUpstreamForTarget(dialect, model, req, Target{})
+}
+
+func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
 	switch dialect {
 	case "anthropic":
 		msgs := []map[string]any{}
@@ -106,6 +111,9 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
+		if err := applyReasoningToAnthropic(body, req, target); err != nil {
+			return nil, err
+		}
 		return json.Marshal(body)
 	case "openai-responses":
 		body := map[string]any{"model": model, "input": encodeResponsesInput(req), "stream": false}
@@ -117,6 +125,9 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 		}
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
+		}
+		if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {
+			return nil, err
 		}
 		return json.Marshal(body)
 	case "replicate":
@@ -153,11 +164,14 @@ func encodeUpstream(dialect, model string, req *IRRequest) ([]byte, error) {
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
+		if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
+			return nil, err
+		}
 		return json.Marshal(body)
 	}
 }
 
-func encodeResponsesPassthrough(model string, req *IRRequest) ([]byte, error) {
+func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
 	body := map[string]any{}
 	for key, value := range req.Raw {
 		body[key] = value
@@ -166,10 +180,13 @@ func encodeResponsesPassthrough(model string, req *IRRequest) ([]byte, error) {
 	// The router's first tool-capable path is unary. Codex accepts non-streaming
 	// Responses payloads and this keeps usage accounting deterministic.
 	body["stream"] = false
+	if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {
+		return nil, err
+	}
 	return json.Marshal(body)
 }
 
-func encodeChatPassthrough(model string, req *IRRequest) ([]byte, error) {
+func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
 	body := map[string]any{}
 	for key, value := range req.Raw {
 		body[key] = value
@@ -179,10 +196,13 @@ func encodeChatPassthrough(model string, req *IRRequest) ([]byte, error) {
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
 	applyOpenAIChatMaxTokens(body, req, true)
+	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
+		return nil, err
+	}
 	return json.Marshal(body)
 }
 
-func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking map[string]any) ([]byte, error) {
+func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
 	body := map[string]any{}
 	for key, value := range req.Raw {
 		body[key] = value
@@ -203,6 +223,7 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking ma
 		body["max_tokens"] = effectiveMaxTokens(req, 1024)
 	}
 	injectedThinking := false
+	defaultThinking := target.DefaultThinking
 	if len(defaultThinking) > 0 {
 		if _, ok := body["thinking"]; !ok {
 			body["thinking"] = defaultThinking
@@ -214,7 +235,58 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, defaultThinking ma
 			delete(body, "tool_choice")
 		}
 	}
+	if err := applyReasoningToAnthropic(body, req, target); err != nil {
+		return nil, err
+	}
 	return json.Marshal(body)
+}
+
+func applyReasoningToOpenAIChat(body map[string]any, req *IRRequest, target Target) error {
+	if !requestRequiresReasoning(req) {
+		return nil
+	}
+	if !targetCanSatisfyReasoning(target, "openai-chat", req) {
+		return fmt.Errorf("target does not support requested reasoning")
+	}
+	if target.Reasoning.RejectsMaxTokens {
+		if value, ok := body["max_tokens"]; ok {
+			body["max_completion_tokens"] = value
+			delete(body, "max_tokens")
+		}
+	}
+	body["reasoning_effort"] = reasoningEffortForTarget(req.Reasoning, target)
+	return nil
+}
+
+func applyReasoningToOpenAIResponses(body map[string]any, req *IRRequest, target Target) error {
+	if !requestRequiresReasoning(req) {
+		return nil
+	}
+	if !targetCanSatisfyReasoning(target, "openai-responses", req) {
+		return fmt.Errorf("target does not support requested reasoning")
+	}
+	reasoning := map[string]any{"effort": reasoningEffortForTarget(req.Reasoning, target)}
+	if req.Reasoning.Summary != "" && target.Reasoning.SupportsSummaries {
+		reasoning["summary"] = req.Reasoning.Summary
+	}
+	body["reasoning"] = reasoning
+	return nil
+}
+
+func applyReasoningToAnthropic(body map[string]any, req *IRRequest, target Target) error {
+	if !requestRequiresReasoning(req) {
+		return nil
+	}
+	if !targetCanSatisfyReasoning(target, "anthropic", req) {
+		return fmt.Errorf("target does not support requested reasoning")
+	}
+	budget := reasoningBudgetForTarget(req.Reasoning, target)
+	maxTokens := effectiveMaxTokens(req, 1024)
+	if target.Reasoning.BudgetMustBeLessThanMaxTokens && budget >= maxTokens {
+		return fmt.Errorf("reasoning budget must be less than max_tokens")
+	}
+	body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+	return nil
 }
 
 func effectiveMaxTokens(req *IRRequest, defaultValue int) int {

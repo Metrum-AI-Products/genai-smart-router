@@ -82,6 +82,36 @@ Router-level checks for a dedicated Crusoe smoke group:
 
 For agent CLI smokes, the agent must create a file and the test must assert the file contents.
 
+## Reasoning And Thinking Smokes
+
+Reasoning and thinking controls are dialect-specific. Declare `reasoning` metadata only for the exact provider/model/dialect/skin that passes the relevant direct upstream and router-level smoke. A model name or marketing claim is not enough.
+
+| Client/API | Smoke |
+|---|---|
+| OpenAI Chat reasoning | Direct upstream `/chat/completions` with `reasoning_effort`, then the same request through the router group |
+| OpenAI Responses reasoning | Direct upstream `/responses` with a `reasoning` object, then the same request through the router group |
+| Anthropic Messages thinking | Direct upstream `/v1/messages` with `thinking.type: enabled` and `budget_tokens`, then the same request through the router group |
+| Negative eligibility | Router request against a group with no compatible target; expect `502 no-eligible-target` and no upstream attempt |
+| Low output cap | Verify any required `max_tokens` to `max_completion_tokens` translation and budget/max-token constraints for the exact upstream |
+
+Add metadata only after validation:
+
+```yaml
+providers:
+  example:
+    models:
+      reasoning-model:
+        model: provider-model-id
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
+```
+
+Use `control: effort_enum` for OpenAI-style levels and `control: token_budget` for Anthropic-style thinking budgets. If an upstream rejects `max_tokens`, temperature, top-p, or requires thinking budget to be lower than the output cap, record that as scalar `reasoning` metadata and run a router-level smoke that proves the translation or filter.
+
+If validation fails, remove `reasoning` metadata from the provider model or target override. If the target is active and unsafe for explicit reasoning traffic, remove it from active `models.<group>.targets[]` or keep it catalog-only until validation passes.
+
 ## Structured-Output Smokes
 
 Structured-output requests are dialect-specific. Declare `structured_outputs` only for the exact provider/model/dialect/skin that passes the relevant smoke. A target that only accepts the request field syntactically is not validated until it returns schema-shaped content, reports normal usage when the upstream normally does, and fails or rejects unsupported strict schemas in an understandable way.

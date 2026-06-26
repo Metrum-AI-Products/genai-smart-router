@@ -72,7 +72,13 @@ The router sends a JSON `POST` body to the policy service:
     "maxTokens": 128,
     "maxTokensField": "max_tokens",
     "temperatureSet": false,
-    "stream": false
+    "stream": false,
+    "reasoning": {
+      "requested": true,
+      "kind": "effort",
+      "effort": "medium",
+      "source": "openai_chat.reasoning_effort"
+    }
   },
   "inputModalities": ["text"],
   "requirements": ["text", "max_tokens"],
@@ -106,11 +112,11 @@ The router sends a JSON `POST` body to the policy service:
 }
 ```
 
-By default, the policy request does not include raw prompt text, normalized message bodies, image URLs or base64 data, tool result text, tool schemas, or `request.raw`. Use the derived `context` object for routing signals such as prompt size, estimated token count, message count, image count, tool count, structured-output presence, explicit output cap, streaming flag, and safe metadata key names.
+By default, the policy request does not include raw prompt text, normalized message bodies, image URLs or base64 data, tool result text, tool schemas, or `request.raw`. Use the derived `context` object for routing signals such as prompt size, estimated token count, message count, image count, tool count, structured-output presence, explicit output cap, streaming flag, safe metadata key names, and normalized reasoning or thinking fields.
 
 If a deployment needs a trusted policy service to inspect request content, set `external_policy.include_request: true`. That opt-in adds `request` and `text` fields to the policy body. When the model group has `pii_filter` enabled, those fields are built from the redacted request object; placeholder mappings stay in router memory for the current request and are not sent to the policy service. Without `pii_filter`, `include_request: true` can send raw prompts/messages, image references or data, tool schemas, and tool outputs to the external service.
 
-`targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, and capped requests skip targets marked as not honoring max tokens.
+`targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, reasoning or thinking requests only include compatible reasoning targets, and capped requests skip targets marked as not honoring max tokens. Each target includes safe capability metadata such as modalities, tool support, structured-output support, reasoning support, validation status, prices, and configured key identifiers.
 
 When the group has a model-group contract, the policy body includes safe `contract` metadata and target `validation` metadata. `targets[]` is already filtered by the contract, and policy responses are validated against that eligible list. The policy service cannot select a contract-ineligible fallback.
 

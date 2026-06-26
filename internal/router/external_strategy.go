@@ -33,26 +33,36 @@ type externalPolicyInput struct {
 }
 
 type requestSummary struct {
-	Model               string   `json:"model,omitempty"`
-	Dialect             string   `json:"dialect,omitempty"`
-	EstimatedTokens     int      `json:"estimatedTokens"`
-	TextChars           int      `json:"textChars"`
-	SystemChars         int      `json:"systemChars,omitempty"`
-	InputChars          int      `json:"inputChars,omitempty"`
-	InputPartCount      int      `json:"inputPartCount,omitempty"`
-	MessageCount        int      `json:"messageCount,omitempty"`
-	MessageTextChars    int      `json:"messageTextChars,omitempty"`
-	MessagePartCount    int      `json:"messagePartCount,omitempty"`
-	ImageCount          int      `json:"imageCount,omitempty"`
-	ToolCount           int      `json:"toolCount,omitempty"`
-	HasTools            bool     `json:"hasTools"`
-	HasStructuredOutput bool     `json:"hasStructuredOutput"`
-	MaxTokens           int      `json:"maxTokens,omitempty"`
-	MaxTokensField      string   `json:"maxTokensField,omitempty"`
-	TemperatureSet      bool     `json:"temperatureSet"`
-	Stream              bool     `json:"stream"`
-	StopCount           int      `json:"stopCount,omitempty"`
-	MetadataKeys        []string `json:"metadataKeys,omitempty"`
+	Model               string            `json:"model,omitempty"`
+	Dialect             string            `json:"dialect,omitempty"`
+	EstimatedTokens     int               `json:"estimatedTokens"`
+	TextChars           int               `json:"textChars"`
+	SystemChars         int               `json:"systemChars,omitempty"`
+	InputChars          int               `json:"inputChars,omitempty"`
+	InputPartCount      int               `json:"inputPartCount,omitempty"`
+	MessageCount        int               `json:"messageCount,omitempty"`
+	MessageTextChars    int               `json:"messageTextChars,omitempty"`
+	MessagePartCount    int               `json:"messagePartCount,omitempty"`
+	ImageCount          int               `json:"imageCount,omitempty"`
+	ToolCount           int               `json:"toolCount,omitempty"`
+	HasTools            bool              `json:"hasTools"`
+	HasStructuredOutput bool              `json:"hasStructuredOutput"`
+	MaxTokens           int               `json:"maxTokens,omitempty"`
+	MaxTokensField      string            `json:"maxTokensField,omitempty"`
+	TemperatureSet      bool              `json:"temperatureSet"`
+	Stream              bool              `json:"stream"`
+	StopCount           int               `json:"stopCount,omitempty"`
+	MetadataKeys        []string          `json:"metadataKeys,omitempty"`
+	Reasoning           *reasoningSummary `json:"reasoning,omitempty"`
+}
+
+type reasoningSummary struct {
+	Requested    bool   `json:"requested"`
+	Disabled     bool   `json:"disabled,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Effort       string `json:"effort,omitempty"`
+	BudgetTokens int    `json:"budgetTokens,omitempty"`
+	Source       string `json:"source,omitempty"`
 }
 
 type routingPolicyError struct {
@@ -266,6 +276,21 @@ func buildRequestSummary(req *IRRequest, callerDialect string) requestSummary {
 		Stream:              req.Stream,
 		StopCount:           len(req.Stop),
 		MetadataKeys:        metadataKeys,
+		Reasoning:           buildReasoningSummary(req.Reasoning),
+	}
+}
+
+func buildReasoningSummary(intent ReasoningIntent) *reasoningSummary {
+	if !intent.Requested && !intent.Disabled {
+		return nil
+	}
+	return &reasoningSummary{
+		Requested:    intent.Requested,
+		Disabled:     intent.Disabled,
+		Kind:         intent.Kind,
+		Effort:       intent.Effort,
+		BudgetTokens: intent.BudgetTokens,
+		Source:       intent.Source,
 	}
 }
 

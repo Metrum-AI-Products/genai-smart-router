@@ -121,6 +121,10 @@ providers:
         pricing_notes: Baseten also publishes a discounted cache-input rate; GLM 5.2 is reasoning-heavy, so use realistic output budgets for acceptance and coding-agent traffic
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
       gpt-oss-120b:
         model: openai/gpt-oss-120b
         tier: coding
@@ -272,6 +276,19 @@ tool_support:
 ```
 
 A target that supports tools is not automatically structured-output capable, and a target that supports Chat structured outputs is not automatically Responses structured-output capable. Requests that include both tools and structured-output fields require both capabilities on the same eligible target. If structured-output smokes fail after rollout, remove `structured_outputs` from that provider model or target override; if the whole target is unsafe, remove it from active `models.<group>.targets[]` and keep it catalog-only until validation passes.
+
+Reasoning and thinking requests are also explicit eligibility requirements. OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, and Anthropic Messages `thinking` are routed only to targets whose provider model or target override declares compatible `reasoning` metadata. The router does not silently drop these fields to fit a cheaper target. If no compatible target remains, callers receive `502 no-eligible-target` with `reasoning` in the requirement details.
+
+```yaml
+reasoning:
+  supported: true
+  mode: opt_in        # opt_in or always_on
+  control: effort_enum # effort_enum or token_budget
+  supports_summaries: true
+  rejects_max_tokens: true
+```
+
+Use `control: effort_enum` for upstreams that accept levels such as `low`, `medium`, and `high`. Use `control: token_budget` for Anthropic-style thinking budgets. Set compatibility flags such as `rejects_max_tokens`, `budget_must_be_less_than_max_tokens`, `rejects_temperature`, or `rejects_top_p` only when validated for the exact provider, model, dialect, and skin. As with tool and structured-output metadata, keep reasoning metadata absent until direct upstream and router-level reasoning smokes pass.
 
 ## Per-Group Weighted Routing
 

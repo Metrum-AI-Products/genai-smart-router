@@ -42,6 +42,7 @@ OIDC admin auth routes are not model APIs. They are available only when `server.
 | Streaming | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path | Supported when the selected target supports the provider path |
 | Tool calls | Requires `tool_support.openai_chat` | Requires `tool_support.openai_responses` | Requires `tool_support.anthropic_messages` |
 | Structured outputs | `response_format` requires `tool_support.openai_chat: [structured_outputs]` | `text.format` requires `tool_support.openai_responses: [structured_outputs]` | No OpenAI structured-output equivalent |
+| Reasoning/thinking | `reasoning_effort` requires target `reasoning` metadata | `reasoning` requires target `reasoning` metadata | `thinking` requires target `reasoning` metadata or validated target default thinking |
 | Image input | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` | Requires `image` in target `input_modalities` |
 | Caller max-token caps | `max_tokens` and `max_completion_tokens` are enforced against configured target metadata | `max_output_tokens` is enforced against configured target metadata | `max_tokens` is enforced against configured target metadata |
 | Cache eligibility | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests | Eligible only for deterministic non-tool, non-image requests |
@@ -111,6 +112,18 @@ Tool requests only route to upstream targets that explicitly advertise support f
 | Anthropic Messages client tools | `tool_support.anthropic_messages` |
 
 Tool-bearing requests bypass response caching because tool results depend on external shell, filesystem, browser, or client tool state.
+
+## Reasoning And Thinking
+
+The router detects explicit reasoning requests in all supported caller dialects:
+
+- OpenAI Chat Completions: `reasoning_effort`.
+- OpenAI Responses: `reasoning`.
+- Anthropic Messages: `thinking`.
+
+Reasoning is handled inside the requested model group. The router does not switch callers to another group and does not silently drop explicit reasoning controls. If no configured target in that group can satisfy the requested reasoning shape together with tools, images, structured outputs, and max-token cap behavior, the response is `502 no-eligible-target`.
+
+For compatible targets, the router translates safe controls where configured. For example, an Anthropic budget can map to an OpenAI effort level, and an OpenAI effort can map to an Anthropic token budget. Targets that reject `max_tokens` for reasoning traffic can be configured so the router sends `max_completion_tokens` instead.
 
 ## Structured Outputs
 

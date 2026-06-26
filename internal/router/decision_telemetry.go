@@ -33,6 +33,12 @@ func (s *Service) recordDecisionShape(rc *requestContext, req *IRRequest, caller
 	addTextFeature("max_tokens_field", req.MaxTokensField)
 	addTextFeature("max_token_bucket", maxTokenBucket(req.MaxTokens))
 	addTextFeature("input_token_bucket", contextBucket(estimateTokens(req)))
+	addBoolFeature("reasoning_requested", req.Reasoning.Requested)
+	addBoolFeature("reasoning_disabled", req.Reasoning.Disabled)
+	addTextFeature("reasoning_kind", req.Reasoning.Kind)
+	addTextFeature("reasoning_effort", req.Reasoning.Effort)
+	addIntFeature("reasoning_budget_tokens", req.Reasoning.BudgetTokens)
+	addTextFeature("reasoning_source", req.Reasoning.Source)
 	addBoolFeature("cacheable", cacheable(req))
 }
 
@@ -82,6 +88,11 @@ func (s *Service) recordEligibilityTelemetry(rc *requestContext, groupName strin
 			ForcedToolChoice: targetSupportsCapability(target, outDialect, "forced_tool_choice", "tool_choice"),
 			StructuredOutput: targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema"),
 			HonorsMaxTokens:  target.HonorsMaxTokens == nil || *target.HonorsMaxTokens,
+			ReasoningSupport: targetSupportsReasoning(target),
+			ReasoningMode:    target.Reasoning.Mode,
+			ReasoningControl: target.Reasoning.Control,
+			ReasoningDefault: target.Reasoning.DefaultOn || len(target.DefaultThinking) > 0,
+			ReasoningStream:  target.Reasoning.StreamBlock,
 			ValidationStatus: decisionCandidateValidationStatus(target.Validation),
 			ValidationAge:    validationAgeBucket(target.Validation, time.Now().UTC()),
 			Eligible:         len(reasons) == 0,
@@ -123,6 +134,9 @@ func (s *Service) requestFilterReasons(target Target, req *IRRequest, callerDial
 	}
 	if !targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) {
 		reasons = append(reasons, "structured-output-support")
+	}
+	if reason := reasoningFilterReason(target, outDialect, req); reason != "" {
+		reasons = append(reasons, reason)
 	}
 	if !targetHonorsExplicitMaxTokens(target, req) {
 		reasons = append(reasons, "max-tokens-honored")

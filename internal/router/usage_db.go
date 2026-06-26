@@ -850,6 +850,11 @@ type decisionTargetCandidateRecord struct {
 	ForcedToolChoice bool   `gorm:"column:forced_tool_choice;not null;default:false" json:"forcedToolChoice"`
 	StructuredOutput bool   `gorm:"column:structured_output;not null;default:false" json:"structuredOutput"`
 	HonorsMaxTokens  bool   `gorm:"column:honors_max_tokens;not null" json:"honorsMaxTokens"`
+	ReasoningSupport bool   `gorm:"column:reasoning_support;not null;default:false;index:idx_decision_candidate_reasoning_support" json:"reasoningSupport"`
+	ReasoningMode    string `gorm:"column:reasoning_mode;type:text;not null;default:''" json:"reasoningMode"`
+	ReasoningControl string `gorm:"column:reasoning_control;type:text;not null;default:''" json:"reasoningControl"`
+	ReasoningDefault bool   `gorm:"column:reasoning_default;not null;default:false" json:"reasoningDefault"`
+	ReasoningStream  string `gorm:"column:reasoning_stream_block;type:text;not null;default:''" json:"reasoningStreamBlock"`
 	ValidationStatus string `gorm:"column:validation_status;type:text;not null;default:'';index:idx_decision_candidate_validation_status" json:"validationStatus"`
 	ValidationAge    string `gorm:"column:validation_age_bucket;type:text;not null;default:''" json:"validationAgeBucket"`
 	Eligible         bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible" json:"eligible"`
@@ -1344,6 +1349,11 @@ func decisionCandidateRecordFromLog(requestID string, rec decisionCandidateLogRe
 		ForcedToolChoice: rec.ForcedToolChoice,
 		StructuredOutput: rec.StructuredOutput,
 		HonorsMaxTokens:  rec.HonorsMaxTokens,
+		ReasoningSupport: rec.ReasoningSupport,
+		ReasoningMode:    rec.ReasoningMode,
+		ReasoningControl: rec.ReasoningControl,
+		ReasoningDefault: rec.ReasoningDefault,
+		ReasoningStream:  rec.ReasoningStream,
 		ValidationStatus: rec.ValidationStatus,
 		ValidationAge:    rec.ValidationAge,
 		Eligible:         rec.Eligible,

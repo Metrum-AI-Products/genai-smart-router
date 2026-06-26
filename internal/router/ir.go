@@ -12,10 +12,21 @@ type IRRequest struct {
 	Temperature    *float64          `json:"temperature,omitempty"`
 	Stream         bool              `json:"stream,omitempty"`
 	Thinking       map[string]any    `json:"thinking,omitempty"`
+	Reasoning      ReasoningIntent   `json:"reasoning,omitempty"`
 	Stop           []string          `json:"stop,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 	Raw            map[string]any    `json:"raw,omitempty"`
 	NoCache        bool              `json:"no_cache,omitempty"`
+}
+
+type ReasoningIntent struct {
+	Requested    bool   `json:"requested,omitempty"`
+	Source       string `json:"source,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Effort       string `json:"effort,omitempty"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	Disabled     bool   `json:"disabled,omitempty"`
 }
 
 type IRMessage struct {
