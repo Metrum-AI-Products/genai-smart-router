@@ -245,7 +245,9 @@ func (s *Service) pickDynamicScore(groupName string, group ModelGroup, req *IRRe
 	if coldStart {
 		ordered := configuredWeightOrder(candidates)
 		trace := dynamicDecisionTrace(cfg, req, ordered, true, "configured_weight")
-		return decision{Target: ordered[0].Target, Fallbacks: dynamicFallbacks(ordered[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: ordered[0].Index, DecisionTrace: trace}, nil
+		signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
+		terms := dynamicColdStartRankingTelemetry(ordered, groupName)
+		return decision{Target: ordered[0].Target, Fallbacks: dynamicFallbacks(ordered[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: ordered[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: terms}, nil
 	}
 	dynamicNormalizeScores(candidates, req, cfg)
 	terms := dynamicTermsForRequest(cfg, req)
@@ -289,7 +291,9 @@ func (s *Service) pickDynamicScore(groupName string, group ModelGroup, req *IRRe
 		return candidates[i].Index < candidates[j].Index
 	})
 	trace := dynamicDecisionTrace(cfg, req, candidates, false, "score")
-	return decision{Target: candidates[0].Target, Fallbacks: dynamicFallbacks(candidates[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: candidates[0].Index, DecisionTrace: trace}, nil
+	signals := dynamicRoutingSignalTelemetry(cfg, "dynamic_score")
+	scoreTerms := dynamicScoreTermTelemetry(candidates, terms, groupName)
+	return decision{Target: candidates[0].Target, Fallbacks: dynamicFallbacks(candidates[1:]), Strategy: "dynamic_score", GroupName: groupName, TargetIndex: candidates[0].Index, DecisionTrace: trace, RoutingSignals: signals, DynamicScoreTerms: scoreTerms}, nil
 }
 
 func dynamicPassesThresholds(stats dynamicStats, thresholds DynamicScoreThresholds) bool {
@@ -532,6 +536,127 @@ func dynamicEnabledSignals(cfg DynamicScoreConfig) []string {
 		out = append(out, "recent_penalties")
 	}
 	return out
+}
+
+func dynamicRoutingSignalTelemetry(cfg DynamicScoreConfig, strategy string) []routingSignalLogRecord {
+	enabled := dynamicEnabledSignals(cfg)
+	out := make([]routingSignalLogRecord, 0, len(enabled)+4)
+	for _, signal := range enabled {
+		out = append(out, routingSignalLogRecord{
+			Seq:        len(out) + 1,
+			Strategy:   strategy,
+			SignalName: signal,
+			Source:     "dynamic_score",
+			BoolValue:  true,
+		})
+	}
+	out = append(out,
+		routingSignalLogRecord{Seq: len(out) + 1, Strategy: strategy, SignalName: "min_observations", Source: "dynamic_score", IntValue: cfg.MinObservations},
+		routingSignalLogRecord{Seq: len(out) + 2, Strategy: strategy, SignalName: "observation_window_seconds", Source: "dynamic_score", IntValue: cfg.ObservationWindowSeconds},
+		routingSignalLogRecord{Seq: len(out) + 3, Strategy: strategy, SignalName: "max_score_adjustment_percent", Source: "dynamic_score", FloatValue: cfg.MaxScoreAdjustmentPercent},
+		routingSignalLogRecord{Seq: len(out) + 4, Strategy: strategy, SignalName: "cold_start_policy", Source: "dynamic_score", TextValue: cfg.ColdStartPolicy},
+	)
+	return out
+}
+
+func dynamicColdStartRankingTelemetry(candidates []dynamicCandidate, groupName string) []dynamicScoreTermLogRecord {
+	out := make([]dynamicScoreTermLogRecord, 0, len(candidates))
+	for rank, candidate := range candidates {
+		out = append(out, dynamicScoreTermLogRecord{
+			Seq:              len(out) + 1,
+			CandidateIndex:   candidate.Index,
+			Rank:             rank + 1,
+			Provider:         candidate.Target.Provider,
+			Model:            candidate.Target.Model,
+			Dialect:          candidate.Target.Dialect,
+			TermName:         "cold_start",
+			ScoreName:        "configured_weight",
+			Weight:           float64(candidate.Target.Weight),
+			Value:            float64(candidate.Target.Weight),
+			FinalScore:       float64(candidate.Target.Weight),
+			ObservationCount: candidate.Stats.Count,
+			Selected:         rank == 0,
+		})
+		_ = groupName
+	}
+	return out
+}
+
+func dynamicScoreTermTelemetry(candidates []dynamicCandidate, terms []DynamicScoreTerm, groupName string) []dynamicScoreTermLogRecord {
+	out := []dynamicScoreTermLogRecord{}
+	for rank, candidate := range candidates {
+		for _, term := range terms {
+			weights := term.Weights
+			if len(weights) == 0 && term.Expression != "" {
+				weights = parseDynamicExpression(term.Expression)
+			}
+			if len(weights) == 0 && len(term.PreferTags) == 0 && len(term.RequireTags) == 0 {
+				out = append(out, dynamicScoreTermLogRecord{
+					Seq:              len(out) + 1,
+					CandidateIndex:   candidate.Index,
+					Rank:             rank + 1,
+					Provider:         candidate.Target.Provider,
+					Model:            candidate.Target.Model,
+					Dialect:          candidate.Target.Dialect,
+					TermName:         defaultString(term.Name, "default"),
+					FinalScore:       finiteScore(candidate.Final),
+					ObservationCount: candidate.Stats.Count,
+					Selected:         rank == 0,
+				})
+				continue
+			}
+			for name, weight := range weights {
+				scoreName := canonicalScoreName(name)
+				value := candidate.Scores[scoreName]
+				out = append(out, dynamicScoreTermLogRecord{
+					Seq:              len(out) + 1,
+					CandidateIndex:   candidate.Index,
+					Rank:             rank + 1,
+					Provider:         candidate.Target.Provider,
+					Model:            candidate.Target.Model,
+					Dialect:          candidate.Target.Dialect,
+					TermName:         defaultString(term.Name, "default"),
+					ScoreName:        scoreName,
+					Weight:           weight,
+					Value:            finiteScore(value),
+					Contribution:     finiteScore(weight * value),
+					FinalScore:       finiteScore(candidate.Final),
+					ObservationCount: candidate.Stats.Count,
+					Selected:         rank == 0,
+				})
+			}
+			for _, tag := range term.PreferTags {
+				if !targetHasTag(candidate.Target, tag) {
+					continue
+				}
+				out = append(out, dynamicScoreTermLogRecord{
+					Seq:              len(out) + 1,
+					CandidateIndex:   candidate.Index,
+					Rank:             rank + 1,
+					Provider:         candidate.Target.Provider,
+					Model:            candidate.Target.Model,
+					Dialect:          candidate.Target.Dialect,
+					TermName:         defaultString(term.Name, "default"),
+					ScoreName:        "prefer_tag",
+					Weight:           0.05,
+					Value:            1,
+					Contribution:     0.05,
+					FinalScore:       finiteScore(candidate.Final),
+					ObservationCount: candidate.Stats.Count,
+					Selected:         rank == 0,
+				})
+			}
+		}
+		_ = groupName
+	}
+	return out
+}
+
+func finiteScore(value float64) float64 {
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return 0
+	}
+	return value
 }
 
 func dynamicSafeShape(req *IRRequest) map[string]any {

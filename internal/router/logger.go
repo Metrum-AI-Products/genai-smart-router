@@ -90,6 +90,9 @@ type logRecord struct {
 	DecisionCandidates                 []decisionCandidateLogRecord    `json:"decision_candidates,omitempty"`
 	DecisionFilterReasons              []decisionFilterReasonLogRecord `json:"decision_filter_reasons,omitempty"`
 	RoutingDecisions                   []routingDecisionLogRecord      `json:"routing_decisions,omitempty"`
+	RoutingSignals                     []routingSignalLogRecord        `json:"routing_signals,omitempty"`
+	DynamicScoreTerms                  []dynamicScoreTermLogRecord     `json:"dynamic_score_terms,omitempty"`
+	PolicyExecutions                   []policyExecutionLogRecord      `json:"policy_executions,omitempty"`
 	CacheReasons                       []cacheReasonLogRecord          `json:"cache_reasons,omitempty"`
 }
 
@@ -146,6 +149,15 @@ type decisionCandidateLogRecord struct {
 	Dialect          string `json:"dialect"`
 	Weight           int    `json:"weight,omitempty"`
 	ToolOnly         bool   `json:"tool_only,omitempty"`
+	ContextTokens    int    `json:"context_tokens,omitempty"`
+	InputImage       bool   `json:"input_image,omitempty"`
+	OutputImage      bool   `json:"output_image,omitempty"`
+	ToolSupport      bool   `json:"tool_support,omitempty"`
+	ForcedToolChoice bool   `json:"forced_tool_choice,omitempty"`
+	StructuredOutput bool   `json:"structured_output,omitempty"`
+	HonorsMaxTokens  bool   `json:"honors_max_tokens,omitempty"`
+	ValidationStatus string `json:"validation_status,omitempty"`
+	ValidationAge    string `json:"validation_age_bucket,omitempty"`
 	Eligible         bool   `json:"eligible"`
 	Selected         bool   `json:"selected,omitempty"`
 }
@@ -166,6 +178,50 @@ type routingDecisionLogRecord struct {
 	Dialect                string  `json:"dialect"`
 	FallbackCount          int     `json:"fallback_count"`
 	ClassLabel             *string `json:"class_label,omitempty"`
+}
+
+type routingSignalLogRecord struct {
+	Seq            int     `json:"seq"`
+	Strategy       string  `json:"strategy"`
+	SignalName     string  `json:"signal_name"`
+	Source         string  `json:"source,omitempty"`
+	CandidateIndex int     `json:"candidate_index,omitempty"`
+	BoolValue      bool    `json:"bool_value,omitempty"`
+	IntValue       int     `json:"int_value,omitempty"`
+	FloatValue     float64 `json:"float_value,omitempty"`
+	TextValue      string  `json:"text_value,omitempty"`
+}
+
+type dynamicScoreTermLogRecord struct {
+	Seq              int     `json:"seq"`
+	CandidateIndex   int     `json:"candidate_index"`
+	Rank             int     `json:"rank"`
+	Provider         string  `json:"provider"`
+	Model            string  `json:"model"`
+	Dialect          string  `json:"dialect"`
+	TermName         string  `json:"term_name"`
+	ScoreName        string  `json:"score_name,omitempty"`
+	Weight           float64 `json:"weight,omitempty"`
+	Value            float64 `json:"value,omitempty"`
+	Contribution     float64 `json:"contribution,omitempty"`
+	FinalScore       float64 `json:"final_score,omitempty"`
+	ObservationCount int     `json:"observation_count,omitempty"`
+	Selected         bool    `json:"selected,omitempty"`
+}
+
+type policyExecutionLogRecord struct {
+	Seq                    int     `json:"seq"`
+	Strategy               string  `json:"strategy"`
+	PolicyKind             string  `json:"policy_kind"`
+	Outcome                string  `json:"outcome"`
+	DurationMS             int64   `json:"duration_ms"`
+	EligibleTargetCount    int     `json:"eligible_target_count"`
+	AllTargetCount         int     `json:"all_target_count,omitempty"`
+	SelectedCandidateIndex int     `json:"selected_candidate_index"`
+	FallbackCount          int     `json:"fallback_count"`
+	ClassLabel             *string `json:"class_label,omitempty"`
+	ErrorClass             string  `json:"error_class,omitempty"`
+	ErrorMessage           string  `json:"error_message,omitempty"`
 }
 
 type cacheReasonLogRecord struct {

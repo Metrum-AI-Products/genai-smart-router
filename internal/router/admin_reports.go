@@ -174,6 +174,17 @@ type adminSavingsBaselineDTO struct {
 	Custom                           bool    `json:"custom,omitempty"`
 }
 
+type adminDecisionTelemetryDetail struct {
+	ShapeFeatures     []decisionShapeFeatureRecord       `json:"shapeFeatures,omitempty"`
+	Candidates        []decisionTargetCandidateRecord    `json:"candidates,omitempty"`
+	FilterReasons     []decisionTargetFilterReasonRecord `json:"filterReasons,omitempty"`
+	RoutingDecisions  []routingDecisionRecord            `json:"routingDecisions,omitempty"`
+	RoutingSignals    []routingSignalRecord              `json:"routingSignals,omitempty"`
+	DynamicScoreTerms []dynamicScoreTermRecord           `json:"dynamicScoreTerms,omitempty"`
+	PolicyExecutions  []policyExecutionRecord            `json:"policyExecutions,omitempty"`
+	CacheReasons      []decisionCacheReasonRecord        `json:"cacheReasons,omitempty"`
+}
+
 type adminSavingsRow struct {
 	Key             string  `json:"key"`
 	Requests        int64   `json:"requests"`
@@ -765,14 +776,40 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	var attempts []requestAttemptRecord
 	var traces []requestTraceEventRecord
 	var errors []requestErrorRecord
+	var shapeFeatures []decisionShapeFeatureRecord
+	var candidates []decisionTargetCandidateRecord
+	var filterReasons []decisionTargetFilterReasonRecord
+	var routingDecisions []routingDecisionRecord
+	var routingSignals []routingSignalRecord
+	var dynamicScoreTerms []dynamicScoreTermRecord
+	var policyExecutions []policyExecutionRecord
+	var cacheReasons []decisionCacheReasonRecord
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&attempts).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&traces).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Find(&errors).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&shapeFeatures).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("candidate_index ASC").Find(&candidates).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&filterReasons).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&routingDecisions).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&routingSignals).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("rank ASC, seq ASC").Find(&dynamicScoreTerms).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&policyExecutions).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&cacheReasons).Error
 	writeJSON(w, http.StatusOK, map[string]any{
 		"request":  adminRequestFromRow(row),
 		"attempts": adminAttemptsFromRecords(attempts),
 		"trace":    adminTraceFromRecords(traces),
 		"errors":   adminErrorsFromRecords(errors),
+		"decisionTelemetry": adminDecisionTelemetryDetail{
+			ShapeFeatures:     shapeFeatures,
+			Candidates:        candidates,
+			FilterReasons:     filterReasons,
+			RoutingDecisions:  routingDecisions,
+			RoutingSignals:    routingSignals,
+			DynamicScoreTerms: dynamicScoreTerms,
+			PolicyExecutions:  policyExecutions,
+			CacheReasons:      cacheReasons,
+		},
 	})
 }
 

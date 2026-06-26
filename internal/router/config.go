@@ -1536,10 +1536,11 @@ func defaultContentCaptureConfig(cfg *ContentCaptureConfig) {
 }
 
 const (
-	retentionDataClassUsageDiagnostics = "usage_diagnostics"
-	retentionDataClassSecurityAccess   = "security_access_events"
-	retentionDataClassContentCapture   = "content_capture"
-	retentionDataClassUsageDetail      = "usage_detail"
+	retentionDataClassUsageDiagnostics  = "usage_diagnostics"
+	retentionDataClassSecurityAccess    = "security_access_events"
+	retentionDataClassContentCapture    = "content_capture"
+	retentionDataClassDecisionTelemetry = "decision_telemetry"
+	retentionDataClassUsageDetail       = "usage_detail"
 )
 
 func defaultRetentionConfig(cfg *RetentionConfig) {
@@ -1556,6 +1557,7 @@ func defaultRetentionConfig(cfg *RetentionConfig) {
 	if len(cfg.Classes) == 0 {
 		cfg.Classes = []RetentionClassConfig{
 			{DataClass: retentionDataClassUsageDiagnostics, RetentionDays: 30},
+			{DataClass: retentionDataClassDecisionTelemetry, RetentionDays: 30},
 			{DataClass: retentionDataClassSecurityAccess, RetentionDays: 90},
 			{DataClass: retentionDataClassContentCapture, RetentionDays: 30},
 			{DataClass: retentionDataClassUsageDetail, Enabled: boolPtr(false), RetentionDays: 365, RequireFinalizedRollup: true},
@@ -1674,7 +1676,7 @@ func normalizeRetentionDataClass(v string) string {
 
 func knownRetentionDataClass(v string) bool {
 	switch v {
-	case retentionDataClassUsageDiagnostics, retentionDataClassSecurityAccess, retentionDataClassContentCapture, retentionDataClassUsageDetail:
+	case retentionDataClassUsageDiagnostics, retentionDataClassDecisionTelemetry, retentionDataClassSecurityAccess, retentionDataClassContentCapture, retentionDataClassUsageDetail:
 		return true
 	default:
 		return false

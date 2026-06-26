@@ -116,7 +116,7 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 	logPath := filepath.Join(dir, "requests.jsonl")
 	dbPath := filepath.Join(dir, "usage.sqlite")
 	raw := strings.Join([]string{
-		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_decision","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"bypass","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"quota_state":"ok","key_state":"active","warnings":[],"decision_shape_features":[{"seq":1,"name":"has_tools","bool_value":true}],"decision_candidates":[{"candidate_index":0,"group_target_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","eligible":true,"selected":true}],"decision_filter_reasons":[{"seq":1,"candidate_index":1,"stage":"request_shape","reason":"tool-support"}],"routing_decisions":[{"seq":1,"strategy":"static","selected_candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","fallback_count":0}],"cache_reasons":[{"seq":1,"status":"bypass","reason":"cache-tool-request","candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat"}]}`,
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_decision","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"default","resolved_group":"default","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"bypass","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"quota_state":"ok","key_state":"active","warnings":[],"decision_shape_features":[{"seq":1,"name":"has_tools","bool_value":true}],"decision_candidates":[{"candidate_index":0,"group_target_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","context_tokens":8192,"tool_support":true,"structured_output":true,"honors_max_tokens":true,"eligible":true,"selected":true}],"decision_filter_reasons":[{"seq":1,"candidate_index":1,"stage":"request_shape","reason":"tool-support"}],"routing_decisions":[{"seq":1,"strategy":"static","selected_candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat","fallback_count":0}],"routing_signals":[{"seq":1,"strategy":"dynamic_score","signal_name":"observed_performance","source":"dynamic_score","bool_value":true}],"dynamic_score_terms":[{"seq":1,"candidate_index":0,"rank":1,"provider":"mock","model":"mock-model","dialect":"openai-chat","term_name":"default","score_name":"latency_score","weight":0.5,"value":0.8,"contribution":0.4,"final_score":0.7,"observation_count":3,"selected":true}],"policy_executions":[{"seq":1,"strategy":"script","policy_kind":"typescript","outcome":"selected","duration_ms":12,"eligible_target_count":1,"selected_candidate_index":0}],"cache_reasons":[{"seq":1,"status":"bypass","reason":"cache-tool-request","candidate_index":0,"provider":"mock","model":"mock-model","dialect":"openai-chat"}]}`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
@@ -133,7 +133,7 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## Decision Telemetry Summary",
-		"| 1 | 1 | 1 | 1 | 1 |",
+		"| 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |",
 		"### Routing Decisions By Strategy",
 		"| static | 1 |",
 		"### Target Filter Reasons",
@@ -144,6 +144,64 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 		if !strings.Contains(md, want) {
 			t.Fatalf("report missing %q:\n%s", want, md)
 		}
+	}
+}
+
+func TestDecisionTelemetryPersistsExplicitFalseAndZeroValues(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	store.Emit(logRecord{
+		TS:             "2026-06-14T01:15:00.000Z",
+		RequestID:      "req_zero_values",
+		CallerID:       "alice",
+		TokenID:        "rtr_alice_test",
+		InboundDialect: "openai-chat",
+		RequestedModel: "default",
+		ResolvedGroup:  "default",
+		Strategy:       "script",
+		TargetProvider: "mock",
+		TargetModel:    "mock-model",
+		TargetDialect:  "openai-chat",
+		Cache:          "bypass",
+		Status:         200,
+		Attempts:       1,
+		DecisionCandidates: []decisionCandidateLogRecord{{
+			CandidateIndex:  0,
+			Provider:        "mock",
+			Model:           "mock-model",
+			Dialect:         "openai-chat",
+			HonorsMaxTokens: false,
+			Eligible:        true,
+			Selected:        true,
+		}},
+		PolicyExecutions: []policyExecutionLogRecord{{
+			Seq:                    1,
+			Strategy:               "script",
+			PolicyKind:             "typescript",
+			Outcome:                "selected",
+			EligibleTargetCount:    1,
+			SelectedCandidateIndex: 0,
+		}},
+	})
+
+	var candidate decisionTargetCandidateRecord
+	if err := store.db.Where("request_id = ? AND candidate_index = ?", "req_zero_values", 0).First(&candidate).Error; err != nil {
+		t.Fatal(err)
+	}
+	if candidate.HonorsMaxTokens {
+		t.Fatalf("honors_max_tokens should preserve explicit false: %#v", candidate)
+	}
+
+	var execution policyExecutionRecord
+	if err := store.db.Where("request_id = ? AND seq = ?", "req_zero_values", 1).First(&execution).Error; err != nil {
+		t.Fatal(err)
+	}
+	if execution.SelectedCandidateIndex != 0 {
+		t.Fatalf("selected_candidate_index should preserve explicit zero: %#v", execution)
 	}
 }
 
@@ -438,6 +496,9 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"request_target_candidates",
 		"request_target_filter_reasons",
 		"request_routing_decisions",
+		"request_routing_signals",
+		"request_dynamic_score_terms",
+		"request_policy_executions",
 		"request_cache_reasons",
 		"request_errors",
 		"request_content_captures",
@@ -649,6 +710,9 @@ func TestDecisionTelemetryTablesReferenceRequestUsage(t *testing.T) {
 		"request_target_candidates",
 		"request_target_filter_reasons",
 		"request_routing_decisions",
+		"request_routing_signals",
+		"request_dynamic_score_terms",
+		"request_policy_executions",
 		"request_cache_reasons",
 	} {
 		assertRequestUsageForeignKey(t, store, table)
@@ -668,6 +732,9 @@ func assertRequestUsageForeignKey(t *testing.T, store *usageStore, table string)
 		"request_target_candidates":       "PRAGMA foreign_key_list(request_target_candidates)",
 		"request_target_filter_reasons":   "PRAGMA foreign_key_list(request_target_filter_reasons)",
 		"request_routing_decisions":       "PRAGMA foreign_key_list(request_routing_decisions)",
+		"request_routing_signals":         "PRAGMA foreign_key_list(request_routing_signals)",
+		"request_dynamic_score_terms":     "PRAGMA foreign_key_list(request_dynamic_score_terms)",
+		"request_policy_executions":       "PRAGMA foreign_key_list(request_policy_executions)",
 		"request_cache_reasons":           "PRAGMA foreign_key_list(request_cache_reasons)",
 	}[table]
 	if query == "" {

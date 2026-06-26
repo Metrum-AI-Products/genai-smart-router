@@ -55,13 +55,16 @@ type adminBasicRuntime struct {
 }
 
 type decision struct {
-	Target        Target
-	Fallbacks     []Target
-	ClassLabel    *string
-	Strategy      string
-	GroupName     string
-	TargetIndex   int
-	DecisionTrace string
+	Target            Target
+	Fallbacks         []Target
+	ClassLabel        *string
+	Strategy          string
+	GroupName         string
+	TargetIndex       int
+	DecisionTrace     string
+	RoutingSignals    []routingSignalLogRecord
+	DynamicScoreTerms []dynamicScoreTermLogRecord
+	PolicyExecutions  []policyExecutionLogRecord
 }
 
 type routingEligibilityError struct {

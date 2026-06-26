@@ -284,6 +284,9 @@ type usageRecord struct {
 	DecisionCandidates                 []decisionTargetCandidateRecord    `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionFilterReasons              []decisionTargetFilterReasonRecord `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	RoutingDecisions                   []routingDecisionRecord            `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	RoutingSignals                     []routingSignalRecord              `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	DynamicScoreTerms                  []dynamicScoreTermRecord           `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	PolicyExecutions                   []policyExecutionRecord            `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCacheReasons               []decisionCacheReasonRecord        `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
@@ -594,12 +597,12 @@ func (requestTraceEventRecord) TableName() string {
 }
 
 type decisionShapeFeatureRecord struct {
-	RequestID   string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_shape_request"`
-	Seq         int    `gorm:"column:seq;primaryKey;not null"`
-	FeatureName string `gorm:"column:feature_name;type:text;not null;index:idx_decision_shape_feature"`
-	BoolValue   bool   `gorm:"column:bool_value;not null"`
-	IntValue    int    `gorm:"column:int_value;not null"`
-	TextValue   string `gorm:"column:text_value;type:text;not null"`
+	RequestID   string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_shape_request" json:"requestId"`
+	Seq         int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	FeatureName string `gorm:"column:feature_name;type:text;not null;index:idx_decision_shape_feature" json:"featureName"`
+	BoolValue   bool   `gorm:"column:bool_value;not null" json:"boolValue"`
+	IntValue    int    `gorm:"column:int_value;not null" json:"intValue"`
+	TextValue   string `gorm:"column:text_value;type:text;not null" json:"textValue"`
 }
 
 func (decisionShapeFeatureRecord) TableName() string {
@@ -607,17 +610,26 @@ func (decisionShapeFeatureRecord) TableName() string {
 }
 
 type decisionTargetCandidateRecord struct {
-	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_candidate_request"`
-	CandidateIndex   int    `gorm:"column:candidate_index;primaryKey;not null"`
-	GroupTargetIndex int    `gorm:"column:group_target_index;not null"`
-	Provider         string `gorm:"column:provider;type:text;not null;index:idx_decision_candidate_provider_model,priority:1"`
-	Model            string `gorm:"column:model;type:text;not null;index:idx_decision_candidate_provider_model,priority:2"`
-	ModelRef         string `gorm:"column:model_ref;type:text;not null"`
-	Dialect          string `gorm:"column:dialect;type:text;not null"`
-	Weight           int    `gorm:"column:weight;not null"`
-	ToolOnly         bool   `gorm:"column:tool_only;not null"`
-	Eligible         bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible"`
-	Selected         bool   `gorm:"column:selected;not null;index:idx_decision_candidate_selected"`
+	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_candidate_request" json:"requestId"`
+	CandidateIndex   int    `gorm:"column:candidate_index;primaryKey;not null" json:"candidateIndex"`
+	GroupTargetIndex int    `gorm:"column:group_target_index;not null" json:"groupTargetIndex"`
+	Provider         string `gorm:"column:provider;type:text;not null;index:idx_decision_candidate_provider_model,priority:1" json:"provider"`
+	Model            string `gorm:"column:model;type:text;not null;index:idx_decision_candidate_provider_model,priority:2" json:"model"`
+	ModelRef         string `gorm:"column:model_ref;type:text;not null" json:"modelRef"`
+	Dialect          string `gorm:"column:dialect;type:text;not null" json:"dialect"`
+	Weight           int    `gorm:"column:weight;not null" json:"weight"`
+	ToolOnly         bool   `gorm:"column:tool_only;not null" json:"toolOnly"`
+	ContextTokens    int    `gorm:"column:context_tokens;not null;default:0" json:"contextTokens"`
+	InputImage       bool   `gorm:"column:input_image;not null;default:false;index:idx_decision_candidate_input_image" json:"inputImage"`
+	OutputImage      bool   `gorm:"column:output_image;not null;default:false" json:"outputImage"`
+	ToolSupport      bool   `gorm:"column:tool_support;not null;default:false;index:idx_decision_candidate_tool_support" json:"toolSupport"`
+	ForcedToolChoice bool   `gorm:"column:forced_tool_choice;not null;default:false" json:"forcedToolChoice"`
+	StructuredOutput bool   `gorm:"column:structured_output;not null;default:false" json:"structuredOutput"`
+	HonorsMaxTokens  bool   `gorm:"column:honors_max_tokens;not null" json:"honorsMaxTokens"`
+	ValidationStatus string `gorm:"column:validation_status;type:text;not null;default:'';index:idx_decision_candidate_validation_status" json:"validationStatus"`
+	ValidationAge    string `gorm:"column:validation_age_bucket;type:text;not null;default:''" json:"validationAgeBucket"`
+	Eligible         bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible" json:"eligible"`
+	Selected         bool   `gorm:"column:selected;not null;index:idx_decision_candidate_selected" json:"selected"`
 }
 
 func (decisionTargetCandidateRecord) TableName() string {
@@ -625,11 +637,11 @@ func (decisionTargetCandidateRecord) TableName() string {
 }
 
 type decisionTargetFilterReasonRecord struct {
-	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_filter_request"`
-	Seq            int    `gorm:"column:seq;primaryKey;not null"`
-	CandidateIndex int    `gorm:"column:candidate_index;not null;index:idx_decision_filter_candidate"`
-	Stage          string `gorm:"column:stage;type:text;not null;index:idx_decision_filter_stage"`
-	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_filter_reason"`
+	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_filter_request" json:"requestId"`
+	Seq            int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	CandidateIndex int    `gorm:"column:candidate_index;not null;index:idx_decision_filter_candidate" json:"candidateIndex"`
+	Stage          string `gorm:"column:stage;type:text;not null;index:idx_decision_filter_stage" json:"stage"`
+	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_filter_reason" json:"reason"`
 }
 
 func (decisionTargetFilterReasonRecord) TableName() string {
@@ -637,30 +649,89 @@ func (decisionTargetFilterReasonRecord) TableName() string {
 }
 
 type routingDecisionRecord struct {
-	RequestID              string `gorm:"column:request_id;primaryKey;type:text;index:idx_routing_decision_request"`
-	Seq                    int    `gorm:"column:seq;primaryKey;not null"`
-	Strategy               string `gorm:"column:strategy;type:text;not null;index:idx_routing_decision_strategy"`
-	SelectedCandidateIndex int    `gorm:"column:selected_candidate_index;not null"`
-	Provider               string `gorm:"column:provider;type:text;not null;index:idx_routing_decision_provider_model,priority:1"`
-	Model                  string `gorm:"column:model;type:text;not null;index:idx_routing_decision_provider_model,priority:2"`
-	Dialect                string `gorm:"column:dialect;type:text;not null"`
-	FallbackCount          int    `gorm:"column:fallback_count;not null"`
-	ClassLabel             string `gorm:"column:class_label;type:text;not null"`
+	RequestID              string `gorm:"column:request_id;primaryKey;type:text;index:idx_routing_decision_request" json:"requestId"`
+	Seq                    int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	Strategy               string `gorm:"column:strategy;type:text;not null;index:idx_routing_decision_strategy" json:"strategy"`
+	SelectedCandidateIndex int    `gorm:"column:selected_candidate_index;not null" json:"selectedCandidateIndex"`
+	Provider               string `gorm:"column:provider;type:text;not null;index:idx_routing_decision_provider_model,priority:1" json:"provider"`
+	Model                  string `gorm:"column:model;type:text;not null;index:idx_routing_decision_provider_model,priority:2" json:"model"`
+	Dialect                string `gorm:"column:dialect;type:text;not null" json:"dialect"`
+	FallbackCount          int    `gorm:"column:fallback_count;not null" json:"fallbackCount"`
+	ClassLabel             string `gorm:"column:class_label;type:text;not null" json:"classLabel"`
 }
 
 func (routingDecisionRecord) TableName() string {
 	return "request_routing_decisions"
 }
 
+type routingSignalRecord struct {
+	RequestID      string  `gorm:"column:request_id;primaryKey;type:text;index:idx_routing_signal_request" json:"requestId"`
+	Seq            int     `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	Strategy       string  `gorm:"column:strategy;type:text;not null;index:idx_routing_signal_strategy" json:"strategy"`
+	SignalName     string  `gorm:"column:signal_name;type:text;not null;index:idx_routing_signal_name" json:"signalName"`
+	Source         string  `gorm:"column:source;type:text;not null;default:''" json:"source"`
+	CandidateIndex int     `gorm:"column:candidate_index;not null;default:-1;index:idx_routing_signal_candidate" json:"candidateIndex"`
+	BoolValue      bool    `gorm:"column:bool_value;not null;default:false" json:"boolValue"`
+	IntValue       int     `gorm:"column:int_value;not null;default:0" json:"intValue"`
+	FloatValue     float64 `gorm:"column:float_value;not null;default:0" json:"floatValue"`
+	TextValue      string  `gorm:"column:text_value;type:text;not null;default:''" json:"textValue"`
+}
+
+func (routingSignalRecord) TableName() string {
+	return "request_routing_signals"
+}
+
+type dynamicScoreTermRecord struct {
+	RequestID        string  `gorm:"column:request_id;primaryKey;type:text;index:idx_dynamic_score_term_request" json:"requestId"`
+	Seq              int     `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	CandidateIndex   int     `gorm:"column:candidate_index;not null;index:idx_dynamic_score_term_candidate" json:"candidateIndex"`
+	Rank             int     `gorm:"column:rank;not null;index:idx_dynamic_score_term_rank" json:"rank"`
+	Provider         string  `gorm:"column:provider;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:1" json:"provider"`
+	Model            string  `gorm:"column:model;type:text;not null;index:idx_dynamic_score_term_provider_model,priority:2" json:"model"`
+	Dialect          string  `gorm:"column:dialect;type:text;not null" json:"dialect"`
+	TermName         string  `gorm:"column:term_name;type:text;not null;index:idx_dynamic_score_term_name" json:"termName"`
+	ScoreName        string  `gorm:"column:score_name;type:text;not null;default:'';index:idx_dynamic_score_score_name" json:"scoreName"`
+	Weight           float64 `gorm:"column:weight;not null;default:0" json:"weight"`
+	Value            float64 `gorm:"column:value;not null;default:0" json:"value"`
+	Contribution     float64 `gorm:"column:contribution;not null;default:0" json:"contribution"`
+	FinalScore       float64 `gorm:"column:final_score;not null;default:0" json:"finalScore"`
+	ObservationCount int     `gorm:"column:observation_count;not null;default:0" json:"observationCount"`
+	Selected         bool    `gorm:"column:selected;not null;default:false;index:idx_dynamic_score_term_selected" json:"selected"`
+}
+
+func (dynamicScoreTermRecord) TableName() string {
+	return "request_dynamic_score_terms"
+}
+
+type policyExecutionRecord struct {
+	RequestID              string `gorm:"column:request_id;primaryKey;type:text;index:idx_policy_execution_request" json:"requestId"`
+	Seq                    int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	Strategy               string `gorm:"column:strategy;type:text;not null;index:idx_policy_execution_strategy" json:"strategy"`
+	PolicyKind             string `gorm:"column:policy_kind;type:text;not null;index:idx_policy_execution_kind" json:"policyKind"`
+	Outcome                string `gorm:"column:outcome;type:text;not null;index:idx_policy_execution_outcome" json:"outcome"`
+	DurationMS             int64  `gorm:"column:duration_ms;not null;default:0" json:"durationMs"`
+	EligibleTargetCount    int    `gorm:"column:eligible_target_count;not null;default:0" json:"eligibleTargetCount"`
+	AllTargetCount         int    `gorm:"column:all_target_count;not null;default:0" json:"allTargetCount"`
+	SelectedCandidateIndex int    `gorm:"column:selected_candidate_index;not null" json:"selectedCandidateIndex"`
+	FallbackCount          int    `gorm:"column:fallback_count;not null;default:0" json:"fallbackCount"`
+	ClassLabel             string `gorm:"column:class_label;type:text;not null;default:''" json:"classLabel"`
+	ErrorClass             string `gorm:"column:error_class;type:text;not null;default:''" json:"errorClass"`
+	ErrorMessage           string `gorm:"column:error_message;type:text;not null;default:''" json:"errorMessage"`
+}
+
+func (policyExecutionRecord) TableName() string {
+	return "request_policy_executions"
+}
+
 type decisionCacheReasonRecord struct {
-	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_cache_request"`
-	Seq            int    `gorm:"column:seq;primaryKey;not null"`
-	Status         string `gorm:"column:status;type:text;not null;index:idx_decision_cache_status"`
-	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_cache_reason"`
-	CandidateIndex int    `gorm:"column:candidate_index;not null"`
-	Provider       string `gorm:"column:provider;type:text;not null"`
-	Model          string `gorm:"column:model;type:text;not null"`
-	Dialect        string `gorm:"column:dialect;type:text;not null"`
+	RequestID      string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_cache_request" json:"requestId"`
+	Seq            int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	Status         string `gorm:"column:status;type:text;not null;index:idx_decision_cache_status" json:"status"`
+	Reason         string `gorm:"column:reason;type:text;not null;index:idx_decision_cache_reason" json:"reason"`
+	CandidateIndex int    `gorm:"column:candidate_index;not null" json:"candidateIndex"`
+	Provider       string `gorm:"column:provider;type:text;not null" json:"provider"`
+	Model          string `gorm:"column:model;type:text;not null" json:"model"`
+	Dialect        string `gorm:"column:dialect;type:text;not null" json:"dialect"`
 }
 
 func (decisionCacheReasonRecord) TableName() string {
@@ -733,14 +804,17 @@ type agg struct {
 }
 
 type decisionTelemetrySummary struct {
-	ShapeFeatures  int64
-	Candidates     int64
-	FilterReasons  int64
-	Decisions      int64
-	CacheReasons   int64
-	ByStrategy     map[string]int64
-	ByFilterReason map[string]int64
-	ByCacheReason  map[string]int64
+	ShapeFeatures    int64
+	Candidates       int64
+	FilterReasons    int64
+	Decisions        int64
+	RoutingSignals   int64
+	ScoreTerms       int64
+	PolicyExecutions int64
+	CacheReasons     int64
+	ByStrategy       map[string]int64
+	ByFilterReason   map[string]int64
+	ByCacheReason    map[string]int64
 }
 
 func newUsageStore(cfg UsageDBConfig) (*usageStore, error) {
@@ -826,6 +900,9 @@ func (s *usageStore) migrate() error {
 		&decisionTargetCandidateRecord{},
 		&decisionTargetFilterReasonRecord{},
 		&routingDecisionRecord{},
+		&routingSignalRecord{},
+		&dynamicScoreTermRecord{},
+		&policyExecutionRecord{},
 		&decisionCacheReasonRecord{},
 		&requestErrorRecord{},
 		&contentCaptureRecord{},
@@ -864,6 +941,9 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_target_candidates",
 		"request_target_filter_reasons",
 		"request_routing_decisions",
+		"request_routing_signals",
+		"request_dynamic_score_terms",
+		"request_policy_executions",
 		"request_cache_reasons",
 		"request_errors",
 		"request_content_captures",
@@ -898,7 +978,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_daily', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -934,6 +1014,15 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	for _, decision := range rec.RoutingDecisions {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(routingDecisionRecordFromLog(rec.RequestID, decision)).Error
+	}
+	for _, signal := range rec.RoutingSignals {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(routingSignalRecordFromLog(rec.RequestID, signal)).Error
+	}
+	for _, term := range rec.DynamicScoreTerms {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(dynamicScoreTermRecordFromLog(rec.RequestID, term)).Error
+	}
+	for _, execution := range rec.PolicyExecutions {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(policyExecutionRecordFromLog(rec.RequestID, execution)).Error
 	}
 	for _, reason := range rec.CacheReasons {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionCacheReasonRecordFromLog(rec.RequestID, reason)).Error
@@ -1007,6 +1096,15 @@ func decisionCandidateRecordFromLog(requestID string, rec decisionCandidateLogRe
 		Dialect:          rec.Dialect,
 		Weight:           rec.Weight,
 		ToolOnly:         rec.ToolOnly,
+		ContextTokens:    rec.ContextTokens,
+		InputImage:       rec.InputImage,
+		OutputImage:      rec.OutputImage,
+		ToolSupport:      rec.ToolSupport,
+		ForcedToolChoice: rec.ForcedToolChoice,
+		StructuredOutput: rec.StructuredOutput,
+		HonorsMaxTokens:  rec.HonorsMaxTokens,
+		ValidationStatus: rec.ValidationStatus,
+		ValidationAge:    rec.ValidationAge,
 		Eligible:         rec.Eligible,
 		Selected:         rec.Selected,
 	}
@@ -1037,6 +1135,63 @@ func routingDecisionRecordFromLog(requestID string, rec routingDecisionLogRecord
 		Dialect:                rec.Dialect,
 		FallbackCount:          rec.FallbackCount,
 		ClassLabel:             classLabel,
+	}
+}
+
+func routingSignalRecordFromLog(requestID string, rec routingSignalLogRecord) *routingSignalRecord {
+	return &routingSignalRecord{
+		RequestID:      requestID,
+		Seq:            rec.Seq,
+		Strategy:       rec.Strategy,
+		SignalName:     rec.SignalName,
+		Source:         rec.Source,
+		CandidateIndex: rec.CandidateIndex,
+		BoolValue:      rec.BoolValue,
+		IntValue:       rec.IntValue,
+		FloatValue:     rec.FloatValue,
+		TextValue:      rec.TextValue,
+	}
+}
+
+func dynamicScoreTermRecordFromLog(requestID string, rec dynamicScoreTermLogRecord) *dynamicScoreTermRecord {
+	return &dynamicScoreTermRecord{
+		RequestID:        requestID,
+		Seq:              rec.Seq,
+		CandidateIndex:   rec.CandidateIndex,
+		Rank:             rec.Rank,
+		Provider:         rec.Provider,
+		Model:            rec.Model,
+		Dialect:          rec.Dialect,
+		TermName:         rec.TermName,
+		ScoreName:        rec.ScoreName,
+		Weight:           rec.Weight,
+		Value:            rec.Value,
+		Contribution:     rec.Contribution,
+		FinalScore:       rec.FinalScore,
+		ObservationCount: rec.ObservationCount,
+		Selected:         rec.Selected,
+	}
+}
+
+func policyExecutionRecordFromLog(requestID string, rec policyExecutionLogRecord) *policyExecutionRecord {
+	classLabel := ""
+	if rec.ClassLabel != nil {
+		classLabel = *rec.ClassLabel
+	}
+	return &policyExecutionRecord{
+		RequestID:              requestID,
+		Seq:                    rec.Seq,
+		Strategy:               rec.Strategy,
+		PolicyKind:             rec.PolicyKind,
+		Outcome:                rec.Outcome,
+		DurationMS:             rec.DurationMS,
+		EligibleTargetCount:    rec.EligibleTargetCount,
+		AllTargetCount:         rec.AllTargetCount,
+		SelectedCandidateIndex: rec.SelectedCandidateIndex,
+		FallbackCount:          rec.FallbackCount,
+		ClassLabel:             classLabel,
+		ErrorClass:             rec.ErrorClass,
+		ErrorMessage:           sanitizePersistedDiagnosticText(rec.ErrorMessage),
 	}
 }
 
@@ -1655,9 +1810,10 @@ func retentionClassEnabled(class RetentionClassConfig) bool {
 }
 
 type retentionTableSpec struct {
-	DataClass string
-	TableName string
-	TSColumn  string
+	DataClass         string
+	TableName         string
+	TSColumn          string
+	UseRequestUsageTS bool
 }
 
 func retentionTablesForClass(dataClass string) []retentionTableSpec {
@@ -1667,6 +1823,17 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_attempts", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_trace_events", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_errors", TSColumn: "ts"},
+		}
+	case retentionDataClassDecisionTelemetry:
+		return []retentionTableSpec{
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_decision_shape_features", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_target_candidates", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_target_filter_reasons", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_routing_decisions", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_routing_signals", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_dynamic_score_terms", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_policy_executions", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_cache_reasons", TSColumn: "ts", UseRequestUsageTS: true},
 		}
 	case retentionDataClassSecurityAccess:
 		return []retentionTableSpec{{DataClass: retentionDataClassSecurityAccess, TableName: "security_access_events", TSColumn: "ts"}}
@@ -1725,12 +1892,30 @@ func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retenti
 
 func countRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (int64, error) {
 	var count int64
+	if table.UseRequestUsageTS {
+		err := tx.Raw(fmt.Sprintf("SELECT COUNT(*) FROM %s r JOIN request_usage u ON u.request_id = r.request_id WHERE u.ts < ?", table.TableName), cutoff).Scan(&count).Error
+		return count, err
+	}
 	err := tx.Raw(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s < ?", table.TableName, table.TSColumn), cutoff).Scan(&count).Error
 	return count, err
 }
 
 func countHeldRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (int64, error) {
 	var count int64
+	if table.UseRequestUsageTS {
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM %s r
+			JOIN request_usage u ON u.request_id = r.request_id
+			WHERE u.ts < ?
+			AND EXISTS (
+				SELECT 1 FROM legal_holds h
+				WHERE h.active = ?
+				AND h.data_class = ?
+				AND (h.start_ts = '' OR u.ts >= h.start_ts)
+				AND (h.end_ts = '' OR u.ts < h.end_ts)
+			)`, table.TableName)
+		err := tx.Raw(query, cutoff, true, table.DataClass).Scan(&count).Error
+		return count, err
+	}
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s r
 		WHERE r.%s < ?
 		AND EXISTS (
@@ -2084,6 +2269,9 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 	_ = s.db.Model(&decisionTargetCandidateRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.Candidates).Error
 	_ = s.db.Model(&decisionTargetFilterReasonRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.FilterReasons).Error
 	_ = s.db.Model(&routingDecisionRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.Decisions).Error
+	_ = s.db.Model(&routingSignalRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.RoutingSignals).Error
+	_ = s.db.Model(&dynamicScoreTermRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.ScoreTerms).Error
+	_ = s.db.Model(&policyExecutionRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.PolicyExecutions).Error
 	_ = s.db.Model(&decisionCacheReasonRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.CacheReasons).Error
 	type countRow struct {
 		Key   string
@@ -2448,14 +2636,14 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 }
 
 func writeDecisionTelemetrySummary(b *strings.Builder, summary decisionTelemetrySummary) {
-	if summary.ShapeFeatures == 0 && summary.Candidates == 0 && summary.FilterReasons == 0 && summary.Decisions == 0 && summary.CacheReasons == 0 {
+	if summary.ShapeFeatures == 0 && summary.Candidates == 0 && summary.FilterReasons == 0 && summary.Decisions == 0 && summary.RoutingSignals == 0 && summary.ScoreTerms == 0 && summary.PolicyExecutions == 0 && summary.CacheReasons == 0 {
 		return
 	}
 	fmt.Fprintln(b, "## Decision Telemetry Summary")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Shape Feature Rows | Candidate Rows | Filter Reason Rows | Routing Decision Rows | Cache Reason Rows |")
-	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|")
-	fmt.Fprintf(b, "| %d | %d | %d | %d | %d |\n\n", summary.ShapeFeatures, summary.Candidates, summary.FilterReasons, summary.Decisions, summary.CacheReasons)
+	fmt.Fprintln(b, "| Shape Feature Rows | Candidate Rows | Filter Reason Rows | Routing Decision Rows | Routing Signal Rows | Dynamic Score Term Rows | Policy Execution Rows | Cache Reason Rows |")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d |\n\n", summary.ShapeFeatures, summary.Candidates, summary.FilterReasons, summary.Decisions, summary.RoutingSignals, summary.ScoreTerms, summary.PolicyExecutions, summary.CacheReasons)
 	writeCountTable(b, "Routing Decisions By Strategy", "Strategy", summary.ByStrategy)
 	writeCountTable(b, "Target Filter Reasons", "Reason", summary.ByFilterReason)
 	writeCountTable(b, "Cache Decision Reasons", "Reason", summary.ByCacheReason)

@@ -43,17 +43,20 @@ Commercial retention tables also follow the scalar relational rule:
 - `legal_holds`: active or released holds keyed by hold ID, data class, timestamp range, reason, subject, creator/releaser, and timestamps.
 - `legal_hold_audit_events`: scalar audit rows for hold create/release/update workflows.
 
-The current retention foundation initializes policy rows from `server.retention` and records dry-run counts for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`), `security_access_events`, and `content_capture` (`request_content_captures`). Legal holds are checked by `data_class` and timestamp range when counting skipped rows. It does not delete raw `request_usage`, archive content, schedule jobs, or provide a full admin UI/API for hold lifecycle.
+The current retention foundation initializes policy rows from `server.retention` and records dry-run counts for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`), `decision_telemetry` (`request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_cache_reasons`), `security_access_events`, and `content_capture` (`request_content_captures`). Legal holds are checked by `data_class` and timestamp range when counting skipped rows. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not delete raw `request_usage`, archive content, schedule jobs, or provide a full admin UI/API for hold lifecycle.
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
 - `request_decision_shape_features`: one row per safe request-shape feature such as caller dialect, stream flag, tool count, image count, structured-output flag, max-token flag, and cacheability.
-- `request_target_candidates`: one row per bounded group target candidate with provider, model, dialect, configured weight, tool-only flag, eligibility flag, and selected flag.
+- `request_target_candidates`: one row per bounded group target candidate with provider, model, dialect, configured weight, tool-only flag, scalar capability flags, validation status/age bucket, eligibility flag, and selected flag.
 - `request_target_filter_reasons`: one row per bounded candidate filter bucket, such as `tool-only-target`, `tool-support`, `dialect-tool-passthrough`, `structured-output-support`, `max-tokens-honored`, or `contract-*`.
 - `request_routing_decisions`: one row per selected routing decision with strategy, selected candidate index, provider, model, dialect, fallback count, and optional safe class label.
+- `request_routing_signals`: one row per safe routing signal used by a strategy, such as enabled `dynamic_score` signals and scalar policy knobs.
+- `request_dynamic_score_terms`: one row per bounded dynamic-score candidate/rank/term/score contribution.
+- `request_policy_executions`: one row per successful script/external policy execution, plus configured external fallback executions when feasible.
 - `request_cache_reasons`: one row per cache decision bucket, such as `cache-hit`, `cache-miss`, `cache-request-no-cache`, `cache-tool-request`, `cache-image-request`, `cache-structured-output`, `cache-streaming`, or `cache-temperature`.
 
-Decision telemetry must not store prompt text, image URLs or bytes, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, or routing script raw request mirrors. Keep new reason names stable, lowercase, and safe for reports.
+Decision telemetry must not store prompt text, image URLs or bytes, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, or routing script raw request mirrors. Keep new reason names stable, lowercase, and safe for reports. This bounded phase does not yet persist fail-closed script/external error rows when no routing decision is produced, per-fallback score updates after upstream failures, or full score traces for non-`dynamic_score` strategies.
 
 Governed content-capture tables are separate from diagnostics and also follow the relational-only rule:
 
@@ -85,7 +88,7 @@ Each request row stores:
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
 - PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
-- optional decision telemetry traceability: child rows keyed by request ID for request-shape features, candidate eligibility, filter buckets, routing decisions, and cache reason buckets when `server.decision_telemetry.enabled: true`.
+- optional decision telemetry traceability: child rows keyed by request ID for request-shape features, candidate eligibility/capability metadata, filter buckets, routing decisions, routing signals, dynamic-score term/ranking rows, policy execution rows, and cache reason buckets when `server.decision_telemetry.enabled: true`.
 - optional governed content-capture traceability: separate content rows keyed by request ID only when `server.content_capture.enabled` and a capture scope are configured.
 
 For cache hits, upstream duration and upstream TPS are absent because no provider call occurs. Downstream duration and downstream TPS are still measured.

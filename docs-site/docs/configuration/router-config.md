@@ -534,6 +534,10 @@ server:
         enabled: true
         retention_days: 30
         batch_size: 500
+      - data_class: decision_telemetry
+        enabled: true
+        retention_days: 30
+        batch_size: 500
       - data_class: security_access_events
         enabled: true
         retention_days: 90
@@ -549,7 +553,7 @@ server:
         require_finalized_rollup: true
 ```
 
-`server.decision_telemetry` is optional and disabled by default. When enabled, the router writes normalized scalar rows keyed by request ID for request-shape features, bounded target candidates, safe target-filter reason buckets, selected routing decisions, and cache reason buckets. It is intended for operator explainability and usage-report summaries; caller responses keep the same behavior.
+`server.decision_telemetry` is optional and disabled by default. When enabled, the router writes normalized scalar rows keyed by request ID for request-shape features, bounded target candidates, safe target-filter reason buckets, selected routing decisions, routing signals, dynamic-score terms/rankings, script/external policy executions when a decision or configured fallback is produced, and cache reason buckets. It is intended for operator explainability, admin request drilldown, and usage-report summaries; caller responses keep the same behavior.
 
 Decision telemetry does not store prompt text, image bytes or URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, or raw routing-script request mirrors. Use `max_candidates` and `max_filter_reasons` to bound per-request row volume, and set `record_candidates` or `record_cache_reasons` to `false` when a deployment wants only the lighter routing-decision rows.
 
@@ -567,7 +571,7 @@ Governed content capture is separate from diagnostics and remains disabled unles
 
 Deployments can keep capture disabled globally and enable a scoped override on a specific `callers[]` entry or `models.<group>.content_capture` block for a governed workload. Each enabled block must name at least one capture scope.
 
-Commercial retention policy is configured under `server.retention` and is disabled by default. This foundation accepts only `dry_run: true`; it records policy versions/rules, legal-hold rows, status jobs, and per-table counts without deleting rows. Supported data classes are `usage_diagnostics`, `security_access_events`, `content_capture`, and future `usage_detail`. Legal holds match by `data_class` and timestamp range. `usage_detail` is blocked until a finalized daily rollup covers the candidate window, and raw usage deletion, archives, scheduler, and full admin UI/API workflows remain future slices.
+Commercial retention policy is configured under `server.retention` and is disabled by default. This foundation accepts only `dry_run: true`; it records policy versions/rules, legal-hold rows, status jobs, and per-table counts without deleting rows. Supported data classes are `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and future `usage_detail`. Legal holds match by `data_class` and timestamp range. `usage_detail` is blocked until a finalized daily rollup covers the candidate window, and raw usage deletion, archives, scheduler, and full admin UI/API workflows remain future slices.
 
 Content-capture maintenance endpoints:
 

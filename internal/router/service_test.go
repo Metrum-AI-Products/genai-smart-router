@@ -615,7 +615,41 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		KeyState:                     "ok",
 		Error:                        &errType,
 		ErrorClass:                   "timeout",
-		ErrorMessage:                 "redacted provider-key should not be returned",
+		ErrorMessage:                 "upstream timeout",
+		AttemptsDetail: []attemptLogRecord{{
+			Index:        1,
+			TS:           time.Now().UTC().Format(time.RFC3339),
+			Provider:     "mock",
+			Model:        "mock-model",
+			Dialect:      "openai",
+			DurationMS:   30100,
+			StatusCode:   504,
+			ErrorClass:   "timeout",
+			ErrorMessage: "upstream timeout",
+			Retryable:    true,
+			TimedOut:     true,
+			Selected:     true,
+		}},
+		DecisionShapeFeatures: []decisionShapeFeatureLogRecord{{Seq: 1, Name: "has_tools", BoolValue: true}},
+		DecisionCandidates: []decisionCandidateLogRecord{{
+			CandidateIndex:   0,
+			GroupTargetIndex: 0,
+			Provider:         "mock",
+			Model:            "mock-model",
+			Dialect:          "openai",
+			ContextTokens:    8192,
+			ToolSupport:      true,
+			StructuredOutput: true,
+			HonorsMaxTokens:  true,
+			Eligible:         true,
+			Selected:         true,
+		}},
+		DecisionFilterReasons: []decisionFilterReasonLogRecord{{Seq: 1, CandidateIndex: 1, Stage: "request_shape", Reason: "tool-support"}},
+		RoutingDecisions:      []routingDecisionLogRecord{{Seq: 1, Strategy: "dynamic_score", SelectedCandidateIndex: 0, Provider: "mock", Model: "mock-model", Dialect: "openai", FallbackCount: 1}},
+		RoutingSignals:        []routingSignalLogRecord{{Seq: 1, Strategy: "dynamic_score", SignalName: "observed_performance", Source: "dynamic_score", BoolValue: true}},
+		DynamicScoreTerms:     []dynamicScoreTermLogRecord{{Seq: 1, CandidateIndex: 0, Rank: 1, Provider: "mock", Model: "mock-model", Dialect: "openai", TermName: "default", ScoreName: "latency_score", Weight: 0.5, Value: 0.8, Contribution: 0.4, FinalScore: 0.7, ObservationCount: 3, Selected: true}},
+		PolicyExecutions:      []policyExecutionLogRecord{{Seq: 1, Strategy: "script", PolicyKind: "typescript", Outcome: "selected", DurationMS: 12, EligibleTargetCount: 1, SelectedCandidateIndex: 0}},
+		CacheReasons:          []cacheReasonLogRecord{{Seq: 1, Status: "bypass", Reason: "cache-tool-request", CandidateIndex: 0, Provider: "mock", Model: "mock-model", Dialect: "openai"}},
 	})
 
 	unauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
@@ -847,7 +881,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if len(requests) != 1 {
 		t.Fatalf("summary request rows len=%d, want max_rows cap 1: %#v", len(requests), body)
 	}
-	requestID := requests[0].(map[string]any)["requestId"].(string)
+	requestID := "admin-report-synthetic-expensive"
 	readerSummary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
 	readerSummary.SetBasicAuth("reader", "yell-yell-yum")
 	readerSummaryRR := httptest.NewRecorder()
@@ -877,6 +911,17 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	attempts := detailBody["attempts"].([]any)
 	if len(attempts) == 0 || attempts[0].(map[string]any)["attemptIndex"] == nil {
 		t.Fatalf("detail missing safe attempt DTO fields: %#v", detailBody)
+	}
+	decisionTelemetry := detailBody["decisionTelemetry"].(map[string]any)
+	for _, key := range []string{"shapeFeatures", "candidates", "filterReasons", "routingDecisions", "routingSignals", "dynamicScoreTerms", "policyExecutions", "cacheReasons"} {
+		rows, ok := decisionTelemetry[key].([]any)
+		if !ok || len(rows) == 0 {
+			t.Fatalf("detail decision telemetry missing %s: %#v", key, decisionTelemetry)
+		}
+	}
+	candidate := decisionTelemetry["candidates"].([]any)[0].(map[string]any)
+	if candidate["contextTokens"].(float64) != 8192 || candidate["toolSupport"] != true || candidate["structuredOutput"] != true {
+		t.Fatalf("detail candidate metadata missing phase-2 fields: %#v", candidate)
 	}
 	for _, forbidden := range []string{"TokenSHA256", "token_sha256", "provider-key", testToken, "messages"} {
 		if strings.Contains(detailRR.Body.String(), forbidden) {

@@ -149,6 +149,7 @@ func loadScriptStrategy(baseDir, scriptPath string, httpConfig ScriptHTTPConfig)
 }
 
 func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, targets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID string) (decision, error) {
+	start := time.Now()
 	vm := goja.New()
 	timer := time.AfterFunc(s.timeout(), func() {
 		vm.Interrupt("script routing timed out")
@@ -199,12 +200,25 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroup
 	if out.ClassLabel != "" {
 		classLabel = &out.ClassLabel
 	}
+	durationMS := time.Since(start).Milliseconds()
 	return decision{
-		Target:     targets[primary],
-		Fallbacks:  fallbacks,
-		ClassLabel: classLabel,
-		Strategy:   "script",
-		GroupName:  group,
+		Target:      targets[primary],
+		Fallbacks:   fallbacks,
+		ClassLabel:  classLabel,
+		Strategy:    "script",
+		GroupName:   group,
+		TargetIndex: primary,
+		PolicyExecutions: []policyExecutionLogRecord{{
+			Seq:                    1,
+			Strategy:               "script",
+			PolicyKind:             "typescript",
+			Outcome:                "selected",
+			DurationMS:             durationMS,
+			EligibleTargetCount:    len(targets),
+			SelectedCandidateIndex: primary,
+			FallbackCount:          len(fallbacks),
+			ClassLabel:             classLabel,
+		}},
 	}, nil
 }
 

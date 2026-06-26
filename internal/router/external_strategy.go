@@ -76,18 +76,46 @@ func (e routingPolicyError) Unwrap() error {
 }
 
 func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
+	start := time.Now()
 	dec, err := s.pick(group, req, contract, eligibleTargets, allTargets, providers, caller, tokenID, callerDialect)
 	if err == nil {
+		dec.PolicyExecutions = append(dec.PolicyExecutions, policyExecutionLogRecord{
+			Seq:                    len(dec.PolicyExecutions) + 1,
+			Strategy:               "external",
+			PolicyKind:             "external",
+			Outcome:                "selected",
+			DurationMS:             time.Since(start).Milliseconds(),
+			EligibleTargetCount:    len(eligibleTargets),
+			AllTargetCount:         len(allTargets),
+			SelectedCandidateIndex: dec.TargetIndex,
+			FallbackCount:          len(dec.Fallbacks),
+			ClassLabel:             dec.ClassLabel,
+		})
 		return dec, nil
 	}
 	if strings.EqualFold(strings.TrimSpace(s.cfg.OnError), "fallback") {
 		label := "external-policy:fallback"
 		return decision{
-			Target:     eligibleTargets[0],
-			Fallbacks:  eligibleTargets[1:],
-			ClassLabel: &label,
-			Strategy:   "external",
-			GroupName:  group,
+			Target:      eligibleTargets[0],
+			Fallbacks:   eligibleTargets[1:],
+			ClassLabel:  &label,
+			Strategy:    "external",
+			GroupName:   group,
+			TargetIndex: 0,
+			PolicyExecutions: []policyExecutionLogRecord{{
+				Seq:                    1,
+				Strategy:               "external",
+				PolicyKind:             "external",
+				Outcome:                "fallback",
+				DurationMS:             time.Since(start).Milliseconds(),
+				EligibleTargetCount:    len(eligibleTargets),
+				AllTargetCount:         len(allTargets),
+				SelectedCandidateIndex: 0,
+				FallbackCount:          len(eligibleTargets) - 1,
+				ClassLabel:             &label,
+				ErrorClass:             "external-policy-error",
+				ErrorMessage:           sanitizePersistedDiagnosticText(err.Error()),
+			}},
 		}, nil
 	}
 	return decision{}, routingPolicyError{Group: group, Message: err.Error(), Err: err}
@@ -138,11 +166,12 @@ func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *Mod
 		classLabel = &out.ClassLabel
 	}
 	return decision{
-		Target:     eligibleTargets[primary],
-		Fallbacks:  fallbacks,
-		ClassLabel: classLabel,
-		Strategy:   "external",
-		GroupName:  group,
+		Target:      eligibleTargets[primary],
+		Fallbacks:   fallbacks,
+		ClassLabel:  classLabel,
+		Strategy:    "external",
+		GroupName:   group,
+		TargetIndex: primary,
 	}, nil
 }
 

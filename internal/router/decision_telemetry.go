@@ -73,6 +73,15 @@ func (s *Service) recordEligibilityTelemetry(rc *requestContext, groupName strin
 			Dialect:          outDialect,
 			Weight:           target.Weight,
 			ToolOnly:         target.ToolOnly,
+			ContextTokens:    target.ContextTokens,
+			InputImage:       targetSupportsInputModalities(target, []string{"image"}),
+			OutputImage:      stringSliceContains(defaultModalities(target.OutputModalities), "image"),
+			ToolSupport:      targetSupportsTools(target, outDialect),
+			ForcedToolChoice: targetSupportsCapability(target, outDialect, "forced_tool_choice", "tool_choice"),
+			StructuredOutput: targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema"),
+			HonorsMaxTokens:  target.HonorsMaxTokens == nil || *target.HonorsMaxTokens,
+			ValidationStatus: decisionCandidateValidationStatus(target.Validation),
+			ValidationAge:    validationAgeBucket(target.Validation, time.Now().UTC()),
 			Eligible:         len(reasons) == 0,
 		})
 		for _, reason := range reasons {
@@ -158,6 +167,12 @@ func (s *Service) recordRoutingDecisionTelemetry(rc *requestContext, dec decisio
 		FallbackCount:          len(dec.Fallbacks),
 		ClassLabel:             dec.ClassLabel,
 	})
+	rc.rec.RoutingSignals = append(rc.rec.RoutingSignals, dec.RoutingSignals...)
+	rc.rec.DynamicScoreTerms = append(rc.rec.DynamicScoreTerms, dec.DynamicScoreTerms...)
+	for i := range dec.PolicyExecutions {
+		dec.PolicyExecutions[i].SelectedCandidateIndex = selected
+	}
+	rc.rec.PolicyExecutions = append(rc.rec.PolicyExecutions, dec.PolicyExecutions...)
 }
 
 func (s *Service) recordCacheReasonTelemetry(rc *requestContext, status, reason string, target Target) {
@@ -186,6 +201,13 @@ func candidateIndexForTarget(candidates []decisionCandidateLogRecord, target Tar
 		}
 	}
 	return -1
+}
+
+func decisionCandidateValidationStatus(validation *TargetValidation) string {
+	if validation == nil {
+		return "missing"
+	}
+	return defaultString(strings.ToLower(strings.TrimSpace(validation.Status)), "missing")
 }
 
 func cacheBypassReason(req *IRRequest) string {

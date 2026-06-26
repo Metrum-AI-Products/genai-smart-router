@@ -44,7 +44,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-`server.retention` is disabled by default and supports only `dry_run: true` in this foundation. A status run initializes an active config-derived retention policy version/rules and writes `retention_jobs` plus `retention_job_table_results`. It counts candidates for `usage_diagnostics`, `security_access_events`, and `content_capture`, subtracts active `legal_holds` by data class and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. This slice does not execute deletes, archive rows, schedule retention jobs, or provide full legal-hold admin APIs.
+`server.retention` is disabled by default and supports only `dry_run: true` in this foundation. A status run initializes an active config-derived retention policy version/rules and writes `retention_jobs` plus `retention_job_table_results`. It counts candidates for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, and `content_capture`, subtracts active `legal_holds` by data class and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. Decision telemetry child tables are counted through their parent `request_usage.ts`. This slice does not execute deletes, archive rows, schedule retention jobs, or provide full legal-hold admin APIs.
 
 ## Browser Admin Reports
 
@@ -94,7 +94,9 @@ server:
     record_cache_reasons: true
 ```
 
-When enabled, usage reports include a Decision Telemetry Summary with row counts and top strategy, filter-reason, and cache-reason buckets. The rows are normalized and joinable by `request_id`; they do not store prompts, image payloads, tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, or full config.
+When enabled, usage reports include a Decision Telemetry Summary with row counts for request shape, candidates, filter reasons, routing decisions, routing signals, dynamic-score terms, policy executions, and cache reasons, plus top strategy, filter-reason, and cache-reason buckets. Admin request drilldown includes the same child row sets under `decisionTelemetry`. The rows are normalized and joinable by `request_id`; they do not store prompts, image payloads, tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, or full config.
+
+Bounded phase-2 follow-ups remain: fail-closed script/external policy errors that produce no routing decision are not yet stored as policy execution rows, fallback score updates after upstream failures are not yet represented, and non-`dynamic_score` strategies do not emit score-term rows.
 
 Smoke after enabling:
 
