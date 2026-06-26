@@ -25,7 +25,7 @@ Caller tokens carry allow lists and quota policy, while identity is validated th
 
 Content-capture maintenance is separate from metrics access. Delete-by-request and retention purge endpoints require Casbin authorization for `content:capture` `delete` or `purge`; existing `content_admin: true` callers receive compatible startup grants. Metrics-admin tokens do not imply content-admin privileges.
 
-Commercial retention is a separate dry-run foundation under `server.retention`. It records policy versions, rules, jobs, per-table status counts, legal holds, and legal-hold audit rows as scalar relational data. Legal holds are matched by data class and timestamp range during dry-run counts. This slice does not delete raw `request_usage`, archive data, run a scheduler, or expose full legal-hold admin APIs.
+Commercial retention is a separate governed maintenance path under `server.retention`. It records policy versions, rules, jobs, per-table status counts, legal holds, and legal-hold audit rows as scalar relational data. Legal holds are matched by data class, optional request ID, and timestamp range during dry-run counts and batch deletion. The first delete slice is limited to usage diagnostics and rollup-gated usage detail; it does not archive data, run a scheduler, delete unsupported classes through the generic runner, or expose full legal-hold admin APIs.
 
 ## Diagnostics And Redaction
 

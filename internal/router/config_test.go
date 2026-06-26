@@ -361,18 +361,6 @@ func TestRetentionConfigValidation(t *testing.T) {
 			want: "default_batch_size must be positive",
 		},
 		{
-			name: "dry run false unsupported",
-			edit: func(cfg *Config) {
-				cfg.Server.Retention = RetentionConfig{
-					Enabled: true,
-					DryRun:  &falseValue,
-					Classes: []RetentionClassConfig{{DataClass: retentionDataClassContentCapture, RetentionDays: 30}},
-				}
-				defaultRetentionConfig(&cfg.Server.Retention)
-			},
-			want: "dry_run=false is not supported",
-		},
-		{
 			name: "usage db disabled",
 			edit: func(cfg *Config) {
 				cfg.Server.UsageDB.Enable = &disabledUsageDB
@@ -409,6 +397,21 @@ func TestRetentionConfigValidation(t *testing.T) {
 				t.Fatalf("Validate() error=%v, want %q", err, tt.want)
 			}
 		})
+	}
+	cfg := minimalConfig(t)
+	cfg.setDefaults()
+	cfg.Server.Retention = RetentionConfig{
+		Enabled: true,
+		DryRun:  &falseValue,
+		Classes: []RetentionClassConfig{{
+			DataClass:     retentionDataClassUsageDiagnostics,
+			RetentionDays: 30,
+			BatchSize:     25,
+		}},
+		DefaultBatchSize: 25,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() dry_run=false error=%v", err)
 	}
 }
 

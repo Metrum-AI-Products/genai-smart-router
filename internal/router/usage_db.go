@@ -88,6 +88,43 @@ type RetentionStatusOptions struct {
 	RequestedBy string
 }
 
+type LegalHoldCreateOptions struct {
+	Driver     string
+	DBPath     string
+	DSN        string
+	HoldID     string
+	DataClass  string
+	RequestID  string
+	Start      time.Time
+	End        time.Time
+	ReasonCode string
+	Subject    string
+	Actor      string
+	Notes      string
+	Now        time.Time
+}
+
+type LegalHoldReleaseOptions struct {
+	Driver        string
+	DBPath        string
+	DSN           string
+	HoldID        string
+	Actor         string
+	ReleaseReason string
+	Now           time.Time
+}
+
+type LegalHoldResult struct {
+	HoldID     string
+	DataClass  string
+	RequestID  string
+	Active     bool
+	Start      time.Time
+	End        time.Time
+	CreatedAt  time.Time
+	ReleasedAt time.Time
+}
+
 type RetentionStatusResult struct {
 	JobID           uint
 	PolicyVersionID uint
@@ -107,6 +144,7 @@ type RetentionTableStatus struct {
 	HeldRows      int64
 	EligibleRows  int64
 	BlockedRows   int64
+	DeletedRows   int64
 	Status        string
 	Message       string
 }
@@ -736,6 +774,7 @@ type retentionJobTableResultRecord struct {
 	HeldRows      int64              `gorm:"column:held_rows;not null;default:0"`
 	EligibleRows  int64              `gorm:"column:eligible_rows;not null;default:0"`
 	BlockedRows   int64              `gorm:"column:blocked_rows;not null;default:0"`
+	DeletedRows   int64              `gorm:"column:deleted_rows;not null;default:0"`
 	Status        string             `gorm:"column:status;type:text;not null;index:idx_retention_result_status"`
 	Message       string             `gorm:"column:message;type:text;not null;default:''"`
 	StartedAt     string             `gorm:"column:started_at;type:text;not null"`
@@ -751,6 +790,7 @@ type legalHoldRecord struct {
 	ID            uint   `gorm:"column:id;primaryKey;autoIncrement"`
 	HoldID        string `gorm:"column:hold_id;type:text;not null;uniqueIndex:idx_legal_hold_id"`
 	DataClass     string `gorm:"column:data_class;type:text;not null;index:idx_legal_hold_class_range,priority:1"`
+	RequestID     string `gorm:"column:request_id;type:text;not null;default:'';index:idx_legal_hold_request"`
 	Active        bool   `gorm:"column:active;not null;index:idx_legal_hold_active"`
 	StartTS       string `gorm:"column:start_ts;type:text;not null;default:'';index:idx_legal_hold_class_range,priority:2"`
 	EndTS         string `gorm:"column:end_ts;type:text;not null;default:'';index:idx_legal_hold_class_range,priority:3"`
@@ -773,6 +813,7 @@ type legalHoldAuditEventRecord struct {
 	HoldID         string `gorm:"column:hold_id;type:text;not null;index:idx_legal_hold_audit_hold"`
 	EventType      string `gorm:"column:event_type;type:text;not null;index:idx_legal_hold_audit_event"`
 	DataClass      string `gorm:"column:data_class;type:text;not null"`
+	RequestID      string `gorm:"column:request_id;type:text;not null;default:''"`
 	StartTS        string `gorm:"column:start_ts;type:text;not null;default:''"`
 	EndTS          string `gorm:"column:end_ts;type:text;not null;default:''"`
 	PreviousActive bool   `gorm:"column:previous_active;not null"`
@@ -1984,6 +2025,15 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 }
 
 func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
+	opts.Config.DryRun = boolPtr(true)
+	return generateRetentionJob(opts)
+}
+
+func GenerateRetentionRun(opts RetentionStatusOptions) (RetentionStatusResult, error) {
+	return generateRetentionJob(opts)
+}
+
+func generateRetentionJob(opts RetentionStatusOptions) (RetentionStatusResult, error) {
 	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
 	if driver == "sqlite" && opts.DBPath == "" {
 		return RetentionStatusResult{}, errors.New("usage db path is required")
@@ -1999,9 +2049,6 @@ func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult
 	if !cfg.Enabled {
 		return RetentionStatusResult{}, errors.New("server retention is disabled")
 	}
-	if cfg.DryRun == nil || !*cfg.DryRun {
-		return RetentionStatusResult{}, errors.New("retention status only supports dry_run=true")
-	}
 	if opts.Now.IsZero() {
 		opts.Now = time.Now().UTC()
 	}
@@ -2011,20 +2058,34 @@ func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult
 		return RetentionStatusResult{}, err
 	}
 	defer store.Close()
-	return store.runRetentionStatus(opts)
+	opts.Config = cfg
+	return store.runRetentionJob(opts)
 }
 
 func (s *usageStore) runRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
+	opts.Config.DryRun = boolPtr(true)
+	return s.runRetentionJob(opts)
+}
+
+func (s *usageStore) runRetentionJob(opts RetentionStatusOptions) (RetentionStatusResult, error) {
 	if s == nil || s.db == nil {
 		return RetentionStatusResult{}, errors.New("usage store is not open")
 	}
 	cfg := opts.Config
 	defaultRetentionConfig(&cfg)
+	if err := validateRetentionConfig(cfg); err != nil {
+		return RetentionStatusResult{}, err
+	}
 	now := opts.Now.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	startedAt := formatUsageTime(now)
+	dryRun := cfg.DryRun == nil || *cfg.DryRun
+	mode := "run"
+	if dryRun {
+		mode = "status"
+	}
 	result := RetentionStatusResult{Status: "completed", StartedAt: now, CompletedAt: now}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		policy, err := ensureActiveRetentionPolicy(tx, cfg, now)
@@ -2033,9 +2094,9 @@ func (s *usageStore) runRetentionStatus(opts RetentionStatusOptions) (RetentionS
 		}
 		job := retentionJobRecord{
 			PolicyVersionID: policy.ID,
-			Mode:            "status",
+			Mode:            mode,
 			Status:          "running",
-			DryRun:          true,
+			DryRun:          dryRun,
 			StartedAt:       startedAt,
 			RequestedBy:     opts.RequestedBy,
 		}
@@ -2048,7 +2109,7 @@ func (s *usageStore) runRetentionStatus(opts RetentionStatusOptions) (RetentionS
 			}
 			cutoff := now.Add(-time.Duration(class.RetentionDays) * 24 * time.Hour)
 			for _, table := range retentionTablesForClass(class.DataClass) {
-				tableResult, err := dryRunRetentionTable(tx, class, table, cutoff)
+				tableResult, err := runRetentionTable(tx, class, table, cutoff, dryRun)
 				if err != nil {
 					job.Status = "failed"
 					job.ErrorMessage = err.Error()
@@ -2067,6 +2128,7 @@ func (s *usageStore) runRetentionStatus(opts RetentionStatusOptions) (RetentionS
 					HeldRows:      tableResult.HeldRows,
 					EligibleRows:  tableResult.EligibleRows,
 					BlockedRows:   tableResult.BlockedRows,
+					DeletedRows:   tableResult.DeletedRows,
 					Status:        tableResult.Status,
 					Message:       tableResult.Message,
 					StartedAt:     startedAt,
@@ -2212,7 +2274,7 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 	}
 }
 
-func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retentionTableSpec, cutoff time.Time) (RetentionTableStatus, error) {
+func runRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retentionTableSpec, cutoff time.Time, dryRun bool) (RetentionTableStatus, error) {
 	cutoffText := formatUsageTime(cutoff)
 	candidateRows, err := countRowsBefore(tx, table, cutoffText)
 	if err != nil {
@@ -2229,6 +2291,7 @@ func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retenti
 	status := "dry_run"
 	message := "dry run only; no rows deleted"
 	blockedRows := int64(0)
+	deletedRows := int64(0)
 	if table.DataClass == retentionDataClassUsageDetail && class.RequireFinalizedRollup {
 		ready, err := usageDetailFinalizedRollupReady(tx, cutoffText)
 		if err != nil {
@@ -2236,9 +2299,32 @@ func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retenti
 		}
 		if !ready {
 			status = "blocked_rollup_required"
-			message = "future usage_detail delete requires a finalized daily rollup covering the candidate window"
+			message = "usage_detail delete requires a finalized daily rollup covering the candidate window"
 			blockedRows = eligibleRows
 			eligibleRows = 0
+		}
+	}
+	if !dryRun && status == "dry_run" {
+		if !retentionPurgeSupported(table.DataClass) {
+			status = "blocked_not_implemented"
+			message = "delete execution is not implemented for this data class"
+			blockedRows = eligibleRows
+			eligibleRows = 0
+		} else {
+			deletedRows, err = deleteRetentionBatch(tx, table, cutoffText, class.BatchSize)
+			if err != nil {
+				return RetentionTableStatus{}, err
+			}
+			status = "purged"
+			message = "deleted one eligible retention batch"
+			if deletedRows == 0 {
+				status = "no_eligible_rows"
+				message = "no eligible rows deleted"
+			}
+			eligibleRows -= deletedRows
+			if eligibleRows < 0 {
+				eligibleRows = 0
+			}
 		}
 	}
 	return RetentionTableStatus{
@@ -2251,9 +2337,19 @@ func dryRunRetentionTable(tx *gorm.DB, class RetentionClassConfig, table retenti
 		HeldRows:      heldRows,
 		EligibleRows:  eligibleRows,
 		BlockedRows:   blockedRows,
+		DeletedRows:   deletedRows,
 		Status:        status,
 		Message:       message,
 	}, nil
+}
+
+func retentionPurgeSupported(dataClass string) bool {
+	switch normalizeRetentionDataClass(dataClass) {
+	case retentionDataClassUsageDiagnostics, retentionDataClassUsageDetail:
+		return true
+	default:
+		return false
+	}
 }
 
 func countRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (int64, error) {
@@ -2276,10 +2372,34 @@ func countHeldRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (
 				SELECT 1 FROM legal_holds h
 				WHERE h.active = ?
 				AND h.data_class = ?
+				AND (h.request_id = '' OR h.request_id = r.request_id)
 				AND (h.start_ts = '' OR u.ts >= h.start_ts)
 				AND (h.end_ts = '' OR u.ts < h.end_ts)
 			)`, table.TableName)
 		err := tx.Raw(query, cutoff, true, table.DataClass).Scan(&count).Error
+		return count, err
+	}
+	if table.TableName == "request_usage" {
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM %s r
+			WHERE r.%s < ?
+			AND (
+				EXISTS (
+					SELECT 1 FROM legal_holds h
+					WHERE h.active = ?
+					AND h.data_class = ?
+					AND (h.request_id = '' OR h.request_id = r.request_id)
+					AND (h.start_ts = '' OR r.%s >= h.start_ts)
+					AND (h.end_ts = '' OR r.%s < h.end_ts)
+				)
+				OR EXISTS (
+					SELECT 1 FROM legal_holds h
+					WHERE h.active = ?
+					AND h.request_id = r.request_id
+					AND (h.start_ts = '' OR r.%s >= h.start_ts)
+					AND (h.end_ts = '' OR r.%s < h.end_ts)
+				)
+			)`, table.TableName, table.TSColumn, table.TSColumn, table.TSColumn, table.TSColumn, table.TSColumn)
+		err := tx.Raw(query, cutoff, true, table.DataClass, true).Scan(&count).Error
 		return count, err
 	}
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s r
@@ -2288,11 +2408,103 @@ func countHeldRowsBefore(tx *gorm.DB, table retentionTableSpec, cutoff string) (
 			SELECT 1 FROM legal_holds h
 			WHERE h.active = ?
 			AND h.data_class = ?
+			AND (h.request_id = '' OR h.request_id = r.request_id)
 			AND (h.start_ts = '' OR r.%s >= h.start_ts)
 			AND (h.end_ts = '' OR r.%s < h.end_ts)
 		)`, table.TableName, table.TSColumn, table.TSColumn, table.TSColumn)
 	err := tx.Raw(query, cutoff, true, table.DataClass).Scan(&count).Error
 	return count, err
+}
+
+type retentionDeleteKey struct {
+	RequestID    string
+	Seq          int
+	AttemptIndex int
+}
+
+func deleteRetentionBatch(tx *gorm.DB, table retentionTableSpec, cutoff string, batchSize int) (int64, error) {
+	keys, err := selectRetentionDeleteKeys(tx, table, cutoff, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	var deleted int64
+	for _, key := range keys {
+		var res *gorm.DB
+		switch table.TableName {
+		case "request_attempts":
+			res = tx.Where("request_id = ? AND attempt_index = ?", key.RequestID, key.AttemptIndex).Delete(&requestAttemptRecord{})
+		case "request_trace_events":
+			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestTraceEventRecord{})
+		case "request_errors":
+			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestErrorRecord{})
+		case "request_usage":
+			res = tx.Where("request_id = ?", key.RequestID).Delete(&usageRecord{})
+		default:
+			return deleted, fmt.Errorf("retention purge is not implemented for table %s", table.TableName)
+		}
+		if res.Error != nil {
+			return deleted, res.Error
+		}
+		deleted += res.RowsAffected
+	}
+	return deleted, nil
+}
+
+func selectRetentionDeleteKeys(tx *gorm.DB, table retentionTableSpec, cutoff string, batchSize int) ([]retentionDeleteKey, error) {
+	if batchSize <= 0 {
+		return nil, errors.New("retention batch size must be positive")
+	}
+	baseHoldClause := `AND NOT EXISTS (
+		SELECT 1 FROM legal_holds h
+		WHERE h.active = ?
+		AND h.data_class = ?
+		AND (h.request_id = '' OR h.request_id = r.request_id)
+		AND (h.start_ts = '' OR r.` + table.TSColumn + ` >= h.start_ts)
+		AND (h.end_ts = '' OR r.` + table.TSColumn + ` < h.end_ts)
+	)`
+	requestScopedHoldClause := `AND NOT EXISTS (
+		SELECT 1 FROM legal_holds h
+		WHERE h.active = ?
+		AND h.request_id = r.request_id
+		AND (h.start_ts = '' OR r.` + table.TSColumn + ` >= h.start_ts)
+		AND (h.end_ts = '' OR r.` + table.TSColumn + ` < h.end_ts)
+	)`
+	var query string
+	args := []any{cutoff, true, table.DataClass, batchSize}
+	switch table.TableName {
+	case "request_attempts":
+		query = `SELECT r.request_id AS request_id, r.attempt_index AS attempt_index
+			FROM request_attempts r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.attempt_index ASC
+			LIMIT ?`
+	case "request_trace_events":
+		query = `SELECT r.request_id AS request_id, r.seq AS seq
+			FROM request_trace_events r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.seq ASC
+			LIMIT ?`
+	case "request_errors":
+		query = `SELECT r.request_id AS request_id
+			FROM request_errors r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC
+			LIMIT ?`
+	case "request_usage":
+		query = `SELECT r.request_id AS request_id
+			FROM request_usage r
+			WHERE r.ts < ? ` + baseHoldClause + requestScopedHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC
+			LIMIT ?`
+		args = []any{cutoff, true, table.DataClass, true, batchSize}
+	default:
+		return nil, fmt.Errorf("retention purge is not implemented for table %s", table.TableName)
+	}
+	var keys []retentionDeleteKey
+	if err := tx.Raw(query, args...).Scan(&keys).Error; err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 func usageDetailFinalizedRollupReady(tx *gorm.DB, cutoff string) (bool, error) {
@@ -2326,6 +2538,190 @@ func usageDetailFinalizedRollupReady(tx *gorm.DB, cutoff string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func CreateLegalHold(opts LegalHoldCreateOptions) (LegalHoldResult, error) {
+	store, err := openLegalHoldUsageStore(opts.Driver, opts.DBPath, opts.DSN)
+	if err != nil {
+		return LegalHoldResult{}, err
+	}
+	defer store.Close()
+	return store.CreateLegalHold(opts)
+}
+
+func ReleaseLegalHold(opts LegalHoldReleaseOptions) (LegalHoldResult, error) {
+	store, err := openLegalHoldUsageStore(opts.Driver, opts.DBPath, opts.DSN)
+	if err != nil {
+		return LegalHoldResult{}, err
+	}
+	defer store.Close()
+	return store.ReleaseLegalHold(opts)
+}
+
+func openLegalHoldUsageStore(driver, dbPath, dsn string) (*usageStore, error) {
+	driver = strings.ToLower(defaultString(driver, "sqlite"))
+	if driver == "sqlite" && dbPath == "" {
+		return nil, errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && dsn == "" {
+		return nil, errors.New("usage db dsn is required")
+	}
+	return OpenUsageStore(UsageDBConfig{Driver: driver, Path: dbPath, DSN: dsn})
+}
+
+func (s *usageStore) CreateLegalHold(opts LegalHoldCreateOptions) (LegalHoldResult, error) {
+	if s == nil || s.db == nil {
+		return LegalHoldResult{}, errors.New("usage store is not open")
+	}
+	dataClass := normalizeRetentionDataClass(opts.DataClass)
+	if !knownRetentionDataClass(dataClass) {
+		return LegalHoldResult{}, fmt.Errorf("legal hold has unknown data_class %q", opts.DataClass)
+	}
+	start, end, err := normalizeLegalHoldRange(opts.Start, opts.End)
+	if err != nil {
+		return LegalHoldResult{}, err
+	}
+	now := opts.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	holdID := strings.TrimSpace(opts.HoldID)
+	if holdID == "" {
+		holdID = fmt.Sprintf("hold-%d", now.UnixNano())
+	}
+	record := legalHoldRecord{
+		HoldID:     holdID,
+		DataClass:  dataClass,
+		RequestID:  strings.TrimSpace(opts.RequestID),
+		Active:     true,
+		StartTS:    formatOptionalUsageTime(start),
+		EndTS:      formatOptionalUsageTime(end),
+		ReasonCode: strings.TrimSpace(opts.ReasonCode),
+		Subject:    strings.TrimSpace(opts.Subject),
+		CreatedBy:  strings.TrimSpace(opts.Actor),
+		CreatedAt:  formatUsageTime(now),
+		Notes:      strings.TrimSpace(opts.Notes),
+	}
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+		return createLegalHoldAuditEvent(tx, legalHoldAuditEventRecord{
+			HoldID:         record.HoldID,
+			EventType:      "create",
+			DataClass:      record.DataClass,
+			RequestID:      record.RequestID,
+			StartTS:        record.StartTS,
+			EndTS:          record.EndTS,
+			PreviousActive: false,
+			NewActive:      true,
+			Actor:          record.CreatedBy,
+			ReasonCode:     record.ReasonCode,
+			Message:        "legal hold created",
+			TS:             formatUsageTime(now),
+		})
+	})
+	if err != nil {
+		return LegalHoldResult{}, err
+	}
+	return legalHoldResultFromRecord(record), nil
+}
+
+func (s *usageStore) ReleaseLegalHold(opts LegalHoldReleaseOptions) (LegalHoldResult, error) {
+	if s == nil || s.db == nil {
+		return LegalHoldResult{}, errors.New("usage store is not open")
+	}
+	holdID := strings.TrimSpace(opts.HoldID)
+	if holdID == "" {
+		return LegalHoldResult{}, errors.New("legal hold release requires hold_id")
+	}
+	now := opts.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	var record legalHoldRecord
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("hold_id = ?", holdID).First(&record).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("legal hold %q not found", holdID)
+			}
+			return err
+		}
+		previousActive := record.Active
+		record.Active = false
+		record.ReleasedBy = strings.TrimSpace(opts.Actor)
+		record.ReleasedAt = formatUsageTime(now)
+		record.ReleaseReason = strings.TrimSpace(opts.ReleaseReason)
+		if err := tx.Save(&record).Error; err != nil {
+			return err
+		}
+		return createLegalHoldAuditEvent(tx, legalHoldAuditEventRecord{
+			HoldID:         record.HoldID,
+			EventType:      "release",
+			DataClass:      record.DataClass,
+			RequestID:      record.RequestID,
+			StartTS:        record.StartTS,
+			EndTS:          record.EndTS,
+			PreviousActive: previousActive,
+			NewActive:      false,
+			Actor:          record.ReleasedBy,
+			ReasonCode:     record.ReleaseReason,
+			Message:        "legal hold released",
+			TS:             formatUsageTime(now),
+		})
+	})
+	if err != nil {
+		return LegalHoldResult{}, err
+	}
+	return legalHoldResultFromRecord(record), nil
+}
+
+func normalizeLegalHoldRange(start, end time.Time) (time.Time, time.Time, error) {
+	if !start.IsZero() {
+		start = start.UTC()
+	}
+	if !end.IsZero() {
+		end = end.UTC()
+	}
+	if !start.IsZero() && !end.IsZero() && !start.Before(end) {
+		return time.Time{}, time.Time{}, errors.New("legal hold start must be before end")
+	}
+	return start, end, nil
+}
+
+func formatOptionalUsageTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return formatUsageTime(t.UTC())
+}
+
+func createLegalHoldAuditEvent(tx *gorm.DB, event legalHoldAuditEventRecord) error {
+	return tx.Create(&event).Error
+}
+
+func legalHoldResultFromRecord(record legalHoldRecord) LegalHoldResult {
+	return LegalHoldResult{
+		HoldID:     record.HoldID,
+		DataClass:  record.DataClass,
+		RequestID:  record.RequestID,
+		Active:     record.Active,
+		Start:      parseOptionalUsageTime(record.StartTS),
+		End:        parseOptionalUsageTime(record.EndTS),
+		CreatedAt:  parseOptionalUsageTime(record.CreatedAt),
+		ReleasedAt: parseOptionalUsageTime(record.ReleasedAt),
+	}
+}
+
+func parseOptionalUsageTime(v string) time.Time {
+	if strings.TrimSpace(v) == "" {
+		return time.Time{}
+	}
+	t, err := parseUsageTime(v)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func GenerateUsageRollup(opts UsageRollupOptions) (UsageRollupResult, error) {

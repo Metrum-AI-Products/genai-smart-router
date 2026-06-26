@@ -811,7 +811,7 @@ Diagnostics are written alongside usage when `server.diagnostics.enabled` is tru
 
 Governed content capture is a separate opt-in feature under `server.content_capture`. It is disabled by default and writes redacted request, response, and upstream-error content to `request_content_captures` plus allowlisted headers in `request_content_headers`, both joinable to `request_usage` by `request_id`. Admin delete and retention purge write `request_content_audit_events` and require a caller subject authorized for `content:capture` `delete|purge`; existing caller entries with `content_admin: true` receive equivalent Casbin grants at startup. Metrics-admin tokens do not grant content maintenance access. The first slice always requires `redact_before_storage: true`, rejects forbidden header names such as authorization/API-key/token headers, and rejects `encryption.enabled: true` until KMS-backed encryption is implemented.
 
-Commercial retention policy is configured under `server.retention`. The current foundation is dry-run only: it stores active policy versions and rules, legal-hold rows, retention jobs, and per-table status counts for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and future `usage_detail`. Legal holds are matched by `data_class` plus timestamp range and reduce eligible dry-run counts. Raw `request_usage` purge, archive/export, scheduler, delete execution, and admin UI/API workflows remain future slices; `usage_detail` policy rows require a finalized daily usage rollup before any future delete can be considered.
+Commercial retention policy is configured under `server.retention`. Defaults are conservative with `dry_run: true`; status jobs store active policy versions and rules, legal-hold rows, retention jobs, and per-table counts for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and `usage_detail`. Legal holds match by `data_class`, optional `request_id`, and timestamp range. When a reviewed config sets `dry_run: false`, `router-usage-report --retention-run` deletes at most one configured batch per supported table for `usage_diagnostics` and `usage_detail`; other data classes are counted and recorded as blocked. `usage_detail` deletion is blocked unless finalized daily usage rollups continuously cover the candidate window, preserving immutable #122 rollup history. Archive/export, scheduler, admin UI/API workflows, and broader data-class purge execution remain future slices.
 
 Upstream timing is configurable with `server.upstream.timeout_ms`, `server.upstream.default_attempt_timeout_ms`, model-group `attempt_timeout_ms`, and per-target `timeout_ms`. A target timeout overrides a group timeout, and a group timeout overrides the global default attempt timeout. `0` disables the per-attempt cap while preserving the global HTTP client timeout. If all eligible attempts fail, exhausted upstream timeouts return `504 upstream-timeout`, provider rate limits return `503 upstream-rate-limited`, provider balance/credit/quota/billing exhaustion returns `503 upstream-quota-exhausted`, and other exhausted upstream failures return `502 upstream-failed`. Fallbacks are still attempted first; if a later target succeeds, the caller receives the successful model response while usage diagnostics retain the failed attempt class.
 
@@ -861,7 +861,8 @@ For routine browser inspection, deployments may enable `/admin/reports/`. The br
                 Optional baseline output price in USD per million tokens.
 --retention-status
                 Record a dry-run retention status job from --config.
---config PATH   Router config path for --retention-status.
+--retention-run Run retention from --config; deletes one batch per supported table only when config dry_run=false.
+--config PATH   Router config path for --retention-status or --retention-run.
 ```
 
 Generate a markdown report for the last 24 hours:
@@ -917,6 +918,12 @@ Record a dry-run retention status job from reviewed router config:
 
 ```bash
 ./router-usage-report --retention-status --config config.example.yaml
+```
+
+Run one reviewed retention batch after finalized rollups and legal holds have been checked:
+
+```bash
+./router-usage-report --retention-run --config config.production.yaml
 ```
 
 Reports include totals, external provider/model usage, internal router API key usage by `token_id`/owner user/project/environment, caller IP usage, hourly usage by caller IP, client usage, status codes, cache hit/miss/bypass, attempts, fallbacks, token totals, latency, downstream user performance, upstream provider/model/dialect performance, per-request upstream/downstream output-token/sec, per-request upstream/downstream total-token/sec, contract pass/fail buckets, optional contract workload labels, target validation buckets, and cache occupancy snapshots. Raw router tokens and provider API keys are never written to the report.

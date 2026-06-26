@@ -39,7 +39,8 @@ func main() {
 	baselineInputPrice := flag.Float64("baseline-input-price-per-million-usd", 0, "optional baseline input price in USD per million tokens")
 	baselineOutputPrice := flag.Float64("baseline-output-price-per-million-usd", 0, "optional baseline output price in USD per million tokens")
 	retentionStatus := flag.Bool("retention-status", false, "record a dry-run retention status job from --config")
-	configPath := flag.String("config", "", "router config path for --retention-status")
+	retentionRun := flag.Bool("retention-run", false, "run retention from --config; deletes one batch per supported table only when config dry_run=false")
+	configPath := flag.String("config", "", "router config path for --retention-status or --retention-run")
 	flag.Parse()
 
 	to := time.Now().UTC()
@@ -65,31 +66,40 @@ func main() {
 		from = to.Add(-d)
 	}
 
-	if *retentionStatus {
+	if *retentionStatus && *retentionRun {
+		die("choose only one of --retention-status or --retention-run")
+	}
+	if *retentionStatus || *retentionRun {
 		if *configPath == "" {
-			die("--retention-status requires --config")
+			die("--retention-status or --retention-run requires --config")
 		}
 		cfg, err := router.LoadConfig(*configPath)
 		if err != nil {
 			die("load config: %v", err)
 		}
-		result, err := router.GenerateRetentionStatus(router.RetentionStatusOptions{
+		opts := router.RetentionStatusOptions{
 			Driver:      cfg.Server.UsageDB.Driver,
 			DBPath:      cfg.Server.UsageDB.Path,
 			DSN:         cfg.Server.UsageDB.DSN,
 			Config:      cfg.Server.Retention,
 			Now:         to,
 			RequestedBy: "router-usage-report",
-		})
-		if err != nil {
-			die("retention status: %v", err)
 		}
-		fmt.Printf("retention status %s job_id=%d policy_version_id=%d completed_at=%s\n",
+		var result router.RetentionStatusResult
+		if *retentionStatus {
+			result, err = router.GenerateRetentionStatus(opts)
+		} else {
+			result, err = router.GenerateRetentionRun(opts)
+		}
+		if err != nil {
+			die("retention: %v", err)
+		}
+		fmt.Printf("retention %s job_id=%d policy_version_id=%d completed_at=%s\n",
 			result.Status, result.JobID, result.PolicyVersionID, result.CompletedAt.Format(time.RFC3339))
 		for _, table := range result.TableResults {
-			fmt.Printf("%s %s cutoff=%s candidates=%d held=%d eligible=%d blocked=%d status=%s\n",
+			fmt.Printf("%s %s cutoff=%s candidates=%d held=%d eligible=%d blocked=%d deleted=%d status=%s\n",
 				table.DataClass, table.TableName, table.Cutoff.Format(time.RFC3339), table.CandidateRows, table.HeldRows,
-				table.EligibleRows, table.BlockedRows, table.Status)
+				table.EligibleRows, table.BlockedRows, table.DeletedRows, table.Status)
 		}
 		return
 	}

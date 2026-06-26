@@ -924,6 +924,229 @@ func TestRetentionUsageDetailRequiresFinalizedRollupBeforeFutureDelete(t *testin
 	if got := ready.TableResults[0]; got.Status != "dry_run" || got.CandidateRows != 1 || got.EligibleRows != 1 || got.BlockedRows != 0 {
 		t.Fatalf("unexpected ready usage_detail result: %#v", got)
 	}
+	cfg.Classes[0].Enabled = boolPtr(true)
+	cfg.DryRun = boolPtr(false)
+	purged, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := purged.TableResults[0]; got.Status != "purged" || got.DeletedRows != 1 || got.CandidateRows != 1 || got.BlockedRows != 0 {
+		t.Fatalf("unexpected purged usage_detail result: %#v", got)
+	}
+	var remaining int64
+	if err := store.db.Model(&usageRecord{}).Where("request_id = ?", "req_usage_detail_old").Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("usage_detail row remaining=%d, want 0", remaining)
+	}
+	var finalized usageRollupRunRecord
+	if err := store.db.Where("rollup_type = ? AND status = ?", "daily", "finalized").First(&finalized).Error; err != nil {
+		t.Fatal(err)
+	}
+	if finalized.Status != "finalized" {
+		t.Fatalf("rollup status mutated: %#v", finalized)
+	}
+}
+
+func TestRetentionUsageDetailHonorsChildTelemetryLegalHold(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * 24 * time.Hour)
+	cutoff := now.Add(-7 * 24 * time.Hour)
+	requestID := "req_usage_detail_child_hold"
+	if err := store.db.Create(recordFromRow(usageRow{
+		TS:             old,
+		RequestID:      requestID,
+		CallerID:       "alice",
+		CallerUser:     "alice",
+		TokenID:        "rtr_alice",
+		RequestedModel: "default",
+		ResolvedGroup:  "default",
+		Cache:          "miss",
+		Status:         200,
+		Attempts:       1,
+	})).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&decisionShapeFeatureRecord{
+		RequestID:   requestID,
+		Seq:         1,
+		FeatureName: "tools_present",
+		BoolValue:   false,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.generateUsageRollup(UsageRollupOptions{From: old.Add(-time.Hour), To: cutoff, Finalize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateLegalHold(LegalHoldCreateOptions{
+		HoldID:     "hold-child-telemetry",
+		DataClass:  retentionDataClassDecisionTelemetry,
+		RequestID:  requestID,
+		ReasonCode: "investigation",
+		Subject:    "matter-121",
+		Actor:      "unit-test",
+		Now:        now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := retentionTestConfig(retentionDataClassUsageDetail, 7)
+	cfg.Classes[0].Enabled = boolPtr(true)
+	cfg.DryRun = boolPtr(false)
+	result, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := tableResultFor(t, result, "request_usage")
+	if got.Status != "no_eligible_rows" || got.CandidateRows != 1 || got.HeldRows != 1 || got.EligibleRows != 0 || got.DeletedRows != 0 {
+		t.Fatalf("unexpected child-held usage_detail result: %#v", got)
+	}
+	assertTableCount(t, store, &usageRecord{}, 1)
+	assertTableCount(t, store, &decisionShapeFeatureRecord{}, 1)
+}
+
+func TestRetentionDryRunAndPurgeDiagnosticsBatchHonorsRequestLegalHold(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * 24 * time.Hour)
+	for i, requestID := range []string{"req_diag_delete_1", "req_diag_hold", "req_diag_delete_2"} {
+		if err := store.db.Create(&requestAttemptRecord{
+			RequestID:    requestID,
+			AttemptIndex: 1,
+			TS:           formatUsageTime(old.Add(time.Duration(i) * time.Minute)),
+			Provider:     "test",
+			Model:        "model",
+			Dialect:      "openai-chat",
+			StatusCode:   200,
+			Selected:     true,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	hold, err := store.CreateLegalHold(LegalHoldCreateOptions{
+		HoldID:     "hold-diag-request",
+		DataClass:  retentionDataClassUsageDiagnostics,
+		RequestID:  "req_diag_hold",
+		ReasonCode: "litigation",
+		Subject:    "matter-121",
+		Actor:      "unit-test",
+		Now:        now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hold.Active || hold.RequestID != "req_diag_hold" {
+		t.Fatalf("unexpected hold: %#v", hold)
+	}
+	cfg := retentionTestConfig(retentionDataClassUsageDiagnostics, 7)
+	cfg.Classes[0].BatchSize = 1
+	dry, err := store.runRetentionStatus(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableResultFor(t, dry, "request_attempts"); got.Status != "dry_run" || got.CandidateRows != 3 || got.HeldRows != 1 || got.EligibleRows != 2 || got.DeletedRows != 0 {
+		t.Fatalf("unexpected dry-run diagnostics result: %#v", got)
+	}
+	assertTableCount(t, store, &requestAttemptRecord{}, 3)
+
+	cfg.DryRun = boolPtr(false)
+	first, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableResultFor(t, first, "request_attempts"); got.Status != "purged" || got.CandidateRows != 3 || got.HeldRows != 1 || got.DeletedRows != 1 || got.EligibleRows != 1 {
+		t.Fatalf("unexpected first purge result: %#v", got)
+	}
+	assertTableCount(t, store, &requestAttemptRecord{}, 2)
+
+	second, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableResultFor(t, second, "request_attempts"); got.Status != "purged" || got.DeletedRows != 1 || got.HeldRows != 1 {
+		t.Fatalf("unexpected second purge result: %#v", got)
+	}
+	assertTableCount(t, store, &requestAttemptRecord{}, 1)
+
+	released, err := store.ReleaseLegalHold(LegalHoldReleaseOptions{
+		HoldID:        "hold-diag-request",
+		Actor:         "unit-test",
+		ReleaseReason: "matter-closed",
+		Now:           now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if released.Active {
+		t.Fatalf("hold still active after release: %#v", released)
+	}
+	third, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now.Add(2 * time.Hour), RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableResultFor(t, third, "request_attempts"); got.Status != "purged" || got.DeletedRows != 1 || got.HeldRows != 0 {
+		t.Fatalf("unexpected third purge result: %#v", got)
+	}
+	assertTableCount(t, store, &requestAttemptRecord{}, 0)
+
+	var auditEvents int64
+	if err := store.db.Model(&legalHoldAuditEventRecord{}).Where("hold_id = ?", "hold-diag-request").Count(&auditEvents).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditEvents != 2 {
+		t.Fatalf("legal hold audit events=%d, want 2", auditEvents)
+	}
+}
+
+func TestRetentionRunRecordsSafeErrorForUnsupportedDeleteClass(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-10 * 24 * time.Hour)
+	if err := store.db.Create(&contentCaptureRecord{
+		RequestID:      "req_retention_content",
+		TS:             formatUsageTime(old),
+		Scope:          contentCaptureScopeRequest,
+		CallerID:       "alice",
+		TokenID:        "rtr_alice_test",
+		ResolvedGroup:  "default",
+		InboundDialect: "openai-chat",
+		ContentType:    "application/json",
+		ContentText:    "content",
+		ContentBytes:   len("content"),
+		RetentionUntil: formatUsageTime(old.Add(24 * time.Hour)),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	cfg := retentionTestConfig(retentionDataClassContentCapture, 7)
+	cfg.DryRun = boolPtr(false)
+	result, err := store.runRetentionJob(RetentionStatusOptions{Config: cfg, Now: now, RequestedBy: "unit-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.TableResults[0]; got.Status != "blocked_not_implemented" || got.BlockedRows != 1 || got.DeletedRows != 0 {
+		t.Fatalf("unexpected unsupported delete result: %#v", got)
+	}
+	assertTableCount(t, store, &contentCaptureRecord{}, 1)
+	var job retentionJobRecord
+	if err := store.db.First(&job, result.JobID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "completed" || job.ErrorMessage != "" {
+		t.Fatalf("unexpected job: %#v", job)
+	}
 }
 
 func retentionTestConfig(dataClass string, retentionDays int) RetentionConfig {
@@ -941,6 +1164,28 @@ func retentionTestConfig(dataClass string, retentionDays int) RetentionConfig {
 		cfg.Classes[0].RequireFinalizedRollup = true
 	}
 	return cfg
+}
+
+func tableResultFor(t *testing.T, result RetentionStatusResult, table string) RetentionTableStatus {
+	t.Helper()
+	for _, item := range result.TableResults {
+		if item.TableName == table {
+			return item
+		}
+	}
+	t.Fatalf("retention result for table %s not found: %#v", table, result.TableResults)
+	return RetentionTableStatus{}
+}
+
+func assertTableCount(t *testing.T, store *usageStore, model any, want int64) {
+	t.Helper()
+	var got int64
+	if err := store.db.Model(model).Count(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("table count=%d, want %d", got, want)
+	}
 }
 
 func TestDecisionTelemetryTablesReferenceRequestUsage(t *testing.T) {

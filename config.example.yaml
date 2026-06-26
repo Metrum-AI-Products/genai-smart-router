@@ -151,9 +151,10 @@ server:
     encryption:
       enabled: false
       kms_key_id: ""
-  # Commercial retention foundation. This slice records policy metadata,
-  # legal-hold schema, and dry-run/status jobs only; raw request_usage purge,
-  # archives, scheduler, and admin UI are future work.
+  # Commercial retention foundation. Defaults are conservative and dry-run.
+  # When dry_run is false, the CLI deletes at most one configured batch for
+  # usage_diagnostics and usage_detail only; usage_detail remains blocked until
+  # finalized daily rollups cover the candidate window.
   retention:
     enabled: false
     dry_run: true

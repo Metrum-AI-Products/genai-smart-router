@@ -43,9 +43,9 @@ Use `--rollup-type hourly` for recent operational trend aggregates, `daily` for 
 
 Rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, validation status, and optional baseline ID. Measures include request/success/error counts, input/output/total tokens, input image count, input image tokens, request-time calculated cost, upstream-reported cost, optional baseline input/output/total cost and savings, latency, throughput, cache, fallback, and attempt counts. To store a commercial savings baseline on rollup rows, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
 
-Draft reruns replace the same draft run for that exact type/window without duplicate active rows. Add `--rollup-finalize` only after review/reconciliation; finalized windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. This rollup slice does not delete raw usage rows; the retention foundation only uses finalized daily rollup metadata to block or allow future `usage_detail` delete eligibility.
+Draft reruns replace the same draft run for that exact type/window without duplicate active rows. Add `--rollup-finalize` only after review/reconciliation; finalized windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. Retention uses finalized daily rollup metadata to block or allow `usage_detail` delete eligibility and never mutates finalized rollup rows.
 
-Retention dry-run status:
+Retention status:
 
 ```bash
 router-usage-report \
@@ -53,7 +53,17 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-`server.retention` is disabled by default and supports only `dry_run: true` in this foundation. A status run initializes an active config-derived retention policy version/rules and writes `retention_jobs` plus `retention_job_table_results`. It counts candidates for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, and `content_capture`, subtracts active `legal_holds` by data class and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. Decision telemetry child tables are counted through their parent `request_usage.ts`. This slice does not execute deletes, archive rows, schedule retention jobs, or provide full legal-hold admin APIs.
+`server.retention` is disabled by default and defaults to `dry_run: true`. A status run forces dry-run behavior, initializes an active config-derived retention policy version/rules, writes `retention_jobs` plus `retention_job_table_results`, and does not delete rows. It counts candidates for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and `usage_detail`, subtracts active `legal_holds` by data class, optional request ID, and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. Decision telemetry child tables are counted through their parent `request_usage.ts`.
+
+Retention batch run:
+
+```bash
+router-usage-report \
+  --retention-run \
+  --config /app/config/config.yaml
+```
+
+`--retention-run` follows `server.retention.dry_run`. With `dry_run: true`, it behaves like a status job. With `dry_run: false`, it deletes at most one configured batch per supported table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`) and `usage_detail` (`request_usage`). Unsupported classes are counted and stored as `blocked_not_implemented` with zero deleted rows. `usage_detail` still requires continuous finalized daily rollup coverage for the candidate window before any batch can delete. This slice does not archive rows, schedule retention jobs, expose a full legal-hold admin API, or delete decision telemetry/security/content-capture rows through the generic retention runner.
 
 Keep retention terms precise:
 
@@ -79,7 +89,7 @@ The browser shell includes shared usability controls for report tabs: selected t
 
 Expanded tabs use safe scalar usage rows for overview, savings by user/key/group/project/provider-model, model groups by user, usage by key/caller/requested-model, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, troubleshooting buckets, routing decisions, dynamic-score signal/score/threshold buckets, max-token buckets, input-token buckets, admission reasons, contract buckets, contract workloads, target validation, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. The contract tabs expose only safe bucket labels, model-group names, provider/model labels, counts, cost, token, latency, cache, fallback, and PII-filter aggregate fields; they do not expose raw prompts, images, tool outputs, tokens, token hashes, provider keys, or full config. Recent request rows show caller ID, caller IP, public token ID, requested model, provider/model/dialect, status, cache, attempts, fallback, latency, tokens, and cost.
 
-Provider catalog status is read from safe runtime config metadata and returns separate `catalog` and `active_target` rows. Catalog rows show provider/model/dialect catalog metadata. Active target rows show resolved per-group target metadata, active group, target index, validation status/workload/age, pricing source/date, modalities, and tool-support labels after target overrides are applied. It must not expose provider API keys, headers, full config, or private deployment paths. Retention and rollup status is a read-only view over existing usage DB status tables; it shows the latest retention job, per-table candidate/held/eligible/blocked counts, and recent hourly/daily/monthly rollup runs without executing retention or generating rollups.
+Provider catalog status is read from safe runtime config metadata and returns separate `catalog` and `active_target` rows. Catalog rows show provider/model/dialect catalog metadata. Active target rows show resolved per-group target metadata, active group, target index, validation status/workload/age, pricing source/date, modalities, and tool-support labels after target overrides are applied. It must not expose provider API keys, headers, full config, or private deployment paths. Retention and rollup status is a read-only view over existing usage DB status tables; it shows the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent hourly/daily/monthly rollup runs without executing retention or generating rollups.
 
 Troubleshooting buckets are deterministic groupings for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 

@@ -99,6 +99,7 @@ type adminRetentionTableRow struct {
 	HeldRows      int64  `json:"heldRows"`
 	EligibleRows  int64  `json:"eligibleRows"`
 	BlockedRows   int64  `json:"blockedRows"`
+	DeletedRows   int64  `json:"deletedRows"`
 	Status        string `json:"status"`
 	Message       string `json:"message,omitempty"`
 }
@@ -838,6 +839,7 @@ func (s *Service) handleAdminRetentionStatus(w http.ResponseWriter, r *http.Requ
 			HeldRows:      record.HeldRows,
 			EligibleRows:  record.EligibleRows,
 			BlockedRows:   record.BlockedRows,
+			DeletedRows:   record.DeletedRows,
 			Status:        record.Status,
 			Message:       sanitizePersistedDiagnosticText(record.Message),
 		})

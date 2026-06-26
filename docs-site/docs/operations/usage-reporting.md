@@ -42,11 +42,11 @@ Use `--rollup-type hourly` for recent operational trend reporting, `daily` for c
 
 Aggregate rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, validation-status, and optional baseline dimensions alongside request/success/error counts, input/output/total token, input image count, input image token, request-time cost, upstream-reported cost, optional baseline cost/savings, latency, throughput, cache, fallback, and attempt measures. To persist a savings baseline with a commercial rollup, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
 
-Draft reruns replace the same draft run for that exact type/window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. This rollup helper does not purge raw request rows.
+Draft reruns replace the same draft run for that exact type/window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. Retention uses finalized daily rollup metadata to block or allow `usage_detail` delete eligibility and never mutates finalized rollup rows.
 
-## Retention Dry Run
+## Commercial Retention
 
-`server.retention` is disabled by default and supports only dry-run/status operation in this foundation. Run it from reviewed router config:
+`server.retention` is disabled by default and defaults to `dry_run: true`. Use status mode first from reviewed router config:
 
 ```bash
 router-usage-report \
@@ -54,7 +54,17 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-The command initializes scalar `retention_policy_versions` and `retention_policy_rules`, writes a `retention_jobs` row, and records per-table counts in `retention_job_table_results`. It counts low-risk candidates in diagnostic child tables, decision-telemetry child tables, `security_access_events`, and content-capture rows, then subtracts active legal holds by data class and timestamp range. `usage_detail` is represented for future raw usage deletion, but candidate rows are blocked unless a finalized daily rollup covers the candidate window. Archive/export, actual delete execution, scheduler support, and full legal-hold admin workflows are future slices.
+The command initializes scalar `retention_policy_versions` and `retention_policy_rules`, writes a `retention_jobs` row, and records per-table counts in `retention_job_table_results`. It counts candidates in diagnostic child tables, decision-telemetry child tables, `security_access_events`, content-capture rows, and `request_usage`, then subtracts active legal holds by data class, optional request ID, and timestamp range. Status mode never deletes rows.
+
+After operators review counts, legal holds, database backups, and finalized rollup coverage, they can run one batch from the same reviewed config:
+
+```bash
+router-usage-report \
+  --retention-run \
+  --config /app/config/config.yaml
+```
+
+With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
 
 Use retention language carefully in commercial reviews:
 
@@ -116,7 +126,7 @@ Common endpoints:
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
 - `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group/project/provider-model, model groups by user, usage by key/caller/requested-model, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, troubleshooting buckets, routing decisions, dynamic signal/score/threshold buckets, max-token buckets, input-token buckets, admission reasons, contract buckets, contract workloads, target validation buckets, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
 - `/admin/reports/api/provider-catalog-status` returns safe provider catalog and active-target validation metadata from runtime config. It separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. It does not expose provider keys, headers, or full config.
-- `/admin/reports/api/retention-status` returns read-only retention and daily-rollup status from existing usage DB tables, including the latest retention job, per-table candidate/held/eligible/blocked counts, and recent rollup runs.
+- `/admin/reports/api/retention-status` returns read-only retention and daily-rollup status from existing usage DB tables, including the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent rollup runs.
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
 - `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.

@@ -611,7 +611,9 @@ Governed content capture is separate from diagnostics and remains disabled unles
 
 Deployments can keep capture disabled globally and enable a scoped override on a specific `callers[]` entry or `models.<group>.content_capture` block for a governed workload. Each enabled block must name at least one capture scope.
 
-Commercial retention policy is configured under `server.retention` and is disabled by default. This foundation accepts only `dry_run: true`; it records policy versions/rules, legal-hold rows, status jobs, and per-table counts without deleting rows. Supported data classes are `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and future `usage_detail`. Legal holds match by `data_class` and timestamp range. `usage_detail` is blocked until a finalized daily rollup covers the candidate window, and raw usage deletion, archives, scheduler, and full admin UI/API workflows remain future slices.
+Commercial retention policy is configured under `server.retention` and is disabled by default. Defaults are conservative: `dry_run` defaults to true, batch sizes are explicit scalar values, and `usage_detail` is disabled unless an operator enables it with `require_finalized_rollup: true`. Status jobs record policy versions/rules, legal-hold rows, retention jobs, and per-table counts without deleting rows. Supported data classes are `usage_diagnostics`, `decision_telemetry`, `security_access_events`, `content_capture`, and `usage_detail`. Legal holds match by `data_class`, optional `request_id`, and timestamp range.
+
+When a reviewed deployment sets `dry_run: false`, `router-usage-report --retention-run` deletes at most one configured batch for `usage_diagnostics` and `usage_detail` tables. Other data classes are counted and recorded as blocked until a later retention slice implements their generic purge path. `usage_detail` deletion is blocked until finalized daily rollups continuously cover the candidate window, and finalized rollups remain immutable. Archives, scheduler, and full legal-hold/admin write workflows remain future slices.
 
 Content-capture maintenance endpoints:
 

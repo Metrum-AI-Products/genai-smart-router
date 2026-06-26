@@ -696,6 +696,7 @@ function retentionColumns() {
     { key: "heldRows", label: "Held" },
     { key: "eligibleRows", label: "Eligible" },
     { key: "blockedRows", label: "Blocked" },
+    { key: "deletedRows", label: "Deleted" },
     { key: "rollupType", label: "Rollup" },
     { key: "windowStart", label: "Window start" },
     { key: "windowEnd", label: "Window end" },

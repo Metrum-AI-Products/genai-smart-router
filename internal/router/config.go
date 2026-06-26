@@ -1703,9 +1703,6 @@ func validateRetentionConfig(cfg RetentionConfig) error {
 	if cfg.DefaultBatchSize <= 0 {
 		return fmt.Errorf("server retention default_batch_size must be positive")
 	}
-	if cfg.Enabled && cfg.DryRun != nil && !*cfg.DryRun {
-		return fmt.Errorf("server retention dry_run=false is not supported in this foundation")
-	}
 	seen := map[string]bool{}
 	for i, class := range cfg.Classes {
 		label := fmt.Sprintf("server retention classes[%d]", i)
@@ -1724,7 +1721,7 @@ func validateRetentionConfig(cfg RetentionConfig) error {
 			return fmt.Errorf("%s batch_size must be positive", label)
 		}
 		if dataClass == retentionDataClassUsageDetail && !class.RequireFinalizedRollup {
-			return fmt.Errorf("%s usage_detail requires finalized rollup before future delete", label)
+			return fmt.Errorf("%s usage_detail requires finalized rollup before delete", label)
 		}
 	}
 	if cfg.Enabled && len(cfg.Classes) == 0 {
