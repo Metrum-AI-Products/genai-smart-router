@@ -108,6 +108,9 @@ The current browser surface includes:
 - Cache.
 - Quotas and budgets.
 - Routing decisions.
+- Contract buckets. This tab groups contract-present/pass/fail and failure-reason buckets by model group so operators can see whether a group is satisfying its configured quality and capability contract.
+- Contract workloads. This tab groups deployment-defined contract workload labels by model group so validation and production traffic can be compared without exposing request content.
+- Target validation. This tab groups target-validation status buckets by provider/model so stale, missing, or failing validation metadata is visible before it becomes a routing incident.
 - Expensive requests.
 - Client breakdown.
 - Project chargeback.
