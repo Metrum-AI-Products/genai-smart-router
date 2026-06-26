@@ -16,8 +16,8 @@ Last deployed: 2026-06-26
 
 ## Deployed Version
 
-- Router package/image version: `c623323-linux-amd64`
-- Source commit: `c623323`
+- Router package/image version: `98d4d9a-linux-amd64`
+- Source commit: `98d4d9a`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,46 @@ Last deployed: 2026-06-26
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-26 Signed License Enforcement Refresh
+
+- Deployed package/image `smart-llmrouter:98d4d9a-linux-amd64` from source commit `98d4d9a` after PR #136 merged.
+- Production package backup: `/opt/smart-llmrouter.backup.license-98d4d9a-20260626T162406Z`.
+- Production config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were carried forward unchanged.
+- Deployment cleanup removed the uploaded package and superseded temporary deployment directory, kept the timestamped backup, and ran `sudo docker system prune -f`.
+- Posted a terse Google Chat workspace announcement summarizing feature progress since June 23.
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/... -count=1: passed, 330 tests across 7 packages
+rtk timeout 800s go test ./... -count=1: passed
+rtk make docs-build VERSION=98d4d9a COMMIT=98d4d9a: passed; npm audit still reports existing docs-site moderate dependency advisories
+rtk make package-docker VERSION=98d4d9a COMMIT=98d4d9a: passed for linux/amd64 and linux/arm64 package artifacts
+local scripts/live_full_e2e.sh: failed in the legacy OpenRouter CLI C harness because its generated temporary targets omit tool_support metadata and current routing correctly rejects Claude Code Anthropic/tool passthrough as 502 no-eligible-target
+production /readyz after deploy: 200, version 98d4d9a, build_date 2026-06-26T16:06:41Z
+production /version: 98d4d9a, commit 98d4d9a, go1.26.4 linux/amd64
+hosted /docs/ returned 200 with x-smart-llmrouter-version: 98d4d9a
+authenticated /v1/models returned 20 visible model groups
+authenticated /v1/chat/completions smoke against default returned OK through openai/gpt-oss-120b
+admin /admin/reports/ returned 200 and the Metrum-branded shell
+admin /admin/reports/api/savings-by-user?since=2h returned report savings-by-user with 7 rows
+admin /admin/reports/api/dynamic-score-buckets?since=2h returned report dynamic-score-buckets with 8 rows
+admin /admin/reports/api/anomalies?since=2h returned report anomalies with 27 rows
+admin /admin/reports/api/summary?since=2h returned 256 requests and 7 errors for the mixed validation window
+admin /admin/reports/api/latency-throughput?since=2h returned report latency-throughput with 34 rows
+admin /admin/reports/api/provider-model-mix?since=2h returned report provider-model-mix with 18 rows
+```
+
+Production Harbor validation:
+
+```text
+Full Harbor matrix `aider/polyglot_python_two-bucket` ran through production using the reusable Harbor caller, agents `codex` and `claude-code`, and groups `default`, `fast`, `small`, `medium`, `high`, and `big-coder`.
+Case ID: harbor-prod-98d4d9a-20260626T162525Z
+All 12 cells passed with reward 1 and zero verifier errors.
+Slowest cells: claude-code/medium 439s, claude-code/fast 360s, codex/big-coder 247s, claude-code/big-coder 166s.
+Production Harbor usage report generated: /opt/smart-llmrouter/compose/logs/harbor-prod-98d4d9a-20260626T162525Z.md
+```
 
 ## 2026-06-26 Admin Reports And Decision Telemetry Refresh
 
