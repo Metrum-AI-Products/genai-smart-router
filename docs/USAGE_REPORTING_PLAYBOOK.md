@@ -123,16 +123,20 @@ server:
     record_cache_reasons: true
 ```
 
-When enabled, usage reports include a Decision Telemetry Summary with row counts for request shape, candidates, filter reasons, routing decisions, routing signals, dynamic-score terms, policy executions, and cache reasons, plus strategy, filter-reason, cache-reason, enabled-signal, score, threshold, max-token, input-token, and admission-reason buckets. Admin request drilldown includes the same child row sets under `decisionTelemetry`, and scalar admin APIs expose dynamic signal, dynamic score bucket, dynamic threshold, max-token bucket, input-token bucket, and admission-reason reports. The rows are normalized and joinable by `request_id`; they do not store prompts, image payloads, tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, or full config.
+When enabled, usage reports include a Decision Telemetry Summary with row counts for request shape, candidates, filter reasons, routing decisions, routing signals, score/ranking terms, policy executions, fallback transitions, and cache reasons. The summary also includes strategy, policy outcome/error-class, fallback-reason, filter-reason, cache-reason, enabled-signal, score, threshold, max-token, input-token, and admission-reason buckets. Admin request drilldown includes the same child row sets under `decisionTelemetry`, and scalar admin APIs expose dynamic signal, dynamic score bucket, dynamic threshold, max-token bucket, input-token bucket, and admission-reason reports. The rows are normalized and joinable by `request_id`; they do not store prompts, image payloads, tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, policy request/response JSON, or full config.
 
-Bounded phase-2 follow-ups remain: fail-closed script/external policy errors that produce no routing decision are not yet stored as policy execution rows, fallback score updates after upstream failures are not yet represented, and non-`dynamic_score` strategies do not emit score-term rows.
+For policy-failure triage, join `request_usage` to `request_policy_executions` by `request_id` and inspect `strategy`, `policy_kind`, `outcome`, `error_class`, `terminal_error_type`, duration, eligible/all target counts, selected candidate index, and fallback count. Fail-closed script/external errors before selection produce policy execution rows even when no `request_routing_decisions` row exists.
+
+For fallback triage, join `request_usage`, `request_attempts`, and `request_fallback_transitions` by `request_id`. A fallback transition row links the failed attempt/candidate to the next fallback candidate with the safe error class, retryable flag, and success flag, so operators can reconstruct cases such as "target selected first, provider returned 429, fallback target succeeded" without reading raw traces.
 
 Smoke after enabling:
 
 1. Send a normal text request and confirm `request_target_candidates` has bounded candidate rows and `request_routing_decisions` has the selected strategy/target.
 2. Send a negative request to a group with no compatible target, for example a tool request to a target without `tool_support`, and confirm `502 no-eligible-target` plus a safe `request_target_filter_reasons.reason` such as `tool-support`.
 3. Send a request with `Cache-Control: no-cache` and confirm `request_cache_reasons.reason = cache-request-no-cache`.
-4. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
+4. Send an external or script policy failure and confirm a safe `request_policy_executions` row exists without a routing decision row.
+5. Send an upstream failure followed by fallback success and confirm `request_fallback_transitions.fallback_succeeded = true`.
+6. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
 
 Filtered benchmark or project report:
 

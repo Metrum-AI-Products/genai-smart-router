@@ -525,6 +525,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
 		return
 	}
+	s.recordRoutingReproducibility(rc, req.Model, group)
 	if group.Contract != nil {
 		rc.rec.ContractPresent = true
 		rc.rec.ContractBucket = "pending"
@@ -573,6 +574,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		}
 		var policyErr routingPolicyError
 		if errors.As(err, &policyErr) {
+			s.recordPolicyFailureTelemetry(rc, policyErr)
 			s.writeRoutingPolicyError(w, rc, policyErr)
 			return
 		}
@@ -1039,16 +1041,28 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 	case "script":
 		strat := s.scripts[groupName]
 		if strat == nil {
-			return decision{}, fmt.Errorf("script strategy %s not loaded", groupName)
+			err := fmt.Errorf("script strategy %s not loaded", groupName)
+			return decision{}, policyFailure(groupName, "script", "typescript", "load_error", err, 0, len(targets), len(group.Targets))
 		}
-		return strat.Pick(groupName, req, group.Contract, targets, s.cfg.Provider, caller, tokenID)
+		start := time.Now()
+		dec, err := strat.Pick(groupName, req, group.Contract, targets, s.cfg.Provider, caller, tokenID)
+		if err != nil {
+			return decision{}, policyFailure(groupName, "script", "typescript", "", err, time.Since(start).Milliseconds(), len(targets), len(group.Targets))
+		}
+		dec.DynamicScoreTerms = append(dec.DynamicScoreTerms, policyOutputRankingTelemetry(dec.Strategy, dec.Target, dec.Fallbacks, s.cfg.Provider)...)
+		return dec, nil
 	case "external":
 		strat := externalPolicyStrategy{cfg: group.ExternalPolicy}
-		return strat.Pick(groupName, req, group.Contract, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
+		dec, err := strat.Pick(groupName, req, group.Contract, targets, group.Targets, s.cfg.Provider, caller, tokenID, callerDialect)
+		if err != nil {
+			return decision{}, err
+		}
+		dec.DynamicScoreTerms = append(dec.DynamicScoreTerms, policyOutputRankingTelemetry(dec.Strategy, dec.Target, dec.Fallbacks, s.cfg.Provider)...)
+		return dec, nil
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
 	}
-	return decision{Target: targets[0], Fallbacks: targets[1:], ClassLabel: label, Strategy: strategy, GroupName: groupName}, nil
+	return decision{Target: targets[0], Fallbacks: targets[1:], ClassLabel: label, Strategy: strategy, GroupName: groupName, DynamicScoreTerms: simpleStrategyRankingTelemetry(strategy, targets, s.cfg.Provider)}, nil
 }
 
 func (s *Service) loadScripts() error {
@@ -1081,14 +1095,17 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 		if err == nil {
 			attempt.Selected = true
 			rc.rec.AttemptsDetail = append(rc.rec.AttemptsDetail, attempt)
+			if i > 0 {
+				markFallbackTransitionSucceeded(rc, attemptIndex)
+			}
 			rc.trace("upstream_attempt_ok", "", tgt, attemptIndex, attempt.StatusCode, "", false, attempt.DurationMS)
 			return resp, attemptIndex, i > 0, nil
 		}
+		classified := classifyError(err)
 		if i < len(targets)-1 {
-			attempt.FallbackReason = classifyError(err).Class
+			attempt.FallbackReason = classified.Class
 		}
 		rc.rec.AttemptsDetail = append(rc.rec.AttemptsDetail, attempt)
-		classified := classifyError(err)
 		rc.trace("upstream_attempt_failed", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, classified.Retryable, attempt.DurationMS)
 		lastErr = err
 		if classified.Canceled {
@@ -1106,6 +1123,9 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 			rc.trace("client_canceled", ctx.Err().Error(), tgt, attemptIndex, 499, "client_canceled", false, 0)
 			return nil, attemptIndex, attemptIndex > 1, lastErr
 		case <-timer.C:
+		}
+		if i < len(targets)-1 {
+			s.recordFallbackTransitionTelemetry(rc, targets, i, attemptIndex, classified)
 		}
 	}
 	return nil, len(targets), len(targets) > 1, lastErr

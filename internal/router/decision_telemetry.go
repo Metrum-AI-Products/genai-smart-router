@@ -1,8 +1,14 @@
 package router
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
 	"strings"
 	"time"
+
+	"smart-llmrouter/internal/buildinfo"
 )
 
 func (s *Service) decisionTelemetryEnabled() bool {
@@ -40,6 +46,22 @@ func (s *Service) recordDecisionShape(rc *requestContext, req *IRRequest, caller
 	addIntFeature("reasoning_budget_tokens", req.Reasoning.BudgetTokens)
 	addTextFeature("reasoning_source", req.Reasoning.Source)
 	addBoolFeature("cacheable", cacheable(req))
+}
+
+func (s *Service) recordRoutingReproducibility(rc *requestContext, groupName string, group ModelGroup) {
+	if rc == nil {
+		return
+	}
+	info := buildinfo.Current()
+	rc.rec.RouterVersion = info.Version
+	rc.rec.RouterBuildDate = info.BuildDate
+	if s == nil || s.cfg == nil {
+		return
+	}
+	rc.rec.RoutingConfigFingerprint = routingConfigFingerprint(s.cfg)
+	rc.rec.ModelGroupConfigFingerprint = modelGroupConfigFingerprint(groupName, group)
+	rc.rec.RoutingPolicyFingerprint = routingPolicyFingerprint(s.cfg, groupName, group)
+	rc.rec.PricingCatalogFingerprint = pricingCatalogFingerprint(s.cfg)
 }
 
 func (s *Service) recordEligibilityTelemetry(rc *requestContext, groupName string, group ModelGroup, req *IRRequest, callerDialect string) {
@@ -184,11 +206,46 @@ func (s *Service) recordRoutingDecisionTelemetry(rc *requestContext, dec decisio
 		ClassLabel:             dec.ClassLabel,
 	})
 	rc.rec.RoutingSignals = append(rc.rec.RoutingSignals, dec.RoutingSignals...)
+	for i := range dec.DynamicScoreTerms {
+		if dec.DynamicScoreTerms[i].CandidateIndex < 0 {
+			dec.DynamicScoreTerms[i].CandidateIndex = candidateIndexForProviderModel(rc.rec.DecisionCandidates, dec.DynamicScoreTerms[i].Provider, dec.DynamicScoreTerms[i].Model)
+		}
+	}
 	rc.rec.DynamicScoreTerms = append(rc.rec.DynamicScoreTerms, dec.DynamicScoreTerms...)
 	for i := range dec.PolicyExecutions {
 		dec.PolicyExecutions[i].SelectedCandidateIndex = selected
 	}
 	rc.rec.PolicyExecutions = append(rc.rec.PolicyExecutions, dec.PolicyExecutions...)
+}
+
+func (s *Service) recordPolicyFailureTelemetry(rc *requestContext, err routingPolicyError) {
+	if !s.decisionTelemetryEnabled() || rc == nil {
+		return
+	}
+	execution := err.Execution
+	if execution.Strategy == "" {
+		execution.Strategy = "external"
+	}
+	if execution.PolicyKind == "" {
+		execution.PolicyKind = execution.Strategy
+	}
+	if execution.Outcome == "" {
+		execution.Outcome = "error"
+	}
+	if execution.SelectedCandidateIndex == 0 {
+		execution.SelectedCandidateIndex = -1
+	}
+	if execution.ErrorClass == "" {
+		execution.ErrorClass = policyErrorClass(err.Err, execution.Strategy)
+	}
+	if execution.ErrorMessage == "" {
+		execution.ErrorMessage = safePolicyExecutionMessage(execution.ErrorClass)
+	}
+	if execution.TerminalErrorType == "" {
+		execution.TerminalErrorType = execution.ErrorClass
+	}
+	execution.Seq = len(rc.rec.PolicyExecutions) + 1
+	rc.rec.PolicyExecutions = append(rc.rec.PolicyExecutions, execution)
 }
 
 func (s *Service) recordCacheReasonTelemetry(rc *requestContext, status, reason string, target Target) {
@@ -210,6 +267,186 @@ func (s *Service) recordCacheReasonTelemetry(rc *requestContext, status, reason 
 	})
 }
 
+func (s *Service) recordFallbackTransitionTelemetry(rc *requestContext, targets []Target, failedPos, attemptIndex int, err upstreamError) {
+	if !s.decisionTelemetryEnabled() || rc == nil || failedPos < 0 || failedPos+1 >= len(targets) {
+		return
+	}
+	failed := targets[failedPos]
+	fallback := targets[failedPos+1]
+	rc.rec.FallbackTransitions = append(rc.rec.FallbackTransitions, fallbackTransitionLogRecord{
+		Seq:                    len(rc.rec.FallbackTransitions) + 1,
+		AttemptIndex:           attemptIndex,
+		FailedCandidateIndex:   candidateIndexForTarget(rc.rec.DecisionCandidates, failed),
+		FallbackCandidateIndex: candidateIndexForTarget(rc.rec.DecisionCandidates, fallback),
+		FailedProvider:         failed.Provider,
+		FailedModel:            failed.Model,
+		FailedDialect:          targetDialect(s.cfg.Provider[failed.Provider], failed),
+		FallbackProvider:       fallback.Provider,
+		FallbackModel:          fallback.Model,
+		FallbackDialect:        targetDialect(s.cfg.Provider[fallback.Provider], fallback),
+		FallbackReason:         err.Class,
+		ErrorClass:             err.Class,
+		Retryable:              err.Retryable,
+		FallbackSucceeded:      false,
+	})
+}
+
+func markFallbackTransitionSucceeded(rc *requestContext, attemptIndex int) {
+	if rc == nil {
+		return
+	}
+	for i := len(rc.rec.FallbackTransitions) - 1; i >= 0; i-- {
+		if rc.rec.FallbackTransitions[i].AttemptIndex == attemptIndex-1 {
+			rc.rec.FallbackTransitions[i].FallbackSucceeded = true
+			return
+		}
+	}
+}
+
+func simpleStrategyRankingTelemetry(strategy string, targets []Target, providers map[string]ProviderConfig) []dynamicScoreTermLogRecord {
+	out := make([]dynamicScoreTermLogRecord, 0, len(targets))
+	for rank, target := range targets {
+		termName := "configured_order"
+		scoreName := "configured_order"
+		value := float64(len(targets) - rank)
+		switch strategy {
+		case "weighted":
+			termName = "configured_weight"
+			scoreName = "configured_weight"
+			value = float64(target.Weight)
+		case "latency":
+			termName = "configured_rpm_rank"
+			scoreName = "configured_rpm"
+			value = float64(target.RPM)
+		case "cost":
+			termName = "configured_cost_rank"
+			scoreName = "configured_cost"
+			value = float64(target.Cost)
+		}
+		out = append(out, dynamicScoreTermLogRecord{
+			Seq:              len(out) + 1,
+			CandidateIndex:   -1,
+			Rank:             rank + 1,
+			Provider:         target.Provider,
+			Model:            target.Model,
+			Dialect:          targetDialect(providers[target.Provider], target),
+			TermName:         termName,
+			ScoreName:        scoreName,
+			Value:            value,
+			FinalScore:       value,
+			ValueBucket:      scoreValueBucket(value),
+			FinalScoreBucket: scoreValueBucket(value),
+			Selected:         rank == 0,
+		})
+	}
+	return out
+}
+
+func policyOutputRankingTelemetry(strategy string, target Target, fallbacks []Target, providers map[string]ProviderConfig) []dynamicScoreTermLogRecord {
+	targets := append([]Target{target}, fallbacks...)
+	out := make([]dynamicScoreTermLogRecord, 0, len(targets))
+	for rank, tgt := range targets {
+		termName := "policy_output_primary"
+		if rank > 0 {
+			termName = "policy_output_fallback"
+		}
+		value := float64(len(targets) - rank)
+		out = append(out, dynamicScoreTermLogRecord{
+			Seq:              len(out) + 1,
+			CandidateIndex:   -1,
+			Rank:             rank + 1,
+			Provider:         tgt.Provider,
+			Model:            tgt.Model,
+			Dialect:          targetDialect(providers[tgt.Provider], tgt),
+			TermName:         termName,
+			ScoreName:        "policy_output_rank",
+			Value:            value,
+			FinalScore:       value,
+			ValueBucket:      scoreValueBucket(value),
+			FinalScoreBucket: scoreValueBucket(value),
+			Selected:         rank == 0,
+		})
+	}
+	return out
+}
+
+func policyFailure(group, strategy, kind, terminal string, err error, durationMS int64, eligibleTargets, allTargets int) routingPolicyError {
+	class := policyErrorClass(err, strategy)
+	if terminal != "" {
+		class = terminal
+	}
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	callerMessage := message
+	if strategy == "script" {
+		callerMessage = safePolicyExecutionMessage(class)
+	}
+	return routingPolicyError{
+		Group:   group,
+		Message: callerMessage,
+		Err:     err,
+		Execution: policyExecutionLogRecord{
+			Seq:                    1,
+			Strategy:               strategy,
+			PolicyKind:             kind,
+			Outcome:                "error",
+			DurationMS:             durationMS,
+			EligibleTargetCount:    eligibleTargets,
+			AllTargetCount:         allTargets,
+			SelectedCandidateIndex: -1,
+			ErrorClass:             class,
+			ErrorMessage:           safePolicyExecutionMessage(class),
+			TerminalErrorType:      class,
+		},
+	}
+}
+
+func safePolicyExecutionMessage(class string) string {
+	switch {
+	case strings.Contains(class, "timeout"):
+		return "routing policy timed out before selection"
+	case strings.Contains(class, "invalid-target"):
+		return "routing policy returned a target outside the eligible set"
+	case strings.Contains(class, "no-target"):
+		return "routing policy produced no usable target"
+	case strings.Contains(class, "invalid-response"):
+		return "routing policy returned an invalid response"
+	case strings.Contains(class, "http-error"):
+		return "routing policy request failed"
+	case strings.Contains(class, "load"):
+		return "routing policy failed to load"
+	case strings.Contains(class, "runtime"):
+		return "routing policy runtime error before selection"
+	default:
+		return "routing policy failed before selection"
+	}
+}
+
+func policyErrorClass(err error, strategy string) string {
+	if err == nil {
+		return strings.Trim(strings.ToLower(strategy)+"-policy-error", "-")
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "timed out") || strings.Contains(text, "timeout"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-timeout", "-")
+	case strings.Contains(text, "targetindex") || strings.Contains(text, "target index") || strings.Contains(text, "invalid target") || strings.Contains(text, "outside"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-invalid-target", "-")
+	case strings.Contains(text, "no target") || strings.Contains(text, "missing target"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-no-target", "-")
+	case strings.Contains(text, "not json") || strings.Contains(text, "invalid json"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-invalid-response", "-")
+	case strings.Contains(text, "http ") || strings.Contains(text, "request failed") || strings.Contains(text, "host ") || strings.Contains(text, "egress"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-http-error", "-")
+	case strings.Contains(text, "run ") || strings.Contains(text, "route(ctx)") || strings.Contains(text, "typescript"):
+		return strings.Trim(strings.ToLower(strategy)+"-policy-runtime-error", "-")
+	default:
+		return strings.Trim(strings.ToLower(strategy)+"-policy-error", "-")
+	}
+}
+
 func candidateIndexForTarget(candidates []decisionCandidateLogRecord, target Target) int {
 	for _, candidate := range candidates {
 		if candidate.Provider == target.Provider && candidate.Model == target.Model && candidate.ModelRef == target.ModelRef {
@@ -217,6 +454,206 @@ func candidateIndexForTarget(candidates []decisionCandidateLogRecord, target Tar
 		}
 	}
 	return -1
+}
+
+func candidateIndexForProviderModel(candidates []decisionCandidateLogRecord, provider, model string) int {
+	for _, candidate := range candidates {
+		if candidate.Provider == provider && candidate.Model == model {
+			return candidate.CandidateIndex
+		}
+	}
+	return -1
+}
+
+func routingConfigFingerprint(cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	providers := map[string]any{}
+	for name, provider := range cfg.Provider {
+		providers[name] = map[string]any{
+			"dialect":     normalizeDialect(provider.Dialect),
+			"auth_scheme": normalizeAuthScheme(provider.AuthScheme),
+			"model_count": len(provider.Models),
+		}
+	}
+	groups := map[string]any{}
+	for name, group := range cfg.Models {
+		groups[name] = redactedModelGroupFingerprintPayload(name, group, false)
+	}
+	return canonicalFingerprint(map[string]any{
+		"default_model_group": cfg.Server.DefaultModelGroup,
+		"providers":           providers,
+		"models":              groups,
+	})
+}
+
+func modelGroupConfigFingerprint(groupName string, group ModelGroup) string {
+	return canonicalFingerprint(redactedModelGroupFingerprintPayload(groupName, group, false))
+}
+
+func routingPolicyFingerprint(cfg *Config, groupName string, group ModelGroup) string {
+	payload := map[string]any{
+		"group":    groupName,
+		"strategy": strings.ToLower(strings.TrimSpace(group.Strategy)),
+	}
+	switch strings.ToLower(strings.TrimSpace(group.Strategy)) {
+	case "dynamic_score":
+		payload["dynamic_score"] = group.RoutingPolicy.DynamicScore
+	case "script":
+		payload["script_sha256"] = scriptContentFingerprint(cfg, group.Script)
+		payload["script_http"] = map[string]any{
+			"enabled":            group.ScriptHTTP.Enabled,
+			"allow_hosts_count":  len(group.ScriptHTTP.AllowHosts),
+			"allow_http":         group.ScriptHTTP.AllowHTTP,
+			"timeout_ms":         group.ScriptHTTP.TimeoutMS,
+			"max_response_bytes": group.ScriptHTTP.MaxResponseBytes,
+			"headers_count":      len(group.ScriptHTTP.Headers),
+		}
+	case "external":
+		payload["external_policy"] = map[string]any{
+			"method":             strings.ToUpper(strings.TrimSpace(group.ExternalPolicy.Method)),
+			"allow_hosts_count":  len(group.ExternalPolicy.AllowHosts),
+			"allow_http":         group.ExternalPolicy.AllowHTTP,
+			"timeout_ms":         group.ExternalPolicy.TimeoutMS,
+			"max_response_bytes": group.ExternalPolicy.MaxResponseBytes,
+			"include_request":    group.ExternalPolicy.IncludeRequest,
+			"on_error":           strings.ToLower(strings.TrimSpace(group.ExternalPolicy.OnError)),
+			"headers_count":      len(group.ExternalPolicy.Headers),
+		}
+	default:
+		payload["target_count"] = len(group.Targets)
+	}
+	return canonicalFingerprint(payload)
+}
+
+func pricingCatalogFingerprint(cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	providers := map[string]any{}
+	for providerName, provider := range cfg.Provider {
+		models := map[string]any{}
+		for modelRef, model := range provider.Models {
+			models[modelRef] = map[string]any{
+				"model":                                    model.Model,
+				"input_price_per_million_usd":              model.InputPricePerMillionUSD,
+				"output_price_per_million_usd":             model.OutputPricePerMillionUSD,
+				"image_input_price_per_million_tokens_usd": model.ImageInputPricePerMillionTokensUSD,
+				"image_input_price_per_image_usd":          model.ImageInputPricePerImageUSD,
+				"pricing_source":                           model.PricingSource,
+				"pricing_updated_at":                       model.PricingUpdatedAt,
+			}
+		}
+		providers[providerName] = models
+	}
+	return canonicalFingerprint(providers)
+}
+
+func redactedModelGroupFingerprintPayload(groupName string, group ModelGroup, includePolicy bool) map[string]any {
+	targets := make([]map[string]any, 0, len(group.Targets))
+	for _, target := range group.Targets {
+		targets = append(targets, map[string]any{
+			"provider":                     target.Provider,
+			"model":                        target.Model,
+			"model_ref":                    target.ModelRef,
+			"dialect":                      normalizeDialect(target.Dialect),
+			"weight":                       target.Weight,
+			"tool_only":                    target.ToolOnly,
+			"rpm":                          target.RPM,
+			"cost":                         target.Cost,
+			"tier":                         target.Tier,
+			"tags":                         append([]string(nil), target.Tags...),
+			"context_tokens":               target.ContextTokens,
+			"input_modalities":             append([]string(nil), target.InputModalities...),
+			"output_modalities":            append([]string(nil), target.OutputModalities...),
+			"tool_support":                 target.ToolSupport,
+			"honors_max_tokens":            target.HonorsMaxTokens,
+			"input_price_per_million_usd":  target.InputPricePerMillionUSD,
+			"output_price_per_million_usd": target.OutputPricePerMillionUSD,
+			"image_input_price_per_million_tokens_usd": target.ImageInputPricePerMillionTokensUSD,
+			"image_input_price_per_image_usd":          target.ImageInputPricePerImageUSD,
+			"pricing_source":                           target.PricingSource,
+			"pricing_updated_at":                       target.PricingUpdatedAt,
+			"validation_status":                        validationStatusForFingerprint(target.Validation),
+			"validation_workload":                      validationWorkloadForFingerprint(target.Validation),
+			"validation_quality_score":                 validationQualityForFingerprint(target.Validation),
+			"validation_pass_rate":                     validationPassRateForFingerprint(target.Validation),
+		})
+	}
+	payload := map[string]any{
+		"group":              groupName,
+		"strategy":           strings.ToLower(strings.TrimSpace(group.Strategy)),
+		"attempt_timeout_ms": group.AttemptTimeoutMS,
+		"targets":            targets,
+		"contract":           group.Contract,
+		"pii_filter": map[string]any{
+			"enabled":                      group.PIIFilter.Enabled,
+			"mode":                         normalizePIIFilterMode(group.PIIFilter),
+			"fail_on_match":                group.PIIFilter.FailOnMatch,
+			"restore_response_configured":  group.PIIFilter.RestoreResponse != nil,
+			"max_replacements_per_request": group.PIIFilter.MaxReplacementsPerRequest,
+			"rule_count":                   len(group.PIIFilter.Rules),
+			"apply_to_image_urls":          group.PIIFilter.ApplyTo.ImageURLs,
+		},
+	}
+	if includePolicy {
+		payload["routing_policy"] = group.RoutingPolicy
+	}
+	return payload
+}
+
+func validationStatusForFingerprint(validation *TargetValidation) string {
+	if validation == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(validation.Status))
+}
+
+func validationWorkloadForFingerprint(validation *TargetValidation) string {
+	if validation == nil {
+		return ""
+	}
+	return strings.TrimSpace(validation.Workload)
+}
+
+func validationQualityForFingerprint(validation *TargetValidation) float64 {
+	if validation == nil {
+		return 0
+	}
+	return validation.QualityScore
+}
+
+func validationPassRateForFingerprint(validation *TargetValidation) float64 {
+	if validation == nil {
+		return 0
+	}
+	return validation.PassRate
+}
+
+func scriptContentFingerprint(cfg *Config, scriptPath string) string {
+	resolved := strings.TrimSpace(scriptPath)
+	if resolved == "" {
+		return ""
+	}
+	if cfg != nil && cfg.baseDir != "" && !strings.HasPrefix(resolved, "/") {
+		resolved = cfg.baseDir + "/" + resolved
+	}
+	raw, err := os.ReadFile(resolved)
+	if err != nil {
+		return "unavailable"
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func canonicalFingerprint(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func decisionCandidateValidationStatus(validation *TargetValidation) string {
@@ -260,4 +697,11 @@ func safeReasonToken(value string) string {
 		return "unknown"
 	}
 	return b.String()
+}
+
+func safeOptionalReasonToken(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return safeReasonToken(value)
 }

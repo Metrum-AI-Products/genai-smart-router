@@ -66,9 +66,10 @@ type reasoningSummary struct {
 }
 
 type routingPolicyError struct {
-	Group   string
-	Message string
-	Err     error
+	Group     string
+	Message   string
+	Err       error
+	Execution policyExecutionLogRecord
 }
 
 func (e routingPolicyError) Error() string {
@@ -105,6 +106,7 @@ func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *Mod
 	}
 	if strings.EqualFold(strings.TrimSpace(s.cfg.OnError), "fallback") {
 		label := "external-policy:fallback"
+		errorClass := policyErrorClass(err, "external")
 		return decision{
 			Target:      eligibleTargets[0],
 			Fallbacks:   eligibleTargets[1:],
@@ -123,12 +125,13 @@ func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *Mod
 				SelectedCandidateIndex: 0,
 				FallbackCount:          len(eligibleTargets) - 1,
 				ClassLabel:             &label,
-				ErrorClass:             "external-policy-error",
-				ErrorMessage:           sanitizePersistedDiagnosticText(err.Error()),
+				ErrorClass:             errorClass,
+				ErrorMessage:           safePolicyExecutionMessage(errorClass),
+				TerminalErrorType:      "external-policy-fallback",
 			}},
 		}, nil
 	}
-	return decision{}, routingPolicyError{Group: group, Message: err.Error(), Err: err}
+	return decision{}, policyFailure(group, "external", "external", "", err, time.Since(start).Milliseconds(), len(eligibleTargets), len(allTargets))
 }
 
 func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {

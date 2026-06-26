@@ -26,8 +26,9 @@ server:
   # Optional normalized routing-decision telemetry. Disabled by default.
   # When enabled, the router writes safe scalar child rows keyed by request_id
   # for request shape features, target candidates, target filter reason buckets,
-  # selected routing decisions, routing signals, dynamic-score terms, policy
-  # executions, and cache hit/miss/bypass reason buckets.
+  # selected routing decisions, routing signals, score/ranking terms, policy
+  # executions, fallback transitions, cache hit/miss/bypass reason buckets, and
+  # non-secret routing fingerprints on request usage rows.
   decision_telemetry:
     enabled: false
     max_candidates: 64

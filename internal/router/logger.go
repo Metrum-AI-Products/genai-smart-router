@@ -88,6 +88,12 @@ type logRecord struct {
 	LicenseKeyID                       string                          `json:"license_key_id,omitempty"`
 	LicenseExpiry                      string                          `json:"license_expiry,omitempty"`
 	LicenseGraceActive                 bool                            `json:"license_grace_active,omitempty"`
+	RouterVersion                      string                          `json:"router_version,omitempty"`
+	RouterBuildDate                    string                          `json:"router_build_date,omitempty"`
+	RoutingConfigFingerprint           string                          `json:"routing_config_fingerprint,omitempty"`
+	ModelGroupConfigFingerprint        string                          `json:"model_group_config_fingerprint,omitempty"`
+	RoutingPolicyFingerprint           string                          `json:"routing_policy_fingerprint,omitempty"`
+	PricingCatalogFingerprint          string                          `json:"pricing_catalog_fingerprint,omitempty"`
 	Warnings                           []string                        `json:"warnings"`
 	Error                              *string                         `json:"error"`
 	ErrorClass                         string                          `json:"error_class,omitempty"`
@@ -101,6 +107,7 @@ type logRecord struct {
 	RoutingSignals                     []routingSignalLogRecord        `json:"routing_signals,omitempty"`
 	DynamicScoreTerms                  []dynamicScoreTermLogRecord     `json:"dynamic_score_terms,omitempty"`
 	PolicyExecutions                   []policyExecutionLogRecord      `json:"policy_executions,omitempty"`
+	FallbackTransitions                []fallbackTransitionLogRecord   `json:"fallback_transitions,omitempty"`
 	CacheReasons                       []cacheReasonLogRecord          `json:"cache_reasons,omitempty"`
 }
 
@@ -238,6 +245,24 @@ type policyExecutionLogRecord struct {
 	ClassLabel             *string `json:"class_label,omitempty"`
 	ErrorClass             string  `json:"error_class,omitempty"`
 	ErrorMessage           string  `json:"error_message,omitempty"`
+	TerminalErrorType      string  `json:"terminal_error_type,omitempty"`
+}
+
+type fallbackTransitionLogRecord struct {
+	Seq                    int    `json:"seq"`
+	AttemptIndex           int    `json:"attempt_index"`
+	FailedCandidateIndex   int    `json:"failed_candidate_index"`
+	FallbackCandidateIndex int    `json:"fallback_candidate_index"`
+	FailedProvider         string `json:"failed_provider"`
+	FailedModel            string `json:"failed_model"`
+	FailedDialect          string `json:"failed_dialect"`
+	FallbackProvider       string `json:"fallback_provider"`
+	FallbackModel          string `json:"fallback_model"`
+	FallbackDialect        string `json:"fallback_dialect"`
+	FallbackReason         string `json:"fallback_reason"`
+	ErrorClass             string `json:"error_class"`
+	Retryable              bool   `json:"retryable"`
+	FallbackSucceeded      bool   `json:"fallback_succeeded"`
 }
 
 type cacheReasonLogRecord struct {

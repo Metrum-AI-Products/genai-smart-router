@@ -49,6 +49,7 @@ The sample `external-policy-demo` group in `config.example.yaml` points at `http
 - Run an image or tool request when the group supports VLM/tool traffic and confirm the default policy payload contains only derived counts/requirements plus eligible target metadata, not image URLs/data, tool schemas, or tool outputs.
 - If `external_policy.include_request: true` is approved, confirm the policy payload is redacted as expected for groups with `pii_filter` and document why the external service may receive request content.
 - Confirm errors are clear: policy timeout, non-2xx, invalid JSON, and invalid target should return `502 routing-policy-error` unless `on_error: fallback` is explicitly configured.
+- With decision telemetry enabled, confirm policy success, fail-closed error, and configured `on_error: fallback` requests write safe `request_policy_executions` rows and do not store policy request/response JSON, prompt text, tool schemas, provider keys, token hashes, policy headers, or full config.
 
 ## Production Rollout
 
@@ -57,5 +58,5 @@ The sample `external-policy-demo` group in `config.example.yaml` points at `http
 - Keep `timeout_ms` small, typically 200-500 ms.
 - Prefer `on_error: fail_closed` for policy-sensitive traffic.
 - Use `on_error: fallback` only when the configured target order is explicitly approved as the default policy.
-- After rollout, monitor `request_usage.error_class`, `request_trace_events`, selected provider/model, latency, and class labels.
+- After rollout, monitor `request_usage.error_class`, `request_trace_events`, `request_policy_executions`, selected provider/model, latency, and class labels.
 - Document rollback as either disabling the policy group, switching the group back to `weighted`/`static`, or setting `on_error: fallback` if approved.

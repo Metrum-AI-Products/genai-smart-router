@@ -133,7 +133,7 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## Decision Telemetry Summary",
-		"| 3 | 1 | 4 | 1 | 1 | 1 | 1 | 1 |",
+		"| 3 | 1 | 4 | 1 | 1 | 1 | 1 | 0 | 1 |",
 		"### Routing Decisions By Strategy",
 		"| static | 1 |",
 		"### Target Filter Reasons",
@@ -738,6 +738,7 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"request_routing_signals",
 		"request_dynamic_score_terms",
 		"request_policy_executions",
+		"request_fallback_transitions",
 		"request_cache_reasons",
 		"request_errors",
 		"request_content_captures",
@@ -956,6 +957,7 @@ func TestDecisionTelemetryTablesReferenceRequestUsage(t *testing.T) {
 		"request_routing_signals",
 		"request_dynamic_score_terms",
 		"request_policy_executions",
+		"request_fallback_transitions",
 		"request_cache_reasons",
 	} {
 		assertRequestUsageForeignKey(t, store, table)
@@ -978,6 +980,7 @@ func assertRequestUsageForeignKey(t *testing.T, store *usageStore, table string)
 		"request_routing_signals":         "PRAGMA foreign_key_list(request_routing_signals)",
 		"request_dynamic_score_terms":     "PRAGMA foreign_key_list(request_dynamic_score_terms)",
 		"request_policy_executions":       "PRAGMA foreign_key_list(request_policy_executions)",
+		"request_fallback_transitions":    "PRAGMA foreign_key_list(request_fallback_transitions)",
 		"request_cache_reasons":           "PRAGMA foreign_key_list(request_cache_reasons)",
 	}[table]
 	if query == "" {

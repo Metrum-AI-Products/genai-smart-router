@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -4413,7 +4414,8 @@ func TestTypeScriptPIIPolicyExampleFailsClosedWithoutSensitiveTarget(t *testing.
 	if err == nil {
 		t.Fatal("pii script pick succeeded without a sensitive target")
 	}
-	if !strings.Contains(err.Error(), "pii-detected:no-sensitive-target") {
+	var policyErr routingPolicyError
+	if !errors.As(err, &policyErr) || policyErr.Err == nil || !strings.Contains(policyErr.Err.Error(), "pii-detected:no-sensitive-target") {
 		t.Fatalf("pii script error=%v, want fail-closed no-sensitive-target error", err)
 	}
 }
@@ -4559,7 +4561,7 @@ export function route() {
 	if rr.Code != http.StatusBadGateway {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "routing-failed") {
+	if !strings.Contains(rr.Body.String(), "routing-policy-error") {
 		t.Fatalf("unexpected body=%s", rr.Body.String())
 	}
 }
@@ -4633,7 +4635,7 @@ export function route() {
 			if rr.Code != http.StatusBadGateway {
 				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 			}
-			if !strings.Contains(rr.Body.String(), "routing-failed") {
+			if !strings.Contains(rr.Body.String(), "routing-policy-error") {
 				t.Fatalf("unexpected body=%s", rr.Body.String())
 			}
 			if strings.Contains(rr.Body.String(), "/secret") {
@@ -6815,6 +6817,7 @@ func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "credit-empty"},
 		{Provider: "mock", Model: "healthy-model"},
@@ -6865,6 +6868,18 @@ func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
 	}
 	if len(errors) != 0 {
 		t.Fatalf("unexpected error rows for fallback success: %#v", errors)
+	}
+	var transitions []fallbackTransitionRecord
+	if err := svc.usage.db.Find(&transitions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(transitions) != 1 {
+		t.Fatalf("fallback transition rows=%d: %#v", len(transitions), transitions)
+	}
+	transition := transitions[0]
+	if transition.AttemptIndex != 1 || transition.FailedCandidateIndex != 0 || transition.FallbackCandidateIndex != 1 ||
+		transition.FallbackReason != "upstream_quota_exhausted" || !transition.Retryable || !transition.FallbackSucceeded {
+		t.Fatalf("unexpected fallback transition: %#v", transition)
 	}
 }
 
@@ -7604,6 +7619,107 @@ func TestDecisionTelemetryEnabledRecordsTextCandidateAndDecision(t *testing.T) {
 	}
 	if decision.Strategy != "static" || decision.Provider != "mock" || decision.Model != "mock-model" || decision.SelectedCandidateIndex != 0 {
 		t.Fatalf("unexpected routing decision: %#v", decision)
+	}
+	var term dynamicScoreTermRecord
+	if err := svc.usage.db.Where("term_name = ? AND score_name = ?", "configured_order", "configured_order").First(&term).Error; err != nil {
+		t.Fatal(err)
+	}
+	if term.CandidateIndex != 0 || term.Rank != 1 || !term.Selected {
+		t.Fatalf("unexpected static ranking term: %#v", term)
+	}
+}
+
+func TestDecisionTelemetryRecordsExternalPolicyFailureBeforeDecision(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream should not be called when policy fails closed")
+	}))
+	defer upstream.Close()
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 99})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Models["external-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        policy.URL + "/route",
+			AllowHosts: []string{policyURL.Hostname()},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "cheap-model", Weight: 1}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"external-policy","messages":[{"role":"user","content":"secret prompt"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "routing-policy-error") {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var executions []policyExecutionRecord
+	if err := svc.usage.db.Find(&executions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(executions) != 1 {
+		t.Fatalf("policy executions=%d: %#v", len(executions), executions)
+	}
+	execution := executions[0]
+	if execution.Outcome != "error" || execution.ErrorClass != "external-policy-invalid-target" || execution.SelectedCandidateIndex != -1 || execution.EligibleTargetCount != 1 {
+		t.Fatalf("unexpected policy execution: %#v", execution)
+	}
+	for _, forbidden := range []string{"secret prompt", "provider-key", cfg.Callers[0].TokenSHA256, testToken} {
+		if strings.Contains(execution.ErrorMessage, forbidden) {
+			t.Fatalf("policy execution leaked %q: %#v", forbidden, execution)
+		}
+	}
+	var decisions int64
+	if err := svc.usage.db.Model(&routingDecisionRecord{}).Count(&decisions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if decisions != 0 {
+		t.Fatalf("routing decision rows=%d, want 0", decisions)
+	}
+}
+
+func TestRoutingFingerprintsRedactSecretsAndTrackRoutingChanges(t *testing.T) {
+	cfg := testConfig(t, "https://upstream.example", "provider-key-a", t.TempDir())
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: "https://private-a.example/v1", Dialect: "openai", APIKey: "provider-key-a", APIKeyEnv: "PROVIDER_KEY_A"}
+	cfg.Models["default"] = ModelGroup{Strategy: "weighted", Targets: []Target{{Provider: "mock", Model: "a", Weight: 10}}}
+
+	secretChanged := testConfig(t, "https://upstream.example", "provider-key-b", t.TempDir())
+	secretChanged.Provider["mock"] = ProviderConfig{BaseURL: "https://private-b.example/v1", Dialect: "openai", APIKey: "provider-key-b", APIKeyEnv: "PROVIDER_KEY_B"}
+	secretChanged.Models["default"] = cfg.Models["default"]
+	if routingConfigFingerprint(cfg) != routingConfigFingerprint(secretChanged) {
+		t.Fatal("routing fingerprint changed for provider secret/base-url-only change")
+	}
+
+	routingChanged := testConfig(t, "https://upstream.example", "provider-key-a", t.TempDir())
+	routingChanged.Provider["mock"] = cfg.Provider["mock"]
+	routingChanged.Models["default"] = ModelGroup{Strategy: "weighted", Targets: []Target{{Provider: "mock", Model: "a", Weight: 20}}}
+	if modelGroupConfigFingerprint("default", cfg.Models["default"]) == modelGroupConfigFingerprint("default", routingChanged.Models["default"]) {
+		t.Fatal("model group fingerprint did not change for target weight change")
+	}
+
+	pricingChanged := testConfig(t, "https://upstream.example", "provider-key-a", t.TempDir())
+	pricingChanged.Provider["mock"] = cfg.Provider["mock"]
+	provider := pricingChanged.Provider["mock"]
+	provider.Models = map[string]ProviderModel{"a": {Model: "a", InputPricePerMillionUSD: 2}}
+	pricingChanged.Provider["mock"] = provider
+	if pricingCatalogFingerprint(cfg) == pricingCatalogFingerprint(pricingChanged) {
+		t.Fatal("pricing fingerprint did not change for catalog price change")
 	}
 }
 

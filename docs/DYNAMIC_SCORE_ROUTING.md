@@ -78,6 +78,8 @@ Use request logs, usage DB, and trace events. The `routing_decision` trace event
 
 Diagnostics must not include raw prompts, images, tool outputs, router tokens, token hashes, provider keys, full upstream headers, or full config contents.
 
+When a selected target fails and the router tries a fallback, failed attempts update the in-memory observation store used by later dynamic-score requests. With decision telemetry enabled, `request_fallback_transitions` also records the failed candidate, fallback candidate, safe error class, retryable flag, and whether the fallback attempt succeeded.
+
 ## Rollout And Rollback
 
 Roll out first on a dedicated test group with interchangeable validated targets and a non-sensitive caller token allowed only to that group. Compare p95 latency, error rate, fallbacks, cost, and selected target mix against the weighted baseline.

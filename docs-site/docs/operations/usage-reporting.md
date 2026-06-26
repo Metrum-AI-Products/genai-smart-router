@@ -150,7 +150,7 @@ Reports include:
 - Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
 - Browser troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
-- Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, routing signal rows, dynamic-score term/ranking rows, policy execution rows, cache decision reason buckets, enabled dynamic-score signal names, score buckets, threshold buckets, max-token buckets, input-token buckets, and admission reason buckets.
+- Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, routing signal rows, score/ranking term rows, policy execution rows, fallback transition rows, cache decision reason buckets, enabled dynamic-score signal names, score buckets, threshold buckets, max-token buckets, input-token buckets, admission reason buckets, policy outcome/error-class buckets, and fallback-reason buckets.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.
 
@@ -158,10 +158,10 @@ Reports include:
 
 Every response includes `X-Request-Id`. Structured error responses also include `request_id` in the error details. Administrators can use that ID to inspect:
 
-- `request_usage` for the terminal request status, selected target, token counts, and cost fields.
+- `request_usage` for the terminal request status, selected target, token counts, cost fields, and non-secret routing/model-group/policy/pricing fingerprints.
 - `request_attempts` for each upstream provider/model attempt, status code, duration, timeout/cancel flags, retryability, and sanitized error class/message.
 - `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
-- `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, and dynamic score term rows include scalar score buckets.
+- `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_fallback_transitions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, score/ranking term rows include scalar score buckets, policy execution rows cover fail-closed errors before selection, and fallback transition rows link failed attempts to fallback targets.
 - `request_errors` for the terminal sanitized error summary.
 
 Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies.
@@ -187,9 +187,7 @@ Reports use public token IDs and aggregated usage fields. They do not expose raw
 
 ## Decision Telemetry Smoke
 
-Decision telemetry is disabled unless the deployment sets `server.decision_telemetry.enabled: true`. After enabling it, administrators should run a text request, a negative no-eligible-target request such as a tool request against a target without tool support, a `dynamic_score` request, a script or external-policy request if those strategies are enabled, and a `Cache-Control: no-cache` request. Then generate a Markdown report and confirm it includes a Decision Telemetry Summary with safe buckets such as `static`, `tool-support`, or `cache-request-no-cache`, and open an admin request drilldown to confirm the `decisionTelemetry` child rows are present.
-
-The current decision-telemetry slice does not store fail-closed script/external policy errors when no routing decision is produced, per-fallback score updates after upstream failures, or score-term rows for non-`dynamic_score` strategies.
+Decision telemetry is disabled unless the deployment sets `server.decision_telemetry.enabled: true`. After enabling it, administrators should run a text request, a negative no-eligible-target request such as a tool request against a target without tool support, a `dynamic_score` request, a script or external-policy success request if those strategies are enabled, a fail-closed policy request, an upstream failure followed by fallback success, and a `Cache-Control: no-cache` request. Then generate a Markdown report and confirm it includes a Decision Telemetry Summary with safe buckets such as `static`, `tool-support`, `external-policy-invalid-target`, `upstream_rate_limited`, or `cache-request-no-cache`, and open an admin request drilldown to confirm the `decisionTelemetry` child rows are present.
 
 ## Performance Triage
 

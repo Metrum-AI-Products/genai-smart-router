@@ -202,6 +202,12 @@ type usageRow struct {
 	LicenseKeyID                       string
 	LicenseExpiry                      string
 	LicenseGraceActive                 bool
+	RouterVersion                      string
+	RouterBuildDate                    string
+	RoutingConfigFingerprint           string
+	ModelGroupConfigFingerprint        string
+	RoutingPolicyFingerprint           string
+	PricingCatalogFingerprint          string
 	Error                              string
 	MaxTokenBucket                     string
 	InputTokenBucket                   string
@@ -322,6 +328,12 @@ type usageRecord struct {
 	LicenseKeyID                       string                             `gorm:"column:license_key_id;type:text;not null;default:''"`
 	LicenseExpiry                      string                             `gorm:"column:license_expiry;type:text;not null;default:''"`
 	LicenseGraceActive                 bool                               `gorm:"column:license_grace_active;not null;default:false"`
+	RouterVersion                      string                             `gorm:"column:router_version;type:text;not null;default:'';index:idx_request_usage_router_version"`
+	RouterBuildDate                    string                             `gorm:"column:router_build_date;type:text;not null;default:''"`
+	RoutingConfigFingerprint           string                             `gorm:"column:routing_config_fingerprint;type:text;not null;default:'';index:idx_request_usage_routing_fp"`
+	ModelGroupConfigFingerprint        string                             `gorm:"column:model_group_config_fingerprint;type:text;not null;default:'';index:idx_request_usage_group_fp"`
+	RoutingPolicyFingerprint           string                             `gorm:"column:routing_policy_fingerprint;type:text;not null;default:'';index:idx_request_usage_policy_fp"`
+	PricingCatalogFingerprint          string                             `gorm:"column:pricing_catalog_fingerprint;type:text;not null;default:'';index:idx_request_usage_pricing_fp"`
 	Error                              string                             `gorm:"column:error;type:text;not null"`
 	DecisionShapeFeatures              []decisionShapeFeatureRecord       `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCandidates                 []decisionTargetCandidateRecord    `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -330,6 +342,7 @@ type usageRecord struct {
 	RoutingSignals                     []routingSignalRecord              `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DynamicScoreTerms                  []dynamicScoreTermRecord           `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	PolicyExecutions                   []policyExecutionRecord            `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	FallbackTransitions                []fallbackTransitionRecord         `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCacheReasons               []decisionCacheReasonRecord        `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
@@ -949,10 +962,33 @@ type policyExecutionRecord struct {
 	ClassLabel             string `gorm:"column:class_label;type:text;not null;default:''" json:"classLabel"`
 	ErrorClass             string `gorm:"column:error_class;type:text;not null;default:''" json:"errorClass"`
 	ErrorMessage           string `gorm:"column:error_message;type:text;not null;default:''" json:"errorMessage"`
+	TerminalErrorType      string `gorm:"column:terminal_error_type;type:text;not null;default:'';index:idx_policy_execution_terminal" json:"terminalErrorType"`
 }
 
 func (policyExecutionRecord) TableName() string {
 	return "request_policy_executions"
+}
+
+type fallbackTransitionRecord struct {
+	RequestID              string `gorm:"column:request_id;primaryKey;type:text;index:idx_fallback_transition_request" json:"requestId"`
+	Seq                    int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
+	AttemptIndex           int    `gorm:"column:attempt_index;not null;index:idx_fallback_transition_attempt" json:"attemptIndex"`
+	FailedCandidateIndex   int    `gorm:"column:failed_candidate_index;not null;index:idx_fallback_transition_failed_candidate" json:"failedCandidateIndex"`
+	FallbackCandidateIndex int    `gorm:"column:fallback_candidate_index;not null;index:idx_fallback_transition_fallback_candidate" json:"fallbackCandidateIndex"`
+	FailedProvider         string `gorm:"column:failed_provider;type:text;not null;index:idx_fallback_transition_failed,priority:1" json:"failedProvider"`
+	FailedModel            string `gorm:"column:failed_model;type:text;not null;index:idx_fallback_transition_failed,priority:2" json:"failedModel"`
+	FailedDialect          string `gorm:"column:failed_dialect;type:text;not null" json:"failedDialect"`
+	FallbackProvider       string `gorm:"column:fallback_provider;type:text;not null;index:idx_fallback_transition_fallback,priority:1" json:"fallbackProvider"`
+	FallbackModel          string `gorm:"column:fallback_model;type:text;not null;index:idx_fallback_transition_fallback,priority:2" json:"fallbackModel"`
+	FallbackDialect        string `gorm:"column:fallback_dialect;type:text;not null" json:"fallbackDialect"`
+	FallbackReason         string `gorm:"column:fallback_reason;type:text;not null;index:idx_fallback_transition_reason" json:"fallbackReason"`
+	ErrorClass             string `gorm:"column:error_class;type:text;not null;index:idx_fallback_transition_error_class" json:"errorClass"`
+	Retryable              bool   `gorm:"column:retryable;not null;default:false;index:idx_fallback_transition_retryable" json:"retryable"`
+	FallbackSucceeded      bool   `gorm:"column:fallback_succeeded;not null;default:false;index:idx_fallback_transition_succeeded" json:"fallbackSucceeded"`
+}
+
+func (fallbackTransitionRecord) TableName() string {
+	return "request_fallback_transitions"
 }
 
 type decisionCacheReasonRecord struct {
@@ -1036,23 +1072,27 @@ type agg struct {
 }
 
 type decisionTelemetrySummary struct {
-	ShapeFeatures      int64
-	Candidates         int64
-	FilterReasons      int64
-	Decisions          int64
-	RoutingSignals     int64
-	ScoreTerms         int64
-	PolicyExecutions   int64
-	CacheReasons       int64
-	ByStrategy         map[string]int64
-	ByFilterReason     map[string]int64
-	ByCacheReason      map[string]int64
-	ByEnabledSignal    map[string]int64
-	ByScoreBucket      map[string]int64
-	ByThresholdBucket  map[string]int64
-	ByMaxTokenBucket   map[string]int64
-	ByInputTokenBucket map[string]int64
-	ByAdmissionReason  map[string]int64
+	ShapeFeatures       int64
+	Candidates          int64
+	FilterReasons       int64
+	Decisions           int64
+	RoutingSignals      int64
+	ScoreTerms          int64
+	PolicyExecutions    int64
+	FallbackTransitions int64
+	CacheReasons        int64
+	ByStrategy          map[string]int64
+	ByPolicyOutcome     map[string]int64
+	ByPolicyErrorClass  map[string]int64
+	ByFallbackReason    map[string]int64
+	ByFilterReason      map[string]int64
+	ByCacheReason       map[string]int64
+	ByEnabledSignal     map[string]int64
+	ByScoreBucket       map[string]int64
+	ByThresholdBucket   map[string]int64
+	ByMaxTokenBucket    map[string]int64
+	ByInputTokenBucket  map[string]int64
+	ByAdmissionReason   map[string]int64
 }
 
 func newUsageStore(cfg UsageDBConfig) (*usageStore, error) {
@@ -1141,6 +1181,7 @@ func (s *usageStore) migrate() error {
 		&routingSignalRecord{},
 		&dynamicScoreTermRecord{},
 		&policyExecutionRecord{},
+		&fallbackTransitionRecord{},
 		&decisionCacheReasonRecord{},
 		&requestErrorRecord{},
 		&contentCaptureRecord{},
@@ -1186,6 +1227,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_routing_signals",
 		"request_dynamic_score_terms",
 		"request_policy_executions",
+		"request_fallback_transitions",
 		"request_cache_reasons",
 		"request_errors",
 		"request_content_captures",
@@ -1224,7 +1266,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1269,6 +1311,9 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	for _, execution := range rec.PolicyExecutions {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(policyExecutionRecordFromLog(rec.RequestID, execution)).Error
+	}
+	for _, transition := range rec.FallbackTransitions {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(fallbackTransitionRecordFromLog(rec.RequestID, transition)).Error
 	}
 	for _, reason := range rec.CacheReasons {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionCacheReasonRecordFromLog(rec.RequestID, reason)).Error
@@ -1449,6 +1494,27 @@ func policyExecutionRecordFromLog(requestID string, rec policyExecutionLogRecord
 		ClassLabel:             classLabel,
 		ErrorClass:             rec.ErrorClass,
 		ErrorMessage:           sanitizePersistedDiagnosticText(rec.ErrorMessage),
+		TerminalErrorType:      safeOptionalReasonToken(rec.TerminalErrorType),
+	}
+}
+
+func fallbackTransitionRecordFromLog(requestID string, rec fallbackTransitionLogRecord) *fallbackTransitionRecord {
+	return &fallbackTransitionRecord{
+		RequestID:              requestID,
+		Seq:                    rec.Seq,
+		AttemptIndex:           rec.AttemptIndex,
+		FailedCandidateIndex:   rec.FailedCandidateIndex,
+		FallbackCandidateIndex: rec.FallbackCandidateIndex,
+		FailedProvider:         rec.FailedProvider,
+		FailedModel:            rec.FailedModel,
+		FailedDialect:          rec.FailedDialect,
+		FallbackProvider:       rec.FallbackProvider,
+		FallbackModel:          rec.FallbackModel,
+		FallbackDialect:        rec.FallbackDialect,
+		FallbackReason:         safeOptionalReasonToken(rec.FallbackReason),
+		ErrorClass:             safeOptionalReasonToken(rec.ErrorClass),
+		Retryable:              rec.Retryable,
+		FallbackSucceeded:      rec.FallbackSucceeded,
 	}
 }
 
@@ -1578,6 +1644,12 @@ func rowFromRecord(rec logRecord) usageRow {
 		LicenseKeyID:                       rec.LicenseKeyID,
 		LicenseExpiry:                      rec.LicenseExpiry,
 		LicenseGraceActive:                 rec.LicenseGraceActive,
+		RouterVersion:                      rec.RouterVersion,
+		RouterBuildDate:                    rec.RouterBuildDate,
+		RoutingConfigFingerprint:           rec.RoutingConfigFingerprint,
+		ModelGroupConfigFingerprint:        rec.ModelGroupConfigFingerprint,
+		RoutingPolicyFingerprint:           rec.RoutingPolicyFingerprint,
+		PricingCatalogFingerprint:          rec.PricingCatalogFingerprint,
 		Error:                              errText,
 	}
 }
@@ -1658,6 +1730,12 @@ func recordFromRow(row usageRow) *usageRecord {
 		LicenseKeyID:                       row.LicenseKeyID,
 		LicenseExpiry:                      row.LicenseExpiry,
 		LicenseGraceActive:                 row.LicenseGraceActive,
+		RouterVersion:                      row.RouterVersion,
+		RouterBuildDate:                    row.RouterBuildDate,
+		RoutingConfigFingerprint:           row.RoutingConfigFingerprint,
+		ModelGroupConfigFingerprint:        row.ModelGroupConfigFingerprint,
+		RoutingPolicyFingerprint:           row.RoutingPolicyFingerprint,
+		PricingCatalogFingerprint:          row.PricingCatalogFingerprint,
 		Error:                              row.Error,
 	}
 }
@@ -1742,6 +1820,12 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		LicenseKeyID:                       record.LicenseKeyID,
 		LicenseExpiry:                      record.LicenseExpiry,
 		LicenseGraceActive:                 record.LicenseGraceActive,
+		RouterVersion:                      record.RouterVersion,
+		RouterBuildDate:                    record.RouterBuildDate,
+		RoutingConfigFingerprint:           record.RoutingConfigFingerprint,
+		ModelGroupConfigFingerprint:        record.ModelGroupConfigFingerprint,
+		RoutingPolicyFingerprint:           record.RoutingPolicyFingerprint,
+		PricingCatalogFingerprint:          record.PricingCatalogFingerprint,
 		Error:                              record.Error,
 	}, nil
 }
@@ -2114,6 +2198,7 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_routing_signals", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_dynamic_score_terms", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_policy_executions", TSColumn: "ts", UseRequestUsageTS: true},
+			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_fallback_transitions", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassDecisionTelemetry, TableName: "request_cache_reasons", TSColumn: "ts", UseRequestUsageTS: true},
 		}
 	case retentionDataClassSecurityAccess:
@@ -2996,6 +3081,9 @@ func addFloatToRollup(v *float64, sum *float64, count *int64, minValue *float64,
 func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetrySummary {
 	summary := decisionTelemetrySummary{
 		ByStrategy:         map[string]int64{},
+		ByPolicyOutcome:    map[string]int64{},
+		ByPolicyErrorClass: map[string]int64{},
+		ByFallbackReason:   map[string]int64{},
 		ByFilterReason:     map[string]int64{},
 		ByCacheReason:      map[string]int64{},
 		ByEnabledSignal:    map[string]int64{},
@@ -3024,6 +3112,7 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 	_ = s.db.Model(&routingSignalRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.RoutingSignals).Error
 	_ = s.db.Model(&dynamicScoreTermRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.ScoreTerms).Error
 	_ = s.db.Model(&policyExecutionRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.PolicyExecutions).Error
+	_ = s.db.Model(&fallbackTransitionRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.FallbackTransitions).Error
 	_ = s.db.Model(&decisionCacheReasonRecord{}).Where("request_id IN ?", requestIDs).Count(&summary.CacheReasons).Error
 	type countRow struct {
 		Key   string
@@ -3033,6 +3122,21 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 	_ = s.db.Model(&routingDecisionRecord{}).Select("strategy AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("strategy").Scan(&strategies).Error
 	for _, row := range strategies {
 		summary.ByStrategy[defaultString(row.Key, "unknown")] = row.Count
+	}
+	var policyOutcomes []countRow
+	_ = s.db.Model(&policyExecutionRecord{}).Select("outcome AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("outcome").Scan(&policyOutcomes).Error
+	for _, row := range policyOutcomes {
+		summary.ByPolicyOutcome[defaultString(row.Key, "unknown")] = row.Count
+	}
+	var policyErrors []countRow
+	_ = s.db.Model(&policyExecutionRecord{}).Select("error_class AS key, count(*) AS count").Where("request_id IN ? AND error_class <> ''", requestIDs).Group("error_class").Scan(&policyErrors).Error
+	for _, row := range policyErrors {
+		summary.ByPolicyErrorClass[defaultString(row.Key, "unknown")] = row.Count
+	}
+	var fallbackReasons []countRow
+	_ = s.db.Model(&fallbackTransitionRecord{}).Select("fallback_reason AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("fallback_reason").Scan(&fallbackReasons).Error
+	for _, row := range fallbackReasons {
+		summary.ByFallbackReason[defaultString(row.Key, "unknown")] = row.Count
 	}
 	var filterReasons []countRow
 	_ = s.db.Model(&decisionTargetFilterReasonRecord{}).Select("reason AS key, count(*) AS count").Where("request_id IN ?", requestIDs).Group("reason").Scan(&filterReasons).Error
@@ -3570,15 +3674,18 @@ func writeCacheSummary(b *strings.Builder, total *agg) {
 }
 
 func writeDecisionTelemetrySummary(b *strings.Builder, summary decisionTelemetrySummary) {
-	if summary.ShapeFeatures == 0 && summary.Candidates == 0 && summary.FilterReasons == 0 && summary.Decisions == 0 && summary.RoutingSignals == 0 && summary.ScoreTerms == 0 && summary.PolicyExecutions == 0 && summary.CacheReasons == 0 {
+	if summary.ShapeFeatures == 0 && summary.Candidates == 0 && summary.FilterReasons == 0 && summary.Decisions == 0 && summary.RoutingSignals == 0 && summary.ScoreTerms == 0 && summary.PolicyExecutions == 0 && summary.FallbackTransitions == 0 && summary.CacheReasons == 0 {
 		return
 	}
 	fmt.Fprintln(b, "## Decision Telemetry Summary")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Shape Feature Rows | Candidate Rows | Filter Reason Rows | Routing Decision Rows | Routing Signal Rows | Dynamic Score Term Rows | Policy Execution Rows | Cache Reason Rows |")
-	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|")
-	fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d |\n\n", summary.ShapeFeatures, summary.Candidates, summary.FilterReasons, summary.Decisions, summary.RoutingSignals, summary.ScoreTerms, summary.PolicyExecutions, summary.CacheReasons)
+	fmt.Fprintln(b, "| Shape Feature Rows | Candidate Rows | Filter Reason Rows | Routing Decision Rows | Routing Signal Rows | Score/Ranking Term Rows | Policy Execution Rows | Fallback Transition Rows | Cache Reason Rows |")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d |\n\n", summary.ShapeFeatures, summary.Candidates, summary.FilterReasons, summary.Decisions, summary.RoutingSignals, summary.ScoreTerms, summary.PolicyExecutions, summary.FallbackTransitions, summary.CacheReasons)
 	writeCountTable(b, "Routing Decisions By Strategy", "Strategy", summary.ByStrategy)
+	writeCountTable(b, "Policy Executions By Outcome", "Outcome", summary.ByPolicyOutcome)
+	writeCountTable(b, "Policy Error Classes", "Error Class", summary.ByPolicyErrorClass)
+	writeCountTable(b, "Fallback Transition Reasons", "Reason", summary.ByFallbackReason)
 	writeCountTable(b, "Target Filter Reasons", "Reason", summary.ByFilterReason)
 	writeCountTable(b, "Cache Decision Reasons", "Reason", summary.ByCacheReason)
 	writeCountTable(b, "Dynamic Score Enabled Signals", "Signal", summary.ByEnabledSignal)
