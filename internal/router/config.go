@@ -37,6 +37,7 @@ type ServerConfig struct {
 	DefaultModelGroup string                  `yaml:"default_model_group"`
 	AdminAuth         AdminAuthConfig         `yaml:"admin_auth"`
 	AdminReports      AdminReportsConfig      `yaml:"admin_reports"`
+	License           LicenseConfig           `yaml:"license" json:"license"`
 	ClientIP          ClientIPConfig          `yaml:"client_ip" json:"client_ip"`
 	Cache             CacheConfig             `yaml:"cache"`
 	Logging           LoggingConfig           `yaml:"logging"`
@@ -46,6 +47,15 @@ type ServerConfig struct {
 	ContentCapture    ContentCaptureConfig    `yaml:"content_capture"`
 	Retention         RetentionConfig         `yaml:"retention"`
 	DecisionTelemetry DecisionTelemetryConfig `yaml:"decision_telemetry"`
+}
+
+type LicenseConfig struct {
+	Enabled                      bool          `yaml:"enabled" json:"enabled"`
+	Path                         string        `yaml:"path" json:"path"`
+	StatePath                    string        `yaml:"state_path" json:"statePath"`
+	RecheckInterval              time.Duration `yaml:"recheck_interval" json:"recheckInterval"`
+	GracePeriodOnValidationError time.Duration `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
+	FailOpenForDev               bool          `yaml:"fail_open_for_dev" json:"failOpenForDev"`
 }
 
 type AdminAuthConfig struct {
@@ -672,6 +682,9 @@ func (c *Config) setDefaults() {
 	if len(c.Server.AdminReports.Baselines) == 0 {
 		c.Server.AdminReports.Baselines = defaultAdminReportBaselines()
 	}
+	if c.Server.License.RecheckInterval == 0 {
+		c.Server.License.RecheckInterval = time.Hour
+	}
 	if len(c.Server.ClientIP.HeaderOrder) == 0 {
 		c.Server.ClientIP.HeaderOrder = []string{"X-Forwarded-For", "X-Real-IP"}
 	}
@@ -788,6 +801,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.DecisionTelemetry.Enabled && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
 		return fmt.Errorf("server decision_telemetry requires usage_db enabled")
+	}
+	if err := validateLicenseConfig(c.Server.License); err != nil {
+		return err
 	}
 	if err := validateAdminAuth(c.Server.AdminAuth, c.Server.UsageDB); err != nil {
 		return err
@@ -1072,6 +1088,28 @@ func validateAdminAuth(cfg AdminAuthConfig, usage UsageDBConfig) error {
 	}
 	if err := validateAdminSessions(cfg.Sessions, cfg.OIDC.Enabled); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateLicenseConfig(cfg LicenseConfig) error {
+	if !cfg.Enabled {
+		if cfg.FailOpenForDev {
+			return fmt.Errorf("server license fail_open_for_dev requires license enabled")
+		}
+		return nil
+	}
+	if strings.TrimSpace(cfg.Path) == "" && !cfg.FailOpenForDev {
+		return fmt.Errorf("server license path is required when license is enabled")
+	}
+	if cfg.RecheckInterval <= 0 || cfg.RecheckInterval > 24*time.Hour {
+		return fmt.Errorf("server license recheck_interval must be greater than 0 and at most 24h")
+	}
+	if cfg.GracePeriodOnValidationError < 0 || cfg.GracePeriodOnValidationError > 7*24*time.Hour {
+		return fmt.Errorf("server license grace_period_on_validation_error must be between 0 and 168h")
+	}
+	if cfg.FailOpenForDev && strings.TrimSpace(cfg.Path) != "" {
+		return fmt.Errorf("server license fail_open_for_dev cannot be combined with a license path")
 	}
 	return nil
 }

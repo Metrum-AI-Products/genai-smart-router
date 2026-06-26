@@ -80,6 +80,14 @@ type logRecord struct {
 	CacheOccupancyPct                  float64                         `json:"cache_occupancy_pct"`
 	QuotaState                         string                          `json:"quota_state"`
 	KeyState                           string                          `json:"key_state"`
+	LicenseStatus                      string                          `json:"license_status,omitempty"`
+	LicenseReason                      string                          `json:"license_reason,omitempty"`
+	LicenseID                          string                          `json:"license_id,omitempty"`
+	LicenseCustomerID                  string                          `json:"license_customer_id,omitempty"`
+	LicenseSKU                         string                          `json:"license_sku,omitempty"`
+	LicenseKeyID                       string                          `json:"license_key_id,omitempty"`
+	LicenseExpiry                      string                          `json:"license_expiry,omitempty"`
+	LicenseGraceActive                 bool                            `json:"license_grace_active,omitempty"`
 	Warnings                           []string                        `json:"warnings"`
 	Error                              *string                         `json:"error"`
 	ErrorClass                         string                          `json:"error_class,omitempty"`

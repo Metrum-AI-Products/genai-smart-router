@@ -1,5 +1,7 @@
 # Usage Reporting Playbook
 
+License enforcement metadata is reportable as safe scalar request fields when enabled: `license_status`, `license_reason`, `license_id`, `license_customer_id`, `license_sku`, `license_key_id`, `license_expiry`, and `license_grace_active`. Use these fields to separate license-denied requests from caller quota, auth, upstream, and routing failures. Reports and exports must not include full license payloads, detached signatures, public/private key bytes, or signing-service details.
+
 Usage reports support cost governance, quota reviews, incident analysis, and savings analysis.
 
 ## Standard Dimensions

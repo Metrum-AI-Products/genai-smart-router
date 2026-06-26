@@ -56,6 +56,8 @@ For standalone policy services, prefer `strategy: external` with `external_polic
 
 For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and rolls back by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
 
+For licensed deployments, enable `server.license`, mount the Metrum-issued signed JSON license file, and keep `fail_open_for_dev: false`. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
+
 Docker Compose packages are built separately:
 
 ```bash

@@ -13,6 +13,16 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
+  # Offline signed JSON license enforcement. Local examples keep this disabled;
+  # licensed production deployments should mount a Metrum-issued license.json
+  # and set enabled: true.
+  license:
+    enabled: false
+    path: /app/config/license.json
+    state_path: /app/state/license-state.json
+    recheck_interval: 1h
+    grace_period_on_validation_error: 24h
+    fail_open_for_dev: false
   # Optional normalized routing-decision telemetry. Disabled by default.
   # When enabled, the router writes safe scalar child rows keyed by request_id
   # for request shape features, target candidates, target filter reason buckets,

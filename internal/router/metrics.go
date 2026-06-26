@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"smart-llmrouter/internal/buildinfo"
 )
@@ -108,7 +109,7 @@ func (m *metricsStore) Observe(rec logRecord) {
 	values.CacheOccupancyRatio = rec.CacheOccupancyPct / 100
 }
 
-func (m *metricsStore) Prometheus() string {
+func (m *metricsStore) Prometheus(license *licenseManager) string {
 	if m == nil {
 		return ""
 	}
@@ -142,7 +143,40 @@ func (m *metricsStore) Prometheus() string {
 	writeHelpType(&b, "smart_llmrouter_cache_max_bytes", "Configured cache maximum bytes.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_cache_occupancy_ratio", "Latest observed cache occupancy ratio.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_build_info", "Build information for the running router binary.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_license_valid", "Current license validity.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_license_seconds_until_expiry", "Seconds until current license expiry.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_license_grace_active", "Whether license validation grace is active.", "gauge")
+	writeHelp(&b, "smart_llmrouter_license_validation_failures_total", "License validation failures by safe reason.")
 	fmt.Fprintf(&b, "smart_llmrouter_build_info{%s} 1\n", buildInfoLabels())
+	if license != nil {
+		st, failures := license.metrics()
+		valid := int64(0)
+		if st.Valid {
+			valid = 1
+		}
+		grace := int64(0)
+		if st.GraceActive {
+			grace = 1
+		}
+		writeMetric(&b, "smart_llmrouter_license_valid", "", valid)
+		seconds := int64(0)
+		if !st.ExpiresAt.IsZero() {
+			seconds = int64(st.ExpiresAt.Sub(time.Now().UTC()).Seconds())
+			if seconds < 0 {
+				seconds = 0
+			}
+		}
+		writeMetric(&b, "smart_llmrouter_license_seconds_until_expiry", "", seconds)
+		writeMetric(&b, "smart_llmrouter_license_grace_active", "", grace)
+		reasons := make([]string, 0, len(failures))
+		for reason := range failures {
+			reasons = append(reasons, reason)
+		}
+		sort.Strings(reasons)
+		for _, reason := range reasons {
+			writeMetric(&b, "smart_llmrouter_license_validation_failures_total", `reason="`+escapeLabel(reason)+`"`, failures[reason])
+		}
+	}
 	for _, labels := range keys {
 		values := m.series[labels]
 		labelText := prometheusLabels(labels)

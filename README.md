@@ -145,6 +145,25 @@ If a variable is already set in the shell, the shell value wins over `env.json`.
 
 In a packaged deployment, put provider keys in `config/env.json` beside `config/config.yaml`. The same loading rule applies: shell environment values win over `env.json`.
 
+## License Enforcement
+
+Licensed deployments can enable offline signed JSON license enforcement under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Local development examples keep enforcement disabled; production licensed deployments should mount the license file read-only, keep the license state file under the deployment state directory, and avoid `fail_open_for_dev`.
+
+```yaml
+server:
+  license:
+    enabled: true
+    path: /app/config/license.json
+    state_path: /app/state/license-state.json
+    recheck_interval: 1h
+    grace_period_on_validation_error: 24h
+    fail_open_for_dev: false
+```
+
+`/readyz` fails when an enabled license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.
+
+Use `go run ./cmd/router-license inspect --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
+
 Expected provider env vars in `config.example.yaml`:
 
 ```bash
@@ -785,6 +804,8 @@ curl http://127.0.0.1:8080/version
 ## Usage Reports
 
 Usage is written to both JSONL and a GORM-backed relational database. SQLite is the default for local use; Docker Compose deployments can use Postgres via `server.usage_db.driver: postgres` and `server.usage_db.dsn`. The schema is scalar and relational only: no JSONB, JSON, array, or packed multi-value DB columns.
+
+When license enforcement is enabled, request logs and `request_usage` store only safe scalar license metadata such as status, reason, license ID, customer ID, SKU, key ID, expiry, and grace-active flag. They do not store the license payload, detached signature, public/private key bytes, or signing material.
 
 Diagnostics are written alongside usage when `server.diagnostics.enabled` is true. Each request can have child rows in `request_attempts`, `request_trace_events`, and `request_errors`, all keyed by `request_id`. Use the `X-Request-Id` response header or the `request_id` in an error body to join these rows during incident response. Diagnostic rows store provider/model/status/timing/error-class data, not raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context for troubleshooting, but it is not content capture and still redacts prompt-like fields, nested upstream bodies, and secret-shaped values before JSONL or usage DB persistence.
 

@@ -183,6 +183,14 @@ type usageRow struct {
 	CacheOccupancyPct                  float64
 	QuotaState                         string
 	KeyState                           string
+	LicenseStatus                      string
+	LicenseReason                      string
+	LicenseID                          string
+	LicenseCustomerID                  string
+	LicenseSKU                         string
+	LicenseKeyID                       string
+	LicenseExpiry                      string
+	LicenseGraceActive                 bool
 	Error                              string
 	MaxTokenBucket                     string
 	InputTokenBucket                   string
@@ -295,6 +303,14 @@ type usageRecord struct {
 	CacheOccupancyPct                  float64                            `gorm:"column:cache_occupancy_pct;not null"`
 	QuotaState                         string                             `gorm:"column:quota_state;type:text;not null"`
 	KeyState                           string                             `gorm:"column:key_state;type:text;not null"`
+	LicenseStatus                      string                             `gorm:"column:license_status;type:text;not null;default:'';index:idx_request_usage_license_status"`
+	LicenseReason                      string                             `gorm:"column:license_reason;type:text;not null;default:'';index:idx_request_usage_license_reason"`
+	LicenseID                          string                             `gorm:"column:license_id;type:text;not null;default:''"`
+	LicenseCustomerID                  string                             `gorm:"column:license_customer_id;type:text;not null;default:''"`
+	LicenseSKU                         string                             `gorm:"column:license_sku;type:text;not null;default:''"`
+	LicenseKeyID                       string                             `gorm:"column:license_key_id;type:text;not null;default:''"`
+	LicenseExpiry                      string                             `gorm:"column:license_expiry;type:text;not null;default:''"`
+	LicenseGraceActive                 bool                               `gorm:"column:license_grace_active;not null;default:false"`
 	Error                              string                             `gorm:"column:error;type:text;not null"`
 	DecisionShapeFeatures              []decisionShapeFeatureRecord       `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCandidates                 []decisionTargetCandidateRecord    `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -1372,6 +1388,14 @@ func rowFromRecord(rec logRecord) usageRow {
 		CacheOccupancyPct:                  rec.CacheOccupancyPct,
 		QuotaState:                         rec.QuotaState,
 		KeyState:                           rec.KeyState,
+		LicenseStatus:                      rec.LicenseStatus,
+		LicenseReason:                      rec.LicenseReason,
+		LicenseID:                          rec.LicenseID,
+		LicenseCustomerID:                  rec.LicenseCustomerID,
+		LicenseSKU:                         rec.LicenseSKU,
+		LicenseKeyID:                       rec.LicenseKeyID,
+		LicenseExpiry:                      rec.LicenseExpiry,
+		LicenseGraceActive:                 rec.LicenseGraceActive,
 		Error:                              errText,
 	}
 }
@@ -1444,6 +1468,14 @@ func recordFromRow(row usageRow) *usageRecord {
 		CacheOccupancyPct:                  row.CacheOccupancyPct,
 		QuotaState:                         row.QuotaState,
 		KeyState:                           row.KeyState,
+		LicenseStatus:                      row.LicenseStatus,
+		LicenseReason:                      row.LicenseReason,
+		LicenseID:                          row.LicenseID,
+		LicenseCustomerID:                  row.LicenseCustomerID,
+		LicenseSKU:                         row.LicenseSKU,
+		LicenseKeyID:                       row.LicenseKeyID,
+		LicenseExpiry:                      row.LicenseExpiry,
+		LicenseGraceActive:                 row.LicenseGraceActive,
 		Error:                              row.Error,
 	}
 }
@@ -1520,6 +1552,14 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		CacheOccupancyPct:                  record.CacheOccupancyPct,
 		QuotaState:                         record.QuotaState,
 		KeyState:                           record.KeyState,
+		LicenseStatus:                      record.LicenseStatus,
+		LicenseReason:                      record.LicenseReason,
+		LicenseID:                          record.LicenseID,
+		LicenseCustomerID:                  record.LicenseCustomerID,
+		LicenseSKU:                         record.LicenseSKU,
+		LicenseKeyID:                       record.LicenseKeyID,
+		LicenseExpiry:                      record.LicenseExpiry,
+		LicenseGraceActive:                 record.LicenseGraceActive,
 		Error:                              record.Error,
 	}, nil
 }

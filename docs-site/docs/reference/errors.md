@@ -33,6 +33,14 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `report-query-failed` | 500 | The report query failed. | Retry later or ask an administrator to inspect the request ID. | Inspect usage DB health and router logs. |
 | `content-forbidden` | 403 | A content-capture maintenance endpoint was requested without `content:capture` authorization. | Do not call content-capture admin endpoints from application clients. | Grant Casbin `content:capture` `delete`/`purge` policy or use a compatible `content_admin: true` operator caller. |
 | `admin-forbidden` | 403 | A browser-admin route was requested by an authenticated Basic subject without the required route permission. | Ask the administrator to grant the appropriate admin policy or route permission. | Verify the subject and authorization policy before enabling broader admin surfaces. |
+| `license-missing` | 503 | License enforcement is enabled but no readable license file is available. | Contact the router operator with the request ID. | Mount the issued license file at `server.license.path` and verify permissions. |
+| `license-invalid` | 503 | The license file is malformed, unverifiable, uses an unknown key, or otherwise cannot be trusted. | Contact the router operator with the request ID. | Replace the license with a valid Metrum-issued file; do not expose payloads or signatures in tickets. |
+| `license-expired` | 403 | The license signature is valid but the license is expired. | Contact the router operator. | Renew or restore a valid license file, then restart or wait for recheck. |
+| `license-not-yet-valid` | 503 | The license `not_before` time is in the future. | Contact the router operator. | Check the issued license dates and system clock. |
+| `license-product-mismatch` | 503 | The license is not issued for GenAI Smart Router. | Contact the router operator. | Install the correct product license. |
+| `license-feature-forbidden` | 403 | The request uses a feature not enabled by the current license. | Use an enabled feature or ask the operator for access. | Review licensed feature gates for routing, reporting, dynamic score, TypeScript, external policy, contracts, rollups, or content capture. |
+| `license-limit-exceeded` | 403 | The deployment exceeds a licensed limit such as model groups or callers. | Contact the router operator. | Reduce configured usage or update the license. |
+| `license-clock-rollback` | 503 | The local wall clock moved backwards beyond tolerance. | Contact the router operator. | Correct system time and inspect the license state file. |
 
 ## Eligibility Requirements
 

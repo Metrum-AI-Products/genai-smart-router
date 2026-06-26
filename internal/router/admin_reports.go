@@ -516,6 +516,14 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	prefix := cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)
 	relPath := strings.TrimPrefix(r.URL.Path, prefix)
 	securityReport := strings.HasPrefix(relPath, "/api/security/") || strings.HasPrefix(relPath, "/security/")
+	feature := LicenseFeatureAdminReports
+	if securityReport {
+		feature = LicenseFeatureAdminSecurityReports
+	}
+	if lerr := s.license.enforce(feature); lerr != nil {
+		writeJSON(w, lerr.StatusCode, map[string]any{"error": map[string]any{"type": lerr.Code, "message": lerr.Code}})
+		return
+	}
 	subject, ok := s.authenticateAdminSubject(w, r)
 	if !ok {
 		s.recordAdminSecurityAccess(r, adminAuthSubject{}, http.StatusUnauthorized, "unauthorized", authzObjectAdminReports, authzActionRead)

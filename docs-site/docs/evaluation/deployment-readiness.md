@@ -75,6 +75,7 @@ Minimum acceptance:
 - caller tokens are stored only as hashes;
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
 - `/metrics` requires a caller subject authorized for `metrics` `read`;
+- licensed deployments have `server.license.enabled: true`, a mounted current license file, `/readyz` success, and a documented renewal/rollback procedure;
 - browser admin reports, when enabled, require browser-admin identity plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
 - governed content capture is disabled unless required by policy, and any enabled deployment has `content:capture` delete/purge authorization, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;

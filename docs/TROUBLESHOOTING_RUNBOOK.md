@@ -56,6 +56,10 @@ Safe large-context example: a Cursor or opencode user can hit `429 tpm-exceeded`
 
 Separate caller-token quota failures from upstream provider quota or billing exhaustion. Caller policy failures return `429 quota-exceeded` or `429 rate-limited` before any provider call. Provider balance, credit, billing, payment, or quota failures are recorded per attempted target as `request_attempts.error_class = 'upstream_quota_exhausted'`; if no fallback succeeds, callers receive `503 upstream-quota-exhausted` with a sanitized `request_id`. Use that request ID to inspect `request_attempts`, `request_trace_events`, and `request_errors`, then verify the provider account balance, billing state, quota entitlement, and provider status page. If a later fallback succeeds, the terminal `request_usage` row remains `200` with `fallback_used = true`, and the failed provider attempt still appears in `request_attempts`.
 
+## License Errors
+
+`license-*` errors occur before upstream routing. `license-expired`, `license-feature-forbidden`, and `license-limit-exceeded` indicate a verified license that does not currently permit the request; other license errors normally mean the file is missing, malformed, unverifiable, for the wrong product, not yet valid, or the local clock moved backwards. Check `/readyz`, safe `request_usage.license_status` and `license_reason` fields, metrics-admin license gauges, and authorized `/admin/license/status`. Do not copy license payloads, signatures, private keys, or full config into tickets; use request IDs and safe status fields.
+
 Provider rate limits are recorded as `upstream_rate_limited` and return `503 upstream-rate-limited` only after eligible fallbacks are exhausted. Do not paste raw provider error bodies, account IDs, API keys, router tokens, token hashes, prompts, images, or tool outputs into incident notes.
 
 ### Bad Image Analysis

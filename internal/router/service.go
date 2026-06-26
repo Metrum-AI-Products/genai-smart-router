@@ -42,6 +42,7 @@ type Service struct {
 	logger       *requestLogger
 	usage        *usageStore
 	metrics      *metricsStore
+	license      *licenseManager
 	scripts      map[string]*scriptStrategy
 	observations *dynamicObservationStore
 }
@@ -153,6 +154,13 @@ func New(cfg *Config) (*Service, error) {
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
 	}
+	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
+	if err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		_ = usage.Close()
+		return nil, err
+	}
 	s.authorizer, err = newAuthorizer(cfg.Server.AdminAuth.Authorization, quota.callers, usage)
 	if err != nil {
 		_ = quota.Close()
@@ -197,6 +205,7 @@ func New(cfg *Config) (*Service, error) {
 		}
 	}
 	s.routes()
+	s.license.start()
 	return s, nil
 }
 
@@ -208,6 +217,7 @@ func (s *Service) Close() {
 	_ = s.quota.Close()
 	_ = s.logger.Close()
 	_ = s.usage.Close()
+	s.license.close()
 }
 
 func (s *Service) routes() {
@@ -217,6 +227,10 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.cfg.Validate(); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, healthPayload(false, err.Error()))
+			return
+		}
+		if lerr := s.license.enforce(LicenseFeatureRouting); lerr != nil {
+			writeJSON(w, http.StatusServiceUnavailable, healthPayload(false, lerr.Code))
 			return
 		}
 		writeJSON(w, http.StatusOK, healthPayload(true, ""))
@@ -232,6 +246,7 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("POST /admin/auth/logout", s.handleAdminOIDCLogout)
 	s.mux.HandleFunc("GET /admin/auth/me", s.handleAdminAuthMe)
 	s.mux.HandleFunc("GET /admin/auth/check", s.handleAdminAuthCheck)
+	s.mux.HandleFunc("GET /admin/license/status", s.handleAdminLicenseStatus)
 	s.mux.HandleFunc("GET /admin/reports", s.handleAdminReports)
 	s.mux.HandleFunc("GET /admin/reports/", s.handleAdminReports)
 	s.mux.HandleFunc("DELETE /v1/content-captures/{request_id}", s.handleContentCaptureDelete)
@@ -331,10 +346,29 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, rc, http.StatusForbidden, code)
 		return
 	}
+	if lerr := s.license.enforce(LicenseFeatureUsageReporting); lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return
+	}
 	defer s.finish(rc, http.StatusOK, nil)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, s.metrics.Prometheus())
+	_, _ = io.WriteString(w, s.metrics.Prometheus(s.license))
+}
+
+func (s *Service) handleAdminLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	subject, ok := s.authenticateAdminSubject(w, r)
+	if !ok {
+		s.recordAdminSecurityAccess(r, adminAuthSubject{}, http.StatusUnauthorized, "admin-auth-failed", authzObjectAdminReports, authzActionRead)
+		return
+	}
+	if !s.authorizeAdmin(subject, authzObjectAdminReports, authzActionRead) {
+		s.recordAdminSecurityAccess(r, subject, http.StatusForbidden, "reports-forbidden", authzObjectAdminReports, authzActionRead)
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
+		return
+	}
+	s.recordAdminSecurityAccess(r, subject, http.StatusOK, "", authzObjectAdminReports, authzActionRead)
+	writeJSON(w, http.StatusOK, safeLicenseStatusResponse(s.license.statusSnapshot()))
 }
 
 func (s *Service) handleAdminAuthCheck(w http.ResponseWriter, r *http.Request) {
@@ -494,6 +528,12 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.ContractPresent = true
 		rc.rec.ContractBucket = "pending"
 		rc.rec.ContractWorkload = contractWorkloadLabel(group.Contract)
+	}
+	for _, feature := range licenseFeaturesForGroup(group) {
+		if lerr := s.license.enforce(feature); lerr != nil {
+			s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+			return
+		}
 	}
 	piiResult, err := applyPIIFilter(req, group.PIIFilter)
 	if err != nil {
@@ -684,6 +724,10 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 	rc.rec.CallerEnvironment = callerEnvironment(caller.cfg)
 	rc.rec.TokenID = tokenID
 	rc.trace("request_accepted", "", Target{}, 0, 0, "", false, 0)
+	if lerr := s.license.enforce(licenseFeatureForRoute(dialect)); lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return nil, false
+	}
 	return rc, true
 }
 
@@ -699,6 +743,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	s.recordCacheStats(rc)
 	populateThroughput(&rc.rec)
 	populateCosts(&rc.rec)
+	s.populateLicenseMetadata(&rc.rec)
 	if rc.rec.Status == 0 {
 		rc.rec.Status = status
 	}
@@ -717,6 +762,23 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		}
 		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
 		rc.securityRecorded = true
+	}
+}
+
+func (s *Service) populateLicenseMetadata(rec *logRecord) {
+	if s == nil || rec == nil || s.license == nil {
+		return
+	}
+	st := s.license.statusSnapshot()
+	rec.LicenseStatus = st.Code
+	rec.LicenseReason = st.ValidationReason
+	rec.LicenseID = st.LicenseID
+	rec.LicenseCustomerID = st.CustomerID
+	rec.LicenseSKU = st.SKU
+	rec.LicenseKeyID = st.KeyID
+	rec.LicenseGraceActive = st.GraceActive
+	if !st.ExpiresAt.IsZero() {
+		rec.LicenseExpiry = st.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 }
 
