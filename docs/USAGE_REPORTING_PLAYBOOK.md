@@ -56,9 +56,13 @@ Use it when an operator needs quick usage, cost, latency, cache, fallback, provi
 
 The browser summary API returns chart descriptors with stable IDs, axis labels, units, series names, semantic color keys, and scalar points. Operators should use the charts for quick trend reading and the matching tables or Markdown export for exact reviewable values. Chart responses must remain safe aggregates only and must not include prompts, image payloads, tool outputs, bearer tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
-The browser shell includes shared usability controls for report tabs: selected tab/search state in the URL, safe-field search, sortable table headers, bounded page size, manual refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible table columns. Smoke these controls after deployment with an authorized browser-admin user, then verify ordinary caller tokens still receive `403 reports-forbidden`.
+The browser shell includes shared usability controls for report tabs: selected tab/search state in the URL, filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client, safe-field search, sortable table headers, bounded page size, manual refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible table columns. Smoke these controls after deployment with an authorized browser-admin user, then verify ordinary caller tokens still receive `403 reports-forbidden`.
 
-Expanded tabs use safe scalar usage rows for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, contract buckets, contract workloads, target validation, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. The contract tabs expose only safe bucket labels, model-group names, provider/model labels, counts, cost, token, latency, cache, fallback, and PII-filter aggregate fields; they do not expose raw prompts, images, tool outputs, tokens, token hashes, provider keys, or full config.
+Expanded tabs use safe scalar usage rows for overview, savings by user/key/group/project/provider-model, model groups by user, usage by key/caller/requested-model, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, troubleshooting buckets, routing decisions, contract buckets, contract workloads, target validation, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. The contract tabs expose only safe bucket labels, model-group names, provider/model labels, counts, cost, token, latency, cache, fallback, and PII-filter aggregate fields; they do not expose raw prompts, images, tool outputs, tokens, token hashes, provider keys, or full config. Recent request rows show caller ID, caller IP, public token ID, requested model, provider/model/dialect, status, cache, attempts, fallback, latency, tokens, and cost.
+
+Provider catalog status is read from safe runtime config metadata and returns separate `catalog` and `active_target` rows. Catalog rows show provider/model/dialect catalog metadata. Active target rows show resolved per-group target metadata, active group, target index, validation status/workload/age, pricing source/date, modalities, and tool-support labels after target overrides are applied. It must not expose provider API keys, headers, full config, or private deployment paths. Retention and rollup status is a read-only view over existing usage DB status tables; it shows the latest retention job, per-table candidate/held/eligible/blocked counts, and recent daily rollup runs without executing retention or generating rollups.
+
+Troubleshooting buckets are deterministic groupings for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 
 Anomaly reports are operational triage views, not machine-learning anomaly detection. They group requests by deterministic rules such as error responses, fallback use, multiple upstream attempts, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. Normal active key state is not anomalous. Baseline and savings fields belong only to savings reports and should not be interpreted from anomaly report rows.
 
@@ -67,6 +71,12 @@ Smoke an enabled deployment:
 ```bash
 curl -i -u admin:<password> \
   "$ROUTER_BASE_URL/admin/reports/api/summary?since=24h"
+
+curl -i -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/provider-catalog-status"
+
+curl -i -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/retention-status"
 ```
 
 Verify the branded `/admin/reports/` shell loads for an authorized browser-admin user, the dark/light toggle persists after reload, ordinary router caller tokens receive `403 reports-forbidden`, and `/docs/` remains public product documentation with no report data.

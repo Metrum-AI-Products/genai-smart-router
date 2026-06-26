@@ -64,7 +64,7 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 
 ## What It Shows
 
-The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model groups, model-group usage by user, public token IDs, caller metadata, quota/key states, routing strategy summaries, contract buckets, target validation buckets, capability usage, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
+The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, routing strategy summaries, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
 
@@ -81,6 +81,7 @@ Configure `server.client_ip.trusted_proxy_cidrs` before relying on IP-based secu
 The browser report shell provides shared controls for every tab:
 
 - time range filters from the top filter bar;
+- filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client;
 - selected tab and search stored in shareable URL query parameters;
 - client-side search across visible safe scalar fields;
 - sortable table headers;
@@ -99,15 +100,18 @@ The current browser surface includes:
 
 - Overview: high-level usage, cost, latency, cache, fallback, and provider trends.
 - Savings: actual request-time cost compared with selected source-dated baseline prices.
-- Savings by user, key, and model group.
+- Savings by user, key, model group, project, and provider/model.
 - Model groups by user.
-- Usage by API key.
+- Usage by API key, caller ID, and requested model.
 - Provider and model mix. This tab reports actual provider/model usage, input/output/total tokens, input/output/total cost, latency, and throughput. It does not include baseline or savings fields by default; use the Savings tabs when a hypothetical baseline comparison is needed.
 - Latency and throughput.
 - Errors and fallbacks.
 - Cache.
 - Quotas and budgets.
+- Troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 - Routing decisions.
+- Provider catalog status from safe runtime configuration metadata. The tab separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. This endpoint does not expose provider API keys, headers, full config, or private deployment files.
+- Retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked counts, and recent daily rollup runs. This is a read-only status view; retention execution and rollup generation remain operator-controlled workflows.
 - Contract buckets. This tab groups contract-present/pass/fail and failure-reason buckets by model group so operators can see whether a group is satisfying its configured quality and capability contract.
 - Contract workloads. This tab groups deployment-defined contract workload labels by model group so validation and production traffic can be compared without exposing request content.
 - Target validation. This tab groups target-validation status buckets by provider/model so stale, missing, or failing validation metadata is visible before it becomes a routing incident.
@@ -118,6 +122,8 @@ The current browser surface includes:
 - Anomalies from deterministic rule-based operational signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. This tab is not machine-learning anomaly detection; normal active key state is not anomalous, and baseline/savings fields are reserved for savings reports.
 - Security access events for authorized and unauthorized access paths when enabled.
 - Recent requests and request-ID drilldown.
+
+Recent request rows include visible columns for time, request ID, caller ID, caller IP, public token ID, caller user/project/environment, client, requested model, resolved model group, provider, model, dialect, status, cache state, attempts, fallback flag, latency, input/output/total tokens, and stored total cost.
 
 ## Charts
 
@@ -152,6 +158,15 @@ The dark/light theme preference is stored in browser `localStorage`; it does not
 ```bash
 curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/summary?since=24h"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/reports/api/requests?since=24h&caller_id=example-caller&provider=openrouter&status=200&cache=miss"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/reports/api/provider-catalog-status"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/reports/api/retention-status"
 ```
 
 Expected for an authorized subject: `200` JSON with `summary`, `series`, grouped tables, and recent request rows.

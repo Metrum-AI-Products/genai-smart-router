@@ -13,14 +13,21 @@ const genericTabs = {
   "savings-by-user": { endpoint: "savings-by-user", title: "Savings by user", savings: true },
   "savings-by-key": { endpoint: "savings-by-key", title: "Savings by key", savings: true },
   "savings-by-group": { endpoint: "savings-by-group", title: "Savings by model group", savings: true },
+  "savings-by-project": { endpoint: "savings-by-project", title: "Savings by project", savings: true },
+  "savings-by-provider-model": { endpoint: "savings-by-provider-model", title: "Savings by provider/model", savings: true },
   "model-groups-by-user": { endpoint: "model-groups-by-user", title: "Model groups by user" },
   "usage-by-key": { endpoint: "usage-by-key", title: "Usage per API key" },
+  "usage-by-caller": { endpoint: "usage-by-caller", title: "Usage per caller" },
+  "requested-models": { endpoint: "requested-models", title: "Requested models" },
   "provider-model-mix": { endpoint: "provider-model-mix", title: "Provider and model mix" },
   "latency-throughput": { endpoint: "latency-throughput", title: "Latency and throughput" },
   "errors-fallbacks": { endpoint: "errors-fallbacks", title: "Errors and fallbacks" },
   "cache-report": { endpoint: "cache", title: "Cache" },
   "quotas-budgets": { endpoint: "quotas-budgets", title: "Quotas and budgets" },
+  "troubleshooting-buckets": { endpoint: "troubleshooting-buckets", title: "Troubleshooting buckets" },
   "routing-decisions": { endpoint: "routing-decisions", title: "Routing decisions" },
+  "provider-catalog-status": { endpoint: "provider-catalog-status", title: "Provider catalog status", catalog: true },
+  "retention-status": { endpoint: "retention-status", title: "Retention and rollups", retention: true },
   "contract-buckets": { endpoint: "contract-buckets", title: "Contract buckets" },
   "contract-workloads": { endpoint: "contract-workloads", title: "Contract workloads" },
   "target-validation": { endpoint: "target-validation", title: "Target validation" },
@@ -343,10 +350,20 @@ function renderGeneric(tab, report) {
   document.querySelector("#refreshState").textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
   if (report.period) document.querySelector("#period").textContent = `${report.period.from} to ${report.period.to}`;
   if (report.summary) {
-    if (cfg.security) renderSecuritySummary(report.summary); else renderGenericSummary(report.summary);
+    if (cfg.security) renderSecuritySummary(report.summary);
+    else if (cfg.catalog) renderCatalogSummary(report.summary);
+    else renderGenericSummary(report.summary);
+  } else if (cfg.retention) {
+    renderRetentionSummary(report);
   }
   renderGenericCharts(report);
-  if (cfg.requests) {
+  if (cfg.catalog) {
+    currentTableRows = report.rows || [];
+    currentTableColumns = catalogColumns();
+  } else if (cfg.retention) {
+    currentTableRows = retentionRows(report);
+    currentTableColumns = retentionColumns();
+  } else if (cfg.requests) {
     currentTableRows = report.requests || [];
     currentTableColumns = requestColumns();
   } else if (cfg.security) {
@@ -382,6 +399,29 @@ function renderSecuritySummary(s) {
     ["Denied", fmt.format(s.denied || 0)],
     ["Unique IPs", fmt.format(s.uniqueIps || 0)]
   ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+}
+
+function renderCatalogSummary(s) {
+  document.querySelector("#summary").innerHTML = [
+    ["Providers", fmt.format(s.providers || 0)],
+    ["Catalog models", fmt.format(s.catalogModels || 0)],
+    ["Active targets", fmt.format(s.activeTargets || 0)],
+    ["Validated targets", fmt.format(s.validatedTargets || 0)],
+    ["Passed targets", fmt.format(s.passedTargets || 0)],
+    ["Missing pricing", fmt.format(s.missingPricing || 0)]
+  ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+}
+
+function renderRetentionSummary(report) {
+  const latest = report.latestJob || {};
+  document.querySelector("#summary").innerHTML = [
+    ["Retention", report.enabled ? "Enabled" : "Disabled"],
+    ["Mode", report.dryRun ? "Dry run" : "Delete"],
+    ["Latest job", latest.status || "none"],
+    ["Tables", fmt.format((report.tables || []).length)],
+    ["Rollups", fmt.format((report.rollups || []).length)],
+    ["Generated", report.generatedUtc || ""]
+  ].map(([label, value]) => `<div class="metric"><strong>${esc(value)}</strong><span>${label}</span></div>`).join("");
 }
 
 function renderGenericCharts(report) {
@@ -574,14 +614,89 @@ function requestColumns() {
   return [
     { key: "timeUtc", label: "Time" },
     { key: "requestId", label: "Request", request: true },
+    { key: "callerId", label: "Caller", copy: true },
+    { key: "callerIp", label: "IP", copy: true },
+    { key: "tokenId", label: "Key", copy: true },
     { key: "callerUser", label: "User" },
     { key: "project", label: "Project" },
+    { key: "environment", label: "Env" },
+    { key: "client", label: "Client" },
+    { key: "requestedModel", label: "Requested" },
     { key: "modelGroup", label: "Group" },
     { key: "provider", label: "Provider" },
     { key: "model", label: "Model" },
+    { key: "dialect", label: "Dialect" },
     { key: "status", label: "Status" },
+    { key: "cache", label: "Cache" },
+    { key: "attempts", label: "Attempts" },
+    { key: "fallback", label: "Fallback" },
+    { key: "latencyMs", label: "Latency", format: v => formatUnit(v, "ms", true) },
     { key: "totalTokens", label: "Total Tokens" },
+    { key: "inputTokens", label: "Input Tokens" },
+    { key: "outputTokens", label: "Output Tokens" },
     { key: "totalCostUsd", label: "Total cost", format: v => usd.format(v || 0) }
+  ];
+}
+
+function catalogColumns() {
+  return [
+    { key: "source", label: "Source" },
+    { key: "provider", label: "Provider", copy: true },
+    { key: "modelRef", label: "Model ref", copy: true },
+    { key: "model", label: "Model", copy: true },
+    { key: "dialect", label: "Dialect" },
+    { key: "activeGroups", label: "Active groups", format: v => esc((v || []).join(", ")) },
+    { key: "activeTargetCount", label: "Targets" },
+    { key: "groupTargetIndex", label: "Target index" },
+    { key: "validationStatus", label: "Validation" },
+    { key: "validationWorkload", label: "Workload" },
+    { key: "validationAgeBucket", label: "Age" },
+    { key: "validatedAt", label: "Validated" },
+    { key: "qualityScore", label: "Quality", format: v => v ? fmt.format(v) : "" },
+    { key: "passRate", label: "Pass rate", format: v => v ? formatUnit(v * 100, "percent", true) : "" },
+    { key: "contextTokens", label: "Context" },
+    { key: "inputModalities", label: "Input", format: v => esc((v || []).join(", ")) },
+    { key: "outputModalities", label: "Output", format: v => esc((v || []).join(", ")) },
+    { key: "toolSupport", label: "Tools", format: v => esc((v || []).join(", ")) },
+    { key: "inputPricePerMillionUsd", label: "Input USD/M", format: v => v ? usd.format(v) : "" },
+    { key: "outputPricePerMillionUsd", label: "Output USD/M", format: v => v ? usd.format(v) : "" },
+    { key: "pricingSource", label: "Pricing source" },
+    { key: "pricingUpdatedAt", label: "Pricing date" },
+    { key: "pricingMissing", label: "Pricing missing" }
+  ];
+}
+
+function retentionRows(report) {
+  const job = report.latestJob ? [{ kind: "job", key: `job:${report.latestJob.jobId}`, ...report.latestJob }] : [];
+  const tables = (report.tables || []).map(row => ({ kind: "retention-table", key: `${row.dataClass}:${row.tableName}`, ...row }));
+  const rollups = (report.rollups || []).map(row => ({ kind: "rollup", key: `rollup:${row.runId}`, ...row }));
+  return job.concat(tables, rollups);
+}
+
+function retentionColumns() {
+  return [
+    { key: "kind", label: "Kind" },
+    { key: "key", label: "Key", copy: true },
+    { key: "status", label: "Status" },
+    { key: "mode", label: "Mode" },
+    { key: "dryRun", label: "Dry run" },
+    { key: "startedAt", label: "Started" },
+    { key: "completedAt", label: "Completed" },
+    { key: "dataClass", label: "Data class" },
+    { key: "tableName", label: "Table" },
+    { key: "cutoff", label: "Cutoff" },
+    { key: "retentionDays", label: "Retention days" },
+    { key: "candidateRows", label: "Candidates" },
+    { key: "heldRows", label: "Held" },
+    { key: "eligibleRows", label: "Eligible" },
+    { key: "blockedRows", label: "Blocked" },
+    { key: "rollupType", label: "Rollup" },
+    { key: "windowStart", label: "Window start" },
+    { key: "windowEnd", label: "Window end" },
+    { key: "sourceRequestCount", label: "Source requests" },
+    { key: "dailyRows", label: "Daily rows" },
+    { key: "finalizedAt", label: "Finalized" },
+    { key: "message", label: "Message" }
   ];
 }
 
@@ -614,8 +729,8 @@ function aggregateRows(rows) {
 }
 
 function requestRows(rows) {
-  return `<thead><tr><th>Time</th><th>Request</th><th>User</th><th>Project</th><th>Group</th><th>Provider</th><th>Model</th><th>Status</th><th>Total Tokens</th><th>Total cost</th></tr></thead><tbody>` +
-    rows.slice(-100).reverse().map(r => `<tr><td>${esc(r.timeUtc)}</td><td>${esc(r.requestId)}</td><td>${esc(r.callerUser)}</td><td>${esc(r.project)}</td><td>${esc(r.modelGroup)}</td><td>${esc(r.provider)}</td><td>${esc(r.model)}</td><td>${r.status}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td></tr>`).join("") +
+  return `<thead><tr><th>Time</th><th>Request</th><th>Caller</th><th>IP</th><th>Key</th><th>User</th><th>Project</th><th>Client</th><th>Requested</th><th>Group</th><th>Provider</th><th>Model</th><th>Dialect</th><th>Status</th><th>Cache</th><th>Attempts</th><th>Fallback</th><th>Latency</th><th>Total Tokens</th><th>Total cost</th></tr></thead><tbody>` +
+    rows.slice(-100).reverse().map(r => `<tr><td>${esc(r.timeUtc)}</td><td>${esc(r.requestId)}</td><td>${esc(r.callerId)}</td><td>${esc(r.callerIp)}</td><td>${esc(r.tokenId)}</td><td>${esc(r.callerUser)}</td><td>${esc(r.project)}</td><td>${esc(r.client)}</td><td>${esc(r.requestedModel)}</td><td>${esc(r.modelGroup)}</td><td>${esc(r.provider)}</td><td>${esc(r.model)}</td><td>${esc(r.dialect)}</td><td>${r.status}</td><td>${esc(r.cache)}</td><td>${r.attempts}</td><td>${esc(r.fallback)}</td><td>${formatUnit(r.latencyMs, "ms", true)}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td></tr>`).join("") +
     `</tbody>`;
 }
 

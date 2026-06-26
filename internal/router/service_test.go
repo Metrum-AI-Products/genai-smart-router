@@ -759,13 +759,18 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/savings-by-user?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/savings-by-key?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/savings-by-group?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/savings-by-project?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/savings-by-provider-model?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/model-groups-by-user?since=24h",
 		"/admin/reports/api/usage-by-key?since=24h",
+		"/admin/reports/api/usage-by-caller?since=24h",
+		"/admin/reports/api/requested-models?since=24h",
 		"/admin/reports/api/provider-model-mix?since=24h",
 		"/admin/reports/api/latency-throughput?since=24h",
 		"/admin/reports/api/errors-fallbacks?since=24h",
 		"/admin/reports/api/cache?since=24h",
 		"/admin/reports/api/quotas-budgets?since=24h",
+		"/admin/reports/api/troubleshooting-buckets?since=24h",
 		"/admin/reports/api/routing-decisions?since=24h",
 		"/admin/reports/api/contract-buckets?since=24h",
 		"/admin/reports/api/contract-workloads?since=24h",
@@ -861,6 +866,63 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		t.Fatalf("ordinary scalar report status=%d body=%s", forbiddenScalarRR.Code, forbiddenScalarRR.Body.String())
 	}
 
+	filtered := httptest.NewRequest(http.MethodGet, "/admin/reports/api/requests?since=24h&caller_id=alice&caller_ip=203.0.113.10&requested_model=default&provider=mock&target_model=mock-model&dialect=openai&status=504&cache=hit&limit=1", nil)
+	filtered.SetBasicAuth("admin", "yell-yell-yum")
+	filteredRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(filteredRR, filtered)
+	if filteredRR.Code != http.StatusOK {
+		t.Fatalf("filtered requests status=%d body=%s", filteredRR.Code, filteredRR.Body.String())
+	}
+	filteredBody := mustJSONMap(t, filteredRR.Body.String())
+	filteredRequests := filteredBody["requests"].([]any)
+	if len(filteredRequests) != 1 {
+		t.Fatalf("filtered request rows len=%d body=%#v", len(filteredRequests), filteredBody)
+	}
+	filteredRow := filteredRequests[0].(map[string]any)
+	for _, key := range []string{"callerId", "callerIp", "tokenId", "client", "requestedModel", "dialect", "cache", "attempts", "fallback", "latencyMs", "inputTokens", "outputTokens"} {
+		if _, ok := filteredRow[key]; !ok {
+			t.Fatalf("filtered request missing visible column field %q: %#v", key, filteredRow)
+		}
+	}
+	if filteredRow["callerId"] != "alice" || filteredRow["callerIp"] != "203.0.113.10" || filteredRow["requestedModel"] != "default" || filteredRow["cache"] != "hit" {
+		t.Fatalf("filtered request has wrong dimensions: %#v", filteredRow)
+	}
+
+	catalog := httptest.NewRequest(http.MethodGet, "/admin/reports/api/provider-catalog-status", nil)
+	catalog.SetBasicAuth("admin", "yell-yell-yum")
+	catalogRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(catalogRR, catalog)
+	if catalogRR.Code != http.StatusOK {
+		t.Fatalf("catalog status=%d body=%s", catalogRR.Code, catalogRR.Body.String())
+	}
+	catalogBody := mustJSONMap(t, catalogRR.Body.String())
+	if catalogBody["summary"] == nil || len(catalogBody["rows"].([]any)) == 0 {
+		t.Fatalf("catalog report missing summary or rows: %#v", catalogBody)
+	}
+	catalogRow := catalogBody["rows"].([]any)[0].(map[string]any)
+	for _, key := range []string{"provider", "model", "dialect", "activeGroups", "validationStatus", "pricingMissing"} {
+		if _, ok := catalogRow[key]; !ok {
+			t.Fatalf("catalog row missing %q: %#v", key, catalogRow)
+		}
+	}
+	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "api_key"} {
+		if strings.Contains(catalogRR.Body.String(), forbidden) {
+			t.Fatalf("catalog leaked %q: %s", forbidden, catalogRR.Body.String())
+		}
+	}
+
+	retention := httptest.NewRequest(http.MethodGet, "/admin/reports/api/retention-status", nil)
+	retention.SetBasicAuth("admin", "yell-yell-yum")
+	retentionRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(retentionRR, retention)
+	if retentionRR.Code != http.StatusOK {
+		t.Fatalf("retention status=%d body=%s", retentionRR.Code, retentionRR.Body.String())
+	}
+	retentionBody := mustJSONMap(t, retentionRR.Body.String())
+	if retentionBody["generatedUtc"] == "" || retentionBody["tables"] == nil || retentionBody["rollups"] == nil {
+		t.Fatalf("retention report missing status shape: %#v", retentionBody)
+	}
+
 	custom := httptest.NewRequest(http.MethodGet, "/admin/reports/api/savings?since=24h&baseline=custom&baseline_input_price_per_million_usd=1&baseline_output_price_per_million_usd=2", nil)
 	custom.SetBasicAuth("admin", "yell-yell-yum")
 	customRR := httptest.NewRecorder()
@@ -934,7 +996,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	uiRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(uiRR, ui)
 	uiBody := uiRR.Body.String()
-	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`} {
+	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`, `name="caller_id"`, `data-tab="provider-catalog-status"`, `data-tab="retention-status"`} {
 		if !strings.Contains(uiBody, want) {
 			t.Fatalf("ui missing %q: status=%d body=%s", want, uiRR.Code, uiBody)
 		}
@@ -971,7 +1033,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
 		}
 	}
-	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream write output tok/s", "avgDownstreamWriteTotalTokensPerSec"} {
+	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream write output tok/s", "avgDownstreamWriteTotalTokensPerSec", "requestedModel", "catalogColumns", "retentionColumns", "troubleshooting-buckets"} {
 		if !strings.Contains(jsRR.Body.String(), want) {
 			t.Fatalf("js missing transparent report label/field %q: %s", want, jsRR.Body.String())
 		}
@@ -997,6 +1059,91 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			t.Fatalf("export missing transparent report label %q: %s", want, exportRR.Body.String())
 		}
 	}
+}
+
+func TestAdminCatalogStatusSeparatesCatalogAndActiveTargetMetadata(t *testing.T) {
+	cfg := Config{
+		Provider: map[string]ProviderConfig{
+			"mock": {
+				Dialect: "openai-chat",
+				Models: map[string]ProviderModel{
+					"shared": {
+						Model:                    "mock-vlm",
+						DisplayName:              "Mock VLM",
+						ContextTokens:            16384,
+						InputModalities:          []string{"text", "image"},
+						OutputModalities:         []string{"text"},
+						ToolSupport:              ToolSupport{OpenAIChat: []string{"auto"}},
+						InputPricePerMillionUSD:  1,
+						OutputPricePerMillionUSD: 2,
+						PricingSource:            "test",
+						PricingUpdatedAt:         "2026-06-26",
+						HonorsMaxTokens:          boolPtr(true),
+					},
+				},
+			},
+		},
+		Models: map[string]ModelGroup{
+			"text-group": {
+				Targets: []Target{{
+					Provider:        "mock",
+					ModelRef:        "shared",
+					InputModalities: []string{"text"},
+					Validation: &TargetValidation{
+						Status:      "passed",
+						Workload:    "text-smoke",
+						ValidatedAt: "2026-06-26T00:00:00Z",
+						Harness:     "unit",
+					},
+				}},
+			},
+			"vision-group": {
+				Targets: []Target{{Provider: "mock", ModelRef: "shared"}},
+			},
+		},
+	}
+
+	resp := buildAdminCatalogStatusResponse(cfg)
+	if resp.Summary.CatalogModels != 1 || resp.Summary.ActiveTargets != 2 || resp.Summary.ValidatedTargets != 1 || resp.Summary.PassedTargets != 1 {
+		t.Fatalf("unexpected catalog summary: %#v", resp.Summary)
+	}
+
+	var catalogRow, textTarget, visionTarget *adminCatalogStatusRow
+	for i := range resp.Rows {
+		row := &resp.Rows[i]
+		switch {
+		case row.Source == "catalog":
+			catalogRow = row
+		case row.Source == "active_target" && len(row.ActiveGroups) == 1 && row.ActiveGroups[0] == "text-group":
+			textTarget = row
+		case row.Source == "active_target" && len(row.ActiveGroups) == 1 && row.ActiveGroups[0] == "vision-group":
+			visionTarget = row
+		}
+	}
+	if catalogRow == nil || textTarget == nil || visionTarget == nil {
+		t.Fatalf("missing expected catalog/active rows: %#v", resp.Rows)
+	}
+	if !stringSliceEqual(catalogRow.InputModalities, []string{"image", "text"}) || catalogRow.ActiveTargetCount != 0 {
+		t.Fatalf("catalog row should preserve catalog metadata without active target counts: %#v", catalogRow)
+	}
+	if !stringSliceEqual(textTarget.InputModalities, []string{"text"}) || textTarget.ValidationStatus != "passed" {
+		t.Fatalf("text active target should preserve target override and validation: %#v", textTarget)
+	}
+	if !stringSliceEqual(visionTarget.InputModalities, []string{"image", "text"}) || visionTarget.ValidationStatus != "missing" {
+		t.Fatalf("unvalidated active target should keep resolved catalog metadata without inherited validation: %#v", visionTarget)
+	}
+}
+
+func stringSliceEqual(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 type fakeOIDCIssuer struct {

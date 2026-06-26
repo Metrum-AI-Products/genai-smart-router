@@ -31,12 +31,20 @@ type UsageReportOptions struct {
 	LogPath           string
 	From              time.Time
 	To                time.Time
+	CallerID          string
+	CallerIP          string
 	TokenID           string
 	TokenIDPrefix     string
 	CallerUser        string
 	CallerProject     string
 	CallerEnvironment string
+	RequestedModel    string
 	ResolvedGroup     string
+	TargetProvider    string
+	TargetModel       string
+	TargetDialect     string
+	Status            int
+	Cache             string
 	Client            string
 }
 
@@ -2304,6 +2312,12 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if opts.TokenIDPrefix != "" {
 		q = q.Where("token_id LIKE ?", opts.TokenIDPrefix+"%")
 	}
+	if opts.CallerID != "" {
+		q = q.Where("caller_id = ?", opts.CallerID)
+	}
+	if opts.CallerIP != "" {
+		q = q.Where("caller_ip = ?", opts.CallerIP)
+	}
 	if opts.CallerUser != "" {
 		q = q.Where("caller_user = ?", opts.CallerUser)
 	}
@@ -2313,8 +2327,26 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if opts.CallerEnvironment != "" {
 		q = q.Where("caller_environment = ?", opts.CallerEnvironment)
 	}
+	if opts.RequestedModel != "" {
+		q = q.Where("requested_model = ?", opts.RequestedModel)
+	}
 	if opts.ResolvedGroup != "" {
 		q = q.Where("resolved_group = ?", opts.ResolvedGroup)
+	}
+	if opts.TargetProvider != "" {
+		q = q.Where("target_provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("target_model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("target_dialect = ?", opts.TargetDialect)
+	}
+	if opts.Status != 0 {
+		q = q.Where("status = ?", opts.Status)
+	}
+	if opts.Cache != "" {
+		q = q.Where("cache = ?", opts.Cache)
 	}
 	if opts.Client != "" {
 		q = q.Where("client = ?", opts.Client)

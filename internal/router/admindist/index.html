@@ -21,8 +21,16 @@
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false">Dark</button>
         <form id="filters" class="filters">
           <label>Since <input name="since" value="24h" autocomplete="off"></label>
+          <label>Caller <input name="caller_id" placeholder="any"></label>
+          <label>IP <input name="caller_ip" placeholder="any"></label>
           <label>Project <input name="caller_project" placeholder="any"></label>
+          <label>Requested <input name="requested_model" placeholder="any"></label>
           <label>Group <input name="resolved_group" placeholder="any"></label>
+          <label>Provider <input name="provider" placeholder="any"></label>
+          <label>Target <input name="target_model" placeholder="any"></label>
+          <label>Dialect <input name="dialect" placeholder="any"></label>
+          <label>Status <input name="status" inputmode="numeric" placeholder="any"></label>
+          <label>Cache <input name="cache" placeholder="hit/miss/bypass"></label>
           <label>Client <input name="client" placeholder="any"></label>
           <button type="submit">Apply</button>
           <a id="export" class="button" href="export.md?since=24h">Markdown</a>
@@ -47,14 +55,21 @@
       <button type="button" data-tab="savings-by-user">Savings by user</button>
       <button type="button" data-tab="savings-by-key">Savings by key</button>
       <button type="button" data-tab="savings-by-group">Savings by group</button>
+      <button type="button" data-tab="savings-by-project">Savings by project</button>
+      <button type="button" data-tab="savings-by-provider-model">Savings by provider</button>
       <button type="button" data-tab="model-groups-by-user">User groups</button>
       <button type="button" data-tab="usage-by-key">Key usage</button>
+      <button type="button" data-tab="usage-by-caller">Caller usage</button>
+      <button type="button" data-tab="requested-models">Requested models</button>
       <button type="button" data-tab="provider-model-mix">Provider/model</button>
       <button type="button" data-tab="latency-throughput">Latency</button>
       <button type="button" data-tab="errors-fallbacks">Errors</button>
       <button type="button" data-tab="cache-report">Cache</button>
       <button type="button" data-tab="quotas-budgets">Quotas</button>
+      <button type="button" data-tab="troubleshooting-buckets">Troubleshooting</button>
       <button type="button" data-tab="routing-decisions">Routing</button>
+      <button type="button" data-tab="provider-catalog-status">Catalog status</button>
+      <button type="button" data-tab="retention-status">Retention</button>
       <button type="button" data-tab="contract-buckets">Contracts</button>
       <button type="button" data-tab="contract-workloads">Workloads</button>
       <button type="button" data-tab="target-validation">Validation</button>

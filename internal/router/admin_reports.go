@@ -68,6 +68,97 @@ type adminSecurityReportResponse struct {
 	GeneratedUTC string                  `json:"generatedUtc"`
 }
 
+type adminRetentionStatusResponse struct {
+	GeneratedUTC string                   `json:"generatedUtc"`
+	Enabled      bool                     `json:"enabled"`
+	DryRun       bool                     `json:"dryRun"`
+	LatestJob    *adminRetentionJobRow    `json:"latestJob,omitempty"`
+	Tables       []adminRetentionTableRow `json:"tables"`
+	Rollups      []adminRollupStatusRow   `json:"rollups"`
+}
+
+type adminRetentionJobRow struct {
+	JobID           uint   `json:"jobId"`
+	PolicyVersionID uint   `json:"policyVersionId"`
+	Mode            string `json:"mode"`
+	Status          string `json:"status"`
+	DryRun          bool   `json:"dryRun"`
+	StartedAt       string `json:"startedAt"`
+	CompletedAt     string `json:"completedAt,omitempty"`
+	RequestedBy     string `json:"requestedBy,omitempty"`
+	ErrorMessage    string `json:"errorMessage,omitempty"`
+}
+
+type adminRetentionTableRow struct {
+	DataClass     string `json:"dataClass"`
+	TableName     string `json:"tableName"`
+	Cutoff        string `json:"cutoff"`
+	RetentionDays int    `json:"retentionDays"`
+	BatchSize     int    `json:"batchSize"`
+	CandidateRows int64  `json:"candidateRows"`
+	HeldRows      int64  `json:"heldRows"`
+	EligibleRows  int64  `json:"eligibleRows"`
+	BlockedRows   int64  `json:"blockedRows"`
+	Status        string `json:"status"`
+	Message       string `json:"message,omitempty"`
+}
+
+type adminRollupStatusRow struct {
+	RunID              uint   `json:"runId"`
+	RollupType         string `json:"rollupType"`
+	Status             string `json:"status"`
+	WindowStart        string `json:"windowStart"`
+	WindowEnd          string `json:"windowEnd"`
+	SourceRequestCount int64  `json:"sourceRequestCount"`
+	DailyRows          int64  `json:"dailyRows"`
+	CompletedAt        string `json:"completedAt,omitempty"`
+	FinalizedAt        string `json:"finalizedAt,omitempty"`
+}
+
+type adminCatalogStatusResponse struct {
+	GeneratedUTC string                  `json:"generatedUtc"`
+	Summary      adminCatalogSummary     `json:"summary"`
+	Rows         []adminCatalogStatusRow `json:"rows"`
+}
+
+type adminCatalogSummary struct {
+	Providers        int `json:"providers"`
+	CatalogModels    int `json:"catalogModels"`
+	ActiveTargets    int `json:"activeTargets"`
+	ValidatedTargets int `json:"validatedTargets"`
+	PassedTargets    int `json:"passedTargets"`
+	MissingPricing   int `json:"missingPricing"`
+}
+
+type adminCatalogStatusRow struct {
+	Source                   string   `json:"source"`
+	Provider                 string   `json:"provider"`
+	ModelRef                 string   `json:"modelRef,omitempty"`
+	Model                    string   `json:"model"`
+	Dialect                  string   `json:"dialect"`
+	DisplayName              string   `json:"displayName,omitempty"`
+	ActiveGroups             []string `json:"activeGroups"`
+	ActiveTargetCount        int      `json:"activeTargetCount"`
+	GroupTargetIndex         int      `json:"groupTargetIndex,omitempty"`
+	ValidationStatus         string   `json:"validationStatus"`
+	ValidationWorkload       string   `json:"validationWorkload,omitempty"`
+	ValidationAgeBucket      string   `json:"validationAgeBucket,omitempty"`
+	ValidatedAt              string   `json:"validatedAt,omitempty"`
+	QualityScore             float64  `json:"qualityScore,omitempty"`
+	PassRate                 float64  `json:"passRate,omitempty"`
+	Harness                  string   `json:"harness,omitempty"`
+	ContextTokens            int      `json:"contextTokens,omitempty"`
+	InputModalities          []string `json:"inputModalities,omitempty"`
+	OutputModalities         []string `json:"outputModalities,omitempty"`
+	ToolSupport              []string `json:"toolSupport,omitempty"`
+	InputPricePerMillionUSD  float64  `json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD float64  `json:"outputPricePerMillionUsd,omitempty"`
+	PricingSource            string   `json:"pricingSource,omitempty"`
+	PricingUpdatedAt         string   `json:"pricingUpdatedAt,omitempty"`
+	PricingMissing           bool     `json:"pricingMissing"`
+	HonorsMaxTokens          *bool    `json:"honorsMaxTokens,omitempty"`
+}
+
 type adminSecuritySummary struct {
 	Events       int64 `json:"events"`
 	Allowed      int64 `json:"allowed"`
@@ -284,12 +375,20 @@ type adminReportChartPoint struct {
 }
 
 type adminReportFilterDTO struct {
+	CallerID          string `json:"caller_id,omitempty"`
+	CallerIP          string `json:"caller_ip,omitempty"`
 	TokenID           string `json:"token_id,omitempty"`
 	TokenIDPrefix     string `json:"token_id_prefix,omitempty"`
 	CallerUser        string `json:"caller_user,omitempty"`
 	CallerProject     string `json:"caller_project,omitempty"`
 	CallerEnvironment string `json:"caller_environment,omitempty"`
+	RequestedModel    string `json:"requested_model,omitempty"`
 	ResolvedGroup     string `json:"resolved_group,omitempty"`
+	TargetProvider    string `json:"provider,omitempty"`
+	TargetModel       string `json:"target_model,omitempty"`
+	TargetDialect     string `json:"dialect,omitempty"`
+	Status            int    `json:"status,omitempty"`
+	Cache             string `json:"cache,omitempty"`
 	Client            string `json:"client,omitempty"`
 }
 
@@ -313,34 +412,35 @@ type adminReportTableRow struct {
 }
 
 type adminReportRequest struct {
-	TimeUTC      string  `json:"timeUtc"`
-	RequestID    string  `json:"requestId"`
-	CallerID     string  `json:"callerId"`
-	CallerUser   string  `json:"callerUser"`
-	Project      string  `json:"project"`
-	Environment  string  `json:"environment"`
-	TokenID      string  `json:"tokenId"`
-	CallerIP     string  `json:"callerIp"`
-	Client       string  `json:"client"`
-	ModelGroup   string  `json:"modelGroup"`
-	Provider     string  `json:"provider"`
-	Model        string  `json:"model"`
-	Dialect      string  `json:"dialect"`
-	Status       int     `json:"status"`
-	Error        string  `json:"error,omitempty"`
-	Cache        string  `json:"cache"`
-	Attempts     int     `json:"attempts"`
-	Fallback     bool    `json:"fallback"`
-	LatencyMS    int64   `json:"latencyMs"`
-	TTFBMS       *int64  `json:"ttfbMs,omitempty"`
-	UpstreamMS   *int64  `json:"upstreamMs,omitempty"`
-	DownstreamMS *int64  `json:"downstreamMs,omitempty"`
-	Tokens       int     `json:"tokens"`
-	TotalTokens  int     `json:"totalTokens"`
-	InputTokens  int     `json:"inputTokens"`
-	OutputTokens int     `json:"outputTokens"`
-	CostUSD      float64 `json:"costUsd"`
-	TotalCostUSD float64 `json:"totalCostUsd"`
+	TimeUTC        string  `json:"timeUtc"`
+	RequestID      string  `json:"requestId"`
+	CallerID       string  `json:"callerId"`
+	CallerUser     string  `json:"callerUser"`
+	Project        string  `json:"project"`
+	Environment    string  `json:"environment"`
+	TokenID        string  `json:"tokenId"`
+	CallerIP       string  `json:"callerIp"`
+	Client         string  `json:"client"`
+	RequestedModel string  `json:"requestedModel"`
+	ModelGroup     string  `json:"modelGroup"`
+	Provider       string  `json:"provider"`
+	Model          string  `json:"model"`
+	Dialect        string  `json:"dialect"`
+	Status         int     `json:"status"`
+	Error          string  `json:"error,omitempty"`
+	Cache          string  `json:"cache"`
+	Attempts       int     `json:"attempts"`
+	Fallback       bool    `json:"fallback"`
+	LatencyMS      int64   `json:"latencyMs"`
+	TTFBMS         *int64  `json:"ttfbMs,omitempty"`
+	UpstreamMS     *int64  `json:"upstreamMs,omitempty"`
+	DownstreamMS   *int64  `json:"downstreamMs,omitempty"`
+	Tokens         int     `json:"tokens"`
+	TotalTokens    int     `json:"totalTokens"`
+	InputTokens    int     `json:"inputTokens"`
+	OutputTokens   int     `json:"outputTokens"`
+	CostUSD        float64 `json:"costUsd"`
+	TotalCostUSD   float64 `json:"totalCostUsd"`
 }
 
 type adminReportAttempt struct {
@@ -475,6 +575,13 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAdminSecurityEvents(w, r)
+	case r.URL.Path == prefix+"/api/retention-status":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminRetentionStatus(w, r)
+	case r.URL.Path == prefix+"/api/provider-catalog-status":
+		s.handleAdminProviderCatalogStatus(w, r)
 	case r.URL.Path == prefix+"/security/export.csv":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -505,25 +612,30 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 
 func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 	specs := map[string]adminScalarEndpointSpec{
-		"/api/savings-by-user":      {Report: "savings-by-user", Dimension: "caller_user", Sort: "savings", WithBaseline: true},
-		"/api/savings-by-key":       {Report: "savings-by-key", Dimension: "token_id", Sort: "savings", WithBaseline: true},
-		"/api/savings-by-group":     {Report: "savings-by-group", Dimension: "model_group", Sort: "savings", WithBaseline: true},
-		"/api/model-groups-by-user": {Report: "model-groups-by-user", Dimension: "caller_user", Secondary: "model_group", Sort: "requests"},
-		"/api/usage-by-key":         {Report: "usage-by-key", Dimension: "token_id", Sort: "cost"},
-		"/api/provider-model-mix":   {Report: "provider-model-mix", Dimension: "provider_model", Secondary: "dialect", Sort: "tokens"},
-		"/api/latency-throughput":   {Report: "latency-throughput", Dimension: "provider_model", Secondary: "client", Sort: "latency"},
-		"/api/errors-fallbacks":     {Report: "errors-fallbacks", Dimension: "status_error", Secondary: "provider_model", Sort: "errors"},
-		"/api/cache":                {Report: "cache", Dimension: "cache", Secondary: "model_group", Sort: "requests"},
-		"/api/quotas-budgets":       {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
-		"/api/routing-decisions":    {Report: "routing-decisions", Dimension: "routing_decision", Secondary: "provider_model", Sort: "requests"},
-		"/api/contract-buckets":     {Report: "contract-buckets", Dimension: "contract_bucket", Secondary: "model_group", Sort: "requests"},
-		"/api/contract-workloads":   {Report: "contract-workloads", Dimension: "contract_workload", Secondary: "model_group", Sort: "requests"},
-		"/api/target-validation":    {Report: "target-validation", Dimension: "target_validation", Secondary: "provider_model", Sort: "requests"},
-		"/api/expensive-requests":   {Report: "expensive-requests", Sort: "cost", Requests: true},
-		"/api/client-breakdown":     {Report: "client-breakdown", Dimension: "client", Secondary: "inbound_dialect", Sort: "requests"},
-		"/api/project-chargeback":   {Report: "project-chargeback", Dimension: "project", Secondary: "environment", Sort: "cost"},
-		"/api/capability-usage":     {Report: "capability-usage", Dimension: "capability", Secondary: "model_group", Sort: "image"},
-		"/api/anomalies":            {Report: "anomalies", Dimension: "anomaly", Secondary: "provider_model", Sort: "requests", Anomalies: true},
+		"/api/savings-by-user":           {Report: "savings-by-user", Dimension: "caller_user", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-key":            {Report: "savings-by-key", Dimension: "token_id", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-group":          {Report: "savings-by-group", Dimension: "model_group", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-project":        {Report: "savings-by-project", Dimension: "project", Secondary: "environment", Sort: "savings", WithBaseline: true},
+		"/api/savings-by-provider-model": {Report: "savings-by-provider-model", Dimension: "provider_model", Secondary: "dialect", Sort: "savings", WithBaseline: true},
+		"/api/model-groups-by-user":      {Report: "model-groups-by-user", Dimension: "caller_user", Secondary: "model_group", Sort: "requests"},
+		"/api/usage-by-key":              {Report: "usage-by-key", Dimension: "token_id", Sort: "cost"},
+		"/api/usage-by-caller":           {Report: "usage-by-caller", Dimension: "caller_id", Secondary: "project", Sort: "cost"},
+		"/api/requested-models":          {Report: "requested-models", Dimension: "requested_model", Secondary: "model_group", Sort: "requests"},
+		"/api/provider-model-mix":        {Report: "provider-model-mix", Dimension: "provider_model", Secondary: "dialect", Sort: "tokens"},
+		"/api/latency-throughput":        {Report: "latency-throughput", Dimension: "provider_model", Secondary: "client", Sort: "latency"},
+		"/api/errors-fallbacks":          {Report: "errors-fallbacks", Dimension: "status_error", Secondary: "provider_model", Sort: "errors"},
+		"/api/cache":                     {Report: "cache", Dimension: "cache", Secondary: "model_group", Sort: "requests"},
+		"/api/quotas-budgets":            {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
+		"/api/troubleshooting-buckets":   {Report: "troubleshooting-buckets", Dimension: "troubleshooting_bucket", Secondary: "provider_model", Sort: "requests"},
+		"/api/routing-decisions":         {Report: "routing-decisions", Dimension: "routing_decision", Secondary: "provider_model", Sort: "requests"},
+		"/api/contract-buckets":          {Report: "contract-buckets", Dimension: "contract_bucket", Secondary: "model_group", Sort: "requests"},
+		"/api/contract-workloads":        {Report: "contract-workloads", Dimension: "contract_workload", Secondary: "model_group", Sort: "requests"},
+		"/api/target-validation":         {Report: "target-validation", Dimension: "target_validation", Secondary: "provider_model", Sort: "requests"},
+		"/api/expensive-requests":        {Report: "expensive-requests", Sort: "cost", Requests: true},
+		"/api/client-breakdown":          {Report: "client-breakdown", Dimension: "client", Secondary: "inbound_dialect", Sort: "requests"},
+		"/api/project-chargeback":        {Report: "project-chargeback", Dimension: "project", Secondary: "environment", Sort: "cost"},
+		"/api/capability-usage":          {Report: "capability-usage", Dimension: "capability", Secondary: "model_group", Sort: "image"},
+		"/api/anomalies":                 {Report: "anomalies", Dimension: "anomaly", Secondary: "provider_model", Sort: "requests", Anomalies: true},
 	}
 	spec, ok := specs[path]
 	return spec, ok
@@ -675,6 +787,75 @@ func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request)
 		_ = cw.Write([]string{row.TimeUTC, row.RequestID, row.EventType, row.Surface, row.Method, row.Path, strconv.Itoa(row.Status), row.Outcome, row.Reason, row.AuthSubject, row.AuthSource, row.CallerID, row.CallerUser, row.Project, row.TokenID, row.AdminSubject, row.Client, row.UserAgentFamily, row.IPAddress, row.IPSource, strconv.FormatBool(row.TrustedProxyApplied), strconv.FormatBool(row.PrivateIP), strconv.FormatBool(row.LoopbackIP), strconv.FormatBool(row.ReservedIP), row.ModelGroup, row.RequestedModel, row.ResolvedGroup, strconv.Itoa(row.InputTokens), strconv.Itoa(row.OutputTokens), strconv.Itoa(row.TotalTokens)})
 	}
 	cw.Flush()
+}
+
+func (s *Service) handleAdminRetentionStatus(w http.ResponseWriter, r *http.Request) {
+	var latest retentionJobRecord
+	var latestJob *adminRetentionJobRow
+	err := s.usage.db.Order("started_at DESC, id DESC").First(&latest).Error
+	if err == nil {
+		latestJob = &adminRetentionJobRow{
+			JobID:           latest.ID,
+			PolicyVersionID: latest.PolicyVersionID,
+			Mode:            latest.Mode,
+			Status:          latest.Status,
+			DryRun:          latest.DryRun,
+			StartedAt:       latest.StartedAt,
+			CompletedAt:     latest.CompletedAt,
+			RequestedBy:     latest.RequestedBy,
+			ErrorMessage:    sanitizePersistedDiagnosticText(latest.ErrorMessage),
+		}
+	}
+	var tableRecords []retentionJobTableResultRecord
+	if latestJob != nil {
+		_ = s.usage.db.Where("job_id = ?", latest.ID).Order("data_class ASC, table_name ASC").Find(&tableRecords).Error
+	}
+	tables := make([]adminRetentionTableRow, 0, len(tableRecords))
+	for _, record := range tableRecords {
+		tables = append(tables, adminRetentionTableRow{
+			DataClass:     record.DataClass,
+			TableName:     record.StorageTable,
+			Cutoff:        record.CutoffTS,
+			RetentionDays: record.RetentionDays,
+			BatchSize:     record.BatchSize,
+			CandidateRows: record.CandidateRows,
+			HeldRows:      record.HeldRows,
+			EligibleRows:  record.EligibleRows,
+			BlockedRows:   record.BlockedRows,
+			Status:        record.Status,
+			Message:       sanitizePersistedDiagnosticText(record.Message),
+		})
+	}
+	var rollupRecords []usageRollupRunRecord
+	_ = s.usage.db.Order("window_end DESC, id DESC").Limit(20).Find(&rollupRecords).Error
+	rollups := make([]adminRollupStatusRow, 0, len(rollupRecords))
+	for _, record := range rollupRecords {
+		rollups = append(rollups, adminRollupStatusRow{
+			RunID:              record.ID,
+			RollupType:         record.RollupType,
+			Status:             record.Status,
+			WindowStart:        record.WindowStart,
+			WindowEnd:          record.WindowEnd,
+			SourceRequestCount: record.SourceRequestCount,
+			DailyRows:          record.DailyRowCount,
+			CompletedAt:        record.CompletedAt,
+			FinalizedAt:        record.FinalizedAt,
+		})
+	}
+	dryRun := s.cfg.Server.Retention.DryRun != nil && *s.cfg.Server.Retention.DryRun
+	writeJSON(w, http.StatusOK, adminRetentionStatusResponse{
+		GeneratedUTC: formatUsageTime(time.Now().UTC()),
+		Enabled:      s.cfg.Server.Retention.Enabled,
+		DryRun:       dryRun,
+		LatestJob:    latestJob,
+		Tables:       tables,
+		Rollups:      rollups,
+	})
+}
+
+func (s *Service) handleAdminProviderCatalogStatus(w http.ResponseWriter, r *http.Request) {
+	resp := buildAdminCatalogStatusResponse(*s.cfg)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Service) parseAdminSavingsBaseline(w http.ResponseWriter, r *http.Request) (adminSavingsBaselineDTO, bool) {
@@ -872,15 +1053,32 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		}
 		limit = parsed
 	}
+	status := 0
+	if raw := strings.TrimSpace(q.Get("status")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 100 || parsed > 599 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid-report-filter"}})
+			return adminReportFilters{}, false
+		}
+		status = parsed
+	}
 	opts := UsageReportOptions{
 		From:              from,
 		To:                to,
+		CallerID:          strings.TrimSpace(q.Get("caller_id")),
+		CallerIP:          strings.TrimSpace(q.Get("caller_ip")),
 		TokenID:           q.Get("token_id"),
 		TokenIDPrefix:     q.Get("token_id_prefix"),
 		CallerUser:        q.Get("caller_user"),
 		CallerProject:     q.Get("caller_project"),
 		CallerEnvironment: q.Get("caller_environment"),
+		RequestedModel:    strings.TrimSpace(q.Get("requested_model")),
 		ResolvedGroup:     q.Get("resolved_group"),
+		TargetProvider:    strings.TrimSpace(q.Get("provider")),
+		TargetModel:       strings.TrimSpace(q.Get("target_model")),
+		TargetDialect:     strings.TrimSpace(q.Get("dialect")),
+		Status:            status,
+		Cache:             strings.TrimSpace(q.Get("cache")),
 		Client:            q.Get("client"),
 	}
 	return adminReportFilters{From: from, To: to, UsageReportOptions: opts, Limit: limit}, true
@@ -953,6 +1151,162 @@ func buildAdminSecurityReportResponse(filters adminReportFilters, events []secur
 		Charts:       adminSecurityCharts(filters, generatedAt, rows),
 		GeneratedUTC: generatedAt,
 	}
+}
+
+func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	rows := []adminCatalogStatusRow{}
+	summary := adminCatalogSummary{Providers: len(cfg.Provider)}
+	for providerName, provider := range cfg.Provider {
+		for modelRef, model := range provider.Models {
+			row := adminCatalogRowFromProviderModel(providerName, modelRef, provider, model)
+			rows = append(rows, row)
+		}
+	}
+	for groupName, group := range cfg.Models {
+		for targetIndex, target := range group.Targets {
+			resolved, err := cfg.resolveTarget(groupName, target)
+			if err != nil {
+				continue
+			}
+			provider := cfg.Provider[resolved.Provider]
+			row := adminCatalogRowFromTarget(resolved.Provider, provider, resolved)
+			row.ActiveGroups = []string{groupName}
+			row.ActiveTargetCount = 1
+			row.GroupTargetIndex = targetIndex
+			if resolved.Validation != nil {
+				row.ValidationStatus = defaultString(strings.ToLower(strings.TrimSpace(resolved.Validation.Status)), "missing")
+				row.ValidationWorkload = resolved.Validation.Workload
+				row.ValidationAgeBucket = validationAgeBucket(resolved.Validation, time.Now().UTC())
+				row.ValidatedAt = resolved.Validation.ValidatedAt
+				row.QualityScore = resolved.Validation.QualityScore
+				row.PassRate = resolved.Validation.PassRate
+				row.Harness = resolved.Validation.Harness
+			}
+			rows = append(rows, row)
+		}
+	}
+	for i := range rows {
+		row := &rows[i]
+		row.ActiveGroups = dedupeSortedStrings(row.ActiveGroups)
+		row.InputModalities = dedupeSortedStrings(row.InputModalities)
+		row.OutputModalities = dedupeSortedStrings(row.OutputModalities)
+		row.ToolSupport = dedupeSortedStrings(row.ToolSupport)
+		if row.ValidationStatus == "" {
+			row.ValidationStatus = "missing"
+		}
+		row.PricingMissing = row.InputPricePerMillionUSD == 0 && row.OutputPricePerMillionUSD == 0 && row.PricingSource == ""
+		if row.Source == "catalog" {
+			summary.CatalogModels++
+		}
+		if row.Source == "active_target" {
+			summary.ActiveTargets++
+			if row.ValidationStatus != "missing" {
+				summary.ValidatedTargets++
+			}
+			if row.ValidationStatus == "passed" {
+				summary.PassedTargets++
+			}
+		}
+		if row.Source == "active_target" && row.PricingMissing {
+			summary.MissingPricing++
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Provider == rows[j].Provider {
+			if rows[i].ModelRef == rows[j].ModelRef {
+				if rows[i].Source == rows[j].Source {
+					if strings.Join(rows[i].ActiveGroups, ",") == strings.Join(rows[j].ActiveGroups, ",") {
+						return rows[i].GroupTargetIndex < rows[j].GroupTargetIndex
+					}
+					return strings.Join(rows[i].ActiveGroups, ",") < strings.Join(rows[j].ActiveGroups, ",")
+				}
+				return rows[i].Source < rows[j].Source
+			}
+			if rows[i].Model == rows[j].Model {
+				return rows[i].Dialect < rows[j].Dialect
+			}
+			return rows[i].Model < rows[j].Model
+		}
+		return rows[i].Provider < rows[j].Provider
+	})
+	return adminCatalogStatusResponse{GeneratedUTC: generatedAt, Summary: summary, Rows: rows}
+}
+
+func adminCatalogRowFromProviderModel(providerName, modelRef string, provider ProviderConfig, model ProviderModel) adminCatalogStatusRow {
+	dialect := defaultString(model.Dialect, provider.Dialect)
+	return adminCatalogStatusRow{
+		Source:                   "catalog",
+		Provider:                 providerName,
+		ModelRef:                 modelRef,
+		Model:                    model.Model,
+		Dialect:                  dialect,
+		DisplayName:              model.DisplayName,
+		ValidationStatus:         "missing",
+		ContextTokens:            model.ContextTokens,
+		InputModalities:          append([]string(nil), model.InputModalities...),
+		OutputModalities:         append([]string(nil), model.OutputModalities...),
+		ToolSupport:              flattenToolSupport(model.ToolSupport),
+		InputPricePerMillionUSD:  model.InputPricePerMillionUSD,
+		OutputPricePerMillionUSD: model.OutputPricePerMillionUSD,
+		PricingSource:            model.PricingSource,
+		PricingUpdatedAt:         model.PricingUpdatedAt,
+		HonorsMaxTokens:          model.HonorsMaxTokens,
+	}
+}
+
+func adminCatalogRowFromTarget(providerName string, provider ProviderConfig, target Target) adminCatalogStatusRow {
+	dialect := defaultString(target.Dialect, provider.Dialect)
+	return adminCatalogStatusRow{
+		Source:                   "active_target",
+		Provider:                 providerName,
+		ModelRef:                 target.ModelRef,
+		Model:                    target.Model,
+		Dialect:                  dialect,
+		DisplayName:              target.DisplayName,
+		ValidationStatus:         "missing",
+		ContextTokens:            target.ContextTokens,
+		InputModalities:          append([]string(nil), target.InputModalities...),
+		OutputModalities:         append([]string(nil), target.OutputModalities...),
+		ToolSupport:              flattenToolSupport(target.ToolSupport),
+		InputPricePerMillionUSD:  target.InputPricePerMillionUSD,
+		OutputPricePerMillionUSD: target.OutputPricePerMillionUSD,
+		PricingSource:            target.PricingSource,
+		PricingUpdatedAt:         target.PricingUpdatedAt,
+		HonorsMaxTokens:          target.HonorsMaxTokens,
+	}
+}
+
+func flattenToolSupport(ts ToolSupport) []string {
+	out := []string{}
+	for _, value := range ts.OpenAIChat {
+		out = append(out, "openai_chat:"+value)
+	}
+	for _, value := range ts.OpenAIResponses {
+		out = append(out, "openai_responses:"+value)
+	}
+	for _, value := range ts.AnthropicMessages {
+		out = append(out, "anthropic_messages:"+value)
+	}
+	for _, value := range ts.ProviderHosted {
+		out = append(out, "provider_hosted:"+value)
+	}
+	return out
+}
+
+func dedupeSortedStrings(values []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func adminSecurityRows(events []securityAccessEvent) []adminSecurityEventRow {
@@ -1289,6 +1643,15 @@ func adminScalarKeys(row usageRow, spec adminScalarEndpointSpec) []adminScalarKe
 	if spec.Anomalies {
 		return adminAnomalyKeys(row, spec)
 	}
+	if spec.Dimension == "troubleshooting_bucket" {
+		secondary := adminScalarDimension(row, spec.Secondary)
+		buckets := adminTroubleshootingBuckets(row)
+		keys := make([]adminScalarKey, 0, len(buckets))
+		for _, bucket := range buckets {
+			keys = append(keys, adminScalarKey{Key: bucket, Secondary: secondary})
+		}
+		return keys
+	}
 	if spec.Dimension == "capability" {
 		secondary := adminScalarDimension(row, spec.Secondary)
 		caps := adminCapabilityKeys(row)
@@ -1307,10 +1670,14 @@ func adminScalarDimension(row usageRow, dimension string) string {
 	switch dimension {
 	case "":
 		return ""
+	case "caller_id":
+		return defaultString(row.CallerID, "unknown")
 	case "caller_user":
 		return defaultString(row.CallerUser, "unknown")
 	case "token_id":
 		return defaultString(row.TokenID, "unknown")
+	case "requested_model":
+		return defaultString(row.RequestedModel, "unknown")
 	case "model_group":
 		return defaultString(row.ResolvedGroup, row.RequestedModel)
 	case "provider_model":
@@ -1351,9 +1718,63 @@ func adminScalarDimension(row usageRow, dimension string) string {
 		return defaultString(row.CallerEnvironment, "unknown")
 	case "capability":
 		return "capability"
+	case "troubleshooting_bucket":
+		return "troubleshooting"
 	default:
 		return "unknown"
 	}
+}
+
+func adminTroubleshootingBuckets(row usageRow) []string {
+	buckets := []string{}
+	errorText := strings.ToLower(row.Error)
+	quotaState := strings.ToLower(row.QuotaState)
+	keyState := strings.ToLower(row.KeyState)
+	switch {
+	case quotaState != "" && quotaState != "ok":
+		buckets = append(buckets, "quota:"+quotaState)
+	case strings.Contains(errorText, "quota"):
+		buckets = append(buckets, "quota:error")
+	}
+	switch {
+	case strings.Contains(errorText, "tpm") || strings.Contains(errorText, "token rate"):
+		buckets = append(buckets, "tpm")
+	case strings.Contains(errorText, "rpm") || strings.Contains(errorText, "rate limit") || row.Status == http.StatusTooManyRequests:
+		buckets = append(buckets, "rpm-rate-limit")
+	}
+	if strings.Contains(errorText, "concurrency") || strings.Contains(errorText, "in-flight") {
+		buckets = append(buckets, "concurrency")
+	}
+	if strings.Contains(errorText, "max token") || strings.Contains(errorText, "max_tokens") || strings.Contains(errorText, "max_output_tokens") || strings.Contains(errorText, "context length") {
+		buckets = append(buckets, "max-token-or-context")
+	}
+	if strings.Contains(errorText, "upstream-quota") || strings.Contains(errorText, "billing") || strings.Contains(errorText, "credits") {
+		buckets = append(buckets, "upstream-quota-billing")
+	}
+	if keyState != "" && keyState != "ok" && keyState != "active" {
+		buckets = append(buckets, "key:"+keyState)
+	}
+	if row.Cache == "hit" {
+		buckets = append(buckets, "cache-hit")
+	}
+	if row.Cache == "bypass" {
+		buckets = append(buckets, "cache-bypass")
+	}
+	if row.FallbackUsed {
+		buckets = append(buckets, "fallback")
+	}
+	if row.Attempts > 1 {
+		buckets = append(buckets, "multi-attempt")
+	}
+	if row.Status >= 500 {
+		buckets = append(buckets, "server-error")
+	} else if row.Status >= 400 {
+		buckets = append(buckets, "client-error")
+	}
+	if len(buckets) == 0 {
+		buckets = append(buckets, "ok")
+	}
+	return dedupeSortedStrings(buckets)
 }
 
 func adminCapabilityKeys(row usageRow) []string {
@@ -1718,46 +2139,55 @@ func adminChartSeriesFromTableRows(name, unit, colorKey string, rows []adminRepo
 
 func adminFilterDTO(filters adminReportFilters) adminReportFilterDTO {
 	return adminReportFilterDTO{
+		CallerID:          filters.CallerID,
+		CallerIP:          filters.CallerIP,
 		TokenID:           filters.TokenID,
 		TokenIDPrefix:     filters.TokenIDPrefix,
 		CallerUser:        filters.CallerUser,
 		CallerProject:     filters.CallerProject,
 		CallerEnvironment: filters.CallerEnvironment,
+		RequestedModel:    filters.RequestedModel,
 		ResolvedGroup:     filters.ResolvedGroup,
+		TargetProvider:    filters.TargetProvider,
+		TargetModel:       filters.TargetModel,
+		TargetDialect:     filters.TargetDialect,
+		Status:            filters.Status,
+		Cache:             filters.Cache,
 		Client:            filters.Client,
 	}
 }
 
 func adminRequestFromRow(row usageRow) adminReportRequest {
 	return adminReportRequest{
-		TimeUTC:      formatUsageTime(row.TS),
-		RequestID:    row.RequestID,
-		CallerID:     row.CallerID,
-		CallerUser:   row.CallerUser,
-		Project:      row.CallerProject,
-		Environment:  row.CallerEnvironment,
-		TokenID:      row.TokenID,
-		CallerIP:     row.CallerIP,
-		Client:       row.Client,
-		ModelGroup:   defaultString(row.ResolvedGroup, row.RequestedModel),
-		Provider:     row.TargetProvider,
-		Model:        row.TargetModel,
-		Dialect:      row.TargetDialect,
-		Status:       row.Status,
-		Error:        sanitizePersistedDiagnosticText(row.Error),
-		Cache:        row.Cache,
-		Attempts:     row.Attempts,
-		Fallback:     row.FallbackUsed,
-		LatencyMS:    row.LatencyMS,
-		TTFBMS:       row.TTFBMS,
-		UpstreamMS:   row.UpstreamMS,
-		DownstreamMS: row.DownstreamMS,
-		Tokens:       totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
-		TotalTokens:  totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
-		InputTokens:  row.InputTokens,
-		OutputTokens: row.OutputTokens,
-		CostUSD:      row.TotalCostUSD,
-		TotalCostUSD: row.TotalCostUSD,
+		TimeUTC:        formatUsageTime(row.TS),
+		RequestID:      row.RequestID,
+		CallerID:       row.CallerID,
+		CallerUser:     row.CallerUser,
+		Project:        row.CallerProject,
+		Environment:    row.CallerEnvironment,
+		TokenID:        row.TokenID,
+		CallerIP:       row.CallerIP,
+		Client:         row.Client,
+		RequestedModel: row.RequestedModel,
+		ModelGroup:     defaultString(row.ResolvedGroup, row.RequestedModel),
+		Provider:       row.TargetProvider,
+		Model:          row.TargetModel,
+		Dialect:        row.TargetDialect,
+		Status:         row.Status,
+		Error:          sanitizePersistedDiagnosticText(row.Error),
+		Cache:          row.Cache,
+		Attempts:       row.Attempts,
+		Fallback:       row.FallbackUsed,
+		LatencyMS:      row.LatencyMS,
+		TTFBMS:         row.TTFBMS,
+		UpstreamMS:     row.UpstreamMS,
+		DownstreamMS:   row.DownstreamMS,
+		Tokens:         totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+		TotalTokens:    totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+		InputTokens:    row.InputTokens,
+		OutputTokens:   row.OutputTokens,
+		CostUSD:        row.TotalCostUSD,
+		TotalCostUSD:   row.TotalCostUSD,
 	}
 }
 

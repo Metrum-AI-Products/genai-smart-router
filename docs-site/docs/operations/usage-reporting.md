@@ -98,7 +98,9 @@ Common endpoints:
 - `/admin/reports/` renders the browser shell.
 - `/admin/reports/api/summary?since=24h` returns totals, grouped tables, bounded request rows, and a reusable `charts` contract with chart IDs, titles, axis labels/types/units, series names, semantic color keys, scalar points, generation timestamp, range, and active safe filters.
 - `/admin/reports/api/savings?since=24h&baseline=gpt-5.5` returns actual cost, selected baseline cost, savings USD, savings percent, time buckets, model-group breakdowns, source-dated baseline metadata, and chart descriptors.
-- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group, model groups by user, usage by key, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, routing decisions, contract buckets, contract workloads, target validation buckets, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
+- `/admin/reports/api/<report-name>?since=24h` returns shared scalar report rows and chart descriptors for overview, savings by user/key/group/project/provider-model, model groups by user, usage by key/caller/requested-model, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, troubleshooting buckets, routing decisions, contract buckets, contract workloads, target validation buckets, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. Baseline and savings fields are present only on savings reports.
+- `/admin/reports/api/provider-catalog-status` returns safe provider catalog and active-target validation metadata from runtime config. It separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. It does not expose provider keys, headers, or full config.
+- `/admin/reports/api/retention-status` returns read-only retention and daily-rollup status from existing usage DB tables, including the latest retention job, per-table candidate/held/eligible/blocked counts, and recent rollup runs.
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
 - `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
@@ -111,7 +113,7 @@ Savings reports use stored request-time actual cost fields for actual spend. Onl
 
 Anomaly reports are deterministic operational triage views rather than machine-learning anomaly detection. The built-in rules group errors, fallbacks, multi-attempt requests, slow requests, expensive requests, quota warning/reject states, and abnormal key states such as disabled, revoked, expired, or suspended; normal active key state is not anomalous.
 
-The browser shell adds shared usability controls across tabs: URL-backed selected tab and search state, visible-table search, sortable headers, bounded page-size selection, refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible safe scalar columns. Server endpoints remain authenticated and bounded; the browser controls do not expose or persist bearer tokens.
+The browser shell adds shared usability controls across tabs: URL-backed selected tab and search state, filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client, visible-table search, sortable headers, bounded page-size selection, refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible safe scalar columns. Server endpoints remain authenticated and bounded; the browser controls do not expose or persist bearer tokens.
 
 ## Report Dimensions
 
@@ -124,11 +126,13 @@ Reports include:
 - Request-time input/output token prices and calculated input/output/total USD cost.
 - Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
+- Usage by caller ID, requested model, target provider/model/dialect, status, cache state, and stored caller IP when enabled.
 - Usage by caller IP and hour.
 - Usage by router model group.
 - Usage by external provider and model.
 - Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
+- Browser troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 - Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, routing signal rows, dynamic-score term/ranking rows, policy execution rows, and cache decision reason buckets.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.
