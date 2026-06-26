@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Demo external routing policy service for GenAI Smart Router.
 
-The router POSTs a JSON policy request containing normalized request context,
+The router POSTs a JSON policy request containing safe derived request context,
 caller metadata, and the eligible target list. This service selects a target
-based on prompt size and returns a validated routing decision.
+based on prompt size without receiving prompt text by default.
 """
 
 from __future__ import annotations
@@ -26,7 +26,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         payload = json.loads(self.rfile.read(length) or b"{}")
         targets = payload.get("targets") or []
-        text = payload.get("text") or ""
+        context = payload.get("context") or {}
+        text_chars = int(context.get("textChars") or 0)
 
         indexed = list(enumerate(targets))
         candidates = [
@@ -38,7 +39,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             self._write_json(200, {"targetIndex": 0, "classLabel": "prompt-size:no-candidates"})
             return
 
-        preferred_tier = "heavy" if len(text) > PROMPT_CHAR_THRESHOLD else "cheap"
+        preferred_tier = "heavy" if text_chars > PROMPT_CHAR_THRESHOLD else "cheap"
         selected_index = candidates[0][0]
         for index, target in candidates:
             if target.get("tier") == preferred_tier:
@@ -52,7 +53,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 "targetIndex": selected_index,
                 "fallbackIndexes": fallback_indexes,
                 "classLabel": f"prompt-size:{preferred_tier}",
-                "metadata": {"textChars": len(text)},
+                "metadata": {"textChars": text_chars},
             },
         )
 

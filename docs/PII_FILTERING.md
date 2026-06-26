@@ -10,7 +10,8 @@ GenAI Smart Router supports model-group-level PII filtering through `models.<gro
 - Cache keys are computed from the redacted request.
 - Placeholder mappings are kept in memory for the request lifecycle only.
 - Restored responses are never stored in the shared response cache; cache entries keep redacted upstream text.
-- The request object passed to TypeScript scripts and external routing policy services is the redacted request. `ctx.request.raw` and external policy `request.raw` do not carry configured PII matches after filtering.
+- The request object passed to TypeScript scripts is the redacted request, so `ctx.request.raw` does not carry configured PII matches after filtering.
+- External routing policy services receive safe derived request context by default. If `external_policy.include_request: true` is explicitly enabled for a trusted service, the external policy `request` and `text` fields are built from the redacted request and do not carry configured PII matches after filtering.
 - Raw request bodies are redacted for both ordinary and tool passthrough requests while preserving tool-call IDs, tool schemas, model names, roles, image URLs by default, and provider metadata.
 
 ## Modes
@@ -43,9 +44,9 @@ Before rollout:
 3. Smoke tool-result text when the group supports tools.
 4. Confirm upstream receives placeholders, not raw matched values.
 5. Confirm usage DB, JSONL logs, diagnostics, and metrics contain only safe metadata.
-6. Confirm TypeScript or external policy payload captures contain placeholders in `request.raw`, not raw matched values.
+6. Confirm TypeScript payload captures contain placeholders in `ctx.request.raw`, not raw matched values. For external policies, confirm the default payload omits request mirrors; if `external_policy.include_request: true` is approved, confirm external policy `request` and `text` contain placeholders.
 7. Confirm cached redacted responses restore to the current request's placeholders and do not leak previous caller values.
 
 ## Limitations
 
-Regex filtering is not complete PII detection. Customer deployments should review each expression, set `max_replacements_per_request`, and use external DLP/privacy services for high-assurance detection. Keep external services trusted. Router-managed TypeScript and external routing policy contexts receive the redacted request after model-group PII filtering; placeholder mappings remain request-local and are not sent to policy code or persisted.
+Regex filtering is not complete PII detection. Customer deployments should review each expression, set `max_replacements_per_request`, and use external DLP/privacy services for high-assurance detection. Keep external services trusted. Router-managed TypeScript contexts receive the redacted request after model-group PII filtering; external routing policy services receive raw/redacted request mirrors only with `external_policy.include_request: true`. Placeholder mappings remain request-local and are not sent to policy code or persisted.

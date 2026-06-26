@@ -341,6 +341,7 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
+      include_request: false
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -348,7 +349,7 @@ models:
 
 External policy egress uses HTTPS by default, exact-host allowlisting, and redirect revalidation on every hop. Plain HTTP is accepted only for loopback hosts or when `external_policy.allow_http: true` is explicitly approved for trusted internal infrastructure.
 
-The policy service receives normalized request context, safe caller metadata, safe contract metadata when configured, eligible targets, pricing metadata, tool support, validation metadata, and modality metadata. For groups with `pii_filter`, that context is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
+The policy service receives safe derived request context, safe caller metadata, safe contract metadata when configured, eligible targets, pricing metadata, tool support, validation metadata, and modality metadata. By default it does not receive prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only for a trusted service that is allowed to receive request content. With `pii_filter`, that opt-in request mirror is redacted before dispatch and placeholder mappings are not sent. It never receives raw router tokens, token hashes, or provider API keys. See [External Routing Policy Service](./external-routing-policy) for the tested demo service and response schema.
 
 ## Caller Tokens And Allow Lists
 
@@ -556,7 +557,7 @@ The cache is intended for eligible deterministic unary responses. Tool-bearing a
 
 Image-bearing requests also bypass response caching. Usage logs and the usage database include `input_has_image`, `input_image_count`, image-token counts when the upstream reports them, calculated VLM costs, and upstream-reported billed costs when available.
 
-Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. See [PII Filtering](./pii-filtering).
+Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. External policy services receive only derived safe context unless `external_policy.include_request: true` is explicitly enabled, in which case the request mirror is redacted first. See [PII Filtering](./pii-filtering).
 
 Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture and still redacts prompt-like fields, nested upstream bodies, and secret-shaped values before JSONL or usage DB persistence.
 

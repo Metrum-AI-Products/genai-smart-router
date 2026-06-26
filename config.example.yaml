@@ -1207,6 +1207,7 @@ models:
       timeout_ms: 500
       max_response_bytes: 65536
       on_error: fail_closed
+      include_request: false
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b

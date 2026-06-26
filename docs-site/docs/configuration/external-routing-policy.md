@@ -24,6 +24,9 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
+      # Off by default. Set true only for a trusted policy service that is allowed
+      # to receive raw/redacted request content.
+      include_request: false
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -55,14 +58,24 @@ The router sends a JSON `POST` body to the policy service:
 ```json
 {
   "group": "adaptive",
-  "text": "Summarize this note in one sentence.",
+  "context": {
+    "model": "adaptive",
+    "dialect": "openai-chat",
+    "estimatedTokens": 9,
+    "textChars": 36,
+    "messageCount": 1,
+    "messageTextChars": 36,
+    "imageCount": 0,
+    "toolCount": 0,
+    "hasTools": false,
+    "hasStructuredOutput": false,
+    "maxTokens": 128,
+    "maxTokensField": "max_tokens",
+    "temperatureSet": false,
+    "stream": false
+  },
   "inputModalities": ["text"],
   "requirements": ["text", "max_tokens"],
-  "request": {
-    "model": "adaptive",
-    "messages": [{"role": "user", "content": "Summarize this note in one sentence."}],
-    "max_tokens": 128
-  },
   "caller": {
     "id": "team-prod",
     "user": "team",
@@ -93,9 +106,11 @@ The router sends a JSON `POST` body to the policy service:
 }
 ```
 
-`targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, and capped requests skip targets marked as not honoring max tokens.
+By default, the policy request does not include raw prompt text, normalized message bodies, image URLs or base64 data, tool result text, tool schemas, or `request.raw`. Use the derived `context` object for routing signals such as prompt size, estimated token count, message count, image count, tool count, structured-output presence, explicit output cap, streaming flag, and safe metadata key names.
 
-When the model group has `pii_filter` enabled, the policy body is built from the redacted request object. `request.raw`, `text`, and normalized message/input fields contain placeholders rather than configured raw PII matches. Placeholder mappings stay in router memory for the current request and are not sent to the policy service.
+If a deployment needs a trusted policy service to inspect request content, set `external_policy.include_request: true`. That opt-in adds `request` and `text` fields to the policy body. When the model group has `pii_filter` enabled, those fields are built from the redacted request object; placeholder mappings stay in router memory for the current request and are not sent to the policy service. Without `pii_filter`, `include_request: true` can send raw prompts/messages, image references or data, tool schemas, and tool outputs to the external service.
+
+`targets` contains only targets already eligible for the request shape. For example, image requests only include image-capable targets, tool requests only include compatible tool targets, and capped requests skip targets marked as not honoring max tokens.
 
 When the group has a model-group contract, the policy body includes safe `contract` metadata and target `validation` metadata. `targets[]` is already filtered by the contract, and policy responses are validated against that eligible list. The policy service cannot select a contract-ineligible fallback.
 
@@ -131,7 +146,7 @@ The deployment examples include a runnable prompt-size policy service:
 python3 examples/external-routing-policy/prompt_size_policy.py
 ```
 
-It listens on `http://127.0.0.1:18090/route`, sends short prompts to a `cheap` target, sends prompts over 8,000 characters to a `heavy` target, and returns the same response schema shown above.
+It listens on `http://127.0.0.1:18090/route`, sends requests with `context.textChars <= 8000` to a `cheap` target, sends larger requests to a `heavy` target, and returns the same response schema shown above.
 
 The reference config includes an example group named `external-policy-demo`:
 
@@ -145,6 +160,7 @@ models:
       timeout_ms: 500
       max_response_bytes: 65536
       on_error: fail_closed
+      include_request: false
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -154,7 +170,8 @@ Names such as `external-policy-demo`, `cheap`, and `heavy` are examples. Deploym
 
 ## Security And Operations
 
-- Keep policy services inside trusted infrastructure because they receive request context, tool schemas, image references or image data, caller metadata, pricing metadata, and target capability metadata. For PII-filtered groups this context is redacted before policy dispatch, but the policy service still handles sensitive routing metadata.
+- Keep policy services inside trusted infrastructure because they receive request-shape context, caller metadata, pricing metadata, and target capability metadata. They receive prompt text, message content, tool schemas, image references or image data, and tool outputs only when `external_policy.include_request: true` is explicitly configured.
+- Leave `include_request` off unless the policy service has the same trust boundary as the router and the deployment has approved content sharing. Prefer derived fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`.
 - Use exact `allow_hosts`; wildcard host allowlists are not supported.
 - Use HTTPS for non-local policy services. Use `external_policy.allow_http: true` only for an approved trusted internal endpoint; loopback HTTP is reserved for local demos and sidecars.
 - Treat redirects as policy-service egress: a redirect to a non-allowlisted hostname fails before the redirected service is reached.

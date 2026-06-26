@@ -645,7 +645,7 @@ A demo PII-aware routing policy lives in `examples/typescript-pii-policy/`. It d
 
 ## External Routing Policy Service
 
-Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends normalized request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tools, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. For groups with `pii_filter`, the policy payload is built from the redacted request object, including `request.raw`; placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
+Use `strategy: external` when routing policy should live in a standalone web service instead of in TypeScript. The router sends safe derived request context, safe caller metadata, safe contract metadata when configured, eligible target metadata, validation metadata, pricing, tool capability metadata, and modalities to the configured policy URL, then validates the returned target against the model group's eligible targets. By default the policy payload does not include prompt text, message bodies, image URLs/data, tool schemas, tool outputs, or `request.raw`; route on fields such as `context.textChars`, `context.estimatedTokens`, `context.imageCount`, and `context.toolCount`. Set `external_policy.include_request: true` only for a trusted policy service that is allowed to receive request content. With `pii_filter`, that opt-in request mirror is redacted before dispatch and placeholder mappings are not sent. Raw router tokens, token hashes, and provider API keys are never sent.
 
 ```yaml
 models:
@@ -659,6 +659,7 @@ models:
       headers:
         Authorization: ${ROUTING_POLICY_AUTH_HEADER}
       on_error: fail_closed
+      include_request: false
     targets:
       - { provider: baseten, model_ref: gpt-oss-120b, tier: cheap, weight: 70 }
       - { provider: minimax, model_ref: m3, tier: heavy, weight: 30 }
@@ -676,7 +677,7 @@ The default `scripts/router.ts` does three things:
 
 ## PII Filtering
 
-Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. The redacted request object is the source of truth for policy contexts, including script `ctx.request.raw` and external policy `request.raw`. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
+Model groups can configure `pii_filter` rules to replace matched text with typed placeholders before target selection, cache-key generation, routing-policy inputs, and upstream provider calls. The redacted request object is the source of truth for TypeScript script `ctx.request.raw` and for external policy `request`/`text` only when `external_policy.include_request: true` is explicitly enabled; external policy services otherwise receive safe derived context without raw request mirrors. Modes support `redact_only`, `redact_and_restore`, and `fail_on_match`. Usage logs and the usage database store only safe scalar metadata such as applied flag, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings remain in memory for the request lifecycle by default.
 
 See `docs/PII_FILTERING.md` and the Docusaurus PII Filtering page for configuration examples and smoke-test guidance.
 

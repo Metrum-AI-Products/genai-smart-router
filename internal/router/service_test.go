@@ -4545,8 +4545,9 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
 			t.Fatal(err)
 		}
-		text, _ := policyPayload["text"].(string)
-		if len(text) > 8000 {
+		context, _ := policyPayload["context"].(map[string]any)
+		textChars, _ := context["textChars"].(float64)
+		if textChars > 8000 {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"targetIndex":     1,
 				"fallbackIndexes": []int{0},
@@ -4613,9 +4614,54 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	if strings.Contains(string(rawPayload), testToken) || strings.Contains(string(rawPayload), "provider-key") || strings.Contains(string(rawPayload), cfg.Callers[0].TokenSHA256) {
 		t.Fatalf("policy payload leaked secret material: %s", rawPayload)
 	}
+	for _, forbidden := range []string{"large prompt"} {
+		if strings.Contains(string(rawPayload), forbidden) {
+			t.Fatalf("default policy payload leaked raw request context %q: %s", forbidden, rawPayload)
+		}
+	}
+	if _, ok := policyPayload["request"]; ok {
+		t.Fatalf("default policy payload included request: %s", rawPayload)
+	}
+	if _, ok := policyPayload["text"]; ok {
+		t.Fatalf("default policy payload included text: %s", rawPayload)
+	}
+	context, _ := policyPayload["context"].(map[string]any)
+	if context["textChars"].(float64) <= 8000 || context["estimatedTokens"].(float64) <= 0 {
+		t.Fatalf("policy context missing safe size signals: %#v", context)
+	}
 }
 
-func TestExternalRoutingPolicyPayloadRedactsPIIForAllDialects(t *testing.T) {
+func TestExternalRoutingPolicyRequestSummaryDoesNotDoubleCountMirroredText(t *testing.T) {
+	req := &IRRequest{
+		Model:  "external-policy",
+		System: "system",
+		Input:  "mirrored user request",
+		InputParts: []IRContentPart{
+			{Type: "text", Text: "mirrored user request"},
+		},
+		Messages: []IRMessage{{
+			Role:    "user",
+			Content: "mirrored user request",
+			Parts: []IRContentPart{
+				{Type: "text", Text: "mirrored user request"},
+			},
+		}},
+	}
+
+	context := buildRequestSummary(req, "openai-responses")
+	wantTextChars := len(req.System) + len("mirrored user request")
+	if context.TextChars != wantTextChars {
+		t.Fatalf("text chars double-counted mirrored request text: got %d want %d", context.TextChars, wantTextChars)
+	}
+	if context.InputChars != 0 || context.InputPartCount != 0 {
+		t.Fatalf("mirrored input should not be counted when messages are canonical: %#v", context)
+	}
+	if context.MessageTextChars != len("mirrored user request") || context.MessagePartCount != 1 {
+		t.Fatalf("message summary did not use canonical message parts: %#v", context)
+	}
+}
+
+func TestExternalRoutingPolicySafeDefaultOmitsRawRequestForAllDialects(t *testing.T) {
 	tests := []struct {
 		name    string
 		path    string
@@ -4678,10 +4724,16 @@ func TestExternalRoutingPolicyPayloadRedactsPIIForAllDialects(t *testing.T) {
 				}
 				raw, _ := json.Marshal(policyPayload)
 				if strings.Contains(string(raw), "jane.doe@example.com") {
-					t.Fatalf("external policy payload leaked raw PII: %s", raw)
+					t.Fatalf("external policy payload leaked raw request text: %s", raw)
 				}
-				if !strings.Contains(string(raw), "[EMAIL_1]") {
-					t.Fatalf("external policy payload missing redacted placeholder: %s", raw)
+				if strings.Contains(string(raw), "[EMAIL_1]") {
+					t.Fatalf("external policy payload included request text by default: %s", raw)
+				}
+				if _, ok := policyPayload["request"]; ok {
+					t.Fatalf("external policy payload included request by default: %s", raw)
+				}
+				if _, ok := policyPayload["text"]; ok {
+					t.Fatalf("external policy payload included text by default: %s", raw)
 				}
 				writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0, "classLabel": "external-policy-pii-redacted"})
 			}))
@@ -4722,6 +4774,175 @@ func TestExternalRoutingPolicyPayloadRedactsPIIForAllDialects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExternalRoutingPolicyIncludeRequestOptInSendsRedactedRequest(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "chat_external_pii_opt_in",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5},
+		})
+	}))
+	defer upstream.Close()
+
+	var policyPayload map[string]any
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(policyPayload)
+		if strings.Contains(string(raw), "jane.doe@example.com") {
+			t.Fatalf("external policy opt-in payload leaked raw content: %s", raw)
+		}
+		for _, want := range []string{`"request"`, `"text"`, "[EMAIL_1]"} {
+			if !strings.Contains(string(raw), want) {
+				t.Fatalf("external policy opt-in payload missing %q: %s", want, raw)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy-pii-opt-in"] = ModelGroup{
+		Strategy:  "external",
+		PIIFilter: testPIIFilterConfig("redact_only"),
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:            policy.URL + "/route",
+			AllowHosts:     []string{policyURL.Hostname()},
+			TimeoutMS:      500,
+			IncludeRequest: true,
+		},
+		Targets: []Target{{Provider: "mock", Model: "policy-pii-model"}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy-pii-opt-in")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"external-policy-pii-opt-in","messages":[{"role":"user","content":"Email jane.doe@example.com"}],"max_tokens":16}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if policyPayload == nil {
+		t.Fatal("external policy was not called")
+	}
+}
+
+func TestExternalRoutingPolicySafeDefaultOmitsImagesAndToolOutputs(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "chat_external_safe_default",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 8, "completion_tokens": 1, "total_tokens": 9},
+		})
+	}))
+	defer upstream.Close()
+
+	var policyPayload map[string]any
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&policyPayload); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(policyPayload)
+		for _, forbidden := range []string{
+			"Read this image",
+			"https://example.com/private-receipt.png",
+			"data:image/png;base64,RAW_IMAGE_DATA",
+			"Customer email jane.doe@example.com",
+			"lookup_customer",
+			`"request"`,
+		} {
+			if strings.Contains(string(raw), forbidden) {
+				t.Fatalf("external policy safe default leaked %q: %s", forbidden, raw)
+			}
+		}
+		if _, ok := policyPayload["request"]; ok {
+			t.Fatalf("external policy safe default included request: %s", raw)
+		}
+		if _, ok := policyPayload["text"]; ok {
+			t.Fatalf("external policy safe default included text: %s", raw)
+		}
+		context, _ := policyPayload["context"].(map[string]any)
+		if context["imageCount"].(float64) != 2 || context["toolCount"].(float64) != 1 || context["hasTools"] != true {
+			t.Fatalf("policy context missing safe image/tool counts: %#v", context)
+		}
+		requirements, _ := policyPayload["requirements"].([]any)
+		if !containsAnyString(requirements, "image") || !containsAnyString(requirements, "tools") {
+			t.Fatalf("policy requirements missing image/tool markers: %#v", requirements)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": 0})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["external-policy-safe-default"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL:        policy.URL + "/route",
+			AllowHosts: []string{policyURL.Hostname()},
+			TimeoutMS:  500,
+		},
+		Targets: []Target{{Provider: "mock", Model: "safe-default-model", InputModalities: []string{"text", "image"}, ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}}},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "external-policy-safe-default")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{
+	  "model":"external-policy-safe-default",
+	  "messages":[
+	    {"role":"user","content":[
+	      {"type":"text","text":"Read this image"},
+	      {"type":"image_url","image_url":{"url":"https://example.com/private-receipt.png"}},
+	      {"type":"image_url","image_url":{"url":"data:image/png;base64,RAW_IMAGE_DATA"}}
+	    ]},
+	    {"role":"tool","tool_call_id":"call_123","content":"Customer email jane.doe@example.com"}
+	  ],
+	  "tools":[{"type":"function","function":{"name":"lookup_customer","parameters":{"type":"object","properties":{}}}}],
+	  "tool_choice":"auto"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if policyPayload == nil {
+		t.Fatal("external policy was not called")
+	}
+}
+
+func containsAnyString(values []any, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestExternalRoutingPolicyRejectsHTTPRedirectOutsideAllowlist(t *testing.T) {

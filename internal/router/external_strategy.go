@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,15 +20,39 @@ type externalPolicyStrategy struct {
 
 type externalPolicyInput struct {
 	Group           string          `json:"group"`
-	Request         *IRRequest      `json:"request"`
+	Request         *IRRequest      `json:"request,omitempty"`
+	Context         requestSummary  `json:"context"`
 	Contract        *scriptContract `json:"contract,omitempty"`
 	Requirements    []string        `json:"requirements"`
 	Targets         []scriptTarget  `json:"targets"`
 	AllTargets      []scriptTarget  `json:"allTargets,omitempty"`
 	Caller          *scriptCaller   `json:"caller,omitempty"`
-	Text            string          `json:"text"`
+	Text            string          `json:"text,omitempty"`
 	InputModalities []string        `json:"inputModalities"`
 	Now             string          `json:"now"`
+}
+
+type requestSummary struct {
+	Model               string   `json:"model,omitempty"`
+	Dialect             string   `json:"dialect,omitempty"`
+	EstimatedTokens     int      `json:"estimatedTokens"`
+	TextChars           int      `json:"textChars"`
+	SystemChars         int      `json:"systemChars,omitempty"`
+	InputChars          int      `json:"inputChars,omitempty"`
+	InputPartCount      int      `json:"inputPartCount,omitempty"`
+	MessageCount        int      `json:"messageCount,omitempty"`
+	MessageTextChars    int      `json:"messageTextChars,omitempty"`
+	MessagePartCount    int      `json:"messagePartCount,omitempty"`
+	ImageCount          int      `json:"imageCount,omitempty"`
+	ToolCount           int      `json:"toolCount,omitempty"`
+	HasTools            bool     `json:"hasTools"`
+	HasStructuredOutput bool     `json:"hasStructuredOutput"`
+	MaxTokens           int      `json:"maxTokens,omitempty"`
+	MaxTokensField      string   `json:"maxTokensField,omitempty"`
+	TemperatureSet      bool     `json:"temperatureSet"`
+	Stream              bool     `json:"stream"`
+	StopCount           int      `json:"stopCount,omitempty"`
+	MetadataKeys        []string `json:"metadataKeys,omitempty"`
 }
 
 type routingPolicyError struct {
@@ -71,15 +96,18 @@ func (s externalPolicyStrategy) Pick(group string, req *IRRequest, contract *Mod
 func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *ModelGroupContract, eligibleTargets, allTargets []Target, providers map[string]ProviderConfig, caller *callerRuntime, tokenID, callerDialect string) (decision, error) {
 	input := externalPolicyInput{
 		Group:           group,
-		Request:         req,
+		Context:         buildRequestSummary(req, callerDialect),
 		Contract:        buildScriptContract(contract),
 		Requirements:    routingRequirements(req, callerDialect),
 		Targets:         buildScriptTargets(eligibleTargets, providers),
 		AllTargets:      buildScriptTargets(allTargets, providers),
 		Caller:          buildScriptCaller(caller, tokenID),
-		Text:            requestText(req),
 		InputModalities: requestInputModalities(req),
 		Now:             time.Now().UTC().Format(time.RFC3339),
+	}
+	if s.cfg.IncludeRequest {
+		input.Request = req
+		input.Text = requestText(req)
 	}
 	body, err := json.Marshal(input)
 	if err != nil {
@@ -170,4 +198,89 @@ func (s externalPolicyStrategy) call(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("external policy returned HTTP %d", resp.StatusCode)
 	}
 	return raw, nil
+}
+
+func buildRequestSummary(req *IRRequest, callerDialect string) requestSummary {
+	if req == nil {
+		return requestSummary{Dialect: callerDialect, EstimatedTokens: 1}
+	}
+	messageTextChars, messagePartCount := canonicalMessageTextChars(req.Messages)
+	inputPartCount := 0
+	if len(req.Messages) == 0 {
+		inputPartCount = len(req.InputParts)
+	}
+	metadataKeys := make([]string, 0, len(req.Metadata))
+	for key := range req.Metadata {
+		metadataKeys = append(metadataKeys, key)
+	}
+	sort.Strings(metadataKeys)
+	inputChars := canonicalInputTextChars(req)
+	textChars := len(req.System) + inputChars + messageTextChars
+	return requestSummary{
+		Model:               req.Model,
+		Dialect:             callerDialect,
+		EstimatedTokens:     estimateSummaryTokens(req, textChars),
+		TextChars:           textChars,
+		SystemChars:         len(req.System),
+		InputChars:          inputChars,
+		InputPartCount:      inputPartCount,
+		MessageCount:        len(req.Messages),
+		MessageTextChars:    messageTextChars,
+		MessagePartCount:    messagePartCount,
+		ImageCount:          requestImageCount(req),
+		ToolCount:           len(req.Tools),
+		HasTools:            len(req.Tools) > 0,
+		HasStructuredOutput: requestHasStructuredOutput(req),
+		MaxTokens:           req.MaxTokens,
+		MaxTokensField:      req.MaxTokensField,
+		TemperatureSet:      req.Temperature != nil,
+		Stream:              req.Stream,
+		StopCount:           len(req.Stop),
+		MetadataKeys:        metadataKeys,
+	}
+}
+
+func canonicalMessageTextChars(messages []IRMessage) (int, int) {
+	textChars := 0
+	partCount := 0
+	for _, msg := range messages {
+		if len(msg.Parts) == 0 {
+			textChars += len(msg.Content)
+			continue
+		}
+		for _, part := range msg.Parts {
+			partCount++
+			textChars += len(part.Text)
+		}
+	}
+	return textChars, partCount
+}
+
+func canonicalInputTextChars(req *IRRequest) int {
+	if req == nil || len(req.Messages) > 0 {
+		return 0
+	}
+	if len(req.InputParts) > 0 {
+		return contentPartTextChars(req.InputParts)
+	}
+	return len(req.Input)
+}
+
+func contentPartTextChars(parts []IRContentPart) int {
+	textChars := 0
+	for _, part := range parts {
+		textChars += len(part.Text)
+	}
+	return textChars
+}
+
+func estimateSummaryTokens(req *IRRequest, textChars int) int {
+	chars := textChars
+	if req != nil {
+		chars += requestImageCount(req) * 1024
+	}
+	if chars == 0 {
+		return 1
+	}
+	return chars/4 + 1
 }

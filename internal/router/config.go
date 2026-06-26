@@ -455,6 +455,7 @@ type ExternalPolicyConfig struct {
 	MaxResponseBytes int64             `yaml:"max_response_bytes" json:"maxResponseBytes"`
 	Headers          map[string]string `yaml:"headers" json:"headers"`
 	OnError          string            `yaml:"on_error" json:"onError"`
+	IncludeRequest   bool              `yaml:"include_request" json:"includeRequest"`
 }
 
 type Target struct {
@@ -2093,7 +2094,8 @@ func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 		cfg.TimeoutMS == 0 &&
 		cfg.MaxResponseBytes == 0 &&
 		len(cfg.Headers) == 0 &&
-		strings.TrimSpace(cfg.OnError) == ""
+		strings.TrimSpace(cfg.OnError) == "" &&
+		!cfg.IncludeRequest
 }
 
 func validateModalities(values []string) error {

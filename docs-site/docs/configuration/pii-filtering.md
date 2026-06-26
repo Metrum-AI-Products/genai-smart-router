@@ -74,7 +74,7 @@ PII filtering applies to normalized text across supported caller APIs:
 
 The router preserves image parts, tool-call IDs, tool schemas, usage fields, request IDs, provider metadata, and model metadata. Image URLs are not filtered unless `apply_to.image_urls: true`.
 
-TypeScript routing scripts and external routing policy services receive the same redacted request object used for target selection and upstream calls. That includes `ctx.request.raw` in scripts and `request.raw` in external policy payloads. Placeholder mappings remain request-local and are not sent to policy code.
+TypeScript routing scripts receive the same redacted request object used for target selection and upstream calls, including `ctx.request.raw`. External routing policy services receive only safe derived context by default. If `external_policy.include_request: true` is explicitly enabled for a trusted policy service, the external payload includes redacted `request` and `text` fields. Placeholder mappings remain request-local and are not sent to policy code.
 
 ## API Examples
 
@@ -141,7 +141,7 @@ They do not store raw matched values or placeholder mappings by default. Diagnos
 
 Regex filters are a practical gateway control, not a complete legal or compliance-grade PII detector. Use narrowly reviewed expressions, set `max_replacements_per_request`, and test each model group with representative prompts before rollout.
 
-For production-grade detection, integrate an external DLP/privacy service through a deployment-owned policy service or a future managed detector. Keep external services trusted because they may receive request text depending on deployment ordering.
+For production-grade detection, integrate an external DLP/privacy service through a deployment-owned policy service or a future managed detector. External routing policy services do not receive request text by default; keep any service with `external_policy.include_request: true` in trusted infrastructure because that opt-in can share request content after configured router redaction.
 
 ## Smoke Test
 

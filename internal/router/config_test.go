@@ -1259,6 +1259,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			if group.Strategy != "external" ||
 				group.ExternalPolicy.URL != "http://127.0.0.1:18090/route" ||
 				!stringSliceContains(group.ExternalPolicy.AllowHosts, "127.0.0.1") ||
+				group.ExternalPolicy.IncludeRequest ||
 				len(group.Targets) != 2 {
 				t.Fatalf("example config external-policy-demo=%#v, want prompt-size external policy demo", group)
 			}
@@ -1562,6 +1563,18 @@ func TestValidateExternalPolicyHTTPRequiresOptInForNonLocalHost(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() for trusted-local http: %v", err)
+	}
+}
+
+func TestValidateExternalPolicyIncludeRequestRequiresExternalStrategy(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy:       "weighted",
+		ExternalPolicy: ExternalPolicyConfig{IncludeRequest: true},
+		Targets:        []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "configures external_policy but does not use external strategy") {
+		t.Fatalf("Validate() err=%v, want external_policy strategy error", err)
 	}
 }
 
