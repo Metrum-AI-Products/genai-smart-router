@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-25
+Last deployed: 2026-06-26
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-25
 
 ## Deployed Version
 
-- Router package/image version: `7698fd1-linux-amd64`
-- Source commit: `7698fd1`
+- Router package/image version: `c623323-linux-amd64`
+- Source commit: `c623323`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-06-25
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-26 Admin Reports And Decision Telemetry Refresh
+
+- Deployed package/image `smart-llmrouter:c623323-linux-amd64` from source commit `c623323` after PRs #128 through #132 merged.
+- Production package backup: `/opt/smart-llmrouter.backup.refresh-c623323-20260626T143712Z`.
+- Production config, state, logs, `.env`, and `ROUTER_TOKEN*.txt` files were carried forward unchanged.
+- Deployment cleanup removed the uploaded package from `/tmp` and ran `sudo docker system prune -f`.
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 321 tests across 6 packages
+rtk timeout 800s go test ./...: passed
+rtk make docs-build: passed; npm audit still reports existing docs-site moderate dependency advisories
+rtk make package-docker: passed for linux/amd64 and linux/arm64
+production /readyz after deploy: 200, version c623323, build_date 2026-06-26T14:33:00Z
+hosted docs /docs/ returned 200 with Docusaurus page title
+authenticated /v1/models returned 20 visible model groups
+authenticated /v1/chat/completions smoke passed for default and fast groups; MiniMax-M3 returned OK
+admin /admin/reports/ returned 200 and includes dynamic report tabs plus provider catalog status
+admin /admin/reports/api/dynamic-score-buckets?since=24h returned report dynamic-score-buckets with rows
+admin /admin/reports/api/provider-catalog-status returned active target and catalog rows
+```
 
 ## 2026-06-25 Retention Dry-Run Package Refresh
 
