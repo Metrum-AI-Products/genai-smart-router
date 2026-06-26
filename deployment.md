@@ -1774,6 +1774,38 @@ production cleanup: removed uploaded package, removed superseded switch director
 
 Package `smart-llmrouter:97d796d-linux-amd64` was deployed to production after merging the account key lifecycle, upstream quota-error, Casbin authorization, content-capture authorization, DB-backed authz policy, and OIDC admin-session PRs.
 
+### 2026-06-26 Production refresh to upstream main 289ea71
+
+Package `smart-llmrouter:289ea71-linux-amd64` was deployed to production after refreshing local `main` from `origin/main`.
+
+Source commit: `289ea71`
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-289ea71-20260626T211109Z
+```
+
+Validation:
+
+```text
+go test ./cmd/... ./internal/...: passed, 340 tests across 7 packages
+make docs-build: passed; npm audit still reports existing moderate docs-site dependency advisories
+make package-docker from clean tracked worktree: passed for linux/amd64 and linux/arm64 packages
+production /readyz after deploy: 200, version 289ea71, build_date 2026-06-26T21:07:13Z
+hosted docs /docs/ returned 200 with 289ea71 version headers
+browser admin reports /admin/reports/ without credentials returned 401
+browser admin reports /admin/reports/ with the configured Basic admin user returned 200 HTML
+production authenticated /v1/models returned 20 model groups
+production authenticated chat smoke against high with max_tokens 128 returned HTTP 200 and content OK
+production authenticated chat smoke against default with max_tokens 64 returned HTTP 200 and content OK
+production Harbor full matrix case prod-refresh-289ea71-20260626T211238Z ran codex and claude-code across default, fast, small, medium, high, and big-coder
+Harbor full matrix result: 10/12 passed; codex passed all six groups, claude-code passed fast, medium, high, and big-coder; claude-code default and small produced verifier reward 0 with zero Harbor exceptions
+Harbor retry case prod-refresh-289ea71-retry-20260626T213832Z passed claude-code default; claude-code small failed again with verifier reward 0 and zero Harbor exceptions
+production Harbor filtered report for caller harbor/harbor/prod generated 108 requests, 0 router errors, 1,155,436 total tokens, and status 200 for the Harbor validation window
+production cleanup: removed uploaded package and ran sudo docker system prune -f
+```
+
 Source commit: `97d796d`
 
 Production backup:
