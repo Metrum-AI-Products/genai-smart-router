@@ -111,6 +111,7 @@ type adminRollupStatusRow struct {
 	WindowEnd          string `json:"windowEnd"`
 	SourceRequestCount int64  `json:"sourceRequestCount"`
 	DailyRows          int64  `json:"dailyRows"`
+	RollupRows         int64  `json:"rollupRows"`
 	CompletedAt        string `json:"completedAt,omitempty"`
 	FinalizedAt        string `json:"finalizedAt,omitempty"`
 }
@@ -852,6 +853,7 @@ func (s *Service) handleAdminRetentionStatus(w http.ResponseWriter, r *http.Requ
 			WindowEnd:          record.WindowEnd,
 			SourceRequestCount: record.SourceRequestCount,
 			DailyRows:          record.DailyRowCount,
+			RollupRows:         record.RollupRowCount,
 			CompletedAt:        record.CompletedAt,
 			FinalizedAt:        record.FinalizedAt,
 		})

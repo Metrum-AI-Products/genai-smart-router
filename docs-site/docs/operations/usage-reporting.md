@@ -24,9 +24,9 @@ router-usage-report \
 
 Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
 
-## Generate Daily Rollups
+## Generate Usage Rollups
 
-Administrators can generate a bounded daily rollup from stored request-time usage rows:
+Administrators can generate bounded hourly, daily, or monthly rollups from stored request-time usage rows:
 
 ```bash
 router-usage-report \
@@ -34,10 +34,15 @@ router-usage-report \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --from 2026-06-14 \
   --to 2026-06-15 \
-  --rollup
+  --rollup \
+  --rollup-type daily
 ```
 
-The command writes relational scalar rows to `usage_rollup_runs`, dimensioned `usage_rollup_daily`, and `usage_rollup_decision_buckets` for the selected UTC `[from,to)` window. Daily rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, and validation-status dimensions alongside input/output/total token, input image count, input image token, cost, latency, throughput, cache, fallback, and error measures. Decision-bucket rows preserve max-token buckets, input-token buckets, admission reasons, enabled dynamic-score signals, score buckets, and threshold/filter buckets after raw detail retention. Draft reruns replace the same draft run for that exact window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This rollup helper does not purge raw request rows.
+Use `--rollup-type hourly` for recent operational trend reporting, `daily` for customer/project/key/provider chargeback, and `monthly` for invoice-supporting summaries. The command writes relational scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` for the selected UTC `[from,to)` window. Rollup runs preserve source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router version/commit, and generation/finalization timestamps.
+
+Aggregate rows retain caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image-input, PII-filter, contract, validation-status, and optional baseline dimensions alongside request/success/error counts, input/output/total token, input image count, input image token, request-time cost, upstream-reported cost, optional baseline cost/savings, latency, throughput, cache, fallback, and attempt measures. To persist a savings baseline with a commercial rollup, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
+
+Draft reruns replace the same draft run for that exact type/window. Use `--rollup-finalize` only after review; finalized rollup windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. This rollup helper does not purge raw request rows.
 
 ## Retention Dry Run
 
@@ -149,7 +154,7 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 
 Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies.
 
-When operators generate daily rollups, `usage_rollup_decision_buckets` preserves report-critical bucket counts after raw request or decision detail retention. Browser admin scalar APIs include `/admin/reports/api/dynamic-signals`, `/admin/reports/api/dynamic-score-buckets`, `/admin/reports/api/dynamic-thresholds`, `/admin/reports/api/max-token-buckets`, `/admin/reports/api/input-token-buckets`, and `/admin/reports/api/admission-reasons`.
+When operators generate rollups, `usage_rollup_decision_buckets` preserves report-critical bucket counts after raw request or decision detail retention. Browser admin scalar APIs include `/admin/reports/api/dynamic-signals`, `/admin/reports/api/dynamic-score-buckets`, `/admin/reports/api/dynamic-thresholds`, `/admin/reports/api/max-token-buckets`, `/admin/reports/api/input-token-buckets`, and `/admin/reports/api/admission-reasons`.
 
 Governed content capture is separate from diagnostics. It is disabled by default and, when enabled by the deployment operator, writes redacted request/response/upstream-error content to dedicated relational tables keyed by `request_id`. Maintenance operations require Casbin authorization for `content:capture`: `DELETE /v1/content-captures/<request_id>` uses action `delete`, and `POST /v1/content-captures/purge-expired` uses action `purge`. Existing `content_admin: true` caller entries remain compatible. Both operations write audit rows. Usage reports remain metadata-oriented and do not print captured content.
 

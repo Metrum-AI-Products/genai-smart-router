@@ -113,7 +113,7 @@ The current browser surface includes:
 - Dynamic-score enabled signals, score buckets, and threshold buckets.
 - Max-token buckets, input-token buckets, and admission reasons.
 - Provider catalog status from safe runtime configuration metadata. The tab separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. This endpoint does not expose provider API keys, headers, full config, or private deployment files.
-- Retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked counts, and recent daily rollup runs. This is a read-only status view; retention execution and rollup generation remain operator-controlled workflows.
+- Retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked counts, and recent hourly/daily/monthly rollup runs. This is a read-only status view; retention execution and rollup generation remain operator-controlled workflows.
 - Contract buckets. This tab groups contract-present/pass/fail and failure-reason buckets by model group so operators can see whether a group is satisfying its configured quality and capability contract.
 - Contract workloads. This tab groups deployment-defined contract workload labels by model group so validation and production traffic can be compared without exposing request content.
 - Target validation. This tab groups target-validation status buckets by provider/model so stale, missing, or failing validation metadata is visible before it becomes a routing incident.

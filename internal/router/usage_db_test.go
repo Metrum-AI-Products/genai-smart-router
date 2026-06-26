@@ -536,12 +536,164 @@ func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
 	if finalized.RunID != result.RunID || finalized.Status != "finalized" || finalized.SourceRequestCount != 3 {
 		t.Fatalf("unexpected finalized result: %#v", finalized)
 	}
+	var run usageRollupRunRecord
+	if err := store.db.First(&run, finalized.RunID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if run.SourceChecksum == "" || run.SourceMinTS == "" || run.SourceMaxTS == "" || run.RollupRowCount != 2 || run.DecisionBucketRowCount == 0 || run.GeneratedAt == "" {
+		t.Fatalf("finalized run missing provenance: %#v", run)
+	}
+	var auditEvents []usageRollupAuditEventRecord
+	if err := store.db.Where("run_id = ?", finalized.RunID).Order("id ASC").Find(&auditEvents).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(auditEvents) < 3 || auditEvents[len(auditEvents)-1].Action != "finalized" {
+		t.Fatalf("unexpected audit events: %#v", auditEvents)
+	}
 	if _, err := store.generateUsageRollup(UsageRollupOptions{From: from, To: to}); err == nil || !strings.Contains(err.Error(), "overlaps a finalized window") {
 		t.Fatalf("draft rerun after finalize err=%v, want finalized immutability", err)
 	}
 	if _, err := store.generateUsageRollup(UsageRollupOptions{From: from.Add(12 * time.Hour), To: to.Add(12 * time.Hour), Finalize: true}); err == nil || !strings.Contains(err.Error(), "overlaps a finalized window") {
 		t.Fatalf("overlapping finalized window err=%v, want overlap rejection", err)
 	}
+}
+
+func TestUsageRollupHourlyAndMonthlyWithBaseline(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	upstreamTPS := 10.0
+	downstreamTPS := 20.0
+	for _, row := range []usageRow{
+		{
+			TS:                  time.Date(2026, 6, 14, 1, 15, 0, 0, time.UTC),
+			RequestID:           "req_hourly_monthly_1",
+			CallerID:            "caller-acme",
+			CallerUser:          "acme-owner",
+			CallerProject:       "acme-project",
+			CallerEnvironment:   "prod",
+			TokenID:             "rtr_acme",
+			Client:              "codex",
+			InboundDialect:      "openai-chat",
+			RequestedModel:      "default",
+			ResolvedGroup:       "default",
+			Strategy:            "weighted",
+			TargetProvider:      "mock",
+			TargetModel:         "model-a",
+			TargetDialect:       "openai-chat",
+			Cache:               "miss",
+			Status:              200,
+			Attempts:            1,
+			LatencyMS:           100,
+			UpstreamOutputTPS:   &upstreamTPS,
+			DownstreamOutputTPS: &downstreamTPS,
+			InputTokens:         1_000_000,
+			OutputTokens:        500_000,
+			TotalTokens:         1_500_000,
+			InputCostUSD:        1.00,
+			OutputCostUSD:       2.00,
+			TotalCostUSD:        3.00,
+		},
+		{
+			TS:                  time.Date(2026, 6, 14, 2, 15, 0, 0, time.UTC),
+			RequestID:           "req_hourly_monthly_2",
+			CallerID:            "caller-acme",
+			CallerUser:          "acme-owner",
+			CallerProject:       "acme-project",
+			CallerEnvironment:   "prod",
+			TokenID:             "rtr_acme",
+			Client:              "codex",
+			InboundDialect:      "openai-chat",
+			RequestedModel:      "default",
+			ResolvedGroup:       "default",
+			Strategy:            "weighted",
+			TargetProvider:      "mock",
+			TargetModel:         "model-a",
+			TargetDialect:       "openai-chat",
+			Cache:               "miss",
+			Status:              200,
+			Attempts:            1,
+			LatencyMS:           200,
+			UpstreamOutputTPS:   &upstreamTPS,
+			DownstreamOutputTPS: &downstreamTPS,
+			InputTokens:         2_000_000,
+			OutputTokens:        250_000,
+			TotalTokens:         2_250_000,
+			InputCostUSD:        2.00,
+			OutputCostUSD:       1.00,
+			TotalCostUSD:        3.00,
+		},
+	} {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	baselineOpts := UsageRollupOptions{
+		From:                             from,
+		To:                               to,
+		BaselineID:                       "baseline-premium",
+		BaselineName:                     "Premium Baseline",
+		BaselineVersion:                  "2026-06-25",
+		BaselineInputPricePerMillionUSD:  5,
+		BaselineOutputPricePerMillionUSD: 30,
+	}
+	hourly, err := store.generateUsageRollup(withRollupType(baselineOpts, "hourly"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hourly.RollupType != "hourly" || hourly.RollupRows != 2 || hourly.SourceRequestCount != 2 || hourly.SourceChecksum == "" {
+		t.Fatalf("unexpected hourly result: %#v", hourly)
+	}
+	var hourlyRows []usageRollupAggregateRecord
+	if err := store.db.Table("usage_rollup_hourly").Where("run_id = ?", hourly.RunID).Order("bucket_utc ASC").Find(&hourlyRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(hourlyRows) != 2 || hourlyRows[0].BucketUTC != "2026-06-14T01:00:00Z" || hourlyRows[1].BucketUTC != "2026-06-14T02:00:00Z" {
+		t.Fatalf("unexpected hourly rows: %#v", hourlyRows)
+	}
+	for _, row := range hourlyRows {
+		if row.BaselineID != "baseline-premium" || row.SuccessCount != 1 || row.LatencyMSCount != 1 || row.UpstreamOutputTokensPerSecMin != 10 || row.UpstreamOutputTokensPerSecMax != 10 {
+			t.Fatalf("hourly row missing baseline/count/perf fields: %#v", row)
+		}
+	}
+	monthly, err := store.generateUsageRollup(withRollupType(baselineOpts, "monthly"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if monthly.RollupType != "monthly" || monthly.RollupRows != 1 || monthly.SourceRequestCount != 2 || monthly.SourceChecksum != hourly.SourceChecksum {
+		t.Fatalf("unexpected monthly result: hourly=%#v monthly=%#v", hourly, monthly)
+	}
+	var monthlyRows []usageRollupAggregateRecord
+	if err := store.db.Table("usage_rollup_monthly_billing").Where("run_id = ?", monthly.RunID).Find(&monthlyRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(monthlyRows) != 1 {
+		t.Fatalf("monthly rows=%d want 1: %#v", len(monthlyRows), monthlyRows)
+	}
+	row := monthlyRows[0]
+	if row.BucketUTC != "2026-06" || row.SourceRequestCount != 2 || row.InputTokens != 3_000_000 || row.OutputTokens != 750_000 || row.TotalTokens != 3_750_000 {
+		t.Fatalf("unexpected monthly token row: %#v", row)
+	}
+	assertNear(t, row.BaselineInputCostUSD, 15.00, "baseline input")
+	assertNear(t, row.BaselineOutputCostUSD, 22.50, "baseline output")
+	assertNear(t, row.BaselineTotalCostUSD, 37.50, "baseline total")
+	assertNear(t, row.TotalSavingsUSD, 31.50, "baseline savings")
+	var run usageRollupRunRecord
+	if err := store.db.First(&run, monthly.RunID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if run.SourceMinTS != formatUsageTime(time.Date(2026, 6, 14, 1, 15, 0, 0, time.UTC)) || run.SourceMaxTS != formatUsageTime(time.Date(2026, 6, 14, 2, 15, 0, 0, time.UTC)) || run.SourceChecksum == "" || run.RollupRowCount != 1 {
+		t.Fatalf("monthly run missing provenance: %#v", run)
+	}
+}
+
+func withRollupType(opts UsageRollupOptions, rollupType string) UsageRollupOptions {
+	opts.RollupType = rollupType
+	return opts
 }
 
 func assertNear(t *testing.T, got, want float64, label string) {
@@ -593,7 +745,10 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"request_content_audit_events",
 		"security_access_events",
 		"usage_rollup_runs",
+		"usage_rollup_hourly",
 		"usage_rollup_daily",
+		"usage_rollup_monthly_billing",
+		"usage_rollup_audit_events",
 		"usage_rollup_decision_buckets",
 		"retention_policy_versions",
 		"retention_policy_rules",

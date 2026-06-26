@@ -844,9 +844,21 @@ For routine browser inspection, deployments may enable `/admin/reports/`. The br
 --resolved-group GROUP
                 Filter to one resolved router model group.
 --client CLIENT Filter to one client, such as codex or claude-code.
---rollup        Generate daily relational rollup rows for the selected period instead of markdown.
+--rollup        Generate relational rollup rows for the selected period instead of markdown.
+--rollup-type TYPE
+                Rollup granularity: hourly, daily, or monthly. Defaults to daily.
 --rollup-finalize
                 Mark the selected rollup window immutable after generation.
+--baseline-id ID
+                Optional savings baseline id to store on rollup rows.
+--baseline-name NAME
+                Optional savings baseline name to store on rollup rows.
+--baseline-version VERSION
+                Optional savings baseline version/source date to store on rollup rows.
+--baseline-input-price-per-million-usd USD
+                Optional baseline input price in USD per million tokens.
+--baseline-output-price-per-million-usd USD
+                Optional baseline output price in USD per million tokens.
 --retention-status
                 Record a dry-run retention status job from --config.
 --config PATH   Router config path for --retention-status.

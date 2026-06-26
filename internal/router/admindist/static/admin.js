@@ -700,7 +700,7 @@ function retentionColumns() {
     { key: "windowStart", label: "Window start" },
     { key: "windowEnd", label: "Window end" },
     { key: "sourceRequestCount", label: "Source requests" },
-    { key: "dailyRows", label: "Daily rows" },
+    { key: "rollupRows", label: "Rollup rows" },
     { key: "finalizedAt", label: "Finalized" },
     { key: "message", label: "Message" }
   ];

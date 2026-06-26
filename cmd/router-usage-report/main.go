@@ -31,7 +31,13 @@ func main() {
 	resolvedGroup := flag.String("resolved-group", "", "filter report to one resolved router model group")
 	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
 	rollup := flag.Bool("rollup", false, "generate a daily usage rollup instead of markdown")
+	rollupType := flag.String("rollup-type", "daily", "rollup granularity: hourly, daily, or monthly")
 	rollupFinalize := flag.Bool("rollup-finalize", false, "finalize the generated rollup window; finalized windows are immutable")
+	baselineID := flag.String("baseline-id", "", "optional savings baseline id to store on rollup rows")
+	baselineName := flag.String("baseline-name", "", "optional savings baseline name to store on rollup rows")
+	baselineVersion := flag.String("baseline-version", "", "optional savings baseline version/source date to store on rollup rows")
+	baselineInputPrice := flag.Float64("baseline-input-price-per-million-usd", 0, "optional baseline input price in USD per million tokens")
+	baselineOutputPrice := flag.Float64("baseline-output-price-per-million-usd", 0, "optional baseline output price in USD per million tokens")
 	retentionStatus := flag.Bool("retention-status", false, "record a dry-run retention status job from --config")
 	configPath := flag.String("config", "", "router config path for --retention-status")
 	flag.Parse()
@@ -90,19 +96,25 @@ func main() {
 
 	if *rollup {
 		result, err := router.GenerateUsageRollup(router.UsageRollupOptions{
-			Driver:   *driver,
-			DBPath:   *dbPath,
-			DSN:      *dsn,
-			From:     from,
-			To:       to,
-			Finalize: *rollupFinalize,
+			Driver:                           *driver,
+			DBPath:                           *dbPath,
+			DSN:                              *dsn,
+			RollupType:                       *rollupType,
+			From:                             from,
+			To:                               to,
+			Finalize:                         *rollupFinalize,
+			BaselineID:                       *baselineID,
+			BaselineName:                     *baselineName,
+			BaselineVersion:                  *baselineVersion,
+			BaselineInputPricePerMillionUSD:  *baselineInputPrice,
+			BaselineOutputPricePerMillionUSD: *baselineOutputPrice,
 		})
 		if err != nil {
 			die("generate rollup: %v", err)
 		}
-		fmt.Printf("usage rollup %s run_id=%d window=%s..%s source_requests=%d daily_rows=%d\n",
-			result.Status, result.RunID, result.WindowStart.Format(time.RFC3339), result.WindowEnd.Format(time.RFC3339),
-			result.SourceRequestCount, result.DailyRows)
+		fmt.Printf("usage rollup %s %s run_id=%d window=%s..%s source_requests=%d rollup_rows=%d decision_bucket_rows=%d checksum=%s\n",
+			result.RollupType, result.Status, result.RunID, result.WindowStart.Format(time.RFC3339), result.WindowEnd.Format(time.RFC3339),
+			result.SourceRequestCount, result.RollupRows, result.DecisionBucketRows, result.SourceChecksum)
 		return
 	}
 

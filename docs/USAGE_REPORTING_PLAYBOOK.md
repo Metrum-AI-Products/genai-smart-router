@@ -25,7 +25,7 @@ router-usage-report \
   --out /app/logs/usage-24h.md
 ```
 
-Daily rollup foundation:
+Commercial rollup foundation:
 
 ```bash
 router-usage-report \
@@ -33,10 +33,15 @@ router-usage-report \
   --dsn "$ROUTER_USAGE_DB_DSN" \
   --from 2026-06-14 \
   --to 2026-06-15 \
-  --rollup
+  --rollup \
+  --rollup-type daily
 ```
 
-This writes scalar rows to `usage_rollup_runs`, dimensioned `usage_rollup_daily`, and `usage_rollup_decision_buckets` from stored rows for the selected UTC `[from,to)` window. Daily rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, and validation status, so chargeback and provider-performance reports do not need raw request detail after a window is closed. Decision-bucket rows retain max-token buckets, input-token buckets, admission reasons, enabled dynamic-score signals, score buckets, and threshold/filter buckets. Measures include input/output/total tokens, input image count, input image tokens, cost, latency, throughput, cache, fallback, and error counts. Draft reruns replace the same draft run for that exact window. Add `--rollup-finalize` only after review; finalized windows are immutable, and later rollup runs are rejected if they overlap an existing finalized daily window. This rollup slice does not delete raw usage rows; the retention foundation only uses finalized rollup metadata to block or allow future `usage_detail` delete eligibility.
+Use `--rollup-type hourly` for recent operational trend aggregates, `daily` for customer/project/key/provider chargeback, and `monthly` for invoice-supporting billing-period summaries. The command writes scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` from stored rows for the selected UTC `[from,to)` window. Rollup runs store source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router version/commit, and generation/finalization timestamps.
+
+Rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, validation status, and optional baseline ID. Measures include request/success/error counts, input/output/total tokens, input image count, input image tokens, request-time calculated cost, upstream-reported cost, optional baseline input/output/total cost and savings, latency, throughput, cache, fallback, and attempt counts. To store a commercial savings baseline on rollup rows, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
+
+Draft reruns replace the same draft run for that exact type/window without duplicate active rows. Add `--rollup-finalize` only after review/reconciliation; finalized windows are immutable through the generator, and later rollup runs are rejected if they overlap an existing finalized window of the same type. This rollup slice does not delete raw usage rows; the retention foundation only uses finalized daily rollup metadata to block or allow future `usage_detail` delete eligibility.
 
 Retention dry-run status:
 
@@ -62,7 +67,7 @@ The browser shell includes shared usability controls for report tabs: selected t
 
 Expanded tabs use safe scalar usage rows for overview, savings by user/key/group/project/provider-model, model groups by user, usage by key/caller/requested-model, provider/model mix, latency/throughput, errors/fallbacks, cache, quotas/budgets, troubleshooting buckets, routing decisions, dynamic-score signal/score/threshold buckets, max-token buckets, input-token buckets, admission reasons, contract buckets, contract workloads, target validation, expensive requests, client breakdown, project chargeback, capability usage, and deterministic rule-based anomaly signals. The contract tabs expose only safe bucket labels, model-group names, provider/model labels, counts, cost, token, latency, cache, fallback, and PII-filter aggregate fields; they do not expose raw prompts, images, tool outputs, tokens, token hashes, provider keys, or full config. Recent request rows show caller ID, caller IP, public token ID, requested model, provider/model/dialect, status, cache, attempts, fallback, latency, tokens, and cost.
 
-Provider catalog status is read from safe runtime config metadata and returns separate `catalog` and `active_target` rows. Catalog rows show provider/model/dialect catalog metadata. Active target rows show resolved per-group target metadata, active group, target index, validation status/workload/age, pricing source/date, modalities, and tool-support labels after target overrides are applied. It must not expose provider API keys, headers, full config, or private deployment paths. Retention and rollup status is a read-only view over existing usage DB status tables; it shows the latest retention job, per-table candidate/held/eligible/blocked counts, and recent daily rollup runs without executing retention or generating rollups.
+Provider catalog status is read from safe runtime config metadata and returns separate `catalog` and `active_target` rows. Catalog rows show provider/model/dialect catalog metadata. Active target rows show resolved per-group target metadata, active group, target index, validation status/workload/age, pricing source/date, modalities, and tool-support labels after target overrides are applied. It must not expose provider API keys, headers, full config, or private deployment paths. Retention and rollup status is a read-only view over existing usage DB status tables; it shows the latest retention job, per-table candidate/held/eligible/blocked counts, and recent hourly/daily/monthly rollup runs without executing retention or generating rollups.
 
 Troubleshooting buckets are deterministic groupings for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 
