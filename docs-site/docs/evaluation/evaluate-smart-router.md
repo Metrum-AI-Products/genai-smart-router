@@ -21,6 +21,18 @@ Use this checklist to evaluate GenAI Smart Router with a real deployment or a Me
 | Does the router explain spend and performance? | Generate or review a report with provider/model, tokens, cost, latency, throughput, cache, attempts, and fallback fields. |
 | Can model groups be tuned by outcome? | Run Harbor or another verifier and compare reward/pass status against cost and latency. |
 
+## Commercial Evaluation Flow
+
+Commercial evaluations can run on a Metrum-managed hosted service, an enterprise/on-prem licensed package, or a private customer-cloud deployment. The commercial path is:
+
+1. request an evaluation through [contact@metrum.ai](mailto:contact@metrum.ai);
+2. receive a router endpoint and token, or a deployment package plus signed JSON license for customer-controlled infrastructure;
+3. validate production-like workloads and clients;
+4. inspect savings, performance, quota, provider mix, security access, and retention/rollup evidence;
+5. choose hosted, private-cloud, enterprise/on-prem, monthly, annual, or usage-based commercial access.
+
+Self-serve credit-card signup and automated usage-credit purchase are future/conditional commercial capabilities unless a specific customer agreement says otherwise. Public docs therefore use placeholders and contact links instead of publishing private hosted endpoints or internal deployment operations.
+
 ## Thirty-Minute Evaluation Path
 
 1. Receive a router base URL, a caller token, and one or more allowed model groups.
@@ -52,7 +64,9 @@ This path should prove both caller-visible behavior and operator controls. The c
 - One image request through the same group users would normally call.
 - A `/v1/models` allow-list check for the evaluation token.
 - A usage/report excerpt for the test window.
+- A safe license-status summary when evaluating an enterprise or on-prem licensed deployment.
 - A security summary covering provider-key handling, diagnostics redaction, metrics-admin isolation, and private-upstream network controls.
+- A retention and rollup summary explaining raw operational rows, finalized daily rollups, legal holds, archived exports, and dry-run-only purge status.
 - A rollback plan for disabling a target or reducing its weight.
 
 ## Outcome-Based Model Validation

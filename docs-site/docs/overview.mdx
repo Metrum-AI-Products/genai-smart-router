@@ -69,7 +69,7 @@ See [Concepts And Glossary](/docs/concepts) for the terms used throughout these 
 
 ## Evaluate The Product
 
-For a first evaluation, run one path through the gateway and inspect both the caller result and the operator evidence:
+For a first evaluation, start with the [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation) and choose whether the proof should run on a Metrum-managed hosted endpoint, an enterprise/on-prem licensed package, or a private customer-cloud deployment. Then run one path through the gateway and inspect both the caller result and the operator evidence:
 
 1. Call [`/v1/models`](/docs/getting-started/available-models) with the router token to discover allowed groups.
 2. Run an OpenAI-compatible chat request from the [Hosted Quickstart](/docs/getting-started/hosted-quickstart).
@@ -77,7 +77,7 @@ For a first evaluation, run one path through the gateway and inspect both the ca
 4. Exercise one request-shape control: tool call, image input, quota, or a deployment-specific model group.
 5. Review usage, latency, selected provider/model, fallback behavior, and cost using [Report Examples](/docs/operations/report-examples).
 
-[Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router) gives a complete checklist and proof points to request.
+[Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router) gives a complete technical checklist and proof points to request. Self-serve credit-card signup and instant public API credits are future commercial options unless a specific deployment agreement states otherwise; for hosted evaluations, private-cloud deployments, enterprise licenses, monthly or annual subscriptions, and usage-based commercial terms, contact [contact@metrum.ai](mailto:contact@metrum.ai).
 
 The expected guarantee is concrete: a caller can discover the groups its token is allowed to use, send the same client request shape it will use in production, and receive either a compatible response from a validated target or a clear router error before an unsafe upstream call is attempted. Operators should be able to show which provider/model served the request, why fallback did or did not happen, and what cost and latency were recorded for that request window.
 
@@ -95,10 +95,10 @@ The docs include an outcome-based Harbor coding-agent case study that compares C
 
 | Role | Start here |
 |---|---|
-| Buyer or evaluator | [Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router), [Solution Brief](/docs/solution-brief), [Security And Trust](/docs/evaluation/security-and-trust) |
+| Buyer or evaluator | [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation), [Evaluate GenAI Smart Router](/docs/evaluation/evaluate-smart-router), [Solution Brief](/docs/solution-brief), [Security And Trust](/docs/evaluation/security-and-trust) |
 | Application developer | [Hosted Quickstart](/docs/getting-started/hosted-quickstart), [API Compatibility](/docs/reference/api-compatibility), [Available Models And Access](/docs/getting-started/available-models) |
 | Coding-agent user | [Codex CLI](/docs/getting-started/codex-cli), [Claude Code CLI](/docs/getting-started/claude-code-cli), [Image Analysis And VLM Routing](/docs/configuration/image-analysis-vlm) |
-| Platform administrator | [Router Configuration](/docs/configuration/router-config), [Key Generation](/docs/operations/key-generation), [Usage Reporting](/docs/operations/usage-reporting), [Deployment Readiness](/docs/evaluation/deployment-readiness) |
+| Platform administrator | [Router Configuration](/docs/configuration/router-config), [License-Protected Deployments](/docs/operations/license-protected-deployments), [Key Generation](/docs/operations/key-generation), [Usage Reporting](/docs/operations/usage-reporting), [Deployment Readiness](/docs/evaluation/deployment-readiness) |
 
 ## API Surfaces
 

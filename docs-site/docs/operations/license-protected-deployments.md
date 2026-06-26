@@ -1,0 +1,89 @@
+---
+title: License-Protected Deployments
+---
+
+# License-Protected Deployments
+
+Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, or source control.
+
+## Runtime Configuration
+
+```yaml
+server:
+  license:
+    enabled: true
+    path: /app/config/license.json
+    state_path: /app/state/license-state.json
+    recheck_interval: 1h
+    grace_period_on_validation_error: 24h
+    fail_open_for_dev: false
+```
+
+Production licensed deployments should mount the issued license file read-only, keep the license state file on durable deployment storage, and leave `fail_open_for_dev: false`. The state file preserves renewal, grace, and clock-rollback checks across restarts.
+
+## Verification Model
+
+The license is a signed JSON envelope issued for GenAI Smart Router. At startup and on each configured recheck interval, the router verifies:
+
+- payload shape and product identity;
+- signature validity against an embedded public key;
+- `not_before` and expiry windows;
+- licensed feature gates and deployment limits;
+- local clock rollback state.
+
+When a license blocks serving, `/readyz` fails and caller APIs return documented `license-*` errors without exposing license payloads, signatures, public-key material, private keys, or signing metadata. Safe license status may appear in logs, usage rows, metrics-admin gauges, and authorized admin status APIs as scalar fields such as status, reason, license ID, customer ID, SKU, key ID, expiry, and grace-active flag.
+
+## Expiry, Grace, Renewal, And Replacement
+
+Renewal is a file replacement workflow:
+
+1. Obtain a current Metrum-issued license through the commercial support path.
+2. Back up the previous runtime license file according to the deployment's secret-handling policy.
+3. Replace `server.license.path` atomically where possible.
+4. Restart the router or wait for `recheck_interval`.
+5. Verify `/readyz`, `/admin/license/status` for an authorized admin subject, metrics-admin license gauges, and one caller smoke for a licensed feature.
+
+`grace_period_on_validation_error` is for transient validation problems after a previously valid license was observed. It is not a substitute for renewal before expiry, and it does not permit deployment limits or unlicensed features indefinitely.
+
+## Admin Visibility
+
+Authorized report/admin users can inspect safe license status through the admin status surface when enabled. Metrics-admin users can scrape safe license gauges. Usage rows can separate license-denied requests from caller auth, quota, routing, and upstream failures with license status fields.
+
+Ordinary application caller tokens should not receive license payloads or operational details. They receive a structured `license-*` error plus request ID when enforcement blocks a request.
+
+## Failure Modes
+
+| Error | Typical operator action |
+|---|---|
+| `license-missing` | Mount the issued license file at `server.license.path` and check file permissions. |
+| `license-invalid` | Replace the malformed or unverifiable license with a valid issued file. |
+| `license-expired` | Renew or restore a current license, then restart or wait for recheck. |
+| `license-not-yet-valid` | Check license dates and system clock. |
+| `license-product-mismatch` | Install a license issued for GenAI Smart Router. |
+| `license-feature-forbidden` | Confirm the feature is in the commercial plan or disable that feature. |
+| `license-limit-exceeded` | Reduce configured usage or update the licensed limits. |
+| `license-clock-rollback` | Correct system time and inspect the durable license state file. |
+
+See [Error Reference](../reference/errors) for caller-visible details.
+
+## Rotation And Revocation
+
+Public verification keys are embedded in the release build. License key rotation or revocation is handled by issuing a replacement license and, when required, a release containing the updated verification-key set. Operators should keep old and new license files under the same secret-handling controls, avoid sharing full payloads in support tickets, and use safe status fields plus request IDs for support diagnostics.
+
+## Smoke Commands
+
+Packaged deployments ship the router runtime and supported operational CLIs. Validate the deployed license through the runtime health and admin surfaces:
+
+```bash
+curl -fsS "$ROUTER_BASE_URL/readyz"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/license/status"
+
+curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
+  "$ROUTER_BASE_URL/v1/models"
+```
+
+The source-tree `cmd/router-license` helper can inspect or verify a license file during release engineering or support validation when run from a checked-out source tree with an approved public key file. It is not part of the packaged Docker/runtime image unless a deployment explicitly adds it. Deployed routers do not need private signing keys or the license helper binary at runtime.
+
+For license issuance, renewal, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai).

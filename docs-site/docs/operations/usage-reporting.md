@@ -56,6 +56,17 @@ router-usage-report \
 
 The command initializes scalar `retention_policy_versions` and `retention_policy_rules`, writes a `retention_jobs` row, and records per-table counts in `retention_job_table_results`. It counts low-risk candidates in diagnostic child tables, decision-telemetry child tables, `security_access_events`, and content-capture rows, then subtracts active legal holds by data class and timestamp range. `usage_detail` is represented for future raw usage deletion, but candidate rows are blocked unless a finalized daily rollup covers the candidate window. Archive/export, actual delete execution, scheduler support, and full legal-hold admin workflows are future slices.
 
+Use retention language carefully in commercial reviews:
+
+- raw operational rows are request, attempt, trace, error, decision, security event, and optional governed content-capture records;
+- immutable billing/usage rollups are finalized daily aggregate rows generated from stored request-time facts;
+- archived exports are customer-controlled artifacts and are not created by the current dry-run foundation;
+- legal holds are scalar rows that block dry-run candidate counts by data class and timestamp range;
+- purge jobs are future execution workflows, not part of the current shipped foundation;
+- report and invoice calculations should use stored request-time usage and cost fields, not current provider config repricing.
+
+The usage and reporting schema remains purely relational: scalar columns plus normalized child tables. Do not add JSON/JSONB, array columns, serialized blobs, or packed multi-value text fields for structured reporting data.
+
 ## Browser Admin Reports
 
 When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
@@ -131,6 +142,7 @@ Reports include:
 - Request-time input/output token prices and calculated input/output/total USD cost.
 - Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
+- Usage by API key label/public token ID across multiple keys for one user or project, including rotation and disabled-key review.
 - Usage by caller ID, requested model, target provider/model/dialect, status, cache state, and stored caller IP when enabled.
 - Usage by caller IP and hour.
 - Usage by router model group.
@@ -182,6 +194,8 @@ The current decision-telemetry slice does not store fail-closed script/external 
 ## Performance Triage
 
 Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
+
+For Cursor, opencode, and other large-context developer tools, start with the troubleshooting buckets, max-token buckets, input-token buckets, and usage by client/project/key. Several 150K-token requests can exhaust TPM inside a rolling window even when daily or monthly budgets remain healthy. Distinguish router-side `429 tpm-exceeded` or `quota-exceeded` responses from upstream provider `429` attempts and from client cancellations by checking the terminal request status, attempt rows, and request trace events.
 
 Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
 

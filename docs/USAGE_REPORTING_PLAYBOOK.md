@@ -8,6 +8,8 @@ Usage reports support cost governance, quota reviews, incident analysis, and sav
 
 Report by token ID, caller user/project/environment, model group, provider/model/dialect, client type, caller IP, hour/day, cache status, request status, input/output/image tokens, request-time USD cost, and performance fields.
 
+For commercial evaluation packages, include both business and support dimensions: savings by developer/user/project/key, provider/model mix, model groups used per user/project, usage per key, chargeback, quota/rate-limit review, expensive request investigation, fallback/error triage, performance triage, and security access review. Use anonymized exports for customer-facing examples and never include private hostnames, raw prompts, raw images, raw tokens, token hashes, provider keys, raw tool outputs, or full config.
+
 Performance sections are included for latency triage:
 
 - Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream token throughput, errors, streams, and fallbacks.
@@ -52,6 +54,16 @@ router-usage-report \
 ```
 
 `server.retention` is disabled by default and supports only `dry_run: true` in this foundation. A status run initializes an active config-derived retention policy version/rules and writes `retention_jobs` plus `retention_job_table_results`. It counts candidates for `usage_diagnostics`, `decision_telemetry`, `security_access_events`, and `content_capture`, subtracts active `legal_holds` by data class and timestamp range, and records blocked `usage_detail` counts unless a finalized daily rollup covers the candidate window. Decision telemetry child tables are counted through their parent `request_usage.ts`. This slice does not execute deletes, archive rows, schedule retention jobs, or provide full legal-hold admin APIs.
+
+Keep retention terms precise:
+
+- raw operational rows are request-level and child-table facts used for incident response and detailed troubleshooting;
+- finalized rollups are immutable billing/usage aggregates generated from stored request-time facts;
+- archived exports are external artifacts controlled by the operator, not produced by the current retention foundation;
+- legal holds block dry-run eligibility by data class and timestamp range;
+- purge execution, archive/export automation, schedulers, and full hold administration are future slices.
+
+Invoices and commercial savings reports must sum stored request-time cost fields or finalized rollups derived from those fields. Do not reprice historical actuals from current provider config.
 
 ## Browser Admin Reports
 

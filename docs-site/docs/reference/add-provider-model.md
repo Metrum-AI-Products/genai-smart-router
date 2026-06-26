@@ -8,6 +8,8 @@ Use this process before adding a new upstream model to active routing. It applie
 
 For hosted OpenAI-compatible services such as Crusoe Managed Inference, use the normal `openai-chat` provider path first. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Treat the public model list and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests.
 
+Provider examples in these docs are validation patterns, not promises that a public provider, account, region, or model is active in every deployment. Revalidate provider docs, account entitlement, pricing, model IDs, tool behavior, modality support, streaming, usage reporting, and max-token cap behavior for the exact deployment before promotion.
+
 ## 1. Capture Required Metadata
 
 Record:
@@ -30,7 +32,11 @@ Run direct upstream requests before involving the router:
 - text completion with a realistic output cap for the caller API, such as `max_tokens`, `max_completion_tokens`, or `max_output_tokens`;
 - small cap request such as OpenAI Chat `max_completion_tokens: 1` when cap behavior matters;
 - tool request for each API shape you plan to support;
-- image request when declaring `image` modality.
+- structured-output request when declaring JSON/schema capability;
+- streaming request when the route will serve streaming clients;
+- image request when declaring `image` modality;
+- usage and cost inspection when the upstream returns token or billed-cost fields;
+- client compatibility smoke for Codex, Claude Code, Cursor, Warp, or another client that depends on a specific skin.
 
 OpenRouter Nitro variants may not appear as separate model IDs in `/models`; validate the exact `:nitro` suffix with a real completion call.
 
@@ -77,7 +83,7 @@ models:
       - { provider: crusoe, model_ref: llama-3-3-70b-instruct }
 ```
 
-Do not declare `tool_support`, `structured_outputs`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes.
+Do not declare `tool_support`, `structured_outputs`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
 
 ## 5. Add Production Weight Conservatively
 

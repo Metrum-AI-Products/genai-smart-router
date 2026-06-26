@@ -6,6 +6,8 @@ title: Admin Browser Reports
 
 Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`. The browser dashboard uses Metrum branding, local embedded assets, and a dark/light mode toggle for authorized administrators.
 
+For commercial evaluations, this surface is a proof point as well as an operations tool. It lets evaluators inspect whether the router actually reduced cost, preserved workload outcomes, isolated access, explained provider/model choices, and produced enough evidence for chargeback, quota tuning, support triage, and security review.
+
 ## Access Model
 
 Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
@@ -67,6 +69,17 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, routing strategy summaries, dynamic-score signal/score/threshold buckets, max-token and input-token buckets, admission reasons, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, and terminal-error rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
+
+## Buyer And Operator Questions
+
+| Question | Report evidence |
+|---|---|
+| Which teams are driving spend or savings? | Savings by user, project, key, group, and provider/model; project chargeback; client breakdown. |
+| Which model groups are used by each cohort? | Model groups by user/project/key and usage by requested model group. |
+| Which providers are actually serving traffic? | Provider/model mix, active target metadata, validation status, attempts, fallbacks, and errors. |
+| Are quotas and rate limits sized correctly? | Quotas/budgets, troubleshooting buckets, max-token and input-token buckets, TPM/RPM/concurrency signals. |
+| Why was a request expensive or slow? | Expensive requests, request drilldown, downstream user performance, upstream endpoint performance, latency and throughput. |
+| Is access governed? | Security access events, ordinary-caller `403 reports-forbidden`, metrics-admin isolation, public token IDs, key state, and caller/project dimensions. |
 
 ## Security Access Reports
 
@@ -133,6 +146,8 @@ Summary responses include a `charts` array with stable chart IDs, titles, X/Y ax
 
 Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
+Docusaurus product docs may show anonymized Chart.js examples built from safe report fixtures. The `router-usage-report` CLI remains focused on stable Markdown tables, relational rollups, and machine-reviewable metrics unless a deployment explicitly adds a chart export workflow outside the router binary.
+
 ## Savings
 
 The Savings tab compares stored actual request cost against a selected hypothetical baseline. Actual cost is always summed from request-time stored cost fields; it is not recalculated from current provider configuration. Baseline cost is calculated from stored input and output token counts:
@@ -146,6 +161,8 @@ baseline_cost_usd =
 Built-in baselines are configured under `server.admin_reports.baselines` with source URL, source date, input USD/M, output USD/M, and notes. The default built-ins were source-checked on June 25, 2026: GPT-5.5 from OpenAI API pricing at $5.00/M input and $30.00/M output, and Claude Opus 4.8 from Anthropic Claude pricing at $5.00/M input and $25.00/M output. Baseline prices are externally maintained by providers and should be revalidated when producing contractual or customer-facing savings claims.
 
 Administrators can also enter a custom baseline for the current browser session. Custom values are validated as finite nonnegative USD-per-million-token rates and are not persisted by the router.
+
+Actual router cost is summed from stored request-time input, output, image, calculated, and upstream-reported billed cost fields. Reports must not reprice historical actuals from current config. Older rows that predate a cost field can still be counted for usage, latency, or token volume, but savings and chargeback views should label the missing cost coverage instead of treating it as zero spend.
 
 ## Embedded Assets
 

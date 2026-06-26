@@ -29,6 +29,8 @@ server:
 
 When enforcement blocks serving, `/readyz` fails and caller APIs return `license-*` errors. License status in logs, metrics, reports, and admin status APIs is limited to safe scalar metadata such as status, license ID, customer ID, SKU, key ID, expiry, and grace flag. License payloads, signatures, and signing keys are not exposed.
 
+For renewal, grace, failure modes, admin visibility, and smoke commands, see [License-Protected Deployments](../operations/license-protected-deployments).
+
 ## Provider And Model Catalog
 
 ```yaml
@@ -485,9 +487,13 @@ callers:
     rate: { rpm: 60, tpm: 0, concurrent: 2 }
 ```
 
+Users and projects are explicit account records, not values inferred from API-key names. Project memberships bind a user to a project with a role and status. A user or project can have multiple caller keys for different environments, clients, rotations, or workload tiers, and reports keep those keys distinct with public `token_id` and caller ID fields.
+
 User ids, project ids, membership pairs, caller `id`, `token_sha256`, and non-empty `token_id` values must be unique after normalization. Each key must reference an active `owner_user`, active `project`, and active project membership. Legacy `callers[].user` is still accepted as a deprecated alias for `owner_user`; if both fields are present they must normalize to the same id. Token hashes are compared case-insensitively during config validation, and duplicate-hash validation errors identify the caller IDs without printing hash values. User, project, and membership statuses support `active`, `disabled`, `suspended`, `removed`, and `archived`; caller key statuses also support `expired` and `rotated`.
 
 Disallowed model requests return `403 model-not-allowed` before any upstream provider key is used. Inactive keys return safe status-specific errors after token match, such as `403 key-disabled`, `403 key-suspended`, `403 key-expired`, or `403 key-rotated`; inactive users, projects, or memberships are rejected by config validation before startup. `/metrics` is separate from model access: it returns global operational telemetry only for caller subjects authorized for `metrics` `read`; existing callers with `metrics_admin: true` remain compatible through generated Casbin grants. Ordinary callers receive `403 metrics-forbidden`. Content-capture delete and purge operations require `content:capture` `delete`/`purge` authorization; existing callers with `content_admin: true` remain compatible through generated Casbin grants. Metrics-admin tokens do not grant content-admin access.
+
+Reports can group by caller ID, owner user, project, environment, public token ID/key label, client, requested model group, selected provider/model/dialect, source IP when stored, status, quota/rate-limit bucket, and cost. `/v1/models` is the caller-facing source of truth for the allowed model groups attached to the presented key.
 
 ## Cache And Usage Store
 

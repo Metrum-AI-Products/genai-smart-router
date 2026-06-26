@@ -103,15 +103,26 @@ https://llm-api.example.com/v1
 
 Developers use stable model groups defined by their deployment. Platform owners can change the underlying provider mix without client rewrites. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples used by one reference or hosted deployment, not product-required names.
 
+## Commercial Paths
+
+Metrum supports three buyer paths:
+
+- Metrum-managed hosted evaluation or service for teams that want a managed endpoint and report package.
+- Enterprise or on-prem deployment for customers that need the router, usage database, provider access, and signed JSON license enforcement inside their own infrastructure.
+- Private customer-cloud deployment for customers that want cloud isolation under their own account, identity, network, and retention controls.
+
+The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, choose the commercial plan, then convert to monthly, annual, or usage-based access. Self-serve credit-card signup is future/conditional unless included in a specific customer agreement. See [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
+
 ## Deployment Planning Checklist
 
 - Which clients need OpenAI, Responses, or Anthropic compatibility?
 - Which model groups should be exposed, and what success criteria should each group satisfy?
 - Which provider models are approved and validated?
 - What token, quota, and budget rules are required?
-- Which reports and dashboards are needed for cost governance?
+- Which reports and dashboards are needed for cost governance, security access review, chargeback, and support triage?
 - Which workloads are cache-eligible?
 - What deployment and TLS model is preferred?
+- Is the deployment hosted, private-cloud, or enterprise/on-prem with signed license enforcement?
 
 For a fuller rollout workflow, see [Deployment Readiness](/docs/evaluation/deployment-readiness), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
 

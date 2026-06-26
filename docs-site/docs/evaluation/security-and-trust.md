@@ -43,7 +43,7 @@ Usage and diagnostics are designed for operational triage without storing sensit
 
 Expected diagnostic fields include request IDs, selected provider/model, model group, status, attempt summaries, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
 
-Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream response bodies.
+Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
 Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through Casbin-authorized `content:capture` delete/purge operations with audit rows. It is disabled by default and is not part of ordinary diagnostics or usage reports.
 
@@ -60,6 +60,12 @@ See [PII Filtering](../configuration/pii-filtering).
 `/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated Casbin grants. Normal application caller keys receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
 
 Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Existing `content_admin: true` caller config remains compatible through generated grants. Do not grant it to application caller keys or assume metrics-admin access includes content access.
+
+## Security Access Reporting
+
+When enabled, security access reports persist safe scalar events for authorized API calls, unauthorized or invalid caller-token attempts, model access denials, forbidden metrics/report/content operations, Basic admin authentication checks, and admin report reads or exports. Events can include caller identity, owner user, project, endpoint, method, status, timestamp, source IP or trusted-proxy-derived IP metadata when configured, user agent or client, public token ID, and coarse location enrichment when the deployment adds it.
+
+Security reports do not store raw prompts, raw images, raw bearer tokens, token hashes, provider keys, raw tool outputs, unsanitized upstream response bodies, raw cookies, OIDC tokens, or full config. Security report APIs require `admin:security_reports` authorization separately from ordinary usage report authorization.
 
 ## Private Upstreams
 

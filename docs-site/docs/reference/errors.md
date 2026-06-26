@@ -63,6 +63,30 @@ If a caller sets `max_tokens`, OpenAI Chat `max_completion_tokens`, or Responses
 
 Explicit output caps also affect quota admission. The router reserves estimated input tokens plus `max_tokens`, `max_completion_tokens`, or `max_output_tokens` before upstream calls, then reconciles the reservation to actual usage when the request finishes. Failed or canceled upstream calls release the reservation, and cache hits do not consume persisted token quota.
 
+## Cursor And Large-Context TPM Troubleshooting
+
+Router caller limits can include:
+
+- `rpm`: requests per rolling minute;
+- `tpm`: estimated input plus reserved output tokens per rolling minute;
+- `concurrent`: in-flight request count.
+
+Large-context clients such as Cursor, opencode, coding agents, and repository-wide tools can hit `429 tpm-exceeded` even when daily or monthly budgets are healthy. A few 150K-token requests inside the same rolling minute can exceed TPM, especially when each request also reserves the requested output cap.
+
+Caller guidance:
+
+- reduce selected files, repository context, diff size, or prompt attachments;
+- lower unrealistic output caps;
+- retry after the rolling window clears;
+- include `X-Request-Id` when escalating.
+
+Administrator guidance:
+
+- inspect usage by client, owner user, project, public token ID, requested model group, input-token bucket, max-token bucket, and quota bucket;
+- raise TPM for trusted production keys when the workload is approved;
+- route routine large-context work to cheaper or smaller groups only after those groups pass the workload verifier;
+- distinguish router `429 quota-exceeded`, `rate-limited`, or `tpm-exceeded` from upstream provider `429` attempts and client cancellations by reviewing `request_usage`, `request_attempts`, `request_trace_events`, and `request_errors`.
+
 ## Upstream Provider Quota And Billing Errors
 
 Provider-side balance, credit, quota, billing, and payment failures are distinct from caller-token `quota-exceeded` responses. The router first tries eligible fallback targets. If a fallback succeeds, the caller receives the successful response and diagnostics record the failed attempt. If every eligible attempt fails with provider quota or billing signals, the caller receives `503 upstream-quota-exhausted`.

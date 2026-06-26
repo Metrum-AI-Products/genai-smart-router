@@ -37,6 +37,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "operations/key-generation",
+        "operations/license-protected-deployments",
         "operations/usage-reporting",
         "operations/admin-browser-reports",
         "operations/report-examples",
@@ -60,6 +61,7 @@ const sidebars = {
       label: "Evaluate",
       collapsed: false,
       items: [
+        "evaluation/commercial-evaluation",
         "evaluation/evaluate-smart-router",
         "evaluation/product-capabilities",
         "evaluation/security-and-trust",
