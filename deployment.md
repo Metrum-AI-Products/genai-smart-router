@@ -1993,6 +1993,38 @@ production /admin/reports/export.md?since=1h with Basic admin credentials: 200 M
 ordinary router caller token against /admin/reports/api/summary?since=24h: 403 reports-forbidden
 ```
 
+### 2026-06-27 Licensed production deployment
+
+Package `smart-llmrouter:b5877e8-linux-amd64` was deployed to production with normal-build mandatory license enforcement enabled.
+
+Source commit: `b5877e8` (`Add production license verification key`)
+
+Production license:
+
+- License ID: `lic_metrum_engg_prod_20260627`
+- SKU: `enterprise-annual`
+- Key ID: `metrum-license-ed25519-2026-06-prod`
+- Expiry: `2026-09-30T23:59:59Z`
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.license-b5877e8-20260627T173822Z
+```
+
+Validation:
+
+```text
+go test ./cmd/... ./internal/...: passed, 348 tests
+go test ./internal/router -run TestLicense: passed, 11 tests
+make secret-check: passed
+make package-docker: passed for linux/amd64 and linux/arm64
+production /readyz after license install and restart: 200, version b5877e8, build_date 2026-06-27T17:34:10Z
+production authenticated /v1/chat/completions smoke against high: 200, response OK
+hosted docs /docs/operations/license-protected-deployments returned 200
+ignored local config.production.yaml synced from live production config after deployment
+```
+
 ### 2026-06-23 Harbor case study context docs deployment
 
 Package `smart-llmrouter:6b3c1fc-linux-amd64` was deployed to production to update the hosted Docusaurus Harbor case study with clearer product context for outcome-based model-group evaluation.
