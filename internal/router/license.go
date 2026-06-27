@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,6 +34,12 @@ const (
 	LicenseFeatureModelGroupContracts  = "model_group_contracts"
 	LicenseFeatureRetentionRollups     = "retention_rollups"
 	LicenseFeatureContentCapture       = "content_capture"
+	LicenseFeatureExternalPolicyHTTP   = "external_policy_http"
+	LicenseFeaturePrivateUpstreams     = "private_upstreams"
+	LicenseFeatureAuditLogExport       = "audit_log_export"
+	LicenseFeaturePIIFiltering         = "pii_filtering"
+	LicenseFeatureUsageCSVExport       = "usage_csv_export"
+	LicenseFeatureUsageBaselineExport  = "usage_baseline_export"
 )
 
 type licenseEnvelope struct {
@@ -59,9 +67,19 @@ type LicensePayload struct {
 }
 
 type LicenseLimits struct {
-	MaxModelGroups     int `json:"max_model_groups,omitempty"`
-	MaxCallers         int `json:"max_callers,omitempty"`
-	MaxMonthlyRequests int `json:"max_monthly_requests,omitempty"`
+	MaxModelGroups        int      `json:"max_model_groups,omitempty"`
+	MaxCallers            int      `json:"max_callers,omitempty"`
+	MaxMonthlyRequests    int      `json:"max_monthly_requests,omitempty"`
+	MaxTotalTokens        int64    `json:"max_total_tokens,omitempty"`
+	MaxTotalRequests      int64    `json:"max_total_requests,omitempty"`
+	WindowTokens          int64    `json:"window_tokens,omitempty"`
+	WindowRequests        int64    `json:"window_requests,omitempty"`
+	WindowDurationSeconds int64    `json:"window_duration_seconds,omitempty"`
+	MaxConcurrent         int      `json:"max_concurrent,omitempty"`
+	MaxAdmins             int      `json:"max_admins,omitempty"`
+	MaxRetentionDays      int      `json:"max_retention_days,omitempty"`
+	MaxInstances          int      `json:"max_instances,omitempty"`
+	AllowedSkins          []string `json:"allowed_skins,omitempty"`
 }
 
 type LicenseDeployment struct {
@@ -69,6 +87,7 @@ type LicenseDeployment struct {
 	AllowedEnvironments         []string `json:"allowed_environments,omitempty"`
 	InstanceFingerprintRequired bool     `json:"instance_fingerprint_required,omitempty"`
 	InstanceFingerprint         string   `json:"instance_fingerprint,omitempty"`
+	AllowedInstances            []string `json:"allowed_instances,omitempty"`
 }
 
 type LicenseSignature struct {
@@ -99,6 +118,8 @@ type licenseStatus struct {
 	ExpiresAt        time.Time
 	NotBefore        time.Time
 	Features         map[string]bool
+	Limits           LicenseLimits
+	Deployment       LicenseDeployment
 	DaysUntilExpiry  int
 	LastCheckedAt    time.Time
 	ValidationReason string
@@ -126,21 +147,39 @@ type licenseManager struct {
 
 	mu              sync.RWMutex
 	status          licenseStatus
+	inFlight        int
+	reservedTokens  int64
 	stop            chan struct{}
 	stopped         chan struct{}
 	failureByReason map[string]int64
 }
 
 type licensePersistentState struct {
-	LastValidLicenseID          string   `json:"last_valid_license_id"`
-	LastValidCustomerID         string   `json:"last_valid_customer_id"`
-	LastValidSKU                string   `json:"last_valid_sku"`
-	LastValidKeyID              string   `json:"last_valid_key_id"`
-	LastValidExpiresAt          string   `json:"last_valid_expires_at"`
-	LastValidFeatures           []string `json:"last_valid_features"`
-	LastSuccessfulValidationUTC string   `json:"last_successful_validation_utc"`
-	LastObservedWallClockUTC    string   `json:"last_observed_wall_clock_utc"`
-	GraceActive                 bool     `json:"grace_active"`
+	LastValidLicenseID          string                    `json:"last_valid_license_id"`
+	LastValidCustomerID         string                    `json:"last_valid_customer_id"`
+	LastValidSKU                string                    `json:"last_valid_sku"`
+	LastValidKeyID              string                    `json:"last_valid_key_id"`
+	LastValidExpiresAt          string                    `json:"last_valid_expires_at"`
+	LastValidFeatures           []string                  `json:"last_valid_features"`
+	LastValidLimits             LicenseLimits             `json:"last_valid_limits,omitempty"`
+	LastValidDeployment         LicenseDeployment         `json:"last_valid_deployment,omitempty"`
+	LifetimeTokens              int64                     `json:"lifetime_tokens"`
+	LifetimeRequests            int64                     `json:"lifetime_requests"`
+	Window                      licenseWindowCounterState `json:"window,omitempty"`
+	LastSuccessfulValidationUTC string                    `json:"last_successful_validation_utc"`
+	LastObservedWallClockUTC    string                    `json:"last_observed_wall_clock_utc"`
+	GraceActive                 bool                      `json:"grace_active"`
+}
+
+type licenseWindowCounterState struct {
+	WindowStart    time.Time `json:"window_start"`
+	WindowTokens   int64     `json:"window_tokens"`
+	WindowRequests int64     `json:"window_requests"`
+}
+
+type licenseReservation struct {
+	tokens int64
+	active bool
 }
 
 func newLicenseManager(cfg LicenseConfig, app *Config, keys []LicensePublicKey) (*licenseManager, error) {
@@ -271,7 +310,7 @@ func (m *licenseManager) validateFile() (licenseStatus, error) {
 		Enabled: true, Valid: true, Ready: true, Code: "license-valid", LastCheckedAt: now,
 		LicenseID: env.Payload.LicenseID, CustomerID: env.Payload.CustomerID, SKU: env.Payload.SKU,
 		KeyID: env.Payload.KeyID, ExpiresAt: env.Payload.ExpiresAt, NotBefore: env.Payload.NotBefore,
-		Features: features, DaysUntilExpiry: days,
+		Features: features, Limits: env.Payload.Limits, Deployment: env.Payload.Deployment, DaysUntilExpiry: days,
 	}, nil
 }
 
@@ -298,6 +337,8 @@ func (m *licenseManager) statusForError(err licenseValidationError) licenseStatu
 			status.SKU = state.LastValidSKU
 			status.KeyID = state.LastValidKeyID
 			status.Features = featureMap(state.LastValidFeatures)
+			status.Limits = state.LastValidLimits
+			status.Deployment = state.LastValidDeployment
 			if t, parseErr := time.Parse(time.RFC3339, state.LastValidExpiresAt); parseErr == nil {
 				status.ExpiresAt = t
 			}
@@ -345,12 +386,19 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 	state.LastObservedWallClockUTC = now.Format(time.RFC3339)
 	state.GraceActive = status.GraceActive
 	if status.Valid && !status.GraceActive && status.LicenseID != "" {
+		if state.LastValidLicenseID != "" && state.LastValidLicenseID != status.LicenseID {
+			state.LifetimeTokens = 0
+			state.LifetimeRequests = 0
+			state.Window = licenseWindowCounterState{}
+		}
 		state.LastValidLicenseID = status.LicenseID
 		state.LastValidCustomerID = status.CustomerID
 		state.LastValidSKU = status.SKU
 		state.LastValidKeyID = status.KeyID
 		state.LastValidExpiresAt = status.ExpiresAt.UTC().Format(time.RFC3339)
 		state.LastValidFeatures = featureNames(status.Features)
+		state.LastValidLimits = status.Limits
+		state.LastValidDeployment = status.Deployment
 		state.LastSuccessfulValidationUTC = now.Format(time.RFC3339)
 	}
 	raw, err := json.MarshalIndent(state, "", "  ")
@@ -392,6 +440,175 @@ func (m *licenseManager) enforce(feature string) *licenseValidationError {
 	return nil
 }
 
+func (m *licenseManager) AdmitRequest(dialect string) *licenseValidationError {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := cloneLicenseStatus(m.status)
+	if !st.Enabled {
+		return nil
+	}
+	if lerr := licenseStatusError(st); lerr != nil {
+		return lerr
+	}
+	if skin := licenseSkinForDialect(dialect); skin != "" && len(st.Limits.AllowedSkins) > 0 && !licenseSkinAllowed(st.Limits.AllowedSkins, skin) {
+		return &licenseValidationError{Code: "license-skin-forbidden", StatusCode: 403, Message: "license-skin-forbidden"}
+	}
+	if st.Limits.MaxConcurrent > 0 && m.inFlight >= st.Limits.MaxConcurrent {
+		return &licenseValidationError{Code: "license-concurrency-exceeded", StatusCode: 429, Message: "license-concurrency-exceeded"}
+	}
+	state, _ := m.readState()
+	now := m.now().UTC()
+	m.resetLicenseUsageStateLocked(&state, st, now)
+	if st.Limits.MaxTotalRequests > 0 && state.LifetimeRequests+1 > st.Limits.MaxTotalRequests {
+		return &licenseValidationError{Code: "license-volume-exceeded", StatusCode: 429, Message: "license-volume-exceeded"}
+	}
+	if st.Limits.WindowRequests > 0 && state.Window.WindowRequests+1 > st.Limits.WindowRequests {
+		return &licenseValidationError{Code: "license-window-exceeded", StatusCode: 429, Message: "license-window-exceeded"}
+	}
+	state.LifetimeRequests++
+	if st.Limits.WindowRequests > 0 {
+		state.Window.WindowRequests++
+	}
+	m.inFlight++
+	if err := m.writeStateLocked(state); err != nil {
+		m.inFlight--
+		return &licenseValidationError{Code: "license-state-error", StatusCode: 503, Message: "license-state-error"}
+	}
+	return nil
+}
+
+func (m *licenseManager) ReleaseRequest() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inFlight > 0 {
+		m.inFlight--
+	}
+}
+
+func (m *licenseManager) ReserveTokens(estTokens int) (*licenseReservation, *licenseValidationError) {
+	if m == nil || estTokens <= 0 {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := cloneLicenseStatus(m.status)
+	if !st.Enabled {
+		return nil, nil
+	}
+	if lerr := licenseStatusError(st); lerr != nil {
+		return nil, lerr
+	}
+	state, _ := m.readState()
+	now := m.now().UTC()
+	m.resetLicenseUsageStateLocked(&state, st, now)
+	est := int64(estTokens)
+	if st.Limits.MaxTotalTokens > 0 && state.LifetimeTokens+m.reservedTokens+est > st.Limits.MaxTotalTokens {
+		return nil, &licenseValidationError{Code: "license-volume-exceeded", StatusCode: 429, Message: "license-volume-exceeded"}
+	}
+	if st.Limits.WindowTokens > 0 && state.Window.WindowTokens+m.reservedTokens+est > st.Limits.WindowTokens {
+		return nil, &licenseValidationError{Code: "license-window-exceeded", StatusCode: 429, Message: "license-window-exceeded"}
+	}
+	m.reservedTokens += est
+	return &licenseReservation{tokens: est, active: true}, nil
+}
+
+func (m *licenseManager) ReleaseReservation(reservation *licenseReservation) {
+	if m == nil || reservation == nil || !reservation.active {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.releaseReservationLocked(reservation)
+}
+
+func (m *licenseManager) RecordTokens(reservation *licenseReservation, usage Usage) {
+	if m == nil {
+		return
+	}
+	total := totalTokens(usage)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.releaseReservationLocked(reservation)
+	st := cloneLicenseStatus(m.status)
+	if !st.Enabled || total <= 0 {
+		return
+	}
+	state, _ := m.readState()
+	now := m.now().UTC()
+	m.resetLicenseUsageStateLocked(&state, st, now)
+	state.LifetimeTokens += int64(total)
+	if st.Limits.WindowTokens > 0 {
+		state.Window.WindowTokens += int64(total)
+	}
+	_ = m.writeStateLocked(state)
+}
+
+func (m *licenseManager) releaseReservationLocked(reservation *licenseReservation) {
+	if reservation == nil || !reservation.active {
+		return
+	}
+	m.reservedTokens -= reservation.tokens
+	if m.reservedTokens < 0 {
+		m.reservedTokens = 0
+	}
+	reservation.active = false
+}
+
+func (m *licenseManager) resetLicenseUsageStateLocked(state *licensePersistentState, status licenseStatus, now time.Time) {
+	if state == nil {
+		return
+	}
+	if status.LicenseID != "" && state.LastValidLicenseID != "" && state.LastValidLicenseID != status.LicenseID {
+		state.LifetimeTokens = 0
+		state.LifetimeRequests = 0
+		state.Window = licenseWindowCounterState{}
+	}
+	if state.LastValidLicenseID == "" && status.LicenseID != "" {
+		state.LastValidLicenseID = status.LicenseID
+	}
+	if status.Limits.WindowDurationSeconds > 0 {
+		window := time.Duration(status.Limits.WindowDurationSeconds) * time.Second
+		if state.Window.WindowStart.IsZero() || !now.Before(state.Window.WindowStart.Add(window)) {
+			state.Window.WindowStart = now
+			state.Window.WindowTokens = 0
+			state.Window.WindowRequests = 0
+		}
+	}
+}
+
+func (m *licenseManager) writeStateLocked(state licensePersistentState) error {
+	if strings.TrimSpace(m.statePath) == "" {
+		return nil
+	}
+	raw, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(m.statePath), 0o755); err != nil {
+		return err
+	}
+	tmp := m.statePath + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, m.statePath)
+}
+
+func licenseStatusError(st licenseStatus) *licenseValidationError {
+	if !st.Ready || !st.Valid {
+		code := defaultString(st.Code, "license-invalid")
+		status := httpStatusForLicenseCode(code)
+		return &licenseValidationError{Code: code, StatusCode: status, Message: code}
+	}
+	return nil
+}
+
 func (m *licenseManager) metrics() (licenseStatus, map[string]int64) {
 	st := m.statusSnapshot()
 	m.mu.RLock()
@@ -401,6 +618,16 @@ func (m *licenseManager) metrics() (licenseStatus, map[string]int64) {
 		failures[k] = v
 	}
 	return st, failures
+}
+
+func (m *licenseManager) usageSnapshot() licensePersistentState {
+	if m == nil {
+		return licensePersistentState{}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	state, _ := m.readState()
+	return state
 }
 
 func cloneLicenseStatus(in licenseStatus) licenseStatus {
@@ -414,8 +641,14 @@ func cloneLicenseStatus(in licenseStatus) licenseStatus {
 
 func httpStatusForLicenseCode(code string) int {
 	switch code {
+	case "license-volume-exceeded", "license-window-exceeded", "license-concurrency-exceeded":
+		return 429
 	case "license-expired", "license-feature-forbidden", "license-limit-exceeded":
 		return 403
+	case "license-skin-forbidden", "license-admin-limit-exceeded", "license-retention-limit-exceeded":
+		return 403
+	case "license-instance-limit-exceeded":
+		return 503
 	default:
 		return 503
 	}
@@ -424,7 +657,6 @@ func httpStatusForLicenseCode(code string) int {
 func ParseLicenseEnvelope(raw []byte) (licenseEnvelope, error) {
 	var env licenseEnvelope
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&env); err != nil {
 		return env, err
 	}
@@ -475,6 +707,12 @@ func validateLicensePayloadForConfig(payload LicensePayload, cfg *Config, now ti
 	if !payload.ExpiresAt.IsZero() && !now.Before(payload.ExpiresAt) {
 		return licenseValidationError{Code: "license-expired", StatusCode: 403, Message: "license expired"}
 	}
+	if err := validateLicenseLimitShape(payload.Limits); err != nil {
+		return err
+	}
+	if err := validateLicenseDeploymentShape(payload.Deployment); err != nil {
+		return err
+	}
 	features := featureMap(payload.Features)
 	if !features[LicenseFeatureRouting] && !features["*"] {
 		return licenseValidationError{Code: "license-feature-forbidden", StatusCode: 403, Message: "routing feature is not licensed"}
@@ -486,8 +724,87 @@ func validateLicensePayloadForConfig(payload LicensePayload, cfg *Config, now ti
 		if payload.Limits.MaxCallers > 0 && len(cfg.Callers) > payload.Limits.MaxCallers {
 			return licenseValidationError{Code: "license-limit-exceeded", StatusCode: 403, Message: "caller limit exceeded"}
 		}
+		if payload.Limits.MaxAdmins > 0 && countConfiguredAdmins(cfg.Server.AdminAuth) > payload.Limits.MaxAdmins {
+			return licenseValidationError{Code: "license-admin-limit-exceeded", StatusCode: 403, Message: "admin limit exceeded"}
+		}
+		if payload.Limits.MaxRetentionDays > 0 && maxConfiguredRetentionDays(*cfg) > payload.Limits.MaxRetentionDays {
+			return licenseValidationError{Code: "license-retention-limit-exceeded", StatusCode: 403, Message: "retention limit exceeded"}
+		}
+		if payload.Limits.MaxInstances > 0 || payload.Deployment.InstanceFingerprintRequired || payload.Deployment.InstanceFingerprint != "" || len(payload.Deployment.AllowedInstances) > 0 {
+			if err := validateLicensedInstance(payload, cfg.Server.License.InstanceFingerprint); err != nil {
+				return err
+			}
+		}
+		if !features[LicenseFeaturePrivateUpstreams] && !features["*"] && configUsesPrivateUpstreams(cfg) {
+			return licenseValidationError{Code: "license-feature-forbidden", StatusCode: 403, Message: "private upstreams feature is not licensed"}
+		}
+		if !features[LicenseFeaturePIIFiltering] && !features["*"] && configUsesPIIFilter(cfg) {
+			return licenseValidationError{Code: "license-feature-forbidden", StatusCode: 403, Message: "pii filtering feature is not licensed"}
+		}
+		if !features[LicenseFeatureExternalPolicyHTTP] && !features["*"] && configUsesScriptHTTP(cfg) {
+			return licenseValidationError{Code: "license-feature-forbidden", StatusCode: 403, Message: "script external HTTP feature is not licensed"}
+		}
 	}
 	return nil
+}
+
+func validateLicenseLimitShape(limits LicenseLimits) error {
+	if limits.MaxModelGroups < 0 || limits.MaxCallers < 0 || limits.MaxMonthlyRequests < 0 ||
+		limits.MaxTotalTokens < 0 || limits.MaxTotalRequests < 0 || limits.WindowTokens < 0 ||
+		limits.WindowRequests < 0 || limits.WindowDurationSeconds < 0 || limits.MaxConcurrent < 0 ||
+		limits.MaxAdmins < 0 || limits.MaxRetentionDays < 0 || limits.MaxInstances < 0 {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license limits cannot be negative"}
+	}
+	windowCapConfigured := limits.WindowTokens > 0 || limits.WindowRequests > 0
+	if windowCapConfigured && limits.WindowDurationSeconds <= 0 {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license window duration is required"}
+	}
+	if !windowCapConfigured && limits.WindowDurationSeconds > 0 {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license window cap is required"}
+	}
+	for _, skin := range limits.AllowedSkins {
+		switch strings.ToLower(strings.TrimSpace(skin)) {
+		case "openai-chat", "openai-responses", "anthropic-messages":
+		default:
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license allowed_skins contains unsupported skin"}
+		}
+	}
+	return nil
+}
+
+func validateLicenseDeploymentShape(deployment LicenseDeployment) error {
+	for _, allowed := range deployment.AllowedInstances {
+		if strings.TrimSpace(allowed) == "" {
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license allowed_instances contains an empty fingerprint"}
+		}
+	}
+	return nil
+}
+
+func validateLicensedInstance(payload LicensePayload, runtimeFingerprint string) error {
+	fingerprint := strings.TrimSpace(runtimeFingerprint)
+	if payload.Limits.MaxInstances > 0 && len(payload.Deployment.AllowedInstances) > payload.Limits.MaxInstances {
+		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance limit exceeded"}
+	}
+	allowedInstances := normalizedLicenseStrings(payload.Deployment.AllowedInstances)
+	if len(allowedInstances) == 0 && strings.TrimSpace(payload.Deployment.InstanceFingerprint) != "" {
+		allowedInstances = []string{strings.TrimSpace(payload.Deployment.InstanceFingerprint)}
+	}
+	if payload.Deployment.InstanceFingerprintRequired && fingerprint == "" {
+		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
+	}
+	if len(allowedInstances) == 0 {
+		return nil
+	}
+	if fingerprint == "" {
+		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
+	}
+	for _, allowed := range allowedInstances {
+		if allowed == fingerprint {
+			return nil
+		}
+	}
+	return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is not allowed"}
 }
 
 func CanonicalLicensePayload(payload LicensePayload) ([]byte, error) {
@@ -633,6 +950,40 @@ func licenseFeatureForRoute(dialect string) string {
 	}
 }
 
+func licenseSkinForDialect(dialect string) string {
+	switch normalizeDialect(dialect) {
+	case "openai-chat":
+		return "openai-chat"
+	case "openai-responses":
+		return "openai-responses"
+	case "anthropic":
+		return "anthropic-messages"
+	default:
+		return ""
+	}
+}
+
+func licenseSkinAllowed(allowed []string, skin string) bool {
+	skin = strings.ToLower(strings.TrimSpace(skin))
+	for _, candidate := range allowed {
+		if strings.ToLower(strings.TrimSpace(candidate)) == skin {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedLicenseStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func licenseFeaturesForGroup(group ModelGroup) []string {
 	features := []string{LicenseFeatureRouting}
 	if group.Contract != nil {
@@ -643,8 +994,14 @@ func licenseFeaturesForGroup(group ModelGroup) []string {
 		features = append(features, LicenseFeatureDynamicScore)
 	case "script":
 		features = append(features, LicenseFeatureTypeScriptRouting)
+		if group.ScriptHTTP.Enabled {
+			features = append(features, LicenseFeatureExternalPolicyHTTP)
+		}
 	case "external":
 		features = append(features, LicenseFeatureExternalPolicy)
+	}
+	if group.PIIFilter.Enabled {
+		features = append(features, LicenseFeaturePIIFiltering)
 	}
 	return uniqueLicenseFeatures(features)
 }
@@ -685,6 +1042,44 @@ func safeLicenseStatusResponse(st licenseStatus) map[string]any {
 	return out
 }
 
+func safeLicenseStatusResponseWithUsage(m *licenseManager) map[string]any {
+	if m == nil {
+		return safeLicenseStatusResponse(licenseStatus{Valid: true, Ready: true, Code: "license-disabled", Features: map[string]bool{}})
+	}
+	st := m.statusSnapshot()
+	out := safeLicenseStatusResponse(st)
+	usage := m.usageSnapshot()
+	out["usage"] = map[string]any{
+		"lifetime_tokens":   usage.LifetimeTokens,
+		"lifetime_requests": usage.LifetimeRequests,
+		"window": map[string]any{
+			"window_start":    formatOptionalTime(usage.Window.WindowStart),
+			"window_tokens":   usage.Window.WindowTokens,
+			"window_requests": usage.Window.WindowRequests,
+		},
+	}
+	out["limits"] = map[string]any{
+		"max_total_tokens":        st.Limits.MaxTotalTokens,
+		"max_total_requests":      st.Limits.MaxTotalRequests,
+		"window_tokens":           st.Limits.WindowTokens,
+		"window_requests":         st.Limits.WindowRequests,
+		"window_duration_seconds": st.Limits.WindowDurationSeconds,
+		"max_concurrent":          st.Limits.MaxConcurrent,
+		"max_admins":              st.Limits.MaxAdmins,
+		"max_retention_days":      st.Limits.MaxRetentionDays,
+		"max_instances":           st.Limits.MaxInstances,
+		"allowed_skins":           append([]string(nil), st.Limits.AllowedSkins...),
+	}
+	return out
+}
+
+func formatOptionalTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 func contextWithLicenseReload(ctx context.Context, m *licenseManager) context.Context {
 	if m == nil {
 		return ctx
@@ -694,4 +1089,94 @@ func contextWithLicenseReload(ctx context.Context, m *licenseManager) context.Co
 		m.close()
 	}()
 	return ctx
+}
+
+func countConfiguredAdmins(auth AdminAuthConfig) int {
+	subjects := map[string]bool{}
+	for _, user := range auth.Basic.Users {
+		subject := strings.TrimSpace(user.Subject)
+		if subject == "" && strings.TrimSpace(user.Username) != "" {
+			subject = "basic:" + strings.TrimSpace(user.Username)
+		}
+		if subject != "" {
+			subjects[subject] = true
+		}
+	}
+	return len(subjects)
+}
+
+func maxConfiguredRetentionDays(cfg Config) int {
+	maxDays := 0
+	if cfg.Server.Retention.Enabled {
+		for _, class := range cfg.Server.Retention.Classes {
+			if class.Enabled != nil && !*class.Enabled {
+				continue
+			}
+			if class.RetentionDays > maxDays {
+				maxDays = class.RetentionDays
+			}
+		}
+	}
+	if cfg.Server.ContentCapture.Enabled && cfg.Server.ContentCapture.RetentionDays > maxDays {
+		maxDays = cfg.Server.ContentCapture.RetentionDays
+	}
+	if (cfg.Server.Diagnostics.Enabled == nil || *cfg.Server.Diagnostics.Enabled) && cfg.Server.Diagnostics.RetentionDays > maxDays {
+		maxDays = cfg.Server.Diagnostics.RetentionDays
+	}
+	if cfg.Server.AdminReports.Enabled && cfg.Server.AdminReports.Security.Enabled && cfg.Server.AdminReports.Security.RetentionDays > maxDays {
+		maxDays = cfg.Server.AdminReports.Security.RetentionDays
+	}
+	return maxDays
+}
+
+func configUsesPIIFilter(cfg *Config) bool {
+	if cfg == nil {
+		return false
+	}
+	for _, group := range cfg.Models {
+		if group.PIIFilter.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func configUsesScriptHTTP(cfg *Config) bool {
+	if cfg == nil {
+		return false
+	}
+	for _, group := range cfg.Models {
+		if group.ScriptHTTP.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func configUsesPrivateUpstreams(cfg *Config) bool {
+	if cfg == nil {
+		return false
+	}
+	for _, provider := range cfg.Provider {
+		if providerBaseURLIsPrivate(provider.BaseURL) {
+			return true
+		}
+	}
+	return false
+}
+
+func providerBaseURLIsPrivate(rawURL string) bool {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(u.Hostname()), "."))
+	if host == "" {
+		return false
+	}
+	if strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".local") || host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast())
 }

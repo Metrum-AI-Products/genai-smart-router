@@ -548,6 +548,9 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
 		return
 	}
+	if !s.enforceAdminReportLicenseFeature(w, r, relPath) {
+		return
+	}
 	s.recordAdminSecurityAccess(r, subject, http.StatusOK, "", object, action)
 	s.setAdminReportHeaders(w, strings.HasPrefix(r.URL.Path, cleanAdminReportsPrefix(s.cfg.Server.AdminReports.PathPrefix)+"/static/"))
 	scalarSpec, scalarOK := adminScalarEndpointSpecs(strings.TrimPrefix(r.URL.Path, prefix))
@@ -619,6 +622,33 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (s *Service) enforceAdminReportLicenseFeature(w http.ResponseWriter, r *http.Request, relPath string) bool {
+	var feature string
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/security/export.csv"):
+		feature = LicenseFeatureAuditLogExport
+	case strings.HasSuffix(r.URL.Path, "/export.md"):
+		feature = LicenseFeatureUsageCSVExport
+	case adminReportUsesSavingsBaseline(relPath):
+		feature = LicenseFeatureUsageBaselineExport
+	default:
+		return true
+	}
+	if lerr := s.license.enforce(feature); lerr != nil {
+		writeJSON(w, lerr.StatusCode, map[string]any{"error": map[string]any{"type": lerr.Code, "message": lerr.Code}})
+		return false
+	}
+	return true
+}
+
+func adminReportUsesSavingsBaseline(relPath string) bool {
+	if relPath == "/api/savings" {
+		return true
+	}
+	spec, ok := adminScalarEndpointSpecs(relPath)
+	return ok && spec.WithBaseline
 }
 
 func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {

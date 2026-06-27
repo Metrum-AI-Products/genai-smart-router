@@ -20,6 +20,8 @@ server:
     enabled: false
     path: /app/config/license.json
     state_path: /app/state/license-state.json
+    # Set when Metrum issues an instance-bound license for this deployment.
+    instance_fingerprint: ""
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
     fail_open_for_dev: false

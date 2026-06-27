@@ -14,12 +14,13 @@ server:
     enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
+    instance_fingerprint: "issued-instance-fingerprint"
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
     fail_open_for_dev: false
 ```
 
-Production licensed deployments should mount the issued license file read-only, keep the license state file on durable deployment storage, and leave `fail_open_for_dev: false`. The state file preserves renewal, grace, and clock-rollback checks across restarts.
+Production licensed deployments should mount the issued license file read-only, keep the license state file on durable deployment storage, and leave `fail_open_for_dev: false`. Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment; it must match the licensed instance scope. The state file preserves renewal, grace, and clock-rollback checks across restarts.
 
 For Docker Compose packages, mount the issued file under the protected compose config directory and keep it readable by the router container user. For binary deployments, place the file in a protected config directory and keep the state file under the deployment state directory. Private signing keys are never installed on the router host.
 

@@ -155,9 +155,12 @@ server:
     enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
+    instance_fingerprint: "issued-instance-fingerprint"
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
 ```
+
+Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment. It must match the licensed instance scope or startup/readiness will fail with `license-instance-limit-exceeded`.
 
 `/readyz` fails when an enabled license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.
 

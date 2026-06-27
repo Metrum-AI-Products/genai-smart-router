@@ -53,6 +53,7 @@ type LicenseConfig struct {
 	Enabled                      bool          `yaml:"enabled" json:"enabled"`
 	Path                         string        `yaml:"path" json:"path"`
 	StatePath                    string        `yaml:"state_path" json:"statePath"`
+	InstanceFingerprint          string        `yaml:"instance_fingerprint" json:"instanceFingerprint"`
 	RecheckInterval              time.Duration `yaml:"recheck_interval" json:"recheckInterval"`
 	GracePeriodOnValidationError time.Duration `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
 	FailOpenForDev               bool          `yaml:"fail_open_for_dev" json:"failOpenForDev"`
