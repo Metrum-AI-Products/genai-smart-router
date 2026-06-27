@@ -1,8 +1,14 @@
 # GenAI Smart Router Commercialization Plan
 
-This is an internal product and commercialization plan for GenAI Smart Router. It is not customer-facing pricing copy. Revalidate competitor pricing and procurement details before publishing any public comparison or exact price claim.
+This is an internal product and commercialization plan for GenAI Smart Router. It is not customer-facing pricing copy. Revalidate exact competitor pricing, procurement channels, marketplace availability, packaging, and commercial terms before publishing any public comparison or exact price claim.
 
 Research snapshot: 2026-06-24.
+
+Current status note: this document has been refreshed after signed license enforcement shipped. Treat the market research and price anchors below as a dated planning snapshot, not current public positioning. Current customer-facing docs live in `docs-site/docs/`, especially:
+
+- `docs-site/docs/operations/license-protected-deployments.md` for shipped signed-license deployment behavior;
+- `docs-site/docs/evaluation/commercial-evaluation.md` for the current commercial evaluation path;
+- `docs-site/docs/operations/usage-reporting.md` for shipped usage reporting, rollup, and retention foundations.
 
 Primary reference points reviewed:
 
@@ -14,6 +20,25 @@ Primary reference points reviewed:
   Source: https://portkey.ai/
 - OpenRouter pricing: prepaid credits, manual/automatic top-up, enterprise by volume/prepayment/annual commit, and routing/fallback billing around successful model runs.
   Source: https://openrouter.ai/pricing
+
+## Shipped Commercial Foundations
+
+The router now includes several commercial foundations that were still future-looking when this plan was first written:
+
+- Signed JSON license verification is shipped. Licensed deployments can enable `server.license` so the router verifies a Metrum-issued signed JSON license with embedded Ed25519 public verification keys, expiry, product checks, feature gates, deployment limits, grace behavior, clock-rollback state, safe status reporting, `/readyz` integration, and `license-*` caller errors. The original implementation issue #35 is closed.
+- License-safe operations docs are shipped. Public docs cover license-protected deployments, configuration, renewal/replacement, admin status, metrics-admin visibility, troubleshooting, and secret-handling boundaries without publishing private signing keys, license payloads, private deployment paths, router tokens, or provider keys.
+- Commercial evaluation docs are shipped. Public evaluation docs describe hosted, private-cloud, and enterprise/on-prem evaluation paths, deployment readiness, security assessment, workload validation, usage reporting evidence, and contact flow.
+- Usage reporting and commercial retention foundations are shipped where documented. Request-time costs, upstream-reported billed costs, latency/throughput dimensions, safe license metadata, daily rollups, baseline savings fields, dry-run retention status, legal-hold rows, and guarded first-slice purge execution are available as documented. Archive/export automation, schedulers, broader data-class purge execution, and full browser/admin write workflows remain future slices.
+
+Still-open commercial implementation issues:
+
+- #36: Define commercial packaging, entitlements, and billing semantics.
+- #37: Managed cloud self-serve checkout and provisioning.
+- #38: Billing-grade usage metering, credits, and invoice ledger.
+- #39: Enterprise self-hosted license operations and renewal workflow.
+- #40: Private managed deployments and marketplace procurement.
+- #41: Customer billing and admin portal for managed cloud.
+- #42: Public pricing and package documentation.
 
 ## Goals
 
@@ -73,7 +98,7 @@ Commercial shape:
 - limits by production instances, annual request/token volume, admin seats, model groups, or enabled features;
 - procurement through direct order form and later AWS/Azure Marketplace private offers.
 
-Related implementation issue: signed license enforcement is tracked separately in GitHub issue #35.
+Implementation status: signed JSON license enforcement has shipped. The remaining commercial work is operational packaging around license issuance, renewal, support workflows, and entitlement policy, tracked in issue #39.
 
 ### 3. Private Managed Deployment
 
@@ -307,49 +332,49 @@ Rules:
 
 ## Initial Launch Recommendation
 
-Order:
+Updated order after shipped license enforcement:
 
 1. Define tiers, entitlements, and metering contract.
-2. Build managed-cloud self-serve checkout with one simple paid tier and credits.
-3. Implement billing ledger and invoice reconciliation from usage DB.
-4. Ship signed self-hosted license enforcement.
+2. Use shipped signed license enforcement for enterprise/on-prem evaluations while license operations mature.
+3. Build managed-cloud self-serve checkout with one simple paid tier and credits.
+4. Implement billing ledger and invoice reconciliation from usage DB.
 5. Package enterprise/private managed deployment operations.
-6. Add public pricing/docs and marketplace procurement.
+6. Add public pricing/docs and marketplace procurement after commercial policy and legal review.
 
 Rationale:
 
 - Self-serve managed cloud creates fast adoption and pricing feedback.
 - The same metering foundation supports enterprise invoices.
-- Signed licensing protects self-hosted later without delaying cloud launch.
+- Signed licensing already protects self-hosted deployments; issue #39 should make issuance, renewal, support, and entitlement operations repeatable.
 - Marketplace should follow proof of enterprise pull.
 
 ## Prioritized GitHub Workstreams
 
-### P0 - Commercial packaging, entitlements, and pricing contract
+### P0 - Commercial packaging, entitlements, and pricing contract (#36)
 
 Define SKUs, feature gates, usage dimensions, billing semantics, and documentation language. This unblocks all other commercial work.
 
-### P0 - Managed cloud self-serve checkout and account provisioning
+### P0 - Managed cloud self-serve checkout and account provisioning (#37)
 
 Let a user create an organization, pay by credit card, receive a router endpoint/token, and start calling the API.
 
-### P0 - Usage metering, billing ledger, credits, and invoice reconciliation
+### P0 - Usage metering, billing ledger, credits, and invoice reconciliation (#38)
 
 Convert usage DB events into billable line items, credits, overages, and invoices without losing request-time cost reproducibility.
 
-### P1 - Enterprise self-hosted license operations
+### P1 - Enterprise self-hosted license operations (#39)
 
-Build on signed license enforcement to support license issuance, renewal, install docs, support workflows, and entitlement checks.
+Build on shipped signed license enforcement to support repeatable license issuance, renewal, support workflows, and entitlement policy.
 
-### P1 - Private managed deployments and marketplace procurement
+### P1 - Private managed deployments and marketplace procurement (#40)
 
 Define repeatable packaging, runbooks, support boundaries, private offers, and deployment acceptance.
 
-### P1 - Customer billing/admin portal
+### P1 - Customer billing/admin portal (#41)
 
 Expose invoices, credits, usage, limits, token/project management, and plan controls to customers.
 
-### P2 - Public pricing and packaging docs
+### P2 - Public pricing and packaging docs (#42)
 
 Publish customer-facing pricing/package pages once commercial policy is stable and legally reviewed.
 
