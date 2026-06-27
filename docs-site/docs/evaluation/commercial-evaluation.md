@@ -30,6 +30,20 @@ Self-serve credit-card signup, instant public API credits, and automated plan up
 6. Review security posture, deployment readiness, data retention, provider onboarding evidence, rollback criteria, and any required procurement controls.
 7. Choose commercial access: monthly, annual, usage-based, hosted, private-cloud, or enterprise/on-prem terms as agreed in the commercial plan.
 
+## Evaluation And License Options
+
+Commercial evaluations use a license or managed endpoint sized for the proof:
+
+| Option | Typical use | What changes at production time |
+|---|---|---|
+| `eval-72h` | Short hosted or partner proof | Replace with a pilot, enterprise annual, private managed, or marketplace agreement. |
+| `pilot-30d` | Paid validation of workloads, reporting, private upstreams, and governance | Replace with an annual or private managed license after acceptance criteria pass. |
+| `enterprise-annual` | Customer-operated production deployment | Renew or amend the license as feature, volume, retention, or deployment scope changes. |
+| `credit-pack-5m` / `credit-pack-25m` | Prepaid volume or top-up | Replace with a new issued license when the volume envelope is exhausted or expires. |
+| `marketplace-seat` | Procurement through a private cloud marketplace offer | Renew or modify through the marketplace private-offer process. |
+
+The license controls product capabilities and deployment limits; provider keys, upstream choices, model groups, and caller access remain deployment-specific. Use `/v1/models` to see the model groups allowed for the evaluation token.
+
 ## Evaluation Evidence To Request
 
 - Caller-facing compatibility: chat, agent, tool-call, image/VLM, streaming, structured-output, and max-token cap behavior for the client shapes that matter.

@@ -32,13 +32,14 @@ The router now includes several commercial foundations that were still future-lo
 
 Still-open commercial implementation issues:
 
-- #36: Define commercial packaging, entitlements, and billing semantics.
+- #36: Define commercial packaging, entitlements, and billing semantics. Current SKU mapping is now recorded in `docs/enterprise-license-skus.json` and summarized below.
 - #37: Managed cloud self-serve checkout and provisioning.
 - #38: Billing-grade usage metering, credits, and invoice ledger.
 - #39: Enterprise self-hosted license operations and renewal workflow.
 - #40: Private managed deployments and marketplace procurement.
 - #41: Customer billing and admin portal for managed cloud.
 - #42: Public pricing and package documentation.
+- #159: Extend the license envelope and runtime enforcement to support capability, time, volume, and operational limits consistently.
 
 ## Goals
 
@@ -286,7 +287,7 @@ Commercial entitlements should map to product capabilities rather than hardcoded
 Entitlement dimensions:
 
 - deployment type: managed cloud, private managed, self-hosted;
-- enabled features: dynamic_score, external_policy, admin_reports, advanced_telemetry, SSO, audit, private_upstreams;
+- enabled features: dynamic_score, external_policy, admin_reports, usage_reporting, audit_log_export, pii_filtering, private_upstreams;
 - usage limits: requests, tokens, provider spend, storage/retention;
 - operational limits: projects, callers, model groups, admins, environments;
 - support tier and SLA.
@@ -302,6 +303,58 @@ For managed cloud:
 - entitlements live in billing/control-plane DB;
 - router receives effective limits from config or admin/control-plane sync;
 - billing ledger is source of truth for credits, invoices, and usage charges.
+
+## Launch Enterprise SKUs
+
+The launch SKU mapping is intentionally named by commercial motion and license envelope shape, not by hosted model group names. The machine-readable operator source is `docs/enterprise-license-skus.json`; this section is the human-readable product plan.
+
+| Commercial SKU | License template | Motion | Default term | Volume / window shape | Default capability posture |
+|---|---|---|---|---|---|
+| `eval-72h` | `eval-72h` | Metrum-managed evaluation | 72 hours | 5M total tokens and 5k total requests | Routing plus usage reporting for a small evaluation footprint |
+| `pilot-30d` | `pilot-30d` | Paid pilot | 30 days | 1M tokens / 1 hour and 1k requests / 1 hour | Routing, usage reporting, and dynamic score; add-ons for reports, policy, private upstreams, and PII filtering |
+| `enterprise-annual` | `enterprise-annual` | Enterprise self-hosted | 12 months | Unlimited unless the contract adds a ceiling | Default annual BYOK package with reports, routing controls, contracts, rollups, private upstreams, PII filtering, and export capabilities |
+| `credit-pack-5m` | `credit-pack-5m` | Volume top-up | 12 months | 5M total tokens and 100k total requests | Routing plus usage reporting; narrow top-up envelope |
+| `credit-pack-25m` | `credit-pack-25m` | Volume top-up | 12 months | 25M total tokens and 500k total requests | Top-up envelope with admin reports and usage/baseline exports |
+| `marketplace-seat` | `marketplace-seat` | AWS/Azure private offer | Contract term | Contract-defined per-seat or pooled volume | Marketplace equivalent of enterprise/private-managed terms with add-ons encoded in the private offer |
+
+Time-only, volume-only, and time-plus-volume licenses are valid. When a license includes both time and volume limits, whichever limit is reached first blocks further traffic. License replacement with a new `license_id` resets license-wide volume counters; per-caller counters remain separate.
+
+Default launch feature names:
+
+- `routing`
+- `usage_reporting`
+- `admin_reports`
+- `admin_security_reports`
+- `dynamic_score`
+- `typescript_routing`
+- `external_policy`
+- `external_policy_http`
+- `model_group_contracts`
+- `retention_rollups`
+- `content_capture`
+- `private_upstreams`
+- `audit_log_export`
+- `pii_filtering`
+- `usage_csv_export`
+- `usage_baseline_export`
+
+Default launch limit names aligned to issue #159:
+
+- `max_model_groups`
+- `max_callers`
+- `max_admins`
+- `max_monthly_requests`
+- `max_total_requests`
+- `max_total_tokens`
+- `window_requests`
+- `window_tokens`
+- `window_duration_seconds`
+- `max_concurrent`
+- `max_retention_days`
+- `max_instances`
+- `allowed_skins`
+
+The mapping is a commercial and operations contract. Runtime enforcement for fields not currently present in `internal/router/license.go` is owned by issue #159. Public documentation should describe how customers request, mount, renew, and troubleshoot issued licenses; internal docs may describe template generation and support workflow.
 
 ## Metering Requirements
 
@@ -352,7 +405,7 @@ Rationale:
 
 ### P0 - Commercial packaging, entitlements, and pricing contract (#36)
 
-Define SKUs, feature gates, usage dimensions, billing semantics, and documentation language. This unblocks all other commercial work.
+Define SKUs, feature gates, usage dimensions, billing semantics, and documentation language. The launch SKU mapping is captured in `docs/enterprise-license-skus.json`; future changes should update that catalog, `docs/LICENSE_OPERATIONS.md`, and public license docs together.
 
 ### P0 - Managed cloud self-serve checkout and account provisioning (#37)
 

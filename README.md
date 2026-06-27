@@ -147,7 +147,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## License Enforcement
 
-Licensed deployments can enable offline signed JSON license enforcement under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Local development examples keep enforcement disabled; production licensed deployments should mount the license file read-only, keep the license state file under the deployment state directory, and avoid `fail_open_for_dev`.
+Normal release builds enforce offline signed JSON licensing under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Runtime YAML cannot disable licensing in release builds; deployments should mount the license file read-only and keep the license state file under the deployment state directory.
 
 ```yaml
 server:
@@ -157,7 +157,6 @@ server:
     state_path: /app/state/license-state.json
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
-    fail_open_for_dev: false
 ```
 
 `/readyz` fails when an enabled license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.

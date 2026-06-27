@@ -48,7 +48,9 @@ Metrum issues a signed `license.json` for the commercial agreement. A license ca
 | `credit-pack-25m` | Larger prepaid top-up | Replacement license that grants a 25M-token license-wide volume budget. |
 | `marketplace-seat` | Private marketplace offer | License aligned to the marketplace/private-offer term and contracted seat or volume scope. |
 
-Exact limits and enabled features are encoded in the signed license. The router exposes only safe status fields; it does not expose signing material or commercial back-office details.
+Features are licensed by product capability, such as routing, usage reporting, admin reports, dynamic routing, TypeScript or external policy routing, model-group contracts, retention rollups, private upstreams, PII filtering, audit export, and usage export. Licenses do not require callers to know any fixed product-default model group names; deployed model groups remain operator-defined and discoverable through `/v1/models` for each caller token.
+
+Exact limits and enabled features are encoded in the signed license. The router exposes only safe status fields; it does not expose signing material or commercial back-office details. If a deployment needs a capability that is not enabled by the current license, contact Metrum to update the license rather than editing runtime configuration around the gate.
 
 ## Expiry, Grace, Renewal, Replacement, And Top-Up
 

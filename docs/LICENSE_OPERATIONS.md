@@ -8,6 +8,8 @@ Related work:
 - #159 defines the license envelope shape for capability, time, volume, and operational limits.
 - #158 makes license enforcement mandatory for normal builds and leaves any no-license mode as an explicit internal development build.
 
+The machine-readable source for launch SKU templates is `docs/enterprise-license-skus.json`. Keep that artifact, this runbook, `COMMERCIALIZATION.md`, and customer-facing Docusaurus license docs aligned when packaging changes.
+
 ## Operating Rules
 
 - Never paste private signing keys, signing-service credentials, real customer license files, customer identifiers, router tokens, token hashes, provider API keys, or full production config into tickets, docs, logs, shell history, or chat.
@@ -43,6 +45,19 @@ Maintain an external entitlement record with at least:
 These templates align with #36 and #159. They are examples for constructing the unsigned payload that is then signed by the approved license signer. Use real customer IDs, license IDs, dates, limits, and add-ons from the entitlement record.
 
 The `product` field is required and must be `genai-smart-router`. Payload examples that include #159 fields such as `max_total_tokens`, `window_tokens`, `max_concurrent`, `max_admins`, `max_retention_days`, `max_instances`, or `allowed_instances` require a #159-capable `router-license` binary and router runtime. Do not sign those fields with older tooling: pre-#159 binaries ignore unknown JSON fields during payload decoding.
+
+Launch SKU summary:
+
+| SKU | Template | Commercial motion | Default term | Default volume / window | Primary use |
+|---|---|---|---|---|---|
+| `eval-72h` | `eval-72h` | Metrum-managed evaluation | 72 hours | 5M total tokens, 5k total requests | Free or partner proof window |
+| `pilot-30d` | `pilot-30d` | Paid pilot | 30 days | 1M tokens / 1 hour, 1k requests / 1 hour | Time-boxed customer validation |
+| `enterprise-annual` | `enterprise-annual` | Enterprise self-hosted | 12 months | Unlimited unless the contract adds a ceiling | Default BYOK annual contract |
+| `credit-pack-5m` | `credit-pack-5m` | Volume top-up | 12 months | 5M total tokens, 100k total requests | Small prepaid or top-up envelope |
+| `credit-pack-25m` | `credit-pack-25m` | Volume top-up | 12 months | 25M total tokens, 500k total requests | Larger prepaid or top-up envelope |
+| `marketplace-seat` | `marketplace-seat` | AWS/Azure private offer | Contract term | Contract-defined per-seat or pooled volume | Marketplace procurement |
+
+Default features should be encoded exactly as stable license feature names. Do not encode deployment-defined model group names in license features, SKU names, or public docs.
 
 ### `eval-72h`
 
@@ -517,6 +532,7 @@ For every issued or replaced license, record:
 Run these checks when changing the license operations docs, examples, or tooling:
 
 ```bash
+rtk python3 scripts/check_license_skus.py
 rtk make docs-build
 rtk make docs-qa
 rtk make secret-check
