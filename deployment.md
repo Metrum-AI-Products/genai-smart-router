@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-26
+Last deployed: 2026-06-27
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-26
 
 ## Deployed Version
 
-- Router package/image version: `98d4d9a-linux-amd64`
-- Source commit: `98d4d9a`
+- Router package/image version: `289ea71-linux-amd64`
+- Source commit: `289ea71`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,35 @@ Last deployed: 2026-06-26
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-27 Big-coder reasoning routing config update
+
+Enabled explicit reasoning routing eligibility for the production `big-coder` group without changing the running package image. The group remains `weighted` for ordinary traffic. Requests that include OpenAI Chat `reasoning_effort` are now eligible only for the validated `big-coder` ordinary OpenAI Chat targets with reasoning metadata:
+
+- Baseten `openai/gpt-oss-120b`
+- Baseten `zai-org/GLM-5.2`
+- Crusoe `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B`
+
+Production config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.enable-big-coder-reasoning-20260627T012549Z
+```
+
+Validation:
+
+```text
+direct Baseten zai-org/GLM-5.2 OpenAI Chat reasoning_effort smoke: HTTP 200, finish stop, content OK
+direct Baseten openai/gpt-oss-120b OpenAI Chat reasoning_effort smoke: HTTP 200, finish stop, returned content
+direct Crusoe Nemotron 3 Nano Omni Reasoning OpenAI Chat reasoning_effort smoke: HTTP 200; max_tokens 64 returned empty final content with finish length, max_tokens 512 returned content and finish stop
+production docker compose config: passed
+production router restart: passed
+production /readyz: 200, version 289ea71
+production /v1/models for big-coder: supported_reasoning_levels low, medium, high; supports_reasoning_summaries false
+production /v1/chat/completions big-coder with reasoning_effort low and max_tokens 256: HTTP 200, selected Crusoe Nemotron 3 Nano Omni Reasoning, finish stop, content OK
+production /v1/chat/completions big-coder without reasoning_effort: HTTP 200, selected MiniMax-M3
+local ignored config.production.yaml synced from live production config after validation
+```
 
 ## 2026-06-26 Signed License Enforcement Refresh
 
