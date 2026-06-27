@@ -245,7 +245,7 @@ fast       Baseten GPT OSS 120B 56%, MiniMax-M3 26%, Kimi K2.7 Code 5%, Baseten 
 small      Baseten GPT OSS 120B 58%, MiniMax-M3 28%, Kimi K2.7 Code 4%, Baseten Nemotron 3%, Baseten GLM 5.2 2%, OpenRouter Gemma 4 26B Nitro 2%, Crusoe GLM 5.2 2%, OpenAI GPT-5.4 Nano 1%.
 medium     Baseten GPT OSS 120B 51%, MiniMax-M3 25%, Kimi K2.7 Code 8%, Baseten GLM 5.2 5%, Crusoe GLM 5.2 5%, Baseten Nemotron 3%, OpenRouter Gemma 4 26B Nitro 2%, OpenAI GPT-5.4 Nano 1%.
 high       Baseten GPT OSS 120B 45%, MiniMax-M3 26%, Kimi K2.7 Code 10%, Crusoe GLM 5.2 7%, Baseten GLM 5.2 6%, Baseten Nemotron 3%, OpenRouter Gemma 4 26B Nitro 2%, OpenAI GPT-5.4 Nano 1%.
-big-coder  Code-heavy route: MiniMax-M3 30%, Kimi K2.7 Code 23%, Crusoe Gemma 4 31B-it 20%, Baseten GPT OSS 120B 18%, Baseten GLM 5.2 6%, Baseten Nemotron 2%, OpenAI GPT-5.4 Nano 1%.
+big-coder  Code-heavy route: MiniMax-M3 30%, Kimi K2.7 Code 23%, Crusoe Nemotron 3 Nano Omni Reasoning 20% text-only, Baseten GPT OSS 120B 18%, Baseten GLM 5.2 6%, Baseten Nemotron 2%, OpenAI GPT-5.4 Nano 1%.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Model group names are deployment-defined; the names above are examples from this hosted/reference deployment. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.

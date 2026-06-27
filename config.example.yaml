@@ -335,9 +335,11 @@ providers:
           Crusoe text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output,
           and combined tool plus structured-output smokes passed on 2026-06-24 with
           an explicit User-Agent. Local router-level smokes passed on 2026-06-24 for
-          OpenAI Chat tool-only routing through the big-coder group, usage, request-time
-          cost, latency, and no fallback. Keep out of Anthropic Messages and OpenAI
-          Responses tool routes unless those skins are separately exposed and validated.
+          a historical OpenAI Chat tool-only big-coder route, usage, request-time cost,
+          latency, and no fallback. Keep cataloged or in dedicated smoke groups unless
+          the exact deployment workload is revalidated; keep out of Anthropic Messages,
+          OpenAI Responses, vision, and broad active tool routes unless those exact
+          skins are separately exposed and validated.
         tool_support:
           openai_chat:
           - tools

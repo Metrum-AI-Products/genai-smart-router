@@ -181,7 +181,7 @@ providers:
         output_modalities: [text]
         pricing_source: https://www.crusoe.ai/cloud/pricing
         pricing_updated_at: "2026-06-24"
-        pricing_notes: OpenAI Chat text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24; use for ordinary OpenAI Chat text and OpenAI Chat tool routing only after workload validation, and keep out of OpenAI Responses or Anthropic Messages routes unless those skins pass separately
+        pricing_notes: OpenAI Chat text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24. Keep cataloged or in dedicated smoke groups unless the exact deployment workload is revalidated; keep out of OpenAI Responses, Anthropic Messages, vision, and broad active tool routes unless those exact skins pass separately.
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
       nemotron-3-nano-omni-reasoning-30b-a3b:
@@ -256,7 +256,7 @@ Internal vLLM and SGLang services use the same provider catalog structure as ext
 
 External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`, and Crusoe Managed Inference uses `base_url: https://api.inference.crusoecloud.com/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream provider model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects provider keys such as `BASETEN_API_KEY` or `CRUSOE_API_KEY` only when a matching target is selected.
 
-Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, place a validated Crusoe Gemma target in an ordinary-text weighted group, or add a separate OpenAI Chat `tool_only` target. Do not treat a Crusoe OpenAI Chat pass as proof of OpenAI Responses, Anthropic Messages, image, video, or audio support. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
+Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in an ordinary-text weighted group. The current/reference `big-coder` example uses Crusoe Nemotron 3 Nano Omni Reasoning only as a text target where configured; it does not claim Crusoe tool, vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it should be treated as historical/catalog/smoke-only unless a deployment revalidates it for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
 
 Catalog entries should carry cost and capability metadata:
 
