@@ -29,6 +29,8 @@ validation:
 
 Do not put prompts, images, tool outputs, bearer tokens, token hashes, provider keys, private headers, or full config snippets in validation notes.
 
+Use `required_capabilities.reasoning` when the group itself promises reasoning or thinking support for every compatible request. Use per-target `reasoning` metadata without a contract requirement when a mixed weighted group should keep ordinary traffic on all ordinary eligible targets but restrict explicit OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking` requests to validated reasoning targets. In both cases, target metadata must come from direct upstream and router-level smokes for the exact dialect and skin.
+
 ## Enforcement Order
 
 1. Authenticate the caller.

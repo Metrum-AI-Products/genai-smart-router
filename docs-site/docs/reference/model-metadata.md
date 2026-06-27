@@ -100,6 +100,8 @@ When a caller explicitly requests reasoning, the router filters the requested mo
 
 `control: effort_enum` targets receive low/medium/high effort controls. `control: token_budget` targets receive Anthropic-style token budgets when the target dialect supports them. Cross-dialect translation uses conservative defaults and records safe scalar decision telemetry; it does not persist prompts, tool schemas, router tokens, provider keys, or full config.
 
+For end-to-end configuration, validation, and caller examples, see [Reasoning Routing](../configuration/reasoning-routing).
+
 ## Pricing And Cost Fields
 
 Set pricing metadata for every active target when a price or internal chargeback rate is known:

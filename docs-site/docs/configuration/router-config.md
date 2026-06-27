@@ -292,6 +292,8 @@ reasoning:
 
 Use `control: effort_enum` for upstreams that accept levels such as `low`, `medium`, and `high`. Use `control: token_budget` for Anthropic-style thinking budgets. Set compatibility flags such as `rejects_max_tokens`, `budget_must_be_less_than_max_tokens`, `rejects_temperature`, or `rejects_top_p` only when validated for the exact provider, model, dialect, and skin. As with tool and structured-output metadata, keep reasoning metadata absent until direct upstream and router-level reasoning smokes pass.
 
+For a complete rollout guide with weighted-group examples, caller requests, `/v1/models` verification, and negative `no-eligible-target` tests, see [Reasoning Routing](./reasoning-routing).
+
 ## Per-Group Weighted Routing
 
 Weights are local to each model group. A target with weight `60` in one example group has no relationship to a target with weight `60` in another group. The group names in this snippet are examples; use names that match your deployment policy.

@@ -71,6 +71,8 @@ The router first applies the same request eligibility rules used by other strate
 - Reasoning or thinking requests require compatible `reasoning` target metadata.
 - Explicit positive caller token caps, including OpenAI Chat `max_completion_tokens: 1`, skip targets marked `honors_max_tokens: false`.
 
+`hard_filters.require_reasoning_support_when_requested` is an additional dynamic-score hard filter for deployments that want that rule declared in policy. It is not the only reasoning-routing mechanism: compatible target `reasoning` metadata is still the baseline eligibility source for ordinary weighted, failover, script, external, and dynamic-score groups. See [Reasoning Routing](./reasoning-routing) for the weighted-group pattern.
+
 After eligibility, `dynamic_score` applies configured thresholds and score terms. Supported score names include:
 
 | Score | Meaning |

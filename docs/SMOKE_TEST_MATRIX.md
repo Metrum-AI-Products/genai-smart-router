@@ -113,6 +113,21 @@ Use `control: effort_enum` for OpenAI-style levels and `control: token_budget` f
 
 If validation fails, remove `reasoning` metadata from the provider model or target override. If the target is active and unsafe for explicit reasoning traffic, remove it from active `models.<group>.targets[]` or keep it catalog-only until validation passes.
 
+### Existing Weighted Group Rollout Checklist
+
+When enabling reasoning routing in an existing weighted group, keep ordinary traffic and explicit reasoning traffic distinct:
+
+- inventory the requested group and identify which active targets should continue to serve ordinary traffic;
+- direct-smoke each intended reasoning target with the exact provider, model ID, dialect, API skin, and control field before adding metadata;
+- run router-level smokes for OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, and Anthropic Messages `thinking` for every skin the group exposes;
+- use realistic acceptance budgets, because reasoning-heavy models can consume tiny output caps and return empty final content;
+- run low-cap smokes with `max_tokens: 1`, `max_completion_tokens: 1`, or `max_output_tokens: 1` to prove cap forwarding, skip behavior, or configured translation;
+- add `reasoning` metadata only to validated provider models or target overrides, leaving non-reasoning targets in the weighted mix for ordinary requests;
+- verify `/v1/models` with an allowed caller and confirm safe reasoning metadata such as `supported_reasoning_levels` and `supports_reasoning_summaries` appears only where intended;
+- run a negative request against a test group with no compatible reasoning target and expect `502 no-eligible-target` with no upstream attempt;
+- query usage, attempts, traces, and reports after success and failure cases for selected provider/model, status, latency, TTFB, duration, throughput, token counts, cost fields, fallback state, and safe reasoning metadata;
+- document rollback: remove unsafe reasoning metadata, relax a reasoning-only contract or dynamic-score hard filter, restore the previous group config backup, and rerun the failing smoke.
+
 ## Structured-Output Smokes
 
 Structured-output requests are dialect-specific. Declare `structured_outputs` only for the exact provider/model/dialect/skin that passes the relevant smoke. A target that only accepts the request field syntactically is not validated until it returns schema-shaped content, reports normal usage when the upstream normally does, and fails or rejects unsupported strict schemas in an understandable way.

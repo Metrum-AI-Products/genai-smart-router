@@ -20,6 +20,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "configuration/router-config",
+        "configuration/reasoning-routing",
         "configuration/admin-authentication",
         "configuration/admin-authorization",
         "configuration/pii-filtering",

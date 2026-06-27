@@ -52,6 +52,8 @@ Before rollout, validate the group targets the same way as weighted routing:
 - Router-level smoke for each API skin that will be used by clients.
 - Explicit low-budget cap smoke, including OpenAI Chat `max_completion_tokens: 1`, to confirm unsafe targets are skipped when `honors_max_tokens: false`.
 
+If `hard_filters.require_reasoning_support_when_requested` is enabled, treat it as an extra dynamic-score hard filter layered on top of normal request eligibility. It is not the only reasoning-routing mechanism. Weighted, failover, script, external, and dynamic-score groups all rely on validated target `reasoning` metadata to preserve explicit OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking` controls.
+
 Then run a fixed request matrix against the dynamic group:
 
 - simple text;

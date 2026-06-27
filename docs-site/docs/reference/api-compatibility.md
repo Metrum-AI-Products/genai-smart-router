@@ -125,6 +125,8 @@ Reasoning is handled inside the requested model group. The router does not switc
 
 For compatible targets, the router translates safe controls where configured. For example, an Anthropic budget can map to an OpenAI effort level, and an OpenAI effort can map to an Anthropic token budget. Targets that reject `max_tokens` for reasoning traffic can be configured so the router sends `max_completion_tokens` instead.
 
+For OpenAI Chat, OpenAI Responses, and Anthropic Messages reasoning examples, see [Reasoning Routing](../configuration/reasoning-routing).
+
 ## Structured Outputs
 
 Structured-output requests are routing contracts, not router-side schema execution. The router detects OpenAI Chat `response_format` and OpenAI Responses `text.format`, selects only targets with explicit dialect-matching `structured_outputs` metadata, and forwards the schema payload to the selected upstream. It does not validate arbitrary JSON Schema subsets or repair provider output unless a separate implementation adds that behavior. Unsupported schemas, strictness settings, or provider-specific JSON Schema subsets may produce upstream/provider errors.

@@ -41,6 +41,8 @@ Define these fields for every model group in a deployment:
 
 These are examples only. The deployment chooses group names and contracts that match its teams, applications, and governance model.
 
+For the reasoning metadata, caller examples, and negative test behind a reasoning-capable group, see [Reasoning Routing](../configuration/reasoning-routing).
+
 ## Agentic Quality Validation
 
 Harbor-style validation is useful because it tests the whole agent loop, not only a single completion. For a coding-agent group, run tasks that require the agent to inspect files, call tools, edit artifacts, and pass an external verifier.
