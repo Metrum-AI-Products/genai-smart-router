@@ -53,9 +53,28 @@ type LicenseConfig struct {
 	Enabled                      bool          `yaml:"enabled" json:"enabled"`
 	Path                         string        `yaml:"path" json:"path"`
 	StatePath                    string        `yaml:"state_path" json:"statePath"`
+	InstanceFingerprint          string        `yaml:"instance_fingerprint" json:"instanceFingerprint"`
 	RecheckInterval              time.Duration `yaml:"recheck_interval" json:"recheckInterval"`
 	GracePeriodOnValidationError time.Duration `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
 	FailOpenForDev               bool          `yaml:"fail_open_for_dev" json:"failOpenForDev"`
+	enabledSet                   bool
+}
+
+func (c *LicenseConfig) UnmarshalYAML(value *yaml.Node) error {
+	type rawLicenseConfig LicenseConfig
+	var raw rawLicenseConfig
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*c = LicenseConfig(raw)
+	c.enabledSet = false
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		if value.Content[i].Value == "enabled" {
+			c.enabledSet = true
+			break
+		}
+	}
+	return nil
 }
 
 type AdminAuthConfig struct {
@@ -704,6 +723,9 @@ func (c *Config) setDefaults() {
 	if c.Server.License.RecheckInterval == 0 {
 		c.Server.License.RecheckInterval = time.Hour
 	}
+	if licenseEnforcementRequired() && !(c.Server.License.enabledSet && !c.Server.License.Enabled) {
+		c.Server.License.Enabled = true
+	}
 	if len(c.Server.ClientIP.HeaderOrder) == 0 {
 		c.Server.ClientIP.HeaderOrder = []string{"X-Forwarded-For", "X-Real-IP"}
 	}
@@ -1118,6 +1140,12 @@ func validateAdminAuth(cfg AdminAuthConfig, usage UsageDBConfig) error {
 }
 
 func validateLicenseConfig(cfg LicenseConfig) error {
+	if licenseEnforcementRequired() && !cfg.Enabled {
+		return fmt.Errorf("server license enabled=false is not allowed in normal builds; provide a valid license or build with the internal dev_no_license tag")
+	}
+	if licenseEnforcementRequired() && cfg.FailOpenForDev {
+		return fmt.Errorf("server license fail_open_for_dev is not allowed in normal builds; use the internal dev_no_license build tag for temporary local testing")
+	}
 	if !cfg.Enabled {
 		if cfg.FailOpenForDev {
 			return fmt.Errorf("server license fail_open_for_dev requires license enabled")

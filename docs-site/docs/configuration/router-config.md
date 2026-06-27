@@ -14,7 +14,7 @@ Model group names are deployment-defined. Names such as `default`, `fast`, `smal
 
 ## License
 
-Licensed deployments can enable offline signed JSON license enforcement. The router verifies a Metrum-issued license file with embedded Ed25519 public keys, checks expiry and licensed features, and rechecks the file periodically so renewals do not require a rebuild.
+Normal release builds require offline signed JSON license enforcement. The router verifies a Metrum-issued license file with embedded Ed25519 public keys, checks expiry and licensed features, and rechecks the file periodically so renewals do not require a rebuild. Runtime YAML cannot disable licensing in packaged deployments.
 
 ```yaml
 server:
@@ -24,7 +24,6 @@ server:
     state_path: /app/state/license-state.json
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
-    fail_open_for_dev: false
 ```
 
 When enforcement blocks serving, `/readyz` fails and caller APIs return `license-*` errors. License status in logs, metrics, reports, and admin status APIs is limited to safe scalar metadata such as status, license ID, customer ID, SKU, key ID, expiry, and grace flag. License payloads, signatures, and signing keys are not exposed.

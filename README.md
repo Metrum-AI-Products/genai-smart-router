@@ -147,7 +147,7 @@ In a packaged deployment, put provider keys in `config/env.json` beside `config/
 
 ## License Enforcement
 
-Licensed deployments can enable offline signed JSON license enforcement under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Local development examples keep enforcement disabled; production licensed deployments should mount the license file read-only, keep the license state file under the deployment state directory, and avoid `fail_open_for_dev`.
+Normal release builds enforce offline signed JSON licensing under `server.license`. The router verifies a Metrum-issued license envelope with embedded Ed25519 public keys at startup and on `recheck_interval`, so operators can renew or replace `license.json` without rebuilding the binary. Runtime YAML cannot disable licensing in release builds; deployments should mount the license file read-only and keep the license state file under the deployment state directory.
 
 ```yaml
 server:
@@ -155,14 +155,18 @@ server:
     enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
+    instance_fingerprint: "issued-instance-fingerprint"
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
-    fail_open_for_dev: false
 ```
 
-`/readyz` fails when an enabled license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.
+`/readyz` fails when a required license blocks serving. Caller endpoints return documented `license-*` errors without exposing license payloads, signatures, or keys. Feature gates cover routing, usage reporting, admin reports, security reports, dynamic scoring, TypeScript routing, external policy routing, model-group contracts, retention rollups, and governed content-capture maintenance. Metrics-admin `/metrics` includes safe license gauges, and authorized admin report readers can query `/admin/license/status` for a safe summary only.
+
+Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment. It must match the licensed instance scope or startup/readiness will fail with `license-instance-limit-exceeded`.
 
 Use `go run ./cmd/router-license inspect --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
+
+Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; public hosted docs describe customer installation and renewal behavior without signing-key or bypass details.
 
 Expected provider env vars in `config.example.yaml`:
 

@@ -7963,5 +7963,6 @@ func assertJSONEquivalent(t *testing.T, name string, got, want any) {
 }
 
 func TestMain(m *testing.M) {
+	licenseRequired = false
 	os.Exit(m.Run())
 }

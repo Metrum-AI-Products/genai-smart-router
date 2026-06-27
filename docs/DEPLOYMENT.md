@@ -56,7 +56,9 @@ For standalone policy services, prefer `strategy: external` with `external_polic
 
 For built-in adaptive routing, prefer `strategy: dynamic_score` before adding custom strategies. It scores only the requested model group's eligible targets, uses in-memory rolling observations instead of hot-path database reads, emits safe scalar `routing_decision` traces, and rolls back by switching the group to `weighted`. See `docs/DYNAMIC_SCORE_ROUTING.md`.
 
-For licensed deployments, enable `server.license`, mount the Metrum-issued signed JSON license file, and keep `fail_open_for_dev: false`. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
+Normal release builds require `server.license` enforcement. Mount the Metrum-issued signed JSON license file and durable license state path before startup; runtime YAML cannot disable licensing. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
+
+Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
 
 Docker Compose packages are built separately:
 

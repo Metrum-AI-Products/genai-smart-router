@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "artifact": "enterprise-license-skus",
+    "product": "genai-smart-router",
+    "owner": "commercial-operations",
+    "updated_at": "2026-06-27",
+    "runtime_dependency_issue": 159,
+    "description": "Commercial SKU to signed license template mapping. This is a documentation and operations artifact, not runtime router configuration."
+  },
+  "entitlement_names": {
+    "features": [
+      "routing",
+      "usage_reporting",
+      "admin_reports",
+      "admin_security_reports",
+      "dynamic_score",
+      "typescript_routing",
+      "external_policy",
+      "external_policy_http",
+      "model_group_contracts",
+      "retention_rollups",
+      "content_capture",
+      "private_upstreams",
+      "audit_log_export",
+      "pii_filtering",
+      "usage_csv_export",
+      "usage_baseline_export"
+    ],
+    "limits": [
+      "max_model_groups",
+      "max_callers",
+      "max_admins",
+      "max_monthly_requests",
+      "max_total_requests",
+      "max_total_tokens",
+      "window_requests",
+      "window_tokens",
+      "window_duration_seconds",
+      "max_concurrent",
+      "max_retention_days",
+      "max_instances",
+      "allowed_skins"
+    ],
+    "deployment": [
+      "mode",
+      "allowed_environments",
+      "instance_fingerprint_required",
+      "instance_fingerprint",
+      "allowed_instances"
+    ]
+  },
+  "defaults": {
+    "product": "genai-smart-router",
+    "issuer": "metrum-ai",
+    "schema_version": 1,
+    "support_contact": "contact@metrum.ai",
+    "license_state_reset": "License-wide volume counters reset only when a replacement license has a new license_id. Per-caller counters remain independent."
+  },
+  "skus": [
+    {
+      "sku": "eval-72h",
+      "license_template": "eval-72h",
+      "commercial_motion": "metrum-managed-evaluation",
+      "term": {
+        "duration": "72h",
+        "grace": "0h"
+      },
+      "features": [
+        "routing",
+        "usage_reporting"
+      ],
+      "limits": {
+        "max_total_tokens": 5000000,
+        "max_total_requests": 5000,
+        "max_callers": 3,
+        "max_model_groups": 5,
+        "max_admins": 1,
+        "max_retention_days": 7,
+        "max_instances": 1
+      },
+      "deployment": {
+        "mode": "metrum_managed_eval",
+        "allowed_environments": [
+          "evaluation"
+        ],
+        "instance_fingerprint_required": false
+      },
+      "support_tier": "evaluation",
+      "notes": "Free or partner evaluation. Intended for time-boxed proof with a small caller and model-group footprint."
+    },
+    {
+      "sku": "pilot-30d",
+      "license_template": "pilot-30d",
+      "commercial_motion": "paid-pilot",
+      "term": {
+        "duration": "30d",
+        "grace": "72h"
+      },
+      "features": [
+        "routing",
+        "usage_reporting",
+        "dynamic_score"
+      ],
+      "add_on_features": [
+        "admin_reports",
+        "typescript_routing",
+        "external_policy",
+        "external_policy_http",
+        "private_upstreams",
+        "pii_filtering"
+      ],
+      "limits": {
+        "window_tokens": 1000000,
+        "window_requests": 1000,
+        "window_duration_seconds": 3600,
+        "max_callers": 10,
+        "max_model_groups": 10,
+        "max_admins": 3,
+        "max_retention_days": 30,
+        "max_instances": 1,
+        "max_concurrent": 25
+      },
+      "deployment": {
+        "mode": "self_hosted_or_private_managed",
+        "allowed_environments": [
+          "evaluation",
+          "staging"
+        ],
+        "instance_fingerprint_required": true
+      },
+      "support_tier": "pilot",
+      "notes": "Paid pilot. Add private_upstreams when the pilot validates internal models or customer-network providers."
+    },
+    {
+      "sku": "enterprise-annual",
+      "license_template": "enterprise-annual",
+      "commercial_motion": "enterprise-self-hosted",
+      "term": {
+        "duration": "12mo",
+        "grace": "30d"
+      },
+      "features": [
+        "routing",
+        "usage_reporting",
+        "admin_reports",
+        "dynamic_score",
+        "typescript_routing",
+        "external_policy",
+        "model_group_contracts",
+        "retention_rollups",
+        "private_upstreams",
+        "pii_filtering",
+        "usage_csv_export",
+        "usage_baseline_export"
+      ],
+      "add_on_features": [
+        "admin_security_reports",
+        "external_policy_http",
+        "content_capture",
+        "audit_log_export"
+      ],
+      "limits": {
+        "max_callers": 100,
+        "max_model_groups": 50,
+        "max_admins": 10,
+        "max_retention_days": 90,
+        "max_instances": 1,
+        "max_concurrent": 200
+      },
+      "deployment": {
+        "mode": "self_hosted",
+        "allowed_environments": [
+          "production",
+          "staging"
+        ],
+        "instance_fingerprint_required": true
+      },
+      "support_tier": "enterprise",
+      "notes": "Default annual BYOK enterprise contract. Contract ceilings may add max_total_tokens, max_total_requests, or monthly/window limits."
+    },
+    {
+      "sku": "credit-pack-5m",
+      "license_template": "credit-pack-5m",
+      "commercial_motion": "volume-top-up",
+      "term": {
+        "duration": "12mo",
+        "grace": "0h"
+      },
+      "features": [
+        "routing",
+        "usage_reporting"
+      ],
+      "limits": {
+        "max_total_tokens": 5000000,
+        "max_total_requests": 100000,
+        "max_callers": 50,
+        "max_model_groups": 20,
+        "max_admins": 5,
+        "max_instances": 1
+      },
+      "deployment": {
+        "mode": "self_hosted_or_private_managed",
+        "allowed_environments": [
+          "production",
+          "staging"
+        ],
+        "instance_fingerprint_required": true
+      },
+      "support_tier": "contract",
+      "notes": "Volume top-up or prepaid volume license. Replacing with a new license_id resets license-wide counters."
+    },
+    {
+      "sku": "credit-pack-25m",
+      "license_template": "credit-pack-25m",
+      "commercial_motion": "volume-top-up",
+      "term": {
+        "duration": "12mo",
+        "grace": "0h"
+      },
+      "features": [
+        "routing",
+        "usage_reporting",
+        "admin_reports",
+        "usage_csv_export",
+        "usage_baseline_export"
+      ],
+      "add_on_features": [
+        "dynamic_score",
+        "private_upstreams",
+        "pii_filtering"
+      ],
+      "limits": {
+        "max_total_tokens": 25000000,
+        "max_total_requests": 500000,
+        "max_callers": 100,
+        "max_model_groups": 30,
+        "max_admins": 8,
+        "max_instances": 1,
+        "max_concurrent": 100
+      },
+      "deployment": {
+        "mode": "self_hosted_or_private_managed",
+        "allowed_environments": [
+          "production",
+          "staging"
+        ],
+        "instance_fingerprint_required": true
+      },
+      "support_tier": "contract",
+      "notes": "Larger prepaid volume license. Feature set is intentionally narrower than enterprise-annual unless add-ons are contracted."
+    },
+    {
+      "sku": "marketplace-seat",
+      "license_template": "marketplace-seat",
+      "commercial_motion": "marketplace-private-offer",
+      "term": {
+        "duration": "contract",
+        "grace": "30d"
+      },
+      "features": [
+        "routing",
+        "usage_reporting",
+        "admin_reports",
+        "dynamic_score",
+        "model_group_contracts",
+        "retention_rollups",
+        "private_upstreams",
+        "usage_csv_export",
+        "usage_baseline_export"
+      ],
+      "add_on_features": [
+        "admin_security_reports",
+        "typescript_routing",
+        "external_policy",
+        "external_policy_http",
+        "content_capture",
+        "audit_log_export",
+        "pii_filtering"
+      ],
+      "limits": {
+        "max_callers": 100,
+        "max_model_groups": 50,
+        "max_admins": 10,
+        "max_retention_days": 90,
+        "max_instances": 1,
+        "max_concurrent": 200
+      },
+      "deployment": {
+        "mode": "self_hosted_or_private_managed",
+        "allowed_environments": [
+          "production",
+          "staging"
+        ],
+        "instance_fingerprint_required": true
+      },
+      "support_tier": "enterprise",
+      "notes": "AWS/Azure private-offer shape. Contract may translate seat count into caller, admin, request, or token ceilings."
+    }
+  ]
+}

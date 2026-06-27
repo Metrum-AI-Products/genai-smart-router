@@ -236,7 +236,12 @@ func (s *Service) routes() {
 		writeJSON(w, http.StatusOK, healthPayload(true, ""))
 	})
 	s.mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, buildinfo.Current())
+		info := buildinfo.Current()
+		raw, _ := json.Marshal(info)
+		var out map[string]any
+		_ = json.Unmarshal(raw, &out)
+		out["license_compile_mode"] = licenseCompileMode
+		writeJSON(w, http.StatusOK, out)
 	})
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
@@ -369,7 +374,7 @@ func (s *Service) handleAdminLicenseStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.recordAdminSecurityAccess(r, subject, http.StatusOK, "", authzObjectAdminReports, authzActionRead)
-	writeJSON(w, http.StatusOK, safeLicenseStatusResponse(s.license.statusSnapshot()))
+	writeJSON(w, http.StatusOK, safeLicenseStatusResponseWithUsage(s.license))
 }
 
 func (s *Service) handleAdminAuthCheck(w http.ResponseWriter, r *http.Request) {
@@ -468,12 +473,24 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.quota.ReleaseReservation(rc.caller, ad.Reservation)
 	defer s.quota.Release(rc.caller)
+	if lerr := s.license.AdmitRequest("anthropic"); lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return
+	}
+	defer s.license.ReleaseRequest()
+	licRes, lerr := s.license.ReserveTokens(estimateTokens(req))
+	if lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return
+	}
+	defer s.license.ReleaseReservation(licRes)
 	rc.rec.RequestedModel = req.Model
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
 	tokens := estimateTokens(req)
 	rc.rec.Usage = Usage{InputTokens: tokens, TotalTokens: tokens}
 	s.quota.RecordTokens(rc.caller, ad.Reservation, rc.rec.Usage)
+	s.license.RecordTokens(licRes, rc.rec.Usage)
 	defer s.finish(rc, http.StatusOK, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"input_tokens": tokens})
 }
@@ -509,6 +526,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		return
 	}
 	defer s.quota.Release(rc.caller)
+	if lerr := s.license.AdmitRequest(dialect); lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return
+	}
+	defer s.license.ReleaseRequest()
 	rc.rec.QuotaState = ad.QuotaState
 	rc.rec.KeyState = ad.KeyState
 	if ad.WarningText != "" {
@@ -634,12 +656,19 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.trace("cache_bypass", "", dec.Target, 0, 0, "", false, 0)
 	}
 
-	resAd := s.quota.ReserveTokens(rc.caller, reservationEstimate(req, dialect))
+	reservationTokens := reservationEstimate(req, dialect)
+	resAd := s.quota.ReserveTokens(rc.caller, reservationTokens)
 	if !resAd.OK {
 		s.writeAdmissionError(w, rc, resAd)
 		return
 	}
 	defer s.quota.ReleaseReservation(rc.caller, resAd.Reservation)
+	licRes, lerr := s.license.ReserveTokens(reservationTokens)
+	if lerr != nil {
+		s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+		return
+	}
+	defer s.license.ReleaseReservation(licRes)
 	rc.rec.QuotaState = resAd.QuotaState
 	rc.rec.KeyState = resAd.KeyState
 	if resAd.WarningText != "" {
@@ -667,6 +696,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			restorePIIPlaceholders(resp, piiResult)
 		}
 		quotaState, keyState := s.quota.RecordTokens(rc.caller, resAd.Reservation, resp.Usage)
+		s.license.RecordTokens(licRes, resp.Usage)
 		rc.rec.QuotaState = quotaState
 		rc.rec.KeyState = keyState
 		rc.rec.Usage = resp.Usage

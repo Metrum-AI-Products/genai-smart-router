@@ -40,6 +40,13 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `license-product-mismatch` | 503 | The license is not issued for GenAI Smart Router. | Contact the router operator. | Install the correct product license. |
 | `license-feature-forbidden` | 403 | The request uses a feature not enabled by the current license. | Use an enabled feature or ask the operator for access. | Review licensed feature gates for routing, reporting, dynamic score, TypeScript, external policy, contracts, rollups, or content capture. |
 | `license-limit-exceeded` | 403 | The deployment exceeds a licensed limit such as model groups or callers. | Contact the router operator. | Reduce configured usage or update the license. |
+| `license-volume-exceeded` | 429 | The license-wide lifetime request or token budget is exhausted. | Retry only after the operator installs a replacement or expanded license. | Review the license usage counters and install the contracted replacement or top-up license. |
+| `license-window-exceeded` | 429 | The license-wide rolling request or token window is at its ceiling. | Retry after the licensed window clears. | Inspect current traffic and the license window limits. |
+| `license-concurrency-exceeded` | 429 | The router-wide licensed in-flight request limit is reached. | Retry with backoff. | Inspect current in-flight traffic or update the license limit. |
+| `license-skin-forbidden` | 403 | The license allows the requested model group but not the requested API skin. | Use an API shape allowed for the deployment. | Review `allowed_skins` in the active license. |
+| `license-admin-limit-exceeded` | 403 | The configured admin subject count exceeds the licensed limit. | Contact the router operator. | Reduce configured admins or install a license with a larger admin limit. |
+| `license-retention-limit-exceeded` | 403 | Configured retention exceeds the licensed maximum retention days. | Contact the router operator. | Lower retention settings or install a license with the contracted retention limit. |
+| `license-instance-limit-exceeded` | 503 | The running instance is outside the licensed instance scope. | Contact the router operator. | Install the license issued for this deployment instance or correct instance binding. |
 | `license-clock-rollback` | 503 | The local wall clock moved backwards beyond tolerance. | Contact the router operator. | Correct system time and inspect the license state file. |
 
 ## Eligibility Requirements
