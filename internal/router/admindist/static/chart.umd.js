@@ -1,26 +1,92 @@
+const chartTooltip = (() => {
+  let tooltip = null;
+  let owner = null;
+  let globalListeners = false;
+
+  function hide(requester) {
+    if (requester && owner && owner !== requester) return;
+    if (tooltip) tooltip.hidden = true;
+    if (!requester || owner === requester) owner = null;
+  }
+
+  function removeDuplicates() {
+    const tooltips = Array.from(document.querySelectorAll(".chart-tooltip"));
+    tooltips.forEach((item, index) => {
+      if (index > 0) item.remove();
+    });
+    return tooltips[0] || null;
+  }
+
+  function ensure() {
+    if (!tooltip || !tooltip.isConnected) {
+      tooltip = removeDuplicates();
+      if (!tooltip) {
+        tooltip = document.createElement("div");
+        tooltip.className = "chart-tooltip";
+        tooltip.hidden = true;
+        document.body.appendChild(tooltip);
+      }
+    } else {
+      tooltip = removeDuplicates() || tooltip;
+    }
+    attachGlobalListeners();
+    return tooltip;
+  }
+
+  function attachGlobalListeners() {
+    if (globalListeners) return;
+    globalListeners = true;
+    document.addEventListener("pointerdown", () => hide(), true);
+    document.addEventListener("scroll", () => hide(), true);
+    window.addEventListener("blur", () => hide());
+    window.addEventListener("resize", () => hide());
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) hide();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") hide();
+    });
+  }
+
+  function show(chart, html, x, y) {
+    const item = ensure();
+    owner = chart;
+    item.hidden = false;
+    item.innerHTML = html;
+    item.style.left = `${x + 12}px`;
+    item.style.top = `${y + 12}px`;
+  }
+
+  window.hideChartTooltip = () => hide();
+  return { ensure, hide, show };
+})();
+
 window.Chart = class {
   constructor(canvas, config) {
     this.canvas = canvas;
     this.config = config || {};
     this.points = [];
     this.hidden = new Set();
-    this.tooltip = this.ensureTooltip();
     this.onMove = this.onMove.bind(this);
     this.onLeave = this.onLeave.bind(this);
     this.canvas.addEventListener("mousemove", this.onMove);
+    this.canvas.addEventListener("pointerleave", this.onLeave);
     this.canvas.addEventListener("mouseleave", this.onLeave);
+    chartTooltip.ensure();
     this.draw();
   }
 
   destroy() {
     this.canvas.removeEventListener("mousemove", this.onMove);
+    this.canvas.removeEventListener("pointerleave", this.onLeave);
     this.canvas.removeEventListener("mouseleave", this.onLeave);
-    if (this.tooltip) this.tooltip.remove();
+    chartTooltip.hide(this);
     const legend = this.legendElement();
     if (legend) legend.remove();
   }
 
   draw() {
+    chartTooltip.hide(this);
     const ctx = this.canvas.getContext("2d");
     const width = this.canvas.clientWidth || 320;
     const height = this.canvas.clientHeight || 180;
@@ -140,11 +206,7 @@ window.Chart = class {
   }
 
   ensureTooltip() {
-    const tooltip = document.createElement("div");
-    tooltip.className = "chart-tooltip";
-    tooltip.hidden = true;
-    document.body.appendChild(tooltip);
-    return tooltip;
+    return chartTooltip.ensure();
   }
 
   onMove(event) {
@@ -167,14 +229,11 @@ window.Chart = class {
     }
     const options = this.config.options || {};
     const format = options.formatValue || ((value) => String(value));
-    this.tooltip.hidden = false;
-    this.tooltip.innerHTML = `<strong>${this.escape(nearest.series)}</strong><span>${this.escape(nearest.label)}</span><span>${this.escape(format(nearest.value, nearest.unit, true))}</span>`;
-    this.tooltip.style.left = `${event.clientX + 12}px`;
-    this.tooltip.style.top = `${event.clientY + 12}px`;
+    chartTooltip.show(this, `<strong>${this.escape(nearest.series)}</strong><span>${this.escape(nearest.label)}</span><span>${this.escape(format(nearest.value, nearest.unit, true))}</span>`, event.clientX, event.clientY);
   }
 
   onLeave() {
-    if (this.tooltip) this.tooltip.hidden = true;
+    chartTooltip.hide(this);
   }
 
   escape(value) {

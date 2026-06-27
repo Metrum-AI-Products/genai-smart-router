@@ -243,6 +243,7 @@ function render(report) {
 }
 
 function renderCharts(report) {
+  dismissChartTooltip();
   if (Array.isArray(report.charts) && report.charts.length) {
     renderChartSpecs(report.charts);
     return;
@@ -257,6 +258,7 @@ function renderCharts(report) {
 }
 
 function renderChartSpecs(specs) {
+  dismissChartTooltip();
   const byID = Object.fromEntries(specs.map(spec => [spec.chart_id, spec]));
   chartFromSpec("requestsChart", byID.requests);
   chartFromSpec("costChart", byID.cost);
@@ -267,6 +269,7 @@ function renderChartSpecs(specs) {
 }
 
 function renderSavingsChartSpecs(specs) {
+  dismissChartTooltip();
   const byID = Object.fromEntries(specs.map(spec => [spec.chart_id, spec]));
   chartFromSpec("savingsCostChart", byID.savings_cost);
   chartFromSpec("savingsUsdChart", byID.savings_usd);
@@ -292,6 +295,7 @@ function chartFromSpec(id, spec) {
 }
 
 function chart(id, labels, datasets, colors, spec) {
+  dismissChartTooltip();
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), {
     type: "line",
@@ -304,6 +308,10 @@ function chart(id, labels, datasets, colors, spec) {
       formatValue: formatUnit
     }
   });
+}
+
+function dismissChartTooltip() {
+  if (typeof window.hideChartTooltip === "function") window.hideChartTooltip();
 }
 
 function renderTable(report) {
@@ -439,6 +447,7 @@ function renderGenericCharts(report) {
 }
 
 function clearChart(id) {
+  dismissChartTooltip();
   if (charts[id]) {
     charts[id].destroy();
     delete charts[id];
@@ -746,6 +755,7 @@ function esc(value) {
 }
 
 document.querySelector("#themeToggle").addEventListener("click", () => {
+  dismissChartTooltip();
   const next = currentTheme() === "dark" ? "light" : "dark";
   applyTheme(next, true);
   if (lastReport) renderCharts(lastReport);
@@ -754,10 +764,12 @@ document.querySelector("#themeToggle").addEventListener("click", () => {
 
 document.querySelector("#filters").addEventListener("submit", event => {
   event.preventDefault();
+  dismissChartTooltip();
   updateURLState();
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 });
 document.querySelectorAll(".tabs button").forEach(button => button.addEventListener("click", () => {
+  dismissChartTooltip();
   document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
   button.classList.add("active");
   activeTab = button.dataset.tab;
@@ -767,6 +779,7 @@ document.querySelectorAll(".tabs button").forEach(button => button.addEventListe
 }));
 document.querySelector("#savingsFilters").addEventListener("submit", event => {
   event.preventDefault();
+  dismissChartTooltip();
   updateURLState();
   loadSavings().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 });
@@ -780,6 +793,7 @@ document.querySelector("#pageSize").addEventListener("change", () => {
   else renderSharedTable();
 });
 document.querySelector("#refreshReport").addEventListener("click", () => {
+  dismissChartTooltip();
   load().catch(err => document.querySelector("#tables").innerHTML = `<div class="error">${esc(err.message)}</div>`);
 });
 document.querySelector("#copyLink").addEventListener("click", () => {
