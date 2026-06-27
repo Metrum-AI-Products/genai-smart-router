@@ -17,6 +17,8 @@ Security access events may record authorized calls, unauthorized caller-token at
 
 Signed-license enforcement uses detached Ed25519 signatures over canonical JSON payloads. The router embeds public verification keys only and must not shell out to OpenSSL at runtime. Private signing keys, real license files, customer-specific payloads, and license state files are deployment secrets and must not be committed, logged, embedded in public docs, copied into diagnostics, or placed in container images beyond the issued runtime `license.json`. Runtime logs, usage rows, metrics, and admin status expose only safe scalar license metadata.
 
+License operations are covered by `docs/LICENSE_OPERATIONS.md`. Security review must verify that the runbook, support workflow, examples, and package/public docs do not disclose private signing-key handling beyond internal operator guidance, do not include real customer license payloads, and keep Docusaurus customer-facing guidance limited to install, renewal, status, and support behavior.
+
 ## Tenant And Caller Isolation
 
 Caller tokens carry allow lists and quota policy, while identity is validated through explicit `users`, `projects`, and `project_memberships` config sections. Each key references an `owner_user`, project, and environment. `/v1/models` is filtered to the presented token's allowed model groups, and inactive keys are rejected after token match with safe status-specific `403` errors such as `key-disabled`, `key-suspended`, `key-expired`, or `key-rotated`.

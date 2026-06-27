@@ -68,6 +68,8 @@ Separate caller-token quota failures from upstream provider quota or billing exh
 
 `license-*` errors occur before upstream routing. `license-expired`, `license-feature-forbidden`, and `license-limit-exceeded` indicate a verified license that does not currently permit the request; other license errors normally mean the file is missing, malformed, unverifiable, for the wrong product, not yet valid, or the local clock moved backwards. Check `/readyz`, safe `request_usage.license_status` and `license_reason` fields, metrics-admin license gauges, and authorized `/admin/license/status`. Do not copy license payloads, signatures, private keys, or full config into tickets; use request IDs and safe status fields.
 
+For issuance, renewal, replacement, volume top-up, offline support, and SKU-specific acceptance checks, use `docs/LICENSE_OPERATIONS.md`. The support case should record only safe scalar license metadata such as license ID, customer alias, SKU, key ID, expiry, grace flag, request ID, status, and reason.
+
 Provider rate limits are recorded as `upstream_rate_limited` and return `503 upstream-rate-limited` only after eligible fallbacks are exhausted. Do not paste raw provider error bodies, account IDs, API keys, router tokens, token hashes, prompts, images, or tool outputs into incident notes.
 
 ### Bad Image Analysis

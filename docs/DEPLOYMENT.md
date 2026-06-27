@@ -58,6 +58,8 @@ For built-in adaptive routing, prefer `strategy: dynamic_score` before adding cu
 
 For licensed deployments, enable `server.license`, mount the Metrum-issued signed JSON license file, and keep `fail_open_for_dev: false`. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
 
+Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
+
 Docker Compose packages are built separately:
 
 ```bash
