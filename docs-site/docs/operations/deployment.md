@@ -58,7 +58,7 @@ External routing-policy calls are controlled by model-group config. For TypeScri
 
 The router serves embedded docs for browser traffic at `/`. Every docs page displays the running binary version and full UTC build timestamp. Docs responses also include `X-Smart-LLMRouter-Version` and `X-Smart-LLMRouter-Build-Date` headers.
 
-Router-owned operational endpoints expose build metadata:
+Router-owned operational endpoints expose runtime build metadata for load balancers and administrators:
 
 ```bash
 curl https://llm-api.example.com/version

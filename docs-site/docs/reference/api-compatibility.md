@@ -199,8 +199,8 @@ Text-only and image-capable work do not need separate user workflows. A deployme
 
 Router-only endpoints are not part of OpenAI or Anthropic compatibility:
 
-- `/readyz` and `/healthz` report service health and build metadata.
-- `/version` returns the running binary version, build timestamp, Go runtime version, OS, and architecture.
+- `/readyz` and `/healthz` report service health and runtime build metadata for operational checks.
+- `/version` returns the running binary version, build timestamp, Go runtime version, OS, architecture, and internal build identifiers for administrators.
 - `/v1/usage` returns usage/quota information for the authenticated caller.
 - `/metrics` returns Prometheus telemetry only for metrics-admin tokens.
 
