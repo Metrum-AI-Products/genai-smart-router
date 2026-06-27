@@ -97,7 +97,7 @@ The browser report shell provides shared controls for every tab:
 - filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client;
 - selected tab and search stored in shareable URL query parameters;
 - client-side search across visible safe scalar fields;
-- sortable table headers;
+- sortable table headers with click-to-sort controls and active ▲/▼ indicators;
 - bounded page-size selection;
 - manual refresh with last-refresh state;
 - copy buttons for identifiers such as public token IDs, groups, providers, and request IDs;

@@ -479,6 +479,25 @@ th {
   text-transform: uppercase;
 }
 
+.sort-button {
+  all: unset;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.sort-button:hover,
+.sort-button:focus-visible {
+  color: var(--accent);
+}
+
+.sort-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .tablewrap {
   overflow-x: auto;
   border: 1px solid var(--border);

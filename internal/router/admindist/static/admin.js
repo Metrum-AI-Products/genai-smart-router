@@ -329,10 +329,10 @@ function renderTable(report) {
     return;
   }
   const source = activeTab === "providers" ? report.byProvider : activeTab === "tokens" ? report.byToken : activeTab === "requests" ? report.requests : report.byGroup;
-  const rows = activeTab === "requests" ? requestRows(source) : aggregateRows(source);
-  document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${rows}</table></div>`;
   currentTableRows = source || [];
   currentTableColumns = activeTab === "requests" ? requestColumns() : aggregateColumns();
+  renderSharedTable();
+  updateURLState();
 }
 
 function renderSavings(report) {
@@ -351,9 +351,10 @@ function renderSavings(report) {
   renderSavingsChartSpecs(report.charts || []);
   const warnings = report.warnings || [];
   document.querySelector("#savingsWarnings").innerHTML = warnings.length ? `<div class="warnings">${warnings.map(w => `<div class="warning">${esc(w)}</div>`).join("")}</div>` : "";
-  document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table>${savingsRows(report.byGroup || [])}</table></div>`;
   currentTableRows = report.byGroup || [];
   currentTableColumns = savingsColumns();
+  renderSharedTable();
+  updateURLState();
 }
 
 function renderGeneric(tab, report) {
@@ -467,7 +468,12 @@ function renderSharedTable() {
     document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table><tbody><tr><td>No rows match the current filters.</td></tr></tbody></table></div>`;
     return;
   }
-  const head = currentTableColumns.map(col => `<th><button type="button" class="sort-button" data-sort="${esc(col.key)}">${esc(col.label)}${currentSort.key === col.key ? ` ${currentSort.direction === "asc" ? "▲" : "▼"}` : ""}</button></th>`).join("");
+  const head = currentTableColumns.map(col => {
+    const active = currentSort.key === col.key;
+    const indicator = active ? ` ${currentSort.direction === "asc" ? "▲" : "▼"}` : "";
+    const label = active ? `${col.label}, sorted ${currentSort.direction === "asc" ? "ascending" : "descending"}` : `Sort by ${col.label}`;
+    return `<th><button type="button" class="sort-button" data-sort="${esc(col.key)}" aria-pressed="${active ? "true" : "false"}" aria-label="${esc(label)}">${esc(col.label)}${indicator}</button></th>`;
+  }).join("");
   const body = rows.map(row => `<tr>${currentTableColumns.map(col => `<td>${formatCell(row, col)}</td>`).join("")}</tr>`).join("");
   document.querySelector("#tables").innerHTML = `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   document.querySelectorAll(".sort-button").forEach(button => button.addEventListener("click", () => {
@@ -535,12 +541,6 @@ function populateBaselines(baselines, selected) {
     `<option value="custom">Custom session baseline</option>`;
   select.dataset.loaded = "true";
   select.value = selected || "gpt-5.5";
-}
-
-function savingsRows(rows) {
-  return `<thead><tr><th>Model group</th><th>Requests</th><th>Input Tokens</th><th>Output Tokens</th><th>Total Tokens</th><th>Actual cost</th><th>Baseline cost</th><th>Savings</th><th>Savings %</th></tr></thead><tbody>` +
-    rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.input_tokens}</td><td>${r.output_tokens}</td><td>${r.total_tokens}</td><td>${usd.format(r.actual_cost_usd)}</td><td>${usd.format(r.baseline_cost_usd)}</td><td>${usd.format(r.savings_usd)}</td><td>${formatUnit(r.savings_pct, "percent", true)}</td></tr>`).join("") +
-    `</tbody>`;
 }
 
 function scalarColumns(options = {}) {
@@ -736,18 +736,6 @@ function securityColumns() {
     { key: "outputTokens", label: "Output Tokens" },
     { key: "totalTokens", label: "Total Tokens" }
   ];
-}
-
-function aggregateRows(rows) {
-  return `<thead><tr><th>Key</th><th>Requests</th><th>Errors</th><th>Total Tokens</th><th>Total cost</th><th>Attempts</th><th>Fallbacks</th><th>Avg latency</th></tr></thead><tbody>` +
-    rows.map(r => `<tr><td>${esc(r.key)}</td><td>${r.requests}</td><td>${r.errors}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td><td>${r.attempts}</td><td>${r.fallbacks}</td><td>${r.avgLatencyMs} ms</td></tr>`).join("") +
-    `</tbody>`;
-}
-
-function requestRows(rows) {
-  return `<thead><tr><th>Time</th><th>Request</th><th>Caller</th><th>IP</th><th>Key</th><th>User</th><th>Project</th><th>Client</th><th>Requested</th><th>Group</th><th>Provider</th><th>Model</th><th>Dialect</th><th>Status</th><th>Cache</th><th>Attempts</th><th>Fallback</th><th>Latency</th><th>Total Tokens</th><th>Total cost</th></tr></thead><tbody>` +
-    rows.slice(-100).reverse().map(r => `<tr><td>${esc(r.timeUtc)}</td><td>${esc(r.requestId)}</td><td>${esc(r.callerId)}</td><td>${esc(r.callerIp)}</td><td>${esc(r.tokenId)}</td><td>${esc(r.callerUser)}</td><td>${esc(r.project)}</td><td>${esc(r.client)}</td><td>${esc(r.requestedModel)}</td><td>${esc(r.modelGroup)}</td><td>${esc(r.provider)}</td><td>${esc(r.model)}</td><td>${esc(r.dialect)}</td><td>${r.status}</td><td>${esc(r.cache)}</td><td>${r.attempts}</td><td>${esc(r.fallback)}</td><td>${formatUnit(r.latencyMs, "ms", true)}</td><td>${r.totalTokens || r.tokens}</td><td>${usd.format(r.totalCostUsd || r.costUsd)}</td></tr>`).join("") +
-    `</tbody>`;
 }
 
 function esc(value) {

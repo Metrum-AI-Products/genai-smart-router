@@ -1026,6 +1026,11 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if cssRR.Code != http.StatusOK || !strings.Contains(cssRR.Body.String(), "--metrum-purple: #cc28af") || strings.Contains(cssRR.Body.String(), "#1f6feb") {
 		t.Fatalf("css status=%d body=%s", cssRR.Code, cssRR.Body.String())
 	}
+	for _, want := range []string{".sort-button", "cursor: pointer", ".sort-button:hover", ".sort-button:focus-visible"} {
+		if !strings.Contains(cssRR.Body.String(), want) {
+			t.Fatalf("css missing sortable header affordance %q: %s", want, cssRR.Body.String())
+		}
+	}
 
 	js := httptest.NewRequest(http.MethodGet, "/admin/reports/static/admin.js", nil)
 	js.SetBasicAuth("admin", "yell-yell-yum")
@@ -1034,14 +1039,19 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if jsRR.Code != http.StatusOK || !strings.Contains(jsRR.Body.String(), "metrum-admin-reports-theme") || !strings.Contains(jsRR.Body.String(), "localStorage") {
 		t.Fatalf("js status=%d body=%s", jsRR.Code, jsRR.Body.String())
 	}
-		for _, want := range []string{"formatUnit", "renderChartSpecs", "color_key", "api/savings", "savingsRows", "dismissChartTooltip", "window.hideChartTooltip"} {
-			if !strings.Contains(jsRR.Body.String(), want) {
-				t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
-			}
+	for _, want := range []string{"formatUnit", "renderChartSpecs", "color_key", "api/savings", "renderSharedTable", "sort-button", "aria-pressed", "dismissChartTooltip", "window.hideChartTooltip"} {
+		if !strings.Contains(jsRR.Body.String(), want) {
+			t.Fatalf("js missing chart contract helper %q: %s", want, jsRR.Body.String())
 		}
-		if strings.Contains(jsRR.Body.String(), "function hideChartTooltip(") {
-			t.Fatalf("admin.js must not shadow chart.umd.js window.hideChartTooltip helper: %s", jsRR.Body.String())
+	}
+	for _, removed := range []string{"function aggregateRows(", "function requestRows(", "function savingsRows("} {
+		if strings.Contains(jsRR.Body.String(), removed) {
+			t.Fatalf("admin.js still has legacy non-sortable table builder %q: %s", removed, jsRR.Body.String())
 		}
+	}
+	if strings.Contains(jsRR.Body.String(), "function hideChartTooltip(") {
+		t.Fatalf("admin.js must not shadow chart.umd.js window.hideChartTooltip helper: %s", jsRR.Body.String())
+	}
 	for _, want := range []string{"Total Tokens", "Input Tokens", "Output Tokens", "Downstream write output tok/s", "avgDownstreamWriteTotalTokensPerSec", "requestedModel", "catalogColumns", "retentionColumns", "troubleshooting-buckets"} {
 		if !strings.Contains(jsRR.Body.String(), want) {
 			t.Fatalf("js missing transparent report label/field %q: %s", want, jsRR.Body.String())
