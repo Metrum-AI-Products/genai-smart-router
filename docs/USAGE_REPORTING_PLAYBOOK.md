@@ -39,7 +39,9 @@ router-usage-report \
   --rollup-type daily
 ```
 
-Use `--rollup-type hourly` for recent operational trend aggregates, `daily` for customer/project/key/provider chargeback, and `monthly` for invoice-supporting billing-period summaries. The command writes scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` from stored rows for the selected UTC `[from,to)` window. Rollup runs store source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router version/commit, and generation/finalization timestamps.
+Use `--rollup-type hourly` for recent operational trend aggregates, `daily` for customer/project/key/provider chargeback, and `monthly` for **customer internal chargeback and optional enterprise contract true-up summaries**. The command writes scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` from stored rows for the selected UTC `[from,to)` window. Rollup runs store source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router version/commit, and generation/finalization timestamps.
+
+These rollups support **customer governance and optional commercial true-up reviews**. Metrum enterprise commercial billing is handled outside the router by Metrum finance (signed license + external contract); these tables are **not** a Metrum product billing ledger.
 
 Rows retain reporting dimensions for caller, token, client, model group, upstream provider/model/dialect, status class, stream/cache, image input, PII filter, contract bucket, validation status, and optional baseline ID. Measures include request/success/error counts, input/output/total tokens, input image count, input image tokens, request-time calculated cost, upstream-reported cost, optional baseline input/output/total cost and savings, latency, throughput, cache, fallback, and attempt counts. To store a commercial savings baseline on rollup rows, pass `--baseline-id`, `--baseline-name`, `--baseline-version`, `--baseline-input-price-per-million-usd`, and `--baseline-output-price-per-million-usd`.
 
@@ -68,7 +70,7 @@ router-usage-report \
 Keep retention terms precise:
 
 - raw operational rows are request-level and child-table facts used for incident response and detailed troubleshooting;
-- finalized rollups are immutable billing/usage aggregates generated from stored request-time facts;
+- finalized rollups are immutable chargeback / usage aggregates generated from stored request-time facts;
 - archived exports are external artifacts controlled by the operator, not produced by the current retention foundation;
 - legal holds block dry-run eligibility by data class and timestamp range;
 - purge execution, archive/export automation, schedulers, and full hold administration are future slices.

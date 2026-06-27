@@ -31,6 +31,8 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Codex CLI smoke | Implemented operationally | Production smokes validate tool file creation. |
 | Claude Code CLI smoke | Implemented operationally | Production smokes validate tool file creation. |
 | Warp/OpenAI Chat tools | Supported by API shape | Validate with OpenAI Chat tool smoke when changing tool routes. |
+| Signed license enforcement | Implemented | Signed Ed25519 envelope; capability, time, and volume entitlements enforced in-router. |
 | Public model marketplace | Not a product goal | Can use marketplace providers as upstreams. |
 | Enterprise web dashboard | Partial | Admin browser reporting is present; broader SSO/session administration and compliance workflow automation remain follow-ups. |
 | Automated model quality oracle | Not implemented as a generic feature | Use explicit evals and smokes for model activation. |
+| Metrum product billing / customer portal | Not planned | Managed cloud is deferred (closed as wontfix via #37, #38, #41); enterprise uses signed license + external finance, not an in-router billing ledger. |

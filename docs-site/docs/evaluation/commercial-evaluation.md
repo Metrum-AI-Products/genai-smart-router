@@ -18,7 +18,7 @@ GenAI Smart Router is evaluated as a governed enterprise gateway, not as a publi
 | Enterprise or on-prem deployment | Teams that need the router inside their own infrastructure | A licensed deployment package, signed JSON license file, sample config, operator docs, and support for connecting approved provider keys or private upstreams. |
 | Private customer-cloud deployment | Teams that want cloud isolation under their own account or network controls | A deployment package and implementation plan for customer-owned cloud infrastructure, private networking, identity policy, usage database, reporting, and provider onboarding. |
 
-Self-serve credit-card signup, instant public API credits, and automated plan upgrades are future commercial options unless a specific deployment agreement states otherwise. Current evaluations should use the contact path above so Metrum and the customer can agree on the endpoint, license, provider access, data handling, workload proof points, and reporting package.
+Self-serve credit-card signup, instant public API credits, and automated plan upgrades are **not currently offered** as a commercial product. Current evaluations should use the contact path above so Metrum and the customer can agree on the deployment shape, license template, provider access, data handling, workload proof points, and reporting package. Production enterprise access uses a **signed license file with capability + time + volume entitlements** combined with an annual or volume-prepurchase contract handled by Metrum commercial contact.
 
 ## Buyer Journey
 

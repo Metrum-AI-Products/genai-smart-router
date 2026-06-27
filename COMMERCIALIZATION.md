@@ -2,9 +2,9 @@
 
 This is an internal product and commercialization plan for GenAI Smart Router. It is not customer-facing pricing copy. Revalidate exact competitor pricing, procurement channels, marketplace availability, packaging, and commercial terms before publishing any public comparison or exact price claim.
 
-Research snapshot: 2026-06-24.
+Research snapshot: 2026-06-24. Strategy revised 2026-06-27 to enterprise-first license model (issues #159, #36, #39, #40, #42).
 
-Current status note: this document has been refreshed after signed license enforcement shipped. Treat the market research and price anchors below as a dated planning snapshot, not current public positioning. Current customer-facing docs live in `docs-site/docs/`, especially:
+Current customer-facing docs live in `docs-site/docs/`, especially:
 
 - `docs-site/docs/operations/license-protected-deployments.md` for shipped signed-license deployment behavior;
 - `docs-site/docs/evaluation/commercial-evaluation.md` for the current commercial evaluation path;
@@ -23,64 +23,49 @@ Primary reference points reviewed:
 
 ## Shipped Commercial Foundations
 
-The router now includes several commercial foundations that were still future-looking when this plan was first written:
+The router now includes several commercial foundations:
 
-- Signed JSON license verification is shipped. Licensed deployments can enable `server.license` so the router verifies a Metrum-issued signed JSON license with embedded Ed25519 public verification keys, expiry, product checks, feature gates, deployment limits, grace behavior, clock-rollback state, safe status reporting, `/readyz` integration, and `license-*` caller errors. The original implementation issue #35 is closed.
+- Signed JSON license verification is shipped. Licensed deployments can enable `server.license` so the router verifies a Metrum-issued signed JSON license with embedded Ed25519 public verification keys, expiry, product checks, feature gates, deployment limits, grace behavior, clock-rollback state, safe status reporting, `/readyz` integration, and `license-*` caller errors. Issue #35 is closed.
 - License-safe operations docs are shipped. Public docs cover license-protected deployments, configuration, renewal/replacement, admin status, metrics-admin visibility, troubleshooting, and secret-handling boundaries without publishing private signing keys, license payloads, private deployment paths, router tokens, or provider keys.
 - Commercial evaluation docs are shipped. Public evaluation docs describe hosted, private-cloud, and enterprise/on-prem evaluation paths, deployment readiness, security assessment, workload validation, usage reporting evidence, and contact flow.
 - Usage reporting and commercial retention foundations are shipped where documented. Request-time costs, upstream-reported billed costs, latency/throughput dimensions, safe license metadata, daily rollups, baseline savings fields, dry-run retention status, legal-hold rows, and guarded first-slice purge execution are available as documented. Archive/export automation, schedulers, broader data-class purge execution, and full browser/admin write workflows remain future slices.
 
-Still-open commercial implementation issues:
+Open commercial implementation issues (revised 2026-06-27):
 
-- #36: Define commercial packaging, entitlements, and billing semantics.
+- #159: Enterprise license shape: capabilities + time + volume + operational limits (P0, new).
+- #36: Define enterprise SKUs and map them to capability/time/volume license entitlements (P0).
+- #39: Enterprise license issuance, renewal, volume-top-up, and support workflow (P0).
+- #40: Private managed deployments and marketplace procurement (P1).
+- #42: Public pricing and package documentation (P2).
+
+Closed as wontfix (managed cloud / billing ledger / customer portal deferred):
+
 - #37: Managed cloud self-serve checkout and provisioning.
 - #38: Billing-grade usage metering, credits, and invoice ledger.
-- #39: Enterprise self-hosted license operations and renewal workflow.
-- #40: Private managed deployments and marketplace procurement.
 - #41: Customer billing and admin portal for managed cloud.
-- #42: Public pricing and package documentation.
+
+## Strategic Direction (revised 2026-06-27)
+
+Enterprise and private-managed buyers are sold via **signed `license.json` that encodes capabilities, operational limits, and usage budget** — not by forcing an annual prepaid contract and not by building an in-product billing ledger. Entitlements are enforced in-router (#35 shipped). Metrum bills via normal finance (invoice/PO/wire) per the **commercial shape the license encodes**, not via router metering.
+
+Managed-cloud self-serve (#37), billing ledger (#38), and customer portal (#41) are **out of scope** for the current GTM motion and are closed `wontfix`.
 
 ## Goals
 
-- Let small teams start by credit card without a sales call.
+- Sell signed licenses that encode capability + time + volume independently or together.
 - Preserve high-ACV enterprise paths for self-hosted, private-cloud, and Metrum-managed deployments.
-- Monetize the router value separately from upstream provider cost.
-- Keep packaging compatible with enterprise procurement: annual contracts, private offers, AWS/Azure Marketplace, and signed self-hosted licenses.
+- Monetize the router value separately from upstream provider cost (BYOK default).
+- Keep packaging compatible with enterprise procurement: annual contracts, private offers, AWS/Azure Marketplace, signed self-hosted licenses, and short-eval or volume-only license templates.
 - Make commercial enforcement practical without blocking legitimate on-prem and air-gapped customers.
 - Keep public docs generic and deployment-defined; avoid exposing private hostnames, provider keys, real router tokens, private pricing commitments, or production-only model group details.
 
 ## Recommended Commercial Motions
 
-### 1. Metrum Managed Cloud
+### 1. Enterprise Self-Hosted License
 
-Primary self-serve motion.
+Primary commercial motion.
 
-Customer buys access to a hosted Metrum router endpoint. Metrum operates the router, usage DB, admin reports, billing integration, and provider connectivity.
-
-Variants:
-
-- Metrum-billed provider usage through credits.
-- Customer BYOK provider credentials, with Metrum billing only for platform usage.
-- Hybrid: Metrum-billed default providers plus customer private upstreams.
-
-Best for:
-
-- credit-card onboarding;
-- developers and teams that want no infrastructure work;
-- demos, trials, and expansion into enterprise accounts;
-- usage-based packaging.
-
-Commercial shape:
-
-- monthly platform fee;
-- included usage allowance;
-- usage overage by request, token/cost unit, or credit drawdown;
-- optional markup on Metrum-billed provider usage;
-- paid add-ons for admin reports, dynamic routing, longer retention, external policy, private upstreams, SSO, and support.
-
-### 2. Enterprise Self-Hosted License
-
-Customer runs the Docker package or binary in their infrastructure with a signed license file.
+Customer runs the Docker package or binary in their infrastructure with a signed license file. Metrum signs a `license.json` that encodes the SKU, capability gates, volume/time limits, and operational scope.
 
 Best for:
 
@@ -88,19 +73,18 @@ Best for:
 - VPC/on-prem buyers;
 - customers with strict data-residency requirements;
 - customers with existing provider contracts and BYOK;
-- annual contracts and procurement.
+- annual contracts, volume prepurchase, and procurement.
 
 Commercial shape:
 
-- annual prepaid license;
-- signed JSON license with expiry and feature entitlements;
+- signed JSON license with SKU, expiry, feature entitlements, volume and window limits, and operational limits;
 - support/SLA tier;
-- limits by production instances, annual request/token volume, admin seats, model groups, or enabled features;
-- procurement through direct order form and later AWS/Azure Marketplace private offers.
+- limits by production instances, total/volume requests or tokens, admin seats, model groups, retention, or enabled features;
+- procurement through direct order form, AWS/Azure Marketplace private offers, or volume prepurchase credit packs.
 
-Implementation status: signed JSON license enforcement has shipped. The remaining commercial work is operational packaging around license issuance, renewal, support workflows, and entitlement policy, tracked in issue #39.
+Implementation status: signed JSON license enforcement has shipped (#35). Runtime fields for capability + time + volume + operational limits are tracked in #159. Operational packaging around license issuance, renewal, volume top-up, support workflows, and entitlement policy is tracked in #39.
 
-### 3. Private Managed Deployment
+### 2. Private Managed Deployment
 
 Metrum operates a dedicated router deployment for one customer in Metrum cloud, customer cloud, or a managed VPC pattern.
 
@@ -108,19 +92,19 @@ Best for:
 
 - customers who need isolation but do not want to operate the router;
 - pilots that may later become self-hosted;
-- enterprise buyers who need custom upstream/network configuration.
+- enterprise buyers who need custom upstream / network configuration.
 
 Commercial shape:
 
 - setup fee;
 - monthly managed service fee;
-- usage charge or provider pass-through;
+- annual or volume license (`enterprise-annual` or `credit-pack-*` template);
 - higher support/SLA tier;
 - optional private networking, SSO, custom policy, and acceptance validation package.
 
-### 4. Marketplace Procurement
+### 3. Marketplace Procurement
 
-Package Enterprise Self-Hosted and Private Managed Deployment for cloud marketplace procurement after the first direct enterprise sales.
+Package Enterprise Self-Hosted (`enterprise-annual`) and Private Managed Deployment (`marketplace-seat`) for cloud marketplace procurement after the first direct enterprise sales.
 
 Best for:
 
@@ -129,128 +113,63 @@ Best for:
 - annual committed spend;
 - reducing contract friction.
 
-Do not make marketplace the first dependency for self-serve. Credit-card managed cloud should ship faster.
+Do not make marketplace the first dependency for self-serve. Enterprise license direct sales should ship first.
 
-## Suggested Product Tiers
+### 4. Metrum-Managed Evaluation Endpoint
 
-Exact public prices must be revalidated before publishing. The ranges below are internal planning anchors.
+Time-bounded evaluation endpoint (`eval-72h` and `pilot-30d` license templates) for partners and prospective customers to validate workloads before signing an enterprise contract. Not a self-serve credit-card motion; contact required.
 
-### Developer
+## License Templates (what Metrum actually sells)
 
-Target: individual developer or small evaluation.
+Each commercial SKU maps to a license template. A SKU is the commercial name; the license template is the runtime envelope Metrum signs.
 
-- Credit card checkout.
-- One organization.
-- One or two projects.
-- Limited monthly included usage or credit allowance.
-- Short retention.
-- Basic usage view.
-- Standard shared model groups.
-- No custom private upstream.
+| Template | Time | Volume | Use case |
+|---|---|---|---|
+| `eval-72h` | `expires_at = +72h` | `max_total_tokens: 5_000_000` | Free / partner evals |
+| `pilot-30d` | +30 days | `window: 1M tokens / 1h` | Time-boxed pilot |
+| `enterprise-annual` | +12 months | unlimited (or contract ceiling) | Default annual contract |
+| `credit-pack-5m` | +12 months | `max_total_tokens: 5_000_000` | Volume top-up |
+| `credit-pack-25m` | +12 months | `max_total_tokens: 25_000_000` | Larger volume prepay |
+| `marketplace-seat` | term of contract | per-seat volume | AWS/Azure private offer |
 
-Possible price anchor: low double-digit to low triple-digit monthly platform fee plus usage.
-
-### Team
-
-Target: growing team using the router for multiple apps.
-
-- Multiple projects.
-- Budgets and rate limits.
-- Admin reports.
-- Longer retention.
-- More model groups.
-- Alerts.
-- Shared team tokens.
-- Optional BYOK.
-
-Possible price anchor: several hundred to low four figures monthly plus usage.
-
-### Business
-
-Target: production usage across a department.
-
-- SSO/OIDC/SAML when implemented.
-- Audit logs.
-- Advanced admin reports.
-- Dynamic score routing.
-- External policy integration.
-- Private upstream support.
-- Higher limits and retention.
-- Priority support.
-
-Possible price anchor: low thousands monthly plus usage or annual commit.
-
-### Enterprise
-
-Target: company-wide or regulated deployment.
-
-- Self-hosted or private managed.
-- Signed license file.
-- SSO/RBAC/audit.
-- Dedicated support/SLA.
-- Marketplace/private offer option.
-- Custom model-group validation.
-- Private upstream and network controls.
-- Contracted retention/security terms.
-
-Price by annual contract, deployment scope, support tier, and usage commitment.
+Time-only, volume-only, and time+volume are all legal. Whichever is reached first blocks further traffic. SKU-to-template mapping is defined in #36; runtime fields and enforcement are defined in #159.
 
 ## Billing Models
 
-### Platform Subscription Plus Usage
+### Annual Enterprise License (primary)
 
-Recommended default for managed cloud.
-
-- Monthly platform fee buys product capability and support.
-- Included usage allowance makes starting simple.
-- Overage based on provider cost, token/request volume, or credit consumption.
+Prepaid annual license for self-hosted or private-managed deployments.
 
 Pros:
 
-- predictable business model;
-- easy to map to tiers;
-- supports credit-card checkout;
-- separates product value from raw model cost.
+- procurement friendly;
+- predictable revenue;
+- works for on-prem and air-gapped environments;
+- enforced by signed license file.
 
 Cons:
 
-- requires metering and invoice clarity;
-- provider-cost pass-through needs careful accounting.
+- slower sales cycle;
+- needs renewal process and license operations.
 
-### Credit Wallet
+### Volume-Prepurchase License (primary for top-up)
 
-Customer prepays credits, optionally auto-top-up.
+Prepaid volume license (`credit-pack-*`) with optional time bound. Used both as initial purchase and as top-up when an `enterprise-annual` license's volume counter is exhausted.
 
 Pros:
 
-- familiar for API users;
-- reduces payment failure risk;
-- easy to cap spend;
-- maps well to self-serve.
+- familiar to API customers;
+- matches OpenRouter / Helicone credit-pack expectations;
+- enables short-term or trial volume-only purchases.
 
 Cons:
 
-- requires wallet ledger, refunds/adjustments, and tax/accounting review;
+- requires clean counter reset on replacement;
 - customers may ask how credits map to provider cost.
 
-### Provider Pass-Through Plus Markup
+### BYOK Platform Fee (default for enterprise)
 
-Customer pays provider cost plus a Metrum routing/observability fee.
-
-Pros:
-
-- aligned to usage;
-- simple for Metrum-billed provider usage;
-- can charge only successful model runs while still recording fallback attempts.
-
-Cons:
-
-- provider pricing changes can confuse customers;
-- requires accurate request-time cost storage and billing reconciliation.
-
-### BYOK Platform Fee
-
-Customer supplies provider keys; Metrum charges only platform subscription/usage.
+Customer supplies provider keys; router enforces only its own entitlement envelope. Metrum bills only for the license.
 
 Pros:
 
@@ -261,57 +180,52 @@ Pros:
 Cons:
 
 - lower gross margin;
-- billing value must be clearly tied to routing, telemetry, governance, support, and validation.
+- value must be tied to routing, telemetry, governance, support, and validation.
 
-### Annual Enterprise License
+### Deferred / Not Currently Offered
 
-Prepaid license for self-hosted/private deployments.
+The following billing models are scoped under managed cloud and are **deferred indefinitely** (closed as wontfix via #37, #38, #41):
 
-Pros:
+- Platform Subscription Plus Usage (managed cloud).
+- Credit Wallet with auto-top-up (managed cloud).
+- Provider Pass-Through Plus Markup (managed cloud).
 
-- procurement friendly;
-- predictable revenue;
-- works for on-prem and air-gapped environments;
-- can be enforced by signed license file.
-
-Cons:
-
-- slower sales cycle;
-- needs renewal process and license operations.
+If Metrum commits to a credit-card managed-cloud product in the future, these models may be reintroduced.
 
 ## Entitlements And Feature Gates
 
-Commercial entitlements should map to product capabilities rather than hardcoded model group names.
+Commercial entitlements map to product capabilities rather than hardcoded model group names. The runtime fields and constants are defined in #159; the SKU-to-template commercial mapping is defined in #36.
 
 Entitlement dimensions:
 
-- deployment type: managed cloud, private managed, self-hosted;
-- enabled features: dynamic_score, external_policy, admin_reports, advanced_telemetry, SSO, audit, private_upstreams;
-- usage limits: requests, tokens, provider spend, storage/retention;
-- operational limits: projects, callers, model groups, admins, environments;
+- deployment type: self-hosted, private-managed, managed-evaluation (managed cloud is deferred);
+- enabled features: routing, dynamic_score, typescript_routing, external_policy, external_policy_http, model_group_contracts, usage_reporting, admin_reports, admin_security_reports, retention_rollups, content_capture, private_upstreams, audit_log_export, pii_filtering, usage_csv_export, usage_baseline_export;
+- usage limits: total requests, total tokens, window requests, window tokens, concurrency;
+- operational limits: projects, callers, admins, model groups, retention days, instances, allowed skins;
 - support tier and SLA.
 
-For self-hosted:
+For self-hosted and private-managed deployments:
 
-- entitlements live in signed JSON license payload;
-- router validates expiry, product, issuer, features, and limits locally;
-- license can be replaced without binary rebuild.
+- entitlements live in the signed JSON license payload;
+- the router validates expiry, product, issuer, features, limits, deployment fields, and optional instance fingerprint locally;
+- the license can be replaced without binary rebuild.
 
-For managed cloud:
+For managed-evaluation endpoints:
 
-- entitlements live in billing/control-plane DB;
-- router receives effective limits from config or admin/control-plane sync;
-- billing ledger is source of truth for credits, invoices, and usage charges.
+- evaluation licenses are issued via the same license signing flow;
+- payment is handled by Metrum commercial contact, not by the router.
 
-## Metering Requirements
+Managed cloud (deferred) would have used a billing/control-plane DB; that path is not pursued at this time.
 
-Commercial billing should use durable request-time facts.
+## Metering Requirements (customer-side only)
+
+Metering inside the router exists to support **customer chargeback**, **optional contract true-up reviews**, and **internal usage reporting**. It is not a Metrum product billing ledger.
 
 Meter at minimum:
 
 - request count;
 - successful request count;
-- failed/fallback attempt count;
+- failed / fallback attempt count;
 - input tokens;
 - output tokens;
 - total tokens;
@@ -325,84 +239,73 @@ Meter at minimum:
 
 Rules:
 
-- Use stored request-time cost values, not current provider pricing, for historical invoices.
-- Bill only according to documented commercial policy.
-- If charging only successful model runs, still store fallback attempts for operations but exclude failed attempts from billable provider-pass-through unless policy says otherwise.
+- Use stored request-time cost values, not current provider pricing, for historical chargeback.
+- Chargeback policy is set by the customer, not by the router.
+- License-wide volume counters (`max_total_tokens`, `max_total_requests`, `window_*`) are tracked in `licensePersistentState` for license enforcement and reset on license replacement.
+- Per-key counters (`Key.LifetimeTokens`) are tracked in `callerState` for caller policy and reset only on caller-key rotation.
 - Keep billing data relational and queryable; no JSONB/array/serialized structured columns.
 
 ## Initial Launch Recommendation
 
-Updated order after shipped license enforcement:
+Revised order after enterprise-first strategy:
 
-1. Define tiers, entitlements, and metering contract.
-2. Use shipped signed license enforcement for enterprise/on-prem evaluations while license operations mature.
-3. Build managed-cloud self-serve checkout with one simple paid tier and credits.
-4. Implement billing ledger and invoice reconciliation from usage DB.
-5. Package enterprise/private managed deployment operations.
-6. Add public pricing/docs and marketplace procurement after commercial policy and legal review.
+1. #159: define license shape (capability + time + volume + operational limits) and runtime fields.
+2. #36: SKU-to-template mapping and feature-gate matrix.
+3. #39: license issuance, renewal, volume-top-up, and support workflow.
+4. #40: private managed deployment runbook and marketplace procurement.
+5. #42: public packaging documentation after legal review.
 
 Rationale:
 
-- Self-serve managed cloud creates fast adoption and pricing feedback.
-- The same metering foundation supports enterprise invoices.
-- Signed licensing already protects self-hosted deployments; issue #39 should make issuance, renewal, support, and entitlement operations repeatable.
+- Enterprise direct sales create predictable revenue and validate the license envelope.
+- One signed license JSON encodes all entitlement axes; finance handles renewal, the router enforces.
+- Signed licensing already protects self-hosted deployments; #39 makes issuance and renewal operations repeatable.
 - Marketplace should follow proof of enterprise pull.
 
 ## Prioritized GitHub Workstreams
 
-### P0 - Commercial packaging, entitlements, and pricing contract (#36)
+### P0 - Enterprise license shape (#159)
 
-Define SKUs, feature gates, usage dimensions, billing semantics, and documentation language. This unblocks all other commercial work.
+Define the runtime license envelope: capability gates, volume/window/concurrency limits, operational scope, and license-wide counter storage. Backward-compatible with `schema_version = 1`.
 
-### P0 - Managed cloud self-serve checkout and account provisioning (#37)
+### P0 - Commercial packaging, SKU-to-template mapping (#36)
 
-Let a user create an organization, pay by credit card, receive a router endpoint/token, and start calling the API.
+Define SKUs (`eval-72h`, `pilot-30d`, `enterprise-annual`, `credit-pack-*`, `marketplace-seat`), feature gates per SKU, and operational limits per SKU.
 
-### P0 - Usage metering, billing ledger, credits, and invoice reconciliation (#38)
+### P0 - Enterprise license operations (#39)
 
-Convert usage DB events into billable line items, credits, overages, and invoices without losing request-time cost reproducibility.
-
-### P1 - Enterprise self-hosted license operations (#39)
-
-Build on shipped signed license enforcement to support repeatable license issuance, renewal, support workflows, and entitlement policy.
+Build on shipped signed license enforcement (#35) and license shape (#159). Provide license issuance, renewal, volume top-up, support playbook, and audit log of issuances (outside repo).
 
 ### P1 - Private managed deployments and marketplace procurement (#40)
 
 Define repeatable packaging, runbooks, support boundaries, private offers, and deployment acceptance.
 
-### P1 - Customer billing/admin portal (#41)
+### P2 - Public packaging documentation (#42)
 
-Expose invoices, credits, usage, limits, token/project management, and plan controls to customers.
-
-### P2 - Public pricing and packaging docs (#42)
-
-Publish customer-facing pricing/package pages once commercial policy is stable and legally reviewed.
+Publish customer-facing packaging pages after legal review. No public pricing yet.
 
 ## Open Decisions
 
-- Whether managed cloud default should be Metrum-billed provider credits, BYOK, or both from day one.
-- Whether credits map one-to-one to USD or abstract units.
-- Whether successful fallback routing bills only final successful upstream call or includes router attempt overhead.
-- Which features are gated by plan at launch versus included in all paid plans.
-- Which payment provider to use first.
-- Whether self-hosted license enforcement is mandatory in all production packages or only enterprise packages.
-- How support/SLA terms map to product tiers.
+- Whether `max_total_tokens` is token-cost-weighted or raw token count (current proposal: raw tokens).
+- Per-key counter reset on license renewal: keep contract/config, not license (current proposal: no reset).
+- Volume top-up flow: `carry_over` flag for unused balance (current proposal: deferred; replacement resets counter).
+- `server.license.fail_open_for_dev` semantics for local development images (#158).
+- Marketplace SKU including Metrum-billed provider pass-through (current proposal: no).
+- Support / SLA tier mapping to product tiers.
 
 ## Risks
 
-- Billing disputes if provider pass-through, fallback attempts, cache hits, and credits are not clearly defined.
-- Margin risk if Metrum-billed provider usage is underpriced or abused.
+- License disputes if volume counters are not reset cleanly on replacement.
+- Customer confusion between per-key and license-wide counters.
 - Enterprise friction if self-hosted licensing is too restrictive for air-gapped customers.
 - Product confusion if hosted deployment group names are treated as product constants.
-- Operational risk if self-serve onboarding creates router/provider resources without quotas and abuse controls.
 
 ## Success Metrics
 
-- Time from landing page to first successful API call.
-- Trial-to-paid conversion.
-- Gross margin by provider/model group.
-- Monthly recurring revenue by tier.
-- Credit top-up frequency and failed-payment rate.
-- Enterprise pilot-to-contract conversion.
+- Time from contact to first signed license issued.
+- Eval-to-contract conversion rate (eval-72h / pilot-30d to enterprise-annual).
+- License renewal rate.
+- Volume top-up frequency per customer.
+- Time-to-license-issued (sales to deployment).
 - Support tickets per active customer.
 - Router usage growth by project and model group.

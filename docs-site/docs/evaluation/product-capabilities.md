@@ -56,6 +56,6 @@ GenAI Smart Router can be deployed:
 
 - inside an enterprise network;
 - in a customer cloud account;
-- as a Metrum-managed instance.
+- as a Metrum-managed evaluation or private-managed deployment (one customer per instance).
 
 Deployment-specific hostnames, model group names, caller policies, provider keys, and upstream mixes are configuration choices, not product constants.

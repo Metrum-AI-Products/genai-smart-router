@@ -111,7 +111,7 @@ Metrum supports three buyer paths:
 - Enterprise or on-prem deployment for customers that need the router, usage database, provider access, and signed JSON license enforcement inside their own infrastructure.
 - Private customer-cloud deployment for customers that want cloud isolation under their own account, identity, network, and retention controls.
 
-The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, choose the commercial plan, then convert to monthly, annual, or usage-based access. Self-serve credit-card signup is future/conditional unless included in a specific customer agreement. See [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
+The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to an annual or volume-prepurchase license handled by Metrum commercial contact. Self-serve credit-card signup is **not currently offered** as a commercial product. See [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
 
 ## Deployment Planning Checklist
 

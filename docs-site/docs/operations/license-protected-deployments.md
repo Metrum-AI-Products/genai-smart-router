@@ -86,4 +86,8 @@ curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
 
 The source-tree `cmd/router-license` helper can inspect or verify a license file during release engineering or support validation when run from a checked-out source tree with an approved public key file. It is not part of the packaged Docker/runtime image unless a deployment explicitly adds it. Deployed routers do not need private signing keys or the license helper binary at runtime.
 
-For license issuance, renewal, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai).
+## Commercial Model
+
+A signed `license.json` encodes the commercial entitlements for a deployment: SKU, capability gates, time bounds, volume / window / concurrency limits, and operational scope. Payment, invoicing, and contract terms are handled by Metrum commercial contact outside the router; the router only enforces what the license declares. License templates include time-bounded evaluation (`eval-72h`, `pilot-30d`), annual enterprise license (`enterprise-annual`), and volume prepurchase (`credit-pack-*`) for top-up.
+
+For license issuance, renewal, volume top-up, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai). See [Commercial Evaluation Path](../evaluation/commercial-evaluation) for evaluation access.

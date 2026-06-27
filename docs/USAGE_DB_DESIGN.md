@@ -32,7 +32,7 @@ Usage rollups are generated from stored `request_usage` rows and also follow the
 - `usage_rollup_runs`: one row per generated hourly, daily, or monthly rollup window, with draft/finalized status, UTC source window, source table name, source request count, source min/max request timestamp, deterministic source checksum, aggregate row counts, decision-bucket row count, router version/commit, safe error text, and generation/finalization timestamps.
 - `usage_rollup_hourly`: scalar aggregate rows per UTC hour and reporting dimension for recent operational trend reporting.
 - `usage_rollup_daily`: scalar aggregate rows per UTC day and reporting dimension in the rollup window, keyed to `usage_rollup_runs`.
-- `usage_rollup_monthly_billing`: scalar aggregate rows per UTC calendar month and reporting dimension for invoice-supporting summaries until billing-account/subscription-period schema exists.
+- `usage_rollup_monthly_billing`: scalar aggregate rows per UTC calendar month and reporting dimension for **customer internal chargeback and optional enterprise contract true-up summaries**. This is **not** a Metrum product billing ledger; Metrum commercial billing is handled outside the router by Metrum finance.
 - `usage_rollup_decision_buckets`: scalar aggregate rows per rollup bucket, model group, strategy, bucket kind, bucket name, and optional secondary bucket. It preserves report-critical decision buckets after raw request/decision detail retention, including max-token buckets, input-token buckets, quota/admission reason buckets, enabled dynamic-score signal names, dynamic score buckets, and threshold/filter buckets.
 - `usage_rollup_audit_events`: scalar audit rows for rollup create, draft regeneration, and finalization events with a safe summary.
 
