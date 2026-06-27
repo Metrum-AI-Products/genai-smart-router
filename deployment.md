@@ -16,8 +16,8 @@ Last deployed: 2026-06-27
 
 ## Deployed Version
 
-- Router package/image version: `432456b-linux-amd64`
-- Source commit: `432456b`
+- Router package/image version: `09c9a16-linux-amd64`
+- Source commit: `09c9a16`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,41 @@ Last deployed: 2026-06-27
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-27 Admin table sorting and Fireworks env placeholder refresh
+
+Deployed package/image `smart-llmrouter:09c9a16-linux-amd64` from source commit `09c9a16` after PR #155 merged and the Fireworks env-example placeholder commit landed.
+
+Included changes:
+
+- Admin Reports Groups, Providers, Keys, Requests, and Savings tables use shared sortable headers on initial load.
+- Admin report table header styling and regression checks cover `.sort-button` and `aria-pressed` behavior.
+- `env.example.json` includes empty `GEMINI_API_KEY` and `FIREWORKS_API_KEY` placeholders; no real keys are included.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-09c9a16-20260627T030430Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 340 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing docs-site moderate dependency advisories
+rtk make secret-check: passed
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version 09c9a16, build_date 2026-06-27T03:00:21Z
+production /version after deploy: 09c9a16, build_date 2026-06-27T03:00:21Z, go1.26.4 linux/amd64
+hosted docs /docs/operations/admin-browser-reports returned 200 with x-smart-llmrouter-version 09c9a16
+unauthenticated /admin/reports/static/admin.js returned 401 as expected
+authenticated /admin/reports/static/admin.js returned 200 with x-smart-llmrouter-version 09c9a16 and included sort-button/aria-pressed code
+authenticated /v1/models returned 20 allowed groups for the production admin token
+authenticated /v1/chat/completions high max_tokens 128 returned OK from google/gemma-4-26b-a4b-it:nitro
+router logs after deploy: no immediate panic/fatal/error lines in the checked tail
+production cleanup: removed uploaded package and ran sudo docker system prune -f
+```
 
 ## 2026-06-27 Reasoning docs and admin chart tooltip refresh
 
