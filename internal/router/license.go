@@ -213,13 +213,22 @@ func newLicenseManager(cfg LicenseConfig, app *Config, keys []LicensePublicKey) 
 
 func defaultLicensePublicKeys() []LicensePublicKey {
 	// Public verification key only. The matching private signing key is not shipped.
-	raw, _ := hex.DecodeString("5f3558f10fd6058fd56c7d03d4ed157fba7c0d87be1717b46fe8fc0b375b1e1f")
-	return []LicensePublicKey{{
-		KeyID:     "metrum-license-ed25519-2026-01",
-		Algorithm: "ed25519",
-		PublicKey: ed25519.PublicKey(raw),
-		NotBefore: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-	}}
+	raw202601, _ := hex.DecodeString("5f3558f10fd6058fd56c7d03d4ed157fba7c0d87be1717b46fe8fc0b375b1e1f")
+	raw202606Prod, _ := hex.DecodeString("c7cfbfb2e3b275528b0f77b4e385849adf379d728d20fbc3f8c42350da9b3a17")
+	return []LicensePublicKey{
+		{
+			KeyID:     "metrum-license-ed25519-2026-01",
+			Algorithm: "ed25519",
+			PublicKey: ed25519.PublicKey(raw202601),
+			NotBefore: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			KeyID:     "metrum-license-ed25519-2026-06-prod",
+			Algorithm: "ed25519",
+			PublicKey: ed25519.PublicKey(raw202606Prod),
+			NotBefore: time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC),
+		},
+	}
 }
 
 func (m *licenseManager) start() {
