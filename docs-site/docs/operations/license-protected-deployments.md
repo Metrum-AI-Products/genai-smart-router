@@ -8,6 +8,8 @@ Licensed deployments can enforce a Metrum-issued signed JSON license offline. Th
 
 ## Runtime Configuration
 
+Normal release builds require license enforcement. Runtime YAML cannot disable licensing in packaged deployments; operators provide the issued `license.json` and durable state path.
+
 ```yaml
 server:
   license:
@@ -17,7 +19,6 @@ server:
     instance_fingerprint: "issued-instance-fingerprint"
     recheck_interval: 1h
     grace_period_on_validation_error: 24h
-    fail_open_for_dev: false
 ```
 
 Production licensed deployments should mount the issued license file read-only, keep the license state file on durable deployment storage, and leave `fail_open_for_dev: false`. Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment; it must match the licensed instance scope. The state file preserves renewal, grace, and clock-rollback checks across restarts.
@@ -93,6 +94,7 @@ Ordinary application caller tokens should not receive license payloads or operat
 | `license-feature-forbidden` | Confirm the feature is in the commercial plan or disable that feature. |
 | `license-limit-exceeded` | Reduce configured usage or update the licensed limits. |
 | `license-clock-rollback` | Correct system time and inspect the durable license state file. |
+| config rejects `enabled: false` | Normal release builds cannot be configured to run unlicensed; install a valid license file. |
 
 See [Error Reference](../reference/errors) for caller-visible details.
 

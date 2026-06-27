@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -129,6 +130,96 @@ func TestLicenseManagerReadinessRequestGateMetricsAndUsage(t *testing.T) {
 	}
 	if strings.Contains(metricsRR.Body.String(), "license_id") {
 		t.Fatalf("ordinary metrics leaked license detail: %s", metricsRR.Body.String())
+	}
+}
+
+func TestNormalBuildRequiresLicenseAndRejectsRuntimeBypass(t *testing.T) {
+	prev := licenseRequired
+	licenseRequired = true
+	t.Cleanup(func() { licenseRequired = prev })
+
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{Enabled: false, FailOpenForDev: false}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "enabled=false is not allowed") {
+		t.Fatalf("disabled normal-build license err=%v", err)
+	}
+
+	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{Enabled: true, FailOpenForDev: true, RecheckInterval: time.Hour}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fail_open_for_dev is not allowed") {
+		t.Fatalf("fail-open normal-build license err=%v", err)
+	}
+
+	cfg = testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.setDefaults()
+	if !cfg.Server.License.Enabled {
+		t.Fatal("normal-build defaults must enable license enforcement")
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "license path is required") {
+		t.Fatalf("missing normal-build license path err=%v", err)
+	}
+}
+
+func TestNormalBuildRejectsExplicitDisabledLicenseDuringLoad(t *testing.T) {
+	prev := licenseRequired
+	licenseRequired = true
+	t.Cleanup(func() { licenseRequired = prev })
+
+	dir := t.TempDir()
+	sum := sha256.Sum256([]byte(testToken))
+	configPath := filepath.Join(dir, "config.yaml")
+	raw := fmt.Sprintf(`
+server:
+  listen: ":0"
+  default_model_group: default
+  license:
+    enabled: false
+providers:
+  mock:
+    base_url: "https://api.example.com/v1"
+    dialect: openai-chat
+    api_key: provider-key
+models:
+  default:
+    strategy: static
+    targets:
+      - provider: mock
+        model: mock-model
+callers:
+  - id: alice
+    user: alice
+    project: metrum-insights
+    environment: test
+    token_sha256: %s
+    token_id: rtr_alice_test
+    allow: [default]
+    rate: {rpm: 100, tpm: 100000, concurrent: 4}
+`, hex.EncodeToString(sum[:]))
+	if err := os.WriteFile(configPath, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(configPath); err == nil || !strings.Contains(err.Error(), "enabled=false is not allowed") {
+		t.Fatalf("explicit disabled license load err=%v", err)
+	}
+}
+
+func TestDevNoLicenseCompileModeAllowsMissingLicense(t *testing.T) {
+	prev := licenseRequired
+	licenseRequired = false
+	t.Cleanup(func() { licenseRequired = prev })
+
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.License = LicenseConfig{Enabled: false, RecheckInterval: time.Hour}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("dev no-license config should validate: %v", err)
+	}
+	m, err := newLicenseManager(cfg.Server.License, cfg, nil)
+	if err != nil {
+		t.Fatalf("dev no-license manager: %v", err)
+	}
+	st := m.statusSnapshot()
+	if st.Code != "license-compile-disabled-dev" || !st.Ready || !st.Valid {
+		t.Fatalf("dev no-license status=%#v", st)
 	}
 }
 

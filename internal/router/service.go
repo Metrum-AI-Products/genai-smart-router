@@ -236,7 +236,12 @@ func (s *Service) routes() {
 		writeJSON(w, http.StatusOK, healthPayload(true, ""))
 	})
 	s.mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, buildinfo.Current())
+		info := buildinfo.Current()
+		raw, _ := json.Marshal(info)
+		var out map[string]any
+		_ = json.Unmarshal(raw, &out)
+		out["license_compile_mode"] = licenseCompileMode
+		writeJSON(w, http.StatusOK, out)
 	})
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)

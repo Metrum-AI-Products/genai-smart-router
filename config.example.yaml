@@ -13,11 +13,12 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
-  # Offline signed JSON license enforcement. Local examples keep this disabled;
-  # licensed production deployments should mount a Metrum-issued license.json
-  # and set enabled: true.
+  # Offline signed JSON license enforcement. Normal builds always enforce a
+  # Metrum-issued license.json; runtime config cannot disable licensing.
+  # Internal developers who need temporary no-license local testing must build
+  # with the internal dev_no_license tag instead of changing YAML.
   license:
-    enabled: false
+    enabled: true
     path: /app/config/license.json
     state_path: /app/state/license-state.json
     # Set when Metrum issues an instance-bound license for this deployment.

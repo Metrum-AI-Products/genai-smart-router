@@ -183,10 +183,10 @@ type licenseReservation struct {
 }
 
 func newLicenseManager(cfg LicenseConfig, app *Config, keys []LicensePublicKey) (*licenseManager, error) {
-	if !cfg.Enabled {
+	if !cfg.Enabled && !licenseEnforcementRequired() {
 		m := &licenseManager{
 			cfg: cfg, app: app, keys: keys, now: time.Now, stop: make(chan struct{}), stopped: make(chan struct{}),
-			status:          licenseStatus{Enabled: false, Valid: true, Ready: true, Code: "license-disabled", Features: map[string]bool{}},
+			status:          licenseStatus{Enabled: false, Valid: true, Ready: true, Code: "license-compile-disabled-dev", Features: map[string]bool{}},
 			failureByReason: map[string]int64{},
 		}
 		close(m.stopped)
@@ -278,7 +278,7 @@ func (m *licenseManager) reload() {
 
 func (m *licenseManager) validateFile() (licenseStatus, error) {
 	now := m.now().UTC()
-	if m.cfg.FailOpenForDev {
+	if m.cfg.FailOpenForDev && !licenseEnforcementRequired() {
 		return licenseStatus{Enabled: true, Valid: true, Ready: true, Code: "license-dev-fail-open", LastCheckedAt: now, Features: allLicenseFeatures()}, nil
 	}
 	if strings.TrimSpace(m.cfg.Path) == "" {
@@ -417,7 +417,7 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 
 func (m *licenseManager) statusSnapshot() licenseStatus {
 	if m == nil {
-		return licenseStatus{Valid: true, Ready: true, Code: "license-disabled", Features: map[string]bool{}}
+		return licenseStatus{Valid: true, Ready: true, Code: "license-compile-disabled-dev", Features: map[string]bool{}}
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1023,6 +1023,7 @@ func uniqueLicenseFeatures(features []string) []string {
 func safeLicenseStatusResponse(st licenseStatus) map[string]any {
 	out := map[string]any{
 		"enabled":           st.Enabled,
+		"compile_mode":      licenseCompileMode,
 		"valid":             st.Valid,
 		"ready":             st.Ready,
 		"grace_active":      st.GraceActive,
