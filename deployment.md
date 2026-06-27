@@ -16,8 +16,8 @@ Last deployed: 2026-06-27
 
 ## Deployed Version
 
-- Router package/image version: `289ea71-linux-amd64`
-- Source commit: `289ea71`
+- Router package/image version: `432456b-linux-amd64`
+- Source commit: `432456b`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,38 @@ Last deployed: 2026-06-27
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-27 Reasoning docs and admin chart tooltip refresh
+
+Deployed package/image `smart-llmrouter:432456b-linux-amd64` from source commit `432456b` after PRs #151 and #153 merged.
+
+Included changes:
+
+- Admin chart tooltip lifecycle fix from PR #151.
+- Hosted Docusaurus reasoning routing guide and internal/operator reasoning rollout docs from PR #153.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-432456b-20260627T022553Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 340 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing docs-site moderate dependency advisories
+rtk make secret-check: passed
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version 432456b, build_date 2026-06-27T02:21:37Z
+production /version after deploy: 432456b, build_date 2026-06-27T02:21:37Z, go1.26.4 linux/amd64
+hosted docs /docs/configuration/reasoning-routing returned 200 with x-smart-llmrouter-version 432456b
+authenticated /v1/models returned 20 allowed groups for the production admin token
+authenticated /v1/chat/completions high max_tokens 128 returned OK from openai/gpt-oss-120b
+router logs after deploy: no immediate panic/fatal/error lines in the checked tail
+production cleanup: removed uploaded package and ran sudo docker system prune -f
+```
 
 ## 2026-06-27 Big-coder reasoning routing config update
 
