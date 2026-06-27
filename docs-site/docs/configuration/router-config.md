@@ -195,6 +195,32 @@ providers:
         pricing_source: https://www.crusoe.ai/cloud/pricing
         pricing_updated_at: "2026-06-25"
         pricing_notes: Text and output-cap smokes passed on 2026-06-25, but direct receipt-image OCR did not pass acceptance; keep in a dedicated smoke group until image workload gates pass
+  fireworks:
+    base_url: https://api.fireworks.ai/inference/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${FIREWORKS_API_KEY}
+    api_key_env: FIREWORKS_API_KEY
+    key_id: fireworks-primary
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      gpt-oss-20b:
+        model: accounts/fireworks/models/gpt-oss-20b
+        tier: coding
+        input_price_per_million_usd: 0.07
+        output_price_per_million_usd: 0.30
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://docs.fireworks.ai/serverless/pricing
+        pricing_updated_at: "2026-06-27"
+        pricing_notes: Fireworks Serverless pricing also lists $0.035/M cached input for GPT OSS 20B. Direct Fireworks OpenAI Chat text, streaming, max_tokens=1, reasoning_effort low/medium/high, auto tool with max_tokens >= 256, forced tool_choice, and structured-output smokes passed on 2026-06-27 with an explicit User-Agent; this ID completed even though it was not listed by /models for the validated account.
+        tool_support:
+          openai_chat: [tools, tool_choice, structured_outputs]
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
 
   baseten_anthropic:
     base_url: https://inference.baseten.co
@@ -257,6 +283,8 @@ Internal vLLM and SGLang services use the same provider catalog structure as ext
 External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`, and Crusoe Managed Inference uses `base_url: https://api.inference.crusoecloud.com/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream provider model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects provider keys such as `BASETEN_API_KEY` or `CRUSOE_API_KEY` only when a matching target is selected.
 
 Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in an ordinary-text weighted group. The current/reference `big-coder` example uses Crusoe Nemotron 3 Nano Omni Reasoning only as a text target where configured; it does not claim Crusoe tool, vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it should be treated as historical/catalog/smoke-only unless a deployment revalidates it for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
+
+Fireworks support in these examples is OpenAI Chat only. Fireworks docs checked on 2026-06-27 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing where GPT OSS 20B is $0.07/M input, $0.035/M cached input, and $0.30/M output. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, `reasoning_effort` low/medium/high, auto tool with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes with an explicit `User-Agent`; it returns `reasoning_content` alongside visible content and completed even though it was not listed by `/models` for the validated account. Keep Fireworks OpenAI Responses, Anthropic Messages, image, video, and audio support absent until those exact skins pass direct and router-level smokes.
 
 Catalog entries should carry cost and capability metadata:
 

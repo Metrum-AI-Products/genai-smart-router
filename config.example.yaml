@@ -450,6 +450,46 @@ providers:
           OCR acceptance gate, returning non-merchant or incorrect answers at realistic
           budgets. Keep this target in the dedicated smoke group and out of broad
           active vision routing until router-level OCR and workload validation pass.
+  fireworks:
+    base_url: https://api.fireworks.ai/inference/v1
+    dialect: openai-chat
+    auth_scheme: bearer
+    api_key: ${FIREWORKS_API_KEY}
+    api_key_env: FIREWORKS_API_KEY
+    key_id: fireworks-default
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      gpt-oss-20b:
+        model: accounts/fireworks/models/gpt-oss-20b
+        tier: coding
+        input_price_per_million_usd: 0.07
+        output_price_per_million_usd: 0.30
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://docs.fireworks.ai/serverless/pricing
+        pricing_updated_at: '2026-06-27'
+        pricing_notes: Fireworks Serverless pricing lists GPT OSS 20B at $0.07/M input,
+          $0.035/M cached input, and $0.30/M output. Direct Fireworks OpenAI Chat smokes
+          passed on 2026-06-27 for text, streaming, max_tokens=1 cap, reasoning_effort
+          low/medium/high, auto tools with max_tokens >= 256, forced tool_choice, and
+          JSON schema structured outputs when requests include an explicit User-Agent.
+          Fireworks returns reasoning_content alongside visible content; use realistic
+          budgets for reasoning and tool-call acceptance. The model completed successfully
+          even though it was not listed by /models for the validated account. Do not claim
+          OpenAI Responses, Anthropic Messages, image, video, or audio support until those
+          exact skins pass direct and router-level smokes.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -1543,26 +1583,29 @@ models:
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b
-      weight: 18
+      weight: 17
     - provider: minimax
       model_ref: m3
-      weight: 30
+      weight: 25
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 2
     - provider: baseten
       model_ref: glm-5-2
-      weight: 6
+      weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
-      weight: 23
+      weight: 20
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
     - provider: crusoe
       model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
-      weight: 20
+      weight: 15
       input_modalities: [text]
+    - provider: fireworks
+      model_ref: gpt-oss-20b
+      weight: 15
     - provider: minimax
       model_ref: m3
       weight: 5
@@ -1659,6 +1702,11 @@ models:
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b
+  fireworks-gpt-oss-20b-smoke:
+    strategy: static
+    targets:
+    - provider: fireworks
+      model_ref: gpt-oss-20b
   baseten-gpt-oss-120b-claude-smoke:
     strategy: static
     targets:
@@ -1773,6 +1821,7 @@ callers:
   - warp-agent-smoke
   - baseten-glm52-smoke
   - baseten-gpt-oss-120b-smoke
+  - fireworks-gpt-oss-20b-smoke
   - baseten-gpt-oss-120b-claude-smoke
   - crusoe-smoke
   - crusoe-gemma-smoke

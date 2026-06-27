@@ -6,7 +6,7 @@ title: Add A Provider Or Model
 
 Use this process before adding a new upstream model to active routing. It applies to external providers, OpenAI-compatible aggregators, Baseten-style endpoints, and self-hosted vLLM/SGLang deployments.
 
-For hosted OpenAI-compatible services such as Crusoe Managed Inference, use the normal `openai-chat` provider path first. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Treat the public model list and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests.
+For hosted OpenAI-compatible services such as Crusoe Managed Inference or Fireworks AI, use the normal `openai-chat` provider path first. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Fireworks public docs checked on 2026-06-27 show `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint, `FIREWORKS_API_KEY` authentication, account-qualified model IDs, and Serverless per-token pricing. Treat public model lists and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests.
 
 Provider examples in these docs are validation patterns, not promises that a public provider, account, region, or model is active in every deployment. Revalidate provider docs, account entitlement, pricing, model IDs, tool behavior, modality support, streaming, usage reporting, and max-token cap behavior for the exact deployment before promotion.
 
@@ -41,6 +41,8 @@ Run direct upstream requests before involving the router:
 OpenRouter Nitro variants may not appear as separate model IDs in `/models`; validate the exact `:nitro` suffix with a real completion call.
 
 Reasoning-heavy models can return HTTP 200 with empty final content when the output budget is too small. Test both a tiny cap and a realistic budget before activating them.
+
+Some providers return reasoning text separately from visible assistant content. For example, Fireworks GPT OSS 20B returns `reasoning_content` on Chat Completions responses and accepts OpenAI Chat `reasoning_effort` values after direct validation. Only declare router `reasoning` metadata after the same reasoning request passes through the router for the exact provider, model, dialect, and skin.
 
 ## 3. Add Catalog Metadata
 
@@ -83,7 +85,7 @@ models:
       - { provider: crusoe, model_ref: llama-3-3-70b-instruct }
 ```
 
-Do not declare `tool_support`, `structured_outputs`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
+Do not declare `tool_support`, `structured_outputs`, `reasoning`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
 
 ## 5. Add Production Weight Conservatively
 

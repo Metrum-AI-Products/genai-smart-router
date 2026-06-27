@@ -1181,6 +1181,20 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "fireworks-gpt-oss-20b-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "fireworks" || group.Targets[0].Model != "accounts/fireworks/models/gpt-oss-20b" {
+				t.Fatalf("example config fireworks-gpt-oss-20b-smoke=%#v, want static Fireworks GPT OSS 20B target", group)
+			}
+			if !stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tools") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "tool_choice") ||
+				!stringSliceContains(group.Targets[0].ToolSupport.OpenAIChat, "structured_outputs") {
+				t.Fatalf("example config fireworks-gpt-oss-20b-smoke missing validated OpenAI Chat capability metadata: %#v", group.Targets[0].ToolSupport)
+			}
+			if !group.Targets[0].Reasoning.Supported || group.Targets[0].Reasoning.Control != "effort_enum" {
+				t.Fatalf("example config fireworks-gpt-oss-20b-smoke missing validated OpenAI Chat reasoning metadata: %#v", group.Targets[0].Reasoning)
+			}
+			continue
+		}
 		if name == "baseten-gpt-oss-120b-claude-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten_anthropic" || group.Targets[0].Model != "openai/gpt-oss-120b" {
 				t.Fatalf("example config baseten-gpt-oss-120b-claude-smoke=%#v, want static Baseten Anthropic GPT OSS 120B target", group)
@@ -1284,7 +1298,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -1377,6 +1391,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	crusoeGemmaWeight := 0
 	crusoeGLMWeight := 0
 	crusoeNemotronWeight := 0
+	fireworksGPTOSS20BWeight := 0
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
@@ -1445,26 +1460,29 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		if target.Provider == "crusoe" && target.Model == "nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B" {
 			crusoeNemotronWeight += target.Weight
 		}
+		if target.Provider == "fireworks" && target.Model == "accounts/fireworks/models/gpt-oss-20b" {
+			fireworksGPTOSS20BWeight += target.Weight
+		}
 	}
 	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, targets int
+		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, fireworksGPTOSS20B, targets int
 	}{
-		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 0, 8},
-		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 0, 8},
-		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 8},
-		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 8},
-		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 8},
-		"big-coder": {18, 30, 0, 23, 1, 2, 6, 0, 0, 20, 7},
+		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 0, 0, 8},
+		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 0, 0, 8},
+		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 8},
+		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 8},
+		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 8},
+		"big-coder": {17, 25, 0, 20, 1, 2, 5, 0, 0, 15, 15, 8},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma || crusoeGLMWeight != expect.crusoeGLM || crusoeNemotronWeight != expect.crusoeNemotron {
-		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d crusoe_glm=%d crusoe_nemotron=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, crusoeGLMWeight, crusoeNemotronWeight, totalWeight, normalTargets, expect)
+	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma || crusoeGLMWeight != expect.crusoeGLM || crusoeNemotronWeight != expect.crusoeNemotron || fireworksGPTOSS20BWeight != expect.fireworksGPTOSS20B {
+		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d crusoe_glm=%d crusoe_nemotron=%d fireworks_gpt_oss_20b=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, crusoeGLMWeight, crusoeNemotronWeight, fireworksGPTOSS20BWeight, totalWeight, normalTargets, expect)
 	}
 }
 

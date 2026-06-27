@@ -32,6 +32,44 @@ Last deployed: 2026-06-27
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-27 Fireworks GPT OSS 20B production config update
+
+Updated production config only; the running package/image remains `smart-llmrouter:09c9a16-linux-amd64`.
+
+Included changes:
+
+- Added Fireworks AI as an OpenAI Chat hosted provider with `accounts/fireworks/models/gpt-oss-20b`.
+- Added the Fireworks provider key to production `env.json` without committing or printing the key.
+- Added `fireworks-gpt-oss-20b-smoke` and exposed it to existing production callers that already had `big-coder` access.
+- Rebalanced `big-coder` ordinary-text weights to include Fireworks GPT OSS 20B at 15%: MiniMax-M3 25%, Kimi K2.7 Code 20%, Baseten GPT OSS 120B 17%, Crusoe Nemotron 3 Nano Omni Reasoning 15%, Fireworks GPT OSS 20B 15%, Baseten GLM 5%, Baseten Nemotron 2%, OpenAI GPT-5.4 Nano 1%.
+
+Production config backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.fireworks-20260627T032922Z
+/opt/smart-llmrouter/compose/config/env.json.bak.fireworks-20260627T032922Z
+```
+
+Validation:
+
+```text
+direct Fireworks accounts/fireworks/models/gpt-oss-20b: text, streaming, max_tokens=1, reasoning_effort low/medium/high, auto tool with max_tokens >= 256, forced tool_choice, and JSON schema structured-output smokes passed with explicit User-Agent
+local router-level fireworks-gpt-oss-20b-smoke: /readyz, /v1/models reasoning metadata, text, reasoning_effort, OpenAI Chat tool call, and structured output passed
+rtk go test ./cmd/... ./internal/...: passed, 340 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing docs-site moderate dependency advisories
+rtk make docs-qa: passed
+rtk make secret-check: passed
+production docker compose config: passed
+production /readyz after config update: 200, version 09c9a16, build_date 2026-06-27T03:00:21Z
+production /version after config update: 09c9a16, build_date 2026-06-27T03:00:21Z, go1.26.4 linux/amd64
+production config SHA-256 matched local config.production.yaml: 442e6339e81f8196899157c80c99b6107bc4f7b649dfa1a73a64ad4f5ca908c9
+production /v1/models included big-coder and fireworks-gpt-oss-20b-smoke for the production caller
+production fireworks-gpt-oss-20b-smoke text returned OK from accounts/fireworks/models/gpt-oss-20b
+production fireworks-gpt-oss-20b-smoke reasoning_effort low returned OK from accounts/fireworks/models/gpt-oss-20b
+production big-coder reasoning_effort low returned OK from an eligible reasoning target
+production Harbor focused big-coder run fireworks-big-coder-20260627T033245Z: Codex ok reward 1 errors 0; Claude Code ok reward 1 errors 0
+```
+
 ## 2026-06-27 Admin table sorting and Fireworks env placeholder refresh
 
 Deployed package/image `smart-llmrouter:09c9a16-linux-amd64` from source commit `09c9a16` after PR #155 merged and the Fireworks env-example placeholder commit landed.

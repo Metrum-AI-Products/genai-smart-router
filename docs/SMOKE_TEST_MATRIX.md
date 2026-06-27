@@ -18,7 +18,7 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 
 ## Hosted OpenAI-Compatible Provider Smokes
 
-Hosted OpenAI-compatible providers such as Crusoe Managed Inference use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.
+Hosted OpenAI-compatible providers such as Crusoe Managed Inference and Fireworks AI use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.
 
 For Crusoe, public docs checked on 2026-06-24 list `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and `meta-llama/Llama-3.3-70B-Instruct` as the quickstart model. Direct validation on 2026-06-24 required an explicit `User-Agent`; configure one under provider `headers`. Use `CRUSOE_API_KEY` only from a protected environment or ignored `env.json`; never print it. On 2026-06-25, `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B` was available in the account and passed direct text/cap smokes, but direct receipt-image smokes returned incorrect or non-merchant answers, so it must remain limited to a dedicated smoke group until OCR/workload validation passes.
 
@@ -50,6 +50,30 @@ curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
 
 Run OpenAI Chat tool, forced `tool_choice`, and `response_format` structured-output checks only for models intended to serve those request shapes. Add `tool_support.openai_chat` entries only after both direct Crusoe and router-level smokes pass for the exact model. Keep Crusoe out of Codex Responses and Claude Code Anthropic groups unless Crusoe exposes and passes those exact skins.
 
+For Fireworks, public docs checked on 2026-06-27 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing where GPT OSS 20B is $0.07/M input, $0.035/M cached input, and $0.30/M output. Use `FIREWORKS_API_KEY` only from a protected environment or ignored `env.json`; never print it. Direct validation on 2026-06-27 showed completions may require an explicit `User-Agent` from this environment. Configure one under provider `headers`. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, OpenAI Chat `reasoning_effort` low/medium/high, auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes even though it was not listed by `/models` for the validated account. Other account-visible Fireworks candidates also passed direct OpenAI Chat smokes, but they are separate activation candidates and should not be added to production without an explicit weight and workload-validation decision.
+
+Direct Fireworks checks before any active route:
+
+```bash
+curl -fsS https://api.fireworks.ai/inference/v1/models \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${FIREWORKS_API_KEY}"
+
+curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"max_tokens":64,"stream":false}'
+
+curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"reasoning_effort":"low","max_tokens":128,"stream":false}'
+```
+
+Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks out of OpenAI Responses, Anthropic Messages, and image/audio/video routes until those exact direct and router-level skins pass.
+
 For Crusoe VLM candidates, add an image smoke before broad routing:
 
 ```bash
@@ -70,7 +94,7 @@ Router-level checks for a dedicated Crusoe smoke group:
 - Streaming `/v1/chat/completions` returns valid SSE if the route will serve streaming callers.
 - Tool, forced-tool, and structured-output requests return `502 no-eligible-target` before an upstream attempt until validated capability metadata is present.
 - Bad-key, 401/403, 429, timeout, and 5xx responses are sanitized and produce stable caller-visible router errors.
-- Harbor e2e passes before Crusoe joins broad ordinary-text coding-agent traffic. Limited tool-only targets may be added after exact direct and router-level tool smokes when the caller dialect matches the upstream dialect and the existing fallback target set remains intact.
+- Harbor e2e passes before a hosted OpenAI-compatible provider joins broad ordinary-text coding-agent traffic. Limited tool-only targets may be added after exact direct and router-level tool smokes when the caller dialect matches the upstream dialect and the existing fallback target set remains intact.
 
 ## Tool Smokes
 
