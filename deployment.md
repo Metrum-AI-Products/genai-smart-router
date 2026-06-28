@@ -16,8 +16,8 @@ Last deployed: 2026-06-28
 
 ## Deployed Version
 
-- Router package/image version: `e982e43-linux-amd64`
-- Source commit: `e982e43`
+- Router package/image version: `11c1e01-linux-amd64`
+- Source commit: `11c1e01`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,50 @@ Last deployed: 2026-06-28
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-28 Enterprise docs production refresh
+
+Deployed package/image `smart-llmrouter:11c1e01-linux-amd64` from source commit `11c1e01` after upstream merged the enterprise documentation PRs #237, #238, #239, and #240.
+
+Included changes:
+
+- Added public evidence-first router quality evaluation docs.
+- Added public enterprise deployment pattern guidance.
+- Added public customer-controlled routing ownership guidance.
+- Added public enterprise FAQ and an internal customer scenario playbook.
+- Preserved live production config, state, logs, `.env`, and router token files during package replacement.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-11c1e01-20260628T211155Z
+```
+
+Deployment note:
+
+```text
+The first 11c1e01 startup detected legacy unsigned runtime state. The router was started once with
+SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION=1 so the persisted quota and license state files could be
+rewritten as signed integrity envelopes. The flag was then removed and the router was restarted successfully.
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 428 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing Docusaurus dependency advisories
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-11c1e01-docker-linux-amd64.tar.gz
+production docker compose config: passed during deployment and after removing the one-time migration flag
+production /readyz after deploy: 200, version 11c1e01, build_date 2026-06-28T21:07:27Z
+production /version after deploy: 11c1e01, build_date 2026-06-28T21:07:27Z, go1.26.4 linux/amd64, license compile mode required
+hosted docs /docs/evaluation/enterprise-faq returned 200 with version/build headers for 11c1e01
+production authenticated /v1/models returned allowed model groups
+production authenticated /v1/chat/completions smoke against high returned 200
+production /admin/reports/ returned 401 without admin auth, as expected
+production Harbor big-coder smoke with Claude Code passed: reward 1, errors 0, elapsed 187s
+production cleanup: removed uploaded package from /tmp
+```
 
 ## 2026-06-28 Admin reports and docs IA production refresh
 
