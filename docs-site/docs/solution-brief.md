@@ -18,7 +18,7 @@ GenAI Smart Router centralizes that complexity. Clients speak OpenAI-compatible 
 
 The operational model is outcome-oriented: define what each model group must accomplish, validate that outcome with Harbor or another objective harness, and then tune the provider/model mix for cost, latency, and reliability. A simple extraction task, a routine coding edit, a screenshot/OCR task, and a complex agentic refactor do not need the same model economics.
 
-When buyers ask how to know whether a routed group works for their workload, the answer is an evidence-first comparison against a fixed model or previous policy. See [Prove Router Quality](/docs/evaluation/prove-router-quality) for the public evaluation playbook.
+When buyers ask how to know whether a routed group works for their workload, the answer is an evidence-first comparison against a fixed model or previous policy. See [Enterprise FAQ](/docs/evaluation/enterprise-faq) for common buyer scenarios and [Prove Router Quality](/docs/evaluation/prove-router-quality) for the public evaluation playbook.
 
 ```mermaid
 flowchart LR
@@ -128,6 +128,6 @@ The evaluation-to-purchase flow is request evaluation, receive endpoint/token or
 - What deployment and TLS model is preferred?
 - Is the deployment hosted, private-cloud, or enterprise/on-prem with signed license enforcement?
 
-For a fuller rollout workflow, see [Enterprise Deployment Patterns](/docs/operations/deployment-patterns), [Deployment Readiness](/docs/evaluation/deployment-readiness), [Prove Router Quality](/docs/evaluation/prove-router-quality), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
+For a fuller rollout workflow, see [Enterprise FAQ](/docs/evaluation/enterprise-faq), [Enterprise Deployment Patterns](/docs/operations/deployment-patterns), [Deployment Readiness](/docs/evaluation/deployment-readiness), [Prove Router Quality](/docs/evaluation/prove-router-quality), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
 
 For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).

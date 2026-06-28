@@ -10,7 +10,7 @@ GenAI Smart Router can be deployed as a compiled Linux binary or as a Docker Com
   <p>For deployment planning, TLS setup, or managed rollout, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
-For package installation steps, see [Installation](../installation/). For enterprise topology choices such as central, per-environment, per-team, hierarchical, or private managed routers, see [Enterprise Deployment Patterns](./deployment-patterns). For release-to-release rollout sequencing, see [Upgrade Guide](../release-notes/upgrade-guide).
+For package installation steps, see [Installation](../installation/). For enterprise topology choices such as central, per-environment, per-team, hierarchical, or private managed routers, see [Enterprise Deployment Patterns](./deployment-patterns). For common buyer concerns and proof artifacts, see [Enterprise FAQ](../evaluation/enterprise-faq). For release-to-release rollout sequencing, see [Upgrade Guide](../release-notes/upgrade-guide).
 
 ## Deployment Packages
 

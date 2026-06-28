@@ -4,6 +4,8 @@ title: Evaluation And Case Studies
 
 # Evaluation And Case Studies
 
+Start with [Enterprise FAQ](./enterprise-faq) when the evaluation is driven by practical buyer concerns such as provider keys, private models, team autonomy, savings evidence, auditability, rollout risk, or client compatibility.
+
 Evaluate GenAI Smart Router by proving that each model group completes the intended workload while meeting cost, latency, governance, and operational evidence requirements. Do not treat one provider, one benchmark, or one historical model-group name as universally best.
 
 ## Evaluation Flow

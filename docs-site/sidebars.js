@@ -150,6 +150,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "evaluation/overview",
+        "evaluation/enterprise-faq",
         "evaluation/evaluate-smart-router",
         "evaluation/prove-router-quality",
         "evaluation/product-capabilities",
