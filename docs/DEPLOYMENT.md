@@ -22,6 +22,7 @@ config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
+docs/DEPLOYMENT_PATTERNS.md
 docs/DOCKER_DEPLOYMENT.md
 docs/DYNAMIC_SCORE_ROUTING.md
 docs/EXTERNAL_ROUTING_POLICY.md
@@ -72,7 +73,7 @@ Docker Compose packages are built separately:
 make package-docker
 ```
 
-Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host.
+Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host. Use `docs/DEPLOYMENT_PATTERNS.md` when choosing between evaluation-hosted, self-hosted central, per-environment, per-team, hierarchical/federated, and private managed topologies.
 
 ## Example Deployment Host
 

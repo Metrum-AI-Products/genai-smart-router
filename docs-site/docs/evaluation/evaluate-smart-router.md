@@ -4,7 +4,7 @@ title: Evaluate GenAI Smart Router
 
 # Evaluate GenAI Smart Router
 
-Use this checklist to evaluate GenAI Smart Router with a real deployment or a Metrum-managed evaluation instance. The goal is to verify client compatibility, governance, routing behavior, cost evidence, and operational trust signals before rollout.
+Use this checklist to evaluate GenAI Smart Router with a real deployment or a Metrum-managed evaluation instance. The goal is to verify client compatibility, governance, routing behavior, cost evidence, and operational trust signals before rollout. If the first question is where the router should run, start with [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
 <div class="contactBanner">
   <p>Need an evaluation environment or help choosing proof points? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>

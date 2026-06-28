@@ -37,6 +37,7 @@ config/env.example.json
 config/scripts/router.ts
 docs/README.md
 docs/DEPLOYMENT.md
+docs/DEPLOYMENT_PATTERNS.md
 docs/DOCKER_DEPLOYMENT.md
 docs/DYNAMIC_SCORE_ROUTING.md
 docs/EXTERNAL_ROUTING_POLICY.md

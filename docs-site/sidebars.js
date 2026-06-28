@@ -125,6 +125,7 @@ const sidebars = {
       label: "Operations",
       collapsed: false,
       items: [
+        "operations/deployment-patterns",
         "operations/observability",
         "operations/key-generation",
         "evaluation/deployment-readiness",

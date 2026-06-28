@@ -128,6 +128,6 @@ The evaluation-to-purchase flow is request evaluation, receive endpoint/token or
 - What deployment and TLS model is preferred?
 - Is the deployment hosted, private-cloud, or enterprise/on-prem with signed license enforcement?
 
-For a fuller rollout workflow, see [Deployment Readiness](/docs/evaluation/deployment-readiness), [Prove Router Quality](/docs/evaluation/prove-router-quality), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
+For a fuller rollout workflow, see [Enterprise Deployment Patterns](/docs/operations/deployment-patterns), [Deployment Readiness](/docs/evaluation/deployment-readiness), [Prove Router Quality](/docs/evaluation/prove-router-quality), [Model Group Quality Criteria](/docs/evaluation/model-group-quality), [Product Capabilities](/docs/evaluation/product-capabilities), [Cost Governance](/docs/evaluation/cost-governance), and [Competitive Landscape](/docs/evaluation/competitive-landscape).
 
 For a deployment discussion, email [contact@metrum.ai](mailto:contact@metrum.ai).
