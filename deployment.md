@@ -166,8 +166,8 @@ production docker compose config: passed during deployment
 production /readyz after deploy: 200, version 09c9a16, build_date 2026-06-27T03:00:21Z
 production /version after deploy: 09c9a16, build_date 2026-06-27T03:00:21Z, go1.26.4 linux/amd64
 hosted docs /docs/operations/admin-browser-reports returned 200 with x-smart-llmrouter-version 09c9a16
-unauthenticated /admin/reports/static/admin.js returned 401 as expected
-authenticated /admin/reports/static/admin.js returned 200 with x-smart-llmrouter-version 09c9a16 and included sort-button/aria-pressed code
+unauthenticated legacy admin static bundle request returned 401 as expected
+authenticated legacy admin static bundle request returned 200 with x-smart-llmrouter-version 09c9a16 and included sort-button/aria-pressed code
 authenticated /v1/models returned 20 allowed groups for the production admin token
 authenticated /v1/chat/completions high max_tokens 128 returned OK from google/gemma-4-26b-a4b-it:nitro
 router logs after deploy: no immediate panic/fatal/error lines in the checked tail

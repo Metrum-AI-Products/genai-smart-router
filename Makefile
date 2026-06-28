@@ -16,7 +16,7 @@ DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
 
-.PHONY: test secret-check docs-qa docs-build docs-dev docs-clean admin-build build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test secret-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test: secret-check
 	go test ./...
@@ -46,6 +46,10 @@ admin-build:
 	rm -rf internal/router/admindist/static/assets
 	npm ci --prefix internal/router/admindist/web
 	npm run build --prefix internal/router/admindist/web
+
+admin-e2e: admin-build
+	npx --prefix internal/router/admindist/web playwright install chromium
+	npm run e2e --prefix internal/router/admindist/web
 
 build: docs-build admin-build
 	go build -ldflags "$(LDFLAGS)" -o router ./cmd/router
