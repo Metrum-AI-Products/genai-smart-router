@@ -1,5 +1,7 @@
 package router
 
+import "encoding/json"
+
 type IRRequest struct {
 	Model          string            `json:"model"`
 	System         string            `json:"system,omitempty"`
@@ -68,6 +70,9 @@ type Usage struct {
 }
 
 func estimateTokens(r *IRRequest) int {
+	if r == nil {
+		return 1
+	}
 	chars := len(r.System) + len(r.Input)
 	for _, p := range r.InputParts {
 		chars += len(p.Text)
@@ -84,10 +89,40 @@ func estimateTokens(r *IRRequest) int {
 			}
 		}
 	}
+	chars += schemaPayloadChars(r)
 	if chars == 0 {
 		return 1
 	}
 	return chars/4 + 1
+}
+
+func schemaPayloadChars(r *IRRequest) int {
+	if r == nil {
+		return 0
+	}
+	chars := jsonValueLen(r.Tools)
+	if r.Raw != nil {
+		for _, key := range []string{"tools", "response_format", "text"} {
+			if key == "tools" && len(r.Tools) > 0 {
+				continue
+			}
+			if value, ok := r.Raw[key]; ok {
+				chars += jsonValueLen(value)
+			}
+		}
+	}
+	return chars
+}
+
+func jsonValueLen(v any) int {
+	if v == nil {
+		return 0
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return 0
+	}
+	return len(raw)
 }
 
 func reservationEstimate(r *IRRequest, dialect string) int {

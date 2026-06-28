@@ -105,7 +105,7 @@ Use `env.json` or a deployment secret manager for provider API keys on the deplo
 
 The response cache is process-local. Restarting the router clears cached responses. Cache hits are shared across caller tokens, return fresh router-owned response IDs, and do not consume provider credits or persisted caller token quota. Cache telemetry is durable because each usage row stores cache hit/miss/bypass, item count, occupied bytes, max bytes, and occupancy percentage.
 
-Token quotas are admitted with an in-flight reservation before upstream calls. The reservation is estimated input tokens plus the caller's requested output cap (`max_tokens`, `max_completion_tokens`, or `max_output_tokens`) or the router-injected Messages default cap when applicable. TPM, daily token, monthly token, and lifetime key checks include other in-flight reservations; request-count quotas remain request based. Completed requests persist actual upstream-reported usage, while failures, cancellations, and cache hits release or avoid token reservations.
+Token quotas are admitted with an in-flight reservation before upstream calls. The reservation is estimated input tokens, tool/schema payload size, structured-output schema payload size, and the caller's requested output cap (`max_tokens`, `max_completion_tokens`, or `max_output_tokens`) or the router-injected Messages default cap when applicable. TPM, daily token, monthly token, and lifetime key checks include other in-flight reservations; request-count quotas remain request based. Completed requests persist actual upstream-reported usage, while failures, cancellations, and cache hits release or avoid token reservations.
 
 ## Install
 

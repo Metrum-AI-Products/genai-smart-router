@@ -82,7 +82,7 @@ The router forwards schema payloads to the selected upstream. It does not valida
 
 ## Responses Retention Controls
 
-`force_store_false` is OpenAI Responses target metadata. When set, the router sends `store:false` upstream for that target, overriding caller `store:true`. Use it for providers whose Responses API stores conversation state by default when deployment policy requires no provider-side response storage. Validate that text, function tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before activating the target.
+The router controls provider-side retention fields. Same-dialect OpenAI Chat and Responses passthrough strips caller-supplied provider `metadata` and sends `store:false` upstream. `force_store_false` remains OpenAI Responses target metadata for translated Responses calls; when set, the router sends `store:false` upstream for that target. Validate that text, function tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before activating the target.
 
 ## Reasoning And Thinking
 

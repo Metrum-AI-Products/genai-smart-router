@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -2329,6 +2330,26 @@ func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	}
 }
 
+func TestAnthropicToolRequestsRequireExplicitToolSupport(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "anthropic", APIKey: "provider-key"}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "messages-no-tool-metadata"},
+		{Provider: "mock", Model: "messages-tools", ToolSupport: ToolSupport{AnthropicMessages: []string{"client_tools"}}},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := &IRRequest{Tools: []map[string]any{{"name": "echo", "input_schema": map[string]any{"type": "object"}}}, Messages: []IRMessage{{Role: "user", Content: "hi"}}}
+	got := svc.targetsForRequest(cfg.Models["default"].Targets, req, "anthropic")
+	if len(got) != 1 || got[0].Model != "messages-tools" {
+		t.Fatalf("anthropic tool eligibility=%#v, want only explicit tool target", got)
+	}
+}
+
 func TestOpenAIChatStructuredOutputPassthrough(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2746,7 +2767,7 @@ func TestAnthropicToolPassthroughPreservesToolsAndStreamsToolUse(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Provider["anthropic_passthrough"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
-	cfg.Models["claude-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "anthropic_passthrough", Model: "claude-tool"}}}
+	cfg.Models["claude-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "anthropic_passthrough", Model: "claude-tool", ToolSupport: ToolSupport{AnthropicMessages: []string{"client_tools"}}}}}
 	cfg.Callers[0].Allow = []string{"claude-tools-smoke"}
 	svc, err := New(cfg)
 	if err != nil {
@@ -3555,6 +3576,62 @@ func TestLifetimeAdmissionReservesRequestedMaxCompletionTokens(t *testing.T) {
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("upstream calls=%d, want 0", calls.Load())
+	}
+}
+
+func TestAdmissionCountsToolAndStructuredSchemas(t *testing.T) {
+	cases := []struct {
+		name    string
+		path    string
+		dialect string
+		body    string
+	}{
+		{
+			name:    "chat tools and response_format",
+			path:    "/v1/chat/completions",
+			dialect: "openai-chat",
+			body:    `{"model":"default","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"payload":{"type":"string","description":"` + strings.Repeat("schema ", 80) + `"}}}}}],"response_format":{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object","properties":{"payload":{"type":"string","description":"` + strings.Repeat("format ", 80) + `"}}}}}}`,
+		},
+		{
+			name:    "responses tools and text format",
+			path:    "/v1/responses",
+			dialect: "openai-responses",
+			body:    `{"model":"default","input":"hi","tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"payload":{"type":"string","description":"` + strings.Repeat("schema ", 80) + `"}}}}],"text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object","properties":{"payload":{"type":"string","description":"` + strings.Repeat("format ", 80) + `"}}}}}}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+			}))
+			defer upstream.Close()
+
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: tc.dialect, APIKey: "provider-key"}
+			cfg.Callers[0].Rate.TPM = 200
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "schema-model", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "structured_outputs"}, OpenAIResponses: []string{"function", "structured_outputs"}}}}}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusTooManyRequests {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "tpm-exceeded") {
+				t.Fatalf("body=%s, want tpm-exceeded", rr.Body.String())
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("upstream calls=%d, want 0", calls.Load())
+			}
+		})
 	}
 }
 
@@ -6872,6 +6949,7 @@ func TestAnthropicToolPassthroughAppliesDefaultThinking(t *testing.T) {
 		Model:           "kimi-k2.7-code",
 		ToolOnly:        true,
 		DefaultThinking: map[string]any{"type": "enabled", "budget_tokens": 512},
+		ToolSupport:     ToolSupport{AnthropicMessages: []string{"client_tools"}},
 	}}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "kimi-tools")
 	svc, err := New(cfg)
@@ -7121,6 +7199,94 @@ func TestOpenAIResponsesForceStoreFalseAppliesToTranslatedText(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatPassthroughStripsRetentionFields(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_retention",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   stringValue(upstreamBody["model"]),
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "OK"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["openai_chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["chat-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "openai_chat", Model: "chat-tool", ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "chat-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"chat-tools","messages":[{"role":"user","content":"hi"}],"store":true,"metadata":{"customer":"secret"},"tools":[{"type":"function","function":{"name":"echo","parameters":{"type":"object"}}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["store"] != false {
+		t.Fatalf("upstream store=%#v, want false", upstreamBody["store"])
+	}
+	if _, ok := upstreamBody["metadata"]; ok {
+		t.Fatalf("upstream metadata should be stripped: %#v", upstreamBody)
+	}
+}
+
+func TestOpenAIResponsesPassthroughStripsRetentionFields(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_retention",
+			"object": "response",
+			"status": "completed",
+			"model":  stringValue(upstreamBody["model"]),
+			"output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "responses", Model: "responses-tool-model", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"responses-tools","input":"hi","store":true,"metadata":{"customer":"secret"},"tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["store"] != false {
+		t.Fatalf("upstream store=%#v, want false", upstreamBody["store"])
+	}
+	if _, ok := upstreamBody["metadata"]; ok {
+		t.Fatalf("upstream metadata should be stripped: %#v", upstreamBody)
+	}
+}
+
 func TestResponsesToolPassthroughCanUseOpenRouterResponsesTarget(t *testing.T) {
 	var gotPath, gotAuth, gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -7328,6 +7494,311 @@ func TestUpstreamFailureReturnsActionableError(t *testing.T) {
 		!strings.Contains(rr.Body.String(), `"provider":"mock"`) ||
 		!strings.Contains(rr.Body.String(), `upstream status 503`) {
 		t.Fatalf("unexpected body=%s", rr.Body.String())
+	}
+}
+
+func TestUpstreamRedirectsAreNotFollowed(t *testing.T) {
+	for _, status := range []int{http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			var redirected atomic.Int64
+			second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				redirected.Add(1)
+				_, _ = io.ReadAll(r.Body)
+				writeJSON(w, http.StatusOK, map[string]any{"id": "should-not-happen"})
+			}))
+			defer second.Close()
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, second.URL+"/capture", status)
+			}))
+			defer upstream.Close()
+
+			svc := newTestService(t, upstream.URL, "provider-key")
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"secret prompt"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if redirected.Load() != 0 {
+				t.Fatalf("redirect target received %d requests", redirected.Load())
+			}
+		})
+	}
+}
+
+func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
+	var fallbackCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "bad-request-model":
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": "bad request"}})
+		case "fallback-model":
+			fallbackCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+		default:
+			t.Fatalf("unexpected model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "bad-request-model"},
+		{Provider: "mock", Model: "fallback-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"do not replay"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if fallbackCalls.Load() != 0 {
+		t.Fatalf("fallback calls=%d, want 0", fallbackCalls.Load())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_status" {
+		t.Fatalf("unexpected attempts: %#v", attempts)
+	}
+}
+
+func TestRetryableUpstream5xxStillFallsBack(t *testing.T) {
+	var fallbackCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "temporary-failure":
+			http.Error(w, "temporary", http.StatusBadGateway)
+		case "fallback-model":
+			fallbackCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "fallback_ok",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "fallback ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		default:
+			t.Fatalf("unexpected model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "temporary-failure"},
+		{Provider: "mock", Model: "fallback-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"can retry"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if fallbackCalls.Load() != 1 {
+		t.Fatalf("fallback calls=%d, want 1", fallbackCalls.Load())
+	}
+}
+
+func TestDecodeErrorStillFallsBack(t *testing.T) {
+	var fallbackCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "schema-drift-model":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":`))
+		case "fallback-model":
+			fallbackCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "decode_fallback_ok",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "fallback ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		default:
+			t.Fatalf("unexpected model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "schema-drift-model"},
+		{Provider: "mock", Model: "fallback-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"can decode fallback"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if fallbackCalls.Load() != 1 {
+		t.Fatalf("fallback calls=%d, want 1", fallbackCalls.Load())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Order("attempt_index ASC").Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 || attempts[0].ErrorClass != "decode_error" || !attempts[0].Retryable || attempts[0].FallbackReason != "decode_error" || !attempts[1].Selected {
+		t.Fatalf("unexpected attempts: %#v", attempts)
+	}
+}
+
+func TestSuccessfulUpstreamResponseSizeIsBounded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"huge","choices":[{"message":{"role":"assistant","content":"` + strings.Repeat("x", 512) + `"},"finish_reason":"stop"}]}`))
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.Upstream.MaxResponseBytes = 128
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "upstream response exceeded configured size limit") {
+		t.Fatalf("body=%s, want size limit error", rr.Body.String())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_response_too_large" || attempts[0].Retryable {
+		t.Fatalf("unexpected attempts: %#v", attempts)
+	}
+}
+
+func TestImageURLPrivateDestinationsBlockedBeforeUpstream(t *testing.T) {
+	for _, imageURL := range []string{
+		"http://127.0.0.1/image.png",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://10.0.0.1/image.png",
+		"http://100.64.0.1/image.png",
+		"http://198.18.0.1/image.png",
+		"http://192.0.2.1/image.png",
+		"http://240.0.0.1/image.png",
+	} {
+		t.Run(imageURL, func(t *testing.T) {
+			var calls atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+			}))
+			defer upstream.Close()
+
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}}}}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			body := `{"model":"default","messages":[{"role":"user","content":[{"type":"text","text":"read"},{"type":"image_url","image_url":{"url":"` + imageURL + `"}}]}]}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("upstream calls=%d, want 0", calls.Load())
+			}
+		})
+	}
+}
+
+func TestImageURLPublicAndDataURLsRemainAllowed(t *testing.T) {
+	for _, imageURL := range []string{
+		"https://93.184.216.34/image.png",
+		"data:image/png;base64,AA==",
+	} {
+		t.Run(imageURL, func(t *testing.T) {
+			var calls atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id": "vision_ok",
+					"choices": []map[string]any{{
+						"message":       map[string]any{"role": "assistant", "content": "ok"},
+						"finish_reason": "stop",
+					}},
+					"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+				})
+			}))
+			defer upstream.Close()
+
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}}}}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			body := `{"model":"default","messages":[{"role":"user","content":[{"type":"text","text":"read"},{"type":"image_url","image_url":{"url":"` + imageURL + `"}}]}]}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("upstream calls=%d, want 1", calls.Load())
+			}
+		})
 	}
 }
 

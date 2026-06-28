@@ -69,7 +69,7 @@ models:
 
 ## Validation By API Skin
 
-Validate each skin independently. A model that passes one request surface is not automatically compatible with another.
+Validate each skin independently. A model that passes one request surface is not automatically compatible with another. Tool-bearing traffic requires explicit `tool_support` metadata for the exact skin, including Anthropic Messages `client_tools`.
 
 | API Skin | Validate |
 | --- | --- |
@@ -82,6 +82,12 @@ Validate each skin independently. A model that passes one request surface is not
 | Max-token caps | Tiny cap requests such as `max_tokens: 1` where the caller contract depends on cap forwarding. |
 
 Do not claim tool support, image support, reasoning support, structured outputs, or max-token cap behavior from marketing copy alone. Use provider docs as discovery input, then promote only after direct upstream and router-level evidence passes for the exact provider, model ID, account, dialect, and skin.
+
+## Upstream Payload Controls
+
+The router owns provider-side persistence policy for OpenAI-compatible passthrough. Caller-supplied provider `metadata` is stripped and OpenAI Chat/Responses passthrough sends `store: false` upstream. Tool schemas and structured-output schemas still pass through to compatible targets, but their serialized size contributes to token-budget admission.
+
+Upstream HTTP redirects are not followed. A 301, 302, 303, 307, or 308 response is treated as an upstream failure instead of replaying the prompt, image, tool, or schema payload to the redirect target. Successful upstream response bodies are bounded by `server.upstream.max_response_bytes` before decode or synthesized streaming.
 
 ## Hosted And Private Upstreams
 

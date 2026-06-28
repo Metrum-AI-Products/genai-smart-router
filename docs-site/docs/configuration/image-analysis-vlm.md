@@ -99,6 +99,12 @@ Price alone is not sufficient for promotion. Validate the exact account, model I
 
 For capped requests, keep model quality and cap enforcement separate. A model can pass a realistic image-analysis smoke and still be unsafe for requests where the caller explicitly sets a small output cap such as OpenAI Chat `max_tokens` or `max_completion_tokens`, Responses `max_output_tokens`, or Anthropic Messages `max_tokens`. If a target returns far more output than requested, keep it cataloged but set `honors_max_tokens: false` on the catalog entry or target override; the router will skip it for capped requests and continue using other eligible VLM targets.
 
+## Image URL Egress Policy
+
+The router validates dereferenceable `http` and `https` image URLs before selecting an upstream target. By default, URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, unspecified, or other reserved addresses are rejected before any provider call. Inline `data:` URLs and base64 image blocks remain supported because they do not ask the upstream VLM to fetch a network URL.
+
+Keep `server.upstream.allow_private_image_urls: false` for hosted and ordinary private-upstream deployments. Set it to `true` only after a reviewed private VLM design intentionally permits server-side dereference of private image URLs and the deployment has network controls around metadata services and internal admin endpoints.
+
 ## OpenAI Chat Example
 
 ```bash

@@ -42,7 +42,7 @@ Request-shape filtering happens before the routing strategy runs. A weighted or 
 | --- | --- |
 | OpenAI Chat tools | `tool_support.openai_chat` includes the required tool mode. |
 | OpenAI Responses function tools | `tool_support.openai_responses` includes `function`. |
-| Anthropic Messages client tools | `tool_support.anthropic_messages` includes `client_tools`. |
+| Anthropic Messages client tools | `tool_support.anthropic_messages` includes `client_tools`. Empty tool metadata is not treated as tool-capable. |
 | OpenAI Chat structured outputs | `tool_support.openai_chat` includes `structured_outputs`. |
 | OpenAI Responses structured outputs | `tool_support.openai_responses` includes `structured_outputs`. |
 | Image input | `input_modalities` includes `image`. |
@@ -88,7 +88,7 @@ The operator can later add, remove, or reweight targets without changing the cli
 
 ## Fallback Behavior
 
-Fallback stays inside the requested group. The router can retry after retryable upstream failures such as transient network errors, selected upstream timeouts, or provider overload responses. Non-retryable caller errors, authentication errors, forbidden model groups, quota failures, and license failures stop before upstream routing.
+Fallback stays inside the requested group. The router can retry after retryable upstream failures such as transient network errors, selected upstream timeouts, provider overload responses, provider rate limits, provider quota or billing exhaustion, and 5xx responses. Ordinary non-retryable upstream 4xx responses, including malformed-request, policy, and authorization errors, stop fallback so the same caller payload is not replayed to another provider. Non-retryable caller errors, authentication errors, forbidden model groups, caller quota failures, and license failures stop before upstream routing.
 
 For deterministic fallback, configure a failover-style group or a strategy-specific fallback order. For weighted or dynamic groups, keep every fallback target validated for the same API skins and workload requirements that callers depend on.
 

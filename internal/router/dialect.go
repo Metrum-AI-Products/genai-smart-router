@@ -175,17 +175,12 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 }
 
 func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
-	body := map[string]any{}
-	for key, value := range req.Raw {
-		body[key] = value
-	}
+	body := providerPassthroughBody(req)
 	body["model"] = model
 	// The router's first tool-capable path is unary. Codex accepts non-streaming
 	// Responses payloads and this keeps usage accounting deterministic.
 	body["stream"] = false
-	if target.ForceStoreFalse {
-		body["store"] = false
-	}
+	body["store"] = false
 	if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {
 		return nil, err
 	}
@@ -193,14 +188,12 @@ func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]
 }
 
 func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
-	body := map[string]any{}
-	for key, value := range req.Raw {
-		body[key] = value
-	}
+	body := providerPassthroughBody(req)
 	body["model"] = model
 	// The router calls upstreams in unary mode and synthesizes downstream SSE.
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
+	body["store"] = false
 	applyOpenAIChatMaxTokens(body, req, true)
 	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
 		return nil, err
@@ -209,10 +202,7 @@ func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte,
 }
 
 func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
-	body := map[string]any{}
-	for key, value := range req.Raw {
-		body[key] = value
-	}
+	body := providerPassthroughBody(req)
 	body["model"] = model
 	body["stream"] = false
 	if len(req.Messages) > 0 {
@@ -245,6 +235,22 @@ func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]
 		return nil, err
 	}
 	return json.Marshal(body)
+}
+
+func providerPassthroughBody(req *IRRequest) map[string]any {
+	body := map[string]any{}
+	if req == nil {
+		return body
+	}
+	for key, value := range req.Raw {
+		switch strings.ToLower(key) {
+		case "store", "metadata":
+			continue
+		default:
+			body[key] = value
+		}
+	}
+	return body
 }
 
 func applyReasoningToOpenAIChat(body map[string]any, req *IRRequest, target Target) error {

@@ -172,8 +172,10 @@ type AdminSessionConfig struct {
 }
 
 type UpstreamConfig struct {
-	TimeoutMS               int `yaml:"timeout_ms"`
-	DefaultAttemptTimeoutMS int `yaml:"default_attempt_timeout_ms"`
+	TimeoutMS               int  `yaml:"timeout_ms"`
+	DefaultAttemptTimeoutMS int  `yaml:"default_attempt_timeout_ms"`
+	MaxResponseBytes        int  `yaml:"max_response_bytes"`
+	AllowPrivateImageURLs   bool `yaml:"allow_private_image_urls"`
 }
 
 type DiagnosticsConfig struct {
@@ -778,6 +780,9 @@ func (c *Config) setDefaults() {
 	if c.Server.Upstream.TimeoutMS == 0 {
 		c.Server.Upstream.TimeoutMS = int((10 * time.Minute).Milliseconds())
 	}
+	if c.Server.Upstream.MaxResponseBytes == 0 {
+		c.Server.Upstream.MaxResponseBytes = 32 << 20
+	}
 	if c.Server.Diagnostics.RetentionDays == 0 {
 		c.Server.Diagnostics.RetentionDays = 30
 	}
@@ -840,6 +845,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.Upstream.DefaultAttemptTimeoutMS < 0 {
 		return fmt.Errorf("server upstream default_attempt_timeout_ms cannot be negative")
+	}
+	if c.Server.Upstream.MaxResponseBytes < 0 {
+		return fmt.Errorf("server upstream max_response_bytes cannot be negative")
 	}
 	if c.Server.Diagnostics.RetentionDays < 0 {
 		return fmt.Errorf("server diagnostics retention_days cannot be negative")

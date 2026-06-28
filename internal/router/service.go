@@ -142,7 +142,7 @@ func New(cfg *Config) (*Service, error) {
 	s := &Service{
 		cfg:          cfg,
 		mux:          http.NewServeMux(),
-		httpClient:   &http.Client{Timeout: time.Duration(cfg.Server.Upstream.TimeoutMS) * time.Millisecond},
+		httpClient:   newUpstreamHTTPClient(cfg.Server.Upstream),
 		callersBySum: map[string]*callerRuntime{},
 		adminBasic:   map[string]adminBasicRuntime{},
 		adminSession: newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
@@ -207,6 +207,15 @@ func New(cfg *Config) (*Service, error) {
 	s.routes()
 	s.license.start()
 	return s, nil
+}
+
+func newUpstreamHTTPClient(cfg UpstreamConfig) *http.Client {
+	return &http.Client{
+		Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 func (s *Service) Handler() http.Handler {
@@ -1207,6 +1216,10 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 		if classified.Canceled {
 			break
 		}
+		if !classified.Retryable {
+			rc.trace("fallback_stopped", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, false, attempt.DurationMS)
+			break
+		}
 		backoffMS := 100 * (1 << i)
 		if backoffMS > 1000 {
 			backoffMS = 1000
@@ -1242,6 +1255,11 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	passthrough := requestShapePassthrough(callerDialect, outDialect, req)
 	var upReqBody []byte
 	var err error
+	if err := s.validateImageURLsForUpstream(ctx, req); err != nil {
+		attempt.ErrorClass = "image_url_forbidden"
+		attempt.ErrorMessage = err.Error()
+		return nil, attempt, upstreamError{Class: "image_url_forbidden", Message: err.Error(), Retryable: false, Err: err}
+	}
 	if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
 	} else {
@@ -1322,13 +1340,21 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
 	}
-	raw, err := io.ReadAll(httpResp.Body)
+	raw, oversized, err := s.readUpstreamSuccessBody(httpResp.Body)
 	if err != nil {
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ErrorClass = "read_error"
 		attempt.ErrorMessage = err.Error()
 		attempt.Retryable = true
 		return nil, attempt, upstreamError{Class: "read_error", Message: err.Error(), Retryable: true, Err: err}
+	}
+	if oversized {
+		attempt.DurationMS = durationMillis(time.Since(start))
+		attempt.ResponseBytes = int64(len(raw))
+		attempt.ErrorClass = "upstream_response_too_large"
+		attempt.ErrorMessage = "upstream response exceeded configured size limit"
+		attempt.Retryable = false
+		return nil, attempt, upstreamError{Class: "upstream_response_too_large", Message: "upstream response exceeded configured size limit", Retryable: false, ResponseLen: attempt.ResponseBytes}
 	}
 	attempt.DurationMS = durationMillis(time.Since(start))
 	attempt.ResponseBytes = int64(len(raw))
@@ -1337,7 +1363,8 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		if err != nil {
 			attempt.ErrorClass = "decode_error"
 			attempt.ErrorMessage = err.Error()
-			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Err: err}
+			attempt.Retryable = true
+			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
 		return resp, attempt, nil
 	}
@@ -1345,9 +1372,25 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	if err != nil {
 		attempt.ErrorClass = "decode_error"
 		attempt.ErrorMessage = err.Error()
-		return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Err: err}
+		attempt.Retryable = true
+		return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 	}
 	return resp, attempt, nil
+}
+
+func (s *Service) readUpstreamSuccessBody(body io.Reader) ([]byte, bool, error) {
+	limit := int64(32 << 20)
+	if s != nil && s.cfg != nil && s.cfg.Server.Upstream.MaxResponseBytes > 0 {
+		limit = int64(s.cfg.Server.Upstream.MaxResponseBytes)
+	}
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(raw)) > limit {
+		return raw[:limit], true, nil
+	}
+	return raw, false, nil
 }
 
 func (s *Service) attemptTimeoutMS(groupName string, target Target) int {
@@ -1366,6 +1409,136 @@ func endpointHost(baseURL string) string {
 		return ""
 	}
 	return parsed.Host
+}
+
+func (s *Service) validateImageURLsForUpstream(ctx context.Context, req *IRRequest) error {
+	if s == nil || s.cfg == nil || s.cfg.Server.Upstream.AllowPrivateImageURLs || req == nil {
+		return nil
+	}
+	for _, imageURL := range requestImageURLs(req) {
+		if err := validateImageURL(ctx, imageURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requestImageURLs(req *IRRequest) []string {
+	if req == nil {
+		return nil
+	}
+	var out []string
+	collect := func(parts []IRContentPart) {
+		for _, part := range parts {
+			if part.Type == "image" && strings.TrimSpace(part.ImageURL) != "" {
+				out = append(out, strings.TrimSpace(part.ImageURL))
+			}
+		}
+	}
+	collect(req.InputParts)
+	for _, msg := range req.Messages {
+		collect(msg.Parts)
+	}
+	return out
+}
+
+func validateImageURL(ctx context.Context, raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("image URL is invalid")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "data":
+		return nil
+	case "http", "https":
+	default:
+		return fmt.Errorf("image URL scheme is not allowed")
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("image URL host is required")
+	}
+	if strings.EqualFold(host, "localhost") {
+		return fmt.Errorf("image URL host is not allowed")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if privateImageIP(ip) {
+			return fmt.Errorf("image URL host is not allowed")
+		}
+		return nil
+	}
+	resolveCtx := ctx
+	cancel := func() {}
+	if _, ok := ctx.Deadline(); !ok {
+		resolveCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
+	}
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
+	if err != nil || len(addrs) == 0 {
+		return fmt.Errorf("image URL host could not be resolved")
+	}
+	for _, addr := range addrs {
+		if privateImageIP(addr.IP) {
+			return fmt.Errorf("image URL host resolves to a private or reserved address")
+		}
+	}
+	return nil
+}
+
+func privateImageIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if !ip.IsGlobalUnicast() {
+		return true
+	}
+	for _, network := range reservedImageURLNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+var reservedImageURLNetworks = mustParseCIDRs([]string{
+	"0.0.0.0/8",
+	"10.0.0.0/8",
+	"100.64.0.0/10",
+	"127.0.0.0/8",
+	"169.254.0.0/16",
+	"172.16.0.0/12",
+	"192.0.0.0/24",
+	"192.0.2.0/24",
+	"192.168.0.0/16",
+	"198.18.0.0/15",
+	"198.51.100.0/24",
+	"203.0.113.0/24",
+	"224.0.0.0/4",
+	"240.0.0.0/4",
+	"255.255.255.255/32",
+	"::/128",
+	"::1/128",
+	"64:ff9b::/96",
+	"64:ff9b:1::/48",
+	"100::/64",
+	"2001::/23",
+	"2001:db8::/32",
+	"2002::/16",
+	"fc00::/7",
+	"fe80::/10",
+	"ff00::/8",
+})
+
+func mustParseCIDRs(cidrs []string) []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, network)
+	}
+	return out
 }
 
 func (s *Service) diagnosticMaxErrorBytes() int {
@@ -1584,9 +1757,6 @@ func targetSupportsTools(target Target, dialect string) bool {
 	case "openai-responses":
 		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
 	case "anthropic":
-		if toolSupportEmpty(target.ToolSupport) {
-			return true
-		}
 		return supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
 	case "openai", "openai-chat":
 		if toolSupportEmpty(target.ToolSupport) {
