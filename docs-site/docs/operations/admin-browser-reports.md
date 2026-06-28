@@ -8,6 +8,8 @@ Admin browser reports are an authenticated operational surface for usage, perfor
 
 For commercial evaluations, this surface is a proof point as well as an operations tool. It lets evaluators inspect whether the router actually reduced cost, preserved workload outcomes, isolated access, explained provider/model choices, and produced enough evidence for chargeback, quota tuning, support triage, and security review.
 
+For health checks, metrics, log dimensions, and alerting, see [Observability](./observability). For incident triage by request ID, see [Request Troubleshooting](../troubleshooting/requests).
+
 ## Access Model
 
 Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.

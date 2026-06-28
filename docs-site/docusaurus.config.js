@@ -81,14 +81,16 @@ const config = {
             items: [
               { label: "Overview", to: "/overview" },
               { label: "Concepts", to: "/concepts" },
-              { label: "Configuration", to: "/configuration/router-config" },
-              { label: "Operations", to: "/operations/key-generation" },
+              { label: "Installation", to: "/installation/" },
+              { label: "Licensing", to: "/licensing/" },
+              { label: "Routing", to: "/routing/overview" },
+              { label: "Providers And Models", to: "/providers-models/overview" },
             ],
           },
           {
             title: "Evaluate",
             items: [
-              { label: "Evaluation Guide", to: "/evaluation/evaluate-smart-router" },
+              { label: "Evaluation Guide", to: "/evaluation/overview" },
               { label: "Security And Trust", to: "/evaluation/security-and-trust" },
               { label: "Solution Brief", to: "/solution-brief" },
               { label: "Harbor Case Study", to: "/evaluation/harbor-case-study" },

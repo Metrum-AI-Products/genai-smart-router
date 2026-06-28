@@ -1,0 +1,60 @@
+---
+title: Renewal And Top-Up
+---
+
+# Renewal And Top-Up
+
+License renewal, replacement, and volume top-up use the same customer-side workflow: install the newly issued `license.json`, then let the router recheck it.
+
+## When To Replace A License
+
+Replace the runtime license when:
+
+- the current license is near expiry;
+- Metrum issues an evaluation or pilot extension;
+- the commercial plan changes;
+- a volume top-up is purchased;
+- instance scope changes;
+- an issued license is corrected or reissued;
+- a verification-key rotation requires a new license or release package.
+
+## Replacement Workflow
+
+1. Receive the new Metrum-issued `license.json` through the approved delivery channel.
+2. Back up the current runtime license according to the deployment's secret-handling policy.
+3. Replace the file at `server.license.path` atomically where possible.
+4. Restart the router or wait for `server.license.recheck_interval`.
+5. Verify readiness, safe license status, metrics, and one caller smoke.
+
+Example validation:
+
+```bash
+export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_TOKEN="replace-with-router-token"
+
+curl -fsS "$ROUTER_BASE_URL/readyz"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/license/status"
+
+curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
+  "$ROUTER_BASE_URL/v1/models"
+```
+
+## Grace Behavior
+
+`grace_period_on_validation_error` is for transient validation problems after a previously valid license was observed. It is not a renewal mechanism and does not permanently permit expired licenses, exhausted volume, unlicensed features, or deployment limits.
+
+If a deployment enters grace, treat it as an operational incident:
+
+- confirm the runtime file is readable;
+- check system time;
+- review the safe license reason;
+- install the corrected license if one was issued;
+- confirm `/readyz` returns success after replacement.
+
+## Rollback
+
+Rollback is restoring the previous valid runtime license file and restarting the router or waiting for the next recheck interval. Roll back only to a license that is still valid for the deployment and commercial scope.
+
+Do not work around a failed license by disabling enforcement in runtime YAML. Normal release builds require license enforcement.

@@ -2,7 +2,7 @@
 
 Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
-For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there.
+For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
 Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
@@ -79,7 +79,7 @@ docs/solution-brief.md
 caddy/Caddyfile
 ```
 
-Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. Private production runbooks, private host details, SSH paths, live compose config paths, and raw token/provider-key patterns are blocked by package validation.
+Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. `docs/DOCS_MAINTENANCE.md` is an internal source-checkout alignment runbook and is intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, and raw token/provider-key patterns are blocked by package validation.
 
 The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/admin/*`, `/healthz`, and `/readyz` keep precedence. Authenticated admin report assets, when enabled, are embedded separately under `/admin/reports/` and are not part of public Docusaurus docs.
 
