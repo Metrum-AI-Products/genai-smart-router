@@ -46,6 +46,8 @@ func main() {
 		err = renew(os.Args[2:])
 	case "top-up":
 		err = topUp(os.Args[2:])
+	case "revocation":
+		err = revocationCommand(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -57,7 +59,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: router-license generate-keypair|sign|verify|inspect|safe-summary|template list|template render|issue|validate|renew|top-up")
+	fmt.Fprintln(os.Stderr, "usage: router-license generate-keypair|sign|verify|inspect|safe-summary|template list|template render|issue|validate|renew|top-up|revocation create|revocation validate|revocation safe-summary")
 }
 
 func generateKeypair(args []string) error {
@@ -167,6 +169,188 @@ func safeSummary(args []string) error {
 	if !strings.HasSuffix(string(out), "\n") {
 		fmt.Println()
 	}
+	return nil
+}
+
+func revocationCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("revocation subcommand is required")
+	}
+	switch args[0] {
+	case "create":
+		return revocationCreate(args[1:])
+	case "validate":
+		return revocationValidate(args[1:])
+	case "safe-summary":
+		return revocationSafeSummary(args[1:])
+	default:
+		return fmt.Errorf("unknown revocation subcommand %q", args[0])
+	}
+}
+
+func revocationCreate(args []string) error {
+	fs := flag.NewFlagSet("revocation create", flag.ExitOnError)
+	setID := fs.String("set-id", "", "revocation set id")
+	epoch := fs.Int64("epoch", 0, "monotonic revocation epoch")
+	licenseIDs := fs.String("license-id", "", "comma-separated license ids")
+	status := fs.String("status", "revoked", "entry status: revoked, suspended, or superseded")
+	reason := fs.String("reason", "", "safe revocation reason")
+	supersededBy := fs.String("superseded-by", "", "replacement license id for superseded entries")
+	effectiveAt := fs.String("effective-at", "", "entry effective time RFC3339; defaults to now")
+	notBefore := fs.String("not-before", "", "bundle not-before RFC3339; defaults to now")
+	expiresAt := fs.String("expires-at", "", "bundle expiry RFC3339; optional")
+	keyPath := fs.String("key", "", "base64 Ed25519 private key")
+	keyID := fs.String("key-id", "", "signing key id")
+	outPath := fs.String("out", "", "signed revocation bundle output")
+	publicKeyPath := fs.String("public-key", "", "optional public key for verification")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *setID == "" || *epoch <= 0 || *licenseIDs == "" || *keyPath == "" || *keyID == "" || *outPath == "" {
+		return fmt.Errorf("set-id, epoch, license-id, key, key-id, and out are required")
+	}
+	entryStatus := strings.ToLower(strings.TrimSpace(*status))
+	switch entryStatus {
+	case "revoked", "suspended", "superseded":
+	default:
+		return fmt.Errorf("unsupported revocation status %q", *status)
+	}
+	now := time.Now().UTC()
+	nb, err := parseOptionalTime(*notBefore, now)
+	if err != nil {
+		return err
+	}
+	exp := time.Time{}
+	if strings.TrimSpace(*expiresAt) != "" {
+		exp, err = parseRequiredTime(*expiresAt)
+		if err != nil {
+			return err
+		}
+	}
+	eff, err := parseOptionalTime(*effectiveAt, now)
+	if err != nil {
+		return err
+	}
+	entries := make([]router.LicenseRevocationEntry, 0)
+	for _, id := range strings.Split(*licenseIDs, ",") {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		entries = append(entries, router.LicenseRevocationEntry{
+			LicenseID:    id,
+			Status:       entryStatus,
+			Reason:       strings.TrimSpace(*reason),
+			EffectiveAt:  eff,
+			SupersededBy: strings.TrimSpace(*supersededBy),
+		})
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("at least one license-id is required")
+	}
+	payload := router.LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          router.LicenseIssuer,
+		Product:         router.LicenseProduct,
+		RevocationSetID: strings.TrimSpace(*setID),
+		RevocationEpoch: *epoch,
+		IssuedAt:        now,
+		NotBefore:       nb,
+		ExpiresAt:       exp,
+		KeyID:           strings.TrimSpace(*keyID),
+		Entries:         entries,
+	}
+	priv, err := readPrivateKey(*keyPath)
+	if err != nil {
+		return err
+	}
+	env, err := router.SignLicenseRevocationPayload(payload, priv)
+	if err != nil {
+		return err
+	}
+	raw, err := router.MarshalLicenseRevocationEnvelope(env)
+	if err != nil {
+		return err
+	}
+	if err := writeFile0600(*outPath, append(raw, '\n')); err != nil {
+		return err
+	}
+	if *publicKeyPath != "" {
+		pub, err := readPublicKey(*publicKeyPath)
+		if err != nil {
+			return err
+		}
+		if err := router.VerifyLicenseRevocationEnvelope(env, []router.LicensePublicKey{{KeyID: *keyID, Algorithm: "ed25519", PublicKey: pub}}, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("created revocation set %s\n", payload.RevocationSetID)
+	return nil
+}
+
+func revocationValidate(args []string) error {
+	fs := flag.NewFlagSet("revocation validate", flag.ExitOnError)
+	bundlePath := fs.String("bundle", "", "signed revocation bundle")
+	publicKeyPath := fs.String("public-key", "", "base64 Ed25519 public key")
+	keyID := fs.String("key-id", "", "public key id; defaults to bundle payload key_id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *bundlePath == "" || *publicKeyPath == "" {
+		return fmt.Errorf("bundle and public-key are required")
+	}
+	env, err := readRevocationEnvelope(*bundlePath)
+	if err != nil {
+		return err
+	}
+	pub, err := readPublicKey(*publicKeyPath)
+	if err != nil {
+		return err
+	}
+	id := strings.TrimSpace(*keyID)
+	if id == "" {
+		id = env.Payload.KeyID
+	}
+	if err := router.VerifyLicenseRevocationEnvelope(env, []router.LicensePublicKey{{KeyID: id, Algorithm: "ed25519", PublicKey: pub}}, time.Now().UTC()); err != nil {
+		return err
+	}
+	fmt.Println("valid")
+	return nil
+}
+
+func revocationSafeSummary(args []string) error {
+	fs := flag.NewFlagSet("revocation safe-summary", flag.ExitOnError)
+	bundlePath := fs.String("bundle", "", "signed revocation bundle")
+	outPath := fs.String("out", "", "optional output path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *bundlePath == "" {
+		return fmt.Errorf("bundle is required")
+	}
+	env, err := readRevocationEnvelope(*bundlePath)
+	if err != nil {
+		return err
+	}
+	summary := map[string]any{
+		"schema_version":    env.Payload.SchemaVersion,
+		"product":           env.Payload.Product,
+		"issuer":            env.Payload.Issuer,
+		"revocation_set_id": env.Payload.RevocationSetID,
+		"revocation_epoch":  env.Payload.RevocationEpoch,
+		"not_before":        env.Payload.NotBefore.UTC().Format(time.RFC3339),
+		"expires_at":        formatOptionalCLIUTC(env.Payload.ExpiresAt),
+		"key_id":            env.Payload.KeyID,
+		"entries":           safeRevocationEntries(env.Payload.Entries),
+	}
+	raw, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return err
+	}
+	if *outPath != "" {
+		return writeFile0600(*outPath, append(raw, '\n'))
+	}
+	fmt.Println(string(raw))
 	return nil
 }
 
@@ -552,6 +736,14 @@ func readEnvelope(path string) (router.LicenseEnvelope, error) {
 	return router.ParseLicenseEnvelope(raw)
 }
 
+func readRevocationEnvelope(path string) (router.LicenseRevocationEnvelope, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return router.LicenseRevocationEnvelope{}, err
+	}
+	return router.ParseLicenseRevocationEnvelope(raw)
+}
+
 func renderSafeSummary(payload router.LicensePayload, format string) ([]byte, error) {
 	summary := router.SafeLicenseSummary(payload)
 	switch strings.ToLower(strings.TrimSpace(format)) {
@@ -566,6 +758,30 @@ func renderSafeSummary(payload router.LicensePayload, format string) ([]byte, er
 	default:
 		return nil, fmt.Errorf("unsupported summary format %q", format)
 	}
+}
+
+func safeRevocationEntries(entries []router.LicenseRevocationEntry) []map[string]any {
+	out := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		item := map[string]any{
+			"license_id":   entry.LicenseID,
+			"status":       entry.Status,
+			"reason":       entry.Reason,
+			"effective_at": formatOptionalCLIUTC(entry.EffectiveAt),
+		}
+		if entry.SupersededBy != "" {
+			item["superseded_by"] = entry.SupersededBy
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func formatOptionalCLIUTC(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func operatorChecklist(payload router.LicensePayload) string {

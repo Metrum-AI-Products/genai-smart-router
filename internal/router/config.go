@@ -50,14 +50,25 @@ type ServerConfig struct {
 }
 
 type LicenseConfig struct {
-	Enabled                      bool          `yaml:"enabled" json:"enabled"`
-	Path                         string        `yaml:"path" json:"path"`
-	StatePath                    string        `yaml:"state_path" json:"statePath"`
-	InstanceFingerprint          string        `yaml:"instance_fingerprint" json:"instanceFingerprint"`
-	RecheckInterval              time.Duration `yaml:"recheck_interval" json:"recheckInterval"`
-	GracePeriodOnValidationError time.Duration `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
-	FailOpenForDev               bool          `yaml:"fail_open_for_dev" json:"failOpenForDev"`
+	Enabled                      bool                    `yaml:"enabled" json:"enabled"`
+	Path                         string                  `yaml:"path" json:"path"`
+	StatePath                    string                  `yaml:"state_path" json:"statePath"`
+	Revocation                   LicenseRevocationConfig `yaml:"revocation" json:"revocation"`
+	InstanceFingerprint          string                  `yaml:"instance_fingerprint" json:"instanceFingerprint"`
+	InstanceFingerprintFile      string                  `yaml:"instance_fingerprint_file" json:"instanceFingerprintFile"`
+	InstanceFingerprintEnv       string                  `yaml:"instance_fingerprint_env" json:"instanceFingerprintEnv"`
+	RecheckInterval              time.Duration           `yaml:"recheck_interval" json:"recheckInterval"`
+	GracePeriodOnValidationError time.Duration           `yaml:"grace_period_on_validation_error" json:"gracePeriodOnValidationError"`
+	FailOpenForDev               bool                    `yaml:"fail_open_for_dev" json:"failOpenForDev"`
 	enabledSet                   bool
+}
+
+type LicenseRevocationConfig struct {
+	Mode                    string        `yaml:"mode" json:"mode"`
+	Path                    string        `yaml:"path" json:"path"`
+	RecheckInterval         time.Duration `yaml:"recheck_interval" json:"recheckInterval"`
+	RequireCurrentBundle    bool          `yaml:"require_current_bundle" json:"requireCurrentBundle"`
+	FailClosedOnBundleError bool          `yaml:"fail_closed_on_bundle_error" json:"failClosedOnBundleError"`
 }
 
 func (c *LicenseConfig) UnmarshalYAML(value *yaml.Node) error {

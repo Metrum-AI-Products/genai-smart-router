@@ -351,6 +351,271 @@ func TestLicenseInstanceBindingUsesRuntimeFingerprint(t *testing.T) {
 	if err := validateLicensePayloadForConfig(payload, cfg, now); err == nil || !strings.Contains(err.Error(), "instance fingerprint") {
 		t.Fatalf("legacy single fingerprint mismatch err=%v", err)
 	}
+
+	payload = testLicensePayload(now, []string{LicenseFeatureRouting})
+	payload.Deployment.DeploymentID = "dep-prod-a"
+	payload.Deployment.BindingVersion = 1
+	payload.Deployment.InstanceFingerprintRequired = true
+	cfg.Server.License.InstanceFingerprint = "secret-runtime-fingerprint"
+	hash := licenseInstanceFingerprintHash(payload, cfg.Server.License.InstanceFingerprint)
+	payload.Deployment.AllowedInstanceFingerprints = []string{hash}
+	matched, prefix, err := validateLicensedInstance(payload, cfg.Server.License)
+	if err != nil || !matched || !strings.HasPrefix(hash, prefix) {
+		t.Fatalf("hashed binding matched=%v prefix=%q err=%v hash=%q", matched, prefix, err, hash)
+	}
+	if err := validateLicensePayloadForConfig(payload, cfg, now); err != nil {
+		t.Fatalf("hashed runtime fingerprint rejected: %v", err)
+	}
+	cfg.Server.License.InstanceFingerprint = "wrong-runtime-fingerprint"
+	if err := validateLicensePayloadForConfig(payload, cfg, now); err == nil || !strings.Contains(err.Error(), "instance fingerprint") {
+		t.Fatalf("hashed mismatch err=%v", err)
+	}
+}
+
+func TestLicenseInstanceBindingSourcesAndSafeStatus(t *testing.T) {
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	payload.Deployment.DeploymentID = "dep-prod-a"
+	payload.Deployment.BindingVersion = 1
+	payload.Deployment.InstanceFingerprintRequired = true
+	rawFingerprint := "file-runtime-fingerprint"
+	payload.Deployment.AllowedInstanceFingerprints = []string{licenseInstanceFingerprintHash(payload, rawFingerprint)}
+
+	dir := t.TempDir()
+	fingerprintPath := filepath.Join(dir, "fingerprint")
+	if err := os.WriteFile(fingerprintPath, []byte(rawFingerprint+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := licenseTestConfig(dir)
+	cfg.Server.License.InstanceFingerprintFile = fingerprintPath
+	if err := validateLicensePayloadForConfig(payload, cfg, now); err != nil {
+		t.Fatalf("file fingerprint rejected: %v", err)
+	}
+	cfg.Server.License.InstanceFingerprint = rawFingerprint
+	if err := validateLicensePayloadForConfig(payload, cfg, now); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("ambiguous source err=%v", err)
+	}
+
+	st := licenseStatus{Enabled: true, Valid: true, Ready: true, Code: "license-valid", Deployment: payload.Deployment, BindingMatched: true, FingerprintHashPrefix: "sha256:abcdef123456"}
+	safe := safeLicenseStatusResponse(st)
+	raw, _ := json.Marshal(safe)
+	if strings.Contains(string(raw), rawFingerprint) {
+		t.Fatalf("safe status leaked raw fingerprint: %s", raw)
+	}
+	if safe["instance_binding_matched"] != true || safe["instance_fingerprint_hash_prefix"] == "" {
+		t.Fatalf("safe status missing binding fields: %#v", safe)
+	}
+}
+
+func TestLicenseRevocationBundleBlocksWithoutGrace(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	licensePath := writeTestLicense(t, dir, priv, payload)
+	revocationPath := filepath.Join(dir, "revocations.json")
+	cfg := licenseTestConfig(dir)
+	cfg.Server.License = LicenseConfig{
+		Enabled:                      true,
+		Path:                         licensePath,
+		StatePath:                    filepath.Join(dir, "license-state.json"),
+		RecheckInterval:              time.Hour,
+		GracePeriodOnValidationError: time.Hour,
+		Revocation: LicenseRevocationConfig{
+			Mode:                    "file",
+			Path:                    revocationPath,
+			RequireCurrentBundle:    true,
+			FailClosedOnBundleError: true,
+		},
+	}
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-001",
+		RevocationEpoch: 1,
+		IssuedAt:        now.Add(-time.Minute),
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries:         nil,
+	})
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: payload.KeyID, Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now }
+	m.reload()
+	if st := m.statusSnapshot(); st.Code != "license-valid" || st.RevocationStatus != "clear" || st.RevocationEpoch != 1 {
+		t.Fatalf("initial status=%#v", st)
+	}
+
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-002",
+		RevocationEpoch: 2,
+		IssuedAt:        now,
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries: []LicenseRevocationEntry{{
+			LicenseID:   payload.LicenseID,
+			Status:      "revoked",
+			Reason:      "non-payment",
+			EffectiveAt: now.Add(-time.Second),
+		}},
+	})
+	m.reload()
+	st := m.statusSnapshot()
+	if st.Code != "license-revoked" || st.Ready || st.GraceActive {
+		t.Fatalf("revoked status=%#v, want hard block without grace", st)
+	}
+	if httpStatusForLicenseCode(st.Code) != http.StatusForbidden {
+		t.Fatalf("revoked HTTP status=%d", httpStatusForLicenseCode(st.Code))
+	}
+
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-older-clear",
+		RevocationEpoch: 1,
+		IssuedAt:        now,
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries:         nil,
+	})
+	m.reload()
+	st = m.statusSnapshot()
+	if st.Code != "license-revocation-check-failed" || st.Ready {
+		t.Fatalf("older clear bundle status=%#v, want rollback failure after revoked epoch", st)
+	}
+}
+
+func TestLicenseRevocationFutureEntryAndEpochRollback(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	licensePath := writeTestLicense(t, dir, priv, payload)
+	revocationPath := filepath.Join(dir, "revocations.json")
+	cfg := licenseTestConfig(dir)
+	cfg.Server.License = LicenseConfig{
+		Enabled:         true,
+		Path:            licensePath,
+		StatePath:       filepath.Join(dir, "license-state.json"),
+		RecheckInterval: time.Hour,
+		Revocation: LicenseRevocationConfig{
+			Mode:                    "file",
+			Path:                    revocationPath,
+			FailClosedOnBundleError: true,
+		},
+	}
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-010",
+		RevocationEpoch: 10,
+		IssuedAt:        now,
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries: []LicenseRevocationEntry{{
+			LicenseID:   payload.LicenseID,
+			Status:      "suspended",
+			Reason:      "pending review",
+			EffectiveAt: now.Add(time.Hour),
+		}},
+	})
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: payload.KeyID, Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now }
+	m.reload()
+	st := m.statusSnapshot()
+	if st.Code != "license-valid" || st.RevocationStatus != "pending" || st.RevocationEpoch != 10 {
+		t.Fatalf("future revocation status=%#v", st)
+	}
+
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-009",
+		RevocationEpoch: 9,
+		IssuedAt:        now,
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries:         nil,
+	})
+	m.reload()
+	st = m.statusSnapshot()
+	if st.Code != "license-revocation-check-failed" || st.Ready {
+		t.Fatalf("rollback status=%#v", st)
+	}
+}
+
+func TestLicenseRevocationRejectsUnknownStatus(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	licensePath := writeTestLicense(t, dir, priv, payload)
+	revocationPath := filepath.Join(dir, "revocations.json")
+	cfg := licenseTestConfig(dir)
+	cfg.Server.License = LicenseConfig{
+		Enabled:         true,
+		Path:            licensePath,
+		StatePath:       filepath.Join(dir, "license-state.json"),
+		RecheckInterval: time.Hour,
+		Revocation: LicenseRevocationConfig{
+			Mode:                    "file",
+			Path:                    revocationPath,
+			FailClosedOnBundleError: true,
+		},
+	}
+	writeTestRevocationBundle(t, revocationPath, priv, LicenseRevocationPayload{
+		SchemaVersion:   1,
+		Issuer:          licenseIssuer,
+		Product:         licenseProduct,
+		RevocationSetID: "revset-typo",
+		RevocationEpoch: 3,
+		IssuedAt:        now,
+		NotBefore:       now.Add(-time.Minute),
+		ExpiresAt:       now.Add(time.Hour),
+		KeyID:           payload.KeyID,
+		Entries: []LicenseRevocationEntry{{
+			LicenseID:   payload.LicenseID,
+			Status:      "revokd",
+			Reason:      "typo",
+			EffectiveAt: now.Add(-time.Second),
+		}},
+	})
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: payload.KeyID, Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now }
+	m.reload()
+	st := m.statusSnapshot()
+	if st.Code != "license-revocation-check-failed" || st.Ready || st.RevocationEpoch != 3 {
+		t.Fatalf("unknown revocation status=%#v", st)
+	}
 }
 
 func TestLicenseConfigFeatureAndOperationalGates(t *testing.T) {
@@ -658,6 +923,21 @@ func writeTestLicense(t *testing.T, dir string, priv ed25519.PrivateKey, payload
 		t.Fatal(err)
 	}
 	return path
+}
+
+func writeTestRevocationBundle(t *testing.T, path string, priv ed25519.PrivateKey, payload LicenseRevocationPayload) {
+	t.Helper()
+	env, err := SignLicenseRevocationPayload(payload, priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MarshalLicenseRevocationEnvelope(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCanonicalLicensePayloadStableAcrossObjectOrder(t *testing.T) {

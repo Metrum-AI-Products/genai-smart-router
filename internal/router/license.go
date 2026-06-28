@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -50,6 +51,32 @@ type LicenseEnvelope struct {
 	Signature LicenseSignature `json:"signature"`
 }
 
+type LicenseRevocationEnvelope struct {
+	Payload   LicenseRevocationPayload `json:"payload"`
+	Signature LicenseSignature         `json:"signature"`
+}
+
+type LicenseRevocationPayload struct {
+	SchemaVersion   int                      `json:"schema_version"`
+	Issuer          string                   `json:"issuer"`
+	Product         string                   `json:"product"`
+	RevocationSetID string                   `json:"revocation_set_id"`
+	RevocationEpoch int64                    `json:"revocation_epoch"`
+	IssuedAt        time.Time                `json:"issued_at"`
+	NotBefore       time.Time                `json:"not_before"`
+	ExpiresAt       time.Time                `json:"expires_at,omitempty"`
+	KeyID           string                   `json:"key_id"`
+	Entries         []LicenseRevocationEntry `json:"entries"`
+}
+
+type LicenseRevocationEntry struct {
+	LicenseID    string    `json:"license_id"`
+	Status       string    `json:"status"`
+	Reason       string    `json:"reason,omitempty"`
+	EffectiveAt  time.Time `json:"effective_at"`
+	SupersededBy string    `json:"superseded_by,omitempty"`
+}
+
 type LicensePayload struct {
 	SchemaVersion int               `json:"schema_version"`
 	LicenseID     string            `json:"license_id"`
@@ -87,10 +114,14 @@ type LicenseLimits struct {
 
 type LicenseDeployment struct {
 	Mode                        string   `json:"mode,omitempty"`
+	DeploymentID                string   `json:"deployment_id,omitempty" yaml:"deployment_id,omitempty"`
 	AllowedEnvironments         []string `json:"allowed_environments,omitempty"`
 	InstanceFingerprintRequired bool     `json:"instance_fingerprint_required,omitempty"`
 	InstanceFingerprint         string   `json:"instance_fingerprint,omitempty"`
 	AllowedInstances            []string `json:"allowed_instances,omitempty"`
+	BindingVersion              int      `json:"binding_version,omitempty" yaml:"binding_version,omitempty"`
+	AllowedInstanceFingerprints []string `json:"allowed_instance_fingerprints,omitempty" yaml:"allowed_instance_fingerprints,omitempty"`
+	MaxOfflineInstances         int      `json:"max_offline_instances,omitempty" yaml:"max_offline_instances,omitempty"`
 }
 
 type LicenseSignature struct {
@@ -108,24 +139,31 @@ type LicensePublicKey struct {
 }
 
 type licenseStatus struct {
-	Enabled          bool
-	Valid            bool
-	Ready            bool
-	GraceActive      bool
-	Code             string
-	Message          string
-	LicenseID        string
-	CustomerID       string
-	SKU              string
-	KeyID            string
-	ExpiresAt        time.Time
-	NotBefore        time.Time
-	Features         map[string]bool
-	Limits           LicenseLimits
-	Deployment       LicenseDeployment
-	DaysUntilExpiry  int
-	LastCheckedAt    time.Time
-	ValidationReason string
+	Enabled               bool
+	Valid                 bool
+	Ready                 bool
+	GraceActive           bool
+	Code                  string
+	Message               string
+	LicenseID             string
+	CustomerID            string
+	SKU                   string
+	KeyID                 string
+	ExpiresAt             time.Time
+	NotBefore             time.Time
+	Features              map[string]bool
+	Limits                LicenseLimits
+	Deployment            LicenseDeployment
+	DaysUntilExpiry       int
+	LastCheckedAt         time.Time
+	ValidationReason      string
+	BindingMatched        bool
+	FingerprintHashPrefix string
+	RevocationMode        string
+	RevocationSetID       string
+	RevocationEpoch       int64
+	RevocationStatus      string
+	RevocationReason      string
 }
 
 type licenseValidationError struct {
@@ -172,6 +210,9 @@ type licensePersistentState struct {
 	LastSuccessfulValidationUTC string                    `json:"last_successful_validation_utc"`
 	LastObservedWallClockUTC    string                    `json:"last_observed_wall_clock_utc"`
 	GraceActive                 bool                      `json:"grace_active"`
+	LastRevocationSetID         string                    `json:"last_revocation_set_id,omitempty"`
+	LastRevocationEpoch         int64                     `json:"last_revocation_epoch,omitempty"`
+	LastRevocationCheckedUTC    string                    `json:"last_revocation_checked_utc,omitempty"`
 }
 
 type licenseWindowCounterState struct {
@@ -283,7 +324,10 @@ func (m *licenseManager) reload() {
 	status, err := m.validateFile()
 	if err != nil {
 		var lerr licenseValidationError
-		if errors.As(err, &lerr) {
+		if status.Code != "" {
+			// validateFile may return safe revocation metadata while still
+			// failing closed on a signed revocation decision.
+		} else if errors.As(err, &lerr) {
 			status = m.statusForError(lerr)
 		} else {
 			status = m.statusForError(licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license validation failed"})
@@ -323,6 +367,24 @@ func (m *licenseManager) validateFile() (licenseStatus, error) {
 	if err := validateLicensePayloadForConfig(env.Payload, m.app, now); err != nil {
 		return licenseStatus{}, err
 	}
+	bindingMatched := false
+	hashPrefixValue := ""
+	if licensePayloadUsesInstanceBinding(env.Payload) {
+		bindingMatched, hashPrefixValue, _ = validateLicensedInstance(env.Payload, m.cfg)
+	}
+	revocationStatus, err := m.validateRevocation(env.Payload, now)
+	if err != nil {
+		status := licenseStatus{
+			Enabled: true, Valid: false, Ready: false, Code: licenseErrorCode(err), Message: licenseErrorCode(err), LastCheckedAt: now,
+			LicenseID: env.Payload.LicenseID, CustomerID: env.Payload.CustomerID, SKU: env.Payload.SKU,
+			KeyID: env.Payload.KeyID, ExpiresAt: env.Payload.ExpiresAt, NotBefore: env.Payload.NotBefore,
+			Features: featureMap(env.Payload.Features), Limits: env.Payload.Limits, Deployment: env.Payload.Deployment,
+			BindingMatched: bindingMatched, FingerprintHashPrefix: hashPrefixValue,
+			RevocationMode: revocationStatus.Mode, RevocationSetID: revocationStatus.SetID, RevocationEpoch: revocationStatus.Epoch,
+			RevocationStatus: revocationStatus.Status, RevocationReason: revocationStatus.Reason,
+		}
+		return status, err
+	}
 	features := featureMap(env.Payload.Features)
 	days := int(env.Payload.ExpiresAt.Sub(now).Hours() / 24)
 	if days < 0 {
@@ -333,6 +395,9 @@ func (m *licenseManager) validateFile() (licenseStatus, error) {
 		LicenseID: env.Payload.LicenseID, CustomerID: env.Payload.CustomerID, SKU: env.Payload.SKU,
 		KeyID: env.Payload.KeyID, ExpiresAt: env.Payload.ExpiresAt, NotBefore: env.Payload.NotBefore,
 		Features: features, Limits: env.Payload.Limits, Deployment: env.Payload.Deployment, DaysUntilExpiry: days,
+		BindingMatched: bindingMatched, FingerprintHashPrefix: hashPrefixValue,
+		RevocationMode: revocationStatus.Mode, RevocationSetID: revocationStatus.SetID, RevocationEpoch: revocationStatus.Epoch,
+		RevocationStatus: revocationStatus.Status, RevocationReason: revocationStatus.Reason,
 	}, nil
 }
 
@@ -348,7 +413,7 @@ func (m *licenseManager) statusForError(err licenseValidationError) licenseStatu
 	state, stateErr := m.readState()
 	if stateErr == nil && m.cfg.GracePeriodOnValidationError > 0 && state.LastSuccessfulValidationUTC != "" {
 		last, _ := time.Parse(time.RFC3339, state.LastSuccessfulValidationUTC)
-		if !last.IsZero() && now.Sub(last) <= m.cfg.GracePeriodOnValidationError && err.Code != "license-clock-rollback" && err.Code != "license-expired" {
+		if !last.IsZero() && now.Sub(last) <= m.cfg.GracePeriodOnValidationError && licenseErrorAllowsGrace(err.Code) {
 			status.Valid = true
 			status.Ready = true
 			status.GraceActive = true
@@ -422,6 +487,11 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 		state.LastValidLimits = status.Limits
 		state.LastValidDeployment = status.Deployment
 		state.LastSuccessfulValidationUTC = now.Format(time.RFC3339)
+	}
+	if status.RevocationEpoch > 0 {
+		state.LastRevocationSetID = status.RevocationSetID
+		state.LastRevocationEpoch = status.RevocationEpoch
+		state.LastRevocationCheckedUTC = now.Format(time.RFC3339)
 	}
 	raw, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -631,6 +701,24 @@ func licenseStatusError(st licenseStatus) *licenseValidationError {
 	return nil
 }
 
+func licenseErrorCode(err error) string {
+	var lerr licenseValidationError
+	if errors.As(err, &lerr) && strings.TrimSpace(lerr.Code) != "" {
+		return lerr.Code
+	}
+	return "license-invalid"
+}
+
+func licenseErrorAllowsGrace(code string) bool {
+	switch code {
+	case "license-clock-rollback", "license-expired", "license-revoked", "license-suspended", "license-superseded",
+		"license-revocation-required", "license-revocation-check-failed":
+		return false
+	default:
+		return true
+	}
+}
+
 func (m *licenseManager) metrics() (licenseStatus, map[string]int64) {
 	st := m.statusSnapshot()
 	m.mu.RLock()
@@ -668,6 +756,8 @@ func httpStatusForLicenseCode(code string) int {
 	case "license-expired", "license-feature-forbidden", "license-limit-exceeded":
 		return 403
 	case "license-skin-forbidden", "license-admin-limit-exceeded", "license-retention-limit-exceeded":
+		return 403
+	case "license-revoked", "license-suspended", "license-superseded":
 		return 403
 	case "license-instance-limit-exceeded":
 		return 503
@@ -752,8 +842,8 @@ func validateLicensePayloadForConfig(payload LicensePayload, cfg *Config, now ti
 		if payload.Limits.MaxRetentionDays > 0 && maxConfiguredRetentionDays(*cfg) > payload.Limits.MaxRetentionDays {
 			return licenseValidationError{Code: "license-retention-limit-exceeded", StatusCode: 403, Message: "retention limit exceeded"}
 		}
-		if payload.Limits.MaxInstances > 0 || payload.Deployment.InstanceFingerprintRequired || payload.Deployment.InstanceFingerprint != "" || len(payload.Deployment.AllowedInstances) > 0 {
-			if err := validateLicensedInstance(payload, cfg.Server.License.InstanceFingerprint); err != nil {
+		if licensePayloadUsesInstanceBinding(payload) {
+			if _, _, err := validateLicensedInstance(payload, cfg.Server.License); err != nil {
 				return err
 			}
 		}
@@ -815,6 +905,12 @@ func ValidateLicensePayload(payload LicensePayload, cfg *Config, keys []LicenseP
 	return nil
 }
 
+func licensePayloadUsesInstanceBinding(payload LicensePayload) bool {
+	return payload.Limits.MaxInstances > 0 || payload.Deployment.InstanceFingerprintRequired ||
+		strings.TrimSpace(payload.Deployment.InstanceFingerprint) != "" || len(payload.Deployment.AllowedInstances) > 0 ||
+		len(payload.Deployment.AllowedInstanceFingerprints) > 0
+}
+
 func KnownLicenseFeatures() map[string]bool {
 	return map[string]bool{
 		LicenseFeatureRouting:              true,
@@ -861,38 +957,145 @@ func validateLicenseLimitShape(limits LicenseLimits) error {
 }
 
 func validateLicenseDeploymentShape(deployment LicenseDeployment) error {
+	if deployment.BindingVersion < 0 || deployment.MaxOfflineInstances < 0 {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license deployment binding fields cannot be negative"}
+	}
+	if deployment.BindingVersion > 1 {
+		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license binding version is unsupported"}
+	}
 	for _, allowed := range deployment.AllowedInstances {
 		if strings.TrimSpace(allowed) == "" {
 			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license allowed_instances contains an empty fingerprint"}
 		}
 	}
+	for _, allowed := range deployment.AllowedInstanceFingerprints {
+		if strings.TrimSpace(allowed) == "" {
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license allowed_instance_fingerprints contains an empty fingerprint"}
+		}
+	}
+	if deployment.MaxOfflineInstances > 0 && len(deployment.AllowedInstanceFingerprints) > deployment.MaxOfflineInstances {
+		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license offline instance limit exceeded"}
+	}
 	return nil
 }
 
-func validateLicensedInstance(payload LicensePayload, runtimeFingerprint string) error {
-	fingerprint := strings.TrimSpace(runtimeFingerprint)
-	if payload.Limits.MaxInstances > 0 && len(payload.Deployment.AllowedInstances) > payload.Limits.MaxInstances {
-		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance limit exceeded"}
+func validateLicensedInstance(payload LicensePayload, cfg LicenseConfig) (bool, string, error) {
+	fingerprint, err := configuredLicenseFingerprint(cfg)
+	if err != nil {
+		return false, "", err
+	}
+	hash := licenseInstanceFingerprintHash(payload, fingerprint)
+	if payload.Limits.MaxInstances > 0 && len(payload.Deployment.AllowedInstances)+len(payload.Deployment.AllowedInstanceFingerprints) > payload.Limits.MaxInstances {
+		return false, hashPrefix(hash), licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance limit exceeded"}
 	}
 	allowedInstances := normalizedLicenseStrings(payload.Deployment.AllowedInstances)
 	if len(allowedInstances) == 0 && strings.TrimSpace(payload.Deployment.InstanceFingerprint) != "" {
 		allowedInstances = []string{strings.TrimSpace(payload.Deployment.InstanceFingerprint)}
 	}
+	allowedHashes := normalizedLicenseStrings(payload.Deployment.AllowedInstanceFingerprints)
 	if payload.Deployment.InstanceFingerprintRequired && fingerprint == "" {
-		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
+		return false, hashPrefix(hash), licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
 	}
-	if len(allowedInstances) == 0 {
-		return nil
+	if len(allowedInstances) == 0 && len(allowedHashes) == 0 {
+		return fingerprint != "", hashPrefix(hash), nil
 	}
 	if fingerprint == "" {
-		return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
+		return false, hashPrefix(hash), licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is required"}
 	}
 	for _, allowed := range allowedInstances {
 		if allowed == fingerprint {
-			return nil
+			return true, hashPrefix(hash), nil
 		}
 	}
-	return licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is not allowed"}
+	for _, allowed := range allowedHashes {
+		if strings.EqualFold(allowed, hash) {
+			return true, hashPrefix(hash), nil
+		}
+	}
+	return false, hashPrefix(hash), licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint is not allowed"}
+}
+
+type revocationCheckStatus struct {
+	Mode   string
+	SetID  string
+	Epoch  int64
+	Status string
+	Reason string
+}
+
+func (m *licenseManager) validateRevocation(payload LicensePayload, now time.Time) (revocationCheckStatus, error) {
+	cfg := m.cfg.Revocation
+	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
+	if mode == "" {
+		mode = "off"
+	}
+	status := revocationCheckStatus{Mode: mode, Status: "clear"}
+	if mode == "off" {
+		return status, nil
+	}
+	if mode != "file" {
+		return status, licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation mode is unsupported"}
+	}
+	if strings.TrimSpace(cfg.Path) == "" {
+		if cfg.RequireCurrentBundle || cfg.FailClosedOnBundleError {
+			return status, licenseValidationError{Code: "license-revocation-required", StatusCode: 503, Message: "license revocation bundle is required"}
+		}
+		status.Status = "missing"
+		return status, nil
+	}
+	raw, err := os.ReadFile(strings.TrimSpace(cfg.Path))
+	if err != nil {
+		if cfg.RequireCurrentBundle || cfg.FailClosedOnBundleError {
+			return status, licenseValidationError{Code: "license-revocation-required", StatusCode: 503, Message: "license revocation bundle is required"}
+		}
+		status.Status = "missing"
+		return status, nil
+	}
+	env, err := ParseLicenseRevocationEnvelope(raw)
+	if err != nil {
+		if cfg.FailClosedOnBundleError {
+			return status, licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle is malformed"}
+		}
+		status.Status = "check_failed"
+		return status, nil
+	}
+	if err := VerifyLicenseRevocationEnvelope(env, m.keys, now); err != nil {
+		if cfg.FailClosedOnBundleError || cfg.RequireCurrentBundle {
+			return status, err
+		}
+		status.Status = "check_failed"
+		return status, nil
+	}
+	state, _ := m.readState()
+	if state.LastRevocationEpoch > 0 && env.Payload.RevocationEpoch < state.LastRevocationEpoch {
+		return status, licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle rollback detected"}
+	}
+	status.SetID = env.Payload.RevocationSetID
+	status.Epoch = env.Payload.RevocationEpoch
+	for _, entry := range env.Payload.Entries {
+		if strings.TrimSpace(entry.LicenseID) != payload.LicenseID {
+			continue
+		}
+		entryStatus := strings.ToLower(strings.TrimSpace(entry.Status))
+		if entry.EffectiveAt.IsZero() || now.Before(entry.EffectiveAt) {
+			status.Status = "pending"
+			status.Reason = entry.Reason
+			return status, nil
+		}
+		status.Status = entryStatus
+		status.Reason = entry.Reason
+		switch entryStatus {
+		case "revoked":
+			return status, licenseValidationError{Code: "license-revoked", StatusCode: 403, Message: "license revoked"}
+		case "suspended":
+			return status, licenseValidationError{Code: "license-suspended", StatusCode: 403, Message: "license suspended"}
+		case "superseded":
+			return status, licenseValidationError{Code: "license-superseded", StatusCode: 403, Message: "license superseded"}
+		default:
+			return status, licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle contains unsupported status"}
+		}
+	}
+	return status, nil
 }
 
 func CanonicalLicensePayload(payload LicensePayload) ([]byte, error) {
@@ -995,6 +1198,128 @@ func GenerateLicenseKeypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 
 func MarshalLicenseEnvelope(env LicenseEnvelope) ([]byte, error) {
 	return json.MarshalIndent(env, "", "  ")
+}
+
+func ParseLicenseRevocationEnvelope(raw []byte) (LicenseRevocationEnvelope, error) {
+	var env LicenseRevocationEnvelope
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := dec.Decode(&env); err != nil {
+		return env, err
+	}
+	return env, nil
+}
+
+func VerifyLicenseRevocationEnvelope(env LicenseRevocationEnvelope, keys []LicensePublicKey, now time.Time) error {
+	if env.Payload.SchemaVersion != 1 || env.Payload.Product != licenseProduct || env.Payload.Issuer != licenseIssuer {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle identity mismatch"}
+	}
+	if env.Payload.RevocationSetID == "" || env.Payload.RevocationEpoch <= 0 {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle required fields are missing"}
+	}
+	if now.Before(env.Payload.NotBefore) || (!env.Payload.ExpiresAt.IsZero() && !now.Before(env.Payload.ExpiresAt)) {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation bundle is not current"}
+	}
+	if env.Signature.Algorithm != "ed25519" || env.Payload.KeyID == "" || env.Payload.KeyID != env.Signature.KeyID {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation signature key mismatch"}
+	}
+	key, ok := findLicenseKey(keys, env.Payload.KeyID, now)
+	if !ok {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "unknown revocation key id"}
+	}
+	sig, err := base64.StdEncoding.DecodeString(env.Signature.ValueBase64)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation signature is malformed"}
+	}
+	payloadBytes, err := CanonicalLicenseRevocationPayload(env.Payload)
+	if err != nil {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation canonicalization failed"}
+	}
+	if !ed25519.Verify(key.PublicKey, payloadBytes, sig) {
+		return licenseValidationError{Code: "license-revocation-check-failed", StatusCode: 503, Message: "license revocation signature verification failed"}
+	}
+	return nil
+}
+
+func CanonicalLicenseRevocationPayload(payload LicenseRevocationPayload) ([]byte, error) {
+	var value any
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	writeCanonicalJSON(&b, value)
+	return b.Bytes(), nil
+}
+
+func SignLicenseRevocationPayload(payload LicenseRevocationPayload, privateKey ed25519.PrivateKey) (LicenseRevocationEnvelope, error) {
+	payloadBytes, err := CanonicalLicenseRevocationPayload(payload)
+	if err != nil {
+		return LicenseRevocationEnvelope{}, err
+	}
+	sig := ed25519.Sign(privateKey, payloadBytes)
+	return LicenseRevocationEnvelope{Payload: payload, Signature: LicenseSignature{Algorithm: "ed25519", KeyID: payload.KeyID, ValueBase64: base64.StdEncoding.EncodeToString(sig)}}, nil
+}
+
+func MarshalLicenseRevocationEnvelope(env LicenseRevocationEnvelope) ([]byte, error) {
+	return json.MarshalIndent(env, "", "  ")
+}
+
+func configuredLicenseFingerprint(cfg LicenseConfig) (string, error) {
+	type source struct{ name, value string }
+	var sources []source
+	if strings.TrimSpace(cfg.InstanceFingerprint) != "" {
+		sources = append(sources, source{name: "instance_fingerprint", value: strings.TrimSpace(cfg.InstanceFingerprint)})
+	}
+	if strings.TrimSpace(cfg.InstanceFingerprintEnv) != "" {
+		if value := strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.InstanceFingerprintEnv))); value != "" {
+			sources = append(sources, source{name: "instance_fingerprint_env", value: value})
+		}
+	}
+	if strings.TrimSpace(cfg.InstanceFingerprintFile) != "" {
+		raw, err := os.ReadFile(strings.TrimSpace(cfg.InstanceFingerprintFile))
+		if err != nil {
+			return "", licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint file is unreadable"}
+		}
+		if value := strings.TrimSpace(string(raw)); value != "" {
+			sources = append(sources, source{name: "instance_fingerprint_file", value: value})
+		}
+	}
+	if len(sources) == 0 {
+		return "", nil
+	}
+	if len(sources) > 1 {
+		return "", licenseValidationError{Code: "license-instance-limit-exceeded", StatusCode: 503, Message: "license instance fingerprint source is ambiguous"}
+	}
+	return sources[0].value, nil
+}
+
+func licenseInstanceFingerprintHash(payload LicensePayload, raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	deploymentID := strings.TrimSpace(payload.Deployment.DeploymentID)
+	if deploymentID == "" {
+		deploymentID = strings.TrimSpace(payload.Deployment.Mode)
+	}
+	material := strings.Join([]string{
+		licenseProduct,
+		strings.TrimSpace(payload.CustomerID),
+		strings.TrimSpace(payload.LicenseID),
+		deploymentID,
+		strings.TrimSpace(raw),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(material))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func hashPrefix(value string) string {
+	if len(value) <= len("sha256:")+12 {
+		return value
+	}
+	return value[:len("sha256:")+12]
 }
 
 func featureMap(features []string) map[string]bool {
@@ -1127,6 +1452,21 @@ func safeLicenseStatusResponse(st licenseStatus) map[string]any {
 	}
 	if !st.LastCheckedAt.IsZero() {
 		out["last_checked_at"] = st.LastCheckedAt.UTC().Format(time.RFC3339)
+	}
+	if st.Deployment.DeploymentID != "" || st.Deployment.BindingVersion > 0 || st.FingerprintHashPrefix != "" {
+		out["deployment_id"] = st.Deployment.DeploymentID
+		out["binding_version"] = st.Deployment.BindingVersion
+		out["instance_binding_matched"] = st.BindingMatched
+		out["instance_fingerprint_hash_prefix"] = st.FingerprintHashPrefix
+	}
+	if st.RevocationMode != "" && st.RevocationMode != "off" {
+		out["revocation_mode"] = st.RevocationMode
+		out["revocation_status"] = st.RevocationStatus
+		out["revocation_set_id"] = st.RevocationSetID
+		out["revocation_epoch"] = st.RevocationEpoch
+		if st.RevocationReason != "" {
+			out["revocation_reason"] = st.RevocationReason
+		}
 	}
 	return out
 }

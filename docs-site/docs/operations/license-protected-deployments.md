@@ -72,6 +72,8 @@ Replacement uses the same installation flow when Metrum issues a corrected licen
 
 Volume top-up also uses the same file replacement flow. For `credit-pack-*` licenses, Metrum issues a replacement license with a new license ID and the new contracted token budget. The router treats the new license as a new license-wide budget while caller-token quotas remain controlled by the deployment's caller-key policy.
 
+When Metrum provides a signed revocation bundle, mount it beside the license file and set `server.license.revocation.mode: file`. Effective `revoked`, `suspended`, and `superseded` entries block serving immediately and are not bypassed by license grace. Deployments that require a current bundle should set `require_current_bundle: true`; deployments that must fail closed on malformed, expired, untrusted, or rolled-back bundles should keep `fail_closed_on_bundle_error: true`.
+
 Metrum may include a safe summary or operator checklist with a delivered license. Those artifacts are informational and should contain only scalar metadata such as license ID, customer ID, SKU, key ID, issuer, issue time, not-before time, expiry, features, and limits. Install the signed `license.json`; do not install or edit the summary in place of the license.
 
 ## Offline And Air-Gapped Operation
@@ -97,6 +99,11 @@ Ordinary application caller tokens should not receive license payloads or operat
 | `license-product-mismatch` | Install a license issued for GenAI Smart Router. |
 | `license-feature-forbidden` | Confirm the feature is in the commercial plan or disable that feature. |
 | `license-limit-exceeded` | Reduce configured usage or update the licensed limits. |
+| `license-revoked` | Install a replacement license or contact Metrum support if revocation is unexpected. |
+| `license-suspended` | Resolve the commercial/support hold or install an updated license and revocation bundle. |
+| `license-superseded` | Install the replacement license identified through the approved support channel. |
+| `license-revocation-required` | Mount the required signed revocation bundle at `server.license.revocation.path`. |
+| `license-revocation-check-failed` | Replace the malformed, expired, untrusted, or rolled-back revocation bundle. |
 | `license-clock-rollback` | Correct system time and inspect the durable license state file. |
 | config rejects `enabled: false` | Normal release builds cannot be configured to run unlicensed; install a valid license file. |
 
@@ -104,7 +111,7 @@ See [Error Reference](../reference/errors) for caller-visible details.
 
 ## Rotation And Revocation
 
-Public verification keys are embedded in the release build. License key rotation or revocation is handled by issuing a replacement license and, when required, a release containing the updated verification-key set. Operators should keep old and new license files under the same secret-handling controls, avoid sharing full payloads in support tickets, and use safe status fields plus request IDs for support diagnostics.
+Public verification keys are embedded in the release build. License key rotation is handled by issuing a replacement license and, when required, a release containing the updated verification-key set. License revocation can be enforced offline through a Metrum-issued signed revocation bundle. Operators should keep old and new license files plus revocation bundles under the same secret-handling controls, avoid sharing full payloads in support tickets, and use safe status fields plus request IDs for support diagnostics.
 
 ## Smoke Commands
 
@@ -120,7 +127,7 @@ curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
   "$ROUTER_BASE_URL/v1/models"
 ```
 
-The source-tree `cmd/router-license` helper can produce a safe summary or verify a license file during release engineering or support validation when run from a checked-out source tree with an approved public key file. It is not part of the packaged Docker/runtime image unless a deployment explicitly adds it. Deployed routers do not need private signing keys or the license helper binary at runtime.
+The source-tree `cmd/router-license` helper can inspect, safely summarize, or verify a license file or revocation bundle during release engineering or support validation when run from a checked-out source tree with an approved public key file. Metrum operators use separate internal issuance commands to generate, renew, top up, or revoke licenses from approved entitlement records. Those issuance commands and signing keys are not part of the packaged Docker/runtime image. Deployed routers do not need private signing keys or the license helper binary at runtime.
 
 ## Commercial Model
 

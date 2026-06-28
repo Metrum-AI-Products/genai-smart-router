@@ -172,6 +172,8 @@ Set `instance_fingerprint` only when Metrum issues an instance-bound license for
 
 Use `go run ./cmd/router-license safe-summary --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Internal operators can use `router-license issue`, `renew`, and `top-up` with the SKU catalog and approved entitlement records. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
 
+When Metrum provides a signed revocation bundle, configure `server.license.revocation.mode: file` and mount the bundle at `server.license.revocation.path`. Effective `revoked`, `suspended`, or `superseded` entries block serving without license grace; `router-license revocation validate` and `revocation safe-summary` provide operator-safe verification.
+
 Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; public hosted docs describe customer installation and renewal behavior without signing-key or bypass details.
 
 Expected provider env vars in `config.example.yaml`:

@@ -435,6 +435,57 @@ The command rejects unsupported feature names, unsupported API skins, invalid da
 
 Do not run signing commands with real private-key paths in shared terminals, shell transcripts, or CI logs. Prefer the approved signing service when available. Private signing keys must stay outside this repository, release packages, production router hosts, and customer artifacts.
 
+## Revocation Bundle Workflow
+
+Use a signed revocation bundle when an already issued license must be blocked before its natural expiry, temporarily suspended, or marked superseded by a replacement license. Revocation bundles are offline artifacts verified with the same embedded public verification keys as license files. They are checked during normal license revalidation and are not bypassed by `grace_period_on_validation_error`.
+
+Operator rules:
+
+- each bundle must have a unique `revocation_set_id` and monotonically increasing `revocation_epoch`;
+- keep bundle `not_before` and `expires_at` current for the deployment support window;
+- use `revoked` for permanent cancellation, `suspended` for temporary commercial/support holds, and `superseded` when the customer must install a replacement license;
+- set `effective_at` in the future only for planned enforcement; until then, status is safe-reported as `pending`;
+- never send signing keys or private key paths to customer hosts.
+
+Example:
+
+```bash
+rtk go run ./cmd/router-license revocation create \
+  --set-id revset_customer_example_20260628 \
+  --epoch 42 \
+  --license-id lic_customer_example_2026 \
+  --status superseded \
+  --superseded-by lic_customer_example_replacement_2026 \
+  --reason replacement-issued \
+  --effective-at 2026-06-28T20:00:00Z \
+  --expires-at 2026-07-28T20:00:00Z \
+  --key "$LICENSE_SIGNING_KEY_FILE" \
+  --key-id metrum-license-ed25519-2026-06-prod \
+  --out tmp/revocations.example.json \
+  --public-key tmp/license-public-key.example.pem
+
+rtk go run ./cmd/router-license revocation validate \
+  --bundle tmp/revocations.example.json \
+  --public-key tmp/license-public-key.example.pem
+
+rtk go run ./cmd/router-license revocation safe-summary \
+  --bundle tmp/revocations.example.json
+```
+
+Customer-facing config shape when revocation enforcement is part of the support plan:
+
+```yaml
+server:
+  license:
+    revocation:
+      mode: file
+      path: /app/config/revocations.json
+      require_current_bundle: true
+      fail_closed_on_bundle_error: true
+```
+
+`require_current_bundle: true` fails closed when the bundle is absent. `fail_closed_on_bundle_error: true` fails closed when a configured bundle is malformed, expired, signed by an unknown key, has an invalid signature, or rolls back to an older observed epoch. Effective `revoked`, `suspended`, and `superseded` entries return `403` and must not enter license grace.
+
 ## Customer Installation Handoff
 
 Send the customer only:

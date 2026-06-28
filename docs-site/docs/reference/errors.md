@@ -47,6 +47,11 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `license-admin-limit-exceeded` | 403 | The configured admin subject count exceeds the licensed limit. | Contact the router operator. | Reduce configured admins or install a license with a larger admin limit. |
 | `license-retention-limit-exceeded` | 403 | Configured retention exceeds the licensed maximum retention days. | Contact the router operator. | Lower retention settings or install a license with the contracted retention limit. |
 | `license-instance-limit-exceeded` | 503 | The running instance is outside the licensed instance scope. | Contact the router operator. | Install the license issued for this deployment instance or correct instance binding. |
+| `license-revoked` | 403 | The active signed revocation bundle revokes the current license. | Contact the router operator. | Install a replacement license or contact Metrum support if revocation is unexpected. |
+| `license-suspended` | 403 | The active signed revocation bundle suspends the current license. | Contact the router operator. | Resolve the commercial/support hold or install an updated license and revocation bundle. |
+| `license-superseded` | 403 | The active signed revocation bundle marks the current license as superseded. | Contact the router operator. | Install the replacement license identified through the approved support channel. |
+| `license-revocation-required` | 503 | Revocation enforcement requires a current signed bundle, but no readable bundle is available. | Contact the router operator. | Mount the required signed revocation bundle at `server.license.revocation.path`. |
+| `license-revocation-check-failed` | 503 | The configured revocation bundle is malformed, expired, untrusted, invalidly signed, or rolled back to an older epoch. | Contact the router operator. | Replace the revocation bundle with a current Metrum-issued signed bundle. |
 | `license-clock-rollback` | 503 | The local wall clock moved backwards beyond tolerance. | Contact the router operator. | Correct system time and inspect the license state file. |
 
 ## Eligibility Requirements

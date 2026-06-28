@@ -156,6 +156,24 @@ func TestRouterLicenseCLIIssueValidateRenewTopUpAndSafeSummary(t *testing.T) {
 	if !strings.Contains(topupSummary, "credit-pack-5m") || !strings.Contains(topupSummary, "lic_issue_test_topup") {
 		t.Fatalf("top-up summary=%s", topupSummary)
 	}
+
+	revocationPath := filepath.Join(dir, "revocations.json")
+	runCLI(t, "revocation", "create",
+		"--set-id", "revset-cli",
+		"--epoch", "1",
+		"--license-id", "lic_issue_test_001",
+		"--status", "revoked",
+		"--reason", "test-revocation",
+		"--key", priv,
+		"--key-id", "test-license-key",
+		"--out", revocationPath,
+		"--public-key", pub,
+	)
+	runCLI(t, "revocation", "validate", "--bundle", revocationPath, "--public-key", pub)
+	revocationSummary := runCLI(t, "revocation", "safe-summary", "--bundle", revocationPath)
+	if !strings.Contains(revocationSummary, "revset-cli") || !strings.Contains(revocationSummary, "lic_issue_test_001") || strings.Contains(revocationSummary, "value_base64") {
+		t.Fatalf("revocation summary wrong or unsafe: %s", revocationSummary)
+	}
 }
 
 func TestRouterLicenseCLIRejectsInvalidEntitlementFeature(t *testing.T) {
