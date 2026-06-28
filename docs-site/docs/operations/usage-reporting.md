@@ -77,7 +77,7 @@ Use retention language carefully in commercial reviews:
 - archived exports are customer-controlled artifacts and are not created by the current dry-run foundation;
 - legal holds are scalar rows that block dry-run candidate counts by data class and timestamp range;
 - purge jobs are future execution workflows, not part of the current shipped foundation;
-- report and invoice calculations should use stored request-time usage and cost fields, not current provider config repricing.
+- report and chargeback calculations should use stored request-time usage and cost fields, not current provider config repricing.
 
 The usage and reporting schema remains purely relational: scalar columns plus normalized child tables. Do not add JSON/JSONB, array columns, serialized blobs, or packed multi-value text fields for structured reporting data.
 
