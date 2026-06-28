@@ -14,12 +14,13 @@ type piiPlaceholder struct {
 }
 
 type piiFilterResult struct {
-	Applied      bool
-	Mode         string
-	Replacements int
-	Placeholders []piiPlaceholder
-	RuleCounts   map[string]int
-	Warnings     []string
+	Applied       bool
+	Mode          string
+	Replacements  int
+	LimitExceeded bool
+	Placeholders  []piiPlaceholder
+	RuleCounts    map[string]int
+	Warnings      []string
 }
 
 type compiledPIIRule struct {
@@ -102,6 +103,9 @@ func applyPIIFilter(req *IRRequest, cfg PIIFilterConfig) (piiFilterResult, error
 		result.Applied = true
 	}
 	if result.Applied && (mode == "fail_on_match" || cfg.FailOnMatch) {
+		return result, piiFilterBlockedError{}
+	}
+	if result.LimitExceeded {
 		return result, piiFilterBlockedError{}
 	}
 	return result, nil
@@ -234,6 +238,8 @@ func (s *piiRedactionState) redact(text string) string {
 				return placeholder
 			}
 			if s.result.Replacements >= s.limit {
+				s.result.LimitExceeded = true
+				s.result.Warnings = appendWarning(s.result.Warnings, "pii-filter-replacement-limit-reached")
 				return match
 			}
 			s.result.RuleCounts[rule.name]++
@@ -248,7 +254,7 @@ func (s *piiRedactionState) redact(text string) string {
 			return placeholder
 		})
 	}
-	if s.result.Replacements >= s.limit {
+	if s.result.LimitExceeded {
 		s.result.Warnings = appendWarning(s.result.Warnings, "pii-filter-replacement-limit-reached")
 	}
 	return text

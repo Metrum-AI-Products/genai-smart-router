@@ -62,6 +62,8 @@ When `mode: redact_and_restore` or `restore_response: true` is enabled, downstre
 
 `fail_on_match: true` can also be used with a mode to force blocking behavior.
 
+If a request would exceed `max_replacements_per_request`, the router returns `pii-filter-blocked` before target selection or any upstream call. Treat the cap as a fail-closed safety limit, not as a partial-redaction mode.
+
 ## Request Surfaces
 
 PII filtering applies to normalized text across supported caller APIs:
@@ -162,3 +164,4 @@ curl "$ROUTER_BASE_URL/v1/chat/completions" \
 ```
 
 Check the upstream capture, router logs, and usage rows for the same `X-Request-Id`. Raw matched values should not appear upstream or in diagnostics.
+Also test a request with more matches than `max_replacements_per_request`; it should fail with `pii-filter-blocked` and produce no upstream request.

@@ -26,7 +26,7 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. Configured inactive keys return safe status-specific `403` errors after token match, including `key-disabled`, `key-suspended`, `key-expired`, and `key-rotated`. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
 
-Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete`; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants. These endpoints never return captured content.
+Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete` authorization in the captured row's caller project/environment domain; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants for their own domain. These endpoints never return captured content.
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
 

@@ -765,6 +765,10 @@ func (s *Service) authorizeCaller(caller *callerRuntime, object, action string) 
 	return s.authorizer.enforce(authzSubjectForCaller(caller), object, action)
 }
 
+func (s *Service) authorizeCallerInDomain(caller *callerRuntime, domain, object, action string) bool {
+	return s.authorizer.enforceInDomain(authzSubjectForCaller(caller), domain, object, action)
+}
+
 func (s *Service) setAdminReportHeaders(w http.ResponseWriter, static bool) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")

@@ -5914,6 +5914,43 @@ func TestPIIFilterReplacementLimitDoesNotLetRawMirrorStarveNormalizedRequest(t *
 	}
 }
 
+func TestPIIFilterReplacementLimitBlocksBeforeUpstream(t *testing.T) {
+	for _, mode := range []string{"redact_only", "redact_and_restore", "fail_on_match"} {
+		t.Run(mode, func(t *testing.T) {
+			var calls atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+			}))
+			defer upstream.Close()
+
+			filter := testPIIFilterConfig(mode)
+			filter.MaxReplacementsPerRequest = 1
+			cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+			cfg.Models["default"] = ModelGroup{
+				Strategy:  "static",
+				PIIFilter: filter,
+				Targets:   []Target{{Provider: "mock", Model: "mock-model"}},
+			}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.doe@example.com and jane.alt@example.com"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "pii-filter-blocked") {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("upstream calls=%d, want 0", calls.Load())
+			}
+		})
+	}
+}
+
 func TestPIIFilterCacheStoresRedactedResponseNotRestoredPII(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5961,6 +5998,85 @@ func TestPIIFilterCacheStoresRedactedResponseNotRestoredPII(t *testing.T) {
 	}
 	if !strings.Contains(second, "bob@example.com") || strings.Contains(second, "alice@example.com") {
 		t.Fatalf("second response=%s", second)
+	}
+}
+
+func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "pii_capture_1",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "Contact [EMAIL_1]."},
+			}},
+			"usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 3, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.Cache.DefaultTTL = time.Minute
+	cfg.Server.ContentCapture = ContentCaptureConfig{
+		Enabled:             true,
+		RetentionDays:       7,
+		CaptureResponse:     true,
+		RedactBeforeStorage: boolPtr(true),
+	}
+	cfg.Models["default"] = ModelGroup{
+		Strategy:  "static",
+		PIIFilter: testPIIFilterConfig("redact_and_restore"),
+		Targets:   []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.doe@example.com"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "jane.doe@example.com") {
+		t.Fatalf("response did not restore PII for caller: %s", rr.Body.String())
+	}
+	var row contentCaptureRecord
+	if err := svc.usage.db.Where("request_id = ? AND scope = ?", rr.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(row.ContentText, "jane.doe@example.com") {
+		t.Fatalf("response capture stored restored PII: %s", row.ContentText)
+	}
+	if !strings.Contains(row.ContentText, "[EMAIL_1]") {
+		t.Fatalf("response capture missing placeholder: %s", row.ContentText)
+	}
+
+	cacheReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"Email jane.alt@example.com"}]}`))
+	cacheReq.Header.Set("Authorization", "Bearer "+testToken)
+	cacheRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(cacheRR, cacheReq)
+	if cacheRR.Code != http.StatusOK {
+		t.Fatalf("cache status=%d body=%s", cacheRR.Code, cacheRR.Body.String())
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want second response from cache", calls.Load())
+	}
+	if !strings.Contains(cacheRR.Body.String(), "jane.alt@example.com") {
+		t.Fatalf("cached response did not restore PII for caller: %s", cacheRR.Body.String())
+	}
+	var cachedRow contentCaptureRecord
+	if err := svc.usage.db.Where("request_id = ? AND scope = ?", cacheRR.Header().Get("X-Request-Id"), contentCaptureScopeResponse).First(&cachedRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(cachedRow.ContentText, "jane.alt@example.com") {
+		t.Fatalf("cached response capture stored restored PII: %s", cachedRow.ContentText)
+	}
+	if !strings.Contains(cachedRow.ContentText, "[EMAIL_1]") {
+		t.Fatalf("cached response capture missing placeholder: %s", cachedRow.ContentText)
 	}
 }
 
@@ -7473,9 +7589,12 @@ func TestDiagnosticsSanitizeTruncatedUpstreamErrorBeforePersistence(t *testing.T
 			t.Fatalf("diagnostics leaked %q in: %s", forbidden, diagnosticsText)
 		}
 	}
-	for _, want := range []string{`"prompt":[REDACTED]`, `"authorization":[REDACTED]`, `"token_hash":[REDACTED]`, `"provider_api_key":[REDACTED]`} {
-		if !strings.Contains(diagnosticsText, want) {
-			t.Fatalf("sanitized diagnostics missing %q in: %s", want, diagnosticsText)
+	if !strings.Contains(diagnosticsText, "upstream error body redacted") {
+		t.Fatalf("sanitized diagnostics missing upstream body redaction marker in: %s", diagnosticsText)
+	}
+	for _, field := range []string{`"prompt"`, `"authorization"`, `"token_hash"`, `"provider_api_key"`} {
+		if strings.Contains(diagnosticsText, field) {
+			t.Fatalf("sanitized diagnostics retained upstream body field %q in: %s", field, diagnosticsText)
 		}
 	}
 }
@@ -7746,7 +7865,7 @@ func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
 	cfg.Callers = append(cfg.Callers, CallerConfig{
 		ID:           "content-admin",
 		User:         "content-admin",
-		Project:      "platform",
+		Project:      "metrum-insights",
 		Environment:  "test",
 		TokenSHA256:  hex.EncodeToString(adminHash[:]),
 		TokenID:      "rtr_content_admin_test",
@@ -7798,6 +7917,250 @@ func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
 	}
 	if audit.ActorCallerID != "content-admin" || audit.ActorTokenID != "rtr_content_admin_test" || audit.RowsAffected != 1 {
 		t.Fatalf("unexpected audit row: %#v", audit)
+	}
+}
+
+func TestContentCaptureAdminDeleteRequiresTargetDomainAuthorization(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_capture_cross_domain_delete",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "captured"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	adminToken := "rtr_content_admin_cross_domain_test_token"
+	adminHash := sha256.Sum256([]byte(adminToken))
+	otherToken := "rtr_other_capture_owner_test_token"
+	otherHash := sha256.Sum256([]byte(otherToken))
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Callers = append(cfg.Callers,
+		CallerConfig{
+			ID:           "content-admin",
+			User:         "content-admin",
+			Project:      "platform",
+			Environment:  "test",
+			TokenSHA256:  hex.EncodeToString(adminHash[:]),
+			TokenID:      "rtr_content_admin_cross_domain_test",
+			Allow:        []string{"default"},
+			ContentAdmin: true,
+			Rate:         RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:        QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:          KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+		CallerConfig{
+			ID:          "other-capture-owner",
+			User:        "other-capture-owner",
+			Project:     "other",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(otherHash[:]),
+			TokenID:     "rtr_other_capture_owner_test",
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+	)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"capture other domain"}]}`))
+	req.Header.Set("Authorization", "Bearer "+otherToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	requestID := rr.Header().Get("X-Request-Id")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+requestID, nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+adminToken)
+	deleteRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(deleteRR, deleteReq)
+	if deleteRR.Code != http.StatusForbidden || !strings.Contains(deleteRR.Body.String(), "content-forbidden") {
+		t.Fatalf("cross-domain delete status=%d body=%s", deleteRR.Code, deleteRR.Body.String())
+	}
+	var remaining int64
+	if err := svc.usage.db.Model(&contentCaptureRecord{}).Where("request_id = ?", requestID).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 1 {
+		t.Fatalf("remaining captures=%d, want 1", remaining)
+	}
+}
+
+func TestContentCaptureAdminDeleteAllowsTargetDomainOnlyGrant(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_capture_target_domain_only",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "captured"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	centralToken := "rtr_central_content_admin_test_token"
+	centralHash := sha256.Sum256([]byte(centralToken))
+	ownerToken := "rtr_target_domain_owner_test_token"
+	ownerHash := sha256.Sum256([]byte(ownerToken))
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy: []string{
+			"g, caller:central-content-admin, content_admin, other/test",
+			"p, content_admin, other/test, content:capture, delete",
+		},
+	}
+	cfg.Callers = append(cfg.Callers,
+		CallerConfig{
+			ID:          "central-content-admin",
+			User:        "central-content-admin",
+			Project:     "platform",
+			Environment: "ops",
+			TokenSHA256: hex.EncodeToString(centralHash[:]),
+			TokenID:     "rtr_central_content_admin_test",
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+		CallerConfig{
+			ID:          "target-domain-owner",
+			User:        "target-domain-owner",
+			Project:     "other",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(ownerHash[:]),
+			TokenID:     "rtr_target_domain_owner_test",
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+	)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"capture target domain"}]}`))
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+rr.Header().Get("X-Request-Id"), nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+centralToken)
+	deleteRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(deleteRR, deleteReq)
+	if deleteRR.Code != http.StatusOK {
+		t.Fatalf("target-domain-only delete status=%d body=%s", deleteRR.Code, deleteRR.Body.String())
+	}
+}
+
+func TestContentCaptureAdminDeleteUsesCaptureTimeDomain(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_capture_time_domain",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "captured"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	oldAdminToken := "rtr_old_domain_content_admin_test_token"
+	oldAdminHash := sha256.Sum256([]byte(oldAdminToken))
+	newAdminToken := "rtr_new_domain_content_admin_test_token"
+	newAdminHash := sha256.Sum256([]byte(newAdminToken))
+	ownerToken := "rtr_movable_capture_owner_test_token"
+	ownerHash := sha256.Sum256([]byte(ownerToken))
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
+	cfg.Callers = append(cfg.Callers,
+		CallerConfig{
+			ID:           "old-domain-admin",
+			User:         "old-domain-admin",
+			Project:      "other",
+			Environment:  "test",
+			TokenSHA256:  hex.EncodeToString(oldAdminHash[:]),
+			TokenID:      "rtr_old_domain_content_admin_test",
+			Allow:        []string{"default"},
+			ContentAdmin: true,
+			Rate:         RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:        QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:          KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+		CallerConfig{
+			ID:           "new-domain-admin",
+			User:         "new-domain-admin",
+			Project:      "moved",
+			Environment:  "test",
+			TokenSHA256:  hex.EncodeToString(newAdminHash[:]),
+			TokenID:      "rtr_new_domain_content_admin_test",
+			Allow:        []string{"default"},
+			ContentAdmin: true,
+			Rate:         RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:        QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:          KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+		CallerConfig{
+			ID:          "movable-capture-owner",
+			User:        "movable-capture-owner",
+			Project:     "other",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(ownerHash[:]),
+			TokenID:     "rtr_movable_capture_owner_test",
+			Allow:       []string{"default"},
+			Rate:        RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 100000}, Month: BudgetConfig{Tokens: 1000000}, SoftPct: 80},
+			Key:         KeyConfig{LifetimeTokens: 1000000, SoftPct: 90, OnExhaust: "disable"},
+		},
+	)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"capture old domain"}]}`))
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	requestID := rr.Header().Get("X-Request-Id")
+	svc.quota.callers["movable-capture-owner"].project = "moved"
+	svc.quota.callers["movable-capture-owner"].cfg.Project = "moved"
+
+	newReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+requestID, nil)
+	newReq.Header.Set("Authorization", "Bearer "+newAdminToken)
+	newRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(newRR, newReq)
+	if newRR.Code != http.StatusForbidden || !strings.Contains(newRR.Body.String(), "content-forbidden") {
+		t.Fatalf("new-domain delete status=%d body=%s", newRR.Code, newRR.Body.String())
+	}
+
+	oldReq := httptest.NewRequest(http.MethodDelete, "/v1/content-captures/"+requestID, nil)
+	oldReq.Header.Set("Authorization", "Bearer "+oldAdminToken)
+	oldRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(oldRR, oldReq)
+	if oldRR.Code != http.StatusOK {
+		t.Fatalf("old-domain delete status=%d body=%s", oldRR.Code, oldRR.Body.String())
 	}
 }
 

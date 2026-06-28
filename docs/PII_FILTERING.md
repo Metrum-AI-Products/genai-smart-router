@@ -22,6 +22,8 @@ GenAI Smart Router supports model-group-level PII filtering through `models.<gro
 
 `fail_on_match: true` forces blocking behavior regardless of mode.
 
+When a request would exceed `max_replacements_per_request`, the router fails closed with `pii-filter-blocked` before selecting or calling an upstream target. The limit is not a fail-open truncation control; raise the configured cap only after testing that logs, diagnostics, policy payloads, and upstream requests still contain placeholders rather than raw matched values.
+
 ## Persistence
 
 Usage JSONL and DB rows store only safe scalar metadata:
@@ -46,6 +48,7 @@ Before rollout:
 5. Confirm usage DB, JSONL logs, diagnostics, and metrics contain only safe metadata.
 6. Confirm TypeScript payload captures contain placeholders in `ctx.request.raw`, not raw matched values. For external policies, confirm the default payload omits request mirrors; if `external_policy.include_request: true` is approved, confirm external policy `request` and `text` contain placeholders.
 7. Confirm cached redacted responses restore to the current request's placeholders and do not leak previous caller values.
+8. Confirm requests over `max_replacements_per_request` return `pii-filter-blocked` and make no upstream attempt.
 
 ## Limitations
 

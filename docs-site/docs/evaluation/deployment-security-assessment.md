@@ -16,7 +16,7 @@ Confirm:
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
 - metrics-admin access uses separate caller subjects authorized for `metrics` `read`, with existing `metrics_admin: true` callers converted to compatible grants;
-- content-capture maintenance access uses Casbin `content:capture` `delete`/`purge` policy, with existing `content_admin: true` callers converted to compatible grants.
+- content-capture maintenance access uses Casbin `content:capture` `delete`/`purge` policy, delete-by-request is scoped to the captured row's caller project/environment domain, and existing `content_admin: true` callers are converted to compatible grants for their own domain.
 - browser-admin Basic Auth, when enabled, uses bcrypt hashes from deployment secrets, requires HTTPS in production, trusts forwarded HTTPS state only from configured proxy CIDRs, and maps to stable subjects such as `basic:admin`; see [Admin Authentication](../configuration/admin-authentication).
 - browser admin reports, when enabled, require Casbin `admin:reports` policy in addition to browser-admin identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
 
@@ -44,7 +44,7 @@ Confirm diagnostic records exclude:
 
 Expected diagnostics include request IDs, selected provider/model, attempt summaries, status, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
 
-Governed content capture is disabled by default. If a deployment enables it, confirm captured rows are redacted before storage, keyed by `request_id`, subject to retention purge, and maintained through audited `content:capture` delete/purge operations.
+Governed content capture is disabled by default. If a deployment enables it, confirm captured rows are redacted before storage, keyed by `request_id`, subject to retention purge, and maintained through audited `content:capture` delete/purge operations scoped to the captured row's caller project/environment domain.
 
 ## Network And Private Upstreams
 

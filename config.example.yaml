@@ -149,7 +149,9 @@ server:
     store_ip: true
   # Governed content capture is disabled by default. Enabling it stores redacted
   # request/response/upstream-error content in separate relational tables keyed
-  # by request_id. It is not diagnostics, metrics, or usage reporting.
+  # by request_id. It is not diagnostics, metrics, or usage reporting. Delete
+  # maintenance requires content:capture delete authorization for the captured
+  # row's project/environment domain, not only the actor's own domain.
   content_capture:
     enabled: false
     retention_days: 30

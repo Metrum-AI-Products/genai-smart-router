@@ -260,6 +260,11 @@ func (a *authorizer) enforce(subject authorizationSubject, object, action string
 	return err == nil && ok
 }
 
+func (a *authorizer) enforceInDomain(subject authorizationSubject, domain, object, action string) bool {
+	subject.domain = strings.TrimSpace(domain)
+	return a.enforce(subject, object, action)
+}
+
 func authzSubjectForBasic(subject adminBasicRuntime) authorizationSubject {
 	return authorizationSubject{subject: subject.subject, domain: subject.domain, source: "basic"}
 }
@@ -284,7 +289,12 @@ func authzDomainForCaller(caller *callerRuntime) string {
 	if project == "" {
 		project = strings.TrimSpace(caller.cfg.Project)
 	}
-	env := strings.TrimSpace(caller.cfg.Environment)
+	return authzDomainForProjectEnvironment(project, caller.cfg.Environment)
+}
+
+func authzDomainForProjectEnvironment(project, environment string) string {
+	project = strings.TrimSpace(project)
+	env := strings.TrimSpace(environment)
 	switch {
 	case project != "" && env != "":
 		return project + "/" + env

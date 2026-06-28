@@ -45,7 +45,7 @@ Expected diagnostic fields include request IDs, selected provider/model, model g
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
-Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through Casbin-authorized `content:capture` delete/purge operations with audit rows. It is disabled by default and is not part of ordinary diagnostics or usage reports.
+Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through Casbin-authorized `content:capture` delete/purge operations with audit rows. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports.
 
 ## PII Filtering
 
@@ -59,7 +59,7 @@ See [PII Filtering](../configuration/pii-filtering).
 
 `/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated Casbin grants. Normal application caller keys receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
 
-Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Existing `content_admin: true` caller config remains compatible through generated grants. Do not grant it to application caller keys or assume metrics-admin access includes content access.
+Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Delete-by-request is scoped to the captured row's caller project/environment domain. Existing `content_admin: true` caller config remains compatible through generated grants for its own domain. Do not grant it to application caller keys or assume metrics-admin access includes content access.
 
 ## Security Access Reporting
 

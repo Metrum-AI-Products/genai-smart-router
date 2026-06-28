@@ -398,11 +398,6 @@ func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	if !s.authorizeCaller(rc.caller, authzObjectContentCapture, authzActionDelete) {
-		code := "content-forbidden"
-		s.writeError(w, rc, http.StatusForbidden, code)
-		return
-	}
 	requestID := strings.TrimSpace(r.PathValue("request_id"))
 	if requestID == "" {
 		s.writeError(w, rc, http.StatusBadRequest, "missing-request-id")
@@ -412,6 +407,28 @@ func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Requ
 		s.writeError(w, rc, http.StatusServiceUnavailable, "content-store-disabled")
 		return
 	}
+	targetDomains, err := s.contentCaptureTargetDomains(requestID)
+	if err != nil {
+		s.writeError(w, rc, http.StatusInternalServerError, "content-delete-failed")
+		return
+	}
+	if len(targetDomains) == 0 {
+		if !s.authorizeCaller(rc.caller, authzObjectContentCapture, authzActionDelete) {
+			s.writeError(w, rc, http.StatusForbidden, "content-forbidden")
+			return
+		}
+	} else {
+		for _, domain := range targetDomains {
+			if domain == contentCaptureUnknownDomain {
+				s.writeError(w, rc, http.StatusForbidden, "content-forbidden")
+				return
+			}
+			if !s.authorizeCallerInDomain(rc.caller, domain, authzObjectContentCapture, authzActionDelete) {
+				s.writeError(w, rc, http.StatusForbidden, "content-forbidden")
+				return
+			}
+		}
+	}
 	rows, err := s.usage.DeleteContentCapturesByRequestID(requestID, rc.rec.CallerID, rc.rec.TokenID, "admin-delete")
 	if err != nil {
 		s.writeError(w, rc, http.StatusInternalServerError, "content-delete-failed")
@@ -419,6 +436,13 @@ func (s *Service) handleContentCaptureDelete(w http.ResponseWriter, r *http.Requ
 	}
 	defer s.finish(rc, http.StatusOK, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"request_id": requestID, "deleted": rows})
+}
+
+func (s *Service) contentCaptureTargetDomains(requestID string) ([]string, error) {
+	if s == nil || s.usage == nil {
+		return nil, nil
+	}
+	return s.usage.ContentCaptureTargetDomainsByRequestID(requestID)
 }
 
 func (s *Service) handleContentCapturePurgeExpired(w http.ResponseWriter, r *http.Request) {
@@ -571,6 +595,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			rc.rec.PIIFilterMode = piiResult.Mode
 			rc.rec.PIIFilterReplacements = piiResult.Replacements
 			rc.rec.PIIFilterRuleCount = piiRuleCount(piiResult)
+			rc.rec.Warnings = append(rc.rec.Warnings, piiResult.Warnings...)
 			rc.trace("pii_filter_blocked", "pii_filter matched request content", Target{}, 0, http.StatusBadRequest, "pii-filter-blocked", false, 0)
 			s.writeError(w, rc, http.StatusBadRequest, "pii-filter-blocked")
 			return
@@ -638,6 +663,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	if cacheable(req) {
 		if cached, ok := s.cache.Get(key); ok {
 			ensureResponseID(cached)
+			captureCached := *cached
+			if len(cached.Warnings) > 0 {
+				captureCached.Warnings = append([]string(nil), cached.Warnings...)
+			}
+			s.captureResponseContent(rc, &captureCached, captureDecision)
 			if piiRestoreEnabled(group.PIIFilter) {
 				restorePIIPlaceholders(cached, piiResult)
 			}
@@ -646,7 +676,6 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			rc.rec.Status = http.StatusOK
 			rc.rec.Usage = cached.Usage
 			rc.trace("cache_hit", "", dec.Target, 0, http.StatusOK, "", false, 0)
-			s.captureResponseContent(rc, cached, captureDecision)
 			s.writeIR(w, dialect, cached, req.Stream, rc)
 			s.finish(rc, http.StatusOK, nil)
 			return
@@ -696,6 +725,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		if cacheable(req) {
 			s.cache.Put(key, resp)
 		}
+		s.captureResponseContent(rc, resp, captureDecision)
 		if piiRestoreEnabled(group.PIIFilter) {
 			restorePIIPlaceholders(resp, piiResult)
 		}
@@ -709,7 +739,6 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		rc.rec.UpstreamReportedOutputCostUSD = resp.Usage.UpstreamReportedOutputCostUSD
 		rc.rec.UpstreamReportedTotalCostUSD = resp.Usage.UpstreamReportedTotalCostUSD
 		rc.rec.Warnings = append(rc.rec.Warnings, resp.Warnings...)
-		s.captureResponseContent(rc, resp, captureDecision)
 		s.writeIR(w, dialect, resp, req.Stream, rc)
 		s.finish(rc, http.StatusOK, nil)
 	}

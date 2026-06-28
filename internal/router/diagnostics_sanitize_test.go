@@ -24,9 +24,19 @@ func TestSanitizeDiagnosticTextRedactsInvalidJSONLikeSensitiveFields(t *testing.
 			t.Fatalf("sanitized diagnostic leaked %q in %q", forbidden, got)
 		}
 	}
-	for _, want := range []string{`"prompt":[REDACTED]`, `"authorization":[REDACTED]`, `"token_hash":[REDACTED]`, `"provider_api_key":[REDACTED]`} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("sanitized diagnostic missing %q in %q", want, got)
-		}
+	if !strings.Contains(got, "upstream status 500: upstream error body redacted") {
+		t.Fatalf("sanitized diagnostic missing redaction marker in %q", got)
+	}
+}
+
+func TestSanitizeDiagnosticTextRedactsFreeformPromptEcho(t *testing.T) {
+	const rawPrompt = "please summarize payroll notes for jane@example.test"
+	input := "upstream status 400: invalid request near " + rawPrompt
+	got := sanitizeDiagnosticText(input, true, 4096)
+	if strings.Contains(got, rawPrompt) || strings.Contains(got, "jane@example.test") {
+		t.Fatalf("sanitized diagnostic leaked prompt echo in %q", got)
+	}
+	if got != "upstream status 400: upstream error body redacted" {
+		t.Fatalf("sanitized diagnostic=%q", got)
 	}
 }

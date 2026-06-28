@@ -141,7 +141,7 @@ g, caller:content-admin-key, content_admin, example/prod
 p, content_admin, example/prod, content:capture, delete|purge
 ```
 
-`DELETE /v1/content-captures/<request_id>` checks action `delete`. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing `callers[].content_admin: true` remains compatible through synthesized startup grants for the caller's `<project>/<environment>` domain. Metrics-admin and reports-admin grants do not imply content maintenance access.
+`DELETE /v1/content-captures/<request_id>` checks action `delete`. The actor must be authorized in the captured row's caller `<project>/<environment>` domain before any row for that request ID is removed; knowing a request ID from another domain is not sufficient. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing `callers[].content_admin: true` remains compatible through synthesized startup grants for the caller's own `<project>/<environment>` domain. Metrics-admin and reports-admin grants do not imply content maintenance access.
 
 ## Admin Reports
 

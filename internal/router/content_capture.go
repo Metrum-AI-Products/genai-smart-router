@@ -15,6 +15,7 @@ const (
 	contentCaptureScopeRequest       = "request"
 	contentCaptureScopeResponse      = "response"
 	contentCaptureScopeUpstreamError = "upstream_error"
+	contentCaptureUnknownDomain      = "__unknown_content_capture_domain__"
 )
 
 type contentCaptureDecision struct {
@@ -386,6 +387,42 @@ func (s *usageStore) DeleteContentCapturesByRequestID(requestID, actorCallerID, 
 	}
 	s.emitContentCaptureAudit("request_delete", requestID, actorCallerID, actorTokenID, "", result.RowsAffected, reason)
 	return result.RowsAffected, nil
+}
+
+func (s *usageStore) ContentCaptureTargetDomainsByRequestID(requestID string) ([]string, error) {
+	if s == nil || s.db == nil || strings.TrimSpace(requestID) == "" {
+		return nil, nil
+	}
+	var captureCount int64
+	if err := s.db.Model(&contentCaptureRecord{}).Where("request_id = ?", requestID).Count(&captureCount).Error; err != nil {
+		return nil, err
+	}
+	if captureCount == 0 {
+		return nil, nil
+	}
+	var rows []usageRecord
+	if err := s.db.Model(&usageRecord{}).
+		Where("request_id = ?", requestID).
+		Select("caller_project", "caller_environment").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []string{contentCaptureUnknownDomain}, nil
+	}
+	domains := make([]string, 0, len(rows))
+	seen := map[string]bool{}
+	for _, row := range rows {
+		domain := authzDomainForProjectEnvironment(row.CallerProject, row.CallerEnvironment)
+		if domain != "" && !seen[domain] {
+			seen[domain] = true
+			domains = append(domains, domain)
+		}
+	}
+	if len(domains) == 0 {
+		return []string{contentCaptureUnknownDomain}, nil
+	}
+	return domains, nil
 }
 
 func (s *usageStore) emitContentCaptureAudit(action, requestID, actorCallerID, actorTokenID, scope string, rows int64, reason string) {

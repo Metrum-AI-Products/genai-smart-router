@@ -205,7 +205,7 @@ server:
 
 The report surface checks object `admin:reports` with action `read` for pages, aggregate JSON APIs, and static assets. Markdown export checks action `export`. Request detail under `/admin/reports/api/request/<request_id>` checks action `drilldown`.
 
-Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete`, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants at startup.
+Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete` in the captured row's caller project/environment domain, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants for their own domain at startup.
 
 When reports are enabled under `server.admin_reports`, ordinary router caller tokens are rejected with `403 reports-forbidden` rather than being treated as browser-admin credentials.
 

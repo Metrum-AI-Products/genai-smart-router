@@ -80,6 +80,7 @@ func sanitizeDiagnosticText(text string, storeUpstreamSnippet bool, maxBytes int
 	text = redactDiagnosticJSONLikeFields(text)
 	text = diagnosticContentFieldRe.ReplaceAllString(text, "$1=[REDACTED]")
 	text = redactDiagnosticSecrets(text)
+	text = redactDiagnosticFreeformBody(text)
 	return truncateDiagnosticText(text, maxBytes)
 }
 
@@ -108,6 +109,22 @@ func redactDiagnosticJSONBody(text string) string {
 
 func redactDiagnosticJSONLikeFields(text string) string {
 	return diagnosticJSONLikeFieldRe.ReplaceAllString(text, "${1}[REDACTED]")
+}
+
+func redactDiagnosticFreeformBody(text string) string {
+	const marker = "upstream error body redacted"
+	if text == "" || strings.Contains(text, marker) {
+		return text
+	}
+	idx := strings.Index(text, ":")
+	if idx <= 0 {
+		return marker
+	}
+	prefix := strings.TrimSpace(text[:idx])
+	if prefix == "" {
+		return marker
+	}
+	return prefix + ": " + marker
 }
 
 func redactDiagnosticSecrets(text string) string {

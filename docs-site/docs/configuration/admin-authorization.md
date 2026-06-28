@@ -105,14 +105,14 @@ p, metrics_admin, example/prod, metrics, read
 
 Content-capture maintenance endpoints check object `content:capture`.
 
-`DELETE /v1/content-captures/<request_id>` checks action `delete`. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing caller keys with `content_admin: true` remain compatible through synthesized Casbin grants:
+`DELETE /v1/content-captures/<request_id>` checks action `delete` in the captured row's caller project/environment domain before removing rows. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing caller keys with `content_admin: true` remain compatible through synthesized Casbin grants for their own domain:
 
 ```text
 g, caller:content-admin-key, content_admin, example/prod
 p, content_admin, example/prod, content:capture, delete|purge
 ```
 
-Operators may instead grant the same resource/actions through explicit policy. Metrics and report grants do not grant content-capture maintenance access.
+Operators may instead grant the same resource/actions through explicit policy. Metrics and report grants do not grant content-capture maintenance access, and knowing another domain's request ID is not sufficient to delete its content-capture rows.
 
 ## Admin Reports
 
