@@ -16,8 +16,8 @@ Last deployed: 2026-06-28
 
 ## Deployed Version
 
-- Router package/image version: `60aeb50-linux-amd64`
-- Source commit: `60aeb50`
+- Router package/image version: `a3bbc54-linux-amd64`
+- Source commit: `a3bbc54`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,32 @@ Last deployed: 2026-06-28
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-28 Upstream-head production refresh
+
+Deployed package/image `smart-llmrouter:a3bbc54-linux-amd64` from source commit `a3bbc54` after syncing `main` with `origin/main`. This refresh aligns production with upstream head; the only source change after `60aeb50` was the deployment record for the admin reports refresh.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-a3bbc54-20260628T222459Z
+```
+
+Validation:
+
+```text
+rtk git pull --ff-only origin main: already up to date
+rtk go test ./cmd/... ./internal/...: passed, 428 tests across 7 packages
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-a3bbc54-docker-linux-amd64.tar.gz
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version a3bbc54, build_date 2026-06-28T22:20:40Z
+production /version after deploy: a3bbc54, build_date 2026-06-28T22:20:40Z, go1.26.4 linux/amd64, license compile mode required
+hosted docs /docs/ returned 200
+production authenticated /v1/chat/completions smoke against high returned 200 with MiniMax-M3 selected
+production browser check for savings-by-key returned 20 table rows and 2 charts with baseline deep link preserved
+production cleanup: removed uploaded package from /tmp and ran docker system prune
+```
 
 ## 2026-06-28 Admin reports production refresh
 
