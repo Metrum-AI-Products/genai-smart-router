@@ -219,7 +219,7 @@ export function route(ctx: RouteContext) {
 
 ## External Policy Calls
 
-Scripts run synchronously inside the router process after TypeScript transpilation. Keep policy fast and deterministic. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
+Scripts run synchronously inside the router process after TypeScript transpilation. Keep policy fast and deterministic. If a script returns `classLabel`, treat it as a telemetry token only: use at most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo prompt text, secrets, HTML, or user input into `classLabel`; unsafe values are stored as `unsafe_class_label`. External calls use the router-provided `router.fetchJSON(url, options)` helper, not browser `fetch`, and only work when `script_http.enabled` is true for that model group.
 
 ```typescript
 export function route(ctx: RouteContext) {

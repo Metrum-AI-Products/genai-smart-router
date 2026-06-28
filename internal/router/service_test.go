@@ -3750,6 +3750,144 @@ func TestCountTokensEndpoint(t *testing.T) {
 	}
 }
 
+func TestCountTokensRejectsUnauthorizedModelsBeforeUsage(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	enabled := true
+	cfg.Server.UsageDB = UsageDBConfig{Enable: &enabled, Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Models["allowed"] = cfg.Models["default"]
+	cfg.Callers[0].Allow = []string{"allowed"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for _, model := range []string{"default", "fake-model-with-secret-like-name"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"count these tokens"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "model-not-allowed") {
+			t.Fatalf("model %s status=%d body=%s", model, rr.Code, rr.Body.String())
+		}
+	}
+
+	var count int64
+	if err := svc.usage.db.Model(&usageRecord{}).Where("requested_model IN ?", []string{"default", "fake-model-with-secret-like-name"}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("rejected count_tokens persisted requested model rows=%d", count)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"allowed","messages":[{"role":"user","content":"count these tokens"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("authorized status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestQuotaStateRejectsRawJSONAfterIntegrityMigration(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	ad := qs.Admit(caller, 0)
+	if !ad.OK {
+		t.Fatalf("admit failed: %#v", ad)
+	}
+	qs.RecordTokens(caller, nil, Usage{TotalTokens: 10})
+	qs.Release(caller)
+	if err := qs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := `{"callers":{"alice":{"day_start":"2026-01-01T00:00:00Z","month_start":"2026-01-01T00:00:00Z","lifetime_tokens":0,"disabled":false}}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newQuotaStore(path, cfg); err == nil || !errors.Is(err, errStateIntegrity) {
+		t.Fatalf("tampered raw quota state err=%v, want integrity failure", err)
+	}
+}
+
+func TestQuotaStateExplicitUnsignedMigration(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	path := filepath.Join(dir, "state.json")
+	raw := `{"callers":{"alice":{"day_start":"2026-01-01T00:00:00Z","month_start":"2026-01-01T00:00:00Z","lifetime_tokens":7,"disabled":false}}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "1")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := qs.state.Callers["alice"].LifetimeTokens; got != 7 {
+		t.Fatalf("migrated lifetime_tokens=%d, want 7", got)
+	}
+	if err := qs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION", "")
+	if _, err := newQuotaStore(path, cfg); err != nil {
+		t.Fatalf("signed migrated state rejected: %v", err)
+	}
+}
+
+func TestQuotaSignedStateSurvivesCallerConfigChanges(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	path := filepath.Join(dir, "state.json")
+	qs, err := newQuotaStore(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := qs.callers["alice"]
+	ad := qs.Admit(caller, 0)
+	if !ad.OK {
+		t.Fatalf("admit failed: %#v", ad)
+	}
+	qs.RecordTokens(caller, nil, Usage{TotalTokens: 11})
+	qs.Release(caller)
+	if err := qs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rotatedTokenHash := sha256.Sum256([]byte("rotated-alice-token"))
+	bobTokenHash := sha256.Sum256([]byte("bob-token"))
+	cfg2 := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	alice := cfg2.Callers[0]
+	alice.TokenSHA256 = hex.EncodeToString(rotatedTokenHash[:])
+	alice.TokenID = "rtr_alice_rotated"
+	bob := alice
+	bob.ID = "bob"
+	bob.User = "bob"
+	bob.OwnerUser = "bob"
+	bob.TokenSHA256 = hex.EncodeToString(bobTokenHash[:])
+	bob.TokenID = "rtr_bob_test"
+	cfg2.Callers = []CallerConfig{bob, alice}
+
+	qs2, err := newQuotaStore(path, cfg2)
+	if err != nil {
+		t.Fatalf("signed quota state rejected after caller config change: %v", err)
+	}
+	if got := qs2.state.Callers["alice"].LifetimeTokens; got != 11 {
+		t.Fatalf("alice lifetime_tokens=%d, want 11", got)
+	}
+	if qs2.state.Callers["bob"] == nil {
+		t.Fatalf("new caller state not initialized: %#v", qs2.state.Callers)
+	}
+}
+
 func TestUsageAndLogsIncludeCallerMetadata(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -3959,6 +4097,55 @@ func TestMetricsEndpointRequiresMetricsAdminAndExportsGlobalLabels(t *testing.T)
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestRejectedModelMetricsUseBoundedLabel(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	adminToken := "rtr_metrics_admin_cardinality"
+	adminSum := sha256.Sum256([]byte(adminToken))
+	cfg.Callers = append(cfg.Callers, CallerConfig{
+		ID:           "metrics-admin",
+		User:         "ops",
+		Project:      "observability",
+		Environment:  "test",
+		TokenSHA256:  hex.EncodeToString(adminSum[:]),
+		TokenID:      "rtr_metrics_admin_cardinality",
+		Allow:        []string{"default"},
+		MetricsAdmin: true,
+		Rate:         RateConfig{RPM: 1000, TPM: 100000, Concurrent: 4},
+	})
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for i := 0; i < 25; i++ {
+		model := fmt.Sprintf("not-allowed-%d-%s", i, strings.Repeat("x", 120))
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsReq.Header.Set("Authorization", "Bearer "+adminToken)
+	metricsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(metricsRR, metricsReq)
+	if metricsRR.Code != http.StatusOK {
+		t.Fatalf("metrics status=%d body=%s", metricsRR.Code, metricsRR.Body.String())
+	}
+	body := metricsRR.Body.String()
+	if got := strings.Count(body, `model_group="rejected_model"`); got == 0 {
+		t.Fatalf("rejected model label count=%d body=%s", got, body)
+	}
+	if strings.Contains(body, "not-allowed-") || strings.Contains(body, strings.Repeat("x", 60)) {
+		t.Fatalf("metrics leaked rejected model names: %s", body)
 	}
 }
 
@@ -4321,6 +4508,11 @@ func TestReplicateProviderAdapter(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "replicate answer") {
 		t.Fatalf("response not mapped: %s", rr.Body.String())
+	}
+	usage := svc.quota.Usage(svc.quota.callers["alice"])
+	keyUsage := usage["key"].(map[string]any)
+	if keyUsage["lifetime_tokens"].(int64) <= 0 {
+		t.Fatalf("replicate success did not record token usage: %#v", keyUsage)
 	}
 }
 

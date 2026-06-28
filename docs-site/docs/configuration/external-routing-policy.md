@@ -140,7 +140,7 @@ The router accepts:
 - `targetIndex`: zero-based index into the request's `targets` array.
 - `target`: selector such as `{ "provider": "baseten", "model": "openai/gpt-oss-120b" }`.
 - `fallbackIndexes` or `fallbacks`: optional fallback order.
-- `classLabel`: optional label stored in logs and usage records.
+- `classLabel`: optional telemetry token stored in logs and usage records. Use at most 64 characters from letters, numbers, `_`, `-`, `.`, and `:`. Do not echo prompts, secrets, HTML, or user input; unsafe values are stored as `unsafe_class_label`.
 
 Returned targets are validated against the eligible target list. A policy service cannot select an unconfigured provider/model, a target outside the requested group, or a target filtered out for tools, modalities, or token-cap behavior.
 

@@ -63,9 +63,9 @@ func (m *metricsStore) Observe(rec logRecord) {
 		CallerProject:     rec.CallerProject,
 		CallerEnvironment: rec.CallerEnvironment,
 		TokenID:           rec.TokenID,
-		ModelGroup:        defaultString(rec.ResolvedGroup, rec.RequestedModel),
-		TargetProvider:    rec.TargetProvider,
-		TargetModel:       rec.TargetModel,
+		ModelGroup:        metricModelGroupLabel(rec),
+		TargetProvider:    sanitizeMetricLabel(rec.TargetProvider, "none"),
+		TargetModel:       sanitizeMetricLabel(rec.TargetModel, "none"),
 		Status:            rec.Status,
 	}
 	m.mu.Lock()
@@ -107,6 +107,42 @@ func (m *metricsStore) Observe(rec logRecord) {
 	values.CacheBytes = rec.CacheBytes
 	values.CacheMaxBytes = rec.CacheMaxBytes
 	values.CacheOccupancyRatio = rec.CacheOccupancyPct / 100
+}
+
+func metricModelGroupLabel(rec logRecord) string {
+	if rec.ResolvedGroup != "" {
+		return sanitizeMetricLabel(rec.ResolvedGroup, "unknown")
+	}
+	if rec.Status >= 400 {
+		return "rejected_model"
+	}
+	return sanitizeMetricLabel(rec.RequestedModel, "unknown")
+}
+
+func sanitizeMetricLabel(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '_' || r == '-' || r == '.' || r == '/' || r == ':':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+		if b.Len() >= 96 {
+			break
+		}
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return fallback
+	}
+	return out
 }
 
 func (m *metricsStore) Prometheus(license *licenseManager) string {

@@ -12,6 +12,8 @@ import (
 type quotaStore struct {
 	mu      sync.Mutex
 	path    string
+	keyID   string
+	key     []byte
 	callers map[string]*callerRuntime
 	state   persistentState
 }
@@ -69,10 +71,22 @@ type quotaReservation struct {
 }
 
 func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
-	qs := &quotaStore{path: path, callers: map[string]*callerRuntime{}, state: persistentState{Callers: map[string]*callerState{}}}
+	key, keyID := quotaStateIntegrityKey(cfg)
+	qs := &quotaStore{path: path, keyID: keyID, key: key, callers: map[string]*callerRuntime{}, state: persistentState{Callers: map[string]*callerState{}}}
 	if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
-		if err := json.Unmarshal(raw, &qs.state); err != nil {
+		state, enveloped, err := unmarshalIntegrityState[persistentState](raw, keyID, key)
+		if err != nil {
 			return nil, err
+		}
+		if enveloped {
+			qs.state = state
+		} else {
+			if os.Getenv("SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION") != "1" {
+				return nil, errStateIntegrity
+			}
+			if err := json.Unmarshal(raw, &qs.state); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if qs.state.Callers == nil {
@@ -111,6 +125,11 @@ func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
 		qs.callers[callerCfg.ID] = rt
 		if qs.state.Callers[callerCfg.ID] == nil {
 			qs.state.Callers[callerCfg.ID] = &callerState{DayStart: dayStart(now), MonthStart: monthStart(now)}
+		}
+	}
+	if path != "" {
+		if err := qs.saveLocked(); err != nil {
+			return nil, err
 		}
 	}
 	return qs, nil
@@ -338,11 +357,22 @@ func (q *quotaStore) saveLocked() error {
 	if q.path == "" {
 		return nil
 	}
-	raw, err := json.MarshalIndent(q.state, "", "  ")
+	raw, err := marshalIntegrityState(q.state, q.keyID, q.key)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(q.path, raw, 0600)
+	if err := os.WriteFile(q.path, raw, 0600); err != nil {
+		return err
+	}
+	return nil
+}
+
+func quotaStateIntegrityKey(cfg *Config) ([]byte, string) {
+	parts := []string{"smart-llmrouter quota state v1"}
+	if cfg != nil {
+		parts = append(parts, cfg.StatePath)
+	}
+	return stateIntegrityMaterial(parts...)
 }
 
 func (q *quotaStore) Close() error {

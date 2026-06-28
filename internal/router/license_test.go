@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -105,6 +106,9 @@ func TestLicenseManagerReadinessRequestGateMetricsAndUsage(t *testing.T) {
 	defer svc.Close()
 	svc.license.keys = []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}}
 	svc.license.now = func() time.Time { return now }
+	if err := os.Remove(cfg.Server.License.StatePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
 	svc.license.reload()
 
 	ready := httptest.NewRecorder()
@@ -722,6 +726,9 @@ func TestLicenseFeatureGateBlocksDynamicScore(t *testing.T) {
 	defer svc.Close()
 	svc.license.keys = []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}}
 	svc.license.now = func() time.Time { return now }
+	if err := os.Remove(cfg.Server.License.StatePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
 	svc.license.reload()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":16}`))
@@ -730,6 +737,59 @@ func TestLicenseFeatureGateBlocksDynamicScore(t *testing.T) {
 	svc.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "license-feature-forbidden") {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRejectedModelDoesNotConsumeLicenseRequestBudget(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_license_budget",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	payload.Limits.MaxTotalRequests = 1
+	licensePath := writeTestLicense(t, dir, priv, payload)
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.License = LicenseConfig{Enabled: true, Path: licensePath, StatePath: filepath.Join(dir, "license-state.json"), RecheckInterval: time.Hour}
+	cfg.Models["other"] = cfg.Models["default"]
+	cfg.Callers[0].Allow = []string{"default"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	svc.license.keys = []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}}
+	svc.license.now = func() time.Time { return now }
+	if err := os.Remove(cfg.Server.License.StatePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	svc.license.reload()
+
+	rejected := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"other","messages":[{"role":"user","content":"hi"}]}`))
+	rejected.Header.Set("Authorization", "Bearer "+testToken)
+	rejectedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rejectedRR, rejected)
+	if rejectedRR.Code != http.StatusForbidden || !strings.Contains(rejectedRR.Body.String(), "model-not-allowed") {
+		t.Fatalf("rejected status=%d body=%s", rejectedRR.Code, rejectedRR.Body.String())
+	}
+
+	allowed := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
+	allowed.Header.Set("Authorization", "Bearer "+testToken)
+	allowedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(allowedRR, allowed)
+	if allowedRR.Code != http.StatusOK {
+		t.Fatalf("allowed status=%d body=%s", allowedRR.Code, allowedRR.Body.String())
 	}
 }
 
@@ -768,6 +828,93 @@ func TestLicenseGracePreservesLastValidFeatures(t *testing.T) {
 	}
 	if lerr := m.enforce(LicenseFeatureDynamicScore); lerr != nil {
 		t.Fatalf("dynamic feature denied during grace: %v", lerr)
+	}
+}
+
+func TestLicenseGraceRejectsUnsignedForgedState(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	licensePath := writeTestLicense(t, dir, priv, testLicensePayload(now, []string{LicenseFeatureRouting}))
+	statePath := filepath.Join(dir, "license-state.json")
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.License = LicenseConfig{
+		Enabled:                      true,
+		Path:                         licensePath,
+		StatePath:                    statePath,
+		RecheckInterval:              time.Hour,
+		GracePeriodOnValidationError: time.Hour,
+	}
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now }
+	m.reload()
+	forged := `{"last_valid_license_id":"lic_forged","last_valid_customer_id":"cust_forged","last_valid_sku":"enterprise","last_valid_key_id":"test-license-key","last_valid_expires_at":"2099-01-01T00:00:00Z","last_valid_features":["*"],"last_successful_validation_utc":"` + now.Format(time.RFC3339) + `","last_observed_wall_clock_utc":"` + now.Format(time.RFC3339) + `"}`
+	if err := os.WriteFile(statePath, []byte(forged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(licensePath, []byte(`{"payload":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now.Add(10 * time.Minute) }
+	m.reload()
+	st := m.statusSnapshot()
+	if st.GraceActive || st.Features["*"] || st.Ready {
+		t.Fatalf("forged unsigned state activated grace: %#v", st)
+	}
+}
+
+func TestLicenseReloadMigratesLegacyUnsignedStateForValidLicense(t *testing.T) {
+	pub, priv, err := GenerateLicenseKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	payload := testLicensePayload(now, []string{LicenseFeatureRouting})
+	licensePath := writeTestLicense(t, dir, priv, payload)
+	statePath := filepath.Join(dir, "license-state.json")
+	legacy := licensePersistentState{
+		LastValidLicenseID:          payload.LicenseID,
+		LastValidCustomerID:         "forged-customer",
+		LastValidFeatures:           []string{"*"},
+		LifetimeTokens:              123,
+		LifetimeRequests:            7,
+		LastSuccessfulValidationUTC: now.Add(-time.Minute).Format(time.RFC3339),
+		LastObservedWallClockUTC:    now.Add(-time.Minute).Format(time.RFC3339),
+	}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.License = LicenseConfig{Enabled: true, Path: licensePath, StatePath: statePath, RecheckInterval: time.Hour}
+	m, err := newLicenseManager(cfg.Server.License, cfg, []LicensePublicKey{{KeyID: "test-license-key", Algorithm: "ed25519", PublicKey: pub}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return now }
+	m.reload()
+	state, err := m.readState()
+	if err != nil {
+		t.Fatalf("migrated state should verify: %v", err)
+	}
+	if state.LifetimeTokens != 123 || state.LifetimeRequests != 7 {
+		t.Fatalf("legacy counters not preserved: %#v", state)
+	}
+	if state.LastValidCustomerID != payload.CustomerID || state.LastValidLicenseDigest == "" {
+		t.Fatalf("signed license metadata not rewritten: %#v", state)
+	}
+	if state.LastValidFeatures[0] == "*" {
+		t.Fatalf("legacy wildcard features preserved: %#v", state.LastValidFeatures)
 	}
 }
 

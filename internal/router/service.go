@@ -490,6 +490,14 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, rc, http.StatusBadRequest, "missing-model")
 		return
 	}
+	if !rc.caller.allow[req.Model] {
+		s.writeError(w, rc, http.StatusForbidden, "model-not-allowed")
+		return
+	}
+	if _, ok := s.cfg.Models[req.Model]; !ok {
+		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
+		return
+	}
 	ad := s.quota.Admit(rc.caller, estimateTokens(req))
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
@@ -545,9 +553,30 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusBadRequest, "provider-hosted-tools-forbidden")
 		return
 	}
-	rc.rec.RequestedModel = req.Model
 	rc.rec.Stream = req.Stream
 
+	if !rc.caller.allow[req.Model] {
+		s.writeError(w, rc, http.StatusForbidden, "model-not-allowed")
+		return
+	}
+	group, ok := s.cfg.Models[req.Model]
+	if !ok {
+		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
+		return
+	}
+	rc.rec.RequestedModel = req.Model
+	s.recordRoutingReproducibility(rc, req.Model, group)
+	if group.Contract != nil {
+		rc.rec.ContractPresent = true
+		rc.rec.ContractBucket = "pending"
+		rc.rec.ContractWorkload = contractWorkloadLabel(group.Contract)
+	}
+	for _, feature := range licenseFeaturesForGroup(group) {
+		if lerr := s.license.enforce(feature); lerr != nil {
+			s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+			return
+		}
+	}
 	ad := s.quota.Admit(rc.caller, 0)
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
@@ -564,28 +593,6 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	if ad.WarningText != "" {
 		w.Header().Add("X-Router-Warning", ad.WarningText)
 		rc.rec.Warnings = append(rc.rec.Warnings, ad.WarningText)
-	}
-
-	if !rc.caller.allow[req.Model] {
-		s.writeError(w, rc, http.StatusForbidden, "model-not-allowed")
-		return
-	}
-	group, ok := s.cfg.Models[req.Model]
-	if !ok {
-		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
-		return
-	}
-	s.recordRoutingReproducibility(rc, req.Model, group)
-	if group.Contract != nil {
-		rc.rec.ContractPresent = true
-		rc.rec.ContractBucket = "pending"
-		rc.rec.ContractWorkload = contractWorkloadLabel(group.Contract)
-	}
-	for _, feature := range licenseFeaturesForGroup(group) {
-		if lerr := s.license.enforce(feature); lerr != nil {
-			s.writeError(w, rc, lerr.StatusCode, lerr.Code)
-			return
-		}
 	}
 	piiResult, err := applyPIIFilter(req, group.PIIFilter)
 	if err != nil {
@@ -722,6 +729,10 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	}
 	if resp != nil {
 		ensureResponseID(resp)
+		if totalTokens(resp.Usage) == 0 && reservationTokens > 0 {
+			resp.Usage = estimatedUsageForReservation(req, dialect, reservationTokens)
+			resp.Warnings = appendWarning(resp.Warnings, "usage-estimated")
+		}
 		if cacheable(req) {
 			s.cache.Put(key, resp)
 		}
@@ -742,6 +753,25 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeIR(w, dialect, resp, req.Stream, rc)
 		s.finish(rc, http.StatusOK, nil)
 	}
+}
+
+func estimatedUsageForReservation(req *IRRequest, dialect string, reservationTokens int) Usage {
+	input := estimateTokens(req)
+	if input <= 0 {
+		input = 1
+	}
+	output := reservationTokens - input
+	if output < 0 {
+		output = 0
+	}
+	if output == 0 && dialect != "anthropic" && req != nil && req.MaxTokens > 0 {
+		output = req.MaxTokens
+	}
+	total := input + output
+	if total <= 0 {
+		total = reservationTokens
+	}
+	return Usage{InputTokens: input, OutputTokens: output, TotalTokens: total}
 }
 
 func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) (*requestContext, bool) {
@@ -1124,6 +1154,9 @@ func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, calle
 		return dec, nil
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
+	}
+	if label != nil {
+		label = safePolicyClassLabel(*label)
 	}
 	return decision{Target: targets[0], Fallbacks: targets[1:], ClassLabel: label, Strategy: strategy, GroupName: groupName, DynamicScoreTerms: simpleStrategyRankingTelemetry(strategy, targets, s.cfg.Provider)}, nil
 }

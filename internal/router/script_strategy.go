@@ -201,7 +201,7 @@ func (s *scriptStrategy) Pick(group string, req *IRRequest, contract *ModelGroup
 	}
 	var classLabel *string
 	if out.ClassLabel != "" {
-		classLabel = &out.ClassLabel
+		classLabel = safePolicyClassLabel(out.ClassLabel)
 	}
 	durationMS := time.Since(start).Milliseconds()
 	return decision{

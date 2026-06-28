@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -74,6 +75,24 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(md, "Requests: `3`") {
 		t.Fatalf("duplicate import changed request count:\n%s", md)
+	}
+}
+
+func TestSQLiteUsageDBUsesPrivateFileMode(t *testing.T) {
+	oldUmask := syscall.Umask(0)
+	defer syscall.Umask(oldUmask)
+	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("usage db mode=%#o, want 0600", got)
 	}
 }
 

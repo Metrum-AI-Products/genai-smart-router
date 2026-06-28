@@ -1185,7 +1185,21 @@ func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
 				return nil, err
 			}
 		}
-		return gorm.Open(sqlite.Open(cfg.Path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		if err := ensureSQLitePrivateMode(cfg.Path); err != nil {
+			return nil, err
+		}
+		db, err := gorm.Open(sqlite.Open(cfg.Path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		if err != nil {
+			return nil, err
+		}
+		if err := chmodSQLiteFiles(cfg.Path); err != nil {
+			sqlDB, _ := db.DB()
+			if sqlDB != nil {
+				_ = sqlDB.Close()
+			}
+			return nil, err
+		}
+		return db, nil
 	case "postgres", "postgresql":
 		if cfg.DSN == "" {
 			return nil, errors.New("usage db dsn is required")
@@ -1194,6 +1208,30 @@ func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
 	default:
 		return nil, fmt.Errorf("unsupported usage db driver %q", cfg.Driver)
 	}
+}
+
+func ensureSQLitePrivateMode(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func chmodSQLiteFiles(path string) error {
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if _, err := os.Stat(candidate); err == nil {
+			if err := os.Chmod(candidate, 0o600); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *usageStore) Close() error {

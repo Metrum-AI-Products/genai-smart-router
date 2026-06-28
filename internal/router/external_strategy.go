@@ -176,7 +176,7 @@ func (s externalPolicyStrategy) pick(group string, req *IRRequest, contract *Mod
 	}
 	var classLabel *string
 	if out.ClassLabel != "" {
-		classLabel = &out.ClassLabel
+		classLabel = safePolicyClassLabel(out.ClassLabel)
 	}
 	return decision{
 		Target:      eligibleTargets[primary],

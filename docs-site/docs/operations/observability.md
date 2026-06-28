@@ -40,6 +40,7 @@ Preserve the `X-Request-Id` value when opening support tickets. Do not include r
 ## Metrics
 
 Configure a dedicated metrics-admin caller and restrict `/metrics` to that subject. Metrics are global operational telemetry, not a tenant-scoped caller endpoint.
+Rejected or unknown caller-supplied model names are collapsed to bounded labels such as `rejected_model`; authorized model groups keep their configured group labels.
 
 Example check:
 

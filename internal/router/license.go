@@ -197,6 +197,7 @@ type licenseManager struct {
 
 type licensePersistentState struct {
 	LastValidLicenseID          string                    `json:"last_valid_license_id"`
+	LastValidLicenseDigest      string                    `json:"last_valid_license_digest,omitempty"`
 	LastValidCustomerID         string                    `json:"last_valid_customer_id"`
 	LastValidSKU                string                    `json:"last_valid_sku"`
 	LastValidKeyID              string                    `json:"last_valid_key_id"`
@@ -413,7 +414,9 @@ func (m *licenseManager) statusForError(err licenseValidationError) licenseStatu
 	state, stateErr := m.readState()
 	if stateErr == nil && m.cfg.GracePeriodOnValidationError > 0 && state.LastSuccessfulValidationUTC != "" {
 		last, _ := time.Parse(time.RFC3339, state.LastSuccessfulValidationUTC)
-		if !last.IsZero() && now.Sub(last) <= m.cfg.GracePeriodOnValidationError && licenseErrorAllowsGrace(err.Code) {
+		digest, digestErr := m.currentLicenseDigest()
+		digestMatches := state.LastValidLicenseDigest != "" && (digestErr != nil || state.LastValidLicenseDigest == digest || err.Code == "license-invalid")
+		if !last.IsZero() && digestMatches && now.Sub(last) <= m.cfg.GracePeriodOnValidationError && licenseErrorAllowsGrace(err.Code) {
 			status.Valid = true
 			status.Ready = true
 			status.GraceActive = true
@@ -457,6 +460,35 @@ func (m *licenseManager) readState() (licensePersistentState, error) {
 	if err != nil {
 		return licensePersistentState{}, err
 	}
+	key, keyID, err := m.licenseStateIntegrityKey()
+	if err != nil {
+		return licensePersistentState{}, err
+	}
+	state, enveloped, err := unmarshalIntegrityState[licensePersistentState](raw, keyID, key)
+	if err != nil {
+		return licensePersistentState{}, err
+	}
+	if !enveloped {
+		return licensePersistentState{}, errStateIntegrity
+	}
+	return state, nil
+}
+
+func (m *licenseManager) readLegacyUnsignedState() (licensePersistentState, error) {
+	if strings.TrimSpace(m.statePath) == "" {
+		return licensePersistentState{}, os.ErrNotExist
+	}
+	raw, err := os.ReadFile(m.statePath)
+	if err != nil {
+		return licensePersistentState{}, err
+	}
+	var probe struct {
+		SchemaVersion int             `json:"schema_version"`
+		Integrity     json.RawMessage `json:"integrity"`
+	}
+	if err := json.Unmarshal(raw, &probe); err == nil && (probe.SchemaVersion != 0 || len(probe.Integrity) > 0) {
+		return licensePersistentState{}, errStateIntegrity
+	}
 	var state licensePersistentState
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return licensePersistentState{}, err
@@ -468,17 +500,32 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 	if strings.TrimSpace(m.statePath) == "" {
 		return nil
 	}
-	state, _ := m.readState()
+	state, stateErr := m.readState()
+	if stateErr != nil && !errors.Is(stateErr, os.ErrNotExist) {
+		if !errors.Is(stateErr, errStateIntegrity) || !status.Valid || status.GraceActive || status.LicenseID == "" {
+			return stateErr
+		}
+		legacy, legacyErr := m.readLegacyUnsignedState()
+		if legacyErr != nil {
+			return stateErr
+		}
+		state = legacy
+	}
 	now := m.now().UTC()
 	state.LastObservedWallClockUTC = now.Format(time.RFC3339)
 	state.GraceActive = status.GraceActive
 	if status.Valid && !status.GraceActive && status.LicenseID != "" {
+		digest, err := m.currentLicenseDigest()
+		if err != nil {
+			return err
+		}
 		if state.LastValidLicenseID != "" && state.LastValidLicenseID != status.LicenseID {
 			state.LifetimeTokens = 0
 			state.LifetimeRequests = 0
 			state.Window = licenseWindowCounterState{}
 		}
 		state.LastValidLicenseID = status.LicenseID
+		state.LastValidLicenseDigest = digest
 		state.LastValidCustomerID = status.CustomerID
 		state.LastValidSKU = status.SKU
 		state.LastValidKeyID = status.KeyID
@@ -493,7 +540,7 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 		state.LastRevocationEpoch = status.RevocationEpoch
 		state.LastRevocationCheckedUTC = now.Format(time.RFC3339)
 	}
-	raw, err := json.MarshalIndent(state, "", "  ")
+	raw, err := m.marshalLicenseState(state)
 	if err != nil {
 		return err
 	}
@@ -551,7 +598,10 @@ func (m *licenseManager) AdmitRequest(dialect string) *licenseValidationError {
 	if st.Limits.MaxConcurrent > 0 && m.inFlight >= st.Limits.MaxConcurrent {
 		return &licenseValidationError{Code: "license-concurrency-exceeded", StatusCode: 429, Message: "license-concurrency-exceeded"}
 	}
-	state, _ := m.readState()
+	state, err := m.readState()
+	if err != nil {
+		return &licenseValidationError{Code: "license-state-error", StatusCode: 503, Message: "license-state-error"}
+	}
 	now := m.now().UTC()
 	m.resetLicenseUsageStateLocked(&state, st, now)
 	if st.Limits.MaxTotalRequests > 0 && state.LifetimeRequests+1 > st.Limits.MaxTotalRequests {
@@ -596,7 +646,10 @@ func (m *licenseManager) ReserveTokens(estTokens int) (*licenseReservation, *lic
 	if lerr := licenseStatusError(st); lerr != nil {
 		return nil, lerr
 	}
-	state, _ := m.readState()
+	state, err := m.readState()
+	if err != nil {
+		return nil, &licenseValidationError{Code: "license-state-error", StatusCode: 503, Message: "license-state-error"}
+	}
 	now := m.now().UTC()
 	m.resetLicenseUsageStateLocked(&state, st, now)
 	est := int64(estTokens)
@@ -631,7 +684,10 @@ func (m *licenseManager) RecordTokens(reservation *licenseReservation, usage Usa
 	if !st.Enabled || total <= 0 {
 		return
 	}
-	state, _ := m.readState()
+	state, err := m.readState()
+	if err != nil {
+		return
+	}
 	now := m.now().UTC()
 	m.resetLicenseUsageStateLocked(&state, st, now)
 	state.LifetimeTokens += int64(total)
@@ -678,7 +734,7 @@ func (m *licenseManager) writeStateLocked(state licensePersistentState) error {
 	if strings.TrimSpace(m.statePath) == "" {
 		return nil
 	}
-	raw, err := json.MarshalIndent(state, "", "  ")
+	raw, err := m.marshalLicenseState(state)
 	if err != nil {
 		return err
 	}
@@ -690,6 +746,35 @@ func (m *licenseManager) writeStateLocked(state licensePersistentState) error {
 		return err
 	}
 	return os.Rename(tmp, m.statePath)
+}
+
+func (m *licenseManager) marshalLicenseState(state licensePersistentState) ([]byte, error) {
+	key, keyID, err := m.licenseStateIntegrityKey()
+	if err != nil {
+		return nil, err
+	}
+	return marshalIntegrityState(state, keyID, key)
+}
+
+func (m *licenseManager) licenseStateIntegrityKey() ([]byte, string, error) {
+	parts := []string{"smart-llmrouter license state v1", m.statePath, m.cfg.InstanceFingerprint}
+	for _, key := range m.keys {
+		parts = append(parts, key.KeyID, key.Algorithm, hex.EncodeToString(key.PublicKey))
+	}
+	key, keyID := stateIntegrityMaterial(parts...)
+	return key, keyID, nil
+}
+
+func (m *licenseManager) currentLicenseDigest() (string, error) {
+	if m == nil || strings.TrimSpace(m.cfg.Path) == "" {
+		return "", errStateIntegrity
+	}
+	raw, err := os.ReadFile(strings.TrimSpace(m.cfg.Path))
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 func licenseStatusError(st licenseStatus) *licenseValidationError {

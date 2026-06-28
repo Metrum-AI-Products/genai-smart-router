@@ -23,7 +23,7 @@ server:
     grace_period_on_validation_error: 24h
 ```
 
-Production licensed deployments should mount the issued license file read-only, keep the license state file on durable deployment storage, and leave `fail_open_for_dev: false`. Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment; it must match the licensed instance scope. The state file preserves renewal, grace, and clock-rollback checks across restarts.
+Production licensed deployments should mount the issued license file read-only, keep the license state file on durable private deployment storage, and leave `fail_open_for_dev: false`. Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment; it must match the licensed instance scope. The router writes license and quota state with integrity metadata and private file modes; restore trusted backups or use an approved renewal/top-up workflow instead of editing state JSON. Legacy unsigned quota-state import is a one-time migration with `SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION=1`, followed by restart without that flag after signed state is written. The state file preserves renewal, grace, and clock-rollback checks across restarts.
 
 For Docker Compose packages, mount the issued file under the protected compose config directory and keep it readable by the router container user. For binary deployments, place the file in a protected config directory and keep the state file under the deployment state directory. Private signing keys are never installed on the router host.
 
