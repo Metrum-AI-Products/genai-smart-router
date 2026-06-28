@@ -75,6 +75,7 @@ type adminRetentionStatusResponse struct {
 	LatestJob    *adminRetentionJobRow    `json:"latestJob,omitempty"`
 	Tables       []adminRetentionTableRow `json:"tables"`
 	Rollups      []adminRollupStatusRow   `json:"rollups"`
+	Charts       []adminReportChart       `json:"charts,omitempty"`
 }
 
 type adminRetentionJobRow struct {
@@ -121,6 +122,7 @@ type adminCatalogStatusResponse struct {
 	GeneratedUTC string                  `json:"generatedUtc"`
 	Summary      adminCatalogSummary     `json:"summary"`
 	Rows         []adminCatalogStatusRow `json:"rows"`
+	Charts       []adminReportChart      `json:"charts,omitempty"`
 }
 
 type adminCatalogSummary struct {
@@ -892,13 +894,15 @@ func (s *Service) handleAdminRetentionStatus(w http.ResponseWriter, r *http.Requ
 		})
 	}
 	dryRun := s.cfg.Server.Retention.DryRun != nil && *s.cfg.Server.Retention.DryRun
+	generatedAt := formatUsageTime(time.Now().UTC())
 	writeJSON(w, http.StatusOK, adminRetentionStatusResponse{
-		GeneratedUTC: formatUsageTime(time.Now().UTC()),
+		GeneratedUTC: generatedAt,
 		Enabled:      s.cfg.Server.Retention.Enabled,
 		DryRun:       dryRun,
 		LatestJob:    latestJob,
 		Tables:       tables,
 		Rollups:      rollups,
+		Charts:       adminRetentionStatusCharts(generatedAt, tables, rollups),
 	})
 }
 
@@ -1282,7 +1286,7 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 		}
 		return rows[i].Provider < rows[j].Provider
 	})
-	return adminCatalogStatusResponse{GeneratedUTC: generatedAt, Summary: summary, Rows: rows}
+	return adminCatalogStatusResponse{GeneratedUTC: generatedAt, Summary: summary, Rows: rows, Charts: adminCatalogStatusCharts(generatedAt, rows)}
 }
 
 func adminCatalogRowFromProviderModel(providerName, modelRef string, provider ProviderConfig, model ProviderModel) adminCatalogStatusRow {
@@ -1443,6 +1447,80 @@ func adminSecurityCharts(filters adminReportFilters, generatedAt string, rows []
 	}
 }
 
+func adminCatalogStatusCharts(generatedAt string, rows []adminCatalogStatusRow) []adminReportChart {
+	if len(rows) == 0 {
+		return nil
+	}
+	bySource := map[string]float64{}
+	byValidation := map[string]float64{}
+	byProvider := map[string]float64{}
+	for _, row := range rows {
+		bySource[defaultString(row.Source, "unknown")]++
+		byValidation[defaultString(row.ValidationStatus, "missing")]++
+		if row.Source == "active_target" {
+			byProvider[defaultString(row.Provider, "unknown")]++
+		}
+	}
+	return []adminReportChart{
+		adminStaticCategoryChart(generatedAt, "catalog_sources", "Catalog row sources", "Source", "Rows", "count", []adminReportChartSeries{
+			adminSeriesFromCounts("Rows", "count", "magenta", bySource),
+		}),
+		adminStaticCategoryChart(generatedAt, "catalog_validation_status", "Validation status", "Status", "Rows", "count", []adminReportChartSeries{
+			adminSeriesFromCounts("Rows", "count", "blue", byValidation),
+		}),
+		adminStaticCategoryChart(generatedAt, "catalog_active_targets", "Active targets by provider", "Provider", "Targets", "count", []adminReportChartSeries{
+			adminSeriesFromCounts("Targets", "count", "purple", byProvider),
+		}),
+	}
+}
+
+func adminRetentionStatusCharts(generatedAt string, tables []adminRetentionTableRow, rollups []adminRollupStatusRow) []adminReportChart {
+	charts := []adminReportChart{}
+	if len(tables) > 0 {
+		charts = append(charts, adminStaticCategoryChart(generatedAt, "retention_table_rows", "Retention row eligibility", "Data class / table", "Rows", "count", []adminReportChartSeries{
+			adminRetentionTableSeries("Candidate rows", "magenta", tables, func(row adminRetentionTableRow) float64 { return float64(row.CandidateRows) }),
+			adminRetentionTableSeries("Eligible rows", "blue", tables, func(row adminRetentionTableRow) float64 { return float64(row.EligibleRows) }),
+			adminRetentionTableSeries("Deleted rows", "red", tables, func(row adminRetentionTableRow) float64 { return float64(row.DeletedRows) }),
+		}))
+	}
+	if len(rollups) > 0 {
+		byStatus := map[string]float64{}
+		byType := map[string]float64{}
+		for _, row := range rollups {
+			byStatus[defaultString(row.Status, "unknown")]++
+			byType[defaultString(row.RollupType, "unknown")]++
+		}
+		charts = append(charts,
+			adminStaticCategoryChart(generatedAt, "retention_rollup_status", "Rollup status", "Status", "Runs", "count", []adminReportChartSeries{
+				adminSeriesFromCounts("Runs", "count", "warning", byStatus),
+			}),
+			adminStaticCategoryChart(generatedAt, "retention_rollup_type", "Rollup runs by type", "Rollup type", "Runs", "count", []adminReportChartSeries{
+				adminSeriesFromCounts("Runs", "count", "purple", byType),
+			}),
+		)
+	}
+	return charts
+}
+
+func adminRetentionTableSeries(name, colorKey string, rows []adminRetentionTableRow, value func(adminRetentionTableRow) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, adminReportChartPoint{X: row.DataClass + " / " + row.TableName, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: "count", ColorKey: colorKey, Points: points}
+}
+
+func adminStaticCategoryChart(generatedAt, id, title, xLabel, yLabel, yUnit string, chartSeries []adminReportChartSeries) adminReportChart {
+	return adminReportChart{
+		ChartID:     id,
+		Title:       title,
+		XAxis:       adminReportChartAxis{Label: xLabel, Type: "category"},
+		YAxis:       adminReportChartAxis{Label: yLabel, Type: "linear", Unit: yUnit},
+		Series:      chartSeries,
+		GeneratedAt: generatedAt,
+	}
+}
+
 func adminSeriesFromCounts(name, unit, colorKey string, counts map[string]float64) adminReportChartSeries {
 	keys := make([]string, 0, len(counts))
 	for key := range counts {
@@ -1525,6 +1603,7 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 		for _, row := range requestRows {
 			resp.Requests = append(resp.Requests, adminRequestFromRow(row))
 		}
+		resp.Charts = adminRequestCharts(filters, generatedAt, spec, resp.Requests)
 		return resp
 	}
 	table := map[string]*adminScalarAgg{}
@@ -1962,6 +2041,43 @@ func adminScalarCharts(filters adminReportFilters, generatedAt string, spec admi
 		}))
 	}
 	return charts
+}
+
+func adminRequestCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminReportRequest) []adminReportChart {
+	if len(rows) == 0 {
+		return nil
+	}
+	return []adminReportChart{
+		adminCategoryChart(filters, generatedAt, spec.Report+"_request_cost", spec.Report+" request cost", "Request", "USD", "usd", []adminReportChartSeries{
+			adminChartSeriesFromRequestRows("Cost", "usd", "red", rows, func(row adminReportRequest) float64 { return row.TotalCostUSD }),
+		}),
+		adminCategoryChart(filters, generatedAt, spec.Report+"_request_latency", spec.Report+" request latency", "Request", "Milliseconds", "ms", []adminReportChartSeries{
+			adminChartSeriesFromRequestRows("Latency", "ms", "violet", rows, func(row adminReportRequest) float64 { return float64(row.LatencyMS) }),
+			adminChartSeriesFromRequestRows("TTFB", "ms", "blue", rows, func(row adminReportRequest) float64 {
+				if row.TTFBMS == nil {
+					return 0
+				}
+				return float64(*row.TTFBMS)
+			}),
+		}),
+		adminCategoryChart(filters, generatedAt, spec.Report+"_request_tokens", spec.Report+" request token volume", "Request", "Token count", "tokens", []adminReportChartSeries{
+			adminChartSeriesFromRequestRows("Input Tokens", "tokens", "blue", rows, func(row adminReportRequest) float64 { return float64(row.InputTokens) }),
+			adminChartSeriesFromRequestRows("Output Tokens", "tokens", "magenta", rows, func(row adminReportRequest) float64 { return float64(row.OutputTokens) }),
+			adminChartSeriesFromRequestRows("Total Tokens", "tokens", "purple", rows, func(row adminReportRequest) float64 { return float64(row.TotalTokens) }),
+		}),
+	}
+}
+
+func adminChartSeriesFromRequestRows(name, unit, colorKey string, rows []adminReportRequest, value func(adminReportRequest) float64) adminReportChartSeries {
+	points := make([]adminReportChartPoint, 0, len(rows))
+	for _, row := range rows {
+		label := row.RequestID
+		if label == "" {
+			label = row.TimeUTC
+		}
+		points = append(points, adminReportChartPoint{X: label, Y: value(row)})
+	}
+	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
 }
 
 type adminSavingsAgg struct {

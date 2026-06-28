@@ -105,7 +105,7 @@ The browser report shell provides shared controls for every tab:
 - copy buttons for identifiers such as public token IDs, groups, providers, and request IDs;
 - request-ID drilldown from request rows;
 - CSV export of the visible table data;
-- consistent loading, empty, and error states.
+- consistent chart, table, loading, empty, and error states.
 
 These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, or unsanitized upstream responses.
 
@@ -146,9 +146,9 @@ Recent request rows include visible columns for time, request ID, caller ID, cal
 
 ## Charts
 
-Summary responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range, and active safe filters. The browser dashboard uses that contract to render axes, unit-aware tick labels, legends, and hover tooltips. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages. Tables label totals explicitly as Total tokens and Total cost whenever input/output breakdowns are present.
+Report API responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range when applicable, and active safe filters when applicable. Every browser report tab renders at least one aggregate chart when matching data exists. If a selected range or filter has no aggregate points, the tab shows an explicit no-chart-data state before the table empty state. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages. Tables label totals explicitly as Total tokens and Total cost whenever input/output breakdowns are present.
 
-Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
+Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. The catalog-status tab charts source, validation, and active-target provider counts. The retention-status tab charts retention eligibility/deletion counts and recent rollup status/type counts. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
 Docusaurus product docs may show anonymized Chart.js examples built from safe report fixtures. The `router-usage-report` CLI remains focused on stable Markdown tables, relational rollups, and machine-reviewable metrics unless a deployment explicitly adds a chart export workflow outside the router binary.
 
@@ -192,7 +192,7 @@ curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/retention-status"
 ```
 
-Expected for an authorized subject: `200` JSON with `summary`, `series`, grouped tables, and recent request rows.
+Expected for an authorized subject: `200` JSON with `summary`, `series`, `charts`, grouped tables, and recent request rows where applicable. The catalog-status and retention-status responses also include `charts` so those tabs are not table-only.
 
 OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without Casbin policy receives `403 reports-forbidden`.
 

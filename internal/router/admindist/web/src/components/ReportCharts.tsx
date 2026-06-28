@@ -1,0 +1,160 @@
+import { Bar, Line } from "react-chartjs-2";
+import type { ChartData, ChartOptions } from "chart.js";
+import type { ReportChart, ReportChartAxis, ReportChartPoint, ReportChartSeries } from "@/lib/reports";
+import { compactFmt, usdCompactFmt } from "@/lib/utils";
+
+type Props = {
+  charts?: ReportChart[];
+};
+
+const palette: Record<string, string> = {
+  blue: "#465cda",
+  magenta: "#ee0089",
+  pink: "#fe005f",
+  purple: "#cc28af",
+  red: "#ff3132",
+  success: "#22c55e",
+  text: "#c7c7d1",
+  violet: "#9948cb",
+  warning: "#f59e0b",
+};
+
+export function ReportCharts({ charts }: Props) {
+  const normalized = (charts || []).map(normalizeChart).filter((chart) => chart.series.some((series) => series.points.length > 0));
+  if (normalized.length === 0) {
+    return <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">No chart data for the selected filters.</div>;
+  }
+  return (
+    <section className="grid gap-4 xl:grid-cols-2">
+      {normalized.map((chart) => (
+        <div key={chart.id} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+          <div className="mb-3">
+            <h3 className="font-display text-lg text-white">{chart.title}</h3>
+            <p className="text-xs text-white/48">
+              {chart.xAxis.label || "Bucket"} by {chart.yAxis.label || chart.yAxis.unit || "value"}
+            </p>
+          </div>
+          <div className="h-72">
+            {chart.kind === "line" ? (
+              <Line data={chartData(chart) as ChartData<"line">} options={chartOptions(chart) as ChartOptions<"line">} />
+            ) : (
+              <Bar data={chartData(chart) as ChartData<"bar">} options={chartOptions(chart) as ChartOptions<"bar">} />
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+type NormalizedChart = {
+  id: string;
+  title: string;
+  kind: "bar" | "line";
+  xAxis: ReportChartAxis;
+  yAxis: ReportChartAxis;
+  series: Array<Required<Pick<ReportChartSeries, "name" | "points">> & { unit?: string; colorKey?: string }>;
+};
+
+function normalizeChart(chart: ReportChart): NormalizedChart {
+  const xAxis = chart.x_axis || chart.xAxis || {};
+  const yAxis = chart.y_axis || chart.yAxis || { unit: chart.unit };
+  const rawSeries = Array.isArray(chart.series) ? chart.series : [];
+  const series = rawSeries.length > 0 && isBackendSeries(rawSeries[0])
+    ? (rawSeries as ReportChartSeries[]).map((item, index) => ({
+        name: item.name || `Series ${index + 1}`,
+        unit: item.unit,
+        colorKey: item.color_key || item.colorKey,
+        points: item.points || [],
+      }))
+    : [
+        {
+          name: chart.title || "Value",
+          unit: chart.unit,
+          colorKey: "magenta",
+          points: legacyPoints(rawSeries as ReportChartPoint[], chart.points),
+        },
+      ];
+  return {
+    id: chart.chart_id || chart.chartId || chart.id || chart.title || "chart",
+    title: chart.title || "Report chart",
+    kind: xAxis.type === "time" ? "line" : "bar",
+    xAxis,
+    yAxis,
+    series,
+  };
+}
+
+function isBackendSeries(value: ReportChartPoint | ReportChartSeries): value is ReportChartSeries {
+  return "points" in value || "color_key" in value || "colorKey" in value || "name" in value;
+}
+
+function legacyPoints(series?: ReportChartPoint[], points?: ReportChartPoint[]): ReportChartPoint[] {
+  const input = points?.length ? points : series || [];
+  return input.map((point) => ({ x: point.x || point.time || point.label || "", y: point.y ?? point.value ?? 0 }));
+}
+
+function chartData(chart: NormalizedChart): ChartData<"bar" | "line"> {
+  const labels = Array.from(new Set(chart.series.flatMap((series) => series.points.map((point) => point.x || ""))));
+  return {
+    labels,
+    datasets: chart.series.map((series, index) => {
+      const valuesByLabel = new Map(series.points.map((point) => [point.x || "", point.y || 0]));
+      const color = palette[series.colorKey || ""] || Object.values(palette)[index % Object.keys(palette).length];
+      return {
+        label: series.name,
+        data: labels.map((label) => valuesByLabel.get(label) || 0),
+        borderColor: color,
+        backgroundColor: withAlpha(color, chart.kind === "line" ? 0.18 : 0.7),
+        borderWidth: 2,
+        tension: 0.28,
+        fill: chart.kind === "line",
+      };
+    }),
+  };
+}
+
+function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { intersect: false, mode: "index" },
+    plugins: {
+      legend: { labels: { color: "rgba(255,255,255,0.72)", boxWidth: 12, boxHeight: 12 } },
+      tooltip: {
+        callbacks: {
+          label: (item) => `${item.dataset.label}: ${formatChartNumber(Number(item.raw || 0), chart.yAxis.unit)}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: "rgba(255,255,255,0.58)", maxRotation: 40, minRotation: 0 },
+        grid: { color: "rgba(255,255,255,0.06)" },
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          color: "rgba(255,255,255,0.58)",
+          callback: (value) => formatChartNumber(Number(value), chart.yAxis.unit),
+        },
+        grid: { color: "rgba(255,255,255,0.08)" },
+      },
+    },
+  };
+}
+
+function formatChartNumber(value: number, unit?: string): string {
+  if (unit === "usd") return usdCompactFmt.format(value);
+  if (unit === "percent") return `${compactFmt.format(value)}%`;
+  if (unit === "ms") return `${compactFmt.format(value)} ms`;
+  if (unit === "tokens") return `${compactFmt.format(value)} tok`;
+  return compactFmt.format(value);
+}
+
+function withAlpha(hex: string, alpha: number): string {
+  const red = parseInt(hex.slice(1, 3), 16);
+  const green = parseInt(hex.slice(3, 5), 16);
+  const blue = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}

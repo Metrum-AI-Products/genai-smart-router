@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/DataTable";
 import { MetricGrid } from "@/components/MetricGrid";
+import { ReportCharts } from "@/components/ReportCharts";
 import type { ReportResponse, TabSpec } from "@/lib/reports";
 import { columnsForTab, rowsForTab } from "@/lib/reports";
 
@@ -41,6 +42,7 @@ export function ReportPanel({ tab, report, loading, error, onRefresh }: Props) {
           </CardContent>
         </Card>
       ) : null}
+      <ReportCharts charts={report?.charts} />
       <DataTable rows={rows} columns={columns} onRefresh={onRefresh} />
     </main>
   );

@@ -8,18 +8,40 @@ export type ReportPeriod = {
 export type ReportSummary = Record<string, number | string | boolean | null | undefined>;
 
 export type ReportChartPoint = {
+  x?: string;
+  y?: number;
   label?: string;
   time?: string;
   value?: number;
   values?: Record<string, number>;
 };
 
+export type ReportChartAxis = {
+  label?: string;
+  type?: string;
+  unit?: string;
+};
+
+export type ReportChartSeries = {
+  name?: string;
+  unit?: string;
+  color_key?: string;
+  colorKey?: string;
+  points?: ReportChartPoint[];
+};
+
 export type ReportChart = {
   id?: string;
+  chart_id?: string;
+  chartId?: string;
   title?: string;
   unit?: string;
   kind?: string;
-  series?: ReportChartPoint[];
+  x_axis?: ReportChartAxis;
+  xAxis?: ReportChartAxis;
+  y_axis?: ReportChartAxis;
+  yAxis?: ReportChartAxis;
+  series?: ReportChartSeries[] | ReportChartPoint[];
   points?: ReportChartPoint[];
 };
 
