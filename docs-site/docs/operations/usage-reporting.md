@@ -132,7 +132,7 @@ Common endpoints:
 - `/admin/reports/api/provider-catalog-status` returns safe provider catalog and active-target validation metadata from runtime config. It separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. It does not expose provider keys, headers, or full config.
 - `/admin/reports/api/retention-status` returns read-only retention and daily-rollup status from existing usage DB tables, including the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent rollup runs.
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
-- `/admin/reports/security/export.csv?since=24h` exports the filtered security event table and requires `admin:security_reports` `export`.
+- `/admin/reports/security/export.csv?since=24h` exports the filtered security event table with spreadsheet formula-leading values neutralized and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
 - `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, and terminal error rows.
 - `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.
@@ -143,7 +143,9 @@ Savings reports use stored request-time actual cost fields for actual spend. Onl
 
 Anomaly reports are deterministic operational triage views rather than machine-learning anomaly detection. The built-in rules group errors, fallbacks, multi-attempt requests, slow requests, expensive requests, quota warning/reject states, and abnormal key states such as disabled, revoked, expired, or suspended; normal active key state is not anomalous.
 
-The browser shell adds shared usability controls across tabs: URL-backed selected tab and search state, filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client, visible-table search, sortable headers, bounded page-size selection, refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible safe scalar columns. Server endpoints remain authenticated and bounded; the browser controls do not expose or persist bearer tokens.
+The browser shell adds shared usability controls across tabs: URL-backed selected tab and search state, filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client, visible-table search, sortable headers, bounded page-size selection, refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible safe scalar columns. Server endpoints remain authenticated, bounded, and domain-scoped to the admin's Casbin domain unless an explicit `*` policy domain grants deployment-wide report access. The browser controls do not expose or persist bearer tokens.
+
+Markdown exports escape raw HTML and active Markdown table-cell syntax. Cross-domain request IDs return `404` for domain-scoped admins.
 
 ## Report Dimensions
 

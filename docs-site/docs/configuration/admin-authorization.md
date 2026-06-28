@@ -53,9 +53,17 @@ server:
         - p, metrics_admin, example/prod, metrics, read
         - p, content_admin, example/prod, content:capture, delete|purge
         - p, reports_admin, example/prod, admin:reports, read|export|drilldown
+        - p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
 Use placeholder-like subjects in examples and keep secrets out of policy. Policy must not include raw router tokens, token hashes, provider keys, passwords, password hashes, prompts, images, tool outputs, or full deployment config.
+
+Admin report data is scoped to the subject's policy domain by default. A reports admin in `example/prod` sees caller project `example` and environment `prod`; cross-domain request IDs return `404`. Use an explicit `*` policy domain only for approved deployment-wide report administrators:
+
+```text
+p, user:global-reports@example.com, *, admin:reports, read|export|drilldown
+p, user:global-reports@example.com, *, admin:security_reports, read|export
+```
 
 Managed deployments can load authorization from a DB-backed policy lifecycle store:
 

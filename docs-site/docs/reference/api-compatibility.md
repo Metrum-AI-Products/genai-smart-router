@@ -30,9 +30,9 @@ Content-capture maintenance endpoints are administrative APIs, not model APIs. `
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
 
-OIDC admin auth routes are not model APIs. They are available only when `server.admin_auth.oidc.enabled: true`. Login redirects to the IdP, callback creates a server-side session after OIDC verification, `/admin/auth/me` returns safe subject metadata, and logout invalidates the session.
+OIDC admin auth routes are not model APIs. They are available only when `server.admin_auth.oidc.enabled: true`. Login redirects to the IdP, callback creates a server-side session after OIDC verification, `/admin/auth/me` returns safe subject metadata, and logout invalidates the session. Excess pending login starts from one client return `429 oidc-login-rate-limited` responses.
 
-`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses Casbin policy decisions for read/export access. Ordinary caller tokens receive `403 reports-forbidden`.
+`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses Casbin policy decisions for read/export access. Report data is scoped to the admin's Casbin domain unless an explicit `*` policy domain grants deployment-wide access. Ordinary caller tokens receive `403 reports-forbidden`.
 
 ## Compatibility Matrix
 

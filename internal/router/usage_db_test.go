@@ -284,6 +284,93 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	}
 }
 
+func TestUsageReportMarkdownEscapesHTMLAndActiveMarkdownCells(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	raw := strings.Join([]string{
+		`{"ts":"2026-06-14T01:00:00.000Z","request_id":"req_md","caller_id":"caller|pipe","caller_user":"<script>alert(1)</script>","caller_project":"[project](javascript:alert(1))","caller_environment":"prod","caller_ip":"203.0.113.10","token_id":"rtr_md","client":"<img src=x onerror=alert(1)>","inbound_dialect":"openai-chat","requested_model":"[model](javascript:alert(1))","resolved_group":"group|name","strategy":"weighted","target_provider":"<script>provider()</script>","target_model":"<img src=x onerror=alert(1)>","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	md, err := GenerateUsageMarkdown(UsageReportOptions{
+		DBPath:  dbPath,
+		LogPath: logPath,
+		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, notWant := range []string{
+		"<script>",
+		"<img",
+		"[project](javascript:alert(1))",
+		"[model](javascript:alert(1))",
+		"caller|pipe",
+		"group|name",
+	} {
+		if strings.Contains(md, notWant) {
+			t.Fatalf("markdown preserved unsafe value %q:\n%s", notWant, md)
+		}
+	}
+	for _, want := range []string{
+		"&lt;script&gt;alert\\(1\\)&lt;/script&gt;",
+		"\\[project\\]\\(javascript:alert\\(1\\)\\)",
+		"&lt;img src=x onerror=alert\\(1\\)&gt;",
+		"caller\\|pipe",
+		"group\\|name",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("markdown missing escaped value %q:\n%s", want, md)
+		}
+	}
+}
+
+func TestSecurityAccessEventsFilterCallerEnvironment(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	store.EmitSecurityAccessEvent(securityAccessEvent{
+		TS:                now,
+		RequestID:         "req_test",
+		EventType:         "api_allowed",
+		Surface:           "v1_chat_completions",
+		StatusCode:        200,
+		Outcome:           "allowed",
+		CallerProject:     "example",
+		CallerEnvironment: "test",
+	})
+	store.EmitSecurityAccessEvent(securityAccessEvent{
+		TS:                now,
+		RequestID:         "req_prod",
+		EventType:         "api_allowed",
+		Surface:           "v1_chat_completions",
+		StatusCode:        200,
+		Outcome:           "allowed",
+		CallerProject:     "example",
+		CallerEnvironment: "prod",
+	})
+	rows, err := store.securityAccessEvents(SecurityReportOptions{
+		From:              now.Add(-time.Hour),
+		To:                now.Add(time.Hour),
+		Limit:             10,
+		CallerProject:     "example",
+		CallerEnvironment: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RequestID != "req_test" {
+		t.Fatalf("environment filter rows=%#v, want only req_test", rows)
+	}
+}
+
 func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

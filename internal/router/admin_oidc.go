@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	adminOIDCLoginTTL        = 10 * time.Minute
-	adminOIDCMaxPendingLogin = 256
+	adminOIDCLoginTTL                 = 10 * time.Minute
+	adminOIDCMaxPendingLogin          = 256
+	adminOIDCMaxPendingLoginPerClient = 32
 )
 
 type adminAuthSubject struct {
@@ -45,6 +46,7 @@ type adminOIDCLoginState struct {
 	state        string
 	nonce        string
 	codeVerifier string
+	clientKey    string
 	expiresAt    time.Time
 }
 
@@ -124,7 +126,9 @@ func (s *Service) handleAdminOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "oidc-login-failed", "message": "oidc-login-failed"}})
 		return
 	}
+	login.clientKey = adminOIDCClientKey(r, s.cfg.Server.ClientIP)
 	if !s.adminOIDC.stateStore.put(login, time.Now().UTC()) {
+		s.recordAdminSecurityAccess(r, adminAuthSubject{}, http.StatusTooManyRequests, "oidc-login-rate-limited", "admin:auth", "login")
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{"type": "oidc-login-rate-limited", "message": "oidc-login-rate-limited"}})
 		return
 	}
@@ -292,16 +296,40 @@ func newAdminOIDCLoginState(now time.Time) (adminOIDCLoginState, error) {
 func (s *adminOIDCStateStore) put(state adminOIDCLoginState, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	clientPending := 0
 	for key, existing := range s.states {
 		if !existing.expiresAt.After(now) {
 			delete(s.states, key)
+			continue
 		}
+		if existing.clientKey == state.clientKey {
+			clientPending++
+		}
+	}
+	if clientPending >= adminOIDCMaxPendingLoginPerClient {
+		return false
 	}
 	if len(s.states) >= adminOIDCMaxPendingLogin {
 		return false
 	}
 	s.states[stateHash(state.state)] = state
 	return true
+}
+
+func adminOIDCClientKey(r *http.Request, cfg ClientIPConfig) string {
+	if r == nil {
+		return "unknown"
+	}
+	storeIP := true
+	cfg.StoreIP = &storeIP
+	ip := resolveClientIP(r, cfg).Address
+	if ip == "" {
+		ip = strings.TrimSpace(r.RemoteAddr)
+	}
+	if ip == "" {
+		return "unknown"
+	}
+	return ip
 }
 
 func (s *adminOIDCStateStore) take(state string, now time.Time) (adminOIDCLoginState, bool) {

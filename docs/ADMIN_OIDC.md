@@ -60,6 +60,8 @@ server:
 - `GET /admin/auth/me` returns safe subject metadata for the active Basic or OIDC admin identity.
 - `POST /admin/auth/logout` deletes the server-side session and expires the browser cookie.
 
+Pending OIDC login state is stored server-side with a short TTL, a global memory cap, and a per-client pending-login cap. Excess login attempts from one client receive `429 oidc-login-rate-limited` responses without blocking unrelated clients.
+
 Successful OIDC login maps a verified email subject to `user:<email>` when `subject_claim: email`. Non-email subject claims map to `oidc:<claim value>`. Casbin policy should grant roles to those stable subjects; handlers must not hardcode email domains or groups as permissions.
 
 ## Google Workspace Notes
@@ -87,5 +89,6 @@ Set `server.admin_auth.oidc.enabled: false`, restart the router, and verify `/ad
 - Use HTTPS for production redirect URLs and `secure_cookies: true`.
 - Use `same_site: strict` unless a deployment has a documented reason for `lax`.
 - Sessions are stored server-side in memory and contain only safe identity metadata, not raw OIDC tokens.
+- Monitor repeated `oidc-login-rate-limited` security events as potential login-state exhaustion attempts.
 - Do not store raw OIDC tokens in browser localStorage, logs, docs, tickets, or policy files.
 - Log only safe audit values such as result class, stable subject, issuer, request ID, and a session identifier hash or prefix.

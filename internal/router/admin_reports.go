@@ -562,6 +562,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"type": "reports-forbidden", "message": "reports-forbidden"}})
 		return
 	}
+	globalReports := s.authorizeGlobalAdmin(subject, object, action)
 	if !s.enforceAdminReportLicenseFeature(w, r, relPath) {
 		return
 	}
@@ -581,22 +582,22 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportSummary(w, r)
+		s.handleAdminReportSummary(w, r, subject, globalReports)
 	case r.URL.Path == prefix+"/api/overview":
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportSummary(w, r)
+		s.handleAdminReportSummary(w, r, subject, globalReports)
 	case r.URL.Path == prefix+"/api/savings":
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportSavings(w, r)
+		s.handleAdminReportSavings(w, r, subject, globalReports)
 	case scalarOK:
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminScalarEndpoint(w, r, scalarSpec)
+		s.handleAdminScalarEndpoint(w, r, scalarSpec, subject, globalReports)
 	case r.URL.Path == prefix+"/api/security/events" || r.URL.Path == prefix+"/api/security/overview":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -604,7 +605,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		if !s.requireAdminSecurityReports(w) {
 			return
 		}
-		s.handleAdminSecurityEvents(w, r)
+		s.handleAdminSecurityEvents(w, r, subject, globalReports)
 	case r.URL.Path == prefix+"/api/retention-status":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -619,22 +620,22 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		if !s.requireAdminSecurityReports(w) {
 			return
 		}
-		s.handleAdminSecurityCSV(w, r)
+		s.handleAdminSecurityCSV(w, r, subject, globalReports)
 	case r.URL.Path == prefix+"/api/requests":
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportRequests(w, r)
+		s.handleAdminReportRequests(w, r, subject, globalReports)
 	case strings.HasPrefix(r.URL.Path, prefix+"/api/request/"):
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportRequestDetail(w, r, strings.TrimPrefix(r.URL.Path, prefix+"/api/request/"))
+		s.handleAdminReportRequestDetail(w, r, strings.TrimPrefix(r.URL.Path, prefix+"/api/request/"), subject, globalReports)
 	case r.URL.Path == prefix+"/export.md":
 		if !s.requireAdminReportUsageStore(w) {
 			return
 		}
-		s.handleAdminReportMarkdown(w, r)
+		s.handleAdminReportMarkdown(w, r, subject, globalReports)
 	default:
 		http.NotFound(w, r)
 	}
@@ -754,6 +755,12 @@ func (s *Service) authorizeAdmin(subject adminAuthSubject, object, action string
 	return s.authorizer.enforce(authzSubjectForAdmin(subject), object, action)
 }
 
+func (s *Service) authorizeGlobalAdmin(subject adminAuthSubject, object, action string) bool {
+	global := subject
+	global.domain = "*"
+	return s.authorizeAdmin(global, object, action)
+}
+
 func (s *Service) authorizeCaller(caller *callerRuntime, object, action string) bool {
 	return s.authorizer.enforce(authzSubjectForCaller(caller), object, action)
 }
@@ -780,8 +787,8 @@ func (s *Service) serveAdminReportAsset(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Request) {
-	filters, ok := s.parseAdminReportFilters(w, r, false)
+func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, false, subject, global)
 	if !ok {
 		return
 	}
@@ -793,8 +800,8 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, buildAdminReportResponse(filters, rows))
 }
 
-func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Request) {
-	filters, ok := s.parseAdminReportFilters(w, r, false)
+func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, false, subject, global)
 	if !ok {
 		return
 	}
@@ -810,8 +817,8 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, buildAdminSavingsResponse(filters, rows, baseline, s.adminSavingsBaselines()))
 }
 
-func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Request, spec adminScalarEndpointSpec) {
-	filters, ok := s.parseAdminReportFilters(w, r, spec.Requests)
+func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Request, spec adminScalarEndpointSpec, subject adminAuthSubject, global bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, spec.Requests, subject, global)
 	if !ok {
 		return
 	}
@@ -831,8 +838,8 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
 }
 
-func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request) {
-	opts, filters, ok := s.parseAdminSecurityFilters(w, r)
+func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
+	opts, filters, ok := s.parseAdminSecurityFilters(w, r, subject, global)
 	if !ok {
 		return
 	}
@@ -844,8 +851,8 @@ func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, buildAdminSecurityReportResponse(filters, events))
 }
 
-func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request) {
-	opts, _, ok := s.parseAdminSecurityFilters(w, r)
+func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
+	opts, _, ok := s.parseAdminSecurityFilters(w, r, subject, global)
 	if !ok {
 		return
 	}
@@ -860,9 +867,30 @@ func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request)
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"time_utc", "request_id", "event_type", "surface", "method", "path", "status", "outcome", "reason", "auth_subject", "auth_source", "caller_id", "caller_user", "project", "token_id", "admin_subject", "client", "user_agent_family", "ip_address", "ip_source", "trusted_proxy_applied", "private_ip", "loopback_ip", "reserved_ip", "model_group", "requested_model", "resolved_group", "input_tokens", "output_tokens", "total_tokens"})
 	for _, row := range adminSecurityRows(events) {
-		_ = cw.Write([]string{row.TimeUTC, row.RequestID, row.EventType, row.Surface, row.Method, row.Path, strconv.Itoa(row.Status), row.Outcome, row.Reason, row.AuthSubject, row.AuthSource, row.CallerID, row.CallerUser, row.Project, row.TokenID, row.AdminSubject, row.Client, row.UserAgentFamily, row.IPAddress, row.IPSource, strconv.FormatBool(row.TrustedProxyApplied), strconv.FormatBool(row.PrivateIP), strconv.FormatBool(row.LoopbackIP), strconv.FormatBool(row.ReservedIP), row.ModelGroup, row.RequestedModel, row.ResolvedGroup, strconv.Itoa(row.InputTokens), strconv.Itoa(row.OutputTokens), strconv.Itoa(row.TotalTokens)})
+		_ = cw.Write(csvSafeRow([]string{row.TimeUTC, row.RequestID, row.EventType, row.Surface, row.Method, row.Path, strconv.Itoa(row.Status), row.Outcome, row.Reason, row.AuthSubject, row.AuthSource, row.CallerID, row.CallerUser, row.Project, row.TokenID, row.AdminSubject, row.Client, row.UserAgentFamily, row.IPAddress, row.IPSource, strconv.FormatBool(row.TrustedProxyApplied), strconv.FormatBool(row.PrivateIP), strconv.FormatBool(row.LoopbackIP), strconv.FormatBool(row.ReservedIP), row.ModelGroup, row.RequestedModel, row.ResolvedGroup, strconv.Itoa(row.InputTokens), strconv.Itoa(row.OutputTokens), strconv.Itoa(row.TotalTokens)}))
 	}
 	cw.Flush()
+}
+
+func csvSafeRow(row []string) []string {
+	out := make([]string, len(row))
+	for i, cell := range row {
+		out[i] = csvSafeCell(cell)
+	}
+	return out
+}
+
+func csvSafeCell(cell string) string {
+	trimmed := strings.TrimLeft(cell, " \t\r\n")
+	if trimmed == "" {
+		return cell
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + cell
+	default:
+		return cell
+	}
 }
 
 func (s *Service) handleAdminRetentionStatus(w http.ResponseWriter, r *http.Request) {
@@ -994,8 +1022,8 @@ func (s *Service) adminSavingsBaselines() []adminSavingsBaselineDTO {
 	return out
 }
 
-func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Request) {
-	filters, ok := s.parseAdminReportFilters(w, r, true)
+func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, true, subject, global)
 	if !ok {
 		return
 	}
@@ -1018,7 +1046,7 @@ func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.Request, requestID string) {
+func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.Request, requestID string, subject adminAuthSubject, global bool) {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid-report-filter"}})
@@ -1032,6 +1060,10 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	row, err := rowFromUsageRecord(usage)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	if !global && !adminDomainAllowsUsageRow(subject.domain, row) {
+		http.NotFound(w, r)
 		return
 	}
 	var attempts []requestAttemptRecord
@@ -1077,12 +1109,12 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	})
 }
 
-func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Request) {
+func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
 	if !s.cfg.Server.AdminReports.ExportMarkdown {
 		http.NotFound(w, r)
 		return
 	}
-	filters, ok := s.parseAdminReportFilters(w, r, false)
+	filters, ok := s.parseAdminReportFilters(w, r, false, subject, global)
 	if !ok {
 		return
 	}
@@ -1096,7 +1128,7 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary)))
 }
 
-func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, withLimit bool) (adminReportFilters, bool) {
+func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, withLimit bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {
 	to := time.Now().UTC()
 	q := r.URL.Query()
 	if raw := strings.TrimSpace(q.Get("to")); raw != "" {
@@ -1164,31 +1196,81 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		Cache:             strings.TrimSpace(q.Get("cache")),
 		Client:            q.Get("client"),
 	}
+	if !global {
+		applyAdminDomainScope(&opts, subject.domain)
+	}
 	return adminReportFilters{From: from, To: to, UsageReportOptions: opts, Limit: limit}, true
 }
 
-func (s *Service) parseAdminSecurityFilters(w http.ResponseWriter, r *http.Request) (SecurityReportOptions, adminReportFilters, bool) {
-	filters, ok := s.parseAdminReportFilters(w, r, true)
+func (s *Service) parseAdminSecurityFilters(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) (SecurityReportOptions, adminReportFilters, bool) {
+	filters, ok := s.parseAdminReportFilters(w, r, true, subject, global)
 	if !ok {
 		return SecurityReportOptions{}, adminReportFilters{}, false
 	}
 	q := r.URL.Query()
 	opts := SecurityReportOptions{
-		From:          filters.From,
-		To:            filters.To,
-		Limit:         filters.Limit,
-		Outcome:       strings.TrimSpace(q.Get("outcome")),
-		ReasonCode:    strings.TrimSpace(q.Get("reason_code")),
-		Surface:       strings.TrimSpace(q.Get("surface")),
-		IPAddress:     strings.TrimSpace(q.Get("ip_address")),
-		CallerID:      strings.TrimSpace(q.Get("caller_id")),
-		CallerUser:    strings.TrimSpace(q.Get("caller_user")),
-		CallerProject: strings.TrimSpace(q.Get("caller_project")),
-		TokenID:       strings.TrimSpace(q.Get("token_id")),
-		AdminSubject:  strings.TrimSpace(q.Get("admin_subject")),
-		Client:        strings.TrimSpace(q.Get("client")),
+		From:              filters.From,
+		To:                filters.To,
+		Limit:             filters.Limit,
+		Outcome:           strings.TrimSpace(q.Get("outcome")),
+		ReasonCode:        strings.TrimSpace(q.Get("reason_code")),
+		Surface:           strings.TrimSpace(q.Get("surface")),
+		IPAddress:         strings.TrimSpace(q.Get("ip_address")),
+		CallerID:          strings.TrimSpace(q.Get("caller_id")),
+		CallerUser:        strings.TrimSpace(q.Get("caller_user")),
+		CallerProject:     strings.TrimSpace(q.Get("caller_project")),
+		CallerEnvironment: strings.TrimSpace(q.Get("caller_environment")),
+		TokenID:           strings.TrimSpace(q.Get("token_id")),
+		AdminSubject:      strings.TrimSpace(q.Get("admin_subject")),
+		Client:            strings.TrimSpace(q.Get("client")),
+	}
+	if !global {
+		applyAdminSecurityDomainScope(&opts, subject.domain)
 	}
 	return opts, filters, true
+}
+
+func applyAdminDomainScope(opts *UsageReportOptions, domain string) {
+	project, environment := splitAuthzDomain(domain)
+	if project != "" {
+		opts.CallerProject = project
+	}
+	if environment != "" {
+		opts.CallerEnvironment = environment
+	}
+}
+
+func applyAdminSecurityDomainScope(opts *SecurityReportOptions, domain string) {
+	project, environment := splitAuthzDomain(domain)
+	if project != "" {
+		opts.CallerProject = project
+	}
+	if environment != "" {
+		opts.CallerEnvironment = environment
+	}
+}
+
+func adminDomainAllowsUsageRow(domain string, row usageRow) bool {
+	project, environment := splitAuthzDomain(domain)
+	if project != "" && row.CallerProject != project {
+		return false
+	}
+	if environment != "" && row.CallerEnvironment != environment {
+		return false
+	}
+	return project != "" || environment != ""
+}
+
+func splitAuthzDomain(domain string) (string, string) {
+	domain = strings.TrimSpace(domain)
+	if domain == "" || domain == "*" {
+		return "", ""
+	}
+	parts := strings.SplitN(domain, "/", 2)
+	if len(parts) == 1 {
+		return strings.TrimSpace(parts[0]), ""
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 }
 
 func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) adminReportResponse {

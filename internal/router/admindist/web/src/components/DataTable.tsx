@@ -45,9 +45,9 @@ export function DataTable({ rows, columns, onRefresh }: Props) {
   }
 
   function exportCsv() {
-    const header = columns.map((column) => JSON.stringify(column.label)).join(",");
+    const header = columns.map((column) => csvCell(column.label)).join(",");
     const body = visibleRows
-      .map((row) => columns.map((column) => JSON.stringify(row[column.key] ?? "")).join(","))
+      .map((row) => columns.map((column) => csvCell(row[column.key] ?? "")).join(","))
       .join("\n");
     const blob = new Blob([header, "\n", body], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -56,6 +56,13 @@ export function DataTable({ rows, columns, onRefresh }: Props) {
     a.download = "admin-report.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function csvCell(value: unknown) {
+    const text = String(value ?? "");
+    const trimmed = text.trimStart();
+    const safe = trimmed && ["=", "+", "-", "@"].includes(trimmed[0]) ? `'${text}` : text;
+    return JSON.stringify(safe);
   }
 
   function renderCell(row: ReportRow, column: ReportColumn) {

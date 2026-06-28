@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -150,19 +151,20 @@ type RetentionTableStatus struct {
 }
 
 type SecurityReportOptions struct {
-	From          time.Time
-	To            time.Time
-	Limit         int
-	Outcome       string
-	ReasonCode    string
-	Surface       string
-	IPAddress     string
-	CallerID      string
-	CallerUser    string
-	CallerProject string
-	TokenID       string
-	AdminSubject  string
-	Client        string
+	From              time.Time
+	To                time.Time
+	Limit             int
+	Outcome           string
+	ReasonCode        string
+	Surface           string
+	IPAddress         string
+	CallerID          string
+	CallerUser        string
+	CallerProject     string
+	CallerEnvironment string
+	TokenID           string
+	AdminSubject      string
+	Client            string
 }
 
 type usageRow struct {
@@ -3585,6 +3587,9 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if opts.CallerEnvironment != "" {
 		q = q.Where("caller_environment = ?", opts.CallerEnvironment)
 	}
+	if opts.CallerEnvironment != "" {
+		q = q.Where("caller_environment = ?", opts.CallerEnvironment)
+	}
 	if opts.RequestedModel != "" {
 		q = q.Where("requested_model = ?", opts.RequestedModel)
 	}
@@ -3807,6 +3812,9 @@ func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securit
 	}
 	if opts.CallerProject != "" {
 		q = q.Where("caller_project = ?", opts.CallerProject)
+	}
+	if opts.CallerEnvironment != "" {
+		q = q.Where("caller_environment = ?", opts.CallerEnvironment)
 	}
 	if opts.TokenID != "" {
 		q = q.Where("token_id = ?", opts.TokenID)
@@ -4262,8 +4270,13 @@ func splitKeyN(key string, n int) []string {
 }
 
 func esc(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
 	v = strings.ReplaceAll(v, "|", `\|`)
 	v = strings.ReplaceAll(v, "\n", " ")
+	v = html.EscapeString(v)
+	for _, ch := range []string{"[", "]", "(", ")", "`"} {
+		v = strings.ReplaceAll(v, ch, `\`+ch)
+	}
 	if v == "" {
 		return ""
 	}

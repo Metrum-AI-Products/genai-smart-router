@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -459,6 +460,7 @@ func TestAdminOIDCStateStoreBoundsPendingLogins(t *testing.T) {
 		ok := store.put(adminOIDCLoginState{
 			state:     fmt.Sprintf("state-%d", i),
 			nonce:     "nonce",
+			clientKey: fmt.Sprintf("client-%d", i),
 			expiresAt: now.Add(adminOIDCLoginTTL),
 		}, now)
 		if !ok {
@@ -470,6 +472,101 @@ func TestAdminOIDCStateStoreBoundsPendingLogins(t *testing.T) {
 	}
 	if ok := store.put(adminOIDCLoginState{state: "after-expiry", nonce: "nonce", expiresAt: now.Add(2 * adminOIDCLoginTTL)}, now.Add(adminOIDCLoginTTL+time.Second)); !ok {
 		t.Fatal("state after pruning expired entries was rejected")
+	}
+}
+
+func TestAdminOIDCStateStoreLimitsOneClientWithoutBlockingOthers(t *testing.T) {
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	store := &adminOIDCStateStore{states: map[string]adminOIDCLoginState{}}
+	for i := 0; i < adminOIDCMaxPendingLoginPerClient; i++ {
+		if ok := store.put(adminOIDCLoginState{
+			state:     fmt.Sprintf("same-client-%d", i),
+			nonce:     "nonce",
+			clientKey: "198.51.100.10",
+			expiresAt: now.Add(adminOIDCLoginTTL),
+		}, now); !ok {
+			t.Fatalf("same-client state %d was rejected before per-client cap", i)
+		}
+	}
+	if ok := store.put(adminOIDCLoginState{state: "same-client-overflow", nonce: "nonce", clientKey: "198.51.100.10", expiresAt: now.Add(adminOIDCLoginTTL)}, now); ok {
+		t.Fatal("same-client overflow state was accepted")
+	}
+	if ok := store.put(adminOIDCLoginState{state: "other-client", nonce: "nonce", clientKey: "198.51.100.11", expiresAt: now.Add(adminOIDCLoginTTL)}, now); !ok {
+		t.Fatal("different client was blocked by same-client pending states")
+	}
+	if ok := store.put(adminOIDCLoginState{state: "same-client-after-expiry", nonce: "nonce", clientKey: "198.51.100.10", expiresAt: now.Add(2 * adminOIDCLoginTTL)}, now.Add(adminOIDCLoginTTL+time.Second)); !ok {
+		t.Fatal("same client was not allowed after pending states expired")
+	}
+}
+
+func TestAdminOIDCLoginRateLimitIsPerClient(t *testing.T) {
+	issuer := newFakeOIDCIssuer(t)
+	defer issuer.Close()
+	svc := newTestOIDCAdminService(t, issuer, nil)
+	defer svc.Close()
+
+	for i := 0; i < adminOIDCMaxPendingLoginPerClient; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+		req.RemoteAddr = "198.51.100.10:1234"
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Fatalf("login %d status=%d body=%s", i, rr.Code, rr.Body.String())
+		}
+	}
+	limited := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	limited.RemoteAddr = "198.51.100.10:1234"
+	limitedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(limitedRR, limited)
+	if limitedRR.Code != http.StatusTooManyRequests || !strings.Contains(limitedRR.Body.String(), "oidc-login-rate-limited") {
+		t.Fatalf("same-client overflow status=%d body=%s", limitedRR.Code, limitedRR.Body.String())
+	}
+	other := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	other.RemoteAddr = "198.51.100.11:1234"
+	otherRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(otherRR, other)
+	if otherRR.Code != http.StatusFound {
+		t.Fatalf("different client status=%d body=%s", otherRR.Code, otherRR.Body.String())
+	}
+}
+
+func TestAdminOIDCLoginRateLimitUsesConfiguredTrustedProxyClientIP(t *testing.T) {
+	issuer := newFakeOIDCIssuer(t)
+	defer issuer.Close()
+	svc := newTestOIDCAdminService(t, issuer, nil)
+	defer svc.Close()
+	storeIP := false
+	svc.cfg.Server.ClientIP = ClientIPConfig{
+		TrustedProxyCIDRs: []string{"192.0.2.0/24"},
+		HeaderOrder:       []string{"X-Forwarded-For"},
+		StoreIP:           &storeIP,
+	}
+
+	for i := 0; i < adminOIDCMaxPendingLoginPerClient; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+		req.RemoteAddr = "192.0.2.10:1234"
+		req.Header.Set("X-Forwarded-For", "198.51.100.10")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Fatalf("proxied login %d status=%d body=%s", i, rr.Code, rr.Body.String())
+		}
+	}
+	limited := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	limited.RemoteAddr = "192.0.2.10:1234"
+	limited.Header.Set("X-Forwarded-For", "198.51.100.10")
+	limitedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(limitedRR, limited)
+	if limitedRR.Code != http.StatusTooManyRequests {
+		t.Fatalf("same forwarded client status=%d body=%s", limitedRR.Code, limitedRR.Body.String())
+	}
+	other := httptest.NewRequest(http.MethodGet, "/admin/auth/login", nil)
+	other.RemoteAddr = "192.0.2.10:1234"
+	other.Header.Set("X-Forwarded-For", "198.51.100.11")
+	otherRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(otherRR, other)
+	if otherRR.Code != http.StatusFound {
+		t.Fatalf("different forwarded client status=%d body=%s", otherRR.Code, otherRR.Body.String())
 	}
 }
 
@@ -529,20 +626,26 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			Username:        "admin",
 			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
 			Subject:         "basic:admin",
-			Domain:          "local/test",
+			Domain:          "metrum-insights/test",
 		}, {
 			Username:        "reader",
 			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
 			Subject:         "basic:reader",
-			Domain:          "local/test",
+			Domain:          "metrum-insights/test",
+		}, {
+			Username:        "global",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:global",
+			Domain:          "metrum-insights/test",
 		}},
 	}
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
 		Enabled: true,
 		Policy: []string{
-			"g, basic:admin, reports_admin, local/test",
-			"p, reports_admin, local/test, admin:reports, read|export|drilldown",
-			"p, basic:reader, local/test, admin:reports, read",
+			"g, basic:admin, reports_admin, metrum-insights/test",
+			"p, reports_admin, metrum-insights/test, admin:reports, read|export|drilldown",
+			"p, basic:reader, metrum-insights/test, admin:reports, read",
+			"p, basic:global, *, admin:reports, read|export|drilldown",
 		},
 	}
 	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 1, ExportMarkdown: true}
@@ -652,6 +755,29 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		PolicyExecutions:      []policyExecutionLogRecord{{Seq: 1, Strategy: "script", PolicyKind: "typescript", Outcome: "selected", DurationMS: 12, EligibleTargetCount: 1, SelectedCandidateIndex: 0}},
 		CacheReasons:          []cacheReasonLogRecord{{Seq: 1, Status: "bypass", Reason: "cache-tool-request", CandidateIndex: 0, Provider: "mock", Model: "mock-model", Dialect: "openai"}},
 	})
+	svc.usage.Emit(logRecord{
+		TS:                time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
+		RequestID:         "admin-report-cross-domain",
+		CallerID:          "mallory",
+		CallerUser:        "mallory",
+		CallerProject:     "other-project",
+		CallerEnvironment: "prod",
+		TokenID:           "rtr_other_project_prod",
+		Client:            "codex-cli",
+		InboundDialect:    "openai-responses",
+		RequestedModel:    "default",
+		ResolvedGroup:     "default",
+		Strategy:          "weighted",
+		TargetProvider:    "mock",
+		TargetModel:       "mock-model",
+		TargetDialect:     "openai",
+		Cache:             "miss",
+		Status:            200,
+		Attempts:          1,
+		Usage:             Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15},
+		QuotaState:        "ok",
+		KeyState:          "ok",
+	})
 
 	unauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
 	unauthRR := httptest.NewRecorder()
@@ -716,6 +842,9 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	}
 	if body["summary"].(map[string]any)["requests"].(float64) < 2 {
 		t.Fatalf("summary did not include request: %#v", body)
+	}
+	if strings.Contains(summaryRR.Body.String(), "admin-report-cross-domain") || strings.Contains(summaryRR.Body.String(), "other-project") {
+		t.Fatalf("domain-scoped summary leaked other domain row: %s", summaryRR.Body.String())
 	}
 	charts := body["charts"].([]any)
 	if len(charts) == 0 {
@@ -1022,6 +1151,31 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		if strings.Contains(detailRR.Body.String(), forbidden) {
 			t.Fatalf("detail leaked %q: %s", forbidden, detailRR.Body.String())
 		}
+	}
+	crossDomainDetail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/admin-report-cross-domain", nil)
+	crossDomainDetail.SetBasicAuth("admin", "yell-yell-yum")
+	crossDomainDetailRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(crossDomainDetailRR, crossDomainDetail)
+	if crossDomainDetailRR.Code != http.StatusNotFound {
+		t.Fatalf("cross-domain detail status=%d body=%s", crossDomainDetailRR.Code, crossDomainDetailRR.Body.String())
+	}
+	globalSummary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
+	globalSummary.SetBasicAuth("global", "yell-yell-yum")
+	globalSummaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(globalSummaryRR, globalSummary)
+	if globalSummaryRR.Code != http.StatusOK {
+		t.Fatalf("global summary status=%d body=%s", globalSummaryRR.Code, globalSummaryRR.Body.String())
+	}
+	globalSummaryBody := mustJSONMap(t, globalSummaryRR.Body.String())
+	if globalSummaryBody["summary"].(map[string]any)["requests"].(float64) <= body["summary"].(map[string]any)["requests"].(float64) {
+		t.Fatalf("global summary did not include additional cross-domain rows: scoped=%#v global=%#v", body["summary"], globalSummaryBody["summary"])
+	}
+	globalDetail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/admin-report-cross-domain", nil)
+	globalDetail.SetBasicAuth("global", "yell-yell-yum")
+	globalDetailRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(globalDetailRR, globalDetail)
+	if globalDetailRR.Code != http.StatusOK {
+		t.Fatalf("global detail status=%d body=%s", globalDetailRR.Code, globalDetailRR.Body.String())
 	}
 
 	ui := httptest.NewRequest(http.MethodGet, "/admin/reports/", nil)
@@ -1496,6 +1650,7 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 			"p, basic:reader, local/test, admin:security_reports, read",
 			"p, reports_admin, local/test, admin:reports, read|export|drilldown",
 			"p, reports_admin, local/test, admin:security_reports, read|export",
+			"p, basic:admin, *, admin:security_reports, read|export",
 		},
 	}
 	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 50, ExportMarkdown: true, Security: AdminSecurityReportsConfig{Enabled: true, RetentionDays: 30}}
@@ -1513,6 +1668,30 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 		Outcome:    "unauthorized",
 		ReasonCode: "invalid-token",
 		IPAddress:  "198.51.100.1",
+	})
+	svc.usage.EmitSecurityAccessEvent(securityAccessEvent{
+		TS:              time.Now().UTC().Add(-time.Minute),
+		RequestID:       "=req_formula",
+		EventType:       "+event_formula",
+		Surface:         "-surface_formula",
+		HTTPMethod:      http.MethodGet,
+		PathTemplate:    "@path_formula",
+		StatusCode:      http.StatusForbidden,
+		Outcome:         "forbidden",
+		ReasonCode:      "=reason_formula",
+		AuthSubject:     "+auth_formula",
+		AuthSource:      "basic",
+		CallerID:        "-caller_formula",
+		CallerUser:      "@user_formula",
+		CallerProject:   "=project_formula",
+		TokenID:         "+token_formula",
+		AdminSubject:    "-admin_formula",
+		Client:          "@client_formula",
+		UserAgentFamily: "ordinary, quoted",
+		IPAddress:       "203.0.113.99",
+		ModelGroup:      "=group_formula",
+		RequestedModel:  "+requested_formula",
+		ResolvedGroup:   "-resolved_formula",
 	})
 
 	invalid := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
@@ -1603,6 +1782,28 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 	svc.Handler().ServeHTTP(csvRR, csvReq)
 	if csvRR.Code != http.StatusOK || !strings.Contains(csvRR.Body.String(), "input_tokens,output_tokens,total_tokens") {
 		t.Fatalf("csv status=%d body=%s", csvRR.Code, csvRR.Body.String())
+	}
+	csvRows, err := csv.NewReader(strings.NewReader(csvRR.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse csv: %v\n%s", err, csvRR.Body.String())
+	}
+	var formulaRow []string
+	for _, row := range csvRows {
+		if len(row) > 1 && row[1] == "'=req_formula" {
+			formulaRow = row
+			break
+		}
+	}
+	if formulaRow == nil {
+		t.Fatalf("missing formula-neutralized row: %#v", csvRows)
+	}
+	for _, idx := range []int{1, 2, 3, 5, 8, 9, 11, 12, 13, 14, 15, 16, 24, 25, 26} {
+		if !strings.HasPrefix(formulaRow[idx], "'") {
+			t.Fatalf("csv formula cell %d was not neutralized: %#v", idx, formulaRow)
+		}
+	}
+	if formulaRow[17] != "ordinary, quoted" {
+		t.Fatalf("ordinary quoted CSV value changed: %#v", formulaRow)
 	}
 	allEvents, err := svc.usage.securityAccessEvents(SecurityReportOptions{From: time.Now().UTC().Add(-365 * 24 * time.Hour), To: time.Now().UTC().Add(time.Hour), Limit: 200})
 	if err != nil {
