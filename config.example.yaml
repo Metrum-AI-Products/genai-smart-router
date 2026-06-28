@@ -504,6 +504,85 @@ providers:
           supported: true
           mode: opt_in
           control: effort_enum
+      glm-5p2:
+        model: accounts/fireworks/models/glm-5p2
+        tier: coding
+        input_price_per_million_usd: 1.40
+        output_price_per_million_usd: 4.40
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://fireworks.ai/models/fireworks/glm-5p2
+        pricing_updated_at: '2026-06-28'
+        pricing_notes: Fireworks Serverless pricing lists GLM 5.2 at $1.40/M input,
+          $0.26/M cached input, and $4.40/M output. Direct Fireworks OpenAI Chat
+          text and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent;
+          tiny text budgets can be spent on reasoning before visible final content,
+          so use realistic budgets for acceptance.
+        tool_support:
+          openai_chat:
+          - tools
+      kimi-k2p7-code:
+        model: accounts/fireworks/models/kimi-k2p7-code
+        tier: coding
+        input_price_per_million_usd: 0.95
+        output_price_per_million_usd: 4.00
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://fireworks.ai/models/fireworks/kimi-k2p7-code
+        pricing_updated_at: '2026-06-28'
+        pricing_notes: Fireworks Serverless pricing lists Kimi K2.7 Code at $0.95/M
+          input, $0.19/M cached input, and $4.00/M output. Direct Fireworks OpenAI
+          Chat text and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent.
+          Image input is advertised by Fireworks but must not be used for routing until
+          a direct image smoke and router-level image smoke pass for this exact endpoint.
+        tool_support:
+          openai_chat:
+          - tools
+      deepseek-v4-flash:
+        model: accounts/fireworks/models/deepseek-v4-flash
+        tier: coding
+        input_price_per_million_usd: 0.14
+        output_price_per_million_usd: 0.28
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://fireworks.ai/models/fireworks/deepseek-v4-flash
+        pricing_updated_at: '2026-06-28'
+        pricing_notes: Fireworks Serverless pricing lists DeepSeek-V4-Flash at $0.14/M
+          input, $0.03/M cached input, and $0.28/M output. Direct Fireworks OpenAI
+          Chat text and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent;
+          tiny text budgets can be spent on reasoning before visible final content,
+          so use realistic budgets for acceptance.
+        tool_support:
+          openai_chat:
+          - tools
+      qwen3p6-plus:
+        model: accounts/fireworks/models/qwen3p6-plus
+        tier: coding
+        input_price_per_million_usd: 0.50
+        output_price_per_million_usd: 3.00
+        input_modalities:
+        - text
+        - image
+        output_modalities:
+        - text
+        pricing_source: https://app.fireworks.ai/models/fireworks/qwen3p6-plus
+        pricing_updated_at: '2026-06-28'
+        pricing_notes: Fireworks App lists Qwen3.6 Plus as Serverless supported
+          with $0.50/M input, $0.10/M cached input, and $3.00/M output, plus
+          function calling and image input. Direct Fireworks OpenAI Chat text
+          and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent.
+          Active router targets override modalities to text-only until direct
+          image and router-level image smokes pass for this exact endpoint.
+        tool_support:
+          openai_chat:
+          - tools
   fireworks_responses:
     base_url: https://api.fireworks.ai/inference/v1
     dialect: openai-responses
@@ -1631,10 +1710,10 @@ models:
     targets:
     - provider: baseten
       model_ref: gpt-oss-120b
-      weight: 17
+      weight: 15
     - provider: minimax
       model_ref: m3
-      weight: 25
+      weight: 20
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 2
@@ -1643,20 +1722,34 @@ models:
       weight: 5
     - provider: kimi
       model_ref: kimi-k2.7-code
-      weight: 20
+      weight: 17
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
     - provider: crusoe
       model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
-      weight: 15
+      weight: 11
       input_modalities: [text]
     - provider: fireworks
       model_ref: gpt-oss-20b
-      weight: 15
+      weight: 11
+    - provider: fireworks
+      model_ref: glm-5p2
+      weight: 3
+    - provider: fireworks
+      model_ref: kimi-k2p7-code
+      weight: 5
+      input_modalities: [text]
+    - provider: fireworks
+      model_ref: deepseek-v4-flash
+      weight: 5
+    - provider: fireworks
+      model_ref: qwen3p6-plus
+      weight: 5
+      input_modalities: [text]
     - provider: minimax
       model_ref: m3
-      weight: 5
+      weight: 18
       dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
@@ -1668,15 +1761,11 @@ models:
         budget_tokens: 512
     - provider: minimax_anthropic
       model_ref: m3
-      weight: 3
+      weight: 7
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: openrouter-claude-sonnet-4-6
-      weight: 13
       tool_only: true
     - provider: openrouter_responses
       model_ref: openrouter-xai-grok-4-3
@@ -1693,10 +1782,6 @@ models:
     - provider: baseten_anthropic
       model_ref: gpt-oss-120b
       weight: 8
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: openrouter-claude-sonnet-4-6
-      weight: 4
       tool_only: true
     - provider: openrouter_anthropic
       model_ref: openrouter-xai-grok-4-3

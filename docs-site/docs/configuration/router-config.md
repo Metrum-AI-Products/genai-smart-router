@@ -126,6 +126,50 @@ providers:
           supported: true
           mode: opt_in
           control: effort_enum
+      glm-5p2:
+        model: accounts/fireworks/models/glm-5p2
+        tier: coding
+        input_price_per_million_usd: 1.40
+        output_price_per_million_usd: 4.40
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://fireworks.ai/models/fireworks/glm-5p2
+        pricing_updated_at: "2026-06-28"
+        tool_support:
+          openai_chat: [tools]
+      kimi-k2p7-code:
+        model: accounts/fireworks/models/kimi-k2p7-code
+        tier: coding
+        input_price_per_million_usd: 0.95
+        output_price_per_million_usd: 4.00
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://fireworks.ai/models/fireworks/kimi-k2p7-code
+        pricing_updated_at: "2026-06-28"
+        tool_support:
+          openai_chat: [tools]
+      deepseek-v4-flash:
+        model: accounts/fireworks/models/deepseek-v4-flash
+        tier: coding
+        input_price_per_million_usd: 0.14
+        output_price_per_million_usd: 0.28
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://fireworks.ai/models/fireworks/deepseek-v4-flash
+        pricing_updated_at: "2026-06-28"
+        tool_support:
+          openai_chat: [tools]
+      qwen3p6-plus:
+        model: accounts/fireworks/models/qwen3p6-plus
+        tier: coding
+        input_price_per_million_usd: 0.50
+        output_price_per_million_usd: 3.00
+        input_modalities: [text, image]
+        output_modalities: [text]
+        pricing_source: https://app.fireworks.ai/models/fireworks/qwen3p6-plus
+        pricing_updated_at: "2026-06-28"
+        tool_support:
+          openai_chat: [tools]
       gpt-oss-120b:
         model: openai/gpt-oss-120b
         tier: coding
@@ -307,7 +351,7 @@ External OpenAI-compatible providers follow the same shape. For example, Baseten
 
 Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in an ordinary-text weighted group. The current/reference `big-coder` example uses Crusoe Nemotron 3 Nano Omni Reasoning only as a text target where configured; it does not claim Crusoe tool, vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it should be treated as historical/catalog/smoke-only unless a deployment revalidates it for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
 
-Fireworks Chat and Fireworks Responses are separate provider skins. Fireworks Chat uses `dialect: openai-chat`; Fireworks Responses uses a separate `dialect: openai-responses` provider. Fireworks docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible base URL and document Responses function tools, provider-hosted MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`. The reference Responses entry is limited to `accounts/fireworks/models/kimi-k2p7-code` after direct and router-level text, function-tool, continuation, streaming, output-cap, and `store=false` smokes passed. Provider-hosted MCP/SSE tools are rejected by the router before upstream unless a deployment adds a separate reviewed allowlist design. Keep Fireworks Anthropic Messages, image, video, and audio support absent until those exact skins pass direct and router-level smokes.
+Fireworks Chat and Fireworks Responses are separate provider skins. Fireworks Chat uses `dialect: openai-chat`; Fireworks Responses uses a separate `dialect: openai-responses` provider. Fireworks docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible base URL and document Responses function tools, provider-hosted MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`. Direct Fireworks OpenAI Chat text and auto-tool smokes passed on 2026-06-28 for GLM 5.2, Kimi K2.7 Code, DeepSeek-V4-Flash, and Qwen3.6 Plus with an explicit `User-Agent`; GPT OSS 20B had already passed text, streaming, cap, reasoning effort, tool-choice, and structured-output smokes on 2026-06-27. Active router targets keep Fireworks image-capable Chat models text-only until direct image and router-level image smokes pass for each exact endpoint. The reference Responses entry is limited to `accounts/fireworks/models/kimi-k2p7-code` after direct and router-level text, function-tool, continuation, streaming, output-cap, and `store=false` smokes passed. Provider-hosted MCP/SSE tools are rejected by the router before upstream unless a deployment adds a separate reviewed allowlist design. Keep Fireworks Anthropic Messages, video, and audio support absent until those exact skins pass direct and router-level smokes.
 
 Catalog entries should carry cost and capability metadata:
 
@@ -376,14 +420,28 @@ models:
   big-coder:
     strategy: weighted
     targets:
-      - { provider: baseten, model_ref: gpt-oss-120b, weight: 18 }
-      - { provider: minimax, model_ref: m3, weight: 30 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 23 }
-      - { provider: crusoe, model_ref: nemotron-3-nano-omni-reasoning-30b-a3b, weight: 20, input_modalities: [text] }
+      - { provider: baseten, model_ref: gpt-oss-120b, weight: 15 }
+      - { provider: minimax, model_ref: m3, weight: 20 }
+      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 17 }
+      - { provider: crusoe, model_ref: nemotron-3-nano-omni-reasoning-30b-a3b, weight: 11, input_modalities: [text] }
       - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 2 }
       - { provider: baseten, model_ref: glm-5-2, weight: 6 }
+      - { provider: fireworks, model_ref: gpt-oss-20b, weight: 11 }
+      - { provider: fireworks, model_ref: glm-5p2, weight: 3 }
+      - { provider: fireworks, model_ref: kimi-k2p7-code, weight: 5, input_modalities: [text] }
+      - { provider: fireworks, model_ref: deepseek-v4-flash, weight: 5 }
+      - { provider: fireworks, model_ref: qwen3p6-plus, weight: 5, input_modalities: [text] }
       - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
+      - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true, weight: 18 }
+      - { provider: fireworks_responses, model_ref: kimi-k2p7-code, dialect: openai-responses, tool_only: true, weight: 2 }
       - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
+      - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, weight: 4 }
+      - { provider: minimax_anthropic, model_ref: m3, tool_only: true, weight: 7 }
+      - { provider: openrouter_responses, model_ref: openrouter-xai-grok-4-3, tool_only: true, weight: 3 }
+      - { provider: openrouter_responses, model_ref: openrouter-minimax-m3, tool_only: true, weight: 1 }
+      - { provider: openrouter_anthropic, model_ref: gemma-4-26b-a4b-it-nitro, tool_only: true, weight: 2 }
+      - { provider: openrouter_anthropic, model_ref: openrouter-xai-grok-4-3, tool_only: true, weight: 3 }
+      - { provider: openrouter_anthropic, model_ref: openrouter-minimax-m3, tool_only: true, weight: 1 }
 ```
 
 ## Scripted Routing Options

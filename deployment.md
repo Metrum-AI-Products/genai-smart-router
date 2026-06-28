@@ -315,6 +315,15 @@ admin /admin/reports/api/provider-catalog-status returned active target and cata
 - Verified authenticated production `/v1/chat/completions` against `high` returned HTTP 200 with a concrete upstream model and `finish_reason: stop`.
 - Production cleanup: removed the uploaded package and superseded temporary deployment directory, kept the timestamped backup, and ran `sudo docker system prune -f` with the deployment healthy.
 
+## 2026-06-25 Production Caller TPM Increase For Cursor
+
+- Applied a config-only production update to raise every production caller key below `5000000` TPM up to `5000000` TPM to reduce Cursor large-context burst rate-limit failures.
+- Updated 27 production caller entries, including the reusable Harbor production caller. Existing production keys already at or above `5000000` TPM were left unchanged; after the update, 29 production-like callers are at `5000000` TPM and one remains at `7500000` TPM.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.prod-callers-tpm-5m-20260625T205550Z`.
+- Local `config.production.yaml` SHA-256 matched the remote deployed config SHA-256: `8fe6dff612cbcb273a98343afafd53c1456b119756415616d7a896efda54feac`.
+- Verified `/readyz` returned healthy on package/image `smart-llmrouter:87bbf64-linux-amd64`.
+- Verified no production-like caller remains below `5000000` TPM.
+
 ## 2026-06-25 Aditya TPM Limit Increase
 
 - Applied a config-only production update for caller `aditya-metrum-insights-prod`, increasing `rate.tpm` from `1200000` to `5000000`.
@@ -1971,6 +1980,36 @@ hosted docs /docs/operations/usage-reporting returned 200 with version headers
 production router-usage-report --since 24h generated a report containing Downstream User Performance, Upstream Endpoint Performance, and Per-Request Throughput sections
 production authenticated chat smoke with realistic token budget returned HTTP 200 through the weighted high group
 production cleanup: removed uploaded package, removed superseded switch directory, ran sudo docker system prune -f
+```
+
+### 2026-06-27 big-coder tool routing cost reduction
+
+Production `big-coder` tool-only routing was updated to reduce active Sonnet weight and prefer MiniMax M3 for both OpenAI Responses and Anthropic Messages tool traffic.
+
+Config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.minimax-tool-routing-20260627T020138Z
+```
+
+Routing changes:
+
+- OpenAI Responses tool route: direct `minimax` / `m3` weight increased from 5 to 18.
+- OpenAI Responses tool route: `openrouter_responses` / `openrouter-claude-sonnet-4-6` removed from active `big-coder` targets.
+- Anthropic Messages tool route: `minimax_anthropic` / `m3` weight increased from 3 to 7.
+- Anthropic Messages tool route: `openrouter_anthropic` / `openrouter-claude-sonnet-4-6` removed from active `big-coder` targets.
+- OpenRouter MiniMax M3 remains active at weight 1 for both OpenAI Responses and Anthropic Messages tool routes.
+
+Validation:
+
+```text
+go test ./internal/router: passed
+production docker compose config: passed
+production router restart: passed
+production /readyz: 200, version 289ea71
+local config.production.yaml SHA-256 matched production config/config.yaml: 8643010f16b2c15f6c75879c4246a31da97c1d9dcd0547c45209ed9a2f50bed0
+OpenAI Responses tool smoke to big-coder: HTTP 200, selected MiniMax-M3
+Anthropic Messages tool smoke to big-coder: HTTP 200, selected MiniMax-M3
 ```
 
 ### 2026-06-25 Auth, reporting, and upstream-error production refresh
