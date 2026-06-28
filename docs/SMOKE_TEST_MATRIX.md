@@ -2,6 +2,8 @@
 
 Run smokes at the narrowest layer that proves the change, then run production-level smokes for deployed behavior.
 
+For quality complaints or router-versus-fixed-model decisions, do not treat a smoke test as a full evaluation. A smoke proves that one request shape works. Use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) when the decision depends on workload outcomes, repeated runs, cost, latency, fallbacks, and a fixed-model or previous-policy control.
+
 ## Core API Smokes
 
 | Change type | Required smoke |
@@ -15,6 +17,16 @@ Run smokes at the narrowest layer that proves the change, then run production-le
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | Usage/cost fields | query usage DB/report after a request |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
+
+## Evidence Evaluation Smokes
+
+Before promoting or rolling back a model group based on a quality claim:
+
+- run the narrow smoke for every affected API shape, tool dialect, modality, reasoning control, token cap, and timeout;
+- record the config version or safe routing/config summary, selected provider/model, usage tokens, latency, attempts, fallback, and error fields;
+- join the smoke window to any Harbor, acceptance-test, or external evaluation result by timestamp, caller/project, client, model group, request ID, or run label;
+- if the smoke passes but the workload evaluation fails, treat it as a model-group quality issue rather than a transport compatibility issue;
+- if the smoke fails, fix or roll back the target before interpreting broader evaluation results.
 
 ## Hosted OpenAI-Compatible Provider Smokes
 

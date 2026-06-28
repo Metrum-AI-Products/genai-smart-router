@@ -10,6 +10,8 @@ Modern AI teams often need more than one model provider. Different models may be
 
 Smart LLM Router centralizes that complexity behind one internal API surface. Clients can speak OpenAI-style or Anthropic-style APIs; the router authenticates the caller, selects an allowed model group, chooses an upstream target, injects the provider credential, normalizes responses, records usage, and returns the response in the caller's expected dialect.
 
+Quality decisions should be evidence-first. For router-versus-fixed-model complaints or buyer evaluations, use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) to compare a routed group, fixed model, or previous policy with workload, client, tools, versions, token caps, and scoring held constant.
+
 ```mermaid
 flowchart LR
   App[Applications and AI tools] --> Router[Smart LLM Router]

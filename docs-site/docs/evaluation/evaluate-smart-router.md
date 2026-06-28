@@ -10,6 +10,8 @@ Use this checklist to evaluate GenAI Smart Router with a real deployment or a Me
   <p>Need an evaluation environment or help choosing proof points? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
+When the question is whether a routed group is as good as a fixed model or previous policy, use [Prove Router Quality](./prove-router-quality) to run an evidence-first comparison instead of relying on anecdotes.
+
 ## What To Prove First
 
 | Question | Proof point |
@@ -82,6 +84,8 @@ Model routing should be evaluated by task success, not only by model reputation 
 - product acceptance tests.
 
 The target state is a model group that preserves the required task outcome while improving cost, latency, reliability, or provider optionality.
+
+For router-versus-fixed-model comparisons, pre-register the task set, control, metrics, seed policy, config version or safe routing/config summary, and rollout decision rule using the [Prove Router Quality](./prove-router-quality) template.
 
 ## Common Evaluation Failures
 

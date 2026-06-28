@@ -1,0 +1,111 @@
+# Evaluation Evidence Playbook
+
+Use this playbook when a customer, evaluator, or operator says a routed group "felt worse" than a fixed model, previous policy, or named provider. Treat the report as a useful bug signal, then convert it into repeatable evidence before changing routing policy.
+
+## Support Response Template
+
+Suggested response:
+
+> Thanks for the report. A single bad answer can identify a possible issue, but routing changes need repeatable evidence so we do not optimize for one anecdote and regress the workload distribution. Please send safe evaluation artifacts for the affected workload: task IDs or anonymized cases, expected outcomes or rubric, client/agent version, model group, fixed-model or prior-policy control, timestamps, request IDs if available, and the metric you want optimized. Do not send raw prompts, raw images, provider keys, bearer tokens, token hashes, raw tool outputs, private repository contents, or full production config through an ungoverned support path.
+
+Then propose a comparison:
+
+1. hold workload, client, agent, tools, prompt shape, seed policy, versions, token caps, and timeouts constant;
+2. change only the model selection, such as routed group versus fixed model;
+3. report task-level outcomes, cost, latency, reliability, compatibility, and uncertainty where valid;
+4. decide whether to promote, hold, split, rollback, or collect more evidence.
+
+## Safe Artifacts To Request
+
+Request only artifacts that can be shared safely:
+
+| Artifact | Use |
+|---|---|
+| Evaluation window | Joins external results to router usage by timestamp. |
+| Caller/project/client/model group | Narrows usage reports without exposing raw tokens. |
+| Request IDs or run labels | Joins router rows to Harbor or external evaluation rows. |
+| Task IDs and expected outcomes | Supports repeatable scoring without raw private content. |
+| Rubric or verifier version | Explains how pass/fail or reward was assigned. |
+| Client, agent, SDK, and app versions | Controls for client behavior changes. |
+| Fixed-model or previous-policy control | Provides a baseline. |
+| Config version or safe routing/config summary | Describes candidate group, target classes, weights, and capability filters without provider keys or full config. |
+| Aggregate usage report | Shows selected provider/model, tokens, cost, latency, throughput, attempts, fallbacks, and errors. |
+
+Never request provider keys, bearer tokens, router token hashes, raw prompts, raw images, raw tool outputs, private repo contents, private hostnames, full production config, signing keys, or license private material unless a governed support path explicitly allows that content.
+
+## Experiment Template
+
+Record these fields before the run:
+
+| Field | Required note |
+|---|---|
+| Hypothesis | What the router group should match or improve. |
+| Workload/task set | Dataset, task IDs, app flow, or acceptance suite. |
+| Metric and threshold | Pass/reward/resolution/business metric plus cost, latency, and reliability thresholds. |
+| Control | Fixed model or previous routing policy. |
+| Candidate | Router group, policy label, config version, or safe routing/config summary. |
+| Versions | Router build, client/agent/app/evaluator versions, provider entitlement state. |
+| Request shape | API dialect, tools, images, structured output, reasoning controls, token caps, and timeouts. |
+| Attempts/seeds | Number of attempts, seed policy, retry policy, and independence assumptions. |
+| Comparison method | Distribution, confidence interval, paired comparison, bootstrap, or other justified method. |
+| Decision rule | Promote, hold, split, rollback, or gather more evidence. |
+
+## Joining Router Reports With External Evaluations
+
+Use safe scalar dimensions to join router data with Harbor or other harness output:
+
+- time window: UTC `[from,to)` around the run;
+- caller user, caller project, environment, client, or public token ID;
+- requested model group and resolved group;
+- request ID, run label, task ID, or trace correlation ID when available;
+- selected provider/model/dialect;
+- status, attempts, fallback count, error type, timeout, and cancellation;
+- input/output/image token counts, cache fields, request-time cost, upstream-reported billed cost, latency, TTFB, duration, and throughput.
+
+Example filtered report:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --from <run-start-utc> \
+  --to <run-end-utc> \
+  --caller-project <project> \
+  --client <client> \
+  --resolved-group <model-group> \
+  --out /app/logs/eval-<run-label>.md
+```
+
+For Harbor, join by run matrix, client, model group, task ID, seed, attempt, timestamps, and request IDs when the client records them. Current production Harbor runs should use the reusable Harbor caller token and separate results by run labels and report filters rather than creating one token per `{agent, model_group}`.
+
+For non-Harbor evaluations, keep the external result table normalized enough to join on task ID, seed, attempt, app cohort, and request ID. Store raw private content only in a governed customer system, not in router reports.
+
+## Metrics To Inspect
+
+Report:
+
+- primary outcome: pass rate, reward, resolution, extraction accuracy, acceptance-test result, or business metric;
+- cost: request-time input, output, image, cache, calculated, and upstream-reported cost fields;
+- latency: downstream latency, upstream duration, TTFB, output tokens/sec, and total tokens/sec;
+- reliability: retries, fallbacks, provider errors, `no-eligible-target`, timeouts, cancellations, and agent errors;
+- compatibility: API shape, tool dialect, modality, structured-output behavior, reasoning/thinking controls, and cap forwarding;
+- distribution: task-level and seed-level rows, not only an aggregate;
+- uncertainty: confidence interval or other uncertainty estimate when the sample design supports it.
+
+## Rollback Or Route-Weight Change
+
+Make routing changes only when the evidence maps to the model-group contract:
+
+| Evidence | Action |
+|---|---|
+| Router group beats control | Promote access or increase weight; keep monitoring and rollback criteria. |
+| Router ties control at lower cost or latency | Promote cautiously and watch distribution-level regressions. |
+| Router underperforms | Keep fixed model, lower unsafe target weight, add stronger target weight, or create a workload-specific group. |
+| Mixed results | Split by workload category, request shape, model group, caller/project, or policy label. |
+| Inconclusive | Add tasks/seeds, improve rubric, run shadow mode, or delay rollout. |
+
+For config-only rollback, restore the timestamped config backup, restart the router, verify `/readyz`, confirm local and remote config hashes when applicable, and rerun the failing smoke or evaluation slice. For a targeted weight change, patch the group with structured YAML, validate config, run router-level smokes for affected request shapes, and regenerate the usage/report excerpt for the rollout window.
+
+## Public Playbook
+
+The public customer-facing version is in `docs-site/docs/evaluation/prove-router-quality.md`. Keep it generic, placeholder-safe, and clear that Harbor is one harness rather than a requirement.

@@ -8,6 +8,8 @@ Model groups are the caller-facing quality and cost contracts in GenAI Smart Rou
 
 This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when validation shows the group still meets its objective.
 
+For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality).
+
 ## Group Contract Fields
 
 Define these fields for every model group in a deployment:
@@ -59,6 +61,8 @@ Track:
 - generated artifact correctness.
 
 Promotion is justified when the group maintains the required outcome while meeting cost, latency, and reliability targets. A cheaper provider mix should be adopted when it passes the same objective criteria. A stronger target should remain available for workloads that need it, but it does not need to handle every request.
+
+Use the [Prove Router Quality](./prove-router-quality) decision matrix when deciding whether to promote a group, keep a fixed model, split a workload, or collect more evidence.
 
 ## Release Gates
 

@@ -149,6 +149,7 @@ const sidebars = {
       items: [
         "evaluation/overview",
         "evaluation/evaluate-smart-router",
+        "evaluation/prove-router-quality",
         "evaluation/product-capabilities",
         "evaluation/harbor-case-study",
         "evaluation/model-group-quality",

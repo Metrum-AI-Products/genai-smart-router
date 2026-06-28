@@ -4,6 +4,8 @@ License enforcement metadata is reportable as safe scalar request fields when en
 
 Usage reports support cost governance, quota reviews, incident analysis, and savings analysis.
 
+For router-versus-fixed-model quality decisions, pair usage reports with the [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md). Reports explain which providers/models served the run, how much they cost, how fast they were, and whether retries or fallbacks occurred; the external evaluator explains whether the task outcome was acceptable.
+
 ## Standard Dimensions
 
 Report by token ID, caller user/project/environment, model group, provider/model/dialect, client type, caller IP, hour/day, cache status, request status, input/output/image tokens, request-time USD cost, and performance fields.
@@ -176,6 +178,21 @@ router-usage-report \
   --client <client> \
   --out /app/logs/usage-filtered.md
 ```
+
+## Evaluation Evidence Joins
+
+When joining router reports with Harbor or another evaluation harness, use safe scalar fields only:
+
+- UTC time window for the run;
+- caller user, project, environment, public token ID, and client;
+- requested model group, resolved group, provider, model, and dialect;
+- request ID, run label, task ID, seed, attempt, or trace correlation ID when available;
+- status, error type, attempts, fallback count, timeout, cancellation, latency, TTFB, duration, and throughput;
+- input, output, image, cache, request-time calculated cost, and upstream-reported billed cost fields.
+
+Do not add raw prompts, raw images, tool outputs, bearer tokens, token hashes, provider keys, private repository contents, private hostnames, or full production config to evaluation reports. If customer-owned raw cases are required for debugging, use a governed support path outside router usage reporting.
+
+For fixed-model comparisons, report both actual routed cost and baseline cost from documented baseline prices or the fixed model's own usage data. State the price source/date and do not reprice historical routed actuals from current config.
 
 ## Savings Reports
 
