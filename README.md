@@ -170,7 +170,7 @@ server:
 
 Set `instance_fingerprint` only when Metrum issues an instance-bound license for the deployment. It must match the licensed instance scope or startup/readiness will fail with `license-instance-limit-exceeded`.
 
-Use `go run ./cmd/router-license inspect --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
+Use `go run ./cmd/router-license safe-summary --license license.json` to inspect safe license metadata. `router-license verify --license license.json --public-key <public-key-file>` is for release/test validation with a supplied public key. Internal operators can use `router-license issue`, `renew`, and `top-up` with the SKU catalog and approved entitlement records. Private signing keys are not required at runtime and must never be copied into router config, logs, images, or source control.
 
 Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; public hosted docs describe customer installation and renewal behavior without signing-key or bypass details.
 

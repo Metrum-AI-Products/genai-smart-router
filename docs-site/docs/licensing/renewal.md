@@ -26,6 +26,8 @@ Replace the runtime license when:
 4. Restart the router or wait for `server.license.recheck_interval`.
 5. Verify readiness, safe license status, metrics, and one caller smoke.
 
+The new file should have a different license ID for renewals, replacements, and volume top-ups. For top-up licenses, the router treats the new license ID as a new license-wide volume budget; caller-token quotas remain controlled by the deployment's caller-key policy.
+
 Example validation:
 
 ```bash
@@ -58,3 +60,7 @@ If a deployment enters grace, treat it as an operational incident:
 Rollback is restoring the previous valid runtime license file and restarting the router or waiting for the next recheck interval. Roll back only to a license that is still valid for the deployment and commercial scope.
 
 Do not work around a failed license by disabling enforcement in runtime YAML. Normal release builds require license enforcement.
+
+## Support Handoff
+
+For renewal or top-up support, share only safe status fields: license ID, SKU, key ID, expiry, status, reason, grace-active flag, router version, and request IDs. Do not send provider keys, router tokens, token hashes, raw prompts, raw images, full config files, private signing material, raw signatures, or full customer-specific license payloads through ordinary support channels.

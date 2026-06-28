@@ -72,6 +72,8 @@ Replacement uses the same installation flow when Metrum issues a corrected licen
 
 Volume top-up also uses the same file replacement flow. For `credit-pack-*` licenses, Metrum issues a replacement license with a new license ID and the new contracted token budget. The router treats the new license as a new license-wide budget while caller-token quotas remain controlled by the deployment's caller-key policy.
 
+Metrum may include a safe summary or operator checklist with a delivered license. Those artifacts are informational and should contain only scalar metadata such as license ID, customer ID, SKU, key ID, issuer, issue time, not-before time, expiry, features, and limits. Install the signed `license.json`; do not install or edit the summary in place of the license.
+
 ## Offline And Air-Gapped Operation
 
 License validation is offline. The router does not need to call Metrum during startup or periodic license checks. Air-gapped customers can receive the signed license through their approved secure transfer process, mount it in the deployment, and verify safe status locally.
@@ -118,7 +120,7 @@ curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
   "$ROUTER_BASE_URL/v1/models"
 ```
 
-The source-tree `cmd/router-license` helper can inspect or verify a license file during release engineering or support validation when run from a checked-out source tree with an approved public key file. It is not part of the packaged Docker/runtime image unless a deployment explicitly adds it. Deployed routers do not need private signing keys or the license helper binary at runtime.
+The source-tree `cmd/router-license` helper can produce a safe summary or verify a license file during release engineering or support validation when run from a checked-out source tree with an approved public key file. It is not part of the packaged Docker/runtime image unless a deployment explicitly adds it. Deployed routers do not need private signing keys or the license helper binary at runtime.
 
 ## Commercial Model
 

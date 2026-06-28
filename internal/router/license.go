@@ -21,8 +21,11 @@ import (
 )
 
 const (
-	licenseProduct = "genai-smart-router"
-	licenseIssuer  = "metrum-ai"
+	LicenseProduct = "genai-smart-router"
+	LicenseIssuer  = "metrum-ai"
+
+	licenseProduct = LicenseProduct
+	licenseIssuer  = LicenseIssuer
 
 	LicenseFeatureRouting              = "routing"
 	LicenseFeatureUsageReporting       = "usage_reporting"
@@ -42,7 +45,7 @@ const (
 	LicenseFeatureUsageBaselineExport  = "usage_baseline_export"
 )
 
-type licenseEnvelope struct {
+type LicenseEnvelope struct {
 	Payload   LicensePayload   `json:"payload"`
 	Signature LicenseSignature `json:"signature"`
 }
@@ -229,6 +232,16 @@ func defaultLicensePublicKeys() []LicensePublicKey {
 			NotBefore: time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC),
 		},
 	}
+}
+
+func DefaultLicensePublicKeys() []LicensePublicKey {
+	keys := defaultLicensePublicKeys()
+	out := make([]LicensePublicKey, len(keys))
+	copy(out, keys)
+	for i := range out {
+		out[i].PublicKey = append(ed25519.PublicKey(nil), out[i].PublicKey...)
+	}
+	return out
 }
 
 func (m *licenseManager) start() {
@@ -663,8 +676,8 @@ func httpStatusForLicenseCode(code string) int {
 	}
 }
 
-func ParseLicenseEnvelope(raw []byte) (licenseEnvelope, error) {
-	var env licenseEnvelope
+func ParseLicenseEnvelope(raw []byte) (LicenseEnvelope, error) {
+	var env LicenseEnvelope
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if err := dec.Decode(&env); err != nil {
 		return env, err
@@ -672,7 +685,7 @@ func ParseLicenseEnvelope(raw []byte) (licenseEnvelope, error) {
 	return env, nil
 }
 
-func VerifyLicenseEnvelope(env licenseEnvelope, keys []LicensePublicKey, now time.Time) error {
+func VerifyLicenseEnvelope(env LicenseEnvelope, keys []LicensePublicKey, now time.Time) error {
 	if env.Payload.SchemaVersion != 1 {
 		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "unsupported license schema"}
 	}
@@ -755,6 +768,72 @@ func validateLicensePayloadForConfig(payload LicensePayload, cfg *Config, now ti
 		}
 	}
 	return nil
+}
+
+func ValidateLicensePayload(payload LicensePayload, cfg *Config, keys []LicensePublicKey, now time.Time) error {
+	if payload.SchemaVersion != 1 {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "unsupported license schema"}
+	}
+	if payload.Product != licenseProduct {
+		return licenseValidationError{Code: "license-product-mismatch", StatusCode: 503, Message: "license product mismatch"}
+	}
+	if payload.Issuer != licenseIssuer {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license issuer mismatch"}
+	}
+	if payload.IssuedAt.IsZero() || payload.NotBefore.IsZero() || payload.ExpiresAt.IsZero() {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license date fields are required"}
+	}
+	if !payload.ExpiresAt.After(payload.NotBefore) {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license expires_at must be after not_before"}
+	}
+	if payload.IssuedAt.After(payload.NotBefore) {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license issued_at must not be after not_before"}
+	}
+	if err := validateLicensePayloadForConfig(payload, cfg, now); err != nil {
+		return err
+	}
+	if strings.TrimSpace(payload.KeyID) == "" {
+		return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license key id is required"}
+	}
+	if len(keys) > 0 {
+		if _, ok := findLicenseKey(keys, payload.KeyID, payload.NotBefore); !ok {
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "unknown license key id"}
+		}
+	}
+	for _, feature := range payload.Features {
+		feature = strings.TrimSpace(feature)
+		if feature == "" {
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license features cannot contain empty values"}
+		}
+		if feature == "*" {
+			continue
+		}
+		if !KnownLicenseFeatures()[feature] {
+			return licenseValidationError{Code: "license-invalid", StatusCode: 503, Message: "license features contain unsupported feature"}
+		}
+	}
+	return nil
+}
+
+func KnownLicenseFeatures() map[string]bool {
+	return map[string]bool{
+		LicenseFeatureRouting:              true,
+		LicenseFeatureUsageReporting:       true,
+		LicenseFeatureAdminReports:         true,
+		LicenseFeatureAdminSecurityReports: true,
+		LicenseFeatureDynamicScore:         true,
+		LicenseFeatureExternalPolicy:       true,
+		LicenseFeatureTypeScriptRouting:    true,
+		LicenseFeatureModelGroupContracts:  true,
+		LicenseFeatureRetentionRollups:     true,
+		LicenseFeatureContentCapture:       true,
+		LicenseFeatureExternalPolicyHTTP:   true,
+		LicenseFeaturePrivateUpstreams:     true,
+		LicenseFeatureAuditLogExport:       true,
+		LicenseFeaturePIIFiltering:         true,
+		LicenseFeatureUsageCSVExport:       true,
+		LicenseFeatureUsageBaselineExport:  true,
+	}
 }
 
 func validateLicenseLimitShape(limits LicenseLimits) error {
@@ -894,13 +973,13 @@ func findLicenseKey(keys []LicensePublicKey, keyID string, now time.Time) (Licen
 	return LicensePublicKey{}, false
 }
 
-func SignLicensePayload(payload LicensePayload, privateKey ed25519.PrivateKey) (licenseEnvelope, error) {
+func SignLicensePayload(payload LicensePayload, privateKey ed25519.PrivateKey) (LicenseEnvelope, error) {
 	payloadBytes, err := CanonicalLicensePayload(payload)
 	if err != nil {
-		return licenseEnvelope{}, err
+		return LicenseEnvelope{}, err
 	}
 	sig := ed25519.Sign(privateKey, payloadBytes)
-	return licenseEnvelope{
+	return LicenseEnvelope{
 		Payload: payload,
 		Signature: LicenseSignature{
 			Algorithm:   "ed25519",
@@ -914,7 +993,7 @@ func GenerateLicenseKeypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	return ed25519.GenerateKey(rand.Reader)
 }
 
-func MarshalLicenseEnvelope(env licenseEnvelope) ([]byte, error) {
+func MarshalLicenseEnvelope(env LicenseEnvelope) ([]byte, error) {
 	return json.MarshalIndent(env, "", "  ")
 }
 

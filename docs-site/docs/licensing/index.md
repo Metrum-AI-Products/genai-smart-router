@@ -10,7 +10,7 @@ Use this section for customer-facing install, renewal, and support workflows. It
 
 ## What Operators Install
 
-Operators install one issued runtime file:
+Operators install one Metrum-issued runtime file:
 
 ```text
 license.json
@@ -42,15 +42,17 @@ When authorized, operators can inspect safe license status fields such as:
 - grace-active flag;
 - enabled feature gates and safe limit status.
 
-The router does not expose private signing keys, provider API keys, raw router tokens, token hashes, full config files, raw prompts, raw images, or full license payloads through ordinary caller APIs.
+The router does not expose private signing keys, provider API keys, raw router tokens, token hashes, full config files, raw prompts, raw images, raw signatures, or full license payloads through ordinary caller APIs.
 
 ## Customer Journey
 
-1. Metrum issues a license for the contracted evaluation, pilot, annual deployment, or volume top-up.
+1. Metrum issues a license for the contracted evaluation, pilot, annual deployment, renewal, replacement, private offer, or volume top-up.
 2. The customer installs the release package and mounts `license.json`.
 3. The operator validates `/readyz`, `/admin/license/status`, and one licensed caller workflow.
 4. The operator monitors license status through metrics, admin status, and request errors.
 5. Renewal, replacement, and top-up are handled by replacing `license.json` and restarting the router or waiting for the configured recheck interval.
+
+Metrum may provide a safe summary alongside the issued file. That summary is for support handoff and should include only scalar metadata such as license ID, customer ID, SKU, key ID, issuer, issue time, not-before time, expiry, feature names, and configured limits. It is not a substitute for the signed `license.json`.
 
 For the step-by-step replacement workflow, see [Renewal And Top-Up](/docs/licensing/renewal). For operational failure modes, see [Troubleshooting Licensing](/docs/troubleshooting/licensing).
 

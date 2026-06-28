@@ -366,33 +366,74 @@ Acceptance evidence:
 ## Issuance Workflow
 
 1. Confirm the entitlement record is approved by sales/commercial ops.
-2. Select the license template from #36 and fill the #159 envelope fields.
-3. Review payload for product identity, customer ID, SKU, features, limits, deployment scope, dates, key ID, issuer, and add-ons.
-4. Generate a unique `license_id`. For replacements and top-ups, use a new `license_id`.
-5. Sign the payload with the approved signing workflow.
-6. Verify the signed envelope before delivery.
-7. Store the safe issuance record in the commercial/support system.
-8. Deliver `license.json` over the approved secure channel.
-9. Ask the customer to install it and return only safe status/acceptance evidence.
+2. Create an entitlement file from `docs/enterprise-license-skus.json` plus the approved customer, deployment, date, add-on, limit, and signing-key fields.
+3. Render and validate the unsigned payload with `router-license template render`.
+4. Issue with `router-license issue`; it renders, validates, signs, verifies, writes `license.json`, and emits optional safe handoff artifacts in one auditable flow.
+5. Store the safe issuance record in the commercial/support system.
+6. Deliver only the signed `license.json` over the approved secure channel.
+7. Ask the customer to install it and return only safe status/acceptance evidence.
 
-Example local validation commands, using placeholder paths only:
+Example entitlement file, using placeholder values only:
+
+```yaml
+customer_id: cust_example_enterprise
+customer_name: Example Enterprise
+sku: enterprise-annual
+deployment:
+  mode: self_hosted
+  allowed_environments: ["production", "staging"]
+  instance_fingerprint_required: true
+  allowed_instances: ["fp:example-instance-fingerprint"]
+term:
+  issued_at: 2026-06-28T00:00:00Z
+  not_before: 2026-06-28T00:00:00Z
+  expires_at: 2027-06-28T00:00:00Z
+features:
+  add:
+    - admin_security_reports
+limits:
+  max_callers: 150
+  max_model_groups: 60
+  max_admins: 12
+  allowed_skins:
+    - openai-chat
+    - openai-responses
+    - anthropic-messages
+signing:
+  key_id: metrum-license-ed25519-2026-06-prod
+```
+
+Example issuance commands, using placeholder paths only:
 
 ```bash
-rtk go run ./cmd/router-license sign \
-  --payload tmp/license-payload.example.json \
+rtk go run ./cmd/router-license template list \
+  --catalog docs/enterprise-license-skus.json
+
+rtk go run ./cmd/router-license template render \
+  --catalog docs/enterprise-license-skus.json \
+  --entitlement tmp/entitlement.example.yaml \
+  --out tmp/license-payload.example.json
+
+rtk go run ./cmd/router-license issue \
+  --catalog docs/enterprise-license-skus.json \
+  --entitlement tmp/entitlement.example.yaml \
   --key "$LICENSE_SIGNING_KEY_FILE" \
-  --key-id metrum-license-ed25519-2026-01 \
-  --out tmp/license.example.json
+  --out tmp/license.example.json \
+  --payload-out tmp/license-payload.example.json \
+  --summary-out tmp/license-summary.example.json \
+  --checklist-out tmp/license-checklist.example.md
 
 rtk go run ./cmd/router-license verify \
   --license tmp/license.example.json \
   --public-key tmp/license-public-key.example.pem
 
-rtk go run ./cmd/router-license inspect \
+rtk go run ./cmd/router-license safe-summary \
   --license tmp/license.example.json
 ```
 
-Do not run signing commands with real private-key paths in shared terminals, shell transcripts, or CI logs. Prefer the approved signing service when available.
+The command rejects unsupported feature names, unsupported API skins, invalid date ordering, invalid window cap/duration combinations, missing product/issuer/key ID fields, and key IDs absent from the runtime public verification set unless an explicit future-runtime/test override is used. It writes generated artifacts with `0600` permissions by default.
+
+Do not run signing commands with real private-key paths in shared terminals, shell transcripts, or CI logs. Prefer the approved signing service when available. Private signing keys must stay outside this repository, release packages, production router hosts, and customer artifacts.
 
 ## Customer Installation Handoff
 
@@ -417,7 +458,7 @@ server:
     fail_open_for_dev: false
 ```
 
-For normal shipped builds after #158, `enabled: false` must not be accepted as an unlicensed production mode. Until that lands, customer deployments must set `enabled: true` and keep `fail_open_for_dev: false`.
+Normal shipped builds must not accept `enabled: false` as an unlicensed production mode. Customer deployments must set `enabled: true` and keep `fail_open_for_dev: false`.
 
 ## Renewal Workflow
 
@@ -430,6 +471,17 @@ Use renewal when the customer keeps the same commercial shape and needs a new te
 5. Restart the router or wait for `recheck_interval`.
 6. Verify `/readyz`, authorized `/admin/license/status`, metrics-admin license gauges, and one caller smoke.
 7. Record acceptance evidence and close the renewal task.
+
+Example:
+
+```bash
+rtk go run ./cmd/router-license renew \
+  --license tmp/current-license.example.json \
+  --key "$LICENSE_SIGNING_KEY_FILE" \
+  --expires-at 2028-06-28T00:00:00Z \
+  --out tmp/renewed-license.example.json \
+  --summary-out tmp/renewed-license-summary.example.json
+```
 
 Rollback: restore the previous valid license if it is still within term/grace and still matches the deployment. If the old license is expired, rollback requires issuing a corrected replacement license.
 
@@ -458,6 +510,18 @@ Use top-up for `credit-pack-*` licenses or prepaid volume extensions.
 5. Replace the file and restart or wait for recheck.
 6. Verify safe status shows the new license ID, SKU, limit, and healthy readiness.
 7. Run or request a small caller smoke.
+
+Example:
+
+```bash
+rtk go run ./cmd/router-license top-up \
+  --catalog docs/enterprise-license-skus.json \
+  --license tmp/current-license.example.json \
+  --sku credit-pack-25m \
+  --key "$LICENSE_SIGNING_KEY_FILE" \
+  --out tmp/top-up-license.example.json \
+  --summary-out tmp/top-up-license-summary.example.json
+```
 
 Top-up is not a manual database reset. Do not edit customer license state files except under an approved incident procedure.
 
