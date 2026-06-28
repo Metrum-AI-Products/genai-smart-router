@@ -85,7 +85,7 @@ The usage and reporting schema remains purely relational: scalar columns plus no
 
 When `server.admin_reports.enabled: true`, administrators with an authorized Basic Auth subject or OIDC session subject can open `/admin/reports/` to inspect the same operational dimensions through a Metrum-branded browser dashboard. The router serves the HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle from the binary; no CDN or external brand-asset host is required. Report pages and APIs use no-store cache headers, conservative CSP, bounded time ranges, and Casbin policy checks for every page, API, export, and drilldown route.
 
-The dashboard includes a dark/light mode toggle. The preference is stored in browser `localStorage`, and first visits follow the browser's system color-scheme preference.
+The dashboard uses a dark operational theme and shows safe build metadata from `/admin/reports/api/version` for authorized report users.
 
 Example policy shape:
 

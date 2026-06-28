@@ -67,6 +67,16 @@ export type ReportResponse = {
 
 export type ReportRow = Record<string, unknown>;
 
+export type VersionResponse = {
+  version?: string;
+  commit?: string;
+  build_date?: string;
+  go_version?: string;
+  goos?: string;
+  goarch?: string;
+  license_compile_mode?: string;
+};
+
 export type ReportColumn = {
   key: string;
   label: string;
@@ -346,6 +356,15 @@ export async function fetchReport(endpoint: string, filters: ReportFilters): Pro
   const res = await fetch(`api/${endpoint}?${params}`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`${endpoint} failed with HTTP ${res.status}`);
   return (await res.json()) as ReportResponse;
+}
+
+export async function fetchVersion(): Promise<VersionResponse> {
+  const res = await fetch("api/version", {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`version failed with HTTP ${res.status}`);
+  return (await res.json()) as VersionResponse;
 }
 
 export function rowsForTab(tab: TabSpec, report: ReportResponse): ReportRow[] {

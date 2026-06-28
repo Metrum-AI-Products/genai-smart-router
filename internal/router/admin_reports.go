@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"smart-llmrouter/internal/buildinfo"
 )
 
 //go:embed admindist/index.html admindist/static
@@ -123,6 +125,16 @@ type adminCatalogStatusResponse struct {
 	Summary      adminCatalogSummary     `json:"summary"`
 	Rows         []adminCatalogStatusRow `json:"rows"`
 	Charts       []adminReportChart      `json:"charts,omitempty"`
+}
+
+type adminReportVersionResponse struct {
+	Version            string `json:"version"`
+	Commit             string `json:"commit"`
+	BuildDate          string `json:"build_date"`
+	GoVersion          string `json:"go_version"`
+	GOOS               string `json:"goos"`
+	GOARCH             string `json:"goarch"`
+	LicenseCompileMode string `json:"license_compile_mode"`
 }
 
 type adminCatalogSummary struct {
@@ -563,6 +575,8 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		s.serveAdminReportAsset(w, r, "index.html")
 	case strings.HasPrefix(r.URL.Path, prefix+"/static/"):
 		s.serveAdminReportAsset(w, r, strings.TrimPrefix(r.URL.Path, prefix+"/"))
+	case r.URL.Path == prefix+"/api/version":
+		s.handleAdminReportVersion(w, r)
 	case r.URL.Path == prefix+"/api/summary":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -624,6 +638,19 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (s *Service) handleAdminReportVersion(w http.ResponseWriter, r *http.Request) {
+	info := buildinfo.Current()
+	writeJSON(w, http.StatusOK, adminReportVersionResponse{
+		Version:            info.Version,
+		Commit:             info.Commit,
+		BuildDate:          info.BuildDate,
+		GoVersion:          info.GoVersion,
+		GOOS:               info.GOOS,
+		GOARCH:             info.GOARCH,
+		LicenseCompileMode: licenseCompileMode,
+	})
 }
 
 func (s *Service) enforceAdminReportLicenseFeature(w http.ResponseWriter, r *http.Request, relPath string) bool {

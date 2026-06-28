@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ReportPanel } from "@/components/ReportPanel";
-import { fetchReport, filterFields, tabSpecs, type ReportFilters, type ReportResponse, type TabSpec } from "@/lib/reports";
+import { fetchReport, fetchVersion, filterFields, tabSpecs, type ReportFilters, type ReportResponse, type TabSpec, type VersionResponse } from "@/lib/reports";
 
 function filtersFromUrl(): ReportFilters {
   const params = new URLSearchParams(window.location.search);
@@ -24,6 +24,7 @@ export default function App() {
   const [filters, setFilters] = useState<ReportFilters>(filtersFromUrl);
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(filtersFromUrl);
   const [report, setReport] = useState<ReportResponse>();
+  const [version, setVersion] = useState<VersionResponse>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadSequence = useRef(0);
@@ -49,6 +50,12 @@ export default function App() {
   }
 
   useEffect(() => {
+    void fetchVersion()
+      .then(setVersion)
+      .catch(() => setVersion(undefined));
+  }, []);
+
+  useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("tab", activeTab);
     for (const [key, value] of Object.entries(filters)) {
@@ -65,6 +72,10 @@ export default function App() {
     setFilters(draftFilters);
   }
 
+  const versionLabel = version?.version ? `v${version.version}` : "";
+  const commitLabel = version?.commit && version.commit !== "unknown" ? version.commit.slice(0, 12) : "";
+  const buildLabel = version?.build_date && version.build_date !== "unknown" ? version.build_date : "";
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 lg:px-6">
       <header className="rounded-lg border border-white/10 bg-black p-4 shadow-2xl">
@@ -75,6 +86,14 @@ export default function App() {
               <p className="font-mono text-xs uppercase text-white/58">GenAI Smart Router</p>
               <h1 className="font-display text-3xl text-white">Admin Reports</h1>
               <p className="text-sm text-white/58">Operational usage, savings, routing, and security reporting.</p>
+              {version && (
+                <div className="mt-2 flex flex-wrap gap-2 font-mono text-[0.68rem] uppercase text-white/66">
+                  {versionLabel && <span className="rounded border border-white/14 bg-white/[0.06] px-2 py-1 text-white">{versionLabel}</span>}
+                  {commitLabel && <span className="rounded border border-white/14 bg-white/[0.035] px-2 py-1">Commit {commitLabel}</span>}
+                  {buildLabel && <span className="rounded border border-white/14 bg-white/[0.035] px-2 py-1">Built {buildLabel}</span>}
+                  {version.license_compile_mode && <span className="rounded border border-metrum-purple/45 bg-metrum-purple/15 px-2 py-1 text-white/80">{version.license_compile_mode}</span>}
+                </div>
+              )}
             </div>
           </div>
           <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6" onSubmit={applyFilters}>

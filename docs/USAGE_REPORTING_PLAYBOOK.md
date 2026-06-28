@@ -79,11 +79,11 @@ Invoices and commercial savings reports must sum stored request-time cost fields
 
 ## Browser Admin Reports
 
-Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded Metrum-branded HTML/CSS/JavaScript/logo/font/chart assets from the router binary without CDN dependencies.
+Deployments can enable authenticated browser reports under `/admin/reports/` for routine operator inspection. The browser surface is disabled by default, requires HTTP Basic admin identity plus Casbin authorization for `admin:reports`, and serves embedded Metrum-branded HTML/CSS/JavaScript/logo/font/chart assets from the router binary without CDN dependencies. The header shows a version chip populated from `/admin/reports/api/version`, which is protected by the same admin report auth and returns safe build fields (`version`, `commit`, `build_date`, `go_version`, `goos`, `goarch`, and `license_compile_mode`) without requiring usage-report storage.
 
 Security access reports can be enabled with `server.admin_reports.security.enabled: true`. They persist safe scalar access events for authorized calls, unauthorized caller-token attempts, report/metrics/content authorization failures, and Basic admin auth checks. Grant `admin:security_reports` separately from `admin:reports`, configure `server.client_ip.trusted_proxy_cidrs` before trusting forwarded IP headers, and verify exports contain no bearer tokens, token hashes, provider keys, prompts, images, raw cookies, or OIDC tokens.
 
-Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page includes a browser-local dark/light mode toggle; the selected preference is stored only in that browser. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
+Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page uses a dark operational theme aligned with embedded Metrum assets. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
 
 Browser report APIs return chart descriptors with stable IDs, axis labels, units, series names, semantic color keys, and scalar points. Every report tab must render at least one aggregate chart when the selected filters return data; otherwise it must show an explicit no-chart-data state before the table. Operators should use the charts for quick trend reading and the matching tables or Markdown export for exact reviewable values. Chart responses must remain safe aggregates only and must not include prompts, image payloads, tool outputs, bearer tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
@@ -108,9 +108,12 @@ curl -i -u admin:<password> \
 
 curl -i -u admin:<password> \
   "$ROUTER_BASE_URL/admin/reports/api/retention-status"
+
+curl -i -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/version"
 ```
 
-Verify the branded `/admin/reports/` shell loads for an authorized browser-admin user, every tab shows aggregate charts or the no-chart-data state, the curated table columns do not duplicate total-token aliases, the dark/light toggle persists after reload, ordinary router caller tokens receive `403 reports-forbidden`, and `/docs/` remains public product documentation with no report data.
+Verify the branded `/admin/reports/` shell loads for an authorized browser-admin user, the header version chip matches the running router build metadata, every tab shows aggregate charts or the no-chart-data state, the curated table columns do not duplicate total-token aliases, ordinary router caller tokens receive `403 reports-forbidden`, and `/docs/` remains public product documentation with no report data.
 
 For security reports, also smoke:
 

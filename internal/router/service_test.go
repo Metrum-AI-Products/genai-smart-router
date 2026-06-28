@@ -668,6 +668,38 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		t.Fatalf("ordinary status=%d body=%s", ordinaryRR.Code, ordinaryRR.Body.String())
 	}
 
+	versionUnauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/version", nil)
+	versionUnauthRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(versionUnauthRR, versionUnauth)
+	if versionUnauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("version unauth status=%d body=%s", versionUnauthRR.Code, versionUnauthRR.Body.String())
+	}
+	versionOrdinary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/version", nil)
+	versionOrdinary.Header.Set("Authorization", "Bearer "+testToken)
+	versionOrdinaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(versionOrdinaryRR, versionOrdinary)
+	if versionOrdinaryRR.Code != http.StatusForbidden || !strings.Contains(versionOrdinaryRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("version ordinary status=%d body=%s", versionOrdinaryRR.Code, versionOrdinaryRR.Body.String())
+	}
+	versionReq := httptest.NewRequest(http.MethodGet, "/admin/reports/api/version", nil)
+	versionReq.SetBasicAuth("admin", "yell-yell-yum")
+	versionRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(versionRR, versionReq)
+	if versionRR.Code != http.StatusOK {
+		t.Fatalf("version status=%d body=%s", versionRR.Code, versionRR.Body.String())
+	}
+	versionBody := mustJSONMap(t, versionRR.Body.String())
+	for _, key := range []string{"version", "commit", "build_date", "go_version", "goos", "goarch", "license_compile_mode"} {
+		if versionBody[key] == "" {
+			t.Fatalf("version response missing %s: %#v", key, versionBody)
+		}
+	}
+	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "messages"} {
+		if strings.Contains(versionRR.Body.String(), forbidden) {
+			t.Fatalf("version leaked %q: %s", forbidden, versionRR.Body.String())
+		}
+	}
+
 	summary := httptest.NewRequest(http.MethodGet, "/admin/reports/api/summary?since=24h", nil)
 	summary.SetBasicAuth("admin", "yell-yell-yum")
 	summaryRR := httptest.NewRecorder()

@@ -4,7 +4,7 @@ title: Admin Browser Reports
 
 # Admin Browser Reports
 
-Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`. The browser dashboard uses Metrum branding, local embedded assets, and a dark/light mode toggle for authorized administrators.
+Admin browser reports are an authenticated operational surface for usage, performance, cost, cache, fallback, and diagnostic drilldown. They are disabled by default and served separately from public `/docs/`. The browser dashboard uses Metrum branding, local embedded assets, a dark operational theme, and an admin-only build-version chip for authorized administrators.
 
 For commercial evaluations, this surface is a proof point as well as an operations tool. It lets evaluators inspect whether the router actually reduced cost, preserved workload outcomes, isolated access, explained provider/model choices, and produced enough evidence for chargeback, quota tuning, support triage, and security review.
 
@@ -168,13 +168,19 @@ Administrators can also enter a custom baseline for the current browser session.
 
 Actual router cost is summed from stored request-time input, output, image, calculated, and upstream-reported billed cost fields. Reports must not reprice historical actuals from current config. Older rows that predate a cost field can still be counted for usage, latency, or token volume, but savings and chargeback views should label the missing cost coverage instead of treating it as zero spend.
 
+## Version Status
+
+The browser shell calls `/admin/reports/api/version` after load and displays a compact version chip with the router version, build date, and license compile mode when available. The endpoint uses the same admin reports authentication, license, and Casbin `admin:reports` `read` authorization as aggregate report APIs. It does not require a usage database and does not expose raw router tokens, token hashes, provider keys, full config, prompts, images, tool outputs, cookies, or OIDC tokens.
+
+Use it as a quick operator check that the loaded browser bundle is talking to the expected router binary. The public `/version` endpoint remains available for deployment health checks; `/admin/reports/api/version` exists so authenticated report users can see build metadata without leaving the admin report surface.
+
 ## Embedded Assets
 
 The admin HTML, CSS, JavaScript, Metrum logo, fonts, and local chart bundle are embedded in the router binary. The UI does not depend on external CDNs or runtime access to the Metrum website. Charts are assistive; the same data is available in tables and Markdown export.
 
 Admin pages and APIs send no-store cache headers. Static admin assets may use private cache headers and contain no report data.
 
-The dark/light theme preference is stored in browser `localStorage`; it does not change server-side reporting data or authorization policy. First visits follow the browser's system color-scheme preference.
+The admin report shell uses a dark operational theme aligned with the embedded Metrum assets. Theme presentation does not change server-side reporting data or authorization policy.
 
 ## Smoke Test
 
@@ -190,9 +196,12 @@ curl -i -u admin:replace-with-password \
 
 curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/retention-status"
+
+curl -i -u admin:replace-with-password \
+  "$ROUTER_BASE_URL/admin/reports/api/version"
 ```
 
-Expected for an authorized subject: `200` JSON with `summary`, `series`, `charts`, grouped tables, and recent request rows where applicable. The catalog-status and retention-status responses also include `charts` so those tabs are not table-only.
+Expected for an authorized subject: `200` JSON with `summary`, `series`, `charts`, grouped tables, and recent request rows where applicable. The catalog-status and retention-status responses also include `charts` so those tabs are not table-only. The version endpoint returns safe build fields such as `version`, `build_date`, runtime platform, and `license_compile_mode`.
 
 OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without Casbin policy receives `403 reports-forbidden`.
 
