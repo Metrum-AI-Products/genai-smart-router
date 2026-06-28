@@ -2,20 +2,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/DataTable";
 import { MetricGrid } from "@/components/MetricGrid";
 import { ReportCharts } from "@/components/ReportCharts";
-import type { ReportResponse, TabSpec } from "@/lib/reports";
-import { columnsForTab, rowsForTab } from "@/lib/reports";
+import type { ReportFilters, ReportResponse, TabSpec } from "@/lib/reports";
+import { columnsForTab, resolveSortKey, rowsForTab } from "@/lib/reports";
 
 type Props = {
   tab: TabSpec;
   report?: ReportResponse;
+  filters: ReportFilters;
   loading: boolean;
   error?: string;
   onRefresh: () => void;
 };
 
-export function ReportPanel({ tab, report, loading, error, onRefresh }: Props) {
+export function ReportPanel({ tab, report, filters, loading, error, onRefresh }: Props) {
   const rows = report ? rowsForTab(tab, report) : [];
   const columns = columnsForTab(tab, rows);
+  const sortKey = resolveSortKey(filters.sort, rows, columns);
+  const sortDir = filters.direction === "asc" ? "asc" : "desc";
   return (
     <main className="space-y-4">
       <div>
@@ -43,7 +46,7 @@ export function ReportPanel({ tab, report, loading, error, onRefresh }: Props) {
         </Card>
       ) : null}
       <ReportCharts charts={report?.charts} />
-      <DataTable rows={rows} columns={columns} onRefresh={onRefresh} />
+      <DataTable rows={rows} columns={columns} initialSortKey={sortKey} initialSortDir={sortDir} onRefresh={onRefresh} />
     </main>
   );
 }

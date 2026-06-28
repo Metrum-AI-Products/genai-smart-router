@@ -138,7 +138,7 @@ export default function App() {
           </button>
         ))}
       </nav>
-      <ReportPanel tab={tab} report={report} loading={loading} error={error} onRefresh={() => void load(tab, filters)} />
+      <ReportPanel tab={tab} report={report} filters={filters} loading={loading} error={error} onRefresh={() => void load(tab, filters)} />
     </div>
   );
 }

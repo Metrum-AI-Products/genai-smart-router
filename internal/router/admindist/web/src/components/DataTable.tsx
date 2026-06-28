@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -8,14 +8,21 @@ import { formatValue } from "@/lib/utils";
 type Props = {
   rows: ReportRow[];
   columns: ReportColumn[];
+  initialSortKey?: string;
+  initialSortDir?: "asc" | "desc";
   onRefresh?: () => void;
 };
 
-export function DataTable({ rows, columns, onRefresh }: Props) {
+export function DataTable({ rows, columns, initialSortKey = "", initialSortDir = "desc", onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState(50);
-  const [sortKey, setSortKey] = useState("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortKey, setSortKey] = useState(initialSortKey);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(initialSortDir);
+
+  useEffect(() => {
+    setSortKey(initialSortKey);
+    setSortDir(initialSortDir);
+  }, [initialSortDir, initialSortKey]);
 
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase();

@@ -335,9 +335,13 @@ export const tabSpecs: TabSpec[] = [
 
 export const filterFields = [
   ["since", "Since", "24h"],
+  ["baseline", "Baseline", ""],
   ["caller_id", "Caller", ""],
+  ["caller_user", "User", ""],
+  ["token_id", "Token ID", ""],
   ["caller_ip", "IP", ""],
   ["caller_project", "Project", ""],
+  ["caller_environment", "Environment", ""],
   ["requested_model", "Requested", ""],
   ["resolved_group", "Group", ""],
   ["provider", "Provider", ""],
@@ -346,6 +350,8 @@ export const filterFields = [
   ["status", "Status", ""],
   ["cache", "Cache", ""],
   ["client", "Client", ""],
+  ["sort", "Sort", ""],
+  ["direction", "Direction", ""],
 ] as const;
 
 export async function fetchReport(endpoint: string, filters: ReportFilters): Promise<ReportResponse> {
@@ -371,6 +377,12 @@ export function rowsForTab(tab: TabSpec, report: ReportResponse): ReportRow[] {
   if (tab.id === "groups") return report.byGroup || [];
   if (tab.id === "providers") return report.byProvider || [];
   if (tab.id === "tokens") return report.byToken || [];
+  if (tab.id === "savings") {
+    const rows: ReportRow[] = [];
+    if (report.summary && Object.keys(report.summary).length > 0) rows.push(report.summary as ReportRow);
+    rows.push(...(report.byGroup || []), ...(report.byTime || []));
+    return rows;
+  }
   if (tab.requests || tab.id === "requests") return report.requests || [];
   if (tab.id === "retention-status") {
     const retention = report as ReportResponse & { tables?: ReportRow[]; rollups?: ReportRow[] };
@@ -423,4 +435,29 @@ function suppressRedundantAliases(columns: ReportColumn[], rows: ReportRow[]): R
 
 function rowsEveryEqual(rows: ReportRow[], left: string, right: string): boolean {
   return rows.length > 0 && rows.every((row) => String(row[left] ?? "") === String(row[right] ?? ""));
+}
+
+const sortAliases: Record<string, string[]> = {
+  actualCostUsd: ["actual_cost_usd", "costUsd", "totalCostUsd"],
+  baselineCostUsd: ["baseline_cost_usd", "baselineCostUsd"],
+  savingsUsd: ["savings_usd", "savingsUsd"],
+  savingsPct: ["savings_pct", "savingsPct"],
+  inputTokens: ["inputTokens", "input_tokens"],
+  outputTokens: ["outputTokens", "output_tokens"],
+  totalTokens: ["totalTokens", "total_tokens", "tokens"],
+};
+
+export function resolveSortKey(requested: string | undefined, rows: ReportRow[], columns: ReportColumn[]): string {
+  const raw = (requested || "").trim();
+  if (!raw) return "";
+  const keys = new Set<string>();
+  for (const column of columns) keys.add(column.key);
+  for (const row of rows) {
+    for (const key of Object.keys(row)) keys.add(key);
+  }
+  if (keys.has(raw)) return raw;
+  for (const alias of sortAliases[raw] || []) {
+    if (keys.has(alias)) return alias;
+  }
+  return "";
 }

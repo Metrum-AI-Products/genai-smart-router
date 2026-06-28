@@ -2,9 +2,11 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { tabSpecs, type ReportChart, type ReportRow } from "../src/lib/reports";
 
 const generatedUtc = "2026-06-28T12:00:00Z";
+let apiRequests: string[] = [];
 
 test.beforeEach(async ({ page }) => {
-  await installAdminApiMocks(page);
+  apiRequests = [];
+  await installAdminApiMocks(page, apiRequests);
 });
 
 test("admin reports shell renders every tab with mocked report APIs", async ({ page }) => {
@@ -53,8 +55,26 @@ test("filter URL state and CSV export remain usable", async ({ page }) => {
   await expect((await download).suggestedFilename()).toBe("admin-report.csv");
 });
 
-async function installAdminApiMocks(page: Page) {
+test("deep-linked savings URLs preserve baseline and sorting params", async ({ page }) => {
+  await page.goto("/?tab=savings-by-key&since=6d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc");
+
+  await expect(page.getByRole("heading", { name: "Savings by key", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Baseline")).toHaveValue("gpt-5.5");
+  await expect(page.getByLabel("Sort")).toHaveValue("savingsUsd");
+  await expect(page.getByLabel("Direction")).toHaveValue("desc");
+  await expect(page.getByRole("columnheader", { name: "Savings(USD)" })).toBeVisible();
+  await expect(page.locator("tbody tr").first()).toContainText("rtr_mock_public");
+  await expect(page.locator("main canvas").first()).toBeVisible();
+
+  const savingsRequest = apiRequests.find((url) => url.includes("/api/savings-by-key?"));
+  expect(savingsRequest).toContain("baseline=gpt-5.5");
+  expect(savingsRequest).toContain("sort=savingsUsd");
+  expect(savingsRequest).toContain("direction=desc");
+});
+
+async function installAdminApiMocks(page: Page, requestedUrls?: string[]) {
   await page.route("**/api/**", async (route) => {
+    requestedUrls?.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -144,6 +164,22 @@ function responseForRoute(route: Route) {
       },
       baselines: [],
     };
+  }
+  if (endpoint === "savings-by-key") {
+    return commonResponse(endpoint, {
+      baseline: {
+        baseline_id: "gpt-5.5",
+        baseline_name: "GPT-5.5",
+      },
+      rows: [
+        {
+          ...row("rtr_mock_public"),
+          baselineCostUsd: 0.25,
+          savingsUsd: 0.2,
+          savingsPct: 80,
+        },
+      ],
+    });
   }
   if (endpoint === "expensive-requests") {
     return commonResponse(endpoint, { requests: [requestRow()] });
