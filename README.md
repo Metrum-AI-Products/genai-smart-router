@@ -2,7 +2,7 @@
 
 Go implementation of the Smart LLM Router described in `LLM_Router_SRS_1.docx`.
 
-For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
+For an external-facing technical overview, architecture diagrams, feature summary, and configuration walkthrough, see [docs/solution-brief.md](docs/solution-brief.md). The customer-facing hosted documentation is built from `docs-site/` and embedded into release binaries under `/docs/`; browser requests to `/` redirect there. In source checkouts, internal documentation maintenance rules and the public/internal source-of-truth map live in [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md).
 
 Current MVP capabilities:
 - Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses ingress.
@@ -83,6 +83,12 @@ Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. `doc
 
 The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/admin/*`, `/healthz`, and `/readyz` keep precedence. Authenticated admin report assets, when enabled, are embedded separately under `/admin/reports/` and are not part of public Docusaurus docs.
 
+## Documentation Map
+
+Public product docs live under `docs-site/docs/` and are organized as a customer/operator journey: overview, getting started, installation, licensing, configuration, routing, providers and models, API compatibility, agents/tools/vision, usage and reports, security and governance, operations, troubleshooting, evaluation, commercial evaluation, competitive landscape, reference, and release/upgrade guidance. These pages must stay customer-safe: use placeholder endpoints, placeholder tokens, deployment-defined model-group examples, and no private hostnames, SSH details, raw secrets, token hashes, full configs, or internal production procedures.
+
+Internal operator and maintainer docs live under `docs/`. Use [docs/DOCS_MAINTENANCE.md](docs/DOCS_MAINTENANCE.md) to decide which internal runbook owns each public section and which verification commands to run. Behavior changes affecting routing, auth, models, CLI/API usage, telemetry, deployment, licensing, security, or production operations normally require both public Docusaurus updates and matching internal/operator doc updates.
+
 Docker packages contain prebuilt image tarballs plus compose deployment assets:
 
 ```text
@@ -95,7 +101,7 @@ compose/.env.example
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-docs/README.md
+README.md
 docs/DEPLOYMENT.md
 docs/DOCKER_DEPLOYMENT.md
 docs/DYNAMIC_SCORE_ROUTING.md
