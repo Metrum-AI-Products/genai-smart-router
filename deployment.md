@@ -16,8 +16,8 @@ Last deployed: 2026-06-28
 
 ## Deployed Version
 
-- Router package/image version: `11c1e01-linux-amd64`
-- Source commit: `11c1e01`
+- Router package/image version: `60aeb50-linux-amd64`
+- Source commit: `60aeb50`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,46 @@ Last deployed: 2026-06-28
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-28 Admin reports production refresh
+
+Deployed package/image `smart-llmrouter:60aeb50-linux-amd64` from source commit `60aeb50` to restore useful live admin report tables and charts for deep-linked report URLs.
+
+Included changes:
+
+- Preserved report URL filters for baseline, caller user, token ID, caller environment, sort key, and sort direction.
+- Mapped camelCase report sort keys such as `savingsUsd` to the API table fields used by the admin report UI.
+- Populated the savings tab table from aggregate summary, group, and time-series rows instead of treating the response as empty.
+- Initialized table sort state from deep-link query parameters.
+- Removed noisy textual sort indicators from table headers while keeping accessible sort labels.
+- Preserved live production config, state, logs, `.env`, and router token files during package replacement.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.admin-global-reports-20260628T220504Z
+/opt/smart-llmrouter.backup.admin-reports-60aeb50-20260628T221417Z
+```
+
+Validation:
+
+```text
+rtk npm run build --prefix internal/router/admindist/web: passed
+rtk npm run e2e --prefix internal/router/admindist/web: passed, 3 tests
+rtk go test ./cmd/... ./internal/...: passed, 428 tests across 7 packages
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-60aeb50-docker-linux-amd64.tar.gz
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version 60aeb50, build_date 2026-06-28T22:09:53Z
+production /version after deploy: 60aeb50, build_date 2026-06-28T22:09:53Z, go1.26.4 linux/amd64, license compile mode required
+production admin reports API summary returned byToken 20, byGroup 37, byProvider 25 for the reported 6d deep link
+production admin reports API savings returned summary, byTime 145, byGroup 37 for the reported 6d deep link
+production admin reports API savings-by-key returned 20 rows for the reported 6d deep link
+production browser check for tokens returned 20 table rows and 6 charts with baseline deep link preserved
+production browser check for savings returned 50 table rows and 3 charts with baseline deep link preserved
+production browser check for savings-by-key returned 20 table rows and 2 charts with baseline deep link preserved
+production cleanup: removed uploaded package from /tmp and ran docker system prune
+```
 
 ## 2026-06-28 Enterprise docs production refresh
 
