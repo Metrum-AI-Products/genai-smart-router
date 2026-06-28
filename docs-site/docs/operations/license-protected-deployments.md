@@ -6,7 +6,7 @@ title: License-Protected Deployments
 
 Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, or source control.
 
-For the customer installation and renewal path, see [Licensing](../licensing/) and [Renewal And Top-Up](../licensing/renewal).
+For the customer installation and renewal path, see [Choose a Deployment Path](../licensing/deployment-paths), [How Licensing Works](../licensing/), and [Renewal And Top-Up](../licensing/renewal).
 
 ## Runtime Configuration
 
@@ -82,6 +82,12 @@ License validation is offline. The router does not need to call Metrum during st
 
 For support, share request IDs and safe status fields such as license ID, SKU, key ID, expiry, status, reason, and grace-active flag. Do not send provider keys, router tokens, raw prompts, raw images, full config files, private signing keys, or full license payloads through ordinary support channels.
 
+## Portal And Online Lease Status
+
+Offline signed-license validation is shipped. Portal-issued self-service evaluation, pilot, renewal, and top-up flows are planned only if the licensing portal and Stripe fulfillment work is implemented and enabled. Until then, customers should use the contact-led commercial/support path for issued licenses.
+
+Some future monthly, card-paid, trial, usage-sensitive, or managed plans may require periodic signed online lease renewal. That mode is separate from offline enterprise licenses and should be documented in the customer plan when used. Do not assume that every self-hosted or air-gapped deployment requires online checks.
+
 ## Admin Visibility
 
 Authorized report/admin users can inspect safe license status through the admin status surface when enabled. Metrics-admin users can scrape safe license gauges. Usage rows can separate license-denied requests from caller auth, quota, routing, and upstream failures with license status fields.
@@ -131,6 +137,6 @@ The source-tree `cmd/router-license` helper can inspect, safely summarize, or ve
 
 ## Commercial Model
 
-A signed `license.json` encodes the commercial entitlements for a deployment: SKU, capability gates, time bounds, volume / window / concurrency limits, and operational scope. Payment, invoicing, and contract terms are handled by Metrum commercial contact outside the router; the router only enforces what the license declares. License templates include time-bounded evaluation (`eval-72h`, `pilot-30d`), annual enterprise license (`enterprise-annual`), and volume prepurchase (`credit-pack-*`) for top-up.
+A signed `license.json` encodes the commercial entitlements for a deployment: SKU, capability gates, time bounds, volume / window / concurrency limits, and operational scope. Payment, invoicing, quotes, refunds, and contract terms are handled by Metrum commercial systems outside the router; the router only enforces what the license or online lease declares. License templates include time-bounded evaluation (`eval-72h`, `pilot-30d`), annual enterprise license (`enterprise-annual`), marketplace/private-offer licenses, and volume prepurchase (`credit-pack-*`) for top-up.
 
 For license issuance, renewal, volume top-up, or commercial plan changes, contact [contact@metrum.ai](mailto:contact@metrum.ai). See [Commercial Evaluation Path](../evaluation/commercial-evaluation) for evaluation access.

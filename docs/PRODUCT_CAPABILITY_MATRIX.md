@@ -35,4 +35,4 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Public model marketplace | Not a product goal | Can use marketplace providers as upstreams. |
 | Enterprise web dashboard | Partial | Admin browser reporting is present; broader SSO/session administration and compliance workflow automation remain follow-ups. |
 | Automated model quality oracle | Not implemented as a generic feature | Use explicit evals and smokes for model activation. |
-| Metrum product billing / customer portal | Not planned | Managed cloud is deferred (closed as wontfix via #37, #38, #41); enterprise uses signed license + external finance, not an in-router billing ledger. |
+| Metrum licensing portal / Stripe fulfillment | Planned | Portal checkout/download for approved evaluation, pilot, renewal, or top-up packages is tracked separately from the router runtime. Enterprise keeps signed license + external finance; the router must not become an in-router billing ledger or card-processing surface. |

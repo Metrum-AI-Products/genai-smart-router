@@ -4,7 +4,7 @@ title: Commercial Evaluation Path
 
 # Commercial Evaluation Path
 
-GenAI Smart Router is evaluated as a governed enterprise gateway, not as a public self-serve model API. Metrum provides an evaluation path that lets buyers validate their own workloads, security requirements, reporting needs, and deployment model before choosing commercial access.
+GenAI Smart Router is evaluated as a governed enterprise gateway, not as a public shared model API-credit product. Metrum provides an evaluation path that lets buyers validate their own workloads, security requirements, reporting needs, and deployment model before choosing commercial access.
 
 <div class="contactBanner">
   <p>To request an evaluation, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -18,7 +18,7 @@ GenAI Smart Router is evaluated as a governed enterprise gateway, not as a publi
 | Enterprise or on-prem deployment | Teams that need the router inside their own infrastructure | A licensed deployment package, signed JSON license file, sample config, operator docs, and support for connecting approved provider keys or private upstreams. |
 | Private customer-cloud deployment | Teams that want cloud isolation under their own account or network controls | A deployment package and implementation plan for customer-owned cloud infrastructure, private networking, identity policy, usage database, reporting, and provider onboarding. |
 
-Self-serve credit-card signup, instant public API credits, and automated plan upgrades are **not currently offered** as a commercial product. Current evaluations should use the contact path above so Metrum and the customer can agree on the deployment shape, license template, provider access, data handling, workload proof points, and reporting package. Production enterprise access uses a **signed license file with capability + time + volume entitlements** combined with an annual or volume-prepurchase contract handled by Metrum commercial contact.
+Self-service portal checkout and license download are planned only for approved constrained evaluation, pilot, renewal, or top-up packages if the licensing portal and Stripe fulfillment work ships. They remain planned, not shipped router behavior, and they are not an arbitrary entitlement configurator or public API-credit wallet. Current evaluations should use the contact path above so Metrum and the customer can agree on the deployment shape, license template, provider access, data handling, workload proof points, and reporting package. Production enterprise access uses a **signed license file with capability + time + volume entitlements** combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path.
 
 ## Buyer Journey
 
@@ -28,7 +28,7 @@ Self-serve credit-card signup, instant public API credits, and automated plan up
 4. Validate workloads through the same API shape the production client will use, such as OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Codex CLI, Claude Code, or an SDK.
 5. Inspect proof from [Admin Browser Reports](../operations/admin-browser-reports), [Report Examples](../operations/report-examples), and generated usage reports: selected providers/models, cost, savings, latency, fallback, cache, quota, and security access signals.
 6. Review security posture, deployment readiness, data retention, provider onboarding evidence, rollback criteria, and any required procurement controls.
-7. Choose commercial access: monthly, annual, usage-based, hosted, private-cloud, or enterprise/on-prem terms as agreed in the commercial plan.
+7. Choose commercial access: annual enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or other contracted terms as agreed in the commercial plan.
 
 ## Evaluation And License Options
 
@@ -42,7 +42,7 @@ Commercial evaluations use a license or managed endpoint sized for the proof:
 | `credit-pack-5m` / `credit-pack-25m` | Prepaid volume or top-up | Replace with a new issued license when the volume envelope is exhausted or expires. |
 | `marketplace-seat` | Procurement through a private cloud marketplace offer | Renew or modify through the marketplace private-offer process. |
 
-The license controls product capabilities and deployment limits; provider keys, upstream choices, model groups, and caller access remain deployment-specific. Use `/v1/models` to see the model groups allowed for the evaluation token.
+The license controls product capabilities and deployment limits; provider keys, upstream choices, model groups, and caller access remain deployment-specific. Use `/v1/models` to see the model groups allowed for the evaluation token. For the full commercial access map, see [Choose a Deployment Path](../licensing/deployment-paths).
 
 ## Evaluation Evidence To Request
 

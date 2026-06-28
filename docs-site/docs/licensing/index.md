@@ -1,12 +1,12 @@
 ---
-title: Licensing
+title: How Licensing Works
 ---
 
-# Licensing
+# How Licensing Works
 
 Normal GenAI Smart Router release builds enforce an offline Metrum-issued signed JSON license. The deployed router verifies the license locally and does not need private signing keys or a network call to Metrum at startup.
 
-Use this section for customer-facing install, renewal, and support workflows. It intentionally does not describe signing-key custody, signing-service internals, or development bypass mechanics.
+Use this section for customer-facing install, renewal, and support workflows. It intentionally does not describe signing-key custody, signing-service internals, private deployment operations, or development bypass mechanics.
 
 ## What Operators Install
 
@@ -46,7 +46,7 @@ The router does not expose private signing keys, provider API keys, raw router t
 
 ## Customer Journey
 
-1. Metrum issues a license for the contracted evaluation, pilot, annual deployment, renewal, replacement, private offer, or volume top-up.
+1. Metrum issues a license for the contracted evaluation, pilot, annual deployment, renewal, replacement, private managed deployment, marketplace/private-offer term, or volume top-up.
 2. The customer installs the release package and mounts `license.json`.
 3. The operator validates `/readyz`, `/admin/license/status`, and one licensed caller workflow.
 4. The operator monitors license status through metrics, admin status, and request errors.
@@ -55,6 +55,12 @@ The router does not expose private signing keys, provider API keys, raw router t
 Metrum may provide a safe summary alongside the issued file. That summary is for support handoff and should include only scalar metadata such as license ID, customer ID, SKU, key ID, issuer, issue time, not-before time, expiry, feature names, and configured limits. It is not a substitute for the signed `license.json`.
 
 For the step-by-step replacement workflow, see [Renewal And Top-Up](/docs/licensing/renewal). For operational failure modes, see [Troubleshooting Licensing](/docs/troubleshooting/licensing).
+
+## Commercial Shapes
+
+Licenses can encode feature gates, time bounds, volume limits, concurrency or operational limits, and deployment scope. Common commercial shapes include short evaluations, paid pilots, annual enterprise self-hosted licenses, private managed deployments, marketplace/private-offer licenses, and prepaid volume top-ups.
+
+A planned portal may eventually provide download or re-download for approved evaluation, pilot, renewal, and top-up packages after payment confirmation. Until that portal is implemented and enabled, use the contact-led commercial and support path.
 
 ## Support Boundaries
 

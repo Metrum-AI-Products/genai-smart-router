@@ -4,6 +4,8 @@ Internal note: this runbook is private operational material and is intentionally
 
 This runbook is for the current Metrum-managed engineering deployment. Smart LLM Router can also run on-prem or in an enterprise cloud account with different hostnames, model groups, providers, and caller policies.
 
+Commercial portal, Stripe, quote, invoice, refund, dispute, and license-fulfillment operations are not performed from this production router host. Use the approved commercial/support systems and `docs/LICENSE_OPERATIONS.md`; never copy Stripe secrets, signing-service private credentials, customer license payloads, or commercial back-office exports into the production compose tree.
+
 ## Current Managed Deployment
 
 ```text

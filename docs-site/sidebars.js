@@ -27,11 +27,15 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Licensing",
+      label: "Commercial Access And Licensing",
       collapsed: false,
       items: [
+        "licensing/deployment-paths",
         "licensing/index",
+        "licensing/evaluation-pilot",
         "licensing/renewal",
+        "licensing/enterprise-private-managed",
+        "licensing/billing-enforcement",
         "operations/license-protected-deployments",
       ],
     },

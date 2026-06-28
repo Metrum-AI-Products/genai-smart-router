@@ -6,6 +6,7 @@ Research snapshot: 2026-06-24.
 
 Current status note: this document has been refreshed after signed license enforcement shipped. Treat the market research and price anchors below as a dated planning snapshot, not current public positioning. Current customer-facing docs live in `docs-site/docs/`, especially:
 
+- `docs-site/docs/licensing/deployment-paths.md` for the current public commercial access map;
 - `docs-site/docs/operations/license-protected-deployments.md` for shipped signed-license deployment behavior;
 - `docs-site/docs/evaluation/commercial-evaluation.md` for the current commercial evaluation path;
 - `docs-site/docs/operations/usage-reporting.md` for shipped usage reporting, rollup, and retention foundations.
@@ -40,6 +41,12 @@ Still-open commercial implementation issues:
 - #41: Customer billing and admin portal for managed cloud.
 - #42: Public pricing and package documentation.
 - #159: Extend the license envelope and runtime enforcement to support capability, time, volume, and operational limits consistently.
+- #164: Production-grade license generation tooling.
+- #167: Deployment binding.
+- #168: Revocation bundles.
+- #169: Online license lease service.
+- #170: Licensing portal.
+- #171: Stripe billing and webhook fulfillment.
 
 ## Goals
 
@@ -50,11 +57,23 @@ Still-open commercial implementation issues:
 - Make commercial enforcement practical without blocking legitimate on-prem and air-gapped customers.
 - Keep public docs generic and deployment-defined; avoid exposing private hostnames, provider keys, real router tokens, private pricing commitments, or production-only model group details.
 
+## Commercial Access Map
+
+Public docs should present one coherent access map:
+
+1. **Enterprise self-hosted license.** Shipped signed `license.json` enforcement is the core path. It supports customer-operated deployments, BYOK provider keys, private upstreams, annual or contracted procurement, and offline or air-gapped operation when allowed by the contract. Future deployment binding (#167), revocation bundles (#168), and online leases (#169) are optional enforcement layers, not replacements for the offline enterprise story.
+2. **Private managed deployment.** Metrum operates a dedicated deployment for one customer or a customer-specific HA environment. Do not describe this as a shared public multitenant promise. Procurement can be direct order, Stripe Quote/Invoicing, or marketplace private offer when available. Keep operational hostnames, SSH paths, token files, provider keys, and production procedures out of public docs.
+3. **Self-service evaluation, pilot, renewal, or top-up.** This is planned only if #170 and #171 ship. The portal may expose approved constrained SKU/templates, collect payment through Stripe-hosted checkout, quote, or invoice flows, then generate a signed license after webhook-confirmed fulfillment. It must not become an arbitrary entitlement configurator or a public API-credit wallet inside the router.
+4. **Online lease / payment-state enforcement.** Planned for monthly, card-paid, trial, usage-sensitive, or managed commercial plans where payment state and concurrent-use enforcement matter. The runtime may require periodic signed lease renewal. Contracted offline enterprise and air-gapped buyers must remain supportable with signed license files.
+5. **Renewal, replacement, revocation, and top-up.** Offline licenses use file replacement. Portal re-download/top-up is planned where available. Revocation bundles and online leases should be explained publicly only at a customer-safe behavior level.
+
+Do not publish exact prices until product, legal, and commercial owners approve them for source-controlled docs. Public copy should route buyers to `mailto:contact@metrum.ai` for enterprise, private managed, custom pilots, marketplace/private-offer, and non-standard entitlements.
+
 ## Recommended Commercial Motions
 
 ### 1. Metrum Managed Cloud
 
-Primary self-serve motion.
+Future hosted or private managed motion. Do not publish this as an available public self-serve product until the commercial portal, billing, operations, and support workflows are implemented and approved.
 
 Customer buys access to a hosted Metrum router endpoint. Metrum operates the router, usage DB, admin reports, billing integration, and provider connectivity.
 
@@ -130,7 +149,35 @@ Best for:
 - annual committed spend;
 - reducing contract friction.
 
-Do not make marketplace the first dependency for self-serve. Credit-card managed cloud should ship faster.
+Do not make marketplace the first dependency for the planned portal path. A constrained portal for evaluation, pilot, renewal, and top-up packages can ship before broader hosted managed-cloud packaging, but only after billing, fulfillment, support, and security review are complete.
+
+### 5. Planned Licensing Portal And Stripe Fulfillment
+
+The portal should be an optional packaging layer over approved license templates, not a new runtime billing system.
+
+Allowed portal motions after #170/#171 ship:
+
+- evaluation or pilot package purchase;
+- renewal payment and license re-download;
+- volume top-up purchase for approved credit-pack templates;
+- Stripe Customer Portal access for invoices and payment method updates where applicable.
+
+Quote-only or account-owner-approved motions:
+
+- enterprise annual licenses;
+- private managed deployments;
+- marketplace/private-offer equivalents;
+- customer-specific add-ons, deployment binding exceptions, revocation accommodations, online lease exceptions, or air-gapped terms.
+
+Internal operating requirements:
+
+- Stripe Products and Prices must map to approved `docs/enterprise-license-skus.json` templates or quote-only SKUs.
+- Commercial ops must approve which SKUs are self-service, quote-only, renewal-only, or top-up-only.
+- Stripe Checkout, Quotes, Invoices, and Customer Portal should be configured so payment collection happens on Stripe-hosted surfaces; the router and portal must not store card details.
+- Stripe Tax or other tax/compliance handling requires finance/legal review before public launch.
+- Fulfillment must wait for payment-confirmed webhook events and must be idempotent by Stripe event ID, customer ID, SKU, and target license record.
+- License signer custody stays separated from Stripe admin access. Stripe events authorize fulfillment; they do not grant raw signing-key access.
+- Webhook replay, failed fulfillment, refund/dispute/cancellation, and accidental bad license issuance need runbooks before launch.
 
 ## Suggested Product Tiers
 
@@ -140,7 +187,7 @@ Exact public prices must be revalidated before publishing. The ranges below are 
 
 Target: individual developer or small evaluation.
 
-- Credit card checkout.
+- Planned portal checkout for approved evaluation or pilot package only.
 - One organization.
 - One or two projects.
 - Limited monthly included usage or credit allowance.
@@ -200,7 +247,7 @@ Price by annual contract, deployment scope, support tier, and usage commitment.
 
 ### Platform Subscription Plus Usage
 
-Recommended default for managed cloud.
+Recommended default for a future managed service or portal-backed commercial plan.
 
 - Monthly platform fee buys product capability and support.
 - Included usage allowance makes starting simple.
@@ -210,7 +257,7 @@ Pros:
 
 - predictable business model;
 - easy to map to tiers;
-- supports credit-card checkout;
+- supports approved checkout, quote, or invoice flows outside the router runtime;
 - separates product value from raw model cost.
 
 Cons:
@@ -220,14 +267,14 @@ Cons:
 
 ### Credit Wallet
 
-Customer prepays credits, optionally auto-top-up.
+Customer prepays credits, optionally auto-top-up. This is a future managed-service billing concept, not an in-router public API-credit wallet.
 
 Pros:
 
 - familiar for API users;
 - reduces payment failure risk;
 - easy to cap spend;
-- maps well to self-serve.
+- maps well to constrained portal top-up flows when approved.
 
 Cons:
 
@@ -286,7 +333,7 @@ Commercial entitlements should map to product capabilities rather than hardcoded
 
 Entitlement dimensions:
 
-- deployment type: managed cloud, private managed, self-hosted;
+- deployment type: portal-issued evaluation/pilot, private managed, self-hosted;
 - enabled features: dynamic_score, external_policy, admin_reports, usage_reporting, audit_log_export, pii_filtering, private_upstreams;
 - usage limits: requests, tokens, provider spend, storage/retention;
 - operational limits: projects, callers, model groups, admins, environments;
@@ -298,11 +345,11 @@ For self-hosted:
 - router validates expiry, product, issuer, features, and limits locally;
 - license can be replaced without binary rebuild.
 
-For managed cloud:
+For future managed service or portal-backed plans:
 
-- entitlements live in billing/control-plane DB;
+- entitlements live in the approved commercial/control-plane system;
 - router receives effective limits from config or admin/control-plane sync;
-- billing ledger is source of truth for credits, invoices, and usage charges.
+- commercial systems are the source of truth for credits, invoices, and usage charges; the router stores operational usage evidence and enforces the signed license or online lease it receives.
 
 ## Launch Enterprise SKUs
 
@@ -385,19 +432,19 @@ Rules:
 
 ## Initial Launch Recommendation
 
-Updated order after shipped license enforcement:
+Updated order after shipped license enforcement and issue #172 packaging review:
 
 1. Define tiers, entitlements, and metering contract.
 2. Use shipped signed license enforcement for enterprise/on-prem evaluations while license operations mature.
-3. Build managed-cloud self-serve checkout with one simple paid tier and credits.
-4. Implement billing ledger and invoice reconciliation from usage DB.
-5. Package enterprise/private managed deployment operations.
-6. Add public pricing/docs and marketplace procurement after commercial policy and legal review.
+3. Package enterprise self-hosted and private managed deployment operations.
+4. Implement production-grade license generation, deployment binding, revocation bundles, and online lease foundations where approved.
+5. Build the licensing portal and Stripe webhook fulfillment for approved evaluation, pilot, renewal, and top-up templates.
+6. Add public pricing/package docs and marketplace procurement after commercial, legal, tax, support, and security review.
 
 Rationale:
 
-- Self-serve managed cloud creates fast adoption and pricing feedback.
-- The same metering foundation supports enterprise invoices.
+- A constrained portal creates faster evaluation and top-up operations without weakening enterprise procurement or offline license support.
+- The same metering foundation supports enterprise invoices and commercial true-up evidence.
 - Signed licensing already protects self-hosted deployments; issue #39 should make issuance, renewal, support, and entitlement operations repeatable.
 - Marketplace should follow proof of enterprise pull.
 
@@ -407,9 +454,9 @@ Rationale:
 
 Define SKUs, feature gates, usage dimensions, billing semantics, and documentation language. The launch SKU mapping is captured in `docs/enterprise-license-skus.json`; future changes should update that catalog, `docs/LICENSE_OPERATIONS.md`, and public license docs together.
 
-### P0 - Managed cloud self-serve checkout and account provisioning (#37)
+### P0 - Licensing portal and Stripe fulfillment (#170/#171)
 
-Let a user create an organization, pay by credit card, receive a router endpoint/token, and start calling the API.
+Start with approved evaluation, pilot, renewal, and top-up templates. Provision a signed license only after payment-confirmed webhook fulfillment. Do not expose arbitrary entitlement configuration or a public API-credit wallet.
 
 ### P0 - Usage metering, billing ledger, credits, and invoice reconciliation (#38)
 
@@ -423,9 +470,9 @@ Build on shipped signed license enforcement to support repeatable license issuan
 
 Define repeatable packaging, runbooks, support boundaries, private offers, and deployment acceptance.
 
-### P1 - Customer billing/admin portal (#41)
+### P1 - Customer billing/admin portal (#41/#170/#171)
 
-Expose invoices, credits, usage, limits, token/project management, and plan controls to customers.
+Expose invoices, payment method management, license download/re-download, renewal/top-up status, and safe account metadata once portal fulfillment is stable. Router usage reports remain the source for operational usage evidence; product billing remains outside the router runtime.
 
 ### P2 - Public pricing and packaging docs (#42)
 
@@ -433,7 +480,7 @@ Publish customer-facing pricing/package pages once commercial policy is stable a
 
 ## Open Decisions
 
-- Whether managed cloud default should be Metrum-billed provider credits, BYOK, or both from day one.
+- Whether future managed-service default should be Metrum-billed provider credits, BYOK, or both from day one.
 - Whether credits map one-to-one to USD or abstract units.
 - Whether successful fallback routing bills only final successful upstream call or includes router attempt overhead.
 - Which features are gated by plan at launch versus included in all paid plans.
@@ -447,7 +494,7 @@ Publish customer-facing pricing/package pages once commercial policy is stable a
 - Margin risk if Metrum-billed provider usage is underpriced or abused.
 - Enterprise friction if self-hosted licensing is too restrictive for air-gapped customers.
 - Product confusion if hosted deployment group names are treated as product constants.
-- Operational risk if self-serve onboarding creates router/provider resources without quotas and abuse controls.
+- Operational risk if portal onboarding creates router/provider resources without quotas and abuse controls.
 
 ## Success Metrics
 

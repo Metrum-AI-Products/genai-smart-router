@@ -105,13 +105,15 @@ Developers use stable model groups defined by their deployment. Platform owners 
 
 ## Commercial Paths
 
-Metrum supports three buyer paths:
+Metrum supports several buyer paths:
 
-- Metrum-managed hosted evaluation or service for teams that want a managed endpoint and report package.
-- Enterprise or on-prem deployment for customers that need the router, usage database, provider access, and signed JSON license enforcement inside their own infrastructure.
-- Private customer-cloud deployment for customers that want cloud isolation under their own account, identity, network, and retention controls.
+- Evaluation or pilot access for teams validating workloads, reporting, security posture, and provider fit.
+- Enterprise self-hosted deployment for customers that need the router, usage database, provider access, and signed JSON license enforcement inside their own infrastructure.
+- Private managed deployment for customers that want a dedicated customer deployment operated for them.
+- Renewal, replacement, and prepaid volume top-up for existing licensed deployments.
+- Marketplace or private-offer procurement where available.
 
-The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to an annual or volume-prepurchase license handled by Metrum commercial contact. Self-serve credit-card signup is **not currently offered** as a commercial product. See [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
+The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to an enterprise self-hosted, private managed, marketplace/private-offer, renewal, or volume-prepurchase path. A Stripe-enabled licensing portal for approved evaluation, pilot, renewal, or top-up packages is planned but not shipped until the portal and fulfillment work is implemented. See [Choose a Deployment Path](/docs/licensing/deployment-paths) and [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
 
 ## Deployment Planning Checklist
 

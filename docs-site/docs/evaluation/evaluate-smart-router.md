@@ -29,9 +29,9 @@ Commercial evaluations can run on a Metrum-managed hosted service, an enterprise
 2. receive a router endpoint and token, or a deployment package plus signed JSON license for customer-controlled infrastructure;
 3. validate production-like workloads and clients;
 4. inspect savings, performance, quota, provider mix, security access, and retention/rollup evidence;
-5. choose hosted, private-cloud, enterprise/on-prem, annual, or volume-prepurchase commercial access.
+5. choose enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or other contracted commercial access.
 
-Self-serve credit-card signup, instant public API credits, and automated usage-credit purchase are **not currently offered** as a commercial product. Public docs therefore use placeholders and contact links instead of publishing private hosted endpoints or internal deployment operations. Production enterprise access uses a signed license file with capability + time + volume entitlements combined with an annual or volume-prepurchase contract handled by Metrum commercial contact.
+Self-service portal checkout and automated license download are planned only for approved evaluation, pilot, renewal, or top-up packages and are not shipped until the licensing portal and Stripe fulfillment work is enabled. Public docs therefore use placeholders and contact links instead of publishing private hosted endpoints or internal deployment operations. Production enterprise access uses a signed license file with capability + time + volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path.
 
 ## Thirty-Minute Evaluation Path
 

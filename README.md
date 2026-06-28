@@ -174,7 +174,9 @@ Use `go run ./cmd/router-license safe-summary --license license.json` to inspect
 
 When Metrum provides a signed revocation bundle, configure `server.license.revocation.mode: file` and mount the bundle at `server.license.revocation.path`. Effective `revoked`, `suspended`, or `superseded` entries block serving without license grace; `router-license revocation validate` and `revocation safe-summary` provide operator-safe verification.
 
-Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; public hosted docs describe customer installation and renewal behavior without signing-key or bypass details.
+Metrum-side license issuance, renewal, replacement, volume top-up, offline customer support, portal/Stripe fulfillment planning, and acceptance checklists are documented in [docs/LICENSE_OPERATIONS.md](docs/LICENSE_OPERATIONS.md). That runbook is internal/operator guidance; public hosted docs describe customer installation, commercial access paths, renewal behavior, and planned portal boundaries without signing-key or bypass details.
+
+Customer-facing commercial access paths are documented under `docs-site/docs/licensing/`: enterprise self-hosted, private managed deployment, evaluation/pilot access, renewal/top-up, and marketplace/private-offer procurement. A Stripe-enabled portal for approved evaluation, pilot, renewal, or top-up packages is planned only if the portal and fulfillment work ships; until then, portal checkout/download should not be described as available shipped behavior.
 
 Expected provider env vars in `config.example.yaml`:
 
