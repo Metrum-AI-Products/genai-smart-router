@@ -16,8 +16,8 @@ Last deployed: 2026-06-28
 
 ## Deployed Version
 
-- Router package/image version: `e2161ce-linux-amd64`
-- Source commit: `e2161ce`
+- Router package/image version: `e982e43-linux-amd64`
+- Source commit: `e982e43`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,39 @@ Last deployed: 2026-06-28
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-28 Admin reports and docs IA production refresh
+
+Deployed package/image `smart-llmrouter:e982e43-linux-amd64` from source commit `e982e43` after upstream merged PR #178 and PR #183.
+
+Included changes:
+
+- Embedded React admin reports app assets from the upstream admin reports UI scaffold.
+- Completed public Docusaurus information architecture updates from PR #183.
+- Preserved live production config, state, logs, `.env`, and router token files during package replacement.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-e982e43-20260628T130425Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 348 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing Docusaurus dependency advisories
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-e982e43-docker-linux-amd64.tar.gz
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version e982e43, build_date 2026-06-28T13:00:06Z
+production /version after deploy: e982e43, build_date 2026-06-28T13:00:06Z, go1.26.4 linux/amd64, license compile mode required
+hosted docs /docs/ returned 200
+admin reports UI /admin/reports/ returned 200 with embedded HTML
+admin reports API /admin/reports/api/summary?since=24h returned expected summary keys
+authenticated /v1/chat/completions high returned 200 from MiniMax-M3; model output included visible reasoning text despite the concise smoke prompt
+production cleanup: removed uploaded package and staging/switch directory, then ran sudo docker system prune -f
+```
 
 ## 2026-06-28 Product docs information architecture refresh
 
