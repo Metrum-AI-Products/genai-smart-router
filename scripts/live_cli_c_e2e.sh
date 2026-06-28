@@ -12,6 +12,8 @@ CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CONTINUE_ON_ERROR="${LIVE_E2E_CONTINUE_ON_ERROR:-1}"
 CASE_REGEX="${LIVE_E2E_CASE_REGEX:-}"
+C_SANDBOX_IMAGE="${LIVE_E2E_C_SANDBOX_IMAGE:-gcc:14-bookworm}"
+C_SANDBOX_DRY_RUN="${LIVE_E2E_C_SANDBOX_DRY_RUN:-0}"
 CURRENT_ROUTER_PID=""
 FAILURES=()
 
@@ -265,9 +267,8 @@ compile_and_run() {
   local c_file
   for c_file in "$candidates_dir"/*.c; do
     [[ -f "$c_file" ]] || continue
-    local bin_file="${c_file%.c}"
-    if cc -std=c11 -Wall -Wextra -Werror -O2 "$c_file" -o "$bin_file" 2>"${c_file}.compile.err"; then
-      if "$bin_file" >"$run_file" 2>"${c_file}.run.err" && grep -qi "router c e2e" "$run_file"; then
+    if sandbox_compile_and_run "$c_file" "$run_file" "${c_file}.compile.err" "${c_file}.run.err"; then
+      if grep -qi "router c e2e" "$run_file"; then
         cp "$c_file" "$WORKDIR/${group}-${tool}.c"
         cat "$run_file"
         return 0
@@ -275,6 +276,54 @@ compile_and_run() {
     fi
   done
   echo "${group}/${tool}: no extracted C candidate compiled and printed expected output" >&2
+  return 1
+}
+
+sandbox_compile_and_run() {
+  local c_file="$1"
+  local run_file="$2"
+  local compile_err="$3"
+  local run_err="$4"
+  local candidate_name
+  candidate_name="$(basename "$c_file")"
+  local candidate_dir
+  candidate_dir="$(cd "$(dirname "$c_file")" && pwd)"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is required for sandboxed generated-C validation" >&2
+    return 2
+  fi
+
+  local docker_cmd=(
+    docker run --rm
+    --network none
+    --cpus 1
+    --memory 128m
+    --pids-limit 64
+    --read-only
+    --cap-drop ALL
+    --security-opt no-new-privileges
+    --tmpfs /tmp:rw,nosuid,nodev,size=32m
+    --mount "type=bind,source=${candidate_dir},target=/work,readonly"
+    -w /work
+    "$C_SANDBOX_IMAGE"
+    sh -ceu
+    'cc -std=c11 -Wall -Wextra -Werror -O2 "$1" -o /tmp/candidate 2>/tmp/compile.err || { cat /tmp/compile.err >&2; exit 10; }; timeout 5 /tmp/candidate'
+    sh
+    "$candidate_name"
+  )
+
+  if [[ "$C_SANDBOX_DRY_RUN" == "1" ]]; then
+    printf '%q ' "${docker_cmd[@]}" >"$run_file"
+    printf '\n' >>"$run_file"
+    return 0
+  fi
+
+  if "${docker_cmd[@]}" >"$run_file" 2>"$run_err"; then
+    : >"$compile_err"
+    return 0
+  fi
+  cp "$run_err" "$compile_err"
   return 1
 }
 

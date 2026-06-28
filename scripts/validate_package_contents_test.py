@@ -63,7 +63,7 @@ def main() -> int:
                 "pkg/docs/PRODUCTION_RUNBOOK.md": "private\n",
             },
         )
-        expect_errors(private_runbook, allowlist, ["forbidden private runbook", "not in package docs allowlist"])
+        expect_errors(private_runbook, allowlist, ["forbidden local secret/state file", "not in package docs allowlist"])
 
         private_marker = root / "private-marker.tar.gz"
         write_tar(
@@ -84,6 +84,21 @@ def main() -> int:
             },
         )
         expect_errors(raw_token, allowlist, ["raw router token"])
+
+        forbidden_files = root / "forbidden-files.tar.gz"
+        write_tar(
+            forbidden_files,
+            {
+                "pkg/docs/README.md": "package-safe docs\n",
+                "pkg/docs/DEPLOYMENT.md": "generic deployment docs\n",
+                "pkg/config/env.json": "{}\n",
+                "pkg/config/config.production.yaml": "server: {}\n",
+                "pkg/ROUTER_TOKEN.txt": "placeholder\n",
+                "pkg/config/license.json": "{}\n",
+                "pkg/state/usage.sqlite": "not actually sqlite\n",
+            },
+        )
+        expect_errors(forbidden_files, allowlist, ["forbidden local secret/state file"])
 
         missing_doc = root / "missing-doc.tar.gz"
         write_tar(missing_doc, {"pkg/docs/README.md": "package-safe docs\n"})

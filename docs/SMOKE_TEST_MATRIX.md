@@ -378,16 +378,21 @@ Check separately:
 
 ## CLI Smokes
 
-Claude Code should use router bearer token settings:
+Claude Code should use router bearer token settings. Run tool-bearing CLI smokes inside a disposable container or equivalent sandbox with only the scratch workdir mounted and only the scoped router token in the environment:
 
 ```bash
-env -u ANTHROPIC_API_KEY \
-  ANTHROPIC_BASE_URL="$ROUTER_BASE_URL" \
-  ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
+mkdir -p "$PWD/claude-tool-smoke"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$PWD/claude-tool-smoke",target=/workspace \
+  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
   claude -p "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok." \
-  --model "<tool-smoke-model-group>" \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash"
+    --model "<tool-smoke-model-group>" \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash"
 ```
 
 Codex CLI should use an OpenAI-compatible provider with `wire_api="responses"` and a router-issued token.

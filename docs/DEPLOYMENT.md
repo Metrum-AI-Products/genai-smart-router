@@ -38,6 +38,8 @@ caddy/Caddyfile
 
 Package docs are an explicit allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages.
 
+Release metadata is intentionally strict because package and Docker recipes use it in paths, tags, and linker flags. `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` must pass `scripts/validate_build_metadata.py` before package or image commands run. Versions may use ordinary `git describe` characters such as letters, digits, `.`, `_`, `+`, `/`, and `-`; shell metacharacters, empty values, absolute paths, and `..` path components are rejected.
+
 The config and routing script are packaged together so this command works after unpacking:
 
 ```bash

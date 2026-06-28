@@ -57,21 +57,30 @@ codex \
 
 ## Tool Smoke
 
-Agentic tool calls should be tested with real file and shell activity in a disposable directory. Tool-bearing requests bypass response caching because the filesystem and shell state are part of the result.
+Agentic tool calls should be tested with real file and shell activity inside a disposable container or equivalent isolated workspace. Pass only the router base URL and a scoped router token into the sandbox, and mount only the scratch directory where the smoke file should be written. Tool-bearing requests bypass response caching because the filesystem and shell state are part of the result.
 
 <RouterCodeBlock>
 {`
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -c 'model="<allowed-model-group>"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+mkdir -p "$PWD/codex-tool-smoke"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$PWD/codex-tool-smoke",target=/workspace \
+  -e "METRUM_ROUTER_KEY=$METRUM_ROUTER_KEY" \
+  -e "ROUTER_BASE_URL={{apiBase}}" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  codex exec --ignore-user-config --ephemeral \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    -C /workspace \
+    -c 'model="<allowed-model-group>"' \
+    -c 'model_provider="metrum-router"' \
+    -c 'model_providers.metrum-router.name="Metrum Router"' \
+    -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
+    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-router.wire_api="responses"' \
+    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 `}
 </RouterCodeBlock>
 

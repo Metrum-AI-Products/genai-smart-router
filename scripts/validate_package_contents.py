@@ -13,7 +13,25 @@ from typing import Iterable
 
 TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 
-FORBIDDEN_NAME_RE = re.compile(r"(^|/)PRODUCTION_RUNBOOK\.md$")
+FORBIDDEN_NAME_RE = re.compile(
+    r"(^|/)(?:"
+    r"PRODUCTION_RUNBOOK\.md|"
+    r"config\.production\.yaml|"
+    r"env\.json|"
+    r"ROUTER_TOKENS?[^/]*\.txt|"
+    r"license\.json|"
+    r".*license-state.*\.json|"
+    r".*license-private.*\.json|"
+    r".*signing.*\.(?:json|key)|"
+    r".*private-key.*\.pem|"
+    r".*\.sqlite3?|"
+    r".*\.db|"
+    r".*\.log|"
+    r".*\.jsonl|"
+    r"router-state\.json|"
+    r"requests\.jsonl"
+    r")$"
+)
 FORBIDDEN_TEXT_PATTERNS = [
     (
         "private production host marker",
@@ -102,7 +120,7 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
         for member in package.getmembers():
             rel = package_relative_name(member.name)
             if FORBIDDEN_NAME_RE.search(member.name):
-                errors.append(f"{archive}: forbidden private runbook included: {rel}")
+                errors.append(f"{archive}: forbidden local secret/state file included: {rel}")
 
             if is_docs_member(member.name) and member.isfile():
                 actual_docs.add(Path(rel).name)

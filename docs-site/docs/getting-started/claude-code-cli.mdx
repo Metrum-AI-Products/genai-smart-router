@@ -47,13 +47,21 @@ Use the same deployment-defined coding group for mixed coding and image tasks. S
 
 ## Tool Smoke
 
-Run tool smokes in a disposable directory because the command intentionally grants file and shell tools.
+Run tool smokes inside a disposable container or equivalent isolated workspace because the command intentionally grants file and shell tools. Pass only the router base URL and a scoped router token into the sandbox, and mount only the scratch directory where the smoke file should be written.
 
 ```bash
-claude --bare --print --model "<allowed-model-group>" \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+mkdir -p "$PWD/claude-tool-smoke"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$PWD/claude-tool-smoke",target=/workspace \
+  -e "ANTHROPIC_BASE_URL={{origin}}" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  claude --bare --print --model "<allowed-model-group>" \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash" \
+    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
 ```
 
 The requested model must be allowed by the caller token. Deployment admins decide which model groups each key may use.

@@ -545,52 +545,50 @@ codex \
 
 For a different route, change `ROUTER_MODEL` to another allowed deployment-defined model group. The router decides the concrete upstream provider and model behind that group.
 
-Agentic tool validation should include real file and shell activity. The hosted deployment exposes dedicated smoke groups for that purpose:
+Agentic tool validation should include real file and shell activity, but tool-client smokes should run inside a disposable container or equivalent sandbox. The sandbox should receive only the router base URL and a scoped router token, and it should bind-mount only a scratch work directory. The hosted deployment exposes dedicated smoke groups for that purpose:
 
 ```bash
 # Claude Code uses the Anthropic Messages API contract.
 unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
-claude --bare --print --model claude-tools-smoke \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
-
-# OpenRouter Anthropic-compatible tool route:
-claude --bare --print --model claude-tools-smoke-openrouter \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_openrouter_tool_smoke.txt containing exactly claude-openrouter-tool-ok, run cat claude_openrouter_tool_smoke.txt, then finish with claude-openrouter-tool-ok."
+mkdir -p "$PWD/claude-tool-smoke"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$PWD/claude-tool-smoke",target=/workspace \
+  -e "ANTHROPIC_BASE_URL=$ANTHROPIC_BASE_URL" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  claude --bare --print --model claude-tools-smoke \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash" \
+    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
 ```
 
 ```bash
 # Codex uses the OpenAI Responses contract.
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -c 'model="agent-tools-smoke"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
-
-# OpenRouter Responses-compatible tool route:
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -c 'model="agent-tools-smoke-openrouter"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_openrouter_tool_smoke.txt containing exactly codex-openrouter-tool-ok, run cat codex_openrouter_tool_smoke.txt, then finish with codex-openrouter-tool-ok." </dev/null
+mkdir -p "$PWD/codex-tool-smoke"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$PWD/codex-tool-smoke",target=/workspace \
+  -e "METRUM_ROUTER_KEY=$METRUM_ROUTER_KEY" \
+  -e "ROUTER_BASE_URL=$ROUTER_BASE_URL" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  codex exec --ignore-user-config --ephemeral \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    -C /workspace \
+    -c 'model="agent-tools-smoke"' \
+    -c 'model_provider="metrum-router"' \
+    -c 'model_providers.metrum-router.name="Metrum Router"' \
+    -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
+    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-router.wire_api="responses"' \
+    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 ```
 
 Requests that include agent tools bypass the response cache so the router never replays stale filesystem, shell, or tool-call outcomes.

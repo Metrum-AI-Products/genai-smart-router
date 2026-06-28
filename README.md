@@ -1169,40 +1169,24 @@ router claude ok
 
 Expected log fields include `client=claude-code`, `inbound_dialect=anthropic`, `requested_model=cli-smoke`, and a concrete target provider/model. Provider keys must not appear in output or logs.
 
-Tool-capable smoke for Claude Code:
+Tool-capable smoke for Claude Code should run inside a disposable container or equivalent sandbox. The sandbox should receive only the router base URL and a scoped router token, and it should bind-mount only a scratch work directory:
 
 ```bash
 unset ANTHROPIC_API_KEY
 mkdir -p "$WORK/claude-tool-work"
-cd "$WORK/claude-tool-work"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$WORK/claude-tool-work",target=/workspace \
+  -e "ANTHROPIC_BASE_URL=http://127.0.0.1:18081" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  claude --bare --print --model claude-tools-smoke \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash" \
+    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
 
-ANTHROPIC_BASE_URL="http://127.0.0.1:18081" \
-ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
-ANTHROPIC_MODEL="claude-tools-smoke" \
-claude --bare --print --model claude-tools-smoke \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
-
-test "$(cat claude_tool_smoke.txt)" = "claude-tool-ok"
-```
-
-OpenRouter-specific Claude Code tool smoke:
-
-```bash
-unset ANTHROPIC_API_KEY
-mkdir -p "$WORK/claude-openrouter-tool-work"
-cd "$WORK/claude-openrouter-tool-work"
-
-ANTHROPIC_BASE_URL="http://127.0.0.1:18081" \
-ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
-ANTHROPIC_MODEL="claude-tools-smoke-openrouter" \
-claude --bare --print --model claude-tools-smoke-openrouter \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_openrouter_tool_smoke.txt containing exactly claude-openrouter-tool-ok, run cat claude_openrouter_tool_smoke.txt, then finish with claude-openrouter-tool-ok."
-
-test "$(cat claude_openrouter_tool_smoke.txt)" = "claude-openrouter-tool-ok"
+test "$(cat "$WORK/claude-tool-work/claude_tool_smoke.txt")" = "claude-tool-ok"
 ```
 
 ### Codex CLI
@@ -1250,48 +1234,31 @@ router codex ok
 
 Expected log fields include `client=codex`, `inbound_dialect=openai-responses`, `requested_model=cli-smoke`, and no leaked credentials. A local Codex installation may print a bubblewrap/user-namespace warning; that is separate from the router request and does not indicate provider failure.
 
-Tool-capable smoke for Codex:
+Tool-capable smoke for Codex follows the same containerized pattern:
 
 ```bash
-export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 mkdir -p "$WORK/codex-tool-work"
-
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -C "$WORK/codex-tool-work" \
-  -c 'model="agent-tools-smoke"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source="$WORK/codex-tool-work",target=/workspace \
+  -e "METRUM_ROUTER_KEY=$ROUTER_TOKEN" \
+  -e "ROUTER_BASE_URL=http://127.0.0.1:18081" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  codex exec --ignore-user-config --ephemeral \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    -C /workspace \
+    -c 'model="agent-tools-smoke"' \
+    -c 'model_provider="metrum-router"' \
+    -c 'model_providers.metrum-router.name="Metrum Router"' \
+    -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
+    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-router.wire_api="responses"' \
+    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 
 test "$(cat "$WORK/codex-tool-work/codex_tool_smoke.txt")" = "codex-tool-ok"
-```
-
-OpenRouter-specific Codex tool smoke:
-
-```bash
-export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
-mkdir -p "$WORK/codex-openrouter-tool-work"
-
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -C "$WORK/codex-openrouter-tool-work" \
-  -c 'model="agent-tools-smoke-openrouter"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_openrouter_tool_smoke.txt containing exactly codex-openrouter-tool-ok, run cat codex_openrouter_tool_smoke.txt, then finish with codex-openrouter-tool-ok." </dev/null
-
-test "$(cat "$WORK/codex-openrouter-tool-work/codex_openrouter_tool_smoke.txt")" = "codex-openrouter-tool-ok"
 ```
 
 Tool-bearing requests bypass the router response cache. They are intentionally routed to the provider every time because tool calls depend on external filesystem, shell, and agent state.

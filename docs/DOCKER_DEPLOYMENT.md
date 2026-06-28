@@ -21,6 +21,8 @@ dist/smart-llmrouter-<version>-docker-linux-arm64.tar.gz
 
 Docker image builds use `docker buildx build --load` for each packaged platform.
 
+Package and image targets validate build metadata before running build commands. Keep `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` to the safe release formats accepted by `scripts/validate_build_metadata.py`; shell metacharacters and path traversal are rejected. `make secret-check` also validates `.dockerignore` against local secret/state fixtures so ignored runtime files such as `env.json`, production config snapshots, router token files, license files/state, local DBs, logs, and generated artifacts do not enter the Docker build context.
+
 Each package contains:
 
 ```text
@@ -48,7 +50,7 @@ docs/USAGE_DB_DESIGN.md
 docs/USAGE_REPORTING_PLAYBOOK.md
 ```
 
-Package docs are copied only from `scripts/package_docs_allowlist.txt`. The package build validates the resulting tarball and fails if it contains private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, or raw token/provider-key patterns.
+Package docs are copied only from `scripts/package_docs_allowlist.txt`. The package build validates the resulting tarball and fails if it contains private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns.
 
 ## AWS EC2 Host Setup
 
@@ -294,43 +296,53 @@ codex \
   -c 'model_providers.metrum-router.wire_api="responses"'
 ```
 
-Tool-capable acceptance checks should exercise the real agent tool paths, not just text echo. Use `claude-tools-smoke` with Claude Code over the Anthropic Messages API and `agent-tools-smoke` with Codex over OpenAI Responses. Tool-bearing requests are not cacheable, because their results depend on shell/filesystem/tool state.
+Tool-capable acceptance checks should exercise the real agent tool paths, not just text echo. Run tool-client smokes only inside a disposable container image that contains the required `claude` and `codex` CLIs. The container should receive only the router base URL and a scoped router token, bind-mount only a scratch smoke directory, drop Linux capabilities, set CPU/memory/PID limits, and avoid mounting the operator home directory, SSH keys, provider-key files, source checkout, or production config. Tool-bearing requests are not cacheable, because their results depend on shell/filesystem/tool state.
 Use `claude-tools-smoke-openrouter` and `agent-tools-smoke-openrouter` when the acceptance gate must specifically validate OpenRouter's Anthropic-compatible and Responses-compatible tool routes.
 For OpenAI Chat Completions agent clients such as Warp Agent, run a `/v1/chat/completions` smoke with `tools`, `tool_choice`, `stream: true`, and a realistic agent User-Agent. The router should preserve the OpenAI Chat tool payload, select a target with explicit `tool_support.openai_chat`, and stream back `delta.tool_calls` plus `finish_reason: "tool_calls"`.
 For self-hosted vLLM or SGLang tool routes, first run an OpenAI-compatible chat `tools` request directly against the upstream, then route the same request through the configured router model group. Tool support depends on the model, parser, chat template, streaming mode, and `tool_choice` mode.
 
-Claude Code tool smoke:
+Claude Code tool smoke pattern:
 
 ```bash
 unset ANTHROPIC_API_KEY
 mkdir -p /tmp/router-claude-tool-smoke
-cd /tmp/router-claude-tool-smoke
-ANTHROPIC_BASE_URL="$ROUTER_BASE_URL" \
-ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
-claude --bare --print --model claude-tools-smoke \
-  --permission-mode bypassPermissions \
-  --allowedTools "Write,Bash" \
-  "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
-test "$(cat claude_tool_smoke.txt)" = "claude-tool-ok"
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source=/tmp/router-claude-tool-smoke,target=/workspace \
+  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL" \
+  -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  claude --bare --print --model claude-tools-smoke \
+    --permission-mode bypassPermissions \
+    --allowedTools "Write,Bash" \
+    "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok."
+test "$(cat /tmp/router-claude-tool-smoke/claude_tool_smoke.txt)" = "claude-tool-ok"
 ```
 
-Codex tool smoke:
+Codex tool smoke pattern:
 
 ```bash
-export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 mkdir -p /tmp/router-codex-tool-smoke
-codex exec --ignore-user-config --ephemeral \
-  --ignore-rules \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  -C /tmp/router-codex-tool-smoke \
-  -c 'model="agent-tools-smoke"' \
-  -c 'model_provider="metrum-router"' \
-  -c 'model_providers.metrum-router.name="Metrum Router"' \
-  -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
-  -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
-  -c 'model_providers.metrum-router.wire_api="responses"' \
-  "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
+docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 1 --memory 1g --pids-limit 256 --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --mount type=bind,source=/tmp/router-codex-tool-smoke,target=/workspace \
+  -e "METRUM_ROUTER_KEY=$ROUTER_TOKEN" \
+  -e "ROUTER_BASE_URL=$ROUTER_BASE_URL" \
+  -w /workspace "$TOOL_SMOKE_IMAGE" \
+  codex exec --ignore-user-config --ephemeral \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    -C /workspace \
+    -c 'model="agent-tools-smoke"' \
+    -c 'model_provider="metrum-router"' \
+    -c 'model_providers.metrum-router.name="Metrum Router"' \
+    -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
+    -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
+    -c 'model_providers.metrum-router.wire_api="responses"' \
+    "Create codex_tool_smoke.txt containing exactly codex-tool-ok, run cat codex_tool_smoke.txt, then finish with codex-tool-ok." </dev/null
 test "$(cat /tmp/router-codex-tool-smoke/codex_tool_smoke.txt)" = "codex-tool-ok"
 ```
 
@@ -347,3 +359,5 @@ Then use:
 ```text
 http://127.0.0.1:18080
 ```
+
+`scripts/compose_live_e2e.sh` follows the same rule for tool smokes: set `COMPOSE_E2E_TOOL_SANDBOX_IMAGE` to an image that contains the CLI clients, and the script runs tool-bearing Claude/Codex checks inside a locked-down container with only scratch workdir mounts. The compose e2e temp config directory is private, secret files are written `0600`, and a Docker helper changes only the bind-mounted config tree to owner UID/GID `65532` so the packaged router can read `/app/config/config.yaml` and `/app/config/env.json` through the read-only `./config:/app/config:ro` mount without making them world-readable. Override `COMPOSE_E2E_PERMISSIONS_IMAGE` if the default lightweight helper image is not available. Retained workdirs scrub `config/env.json` and `.env`, then restore config ownership to the invoking user for inspection.

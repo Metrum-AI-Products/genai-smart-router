@@ -7,6 +7,15 @@ env.json
 config.production.yaml
 ROUTER_TOKENS_*.txt
 ROUTER_TOKEN*.txt
+license.json
+**/license.json
+license-state.json
+**/license-state.json
+*license-state*.json
+*license-private*.json
+*signing*.json
+*signing*.key
+*private-key*.pem
 *.log
 *.jsonl
 router-state.json
