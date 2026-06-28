@@ -2,56 +2,20 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import type { ReportRow } from "@/lib/reports";
-import { formatValue, titleize } from "@/lib/utils";
+import type { ReportColumn, ReportRow } from "@/lib/reports";
+import { formatValue } from "@/lib/utils";
 
 type Props = {
   rows: ReportRow[];
+  columns: ReportColumn[];
   onRefresh?: () => void;
 };
 
-const preferredColumns = [
-  "key",
-  "secondaryKey",
-  "requestId",
-  "timeUtc",
-  "provider",
-  "model",
-  "requests",
-  "errors",
-  "tokens",
-  "totalTokens",
-  "totalCostUsd",
-  "costUsd",
-  "savingsUsd",
-  "savingsPct",
-  "avgLatencyMs",
-  "avgTtfbMs",
-  "fallbacks",
-  "status",
-  "error",
-];
-
-export function DataTable({ rows, onRefresh }: Props) {
+export function DataTable({ rows, columns, onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState(50);
   const [sortKey, setSortKey] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  const columns = useMemo(() => {
-    const seen = new Set<string>();
-    for (const row of rows) {
-      for (const key of Object.keys(row)) seen.add(key);
-    }
-    return Array.from(seen).sort((a, b) => {
-      const ai = preferredColumns.indexOf(a);
-      const bi = preferredColumns.indexOf(b);
-      if (ai === -1 && bi === -1) return a.localeCompare(b);
-      if (ai === -1) return 1;
-      if (bi === -1) return -1;
-      return ai - bi;
-    });
-  }, [rows]);
 
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -81,9 +45,9 @@ export function DataTable({ rows, onRefresh }: Props) {
   }
 
   function exportCsv() {
-    const header = columns.join(",");
+    const header = columns.map((column) => JSON.stringify(column.label)).join(",");
     const body = visibleRows
-      .map((row) => columns.map((column) => JSON.stringify(row[column] ?? "")).join(","))
+      .map((row) => columns.map((column) => JSON.stringify(row[column.key] ?? "")).join(","))
       .join("\n");
     const blob = new Blob([header, "\n", body], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -94,10 +58,10 @@ export function DataTable({ rows, onRefresh }: Props) {
     URL.revokeObjectURL(url);
   }
 
-  function renderCell(row: ReportRow, column: string) {
-    const value = row[column];
-    const formatted = formatValue(value, column);
-    if ((column === "requestId" || column === "request_id") && value) {
+  function renderCell(row: ReportRow, column: ReportColumn) {
+    const value = row[column.key];
+    const formatted = formatValue(value, column.key);
+    if ((column.key === "requestId" || column.key === "request_id") && value) {
       return (
         <a className="font-mono text-metrum-pink underline decoration-metrum-pink/40 underline-offset-4 hover:text-white" href={`api/request/${encodeURIComponent(String(value))}`}>
           {formatted}
@@ -132,9 +96,10 @@ export function DataTable({ rows, onRefresh }: Props) {
           <thead className="bg-white/[0.06] text-xs uppercase text-white/60">
             <tr>
               {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap px-3 py-2">
-                  <button type="button" className="text-left hover:text-white" onClick={() => sort(column)}>
-                    {titleize(column)}
+                <th key={column.key} className="whitespace-nowrap px-3 py-2">
+                  <button type="button" className="text-left hover:text-white" onClick={() => sort(column.key)} title={column.description}>
+                    {column.label}
+                    {column.unit ? <span className="ml-1 normal-case text-white/40">({column.unit})</span> : null}
                   </button>
                 </th>
               ))}
@@ -144,7 +109,7 @@ export function DataTable({ rows, onRefresh }: Props) {
             {visibleRows.map((row, index) => (
               <tr key={index} className="border-t border-white/10 odd:bg-white/[0.025]">
                 {columns.map((column) => (
-                  <td key={column} className="max-w-[360px] truncate px-3 py-2 text-white/82" title={formatValue(row[column], column)}>
+                  <td key={column.key} className="max-w-[360px] truncate px-3 py-2 text-white/82" title={formatValue(row[column.key], column.key)}>
                     {renderCell(row, column)}
                   </td>
                 ))}

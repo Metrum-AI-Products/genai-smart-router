@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/DataTable";
 import { MetricGrid } from "@/components/MetricGrid";
 import type { ReportResponse, TabSpec } from "@/lib/reports";
-import { rowsForTab } from "@/lib/reports";
+import { columnsForTab, rowsForTab } from "@/lib/reports";
 
 type Props = {
   tab: TabSpec;
@@ -14,6 +14,7 @@ type Props = {
 
 export function ReportPanel({ tab, report, loading, error, onRefresh }: Props) {
   const rows = report ? rowsForTab(tab, report) : [];
+  const columns = columnsForTab(tab, rows);
   return (
     <main className="space-y-4">
       <div>
@@ -40,7 +41,7 @@ export function ReportPanel({ tab, report, loading, error, onRefresh }: Props) {
           </CardContent>
         </Card>
       ) : null}
-      <DataTable rows={rows} onRefresh={onRefresh} />
+      <DataTable rows={rows} columns={columns} onRefresh={onRefresh} />
     </main>
   );
 }

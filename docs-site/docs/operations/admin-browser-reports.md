@@ -109,6 +109,8 @@ The browser report shell provides shared controls for every tab:
 
 These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, or unsanitized upstream responses.
 
+Tables use per-tab column schemas instead of first-row key discovery. Column order, labels, and units are stable for each tab, CSV export follows the same visible columns, and duplicate compatibility aliases are suppressed when they carry the same value. For example, usage tabs show `Input tokens`, `Output tokens`, and `Total tokens`; they do not show both `tokens` and `totalTokens` when those fields are equivalent. Cost fields follow the same rule: input, image, output, total, baseline, savings, and upstream-billed values are labeled separately when present.
+
 ## Report Tabs
 
 The current browser surface includes:
@@ -144,7 +146,7 @@ Recent request rows include visible columns for time, request ID, caller ID, cal
 
 ## Charts
 
-Summary responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range, and active safe filters. The browser dashboard uses that contract to render axes, unit-aware tick labels, legends, and hover tooltips. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages. Tables label totals explicitly as Total Tokens and Total cost whenever input/output breakdowns are present.
+Summary responses include a `charts` array with stable chart IDs, titles, X/Y axis labels, axis types, units, series names, semantic color keys, scalar points, generation timestamp, selected range, and active safe filters. The browser dashboard uses that contract to render axes, unit-aware tick labels, legends, and hover tooltips. Money is displayed as USD, token and request counts use compact notation where appropriate, latency uses milliseconds or seconds, throughput uses `tok/s`, and rates use percentages. Tables label totals explicitly as Total tokens and Total cost whenever input/output breakdowns are present.
 
 Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
