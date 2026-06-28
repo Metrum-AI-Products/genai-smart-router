@@ -56,6 +56,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "routing/overview",
+        "routing/customer-controlled-routing",
         "configuration/model-group-contracts",
         "configuration/reasoning-routing",
         "configuration/dynamic-score-routing",

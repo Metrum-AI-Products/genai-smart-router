@@ -110,7 +110,7 @@ Update:
 
 Rollback should be a config-only weight or target change when possible:
 
-1. Set active target weight to `0` or remove it from affected groups.
+1. Remove the active target from affected groups, or isolate it in a restricted smoke group when continued validation is needed.
 2. Keep the catalog entry with notes unless the model ID was wrong.
 3. Restart the router and run `/readyz`.
 4. Run a request through affected groups to confirm another eligible target is selected.

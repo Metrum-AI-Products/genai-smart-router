@@ -2,6 +2,21 @@
 
 Model group contracts are optional deployment config. They describe what a caller-facing group is intended to guarantee while preserving the existing rule that callers request one allowed model group and routing stays inside that group.
 
+Public customer-facing strategy ownership guidance lives in `docs-site/docs/routing/customer-controlled-routing.md`. Keep this runbook aligned with that page when changing contract behavior, proof requirements, or examples.
+
+## Policy Design Checklist
+
+- Define the workload and owner.
+- Choose whether this belongs in one model group, multiple groups, or a separate router instance.
+- Choose the strategy: `static`, `failover`, `weighted`, `dynamic_score`, `script`, `external`, or a contract-backed combination.
+- Define eligible providers and models under `models.<group>.targets[]`; do not treat provider catalog entries as active routes.
+- Document required API shapes, tool modes, modalities, reasoning controls, structured-output support, and max-token cap behavior.
+- Define quality, cost, latency, throughput, error-rate, timeout, and fallback targets.
+- Run direct upstream smokes for every provider/model/dialect/skin being claimed.
+- Run router-level smokes through each caller API shape and negative no-eligible-target path.
+- Run representative evaluation or proof for the workload.
+- Define rollback: remove the target from affected groups, remove or tighten the capability metadata that made it eligible, isolate it behind a restricted smoke group, relax a contract only when the contract is too strict, switch strategy, or restore the previous config.
+
 ## Config Fields
 
 Contracts live at `models.<group>.contract`:

@@ -371,7 +371,7 @@ Structured-output requests bypass the response cache because schema fields are p
 
 ### Rollback
 
-If validation fails, remove `structured_outputs` or `json_schema` from the affected target metadata. If the target is already active, remove it from the model group or lower its active weight to zero, restart/reload using the normal deployment process, and rerun the negative router smoke to confirm structured-output traffic no longer reaches that upstream. Do not leave a target in active routing with stale structured-output metadata.
+If validation fails, remove `structured_outputs` or `json_schema` from the affected target metadata. If the target is already active, remove it from the affected model groups, restart/reload using the normal deployment process, and rerun the negative router smoke to confirm structured-output traffic no longer reaches that upstream. Do not leave a target in active routing with stale structured-output metadata.
 
 ## Image Smokes
 

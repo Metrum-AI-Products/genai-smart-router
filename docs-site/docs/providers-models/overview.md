@@ -108,7 +108,7 @@ Start with catalog-only metadata, then use a smoke group with restricted caller 
 Rollback should usually be a config-only change:
 
 - remove the target from affected groups;
-- set target weight to `0`;
+- remove the target from affected groups;
 - move traffic to a failover-safe target;
 - remove an unsafe capability label such as `structured_outputs`, `image`, or tool support;
 - keep the catalog entry with dated notes when the model still exists but is not safe for active traffic.

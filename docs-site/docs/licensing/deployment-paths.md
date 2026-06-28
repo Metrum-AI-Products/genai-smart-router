@@ -6,6 +6,8 @@ title: Choose a Deployment Path
 
 GenAI Smart Router supports enterprise-first commercial access with signed licenses and deployment-specific routing policy. Evaluation and production access start with the deployment path, because the right license, provider-key model, reporting package, and support plan depend on where the router runs. For topology choices such as central, per-environment, per-team, hierarchical, federated, or private managed routers, see [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
+For how customers own model-group membership, routing strategy, provider keys, validation gates, and rollback evidence inside a deployment, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+
 <div class="contactBanner">
   <p>To discuss access, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>

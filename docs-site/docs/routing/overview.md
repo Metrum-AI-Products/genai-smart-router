@@ -8,6 +8,8 @@ GenAI Smart Router lets callers request a stable, deployment-defined model group
 
 Group names are deployment-defined. Names such as `fast`, `high`, `big-coder`, or `vision` may appear in examples from a reference or hosted deployment, but they are not product-required names. Callers should discover allowed groups from [`/v1/models`](../getting-started/available-models).
 
+For the full policy ownership model, strategy selection guide, examples, proof workflow, and warnings, see [Customer-Controlled Routing](./customer-controlled-routing).
+
 ## Routing Pipeline
 
 Every model request follows the same routing pipeline:
@@ -101,6 +103,6 @@ Before exposing a group broadly:
 - Run tool, forced-tool, structured-output, image, reasoning, streaming, and low max-token cap smokes when those request shapes are in scope.
 - Confirm selected targets stay inside the requested group and record usage, cost, latency, attempts, and fallback telemetry.
 - Validate quality with a workload-appropriate harness such as unit tests, extraction accuracy checks, OCR targets, browser-control tasks, tool-call correctness checks, golden datasets, product acceptance tests, or an agent benchmark.
-- Roll back by removing the target from `models.<group>.targets[]`, setting its weight to `0`, or changing the group to a simpler strategy.
+- Roll back by removing the target from `models.<group>.targets[]`, removing the capability metadata that made it eligible for the failing request shape, isolating it in a restricted smoke group, or changing the group to a simpler known-good strategy.
 
 For target metadata and onboarding requirements, see [Providers And Models](../providers-models/overview) and [Model Metadata](../reference/model-metadata).

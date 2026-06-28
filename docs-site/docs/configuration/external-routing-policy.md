@@ -8,6 +8,8 @@ Use `strategy: external` when a deployment wants routing decisions to come from 
 
 This is useful when the routing policy should be developed, tested, deployed, and observed as its own service. For smaller local rules, see [TypeScript Routing Policy](./routing-typescript).
 
+For the broader routing-policy ownership model and when to choose an external service instead of static, weighted, dynamic-score, TypeScript, or contract-backed routing, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+
 ## Admin Setup
 
 Configure a model group with `strategy: external`, a policy URL, an exact host allowlist, and the targets the policy may choose from:

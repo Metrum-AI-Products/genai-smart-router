@@ -103,6 +103,23 @@ The router container runs as UID/GID `65532`. The config directory must be trave
 
 If the TypeScript routing script imports local helpers, copy those files into `compose/config/scripts/` as well. If it imports third-party packages, build and lock those dependencies before packaging and deploy either the required dependency tree under `compose/config/scripts/` or a pre-bundled script artifact. The container bundles scripts at router startup; it does not install npm packages at runtime.
 
+## Routing Policy Design Checklist
+
+Before exposing a deployment model group to users:
+
+- Define the workload and owner.
+- Choose whether this belongs in one model group, multiple groups, or a separate router instance.
+- Choose the strategy: `static`, `failover`, `weighted`, `dynamic_score`, `script`, `external`, or a contract-backed combination.
+- Define eligible providers and models under `models.<group>.targets[]`; do not treat provider catalog entries as active routes.
+- Document required API shapes, tool modes, modalities, reasoning controls, structured-output support, and max-token cap behavior.
+- Define quality, cost, latency, throughput, error-rate, timeout, and fallback targets.
+- Run direct upstream smokes for every provider/model/dialect/skin being claimed.
+- Run router-level smokes through each caller API shape and negative no-eligible-target path.
+- Run representative evaluation or proof for the workload.
+- Define rollback: remove the target from affected groups, remove or tighten the capability metadata that made it eligible, isolate it behind a restricted smoke group, relax a contract only when the contract is too strict, switch strategy, or restore the previous config.
+
+The public customer-facing version of this ownership model is `docs-site/docs/routing/customer-controlled-routing.md`.
+
 External routing-policy calls are opt-in per script model group with `script_http.enabled: true`, exact `allow_hosts`, `timeout_ms`, and `max_response_bytes`. Scripts call allowlisted services with `router.fetchJSON`; unrestricted `fetch`, runtime package installation, provider keys, and raw router tokens are not exposed to scripts. HTTPS is required for non-local services unless `script_http.allow_http: true` is explicitly approved; loopback HTTP is allowed for local demos and sidecars. Redirects must keep an allowed scheme and exact allowlisted hostname. Put policy-service auth in env-expanded `script_http.headers`, not in script source.
 
 For PII-aware script routing, package the policy file under `compose/config/scripts/`, mark private backing targets with deployment-owned metadata such as `tier: private` or `display_name: Private sensitive target`, and smoke-test that likely PII prompts select only those targets for primary routing and retry fallbacks. The `examples/typescript-pii-policy/` demo returns safe labels only, fails closed when no sensitive/private target is eligible, and does not redact outbound content. Use model-group `pii_filter` when the router must redact, restore, or fail requests before provider calls.
