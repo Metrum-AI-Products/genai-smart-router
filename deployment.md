@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-27
+Last deployed: 2026-06-28
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-27
 
 ## Deployed Version
 
-- Router package/image version: `09c9a16-linux-amd64`
-- Source commit: `09c9a16`
+- Router package/image version: `e2161ce-linux-amd64`
+- Source commit: `e2161ce`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,42 @@ Last deployed: 2026-06-27
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-28 Product docs information architecture refresh
+
+Deployed package/image `smart-llmrouter:e2161ce-linux-amd64` from source commit `e2161ce` after PR #166 merged.
+
+Included changes:
+
+- Public Docusaurus navigation now follows the product/customer journey across Installation, Licensing, Routing, Providers and Models, API Compatibility, Agents/Tools/Vision, Usage/Cost/Reports, Security/Governance, Operations, Troubleshooting, Evaluation, Reference, and Release/Upgrade content.
+- Added first-class public docs for installation, license renewal, routing overview, provider/model onboarding, structured outputs, observability, troubleshooting, release notes/upgrades, usage/cost/reporting, security/governance, and evaluation/case studies.
+- Added internal `docs/DOCS_MAINTENANCE.md` source-of-truth mapping for public docs, internal runbooks, stale-doc searches, and secret-safety checks.
+- Review follow-ups corrected binary and Docker Compose install instructions to match shipped package names, runtime config preparation, caller-token setup, license/config paths, and service/container ownership requirements.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-e2161ce-20260628T002913Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/...: passed, 348 tests across 7 packages
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-e2161ce-docker-linux-amd64.tar.gz
+package SHA-256: 2ee4da3db27a710c2f93c486c1c79973eb801445a6bb4b8b6f99df42db5b8208
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version e2161ce, build_date 2026-06-28T00:24:48Z
+production /version after deploy: e2161ce, build_date 2026-06-28T00:24:48Z, go1.26.4 linux/amd64, license compile mode required
+hosted docs /docs/overview returned 200
+hosted docs /docs/installation/, /docs/licensing/, /docs/routing/overview, /docs/providers-models/overview, /docs/agents-tools-vision/structured-outputs, /docs/troubleshooting/, and /docs/release-notes/upgrade-guide returned 200
+authenticated /v1/models returned 21 allowed groups and included big-coder
+authenticated /v1/chat/completions high max_tokens 64 returned OK from google/gemma-4-26b-a4b-it:nitro
+authenticated /v1/chat/completions fast max_tokens 64 returned content from MiniMax-M3; the model included visible reasoning text despite the concise prompt
+router logs after deploy: no immediate panic/fatal/error lines in the checked tail
+production cleanup: removed uploaded package, removed temporary old deployment directory, and ran sudo docker system prune -f
+```
 
 ## 2026-06-27 Fireworks GPT OSS 20B production config update
 
