@@ -517,6 +517,10 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusBadRequest, "missing-model")
 		return
 	}
+	if dialect == "openai-responses" && requestHasProviderHostedTools(req) {
+		s.writeError(w, rc, http.StatusBadRequest, "provider-hosted-tools-forbidden")
+		return
+	}
 	rc.rec.RequestedModel = req.Model
 	rc.rec.Stream = req.Stream
 
@@ -1530,6 +1534,21 @@ func targetSupportsTools(target Target, dialect string) bool {
 	default:
 		return false
 	}
+}
+
+func requestHasProviderHostedTools(req *IRRequest) bool {
+	if req == nil {
+		return false
+	}
+	for _, tool := range req.Tools {
+		switch strings.ToLower(strings.TrimSpace(stringValue(tool["type"]))) {
+		case "", "function", "function_tool":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func supportsAnyCapability(values []string, capabilities ...string) bool {

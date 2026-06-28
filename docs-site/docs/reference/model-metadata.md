@@ -26,6 +26,7 @@ providers:
         pricing_source: https://provider.example.com/pricing
         pricing_updated_at: "2026-06-19"
         honors_max_tokens: true
+        force_store_false: true
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
           openai_responses: [function, structured_outputs]
@@ -75,7 +76,13 @@ Capability labels:
 
 Tool support and structured-output support are independent. A target may support tools but not structured outputs, structured outputs but not tools, or both. A request containing both tools and structured-output fields needs a target that satisfies both requirements. Unsupported targets are skipped before routing policy selection; if no compatible target remains, callers receive `502 no-eligible-target` and no upstream request is sent.
 
+Provider-hosted tool types such as OpenAI Responses `mcp` or `sse` execute server-side at the upstream provider. The router rejects these tool entries by default before upstream. Do not use the reserved `provider_hosted` metadata label for caller traffic unless the deployment has an explicit allowlist and security review for provider-executed tool URLs.
+
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
+
+## Responses Retention Controls
+
+`force_store_false` is OpenAI Responses target metadata. When set, the router sends `store:false` upstream for that target, overriding caller `store:true`. Use it for providers whose Responses API stores conversation state by default when deployment policy requires no provider-side response storage. Validate that text, function tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before activating the target.
 
 ## Reasoning And Thinking
 

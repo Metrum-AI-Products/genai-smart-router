@@ -221,6 +221,30 @@ providers:
           mode: opt_in
           control: effort_enum
 
+  fireworks_responses:
+    base_url: https://api.fireworks.ai/inference/v1
+    dialect: openai-responses
+    auth_scheme: bearer
+    api_key: ${FIREWORKS_API_KEY}
+    api_key_env: FIREWORKS_API_KEY
+    key_id: fireworks-responses-primary
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      kimi-k2p7-code:
+        model: accounts/fireworks/models/kimi-k2p7-code
+        tier: coding
+        input_price_per_million_usd: 0.95
+        output_price_per_million_usd: 4.00
+        input_modalities: [text]
+        output_modalities: [text]
+        pricing_source: https://docs.fireworks.ai/serverless/pricing
+        pricing_updated_at: "2026-06-28"
+        pricing_notes: Fireworks Responses text, function tools, tool-result continuation, streaming tool calls, max_output_tokens=1, max_tool_calls=1, and store=false smokes passed on 2026-06-28
+        tool_support:
+          openai_responses: [function]
+        force_store_false: true
+
   baseten_anthropic:
     base_url: https://inference.baseten.co
     dialect: anthropic
@@ -283,7 +307,7 @@ External OpenAI-compatible providers follow the same shape. For example, Baseten
 
 Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in an ordinary-text weighted group. The current/reference `big-coder` example uses Crusoe Nemotron 3 Nano Omni Reasoning only as a text target where configured; it does not claim Crusoe tool, vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it should be treated as historical/catalog/smoke-only unless a deployment revalidates it for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
 
-Fireworks support in these examples is OpenAI Chat only. Fireworks docs checked on 2026-06-27 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing where GPT OSS 20B is $0.07/M input, $0.035/M cached input, and $0.30/M output. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, `reasoning_effort` low/medium/high, auto tool with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes with an explicit `User-Agent`; it returns `reasoning_content` alongside visible content and completed even though it was not listed by `/models` for the validated account. Keep Fireworks OpenAI Responses, Anthropic Messages, image, video, and audio support absent until those exact skins pass direct and router-level smokes.
+Fireworks Chat and Fireworks Responses are separate provider skins. Fireworks Chat uses `dialect: openai-chat`; Fireworks Responses uses a separate `dialect: openai-responses` provider. Fireworks docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible base URL and document Responses function tools, provider-hosted MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`. The reference Responses entry is limited to `accounts/fireworks/models/kimi-k2p7-code` after direct and router-level text, function-tool, continuation, streaming, output-cap, and `store=false` smokes passed. Provider-hosted MCP/SSE tools are rejected by the router before upstream unless a deployment adds a separate reviewed allowlist design. Keep Fireworks Anthropic Messages, image, video, and audio support absent until those exact skins pass direct and router-level smokes.
 
 Catalog entries should carry cost and capability metadata:
 
@@ -293,6 +317,7 @@ Catalog entries should carry cost and capability metadata:
 - `pricing_source`, `pricing_updated_at`, and optional `pricing_notes` make later audits possible.
 - `tool_support.openai_chat`, `tool_support.openai_responses`, and `tool_support.anthropic_messages` identify which request-shape capabilities have been tested for that upstream. Tool-bearing and structured-output requests only use compatible targets. Leave each capability absent until a direct upstream smoke and router-level smoke pass for that exact provider, model, dialect, and skin.
 - `honors_max_tokens` defaults to `true`. Set it to `false` for an upstream target that accepts a request but ignores explicit caller caps such as `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1`; the router then skips that target whenever the caller supplies a positive max-token field.
+- `force_store_false` applies to OpenAI Responses targets. Set it when the upstream supports `store:false` and deployment policy requires disabling provider-side response storage; the router overrides caller `store:true` before the upstream call.
 
 OpenAI Chat tool clients such as Warp Agent call `/v1/chat/completions` with `tools`, `tool_choice`, and often `stream: true`. For these requests the router preserves the Chat Completions tool payload, selects only targets with explicit `tool_support.openai_chat`, and returns OpenAI Chat-compatible tool-call responses. Users can keep requesting an ordinary deployment-defined model group; they should not have to switch to a separate tools-only model for a coding-agent turn.
 

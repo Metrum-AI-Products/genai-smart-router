@@ -72,7 +72,39 @@ curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
   -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"reasoning_effort":"low","max_tokens":128,"stream":false}'
 ```
 
-Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks out of OpenAI Responses, Anthropic Messages, and image/audio/video routes until those exact direct and router-level skins pass.
+Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks Anthropic Messages and image/audio/video routes disabled until those exact direct and router-level skins pass.
+
+Fireworks Responses validation on 2026-06-28 used the official Responses API docs and Serverless pricing docs. The docs list `/inference/v1/responses`, client-executed function tools, provider-executed MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`; they also note the Responses API has different retention behavior from Chat Completions. The router config uses a separate `fireworks_responses` provider, sets `force_store_false: true` on the validated target, and rejects caller-supplied `mcp`/`sse` provider-hosted tools before upstream.
+
+Direct Fireworks Responses results on 2026-06-28:
+
+| Model | Text `store:false` | Function tool | Tool-result continuation | Streaming tool | `max_tool_calls:1` | `max_output_tokens:1` | Activation |
+|---|---|---|---|---|---|---|---|
+| `accounts/fireworks/models/kimi-k2p7-code` | Passed | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Added to `fireworks_responses`, smoke groups, and low-weight `big-coder` tool-only target |
+| `accounts/fireworks/models/glm-5p2` | Accepted but tiny text budget returned incomplete reasoning text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
+| `accounts/fireworks/models/deepseek-v4-flash` | Accepted but tiny text budget returned incomplete text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
+| `accounts/fireworks/models/qwen3p6-plus` | Accepted but tiny text budget returned incomplete text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
+| `accounts/fireworks/models/gpt-oss-20b` | Passed | Passed | Failed acceptance: continuation returned unrelated incomplete content | Passed | Did not call the tool in the probe | Honored cap with incomplete status | Not activated for Responses tools |
+
+Direct hosted-tool probes using `mcp` and `sse` with a public test URL returned Fireworks HTTP 500. Do not expose provider-hosted Fireworks tools through the router without a separate security design with explicit allowlists, timeouts, and privacy review.
+
+Direct Fireworks Responses checks:
+
+```bash
+curl -fsS https://api.fireworks.ai/inference/v1/responses \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"accounts/fireworks/models/kimi-k2p7-code","input":"Reply OK only.","max_output_tokens":64,"store":false}'
+
+curl -fsS https://api.fireworks.ai/inference/v1/responses \
+  -H "User-Agent: smart-llmrouter-validation" \
+  -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"accounts/fireworks/models/kimi-k2p7-code","input":"Use the weather tool for San Francisco, CA.","max_output_tokens":512,"store":false,"tool_choice":"auto","tools":[{"type":"function","name":"get_weather","description":"Get current weather for a city","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"],"additionalProperties":false}}]}'
+```
+
+Router-level Fireworks Responses smokes on 2026-06-28 passed for `fireworks-responses-smoke` text and `fireworks-responses-tool-smoke` function-tool requests, tool-result continuation, downstream SSE synthesis, usage fields, and `store:false` passthrough on tool requests. Negative router smokes for `mcp` and `sse` tools returned `400 provider-hosted-tools-forbidden` before upstream.
 
 For Crusoe VLM candidates, add an image smoke before broad routing:
 

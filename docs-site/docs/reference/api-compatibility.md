@@ -113,6 +113,10 @@ Tool requests only route to upstream targets that explicitly advertise support f
 
 Tool-bearing requests bypass response caching because tool results depend on external shell, filesystem, browser, or client tool state.
 
+OpenAI Responses provider-hosted tools such as Fireworks-documented `mcp` and `sse` tools are not the same as client-executed function tools. By default, the router rejects caller-supplied `mcp` and `sse` tool entries with `400 provider-hosted-tools-forbidden` before any upstream call. Deployments should expose provider-hosted tools only after a separate security design covers allowlisted hosts, timeouts, network egress, and data-retention expectations.
+
+Some OpenAI Responses providers store response state by default. Targets can set `force_store_false: true` so the router sends `store:false` upstream even if the caller sent `store:true`. This is useful for privacy-sensitive deployments that do not rely on provider-side `previous_response_id` continuation.
+
 ## Reasoning And Thinking
 
 The router detects explicit reasoning requests in all supported caller dialects:

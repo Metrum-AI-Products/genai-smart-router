@@ -6464,6 +6464,154 @@ func TestResponsesToolPassthroughRequiresExplicitTargetSupport(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesRejectsProviderHostedToolsBeforeUpstream(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "responses",
+		Model:       "responses-tool-model",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{
+			name: "mcp",
+			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"mcp","server_url":"https://example.com/mcp"}]}`,
+		},
+		{
+			name: "web_search_preview",
+			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"web_search_preview"}]}`,
+		},
+		{
+			name: "file_search",
+			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"file_search","vector_store_ids":["vs_123"]}]}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), `"type":"provider-hosted-tools-forbidden"`) {
+				t.Fatalf("body=%s, want provider-hosted-tools-forbidden", rr.Body.String())
+			}
+			if upstreamCalls != 0 {
+				t.Fatal("upstream called for provider-hosted Responses tool")
+			}
+		})
+	}
+}
+
+func TestOpenAIResponsesForceStoreFalseOverridesCallerStore(t *testing.T) {
+	var gotStore any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotStore = body["store"]
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_store_false",
+			"object": "response",
+			"status": "completed",
+			"model":  body["model"],
+			"output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "responses",
+		Model:           "responses-tool-model",
+		ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+		ForceStoreFalse: true,
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"responses-tools","input":"hi","store":true,"tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotStore != false {
+		t.Fatalf("upstream store=%#v, want false", gotStore)
+	}
+}
+
+func TestOpenAIResponsesForceStoreFalseAppliesToTranslatedText(t *testing.T) {
+	var gotStore any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotStore = body["store"]
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_store_false_text",
+			"object": "response",
+			"status": "completed",
+			"model":  body["model"],
+			"output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-text"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "responses",
+		Model:           "responses-text-model",
+		ForceStoreFalse: true,
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-text")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"responses-text","input":"hi","store":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotStore != false {
+		t.Fatalf("upstream store=%#v, want false", gotStore)
+	}
+}
+
 func TestResponsesToolPassthroughCanUseOpenRouterResponsesTarget(t *testing.T) {
 	var gotPath, gotAuth, gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -493,6 +493,40 @@ providers:
           supported: true
           mode: opt_in
           control: effort_enum
+  fireworks_responses:
+    base_url: https://api.fireworks.ai/inference/v1
+    dialect: openai-responses
+    auth_scheme: bearer
+    api_key: ${FIREWORKS_API_KEY}
+    api_key_env: FIREWORKS_API_KEY
+    key_id: fireworks-responses-default
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      kimi-k2p7-code:
+        model: accounts/fireworks/models/kimi-k2p7-code
+        tier: coding
+        input_price_per_million_usd: 0.95
+        output_price_per_million_usd: 4.00
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://docs.fireworks.ai/serverless/pricing
+        pricing_updated_at: '2026-06-28'
+        pricing_notes: Fireworks Serverless pricing lists Kimi K2.7 Code standard
+          tier at $0.95/M input, $0.19/M cached input, and $4.00/M output. Direct
+          Fireworks OpenAI Responses smokes passed on 2026-06-28 for text with
+          store=false, function tools, function-call-output continuation, streaming
+          function tools, max_output_tokens=1 cap behavior, and max_tool_calls=1.
+          Fireworks Responses documentation says stored responses are the default;
+          this catalog entry sets force_store_false so router targets override caller
+          store=true before upstream. Provider-hosted MCP/SSE tools are rejected by
+          the router before upstream and are not enabled by this metadata.
+        tool_support:
+          openai_responses:
+          - function
+        force_store_false: true
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
@@ -1641,6 +1675,10 @@ models:
       model_ref: openrouter-minimax-m3
       weight: 1
       tool_only: true
+    - provider: fireworks_responses
+      model_ref: kimi-k2p7-code
+      weight: 2
+      tool_only: true
     - provider: baseten_anthropic
       model_ref: gpt-oss-120b
       weight: 8
@@ -1673,6 +1711,17 @@ models:
     targets:
     - provider: openrouter_responses
       model_ref: openrouter-claude-sonnet-4-6
+      tool_only: true
+  fireworks-responses-smoke:
+    strategy: static
+    targets:
+    - provider: fireworks_responses
+      model_ref: kimi-k2p7-code
+  fireworks-responses-tool-smoke:
+    strategy: static
+    targets:
+    - provider: fireworks_responses
+      model_ref: kimi-k2p7-code
       tool_only: true
   claude-tools-smoke-openrouter:
     strategy: static
@@ -1825,6 +1874,8 @@ callers:
   - baseten-glm52-smoke
   - baseten-gpt-oss-120b-smoke
   - fireworks-gpt-oss-20b-smoke
+  - fireworks-responses-smoke
+  - fireworks-responses-tool-smoke
   - baseten-gpt-oss-120b-claude-smoke
   - crusoe-smoke
   - crusoe-gemma-smoke

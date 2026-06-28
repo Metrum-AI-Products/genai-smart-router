@@ -1113,6 +1113,11 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		t.Fatalf("example config missing Baseten GPT OSS 120B catalog entry")
 	}
 	assertOpenAIChatProvider(t, cfg.Provider["crusoe"], "llama-3-3-70b-instruct", "meta-llama/Llama-3.3-70B-Instruct")
+	assertResponsesCompatibleProvider(t, cfg.Provider["fireworks_responses"], "kimi-k2p7-code", "accounts/fireworks/models/kimi-k2p7-code")
+	if got := cfg.Provider["fireworks_responses"].Models["kimi-k2p7-code"]; got.InputPricePerMillionUSD != 0.95 || got.OutputPricePerMillionUSD != 4.00 ||
+		!stringSliceContains(got.ToolSupport.OpenAIResponses, "function") || !got.ForceStoreFalse {
+		t.Fatalf("example config Fireworks Responses Kimi catalog entry=%#v", got)
+	}
 	if got := cfg.Provider["crusoe"].Models["gpt-oss-120b"]; got.Model != "openai/gpt-oss-120b" || got.InputPricePerMillionUSD != 0.05 || got.OutputPricePerMillionUSD != 0.2 {
 		t.Fatalf("example config Crusoe GPT OSS catalog entry=%#v", got)
 	}
@@ -1148,6 +1153,24 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		if name == "agent-tools-smoke-openrouter" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "openrouter_responses" || group.Targets[0].Model != "anthropic/claude-sonnet-4.6" {
 				t.Fatalf("example config agent-tools-smoke-openrouter=%#v, want static OpenRouter Claude Sonnet responses", group)
+			}
+			continue
+		}
+		if name == "fireworks-responses-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "fireworks_responses" || group.Targets[0].Model != "accounts/fireworks/models/kimi-k2p7-code" {
+				t.Fatalf("example config fireworks-responses-smoke=%#v, want static Fireworks Kimi Responses target", group)
+			}
+			if group.Targets[0].ToolOnly || !group.Targets[0].ForceStoreFalse || !stringSliceContains(group.Targets[0].ToolSupport.OpenAIResponses, "function") {
+				t.Fatalf("example config fireworks-responses-smoke missing text-capable force_store_false function metadata: %#v", group.Targets[0])
+			}
+			continue
+		}
+		if name == "fireworks-responses-tool-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "fireworks_responses" || group.Targets[0].Model != "accounts/fireworks/models/kimi-k2p7-code" {
+				t.Fatalf("example config fireworks-responses-tool-smoke=%#v, want static Fireworks Kimi Responses target", group)
+			}
+			if !group.Targets[0].ToolOnly || !group.Targets[0].ForceStoreFalse || !stringSliceContains(group.Targets[0].ToolSupport.OpenAIResponses, "function") {
+				t.Fatalf("example config fireworks-responses-tool-smoke missing tool-only force_store_false function metadata: %#v", group.Targets[0])
 			}
 			continue
 		}
@@ -1298,7 +1321,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -1395,6 +1418,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 	normalTargets := 0
 	codexToolTarget := false
 	codexOpenRouterToolTarget := false
+	codexFireworksToolTarget := false
 	claudeBasetenToolTarget := false
 	claudeMiniMaxToolTarget := false
 	claudeKimiToolTarget := false
@@ -1410,6 +1434,9 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			}
 			if target.Provider == "openrouter_responses" && target.Model == "anthropic/claude-sonnet-4.6" {
 				codexOpenRouterToolTarget = true
+			}
+			if target.Provider == "fireworks_responses" && target.Model == "accounts/fireworks/models/kimi-k2p7-code" && target.ForceStoreFalse {
+				codexFireworksToolTarget = true
 			}
 			if target.Provider == "minimax_anthropic" && target.Model == "MiniMax-M3" {
 				claudeMiniMaxToolTarget = true
@@ -1464,8 +1491,8 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			fireworksGPTOSS20BWeight += target.Weight
 		}
 	}
-	if !codexToolTarget || !codexOpenRouterToolTarget || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
-		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
+	if !codexToolTarget || !codexOpenRouterToolTarget || (name == "big-coder" && !codexFireworksToolTarget) || !claudeMiniMaxToolTarget || !claudeBasetenToolTarget || !claudeKimiToolTarget || !claudeOpenRouterToolTarget || !claudeGemmaToolTarget {
+		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter=%v codex_fireworks=%v minimax=%v baseten=%v kimi=%v claude_openrouter=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterToolTarget, codexFireworksToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
 		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, fireworksGPTOSS20B, targets int
