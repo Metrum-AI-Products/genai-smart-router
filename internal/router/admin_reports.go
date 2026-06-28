@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-//go:embed all:admindist
+//go:embed admindist/index.html admindist/static
 var embeddedAdminReports embed.FS
 
 type adminReportFilters struct {

@@ -997,7 +997,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	uiRR := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(uiRR, ui)
 	uiBody := uiRR.Body.String()
-	for _, want := range []string{"Metrum Smart Router Admin Reports", "static/metrum_logo_white_new.png", `id="themeToggle"`, `name="caller_id"`, `data-tab="dynamic-signals"`, `data-tab="dynamic-score-buckets"`, `data-tab="dynamic-thresholds"`, `data-tab="max-token-buckets"`, `data-tab="input-token-buckets"`, `data-tab="admission-reasons"`, `data-tab="provider-catalog-status"`, `data-tab="retention-status"`} {
+	for _, want := range []string{"Metrum Smart Router Admin Reports", `id="root"`, `type="module"`, "./static/assets/admin-", ".js", ".css"} {
 		if !strings.Contains(uiBody, want) {
 			t.Fatalf("ui missing %q: status=%d body=%s", want, uiRR.Code, uiBody)
 		}

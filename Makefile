@@ -16,7 +16,7 @@ DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
 
-.PHONY: test secret-check docs-qa docs-build docs-dev docs-clean build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test secret-check docs-qa docs-build docs-dev docs-clean admin-build build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test: secret-check
 	go test ./...
@@ -42,7 +42,12 @@ docs-clean:
 	rm -rf $(DOCS_SITE_DIR)/build $(DOCS_SITE_DIR)/.docusaurus
 	find $(DOCS_EMBED_DIR) -mindepth 1 ! -name .keep -exec rm -rf {} +
 
-build: docs-build
+admin-build:
+	rm -rf internal/router/admindist/static/assets
+	npm ci --prefix internal/router/admindist/web
+	npm run build --prefix internal/router/admindist/web
+
+build: docs-build admin-build
 	go build -ldflags "$(LDFLAGS)" -o router ./cmd/router
 	go build -ldflags "$(LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
@@ -52,7 +57,7 @@ build-go-only:
 	go build -ldflags "$(LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
 
-build-all: docs-build
+build-all: docs-build admin-build
 	mkdir -p $(DIST_DIR)/build/linux-amd64 $(DIST_DIR)/build/linux-arm64
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/build/linux-amd64/router ./cmd/router
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/build/linux-amd64/router-token-gen ./cmd/router-token-gen
@@ -63,7 +68,7 @@ build-all: docs-build
 
 package: package-all
 
-package-one: docs-build package-one-no-docs
+package-one: docs-build admin-build package-one-no-docs
 
 package-one-no-docs:
 	rm -rf $(DIST_DIR)/pkg/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)
@@ -88,18 +93,18 @@ package-one-no-docs:
 	tar --owner=0 --group=0 --numeric-owner -C $(DIST_DIR)/pkg -czf $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz $(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH)
 	python3 scripts/validate_package_contents.py --allowlist $(PACKAGE_DOC_ALLOWLIST) $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz
 
-package-all: docs-build
+package-all: docs-build admin-build
 	$(MAKE) package-one-no-docs GOOS=linux GOARCH=amd64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 	$(MAKE) package-one-no-docs GOOS=linux GOARCH=arm64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 
-docker-image: docs-build docker-image-no-docs
+docker-image: docs-build admin-build docker-image-no-docs
 
 docker-image-no-docs:
 	$(DOCKER_BUILDX) build --platform $(DOCKER_PLATFORM) --load --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 package-docker: package-docker-all
 
-package-docker-one: docs-build package-docker-one-no-docs
+package-docker-one: docs-build admin-build package-docker-one-no-docs
 
 package-docker-one-no-docs:
 	rm -rf $(DIST_DIR)/docker/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)
@@ -126,7 +131,7 @@ package-docker-one-no-docs:
 	tar --owner=0 --group=0 --numeric-owner -C $(DIST_DIR)/docker -czf $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH).tar.gz $(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH)
 	python3 scripts/validate_package_contents.py --allowlist $(PACKAGE_DOC_ALLOWLIST) $(DIST_DIR)/$(PKG_NAME)-$(VERSION)-docker-$(GOOS)-$(GOARCH).tar.gz
 
-package-docker-all: docs-build
+package-docker-all: docs-build admin-build
 	$(MAKE) package-docker-one-no-docs GOOS=linux GOARCH=amd64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 	$(MAKE) package-docker-one-no-docs GOOS=linux GOARCH=arm64 VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE)
 
