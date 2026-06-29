@@ -169,6 +169,18 @@ Common endpoints:
 
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
 
+Report APIs also return `pagination` metadata. Raw request and security-event endpoints use cursor pagination with `limit`, `cursor`, `sort`, and `direction`:
+
+```text
+/admin/reports/api/requests?since=24h&limit=50&client=codex-cli&resolved_group=default&sort=timeUtc&direction=desc
+/admin/reports/api/requests?since=24h&limit=50&cursor=<next_cursor>
+/admin/reports/api/security/events?since=24h&limit=50&sort=timeUtc&direction=desc
+```
+
+Cursor-paged metadata includes `mode: "cursor"`, `returned`, `total_count`, `has_more`, `next_cursor` when present, `sort`, and `direction`. Request sort keys are `timeUtc`, `costUsd`, `latencyMs`, `status`, and `requestId`; security-event sort keys are `timeUtc`, `status`, `outcome`, `surface`, and `reason`. Cursors are opaque signed page positions; malformed, tampered, stale, or sort-mismatched cursors return `400 invalid-report-filter`.
+
+Aggregate report endpoints remain top-N summaries when full aggregate pagination would be expensive. Their metadata uses `mode: "top_n"`, `total_count: null`, `has_more`, and a note explaining that rows are ranked by the selected report's sort. Use aggregate reports to find high-volume users, keys, providers, clients, or shaping buckets, then use the cursor-paged request or security endpoints with matching filters for row-by-row review.
+
 Savings reports use stored request-time actual cost fields for actual spend. Only the hypothetical baseline cost is calculated at report time from stored input/output token counts and selected baseline prices. Built-in baseline prices are source-dated in `server.admin_reports.baselines`; revalidate provider pricing before using savings figures in contractual or customer-facing claims. Custom browser-session baselines can be supplied with `baseline=custom`, `baseline_input_price_per_million_usd`, and `baseline_output_price_per_million_usd`.
 
 Anomaly reports are deterministic operational triage views rather than machine-learning anomaly detection. The built-in rules group errors, fallbacks, multi-attempt requests, slow requests, expensive requests, quota warning/reject states, and abnormal key states such as disabled, revoked, expired, or suspended; normal active key state is not anomalous.

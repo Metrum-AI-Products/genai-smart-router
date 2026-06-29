@@ -93,6 +93,20 @@ Browser report APIs return chart descriptors with stable IDs, axis labels, units
 
 The browser shell includes shared usability controls for report tabs: selected tab/search state in the URL, a two-row header with always-visible `Since`, Markdown export, mobile `Sections`, and an accessible `Filters` disclosure for global investigation filters. Global filters cover caller ID, caller user, public token ID, caller IP, project, environment, requested model, resolved group, provider, target model, dialect, and client, and they persist while switching tabs. Baseline, status, cache state, sort, direction, and traffic-shaping bucket/scope are exposed through per-tab filter panels so each report shows only relevant controls. Row limit is controlled by a `Rows` select in the table toolbar and remains the URL/API `limit` parameter; the adjacent page-size select controls only how many returned rows are visible client-side. `Reset filters` clears only the active tab's local filters and never clears globals. The shell also includes safe-field search, sortable table headers, manual refresh, copy-link, copy-field buttons, request-ID drilldown, and CSV export of visible table columns. Tables use explicit per-tab column schemas with stable labels and units; CSV export follows the same visible columns and neutralizes spreadsheet formula-leading values. Markdown export escapes raw HTML and active Markdown table cell syntax. Do not expose duplicate compatibility aliases such as both `tokens` and `totalTokens` when they carry the same total-token value. Prefer `Input tokens`, `Output tokens`, `Image tokens`, and `Total tokens` labels, and label cost fields as input/image/output/total/baseline/savings/upstream-billed cost when those fields are present. Smoke these controls after deployment with an authorized browser-admin user, then verify ordinary caller tokens still receive `403 reports-forbidden`.
 
+Admin report APIs include a `pagination` object. Raw request and security-event APIs use server-side cursor pagination with a stable deterministic order and filtered `total_count`:
+
+```bash
+curl -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/requests?since=24h&limit=50&sort=timeUtc&direction=desc"
+
+curl -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/requests?since=24h&limit=50&cursor=<next_cursor>"
+```
+
+The request APIs support `limit`, `cursor`, `sort`, and `direction`; request sort keys are `timeUtc`, `costUsd`, `latencyMs`, `status`, and `requestId`. Security-event sort keys are `timeUtc`, `status`, `outcome`, `surface`, and `reason`. Cursors are opaque signed values bound to the endpoint, sort, and direction. Malformed, tampered, or mismatched cursors return `400 invalid-report-filter`. Cursors are process-local operational tokens and should be treated as short-lived page positions, not durable bookmarks. Domain scoping is applied before counting, ordering, and page selection, so the next page cannot cross into another Casbin domain.
+
+Aggregate reports remain top-N summaries when full aggregate pagination would require expensive in-memory regrouping. Their response metadata uses `mode: "top_n"`, `total_count: null`, `has_more`, and a note that describes the ranking criterion. Treat search and sort in the browser as operating over the returned top-N rows for those aggregate tabs. Markdown export and browser CSV export are bounded current-result exports; use CLI reports or a future bounded full-export workflow for full historical exports.
+
 Report APIs are domain-scoped unless the subject has an explicit `*` Casbin policy domain. A domain-scoped admin sees usage rows, request lists, request details, Markdown export, and security events for its own project/environment only. Use a separate deployment-global admin subject for cross-project incident response.
 
 For local frontend regression coverage, run:
@@ -137,6 +151,8 @@ curl -i -u admin:<password> \
 ```
 
 Expected: `200` JSON with safe access-event rows for a subject authorized for `admin:security_reports`. A Basic/OIDC subject that only has `admin:reports` must receive `403 reports-forbidden`.
+
+Pagination smoke: call `/admin/reports/api/requests?since=24h&limit=50`, confirm `pagination.mode` is `cursor`, `returned` is at most 50, and `next_cursor` appears when `has_more` is true. Call the same URL with `cursor=<next_cursor>` and confirm no duplicated request IDs. Repeat with a filter such as `caller_user`, `client`, or `resolved_group`. For aggregate tabs such as `/admin/reports/api/usage-by-key?since=24h&limit=50`, confirm `pagination.mode` is `top_n`.
 
 ## Decision Telemetry
 

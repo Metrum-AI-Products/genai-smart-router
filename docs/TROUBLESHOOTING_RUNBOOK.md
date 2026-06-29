@@ -35,6 +35,15 @@ Use `X-Request-Id` to inspect relational usage tables:
 
 Diagnostic tables must not store raw prompts, raw image payloads, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
 
+For incident windows with many requests, page the admin request API instead of asking the browser to load the whole result set:
+
+```bash
+rtk curl -u admin:<password> \
+  "https://llm-api-engg.metrum.ai/admin/reports/api/requests?since=24h&limit=50&client=codex-cli&sort=timeUtc&direction=desc"
+```
+
+Use the returned `pagination.next_cursor` for the next page. The cursor is opaque and bound to the endpoint, sort, and direction; a malformed or stale cursor returns `400 invalid-report-filter`. Domain-scoped admins continue to see only their project/environment on every page. Aggregate tabs such as usage by key or provider/model are top-N summaries and should be used to identify dimensions before drilling into the cursor-paged request or security-event APIs.
+
 ## Common Cases
 
 ### `no-eligible-target`

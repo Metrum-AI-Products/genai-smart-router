@@ -1649,6 +1649,253 @@ func TestAdminAnomalyKeysTreatActiveKeyStateAsNormal(t *testing.T) {
 	}
 }
 
+func TestAdminReportRequestCursorPagination(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	for i, id := range []string{"req-a", "req-b", "req-c", "req-d", "req-e"} {
+		svc.usage.Emit(logRecord{
+			TS:                base.Add(time.Duration(i/2) * time.Minute).Format(time.RFC3339),
+			RequestID:         id,
+			CallerID:          "alice",
+			CallerUser:        "alice",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           "rtr_local_" + strconv.Itoa(i),
+			Client:            "codex-cli",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-model",
+			TargetDialect:     "openai-chat",
+			Cache:             "miss",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         int64(100 + i),
+			Usage:             Usage{InputTokens: 10 + i, OutputTokens: 2, TotalTokens: 12 + i},
+			TotalCostUSD:      float64(i + 1),
+			QuotaState:        "ok",
+			KeyState:          "ok",
+		})
+	}
+	svc.usage.Emit(logRecord{
+		TS:                base.Add(3 * time.Minute).Format(time.RFC3339),
+		RequestID:         "req-other-domain",
+		CallerID:          "mallory",
+		CallerProject:     "other",
+		CallerEnvironment: "prod",
+		TokenID:           "rtr_other",
+		RequestedModel:    "default",
+		ResolvedGroup:     "default",
+		TargetProvider:    "mock",
+		TargetModel:       "mock-model",
+		TargetDialect:     "openai-chat",
+		Cache:             "miss",
+		Status:            200,
+		Attempts:          1,
+		QuotaState:        "ok",
+		KeyState:          "ok",
+	})
+
+	first := adminReportJSON(t, svc, "/admin/reports/api/requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=timeUtc&direction=desc")
+	firstPage := first["pagination"].(map[string]any)
+	if firstPage["mode"] != "cursor" || firstPage["returned"].(float64) != 2 || firstPage["total_count"].(float64) != 5 || firstPage["has_more"] != true {
+		t.Fatalf("unexpected first page metadata: %#v", firstPage)
+	}
+	firstRequests := first["requests"].([]any)
+	if got := requestIDsFromAdminRows(firstRequests); strings.Join(got, ",") != "req-e,req-d" {
+		t.Fatalf("first page order=%v", got)
+	}
+	nextCursor := firstPage["next_cursor"].(string)
+	if nextCursor == "" {
+		t.Fatalf("missing next cursor: %#v", firstPage)
+	}
+
+	second := adminReportJSON(t, svc, "/admin/reports/api/requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=timeUtc&direction=desc&cursor="+url.QueryEscape(nextCursor))
+	secondRequests := second["requests"].([]any)
+	if got := requestIDsFromAdminRows(secondRequests); strings.Join(got, ",") != "req-c,req-b" {
+		t.Fatalf("second page order=%v body=%#v", got, second)
+	}
+	if strings.Contains(fmt.Sprint(second), "req-other-domain") {
+		t.Fatalf("domain-scoped second page leaked other domain row: %#v", second)
+	}
+
+	asc := adminReportJSON(t, svc, "/admin/reports/api/requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=timeUtc&direction=asc")
+	if got := requestIDsFromAdminRows(asc["requests"].([]any)); strings.Join(got, ",") != "req-a,req-b" {
+		t.Fatalf("asc page order=%v", got)
+	}
+
+	bad := httptest.NewRequest(http.MethodGet, "/admin/reports/api/requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&cursor=tampered", nil)
+	bad.SetBasicAuth("admin", "yell-yell-yum")
+	badRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(badRR, bad)
+	if badRR.Code != http.StatusBadRequest || !strings.Contains(badRR.Body.String(), "invalid-report-filter") {
+		t.Fatalf("tampered cursor status=%d body=%s", badRR.Code, badRR.Body.String())
+	}
+}
+
+func TestAdminReportExpensiveRequestsAndTopNMetadata(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	for i, cost := range []float64{1, 4, 9} {
+		svc.usage.Emit(logRecord{
+			TS:                base.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
+			RequestID:         fmt.Sprintf("cost-req-%d", i),
+			CallerID:          "alice",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           fmt.Sprintf("rtr_cost_%d", i),
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-model",
+			TargetDialect:     "openai-chat",
+			Cache:             "miss",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         int64(100 + i),
+			Usage:             Usage{InputTokens: 10, OutputTokens: 2, TotalTokens: 12},
+			TotalCostUSD:      cost,
+			QuotaState:        "ok",
+			KeyState:          "ok",
+		})
+	}
+
+	expensive := adminReportJSON(t, svc, "/admin/reports/api/expensive-requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=costUsd&direction=desc")
+	page := expensive["pagination"].(map[string]any)
+	if page["mode"] != "cursor" || page["sort"] != "costUsd" || page["has_more"] != true || page["total_count"].(float64) != 3 {
+		t.Fatalf("expensive pagination metadata=%#v", page)
+	}
+	if got := requestIDsFromAdminRows(expensive["requests"].([]any)); strings.Join(got, ",") != "cost-req-2,cost-req-1" {
+		t.Fatalf("expensive order=%v", got)
+	}
+
+	carriedSort := adminReportJSON(t, svc, "/admin/reports/api/expensive-requests?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=outcome&direction=desc")
+	carriedSortPage := carriedSort["pagination"].(map[string]any)
+	if carriedSortPage["sort"] != "costUsd" {
+		t.Fatalf("carried-over sort did not fall back to expensive default: %#v", carriedSortPage)
+	}
+
+	topN := adminReportJSON(t, svc, "/admin/reports/api/usage-by-key?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=1")
+	topNPage := topN["pagination"].(map[string]any)
+	if topNPage["mode"] != "top_n" || topNPage["returned"].(float64) != 1 || topNPage["total_count"] != nil || topNPage["has_more"] != true || topNPage["note"] == "" {
+		t.Fatalf("top-n pagination metadata=%#v", topNPage)
+	}
+
+	topNCarriedSort := adminReportJSON(t, svc, "/admin/reports/api/usage-by-key?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=1&sort=requestId")
+	topNCarriedSortPage := topNCarriedSort["pagination"].(map[string]any)
+	if topNCarriedSortPage["mode"] != "top_n" {
+		t.Fatalf("top-N carried-over sort should still load report: %#v", topNCarriedSortPage)
+	}
+}
+
+func TestAdminSecurityReportCursorPagination(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, true)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	for i, id := range []string{"sec-a", "sec-b", "sec-c"} {
+		svc.usage.EmitSecurityAccessEvent(securityAccessEvent{
+			TS:                base.Add(time.Duration(i) * time.Second),
+			RequestID:         id,
+			EventType:         "api_auth_failed",
+			Surface:           "v1_chat_completions",
+			HTTPMethod:        http.MethodPost,
+			PathTemplate:      "/v1/chat/completions",
+			StatusCode:        http.StatusForbidden,
+			Outcome:           "forbidden",
+			ReasonCode:        "reports-forbidden",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			IPAddress:         "203.0.113." + strconv.Itoa(10+i),
+		})
+	}
+
+	first := adminReportJSON(t, svc, "/admin/reports/api/security/events?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=timeUtc&direction=desc")
+	page := first["pagination"].(map[string]any)
+	if page["mode"] != "cursor" || page["returned"].(float64) != 2 || page["total_count"].(float64) != 3 || page["has_more"] != true {
+		t.Fatalf("security page metadata=%#v", page)
+	}
+	rows := first["rows"].([]any)
+	if got := securityRequestIDsFromAdminRows(rows); strings.Join(got, ",") != "sec-c,sec-b" {
+		t.Fatalf("security order=%v", got)
+	}
+	carriedSort := adminReportJSON(t, svc, "/admin/reports/api/security/events?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=requestId&direction=desc")
+	carriedSortPage := carriedSort["pagination"].(map[string]any)
+	if carriedSortPage["sort"] != "timeUtc" {
+		t.Fatalf("carried-over request sort did not fall back to security default: %#v", carriedSortPage)
+	}
+	next := page["next_cursor"].(string)
+	second := adminReportJSON(t, svc, "/admin/reports/api/security/events?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=timeUtc&direction=desc&cursor="+url.QueryEscape(next))
+	if got := securityRequestIDsFromAdminRows(second["rows"].([]any)); strings.Join(got, ",") != "sec-a" {
+		t.Fatalf("security second page order=%v", got)
+	}
+}
+
+func newAdminReportPaginationTestService(t *testing.T, security bool) *Service {
+	t.Helper()
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST",
+			Subject:         "basic:admin",
+			Domain:          "local/test",
+		}},
+	}
+	policy := []string{"p, basic:admin, local/test, admin:reports, read|export|drilldown"}
+	if security {
+		policy = append(policy, "p, basic:admin, local/test, admin:security_reports, read|export")
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: policy}
+	cfg.Server.AdminReports = AdminReportsConfig{
+		Enabled:      true,
+		DefaultSince: "24h",
+		MaxRange:     "31d",
+		MaxRows:      100,
+		Security:     AdminSecurityReportsConfig{Enabled: security, RetentionDays: 30},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
+
+func adminReportJSON(t *testing.T, svc *Service, path string) map[string]any {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("%s status=%d body=%s", path, rr.Code, rr.Body.String())
+	}
+	return mustJSONMap(t, rr.Body.String())
+}
+
+func requestIDsFromAdminRows(rows []any) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.(map[string]any)["requestId"].(string))
+	}
+	return out
+}
+
+func securityRequestIDsFromAdminRows(rows []any) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.(map[string]any)["requestId"].(string))
+	}
+	return out
+}
+
 func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {
 	hash := mustBcryptHash(t, "yell-yell-yum")
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)

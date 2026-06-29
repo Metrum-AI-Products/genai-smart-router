@@ -276,6 +276,7 @@ type usageRow struct {
 }
 
 type securityAccessEvent struct {
+	ID                  uint
 	TS                  time.Time
 	RequestID           string
 	EventType           string
@@ -2110,6 +2111,7 @@ func securityAccessEventFromRecord(record securityAccessEventRecord) (securityAc
 		return securityAccessEvent{}, err
 	}
 	return securityAccessEvent{
+		ID:                  record.ID,
 		TS:                  ts,
 		RequestID:           record.RequestID,
 		EventType:           record.EventType,
@@ -3781,7 +3783,66 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 
 func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	var records []usageRecord
-	q := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
+	q := s.usageRowsQuery(opts)
+	if err := q.Order("ts ASC, request_id ASC").Find(&records).Error; err != nil {
+		return nil, err
+	}
+	out, err := usageRowsFromRecords(records)
+	if err != nil {
+		return nil, err
+	}
+	s.loadUsageReportBuckets(out)
+	return out, nil
+}
+
+func (s *usageStore) adminUsageRowsPage(opts adminUsagePageOptions) (adminUsagePage, error) {
+	base := s.usageRowsQuery(opts.UsageReportOptions)
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return adminUsagePage{}, err
+	}
+	q := s.usageRowsQuery(opts.UsageReportOptions)
+	var err error
+	if opts.Cursor != nil {
+		q, err = applyUsagePageCursor(q, opts.Sort, opts.Direction, opts.Cursor)
+		if err != nil {
+			return adminUsagePage{}, err
+		}
+	}
+	var records []usageRecord
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	if err := q.Order(usagePageOrder(opts.Sort, opts.Direction)).Limit(limit + 1).Find(&records).Error; err != nil {
+		return adminUsagePage{}, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	rows, err := usageRowsFromRecords(records)
+	if err != nil {
+		return adminUsagePage{}, err
+	}
+	s.loadUsageReportBuckets(rows)
+	return adminUsagePage{Rows: rows, TotalCount: total, HasMore: hasMore}, nil
+}
+
+func usageRowsFromRecords(records []usageRecord) ([]usageRow, error) {
+	out := make([]usageRow, 0, len(records))
+	for _, record := range records {
+		row, err := rowFromUsageRecord(record)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+func (s *usageStore) usageRowsQuery(opts UsageReportOptions) *gorm.DB {
+	q := s.db.Model(&usageRecord{}).Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
 	if opts.TokenID != "" {
 		q = q.Where("token_id = ?", opts.TokenID)
 	}
@@ -3839,19 +3900,70 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if opts.TrafficShapeScope != "" {
 		q = q.Where("traffic_shape_scope = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE scope = ?)", opts.TrafficShapeScope, opts.TrafficShapeScope)
 	}
-	if err := q.Order("ts ASC, request_id ASC").Find(&records).Error; err != nil {
-		return nil, err
+	return q
+}
+
+func usagePageOrder(sortKey, direction string) string {
+	dir := "DESC"
+	if direction == "asc" {
+		dir = "ASC"
 	}
-	out := make([]usageRow, 0, len(records))
-	for _, record := range records {
-		row, err := rowFromUsageRecord(record)
-		if err != nil {
-			return nil, err
+	switch sortKey {
+	case "costUsd":
+		return "total_cost_usd " + dir + ", ts " + dir + ", request_id " + dir
+	case "latencyMs":
+		return "latency_ms " + dir + ", ts " + dir + ", request_id " + dir
+	case "status":
+		return "status " + dir + ", ts " + dir + ", request_id " + dir
+	case "requestId":
+		return "request_id " + dir
+	default:
+		return "ts " + dir + ", request_id " + dir
+	}
+}
+
+func applyUsagePageCursor(q *gorm.DB, sortKey, direction string, cursor *adminReportCursorPayload) (*gorm.DB, error) {
+	op := "<"
+	if direction == "asc" {
+		op = ">"
+	}
+	switch sortKey {
+	case "costUsd":
+		if len(cursor.Values) != 3 {
+			return nil, errors.New("invalid cursor")
 		}
-		out = append(out, row)
+		value, err := strconv.ParseFloat(cursor.Values[0], 64)
+		if err != nil {
+			return nil, errors.New("invalid cursor")
+		}
+		ts, requestID := cursor.Values[1], cursor.Values[2]
+		return q.Where("(total_cost_usd "+op+" ?) OR (total_cost_usd = ? AND (ts "+op+" ? OR (ts = ? AND request_id "+op+" ?)))", value, value, ts, ts, requestID), nil
+	case "latencyMs", "status":
+		if len(cursor.Values) != 3 {
+			return nil, errors.New("invalid cursor")
+		}
+		value, err := strconv.ParseInt(cursor.Values[0], 10, 64)
+		if err != nil {
+			return nil, errors.New("invalid cursor")
+		}
+		column := "latency_ms"
+		if sortKey == "status" {
+			column = "status"
+		}
+		ts, requestID := cursor.Values[1], cursor.Values[2]
+		return q.Where("("+column+" "+op+" ?) OR ("+column+" = ? AND (ts "+op+" ? OR (ts = ? AND request_id "+op+" ?)))", value, value, ts, ts, requestID), nil
+	case "requestId":
+		if len(cursor.Values) != 1 {
+			return nil, errors.New("invalid cursor")
+		}
+		return q.Where("request_id "+op+" ?", cursor.Values[0]), nil
+	default:
+		if len(cursor.Values) != 2 {
+			return nil, errors.New("invalid cursor")
+		}
+		ts, requestID := cursor.Values[0], cursor.Values[1]
+		return q.Where("(ts "+op+" ?) OR (ts = ? AND request_id "+op+" ?)", ts, ts, requestID), nil
 	}
-	s.loadUsageReportBuckets(out)
-	return out, nil
 }
 
 func (s *usageStore) upstreamShapeEventsForRows(rows []usageRow, opts UsageReportOptions) ([]upstreamShapeJoinedEvent, error) {
@@ -4059,7 +4171,52 @@ func (s *usageStore) PurgeSecurityAccessEventsBefore(cutoff time.Time) {
 
 func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securityAccessEvent, error) {
 	var records []securityAccessEventRecord
-	q := s.db.Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
+	q := s.securityAccessEventsQuery(opts)
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	if err := q.Order("ts DESC, id DESC").Limit(limit).Find(&records).Error; err != nil {
+		return nil, err
+	}
+	return securityAccessEventsFromRecords(records)
+}
+
+func (s *usageStore) adminSecurityEventsPage(opts adminSecurityPageOptions) (adminSecurityPage, error) {
+	base := s.securityAccessEventsQuery(opts.SecurityReportOptions)
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return adminSecurityPage{}, err
+	}
+	q := s.securityAccessEventsQuery(opts.SecurityReportOptions)
+	var err error
+	if opts.Cursor != nil {
+		q, err = applySecurityPageCursor(q, opts.Sort, opts.Direction, opts.Cursor)
+		if err != nil {
+			return adminSecurityPage{}, err
+		}
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	var records []securityAccessEventRecord
+	if err := q.Order(securityPageOrder(opts.Sort, opts.Direction)).Limit(limit + 1).Find(&records).Error; err != nil {
+		return adminSecurityPage{}, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	events, err := securityAccessEventsFromRecords(records)
+	if err != nil {
+		return adminSecurityPage{}, err
+	}
+	return adminSecurityPage{Events: events, TotalCount: total, HasMore: hasMore}, nil
+}
+
+func (s *usageStore) securityAccessEventsQuery(opts SecurityReportOptions) *gorm.DB {
+	q := s.db.Model(&securityAccessEventRecord{}).Where("ts >= ? AND ts < ?", formatUsageTime(opts.From), formatUsageTime(opts.To))
 	if opts.Outcome != "" {
 		q = q.Where("outcome = ?", opts.Outcome)
 	}
@@ -4093,13 +4250,10 @@ func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securit
 	if opts.Client != "" {
 		q = q.Where("client = ?", opts.Client)
 	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 500
-	}
-	if err := q.Order("ts DESC").Limit(limit).Find(&records).Error; err != nil {
-		return nil, err
-	}
+	return q
+}
+
+func securityAccessEventsFromRecords(records []securityAccessEventRecord) ([]securityAccessEvent, error) {
 	out := make([]securityAccessEvent, 0, len(records))
 	for _, record := range records {
 		row, err := securityAccessEventFromRecord(record)
@@ -4109,6 +4263,63 @@ func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securit
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+func securityPageOrder(sortKey, direction string) string {
+	dir := "DESC"
+	if direction == "asc" {
+		dir = "ASC"
+	}
+	switch sortKey {
+	case "status":
+		return "status_code " + dir + ", ts " + dir + ", id " + dir
+	case "outcome":
+		return "outcome " + dir + ", ts " + dir + ", id " + dir
+	case "surface":
+		return "surface " + dir + ", ts " + dir + ", id " + dir
+	case "reason":
+		return "reason_code " + dir + ", ts " + dir + ", id " + dir
+	default:
+		return "ts " + dir + ", id " + dir
+	}
+}
+
+func applySecurityPageCursor(q *gorm.DB, sortKey, direction string, cursor *adminReportCursorPayload) (*gorm.DB, error) {
+	op := "<"
+	if direction == "asc" {
+		op = ">"
+	}
+	switch sortKey {
+	case "status":
+		if len(cursor.Values) != 3 {
+			return nil, errors.New("invalid cursor")
+		}
+		value, err := strconv.ParseInt(cursor.Values[0], 10, 64)
+		if err != nil {
+			return nil, errors.New("invalid cursor")
+		}
+		ts, id := cursor.Values[1], cursor.Values[2]
+		return q.Where("(status_code "+op+" ?) OR (status_code = ? AND (ts "+op+" ? OR (ts = ? AND id "+op+" ?)))", value, value, ts, ts, id), nil
+	case "outcome", "surface", "reason":
+		if len(cursor.Values) != 3 {
+			return nil, errors.New("invalid cursor")
+		}
+		column := "outcome"
+		if sortKey == "surface" {
+			column = "surface"
+		}
+		if sortKey == "reason" {
+			column = "reason_code"
+		}
+		value, ts, id := cursor.Values[0], cursor.Values[1], cursor.Values[2]
+		return q.Where("("+column+" "+op+" ?) OR ("+column+" = ? AND (ts "+op+" ? OR (ts = ? AND id "+op+" ?)))", value, value, ts, ts, id), nil
+	default:
+		if len(cursor.Values) != 2 {
+			return nil, errors.New("invalid cursor")
+		}
+		ts, id := cursor.Values[0], cursor.Values[1]
+		return q.Where("(ts "+op+" ?) OR (ts = ? AND id "+op+" ?)", ts, ts, id), nil
+	}
 }
 
 func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary, upstreamShapeEvents []upstreamShapeJoinedEvent) string {

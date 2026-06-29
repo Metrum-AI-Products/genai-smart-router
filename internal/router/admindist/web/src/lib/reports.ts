@@ -10,6 +10,20 @@ export type ReportPeriod = {
 
 export type ReportSummary = Record<string, number | string | boolean | null | undefined>;
 
+export type ReportPagination = {
+  limit?: number;
+  returned?: number;
+  total_count?: number | null;
+  has_more?: boolean;
+  next_cursor?: string;
+  prev_cursor?: string;
+  sort?: string;
+  direction?: "asc" | "desc" | string;
+  mode?: "cursor" | "top_n" | string;
+  offset?: number;
+  note?: string;
+};
+
 export type ReportChartPoint = {
   x?: string;
   y?: number;
@@ -66,6 +80,7 @@ export type ReportResponse = {
   baselines?: Array<Record<string, unknown>>;
   byTime?: ReportRow[];
   warnings?: string[];
+  pagination?: ReportPagination;
 };
 
 export type ReportRow = Record<string, unknown>;

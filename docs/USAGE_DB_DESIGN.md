@@ -109,6 +109,14 @@ For cache hits, upstream duration and upstream TPS are absent because no provide
 
 Cost columns are stored as scalar values on each row. Reports must sum stored cost values; they must not recalculate historical cost from current provider catalog pricing.
 
+## Report Pagination Queries
+
+Admin request and security-event APIs page directly from relational tables rather than loading every matching row into memory. Request pages apply the same safe filters and Casbin domain scope as aggregate reports, count the filtered rows, then order by a deterministic key. The default request order is `request_usage.ts DESC, request_usage.request_id DESC`; supported request sorts add a stable tie-breaker, for example `total_cost_usd DESC, ts DESC, request_id DESC` for expensive requests. Security-event pages use `security_access_events.ts DESC, security_access_events.id DESC` by default and can sort by status, outcome, surface, or reason with the same timestamp/id tie-breaker.
+
+Cursor values are signed by the router process and contain only the endpoint, sort, direction, and last-row scalar sort values. They do not contain SQL, raw filters, prompts, tokens, token hashes, provider keys, or full config. A malformed or mismatched cursor fails with `400 invalid-report-filter`. Because the signing key is in memory, cursors are short-lived page positions and may become invalid after a router restart.
+
+Keep indexes aligned with the common filters used before pagination: timestamp, caller user/project/environment, token ID, client, requested model, resolved group, target provider/model, status, and traffic-shaping fields. When adding a new raw/event-like report API, prefer DB-backed cursor pagination with an indexed natural timestamp plus a deterministic unique tie-breaker. Aggregate APIs can stay top-N when a full paginated aggregate would require expensive grouping, but their responses must return `pagination.mode: "top_n"` and a clear note.
+
 ## Durability
 
 Durable across container restarts when volumes are preserved:

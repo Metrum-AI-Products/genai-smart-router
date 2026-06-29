@@ -47,6 +47,7 @@ type Service struct {
 	scripts      map[string]*scriptStrategy
 	observations *dynamicObservationStore
 	shaping      *upstreamShapeManager
+	reportCursor [32]byte
 }
 
 type adminBasicRuntime struct {
@@ -158,6 +159,12 @@ func New(cfg *Config) (*Service, error) {
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
 		shaping:      newUpstreamShapeManager(),
+	}
+	if _, err := rand.Read(s.reportCursor[:]); err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		_ = usage.Close()
+		return nil, fmt.Errorf("generate admin report cursor key: %w", err)
 	}
 	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
 	if err != nil {

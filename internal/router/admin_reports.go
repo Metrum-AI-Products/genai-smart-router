@@ -1,8 +1,12 @@
 package router
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"encoding/csv"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"path"
@@ -21,7 +25,11 @@ type adminReportFilters struct {
 	From time.Time
 	To   time.Time
 	UsageReportOptions
-	Limit int
+	Limit     int
+	Offset    int
+	Sort      string
+	Direction string
+	Cursor    string
 }
 
 type adminReportResponse struct {
@@ -35,6 +43,7 @@ type adminReportResponse struct {
 	ByStatus     []adminReportTableRow `json:"byStatus"`
 	Cache        adminReportCache      `json:"cache"`
 	Requests     []adminReportRequest  `json:"requests"`
+	Pagination   adminReportPagination `json:"pagination"`
 	GeneratedUTC string                `json:"generatedUtc"`
 }
 
@@ -47,6 +56,7 @@ type adminSavingsResponse struct {
 	ByGroup      []adminSavingsRow         `json:"byGroup"`
 	Charts       []adminReportChart        `json:"charts"`
 	Warnings     []string                  `json:"warnings,omitempty"`
+	Pagination   adminReportPagination     `json:"pagination"`
 	GeneratedUTC string                    `json:"generatedUtc"`
 }
 
@@ -58,6 +68,7 @@ type adminScalarReportResponse struct {
 	Rows         []adminScalarReportRow   `json:"rows"`
 	Charts       []adminReportChart       `json:"charts,omitempty"`
 	Requests     []adminReportRequest     `json:"requests,omitempty"`
+	Pagination   adminReportPagination    `json:"pagination"`
 	GeneratedUTC string                   `json:"generatedUtc"`
 }
 
@@ -67,6 +78,7 @@ type adminSecurityReportResponse struct {
 	Summary      adminSecuritySummary    `json:"summary"`
 	Rows         []adminSecurityEventRow `json:"rows"`
 	Charts       []adminReportChart      `json:"charts,omitempty"`
+	Pagination   adminReportPagination   `json:"pagination"`
 	GeneratedUTC string                  `json:"generatedUtc"`
 }
 
@@ -135,6 +147,56 @@ type adminReportVersionResponse struct {
 	GOOS               string `json:"goos"`
 	GOARCH             string `json:"goarch"`
 	LicenseCompileMode string `json:"license_compile_mode"`
+}
+
+type adminReportPagination struct {
+	Limit      int    `json:"limit"`
+	Returned   int    `json:"returned"`
+	TotalCount *int64 `json:"total_count"`
+	HasMore    bool   `json:"has_more"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	PrevCursor string `json:"prev_cursor,omitempty"`
+	Sort       string `json:"sort"`
+	Direction  string `json:"direction"`
+	Mode       string `json:"mode"`
+	Offset     *int   `json:"offset,omitempty"`
+	Note       string `json:"note,omitempty"`
+}
+
+type adminReportCursorPayload struct {
+	Version   int      `json:"v"`
+	Endpoint  string   `json:"e"`
+	Sort      string   `json:"s"`
+	Direction string   `json:"d"`
+	Values    []string `json:"vls"`
+}
+
+type adminUsagePageOptions struct {
+	UsageReportOptions UsageReportOptions
+	Limit              int
+	Sort               string
+	Direction          string
+	Cursor             *adminReportCursorPayload
+}
+
+type adminUsagePage struct {
+	Rows       []usageRow
+	TotalCount int64
+	HasMore    bool
+}
+
+type adminSecurityPageOptions struct {
+	SecurityReportOptions SecurityReportOptions
+	Limit                 int
+	Sort                  string
+	Direction             string
+	Cursor                *adminReportCursorPayload
+}
+
+type adminSecurityPage struct {
+	Events     []securityAccessEvent
+	TotalCount int64
+	HasMore    bool
 }
 
 type adminCatalogSummary struct {
@@ -825,6 +887,10 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if !validateAdminTopNPageParams(w, filters) {
+		return
+	}
+	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "savings")
 	rows, err := s.usage.rows(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
@@ -838,6 +904,10 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if !validateAdminTopNPageParams(w, filters) {
+		return
+	}
+	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 	baseline, ok := s.parseAdminSavingsBaseline(w, r)
 	if !ok {
 		return
@@ -855,12 +925,42 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	if spec.Requests {
+		if !validateAdminCursorPageParams(w, filters) {
+			return
+		}
+		sortKey := normalizeAdminRequestSortOrDefault(filters.Sort, "costUsd")
+		cursor, ok := s.adminReportCursorFromRequest(w, filters.Cursor, spec.Report, sortKey, filters.Direction)
+		if !ok {
+			return
+		}
+		page, err := s.usage.adminUsageRowsPage(adminUsagePageOptions{
+			UsageReportOptions: filters.UsageReportOptions,
+			Limit:              filters.Limit,
+			Sort:               sortKey,
+			Direction:          filters.Direction,
+			Cursor:             cursor,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		filters.Sort = sortKey
+		resp := buildAdminScalarReportResponse(filters, page.Rows, spec, adminSavingsBaselineDTO{})
+		resp.Pagination = s.adminCursorPagination(filters, spec.Report, page.Rows, page.TotalCount, page.HasMore, adminUsageCursorValues)
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	if !validateAdminTopNPageParams(w, filters) {
+		return
+	}
 	rows, err := s.usage.rows(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
 	if spec.ShapeReport != "" {
+		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
@@ -877,6 +977,7 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
 }
 
@@ -885,12 +986,29 @@ func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	events, err := s.usage.securityAccessEvents(opts)
+	if !validateAdminCursorPageParams(w, filters) {
+		return
+	}
+	sortKey := normalizeAdminSecuritySortOrDefault(filters.Sort, "timeUtc")
+	cursor, ok := s.adminReportCursorFromRequest(w, filters.Cursor, "security-events", sortKey, filters.Direction)
+	if !ok {
+		return
+	}
+	page, err := s.usage.adminSecurityEventsPage(adminSecurityPageOptions{
+		SecurityReportOptions: opts,
+		Limit:                 filters.Limit,
+		Sort:                  sortKey,
+		Direction:             filters.Direction,
+		Cursor:                cursor,
+	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
-	writeJSON(w, http.StatusOK, buildAdminSecurityReportResponse(filters, events))
+	filters.Sort = sortKey
+	resp := buildAdminSecurityReportResponse(filters, page.Events)
+	resp.Pagination = s.adminSecurityCursorPagination(filters, "security-events", page.Events, page.TotalCount, page.HasMore)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -1069,22 +1187,34 @@ func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	rows, err := s.usage.rows(filters.UsageReportOptions)
+	if !validateAdminCursorPageParams(w, filters) {
+		return
+	}
+	sortKey := normalizeAdminRequestSortOrDefault(filters.Sort, "timeUtc")
+	cursor, ok := s.adminReportCursorFromRequest(w, filters.Cursor, "requests", sortKey, filters.Direction)
+	if !ok {
+		return
+	}
+	page, err := s.usage.adminUsageRowsPage(adminUsagePageOptions{
+		UsageReportOptions: filters.UsageReportOptions,
+		Limit:              filters.Limit,
+		Sort:               sortKey,
+		Direction:          filters.Direction,
+		Cursor:             cursor,
+	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].TS.After(rows[j].TS) })
-	if len(rows) > filters.Limit {
-		rows = rows[:filters.Limit]
-	}
-	resp := buildAdminReportResponse(filters, rows)
+	filters.Sort = sortKey
+	resp := buildAdminReportResponse(filters, page.Rows)
 	resp.ByToken = nil
 	resp.ByGroup = nil
 	resp.ByProvider = nil
 	resp.ByStatus = nil
 	resp.Series = nil
 	resp.Charts = nil
+	resp.Pagination = s.adminCursorPagination(filters, "requests", page.Rows, page.TotalCount, page.HasMore, adminUsageCursorValues)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1223,6 +1353,23 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		}
 		limit = parsed
 	}
+	offset := 0
+	if raw := strings.TrimSpace(q.Get("offset")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			writeInvalidReportFilter(w, "invalid offset")
+			return adminReportFilters{}, false
+		}
+		offset = parsed
+	}
+	direction := strings.ToLower(strings.TrimSpace(q.Get("direction")))
+	if direction == "" {
+		direction = "desc"
+	}
+	if direction != "asc" && direction != "desc" {
+		writeInvalidReportFilter(w, "invalid direction")
+		return adminReportFilters{}, false
+	}
 	status := 0
 	if raw := strings.TrimSpace(q.Get("status")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -1256,7 +1403,16 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 	if !global {
 		applyAdminDomainScope(&opts, subject.domain)
 	}
-	return adminReportFilters{From: from, To: to, UsageReportOptions: opts, Limit: limit}, true
+	return adminReportFilters{
+		From:               from,
+		To:                 to,
+		UsageReportOptions: opts,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               strings.TrimSpace(q.Get("sort")),
+		Direction:          direction,
+		Cursor:             strings.TrimSpace(q.Get("cursor")),
+	}, true
 }
 
 func (s *Service) parseAdminSecurityFilters(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) (SecurityReportOptions, adminReportFilters, bool) {
@@ -1318,6 +1474,271 @@ func adminDomainAllowsUsageRow(domain string, row usageRow) bool {
 	return project != "" || environment != ""
 }
 
+func writeInvalidReportFilter(w http.ResponseWriter, message string) {
+	if strings.TrimSpace(message) == "" {
+		message = "invalid-report-filter"
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": message}})
+}
+
+func validateAdminCursorPageParams(w http.ResponseWriter, filters adminReportFilters) bool {
+	if filters.Offset != 0 {
+		writeInvalidReportFilter(w, "offset is not supported for cursor-paged reports")
+		return false
+	}
+	return true
+}
+
+func validateAdminTopNPageParams(w http.ResponseWriter, filters adminReportFilters) bool {
+	if filters.Cursor != "" {
+		writeInvalidReportFilter(w, "cursor is not supported for top-N reports")
+		return false
+	}
+	if filters.Offset != 0 {
+		writeInvalidReportFilter(w, "offset is not supported for top-N reports")
+		return false
+	}
+	return true
+}
+
+func normalizeAdminRequestSort(sortKey string) (string, bool) {
+	switch strings.TrimSpace(sortKey) {
+	case "", "timeUtc", "ts", "time":
+		return "timeUtc", true
+	case "costUsd", "totalCostUsd", "cost":
+		return "costUsd", true
+	case "latencyMs", "latency":
+		return "latencyMs", true
+	case "status":
+		return "status", true
+	case "requestId":
+		return "requestId", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeAdminRequestSortOrDefault(sortKey, fallback string) string {
+	normalized, ok := normalizeAdminRequestSort(defaultString(sortKey, fallback))
+	if ok {
+		return normalized
+	}
+	normalized, _ = normalizeAdminRequestSort(fallback)
+	return normalized
+}
+
+func normalizeAdminSecuritySort(sortKey string) (string, bool) {
+	switch strings.TrimSpace(sortKey) {
+	case "", "timeUtc", "ts", "time":
+		return "timeUtc", true
+	case "status":
+		return "status", true
+	case "outcome":
+		return "outcome", true
+	case "surface":
+		return "surface", true
+	case "reason", "reasonCode":
+		return "reason", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeAdminSecuritySortOrDefault(sortKey, fallback string) string {
+	normalized, ok := normalizeAdminSecuritySort(defaultString(sortKey, fallback))
+	if ok {
+		return normalized
+	}
+	normalized, _ = normalizeAdminSecuritySort(fallback)
+	return normalized
+}
+
+func normalizeAdminAggregateSort(sortKey string) (string, bool) {
+	switch strings.TrimSpace(sortKey) {
+	case "", "requests", "key":
+		return defaultString(strings.TrimSpace(sortKey), "requests"), true
+	case "cost", "costUsd", "totalCostUsd":
+		return "cost", true
+	case "tokens", "totalTokens":
+		return "tokens", true
+	case "latency", "latencyMs", "avgLatencyMs":
+		return "latency", true
+	case "errors":
+		return "errors", true
+	case "fallbacks":
+		return "fallbacks", true
+	case "savings", "savingsUsd":
+		return "savings", true
+	case "image", "inputImageCount":
+		return "image", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeAdminAggregateSortOrDefault(sortKey, fallback string) string {
+	if strings.TrimSpace(sortKey) == "" && strings.TrimSpace(fallback) == "" {
+		return ""
+	}
+	normalized, ok := normalizeAdminAggregateSort(defaultString(sortKey, fallback))
+	if ok {
+		return normalized
+	}
+	if strings.TrimSpace(fallback) == "" {
+		return ""
+	}
+	normalized, _ = normalizeAdminAggregateSort(fallback)
+	return normalized
+}
+
+func (s *Service) adminReportCursorFromRequest(w http.ResponseWriter, raw, endpoint, sortKey, direction string) (*adminReportCursorPayload, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, true
+	}
+	payload, err := s.decodeAdminReportCursor(raw)
+	if err != nil || payload.Endpoint != endpoint || payload.Sort != sortKey || payload.Direction != direction {
+		writeInvalidReportFilter(w, "invalid cursor")
+		return nil, false
+	}
+	return payload, true
+}
+
+func (s *Service) encodeAdminReportCursor(payload adminReportCursorPayload) (string, error) {
+	payload.Version = 1
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(body)
+	mac := hmac.New(sha256.New, s.reportCursor[:])
+	_, _ = mac.Write([]byte(encoded))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return encoded + "." + sig, nil
+}
+
+func (s *Service) decodeAdminReportCursor(raw string) (*adminReportCursorPayload, error) {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, strconv.ErrSyntax
+	}
+	mac := hmac.New(sha256.New, s.reportCursor[:])
+	_, _ = mac.Write([]byte(parts[0]))
+	want := mac.Sum(nil)
+	got, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || !hmac.Equal(got, want) {
+		return nil, strconv.ErrSyntax
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	var payload adminReportCursorPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Version != 1 || payload.Endpoint == "" || payload.Sort == "" || payload.Direction == "" {
+		return nil, strconv.ErrSyntax
+	}
+	return &payload, nil
+}
+
+func (s *Service) adminCursorPagination(filters adminReportFilters, endpoint string, rows []usageRow, total int64, hasMore bool, values func(usageRow, string) []string) adminReportPagination {
+	next := ""
+	if hasMore && len(rows) > 0 {
+		cursor, err := s.encodeAdminReportCursor(adminReportCursorPayload{
+			Endpoint:  endpoint,
+			Sort:      filters.Sort,
+			Direction: filters.Direction,
+			Values:    values(rows[len(rows)-1], filters.Sort),
+		})
+		if err == nil {
+			next = cursor
+		}
+	}
+	return adminReportPagination{
+		Limit:      filters.Limit,
+		Returned:   len(rows),
+		TotalCount: &total,
+		HasMore:    hasMore,
+		NextCursor: next,
+		Sort:       filters.Sort,
+		Direction:  filters.Direction,
+		Mode:       "cursor",
+	}
+}
+
+func (s *Service) adminSecurityCursorPagination(filters adminReportFilters, endpoint string, events []securityAccessEvent, total int64, hasMore bool) adminReportPagination {
+	next := ""
+	if hasMore && len(events) > 0 {
+		cursor, err := s.encodeAdminReportCursor(adminReportCursorPayload{
+			Endpoint:  endpoint,
+			Sort:      filters.Sort,
+			Direction: filters.Direction,
+			Values:    adminSecurityCursorValues(events[len(events)-1], filters.Sort),
+		})
+		if err == nil {
+			next = cursor
+		}
+	}
+	return adminReportPagination{
+		Limit:      filters.Limit,
+		Returned:   len(events),
+		TotalCount: &total,
+		HasMore:    hasMore,
+		NextCursor: next,
+		Sort:       filters.Sort,
+		Direction:  filters.Direction,
+		Mode:       "cursor",
+	}
+}
+
+func adminTopNPagination(filters adminReportFilters, returned int, hasMore bool, note string) adminReportPagination {
+	sortKey := filters.Sort
+	if sortKey == "" {
+		sortKey = "requests"
+	}
+	return adminReportPagination{
+		Limit:     filters.Limit,
+		Returned:  returned,
+		HasMore:   hasMore,
+		Sort:      sortKey,
+		Direction: filters.Direction,
+		Mode:      "top_n",
+		Note:      note,
+	}
+}
+
+func adminUsageCursorValues(row usageRow, sortKey string) []string {
+	switch sortKey {
+	case "costUsd":
+		return []string{strconv.FormatFloat(row.TotalCostUSD, 'g', -1, 64), formatUsageTime(row.TS), row.RequestID}
+	case "latencyMs":
+		return []string{strconv.FormatInt(row.LatencyMS, 10), formatUsageTime(row.TS), row.RequestID}
+	case "status":
+		return []string{strconv.Itoa(row.Status), formatUsageTime(row.TS), row.RequestID}
+	case "requestId":
+		return []string{row.RequestID}
+	default:
+		return []string{formatUsageTime(row.TS), row.RequestID}
+	}
+}
+
+func adminSecurityCursorValues(event securityAccessEvent, sortKey string) []string {
+	id := strconv.FormatUint(uint64(event.ID), 10)
+	switch sortKey {
+	case "status":
+		return []string{strconv.Itoa(event.StatusCode), formatUsageTime(event.TS), id}
+	case "outcome":
+		return []string{event.Outcome, formatUsageTime(event.TS), id}
+	case "surface":
+		return []string{event.Surface, formatUsageTime(event.TS), id}
+	case "reason":
+		return []string{event.ReasonCode, formatUsageTime(event.TS), id}
+	default:
+		return []string{formatUsageTime(event.TS), id}
+	}
+}
+
 func splitAuthzDomain(domain string) (string, string) {
 	domain = strings.TrimSpace(domain)
 	if domain == "" || domain == "*" {
@@ -1347,6 +1768,7 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 	}
 	series := adminSeriesFromAgg(byHour)
 	generatedAt := formatUsageTime(time.Now().UTC())
+	requests := adminRecentRequestsFromRows(rows, filters.Limit)
 	return adminReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Summary:      adminSummaryFromAgg(total),
@@ -1357,7 +1779,8 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		ByProvider:   adminRowsFromAgg(byProvider),
 		ByStatus:     adminRowsFromAgg(byStatus),
 		Cache:        adminCacheFromAgg(total),
-		Requests:     adminRecentRequestsFromRows(rows, filters.Limit),
+		Requests:     requests,
+		Pagination:   adminTopNPagination(filters, len(requests), len(rows) > filters.Limit, "Summary request rows are a top-N recent sample for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
 }
@@ -1371,6 +1794,7 @@ func buildAdminSecurityReportResponse(filters adminReportFilters, events []secur
 		Summary:      adminSecuritySummaryFromEvents(events),
 		Rows:         rows,
 		Charts:       adminSecurityCharts(filters, generatedAt, rows),
+		Pagination:   adminTopNPagination(filters, len(rows), false, "Security rows are bounded by limit when cursor pagination is not used."),
 		GeneratedUTC: generatedAt,
 	}
 }
@@ -1703,7 +2127,7 @@ func adminSeriesFromCounts(name, unit, colorKey string, counts map[string]float6
 func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, baseline adminSavingsBaselineDTO, baselines []adminSavingsBaselineDTO) adminSavingsResponse {
 	total := &adminSavingsAgg{}
 	byHour := map[string]*adminSavingsAgg{}
-	byGroup := map[string]*adminSavingsAgg{}
+	byGroupAgg := map[string]*adminSavingsAgg{}
 	missingTokens := 0
 	missingActualCost := 0
 	for _, row := range rows {
@@ -1715,10 +2139,21 @@ func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, base
 		}
 		total.add(row, baseline)
 		adminSavingsAggFor(byHour, row.TS.UTC().Truncate(time.Hour).Format(time.RFC3339)).add(row, baseline)
-		adminSavingsAggFor(byGroup, defaultString(row.ResolvedGroup, row.RequestedModel)).add(row, baseline)
+		adminSavingsAggFor(byGroupAgg, defaultString(row.ResolvedGroup, row.RequestedModel)).add(row, baseline)
 	}
 	generatedAt := formatUsageTime(time.Now().UTC())
 	byTime := adminSavingsRowsFromAgg(byHour)
+	byGroup := adminSavingsRowsFromAgg(byGroupAgg)
+	sort.Slice(byGroup, func(i, j int) bool {
+		if byGroup[i].SavingsUSD == byGroup[j].SavingsUSD {
+			return byGroup[i].Key < byGroup[j].Key
+		}
+		return byGroup[i].SavingsUSD > byGroup[j].SavingsUSD
+	})
+	byGroupHasMore := len(byGroup) > filters.Limit
+	if byGroupHasMore {
+		byGroup = byGroup[:filters.Limit]
+	}
 	warnings := []string{}
 	if missingTokens > 0 {
 		warnings = append(warnings, strconv.Itoa(missingTokens)+" row(s) had no stored input/output token usage")
@@ -1732,9 +2167,10 @@ func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, base
 		Baselines:    baselines,
 		Summary:      total.row("total"),
 		ByTime:       byTime,
-		ByGroup:      adminSavingsRowsFromAgg(byGroup),
+		ByGroup:      byGroup,
 		Charts:       adminSavingsCharts(filters, generatedAt, byTime),
 		Warnings:     warnings,
+		Pagination:   adminTopNPagination(filters, len(byGroup), byGroupHasMore, "Savings aggregate rows are top-N by savings for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
 }
@@ -1755,21 +2191,12 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 		resp.Baseline = &baseline
 	}
 	if spec.Requests {
-		requestRows := append([]usageRow(nil), rows...)
-		sort.Slice(requestRows, func(i, j int) bool {
-			if requestRows[i].TotalCostUSD == requestRows[j].TotalCostUSD {
-				return requestRows[i].TS.After(requestRows[j].TS)
-			}
-			return requestRows[i].TotalCostUSD > requestRows[j].TotalCostUSD
-		})
-		if len(requestRows) > filters.Limit {
-			requestRows = requestRows[:filters.Limit]
-		}
-		resp.Requests = make([]adminReportRequest, 0, len(requestRows))
-		for _, row := range requestRows {
+		resp.Requests = make([]adminReportRequest, 0, len(rows))
+		for _, row := range rows {
 			resp.Requests = append(resp.Requests, adminRequestFromRow(row))
 		}
 		resp.Charts = adminRequestCharts(filters, generatedAt, spec, resp.Requests)
+		resp.Pagination = adminTopNPagination(filters, len(resp.Requests), false, "Request rows are cursor-paged when served from the admin API.")
 		return resp
 	}
 	table := map[string]*adminScalarAgg{}
@@ -1789,13 +2216,19 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 			table[mapKey].add(row, baseline)
 		}
 	}
-	resp.Rows = adminScalarRowsFromAgg(table, spec.Sort, filters.Limit)
+	sortKey := defaultString(filters.Sort, spec.Sort)
+	filters.Sort = sortKey
+	resp.Rows = adminScalarRowsFromAgg(table, sortKey, filters.Limit)
 	resp.Charts = adminScalarCharts(filters, generatedAt, spec, resp.Rows)
+	resp.Pagination = adminTopNPagination(filters, len(resp.Rows), len(table) > filters.Limit, "Aggregate rows are top-N for the selected filters.")
 	return resp
 }
 
 func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent, spec adminScalarEndpointSpec) adminScalarReportResponse {
 	generatedAt := formatUsageTime(time.Now().UTC())
+	if filters.Sort == "" {
+		filters.Sort = spec.Sort
+	}
 	table := map[string]*adminShapeAgg{}
 	includeCaller := spec.ShapeReport == "overview" || spec.ShapeReport == "caller"
 	includeUpstream := spec.ShapeReport == "overview" || spec.ShapeReport == "upstream" || spec.ShapeReport == "adaptive"
@@ -1817,11 +2250,13 @@ func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, 
 			adminShapeAggFor(table, key, secondary).addUpstream(event)
 		}
 	}
+	shapeRows := adminShapeRowsFromAgg(table, filters.Limit)
 	resp := adminScalarReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Report:       spec.Report,
 		Summary:      adminSummaryFromAgg(&agg{Calls: int64(len(rows))}),
-		Rows:         adminShapeRowsFromAgg(table, filters.Limit),
+		Rows:         shapeRows,
+		Pagination:   adminTopNPagination(filters, len(shapeRows), len(table) > filters.Limit, "Traffic shaping aggregate rows are top-N for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
 	resp.Charts = adminShapeCharts(filters, generatedAt, spec, resp.Rows)
@@ -2077,10 +2512,15 @@ func adminScalarRowsFromAgg(data map[string]*adminScalarAgg, sortBy string, limi
 			if out[i].Errors != out[j].Errors {
 				return out[i].Errors > out[j].Errors
 			}
+		case "fallbacks":
+			if out[i].Fallbacks != out[j].Fallbacks {
+				return out[i].Fallbacks > out[j].Fallbacks
+			}
 		case "image":
 			if out[i].InputImageCount != out[j].InputImageCount {
 				return out[i].InputImageCount > out[j].InputImageCount
 			}
+		case "key":
 		default:
 			if out[i].Requests != out[j].Requests {
 				return out[i].Requests > out[j].Requests

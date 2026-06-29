@@ -117,6 +117,66 @@ These controls are presentation helpers over bounded authenticated APIs. They do
 
 Tables use per-tab column schemas instead of first-row key discovery. Column order, labels, and units are stable for each tab, CSV export follows the same visible columns, Markdown export escapes raw HTML and active Markdown table-cell syntax, and duplicate compatibility aliases are suppressed when they carry the same value. For example, usage tabs show `Input tokens`, `Output tokens`, and `Total tokens`; they do not show both `tokens` and `totalTokens` when those fields are equivalent. Cost fields follow the same rule: input, image, output, total, baseline, savings, and upstream-billed values are labeled separately when present.
 
+## API Pagination
+
+Admin report API responses include a `pagination` object. Raw, event-like reports use cursor pagination when the router can page directly from indexed relational rows:
+
+- `/admin/reports/api/requests`
+- `/admin/reports/api/expensive-requests`
+- `/admin/reports/api/security/events`
+
+Example first page:
+
+```text
+/admin/reports/api/requests?since=24h&limit=50&sort=timeUtc&direction=desc
+```
+
+Example next page:
+
+```text
+/admin/reports/api/requests?since=24h&limit=50&sort=timeUtc&direction=desc&cursor=<next_cursor>
+```
+
+The response shape is:
+
+```json
+{
+  "pagination": {
+    "limit": 50,
+    "returned": 50,
+    "total_count": 1234,
+    "has_more": true,
+    "next_cursor": "opaque",
+    "sort": "timeUtc",
+    "direction": "desc",
+    "mode": "cursor"
+  }
+}
+```
+
+Request sort keys are `timeUtc`, `costUsd`, `latencyMs`, `status`, and `requestId`. Security-event sort keys are `timeUtc`, `status`, `outcome`, `surface`, and `reason`. `limit` must be positive and no larger than `server.admin_reports.max_rows`; `direction` must be `asc` or `desc`. Cursors are opaque, signed, and bound to the endpoint, sort, and direction. Malformed, tampered, stale, or mismatched cursors return `400 invalid-report-filter`. Cursor pagination is domain-scoped the same way as the first page, so a subject authorized for `example/prod` cannot page into another project/environment.
+
+Aggregate tabs such as usage by key, provider/model mix, savings by user, traffic-shaping summaries, and routing-decision buckets remain ranked top-N summaries. Their metadata uses:
+
+```json
+{
+  "pagination": {
+    "limit": 50,
+    "returned": 50,
+    "total_count": null,
+    "has_more": true,
+    "sort": "requests",
+    "direction": "desc",
+    "mode": "top_n",
+    "note": "Aggregate rows are top-N for the selected filters."
+  }
+}
+```
+
+For those aggregate reports, browser search and table sorting operate over the returned top-N rows. Use the aggregate tabs to identify a dimension, then drill into `/admin/reports/api/requests` or `/admin/reports/api/security/events` with matching filters when you need stable page-by-page review.
+
+CSV export from the browser exports the currently visible table columns. Markdown export is bounded by the selected report filters and remains an operational report export, not an unbounded full-history job.
+
 ## Navigation
 
 Desktop report users navigate with a fixed left sidebar labeled `Report sections`. The sidebar groups reports by operator intent: Overview, Usage, Savings, Performance, Traffic shaping, Routing decisions, Provider catalog, Security, Request drilldown, and System status. The report header stacks the brand row above the global filter row so filters use the same full content width as the reports below. Filters, Markdown export, active tab URL, CSV export, and request drilldown stay in the main content area.
@@ -199,7 +259,7 @@ curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/summary?since=24h"
 
 curl -i -u admin:replace-with-password \
-  "$ROUTER_BASE_URL/admin/reports/api/requests?since=24h&caller_id=example-caller&provider=openrouter&status=200&cache=miss"
+  "$ROUTER_BASE_URL/admin/reports/api/requests?since=24h&limit=50&caller_id=example-caller&provider=openrouter&status=200&cache=miss&sort=timeUtc&direction=desc"
 
 curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/provider-catalog-status"
@@ -211,7 +271,7 @@ curl -i -u admin:replace-with-password \
   "$ROUTER_BASE_URL/admin/reports/api/version"
 ```
 
-Expected for an authorized subject: `200` JSON with `summary`, `series`, `charts`, grouped tables, and recent request rows where applicable. The catalog-status and retention-status responses also include `charts` so those tabs are not table-only. The version endpoint returns safe build fields such as `version`, `build_date`, runtime platform, and `license_compile_mode`.
+Expected for an authorized subject: `200` JSON with `summary`, `series`, `charts`, grouped tables, request rows where applicable, and `pagination` metadata. Request and security-event APIs return `mode: "cursor"` and `next_cursor` when another page exists. Aggregate APIs return `mode: "top_n"`. The catalog-status and retention-status responses also include `charts` so those tabs are not table-only. The version endpoint returns safe build fields such as `version`, `build_date`, runtime platform, and `license_compile_mode`.
 
 OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without Casbin policy receives `403 reports-forbidden`.
 
