@@ -52,7 +52,7 @@ Confirm:
 
 - caller-visible errors include request IDs;
 - `no-eligible-target` explains the missing dialect/tool/modality/cap requirement;
-- upstream timeouts, rate limits, and provider failures are distinguishable in diagnostics;
+- upstream timeouts, rate limits, and provider failures are distinguishable in diagnostics, with field meanings cross-checked against the [Diagnostics Schema](../reference/diagnostics-schema);
 - request attempts and trace events are written without raw prompts, raw image payloads, raw tokens, token hashes, or provider keys.
 - ordinary router caller tokens cannot access `/admin/reports/*` and receive `403 reports-forbidden`.
 - domain-scoped report admins cannot read another project/environment request detail, while explicitly global `*` report admins can when that policy is intended.

@@ -5,7 +5,7 @@ doc_type: howto
 
 # Request Troubleshooting
 
-Every request returns an `X-Request-Id` header. Use that ID to join caller symptoms to logs, usage rows, upstream attempts, trace events, terminal errors, and browser report drilldown.
+Every request returns an `X-Request-Id` header. Use that ID to join caller symptoms to logs, usage rows, upstream attempts, trace events, terminal errors, and browser report drilldown. The [Diagnostics Schema](../reference/diagnostics-schema) documents the safe columns available for request-level triage.
 
 ## 1. Capture The Caller View
 
@@ -64,7 +64,7 @@ Router-side quota, traffic-shaping, and admission failures usually return `429`.
 - Upstream `429` attempts may be followed by fallback to another target.
 - Large-context developer tools can exhaust TPM through in-flight reservations even when daily or monthly budget remains available.
 
-Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals.
+Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals. For exact field names and retention classes, see the [Diagnostics Schema](../reference/diagnostics-schema).
 
 ## 5. Check Upstream Attempts
 

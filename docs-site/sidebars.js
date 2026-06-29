@@ -48,6 +48,7 @@ const sidebars = {
         "getting-started/available-models",
         "reference/api-compatibility",
         "reference/errors",
+        "reference/diagnostics-schema",
         "reference/model-metadata",
         "configuration/router-config",
         "configuration/license",

@@ -181,7 +181,7 @@ Administrators can use `X-Request-Id` with `/admin/reports/api/request-evidence?
 - `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields when sanitized upstream error storage is enabled.
 - `request_errors` for sanitized terminal error summaries.
 
-The evidence bundle also reports diagnostic completeness so operators can tell whether a section is present, not applicable, or unexpectedly missing. Evidence and diagnostic rows exclude prompt text, raw image payloads, raw image URLs, raw tool schemas, raw tool outputs, raw router tokens, token hashes, provider API keys, full upstream headers, cookies, OIDC tokens, full config, and unsanitized upstream bodies.
+The evidence bundle also reports diagnostic completeness so operators can tell whether a section is present, not applicable, or unexpectedly missing. Evidence and diagnostic rows exclude prompt text, raw image payloads, raw image URLs, raw tool schemas, raw tool outputs, raw router tokens, token hashes, provider API keys, full upstream headers, cookies, OIDC tokens, full config, and unsanitized upstream bodies. The [Diagnostics Schema](./diagnostics-schema#fields-intentionally-not-persisted) is the canonical public reference for safe and forbidden persisted data.
 
 For provider quota or billing incidents, look for `request_attempts.error_class = 'upstream_quota_exhausted'` and terminal `request_errors.error_type = 'upstream-quota-exhausted'`. A successful request can still have an `upstream_quota_exhausted` attempt row when fallback succeeded.
 

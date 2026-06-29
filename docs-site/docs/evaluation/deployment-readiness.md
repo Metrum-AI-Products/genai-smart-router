@@ -76,7 +76,7 @@ Minimum acceptance:
 
 - provider keys stay server-side;
 - caller tokens are stored only as hashes;
-- raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
+- raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics as described in the [Diagnostics Schema](../reference/diagnostics-schema#fields-intentionally-not-persisted);
 - `/metrics` requires a caller subject authorized for `metrics` `read`;
 - release deployments have `server.license.enabled: true`, a mounted current license file, `/readyz` success, and a documented renewal/rollback procedure;
 - release handoff has run `make release-validation-matrix`, and built artifacts have been checked with `python3 scripts/validate_release_matrix.py --include-artifacts`;

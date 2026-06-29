@@ -227,7 +227,7 @@ Reports include:
 
 ## Troubleshooting By Request ID
 
-Every response includes `X-Request-Id`. Structured error responses also include `request_id` in the error details. Administrators can use that ID to inspect:
+Every response includes `X-Request-Id`. Structured error responses also include `request_id` in the error details. The [Diagnostics Schema](../reference/diagnostics-schema) documents the columns, retention classes, indexes, foreign keys, population timing, and safety status for these tables. Administrators can use the request ID to inspect:
 
 - `request_usage` for the terminal request status, selected target, token counts, cost fields, and non-secret routing/model-group/policy/pricing fingerprints.
 - `request_attempts` for each upstream provider/model attempt, status code, duration, timeout/cancel flags, retryability, and sanitized error class/message.
@@ -239,7 +239,7 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 - `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_fallback_transitions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, score/ranking term rows include scalar score buckets, policy execution rows cover fail-closed errors before selection, and fallback transition rows link failed attempts to fallback targets.
 - `request_errors` for the terminal sanitized error summary.
 
-Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies.
+Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies. See [Fields Intentionally Not Persisted](../reference/diagnostics-schema#fields-intentionally-not-persisted) for the canonical list.
 
 For “small prompts work but real coding-agent requests fail,” filter to the same provider/model/dialect and compare successful versus failed attempts by request shape:
 
