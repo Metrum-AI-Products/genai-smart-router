@@ -45,11 +45,25 @@ Reasoning-heavy models can return HTTP 200 with empty final content when the out
 
 Some providers return reasoning text separately from visible assistant content. For example, Fireworks GPT OSS 20B returns `reasoning_content` on Chat Completions responses and accepts OpenAI Chat `reasoning_effort` values after direct validation. Only declare router `reasoning` metadata after the same reasoning request passes through the router for the exact provider, model, dialect, and skin.
 
-## 3. Add Catalog Metadata
+## 3. Capture Capability-Probe Results
+
+Keep an onboarding result for every capability claim. The public-safe version should include:
+
+- provider and endpoint family;
+- model ID or customer-facing model group;
+- API shape, such as OpenAI Chat, OpenAI Responses, or Anthropic Messages;
+- capability tested, such as text, streaming, max-token cap, tools, forced tool choice, structured outputs, reasoning, image input, or usage reporting;
+- validation layer, such as direct upstream, router-level, or client smoke;
+- test date, pass/fail result, status code or safe error type, latency, token usage, selected upstream model, and fallback status when available;
+- promotion decision, such as catalog-only, smoke-only, limited weight, active, or rolled back.
+
+Do not publish raw provider keys, router tokens, token hashes, private hostnames, full config, raw prompts, raw images, raw tool schemas, raw tool outputs, or unsanitized provider responses. Summarize the observed behavior and keep private evidence in deployment-controlled systems.
+
+## 4. Add Catalog Metadata
 
 Add provider catalog metadata with pricing, modality, tool, and cap fields. Keep routing weights out of provider catalogs.
 
-## 4. Add A Smoke Group First
+## 5. Add A Smoke Group First
 
 Create a deployment-defined smoke group with one target and no broad caller access. Run router-level smokes against the same API shapes tested directly.
 
@@ -86,7 +100,7 @@ models:
 
 Do not declare `tool_support`, `structured_outputs`, `reasoning`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
 
-## 5. Add Production Weight Conservatively
+## 6. Add Production Weight Conservatively
 
 Start with a low weight in active groups. Increase only after:
 
@@ -96,7 +110,7 @@ Start with a low weight in active groups. Increase only after:
 - CLI/tool/image smokes pass where relevant;
 - production logs do not show repeated fallback or provider failures.
 
-## 6. Update Docs And Reporting
+## 7. Update Docs And Reporting
 
 Update:
 

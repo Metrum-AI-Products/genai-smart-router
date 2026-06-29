@@ -2,6 +2,8 @@
 
 Run smokes at the narrowest layer that proves the change, then run production-level smokes for deployed behavior.
 
+For new provider, model, endpoint, or API-skin onboarding, follow the canonical 9-step procedure in [Model And Endpoint Onboarding Guide](onboard-model.md). Use [Smoke Commands Reference](smoke-commands-reference.md) for placeholder-based curl templates covering OpenAI Chat, OpenAI Responses, and Anthropic Messages capability probes.
+
 For quality complaints or router-versus-fixed-model decisions, do not treat a smoke test as a full evaluation. A smoke proves that one request shape works. Use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) when the decision depends on workload outcomes, repeated runs, cost, latency, fallbacks, and a fixed-model or previous-policy control.
 
 ## Core API Smokes

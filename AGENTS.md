@@ -85,6 +85,7 @@ These instructions apply to the whole repository.
 
 ## Live Provider Testing
 
+- Canonical provider/model onboarding procedure: `docs/onboard-model.md`. Use it with the capability smoke templates in `docs/smoke-commands-reference.md` before adding or promoting any upstream model, endpoint, or API skin.
 - New upstream model activation methodology:
   - Verify current pricing, context limits, modalities, and advertised tool support from primary/current provider sources before editing config. For OpenRouter models, prefer the model/provider page or `/api/v1/models`; remember Nitro suffixes may need a real completion call even when the catalog shows the base model ID.
   - Direct-smoke the exact provider/model ID and suffix before adding active routes. At minimum run text, realistic-budget image/VLM when image is claimed, and a real tool-call request when tools are claimed.
