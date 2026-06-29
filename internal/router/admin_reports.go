@@ -275,6 +275,8 @@ type adminScalarReportRow struct {
 	AvgRetryAfterMS                      int64    `json:"avgRetryAfterMs,omitempty"`
 	MaxRetryAfterMS                      int64    `json:"maxRetryAfterMs,omitempty"`
 	AvgQueueWaitMS                       int64    `json:"avgQueueWaitMs,omitempty"`
+	P50QueueWaitMS                       int64    `json:"p50QueueWaitMs,omitempty"`
+	P95QueueWaitMS                       int64    `json:"p95QueueWaitMs,omitempty"`
 	MaxQueueWaitMS                       int64    `json:"maxQueueWaitMs,omitempty"`
 	EstimatedInputTokens                 int64    `json:"estimatedInputTokens,omitempty"`
 	ReservedOutputTokens                 int64    `json:"reservedOutputTokens,omitempty"`
@@ -1869,6 +1871,8 @@ func (a *adminShapeAgg) row() adminScalarReportRow {
 		AvgRetryAfterMS:       avg(a.Agg.RetryAfterMS, a.Agg.RetryAfterCount),
 		MaxRetryAfterMS:       a.Agg.MaxRetryAfterMS,
 		AvgQueueWaitMS:        avg(a.Agg.QueueWaitMS, a.Agg.QueueWaitCount),
+		P50QueueWaitMS:        percentileInt64(a.Agg.QueueWaitSamples, 50),
+		P95QueueWaitMS:        percentileInt64(a.Agg.QueueWaitSamples, 95),
 		MaxQueueWaitMS:        a.Agg.MaxQueueWaitMS,
 		EstimatedInputTokens:  a.Agg.EstimatedInput,
 		ReservedOutputTokens:  a.Agg.ReservedOutput,

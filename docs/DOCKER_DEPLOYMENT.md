@@ -157,9 +157,9 @@ The response cache is in-memory inside the router container. Restarting the cont
 
 Token-budget admission reserves estimated input tokens, tool/schema payload size, structured-output schema payload size, and the caller's requested output cap before upstream calls. The reservation uses `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or the router-injected Messages default cap when applicable. TPM, daily token, monthly token, and lifetime key checks include in-flight reservations; request-count quotas are unchanged. Successful requests persist actual upstream-reported usage, and failures, cancellations, and cache hits release or avoid token reservations.
 
-Caller traffic shaping is optional and disabled by default. Configure `server.traffic_shape.default_caller` for inherited defaults, or `callers[].traffic_shape` for one key. Caller config wins over the server default; `enabled: false` on a caller opts that key out of an enabled server default. Shaping is process-local token-bucket state and resets on router restart. It runs after auth, model allow lists, hard rate/quota admission, and request token estimation, and before upstream calls. Request-start shaping still applies to cache hits; input/output/total reservation shaping runs only for cache misses that would otherwise call upstream. Queueing is disabled unless `queue.enabled: true` with positive `max_wait_ms` and `max_depth`.
+Caller traffic shaping is optional and disabled by default. Configure `server.traffic_shape.default_caller` for inherited defaults, or `callers[].traffic_shape` for one key. Caller config wins over the server default; `enabled: false` on a caller opts that key out of an enabled server default. Shaping is process-local token-bucket state and resets on router restart. It runs only after auth, model allow lists, and request token estimation, and before upstream calls. Request-start queueing occurs before the active concurrency slot is acquired so queued requests do not occupy `concurrent`; hard `rpm`, `tpm`, `concurrent`, quota, lifetime-budget, and license checks still run and cannot be bypassed. Request-start shaping still applies to cache hits; input/output/total reservation shaping runs only for cache misses that have passed hard token reservation and would otherwise call upstream. Queueing is disabled unless `queue.enabled: true` with positive `max_wait_ms` and `max_depth`.
 
-Example canary caller:
+Production-style bounded queue caller:
 
 ```yaml
 callers:
@@ -176,12 +176,12 @@ callers:
       total_reserved_tokens_per_sec: 120000
       total_reserved_token_burst: 500000
       queue:
-        enabled: false
-        max_wait_ms: 0
-        max_depth: 0
+        enabled: true
+        max_wait_ms: 1500
+        max_depth: 16
 ```
 
-Roll out by enabling one non-critical caller first, sending a controlled burst with realistic `max_tokens`, and confirming deterministic `429 traffic-shaped` responses include `Retry-After`, `request_id`, and `bucket` without upstream attempts for rejected requests. Then compare shaped requests, upstream provider 429s, latency, and user-visible errors in usage reports. Roll back by setting the caller `traffic_shape.enabled: false`, or by setting `server.traffic_shape.enabled: false` for inherited defaults, then restart/reload through the normal config process and verify `429 traffic-shaped` stops while hard quota behavior remains.
+Roll out by enabling one non-critical caller first, sending a controlled burst with realistic `max_tokens`, and confirming brief bursts queue and complete within `max_wait_ms` while bursts beyond `max_depth` return deterministic `429 traffic-shaped` responses with `Retry-After`, `request_id`, and `bucket` without upstream attempts for rejected requests. Then compare shaped requests, queued count, queue wait p50/p95/max, upstream provider 429s, latency, cancellations, and user-visible errors in usage reports. Roll back by setting the caller `traffic_shape.queue.enabled: false` to keep fail-fast shaping, setting the caller `traffic_shape.enabled: false`, or setting `server.traffic_shape.enabled: false` for inherited defaults, then restart/reload through the normal config process and verify new queued events stop while hard quota behavior remains.
 
 Upstream request safety is controlled under `server.upstream`. `timeout_ms` bounds the shared upstream HTTP client, `default_attempt_timeout_ms` provides a default per-target cap when no group or target override is set, and `max_response_bytes` bounds successful upstream bodies before decode or synthesized streaming. The router does not follow upstream HTTP redirects. Image URL requests reject loopback, link-local, RFC1918/private, multicast, and unspecified destinations by default; keep `allow_private_image_urls: false` unless a reviewed private VLM deployment intentionally permits private URL dereference and has network controls around metadata and admin endpoints.
 

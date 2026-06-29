@@ -196,7 +196,7 @@ Reports include:
 - Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
 - Browser troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
-- Traffic-shaping fields: applied flag, decision, scope, limiting bucket, retry-after milliseconds, queue wait milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and per-bucket rows in `request_traffic_shape_events`.
+- Traffic-shaping fields: applied flag, decision, scope, limiting bucket, retry-after milliseconds, queue wait milliseconds, queued/rejected counts, average/p50/p95/max queue wait, estimated input tokens, reserved output tokens, total reserved tokens, and per-bucket rows in `request_traffic_shape_events`.
 - Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, routing signal rows, score/ranking term rows, policy execution rows, fallback transition rows, cache decision reason buckets, enabled dynamic-score signal names, score buckets, threshold buckets, max-token buckets, input-token buckets, admission reason buckets, policy outcome/error-class buckets, and fallback-reason buckets.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.

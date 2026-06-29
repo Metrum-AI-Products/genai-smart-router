@@ -125,6 +125,8 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"## Upstream Endpoint Performance",
 		"## Per-Request Throughput",
 		"## Traffic Shaping Summary",
+		"P50 queue wait ms",
+		"P95 queue wait ms",
 		"## Provider Capacity Shaping",
 		"adaptive-backoff-provider-429",
 	} {

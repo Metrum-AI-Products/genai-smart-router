@@ -65,6 +65,19 @@ production Harbor big-coder smoke: CASE_ID=prod-big-coder-claude-20260629T061702
 production cleanup: removed uploaded package from /tmp, removed superseded switch directory, and ran docker system prune
 ```
 
+### Issue #244 bounded queue status
+
+As of 2026-06-29 UTC, a redacted live config summary showed no `server.traffic_shape` default and no caller `traffic_shape` blocks on `llm-api-engg.metrum.ai`. The deployed binary is queue-capable, but the hosted engineering endpoint still needs a config-only rollout before issue #244 is complete.
+
+Recommended config-only rollout:
+
+1. Baseline at least one production usage window with `router-usage-report --traffic-shaped-only --since 24h` plus ordinary latency/error reports.
+2. Add bounded queueing to the intended production caller set, starting with coding-agent callers, with `queue.enabled: true`, `max_wait_ms: 1500`, and `max_depth: 16` unless the baseline supports tighter values.
+3. Create a timestamped backup of `/opt/smart-llmrouter/compose/config/config.yaml`, patch with structured YAML, run `sudo docker compose config >/dev/null`, restart the router, and verify `/readyz`.
+4. Smoke a normal request, a short burst that queues and succeeds, a burst beyond `max_depth` that returns `429 traffic-shaped`, and a client-cancel case.
+5. Confirm usage/admin reports show queued count, queue wait, rejection count, max queue depth, caller/project/client/model-group dimensions, and upstream 429/error rates.
+6. Roll back by setting `traffic_shape.queue.enabled: false` for fail-fast shaping, or disabling the caller/server `traffic_shape` block entirely, then restart and verify no new queued events appear.
+
 ## 2026-06-28 Upstream-head production refresh
 
 Deployed package/image `smart-llmrouter:a3bbc54-linux-amd64` from source commit `a3bbc54` after syncing `main` with `origin/main`. This refresh aligns production with upstream head; the only source change after `60aeb50` was the deployment record for the admin reports refresh.

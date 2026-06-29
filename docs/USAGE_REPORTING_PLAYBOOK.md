@@ -17,7 +17,7 @@ Performance sections are included for latency triage:
 - Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream token throughput, errors, streams, and fallbacks.
 - Upstream endpoint performance groups by provider, model, and API dialect with average/max upstream duration, latency, TTFB, upstream token throughput, attempts, fallbacks, errors, and cost.
 
-Traffic-shaping triage uses safe scalar fields on `request_usage`: `traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, and `traffic_shape_total_reserved_tokens`. Join `request_traffic_shape_events` by `request_id` for one row per evaluated bucket. These fields distinguish shaped bursts from hard `rpm`/`tpm`/`concurrent` rejections and upstream provider 429 attempts without storing prompts, images, token hashes, provider keys, or full config.
+Traffic-shaping triage uses safe scalar fields on `request_usage`: `traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, and `traffic_shape_total_reserved_tokens`. Join `request_traffic_shape_events` by `request_id` for one row per evaluated bucket. Reports aggregate queued count, rejection count, average/p50/p95/max queue wait, retry-after, caller/project/client/model-group dimensions, upstream 429s, and route-around outcomes. These fields distinguish shaped bursts from hard `rpm`/`tpm`/`concurrent` rejections and upstream provider 429 attempts without storing prompts, images, token hashes, provider keys, or full config.
 
 ## Common Reports
 
@@ -178,7 +178,7 @@ router-usage-report \
   --traffic-shape-scope provider
 ```
 
-Read the caller sections first for `429 traffic-shaped`: confirm whether the request was rejected or queued, which bucket limited it, and whether queue wait explains latency. Read Provider Capacity Shaping and Adaptive Backoff for `503 upstream-capacity-throttled`: confirm whether all eligible targets were locally skipped, whether a prior upstream `429`/quota event started cooldown, and whether successful route-arounds indicate the model group still had enough target diversity.
+Read the caller sections first for `429 traffic-shaped`: confirm whether the request was rejected or queued, which bucket limited it, and whether queue wait p50/p95/max explains latency. Read Provider Capacity Shaping and Adaptive Backoff for `503 upstream-capacity-throttled`: confirm whether all eligible targets were locally skipped, whether a prior upstream `429`/quota event started cooldown, and whether successful route-arounds indicate the model group still had enough target diversity.
 
 Smoke after enabling:
 

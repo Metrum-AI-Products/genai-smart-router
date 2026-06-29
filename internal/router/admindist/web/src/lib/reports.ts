@@ -119,6 +119,8 @@ const shapingColumns: ReportColumn[] = [
   { key: "avgRetryAfterMs", label: "Avg retry-after", unit: "ms" },
   { key: "maxRetryAfterMs", label: "Max retry-after", unit: "ms" },
   { key: "avgQueueWaitMs", label: "Avg queue wait", unit: "ms" },
+  { key: "p50QueueWaitMs", label: "P50 queue wait", unit: "ms" },
+  { key: "p95QueueWaitMs", label: "P95 queue wait", unit: "ms" },
   { key: "maxQueueWaitMs", label: "Max queue wait", unit: "ms" },
   { key: "estimatedInputTokens", label: "Estimated input" },
   { key: "reservedOutputTokens", label: "Reserved output" },

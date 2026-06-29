@@ -1995,9 +1995,10 @@ callers:
     rpm: 120
     tpm: 200000
     concurrent: 8
-  # Conservative coding-agent traffic shaping smooths request starts and large
-  # context/output reservations before upstream calls. Queueing is disabled by
-  # default so clients receive predictable 429 traffic-shaped responses.
+  # Conservative production-style traffic shaping smooths request starts and
+  # large context/output reservations before upstream calls. This sample uses a
+  # bounded queue so short bursts can wait briefly for bucket refill; disable
+  # queueing for latency-sensitive keys that should fail fast.
   traffic_shape:
     enabled: true
     request_start_per_sec: 2.0
@@ -2009,9 +2010,9 @@ callers:
     total_reserved_tokens_per_sec: 120000
     total_reserved_token_burst: 500000
     queue:
-      enabled: false
-      max_wait_ms: 0
-      max_depth: 0
+      enabled: true
+      max_wait_ms: 1500
+      max_depth: 16
   quota:
     day:
       requests: 5000
@@ -2062,6 +2063,23 @@ callers:
     rpm: 120
     tpm: 200000
     concurrent: 8
+  # Coding-agent callers can produce clustered large-context bursts. Keep the
+  # hard rpm/tpm/concurrent limits above, then use bounded queueing to smooth
+  # short bursts without allowing unbounded wait or queue growth.
+  traffic_shape:
+    enabled: true
+    request_start_per_sec: 2.0
+    request_burst: 8
+    input_tokens_per_sec: 75000
+    input_token_burst: 300000
+    output_reservation_tokens_per_sec: 60000
+    output_reservation_token_burst: 250000
+    total_reserved_tokens_per_sec: 120000
+    total_reserved_token_burst: 500000
+    queue:
+      enabled: true
+      max_wait_ms: 1500
+      max_depth: 16
   quota:
     day:
       requests: 5000

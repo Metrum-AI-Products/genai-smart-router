@@ -140,6 +140,91 @@ func TestTrafficShapeQueueDoesNotHoldCallerConcurrency(t *testing.T) {
 	}
 }
 
+func TestTrafficShapeQueueDepthRejectsBeforeUpstream(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "up_shape_queue_depth",
+			"choices": []map[string]any{{
+				"message": map[string]any{"role": "assistant", "content": "ok"},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	on := true
+	cfg.Callers[0].TrafficShape = TrafficShapeConfig{
+		Enabled:            &on,
+		RequestStartPerSec: 1,
+		RequestBurst:       1,
+		Queue:              TrafficShapeQueueConfig{Enabled: true, MaxWaitMS: 2000, MaxDepth: 1},
+	}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	first := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"first"}]}`))
+	first.Header.Set("Authorization", "Bearer "+testToken)
+	firstRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(firstRR, first)
+	if firstRR.Code != http.StatusOK {
+		t.Fatalf("first status=%d body=%s", firstRR.Code, firstRR.Body.String())
+	}
+
+	done := make(chan int, 1)
+	go func() {
+		second := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"second"}]}`))
+		second.Header.Set("Authorization", "Bearer "+testToken)
+		secondRR := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(secondRR, second)
+		done <- secondRR.Code
+	}()
+
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for {
+		if len(svc.trafficShape.QueueDepths()) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second request did not enter the traffic-shaping queue")
+		}
+		select {
+		case code := <-done:
+			t.Fatalf("second request completed before queue-depth rejection test with status=%d", code)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	third := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"third"}]}`))
+	third.Header.Set("Authorization", "Bearer "+testToken)
+	thirdRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(thirdRR, third)
+	if thirdRR.Code != http.StatusTooManyRequests {
+		t.Fatalf("third status=%d body=%s", thirdRR.Code, thirdRR.Body.String())
+	}
+	assertTrafficShapeError(t, thirdRR.Body.Bytes(), "caller.request_start_per_sec")
+	if thirdRR.Header().Get("Retry-After") == "" {
+		t.Fatal("Retry-After header missing")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want only first request before queued refill", calls.Load())
+	}
+
+	select {
+	case code := <-done:
+		if code != http.StatusOK {
+			t.Fatalf("second status=%d", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second request did not finish after queue refill")
+	}
+}
+
 func TestTrafficShapeInputTokensRejectsBeforeUpstreamAndPersistsTelemetry(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

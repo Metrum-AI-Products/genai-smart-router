@@ -127,7 +127,7 @@ The current browser surface includes:
 - Errors and fallbacks.
 - Cache.
 - Quotas and budgets.
-- Traffic shaping overview, by user, by key, by client, and by model group. These tabs distinguish caller/server shaping decisions such as `rejected` and `queued`, show limiting scope/bucket, retry-after, queue wait, estimated input tokens, reserved output tokens, and total reserved tokens.
+- Traffic shaping overview, by user, by key, by client, and by model group. These tabs distinguish caller/server shaping decisions such as `rejected` and `queued`, show limiting scope/bucket, retry-after, average/p50/p95/max queue wait, estimated input tokens, reserved output tokens, and total reserved tokens.
 - Provider capacity shaping and adaptive upstream backoff. These tabs show provider/model/target admission, skipped targets, cooldown starts, upstream 429/quota backoff reasons, and successful route-around counts.
 - Troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 

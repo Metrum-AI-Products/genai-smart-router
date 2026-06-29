@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -4380,6 +4381,7 @@ type shapingMarkdownAgg struct {
 	QueueWaitMS        int64
 	QueueWaitCount     int64
 	MaxQueueWaitMS     int64
+	QueueWaitSamples   []int64
 	EstimatedInput     int64
 	ReservedOutput     int64
 	TotalReserved      int64
@@ -4406,6 +4408,7 @@ func (a *shapingMarkdownAgg) addQueue(ms int64) {
 	}
 	a.QueueWaitMS += ms
 	a.QueueWaitCount++
+	a.QueueWaitSamples = append(a.QueueWaitSamples, ms)
 	if ms > a.MaxQueueWaitMS {
 		a.MaxQueueWaitMS = ms
 	}
@@ -4447,8 +4450,8 @@ func writeTrafficShapingSummary(b *strings.Builder, rows []usageRow, upstreamEve
 	}
 	fmt.Fprintln(b, "## Traffic Shaping Summary")
 	fmt.Fprintln(b)
-	fmt.Fprintln(b, "| Surface | Events | Rejected | Queued | Skipped targets | Cooldowns | Avg retry-after ms | Max retry-after ms | Avg queue wait ms | Max queue wait ms | Estimated input tokens | Reserved output tokens | Total reserved tokens |")
-	fmt.Fprintln(b, "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintln(b, "| Surface | Events | Rejected | Queued | Skipped targets | Cooldowns | Avg retry-after ms | Max retry-after ms | Avg queue wait ms | P50 queue wait ms | P95 queue wait ms | Max queue wait ms | Estimated input tokens | Reserved output tokens | Total reserved tokens |")
+	fmt.Fprintln(b, "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	writeShapeAggLine(b, "caller", callerTotal)
 	writeShapeAggLine(b, "provider/model", upstreamTotal)
 	fmt.Fprintln(b)
@@ -4516,10 +4519,10 @@ func getShapeAgg(m map[string]*shapingMarkdownAgg, key string) *shapingMarkdownA
 }
 
 func writeShapeAggLine(b *strings.Builder, label string, a *shapingMarkdownAgg) {
-	fmt.Fprintf(b, "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+	fmt.Fprintf(b, "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 		esc(label), a.Requests, a.Rejected, a.Queued, a.SkippedTargets, a.CooldownsStarted,
 		avg(a.RetryAfterMS, a.RetryAfterCount), a.MaxRetryAfterMS,
-		avg(a.QueueWaitMS, a.QueueWaitCount), a.MaxQueueWaitMS,
+		avg(a.QueueWaitMS, a.QueueWaitCount), percentileInt64(a.QueueWaitSamples, 50), percentileInt64(a.QueueWaitSamples, 95), a.MaxQueueWaitMS,
 		a.EstimatedInput, a.ReservedOutput, a.TotalReserved)
 }
 
@@ -4528,16 +4531,16 @@ func writeShapeAggTable(b *strings.Builder, title string, keyHeaders []string, d
 	for _, h := range keyHeaders {
 		fmt.Fprintf(b, "| %s ", h)
 	}
-	fmt.Fprintln(b, "| Events | Rejected | Queued | Skipped Targets | Cooldowns | Avg Retry-After ms | Max Retry-After ms | Avg Queue Wait ms | Max Queue Wait ms | Upstream 429 | Upstream Quota | Fallbacks | Route-Around OK | Total Reserved Tokens |")
+	fmt.Fprintln(b, "| Events | Rejected | Queued | Skipped Targets | Cooldowns | Avg Retry-After ms | Max Retry-After ms | Avg Queue Wait ms | P50 Queue Wait ms | P95 Queue Wait ms | Max Queue Wait ms | Upstream 429 | Upstream Quota | Fallbacks | Route-Around OK | Total Reserved Tokens |")
 	for range keyHeaders {
 		fmt.Fprint(b, "|---")
 	}
-	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	if len(data) == 0 {
 		for range keyHeaders {
 			fmt.Fprint(b, "| _none_ ")
 		}
-		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
 		fmt.Fprintln(b)
 		return
 	}
@@ -4546,13 +4549,29 @@ func writeShapeAggTable(b *strings.Builder, title string, keyHeaders []string, d
 			fmt.Fprintf(b, "| %s ", esc(part))
 		}
 		a := data[key]
-		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 			a.Requests, a.Rejected, a.Queued, a.SkippedTargets, a.CooldownsStarted,
 			avg(a.RetryAfterMS, a.RetryAfterCount), a.MaxRetryAfterMS,
-			avg(a.QueueWaitMS, a.QueueWaitCount), a.MaxQueueWaitMS,
+			avg(a.QueueWaitMS, a.QueueWaitCount), percentileInt64(a.QueueWaitSamples, 50), percentileInt64(a.QueueWaitSamples, 95), a.MaxQueueWaitMS,
 			a.Upstream429, a.UpstreamQuota, a.Fallbacks, a.RouteAroundSuccess, a.TotalReserved)
 	}
 	fmt.Fprintln(b)
+}
+
+func percentileInt64(values []int64, percentile int) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := append([]int64(nil), values...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	rank := int(math.Ceil(float64(percentile)/100*float64(len(sorted)))) - 1
+	if rank < 0 {
+		rank = 0
+	}
+	if rank >= len(sorted) {
+		rank = len(sorted) - 1
+	}
+	return sorted[rank]
 }
 
 func sortedShapeKeys(data map[string]*shapingMarkdownAgg) []string {

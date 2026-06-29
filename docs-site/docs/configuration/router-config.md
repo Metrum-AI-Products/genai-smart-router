@@ -676,7 +676,7 @@ Traffic shaping smooths how quickly one caller can start requests and reserve es
 - daily, monthly, and lifetime quotas limit total use.
 - traffic shaping limits short-burst request starts, input-token throughput, output-reservation throughput, and total reserved-token throughput.
 
-Shaping runs after authentication, model-group allow-list checks, hard rate/quota checks, and request token estimation, but before upstream calls. Request-start shaping applies to all admitted requests, including cache hits. Input/output/total token-reservation shaping applies only to cache misses that would otherwise call an upstream. Bucket state is in memory and resets on router restart.
+Shaping runs only after authentication, model-group allow-list checks, and request token estimation, and always before upstream calls. Request-start shaping applies to all allowed requests, including cache hits, before the active concurrency slot is acquired so queued requests do not occupy `concurrent`. The hard `rpm`, `tpm`, `concurrent`, quota, lifetime-budget, and license checks still run and cannot be bypassed by queueing. Input/output/total token-reservation shaping applies only to cache misses that have passed hard token reservation and would otherwise call an upstream. Bucket state is in memory and resets on router restart.
 
 Server defaults are disabled unless `server.traffic_shape.enabled: true`. Caller-level `callers[].traffic_shape` overrides the server default; set `enabled: false` on a caller to opt out of an enabled default. Project/user inheritance is not part of this release.
 
@@ -727,7 +727,7 @@ callers:
         max_depth: 0
 ```
 
-Large-context Cursor or Codex caller:
+Large-context Cursor or Codex caller with hosted-engineering style bounded queueing:
 
 ```yaml
 callers:
@@ -748,9 +748,9 @@ callers:
       total_reserved_tokens_per_sec: 120000
       total_reserved_token_burst: 500000
       queue:
-        enabled: false
-        max_wait_ms: 0
-        max_depth: 0
+        enabled: true
+        max_wait_ms: 1500
+        max_depth: 16
 ```
 
 Bounded queue example:
@@ -772,9 +772,9 @@ callers:
         max_depth: 4
 ```
 
-Default behavior is reject, not queue. Shaping rejections return `429 traffic-shaped` with `Retry-After` when a retry time is known and a safe `bucket` such as `caller.input_tokens_per_sec`. Queued requests count against the per-caller queue depth while waiting and count against `concurrent` only after admission. Client disconnects cancel queued admission.
+Product default behavior is reject, not queue. A deployment can enable bounded queueing for approved bursty callers, such as the Metrum-managed engineering endpoint, but `max_wait_ms` and `max_depth` must stay finite. Shaping rejections return `429 traffic-shaped` with `Retry-After` when a retry time is known and a safe `bucket` such as `caller.input_tokens_per_sec`. Request-start queued requests count against the per-caller queue depth while waiting and count against `concurrent` only after admission. Input-token, output-reservation, and total-reserved-token queues hold the corresponding token-bucket reservation while waiting, so large context or output-cap requests still consume the capacity they are waiting to admit. Client disconnects cancel queued admission.
 
-Roll out by leaving server defaults disabled, enabling one canary caller, running a controlled burst test, then comparing `traffic_shape_*` usage fields, upstream provider 429 attempts, and user latency before broadening the policy. Roll back by setting the caller or server default `traffic_shape.enabled: false` and restarting or reloading through the normal deployment process.
+Roll out by leaving server defaults disabled unless the deployment intentionally wants inherited shaping, enabling one canary caller, running a controlled burst test, then comparing `traffic_shape_*` usage fields, upstream provider 429 attempts, and user latency before broadening the policy. Roll back by setting the caller or server default `traffic_shape.enabled: false`, or by setting only `queue.enabled: false` to preserve fail-fast shaping buckets, then restarting or reloading through the normal deployment process.
 
 ## Cache And Usage Store
 
