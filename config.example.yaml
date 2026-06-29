@@ -244,6 +244,10 @@ providers:
         output_price_per_million_usd: 3.5
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
         pricing_updated_at: '2026-06-17'
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat

@@ -196,8 +196,18 @@ func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte,
 	// The router calls upstreams in unary mode and synthesizes downstream SSE.
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
-	body["store"] = false
+	if target.Provider == "openai" {
+		// OpenAI Chat accepts store=false for deterministic usage accounting.
+		// Other OpenAI-compatible upstreams such as Crusoe reject the store field.
+		body["store"] = false
+	}
 	applyOpenAIChatMaxTokens(body, req, true)
+	if target.Provider == "openai" {
+		if value, ok := body["max_tokens"]; ok {
+			body["max_completion_tokens"] = value
+			delete(body, "max_tokens")
+		}
+	}
 	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
 		return nil, err
 	}
