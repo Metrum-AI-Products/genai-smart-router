@@ -1,22 +1,12 @@
 import React from "react";
-import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 
-import "./root.css";
+import DocsVersionBanner from "../components/DocsVersionBanner";
 
 export default function Root({ children }) {
-  const { siteConfig } = useDocusaurusContext();
-  const { routerVersion, routerBuildDate } = siteConfig.customFields || {};
-  const version = routerVersion || "dev";
-  const buildDate = routerBuildDate || "unknown";
-
   return (
     <>
       {children}
-      <div className="routerVersionBadge" aria-label={`Router version ${version}, built ${buildDate}`}>
-        <span className="routerVersionBadge__label">Router</span>
-        <span className="routerVersionBadge__version">{version}</span>
-        <span className="routerVersionBadge__date">{buildDate}</span>
-      </div>
+      <DocsVersionBanner />
     </>
   );
 }

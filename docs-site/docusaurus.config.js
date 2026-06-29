@@ -2,6 +2,37 @@
 
 const lightCodeTheme = require("prism-react-renderer").themes.github;
 const darkCodeTheme = require("prism-react-renderer").themes.dracula;
+const childProcess = require("child_process");
+
+function latestRouterTag() {
+  if (process.env.DOCS_LATEST_ROUTER_VERSION) {
+    return process.env.DOCS_LATEST_ROUTER_VERSION;
+  }
+  try {
+    return childProcess
+      .execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+      .trim();
+  } catch {
+    return process.env.DOCS_ROUTER_VERSION || "dev";
+  }
+}
+
+const routerVersion = process.env.DOCS_ROUTER_VERSION || "dev";
+const routerBuildDate = process.env.DOCS_ROUTER_BUILD_DATE || "unknown";
+const routerLatestVersion = latestRouterTag();
+
+if (
+  routerVersion !== "dev" &&
+  routerLatestVersion !== "dev" &&
+  routerLatestVersion !== routerVersion
+) {
+  console.warn(
+    `Docs router version ${routerVersion} differs from latest release tag ${routerLatestVersion}.`
+  );
+}
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -13,8 +44,9 @@ const config = {
   organizationName: "metrum-ai",
   projectName: "smart-llmrouter",
   customFields: {
-    routerVersion: process.env.DOCS_ROUTER_VERSION || "dev",
-    routerBuildDate: process.env.DOCS_ROUTER_BUILD_DATE || "unknown",
+    routerVersion,
+    routerBuildDate,
+    routerLatestVersion,
   },
   onBrokenLinks: "throw",
   markdown: {

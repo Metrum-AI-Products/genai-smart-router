@@ -150,7 +150,7 @@ flowchart LR
   Weak --> Setup --> Change --> Evidence --> Verdict
 ```
 
-The visual is source-controlled Mermaid markup so it can be maintained with the page. The audit rule is simple: publish enough safe evidence for another reviewer to understand what changed, what stayed constant, how outcomes were scored, and why the rollout decision follows from the data.
+The visual is maintainable Mermaid markup that ships with the page. The audit rule is simple: publish enough safe evidence for another reviewer to understand what changed, what stayed constant, how outcomes were scored, and why the rollout decision follows from the data.
 
 ## Safe Proof Package
 

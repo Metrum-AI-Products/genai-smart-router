@@ -127,6 +127,7 @@ const sidebars = {
       items: [
         "release-notes/index",
         "release-notes/upgrade-guide",
+        { type: "link", label: "Releases Index", href: "/docs/releases" },
       ],
     },
   ],

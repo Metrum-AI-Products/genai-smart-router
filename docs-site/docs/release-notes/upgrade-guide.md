@@ -10,11 +10,12 @@ Use this guide for customer-managed package upgrades. The exact maintenance wind
 ## Pre-Upgrade Checklist
 
 1. Read the release notes for operator impact, database changes, license changes, and caller-visible behavior.
-2. Confirm the package architecture matches the host.
-3. Back up runtime config, provider env file, license file, license state, and usage database.
-4. Record the current router version and build timestamp from `/version`.
-5. Confirm `/readyz`, `/v1/models`, metrics, and admin reports are healthy before the change.
-6. Prepare a rollback package and the previous reviewed config.
+2. Confirm the page banner and `/version` identify the expected router version and build timestamp.
+3. Confirm the package architecture matches the host.
+4. Back up runtime config, provider env file, license file, license state, and usage database.
+5. Record the current router version and build timestamp from `/version`.
+6. Confirm `/readyz`, `/v1/models`, metrics, and admin reports are healthy before the change.
+7. Prepare a rollback package and the previous reviewed config.
 
 ## Docker Compose Upgrade
 
@@ -57,6 +58,7 @@ Run:
 
 - `/readyz`;
 - `/version`;
+- browser docs and release notes for the expected router version;
 - `/v1/models` for at least one application caller;
 - one completion smoke per changed model group or API skin;
 - `/metrics` with a metrics-admin caller when metrics are enabled;
@@ -78,3 +80,22 @@ Watch for:
 Rollback should restore the previous package, previous reviewed config, and previous valid license file when those inputs changed. Restart the router and repeat the same readiness, model, metrics, and report smokes.
 
 Use database restore only when the release notes call out a non-reversible schema or data migration. Otherwise, preserve the current usage database so request history remains intact.
+
+## Most Recent Upgrade Flow
+
+For a docs-only package update:
+
+1. Read the current release note and verify it calls out no config, database, license, model-group, or caller API changes.
+2. Deploy the package using the Docker Compose or binary flow above.
+3. Check `/version` and confirm the browser docs banner shows the same router version and build timestamp.
+4. Open [Releases](/docs/releases) and [Release Notes](/docs/release-notes/) from the deployed router docs.
+5. Run `/readyz`, `/v1/models`, and one representative completion smoke.
+6. Roll back by restoring the previous package if the docs bundle or runtime health check is wrong.
+
+For a behavior-changing package update:
+
+1. Read the release note sections for operator impact, caller impact, validation, and rollback.
+2. Apply reviewed config or license updates before restarting the router.
+3. Run the release-specific model-group, API skin, metrics, report, and license smokes.
+4. Compare latency, fallback, upstream errors, usage writes, and license status against the pre-upgrade baseline.
+5. Roll back using the package, config, license, and database instructions in that release note.

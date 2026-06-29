@@ -46,6 +46,12 @@ Use this map when public Docusaurus content changes. Public pages should explain
 | Competitive landscape | `docs-site/docs/evaluation/competitive-landscape.md` | Source-dated market notes and current product capability docs | Primary-source citations, dated pricing, customer-value framing, no private deployment facts |
 | Release notes and upgrades | `docs-site/docs/release-notes/*.md` | Package/release scripts, `README.md`, `docs/DEPLOYMENT.md`, `docs/DOCKER_DEPLOYMENT.md`, `docs/SECURITY_REVIEW_NOTES.md`, release validation notes | Customer-safe shipped behavior, config/database/license changes, validation checklist, rollback notes, no source-control or private deployment details |
 
+## Release Notes Workflow
+
+Before packaging a release, run `rtk make release-notes-from-git` to draft release-note entries from available router release tags. Review and hand-edit the draft before publishing so each entry is customer-safe and covers highlights, operator impact, caller impact, validation, and rollback.
+
+Run `rtk make docs-qa` before `rtk make docs-build`. The docs QA checks that the hosted docs include a version banner component, per-page docs metadata, a releases index, at least one release-note entry, and no forbidden public release-note patterns. Public release notes should name shipped router versions and build timestamps, not internal source-control workflow details.
+
 ## Behavior-Change Documentation Requirements
 
 Every behavior, config, deployment, model, auth, CLI/API, telemetry, evaluation, or security change needs both sides of the documentation set unless the change is purely internal and not caller/operator visible.
