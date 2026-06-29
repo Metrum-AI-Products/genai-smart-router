@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { navGroups, validateNavGroups } from "../src/lib/navGroups";
-import { tabSpecs, type ReportChart, type ReportRow } from "../src/lib/reports";
+import { globalFilterFields, tabFilterFields, tabSpecs, validateFilterModel, type ReportChart, type ReportRow } from "../src/lib/reports";
 
 const generatedUtc = "2026-06-28T12:00:00Z";
 let apiRequests: string[] = [];
@@ -29,6 +29,16 @@ test("admin report nav groups cover every tab exactly once", async () => {
     "request-drilldown",
     "system-status",
   ]);
+});
+
+test("admin report filter model splits global and tab filters without overlap", async () => {
+  const result = validateFilterModel();
+  expect(result.duplicateNames).toEqual([]);
+  expect(result.overlappingNames).toEqual([]);
+  expect(result.hasEveryGlobal).toBe(true);
+  expect(result.hasEveryTab).toBe(true);
+  expect(globalFilterFields.map(([name]) => name)).toContain("since");
+  expect(tabFilterFields.map(([name]) => name)).toEqual(["baseline", "status", "cache", "traffic_shape_bucket", "traffic_shape_scope", "sort", "direction", "limit"]);
 });
 
 test("admin reports shell renders every tab with mocked report APIs", async ({ page }) => {
@@ -124,15 +134,14 @@ test("deep link requests tab opens active sidebar item", async ({ page }) => {
 test("filter URL state and CSV export remain usable", async ({ page }) => {
   await page.goto("/");
 
+  await page.getByRole("button", { name: "Filters" }).click();
   await page.getByLabel("Caller").fill("alice");
   await page.getByLabel("IP").fill("203.0.113.10");
-  await page.getByLabel("Status").fill("200");
   await page.getByLabel("Client").fill("codex-cli");
   await page.getByRole("button", { name: "Apply" }).click();
 
   await expect(page).toHaveURL(/caller_id=alice/);
   await expect(page).toHaveURL(/caller_ip=203\.0\.113\.10/);
-  await expect(page).toHaveURL(/status=200/);
   await expect(page).toHaveURL(/client=codex-cli/);
 
   await page.getByPlaceholder("Search visible rows").fill("mock");
@@ -143,13 +152,105 @@ test("filter URL state and CSV export remain usable", async ({ page }) => {
   await expect((await download).suggestedFilename()).toBe("admin-report.csv");
 });
 
+test("header slim global filters render and survive tab switch", async ({ page }) => {
+  await page.goto("/?caller_user=alice&provider=mock&since=6d");
+
+  await expect(page.getByLabel("Since")).toHaveValue("6d");
+  await page.getByRole("button", { name: "Filters" }).click();
+  await expect(page.getByLabel("User")).toHaveValue("alice");
+  await expect(page.getByLabel("Provider")).toHaveValue("mock");
+
+  const reportNav = page.getByRole("navigation", { name: "Report sections" });
+  await reportNav.getByRole("button", { name: "Providers", exact: true }).click();
+  await expect(page).toHaveURL(/tab=providers/);
+  await expect(page).toHaveURL(/caller_user=alice/);
+  await expect(page).toHaveURL(/provider=mock/);
+  await expect(page).toHaveURL(/since=6d/);
+  await expect(page.getByLabel("User")).toHaveValue("alice");
+  await expect(page.getByLabel("Provider")).toHaveValue("mock");
+});
+
+test("header disclosure hides tab-specific inputs and persists state", async ({ page }) => {
+  await page.goto("/");
+
+  const filtersButton = page.getByRole("button", { name: "Filters" });
+  await expect(filtersButton).toHaveAttribute("aria-expanded", "false");
+  for (const label of ["Status", "Baseline", "Sort", "Direction", "Shape bucket", "Shape scope", "Rows"]) {
+    await expect(page.getByLabel(label)).toHaveCount(0);
+  }
+
+  await filtersButton.click();
+  await expect(filtersButton).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("Provider")).toBeVisible();
+  for (const label of ["Status", "Baseline", "Sort", "Direction", "Shape bucket", "Shape scope", "Rows"]) {
+    await expect(page.getByLabel(label)).toHaveCount(0);
+  }
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Filters" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("Provider")).toBeVisible();
+
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Filters" })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByLabel("Provider")).toBeHidden();
+});
+
+test("header Apply still commits all global filter changes to URL", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.getByLabel("Caller").fill("alice");
+  await page.getByLabel("IP").fill("203.0.113.10");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/caller_id=alice/);
+  await expect(page).toHaveURL(/caller_ip=203\.0\.113\.10/);
+
+  await page.getByLabel("Provider").fill("mock");
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/provider=mock/);
+});
+
+test("deep link populates global inputs", async ({ page }) => {
+  await page.goto("/?caller_id=alice&caller_user=alice%40example.com&provider=mock&since=6d&dialect=openai");
+
+  await expect(page.getByLabel("Since")).toHaveValue("6d");
+  await page.getByRole("button", { name: "Filters" }).click();
+  await expect(page.getByLabel("Caller")).toHaveValue("alice");
+  await expect(page.getByLabel("User")).toHaveValue("alice@example.com");
+  await expect(page.getByLabel("Provider")).toHaveValue("mock");
+  await expect(page.getByLabel("Dialect")).toHaveValue("openai");
+});
+
+test("Markdown export uses combined global and tab filters", async ({ page }) => {
+  await page.goto("/?tab=savings-by-key&baseline=gpt-5.5&caller_user=alice");
+
+  const href = await page.getByRole("link", { name: "Markdown" }).getAttribute("href");
+  expect(href).toContain("export.md?");
+  expect(href).toContain("baseline=gpt-5.5");
+  expect(href).toContain("caller_user=alice");
+});
+
+test("active hidden tab filters are surfaced and can be cleared", async ({ page }) => {
+  await page.goto("/?tab=savings-by-key&baseline=gpt-5.5&status=500&caller_user=alice");
+
+  await expect(page.getByRole("button", { name: "Clear tab filters (2)" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear tab filters (2)" }).click();
+
+  await expect(page).not.toHaveURL(/baseline=/);
+  await expect(page).not.toHaveURL(/status=/);
+  await expect(page).toHaveURL(/caller_user=alice/);
+  await expect(page.getByRole("button", { name: /Clear tab filters/ })).toHaveCount(0);
+});
+
 test("deep-linked savings URLs preserve baseline and sorting params", async ({ page }) => {
   await page.goto("/?tab=savings-by-key&since=6d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc");
 
   await expect(page.getByRole("heading", { name: "Savings by key", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Baseline")).toHaveValue("gpt-5.5");
-  await expect(page.getByLabel("Sort")).toHaveValue("savingsUsd");
-  await expect(page.getByLabel("Direction")).toHaveValue("desc");
+  await expect(page.getByLabel("Baseline")).toHaveCount(0);
+  await expect(page.getByLabel("Sort")).toHaveCount(0);
+  await expect(page.getByLabel("Direction")).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "Savings(USD)" })).toBeVisible();
   await expect(page.locator("tbody tr").first()).toContainText("rtr_mock_public");
   await expect(page.locator("main canvas").first()).toBeVisible();

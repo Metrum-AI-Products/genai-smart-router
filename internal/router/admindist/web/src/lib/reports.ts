@@ -1,3 +1,5 @@
+export { filterFields, globalFilterFields, tabFilterFields, validateFilterModel, type GlobalFilterName, type TabFilterName } from "@/lib/filters";
+
 export type ReportFilters = Record<string, string>;
 
 export type ReportPeriod = {
@@ -359,29 +361,6 @@ export const tabSpecs: TabSpec[] = [
   { id: "security-events", label: "Security", endpoint: "security/events", columns: securityColumns, security: true },
   { id: "requests", label: "Requests", endpoint: "summary", columns: requestColumns, requests: true },
 ];
-
-export const filterFields = [
-  ["since", "Since", "24h"],
-  ["baseline", "Baseline", ""],
-  ["caller_id", "Caller", ""],
-  ["caller_user", "User", ""],
-  ["token_id", "Token ID", ""],
-  ["caller_ip", "IP", ""],
-  ["caller_project", "Project", ""],
-  ["caller_environment", "Environment", ""],
-  ["requested_model", "Requested", ""],
-  ["resolved_group", "Group", ""],
-  ["provider", "Provider", ""],
-  ["target_model", "Target", ""],
-  ["dialect", "Dialect", ""],
-  ["status", "Status", ""],
-  ["cache", "Cache", ""],
-  ["client", "Client", ""],
-  ["traffic_shape_bucket", "Shape bucket", ""],
-  ["traffic_shape_scope", "Shape scope", ""],
-  ["sort", "Sort", ""],
-  ["direction", "Direction", ""],
-] as const;
 
 export async function fetchReport(endpoint: string, filters: ReportFilters): Promise<ReportResponse> {
   const params = new URLSearchParams();

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Menu } from "lucide-react";
+import { GlobalFilters } from "@/components/GlobalFilters";
 import { MobileNavDrawer } from "@/components/MobileNavDrawer";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ReportPanel } from "@/components/ReportPanel";
 import { Sidebar } from "@/components/Sidebar";
+import { tabFilterFields } from "@/lib/filters";
 import { fetchReport, fetchVersion, filterFields, tabSpecs, type ReportFilters, type ReportResponse, type TabSpec, type VersionResponse } from "@/lib/reports";
 
 function filtersFromUrl(): ReportFilters {
@@ -13,7 +12,6 @@ function filtersFromUrl(): ReportFilters {
   for (const [name, , defaultValue] of filterFields) {
     filters[name] = params.get(name) || defaultValue;
   }
-  filters.limit = params.get("limit") || "50";
   return filters;
 }
 
@@ -76,6 +74,16 @@ export default function App() {
     setFilters(draftFilters);
   }
 
+  function clearTabFilters() {
+    const clear = (current: ReportFilters) => {
+      const next = { ...current };
+      for (const [name, , defaultValue] of tabFilterFields) next[name] = defaultValue;
+      return next;
+    };
+    setDraftFilters(clear);
+    setFilters(clear);
+  }
+
   const versionLabel = version?.version ? `v${version.version}` : "";
   const commitLabel = version?.commit && version.commit !== "unknown" ? version.commit.slice(0, 12) : "";
   const buildLabel = version?.build_date && version.build_date !== "unknown" ? version.build_date : "";
@@ -100,38 +108,14 @@ export default function App() {
               )}
             </div>
           </div>
-          <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" onSubmit={applyFilters}>
-            {filterFields.map(([name, label, defaultValue]) => (
-              <label key={name} className="grid gap-1 font-mono text-[0.68rem] uppercase text-white/58">
-                {label}
-                <Input
-                  name={name}
-                  value={draftFilters[name] ?? defaultValue}
-                  placeholder={defaultValue || "any"}
-                  onChange={(event) => setDraftFilters((current) => ({ ...current, [name]: event.target.value }))}
-                />
-              </label>
-            ))}
-            <label className="grid gap-1 font-mono text-[0.68rem] uppercase text-white/58">
-              Rows
-              <Input
-                name="limit"
-                value={draftFilters.limit ?? "50"}
-                inputMode="numeric"
-                onChange={(event) => setDraftFilters((current) => ({ ...current, limit: event.target.value }))}
-              />
-            </label>
-            <div className="flex items-end gap-2">
-              <Button type="submit">Apply</Button>
-              <Button type="button" variant="outline" className="lg:hidden" aria-label="Open report navigation" onClick={() => setMobileNavOpen(true)}>
-                <Menu className="mr-2 h-4 w-4" aria-hidden="true" />
-                Sections
-              </Button>
-              <a className="inline-flex h-9 items-center rounded-md border border-white/15 px-3 text-sm text-white hover:bg-white/[0.08]" href={`export.md?${new URLSearchParams(filters)}`}>
-                Markdown
-              </a>
-            </div>
-          </form>
+          <GlobalFilters
+            draftFilters={draftFilters}
+            filters={filters}
+            onDraftChange={setDraftFilters}
+            onClearTabFilters={clearTabFilters}
+            onSubmit={applyFilters}
+            onOpenMobileNav={() => setMobileNavOpen(true)}
+          />
         </div>
       </header>
       <div className="grid min-w-0 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">

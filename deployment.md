@@ -32,6 +32,10 @@ Last deployed: 2026-06-29
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-29 Admin Reports Header UI Follow-up
+
+Prepared the admin reports SPA follow-up for issue #252. This is a frontend-only bundle change: the large all-filter header is replaced by a slim global filter header with a disclosure for cross-tab investigation filters, while existing `/admin/reports/` URL query parameters, Markdown export parameters, report APIs, Casbin policy, and production endpoint behavior remain unchanged.
+
 ## 2026-06-29 Bounded Queue Config Raise
 
 Raised the production default caller traffic-shaping queue policy for all callers after coding-agent users saw repeated `429 traffic-shaped` retries on `big-coder`.

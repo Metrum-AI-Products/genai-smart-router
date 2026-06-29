@@ -99,9 +99,10 @@ The browser report shell provides shared controls for every tab:
 
 - grouped left-sidebar navigation on desktop, with a header drawer on narrow screens;
 - collapsible navigation groups with preferences stored in browser `localStorage`;
-- time range filters from the top filter bar;
-- filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client;
-- selected tab and search stored in shareable URL query parameters;
+- a slim header with the `Since` time range, Markdown export, mobile `Sections` drawer, and an accessible `Filters` disclosure for global investigation filters;
+- global filters for caller ID, caller user, public token ID, caller IP, caller project, caller environment, requested model, resolved group, provider, target model, dialect, and client; these remain active while switching tabs;
+- tab-specific URL filters for baseline, status, cache state, sort, direction, traffic-shaping bucket, traffic-shaping scope, and row limit; these remain accepted by deep links and report APIs, are surfaced by a compact clear action when active, and are reserved for tab-local controls rather than the global header;
+- selected tab, active filters, and search stored in shareable URL query parameters;
 - client-side search across visible safe scalar fields;
 - sortable table headers with click-to-sort controls and active ▲/▼ indicators;
 - bounded page-size selection;
@@ -121,7 +122,7 @@ Desktop report users navigate with a fixed left sidebar labeled `Report sections
 
 Each group header is keyboard-focusable and exposes expanded/collapsed state to assistive technology. Collapsed groups are remembered in browser `localStorage` under a versioned UI key so an administrator's browser keeps the same sidebar density after reloads. The preference is local presentation state only; it is not sent to report APIs, stored in the router, or included in shareable URLs.
 
-On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, so bookmarked links, filters, exports, and Casbin authorization behavior are unchanged.
+On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, and global or tab-specific filters continue to use one combined URL such as `/admin/reports/?tab=savings-by-key&since=6d&caller_user=alice&baseline=gpt-5.5`, so bookmarked links, filters, exports, and Casbin authorization behavior are unchanged.
 
 ## Report Tabs
 
