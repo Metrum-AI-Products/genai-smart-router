@@ -79,6 +79,7 @@ Minimum acceptance:
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics;
 - `/metrics` requires a caller subject authorized for `metrics` `read`;
 - release deployments have `server.license.enabled: true`, a mounted current license file, `/readyz` success, and a documented renewal/rollback procedure;
+- release handoff has run `make release-validation-matrix`, and built artifacts have been checked with `python3 scripts/validate_release_matrix.py --include-artifacts`;
 - browser admin reports, when enabled, require browser-admin identity plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
 - governed content capture is disabled unless required by policy, and any enabled deployment has `content:capture` delete/purge authorization, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;

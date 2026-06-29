@@ -23,6 +23,28 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
+## Release Validation Matrix
+
+Use the release validation matrix before handing a binary, Docker package, Compose bundle, or Kubernetes manifest set to another operator:
+
+```bash
+make release-validation-matrix
+```
+
+The target runs the package-content self-tests, build-metadata validator, clean-tree validator self-test, Docker build-context guard, Compose security check, and Kubernetes overlay rendering when `kubectl` or `kustomize` is available. It does not require provider keys, router tokens, a Docker daemon, or a live Kubernetes cluster. After packages are built, run the same matrix with artifact validation:
+
+```bash
+python3 scripts/validate_release_matrix.py --include-artifacts
+```
+
+Full package creation and live deployment validation remain separate, potentially expensive checks:
+
+```bash
+make package-all
+make package-docker-all
+make e2e-compose-live
+```
+
 ## Release Package Smokes
 
 Release packaging smokes prove that artifacts are deterministic, external-safe, and architecture-correct before handoff.

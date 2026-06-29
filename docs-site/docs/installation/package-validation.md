@@ -41,6 +41,24 @@ smart-llmrouter-<version>-docker-linux-<arch>/
 
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
 
+## Release Validation Matrix
+
+Run the release validation matrix before handing artifacts to another operator:
+
+```bash
+make release-validation-matrix
+```
+
+The matrix runs local checks that do not need production credentials: build metadata validation, release clean-tree validator self-tests, package content validator self-tests, Docker build-context checks, Compose security checks, and Kubernetes overlay rendering when `kubectl` or `kustomize` is installed.
+
+After building packages, include artifact inspection:
+
+```bash
+python3 scripts/validate_release_matrix.py --include-artifacts
+```
+
+This validates every matching `dist/smart-llmrouter-*.tar.gz` archive with the package allowlist and denylist. It does not replace runtime smoke tests. For Docker Compose or Kubernetes deployments, still start the packaged router in the target environment and verify `/readyz`, `/docs/`, `/version`, `/v1/models`, one authenticated model request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens.
+
 ## What Must Not Be Present
 
 Packages should not contain:
