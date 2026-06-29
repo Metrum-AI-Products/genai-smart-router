@@ -107,6 +107,7 @@ type upstreamError struct {
 	Canceled    bool
 	ResponseLen int64
 	RetryAfter  time.Duration
+	Details     []upstreamErrorDetailLogRecord
 	Err         error
 }
 
@@ -1551,12 +1552,14 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
+		upErr.Details = s.extractUpstreamErrorDetails(raw, httpResp.StatusCode, upErr.Class, attemptIndex, attempt.TS)
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
 		attempt.ErrorClass = upErr.Class
 		attempt.ErrorMessage = upErr.Message
 		attempt.Retryable = upErr.Retryable
 		attempt.RetryAfterMS = durationMillis(upErr.RetryAfter)
+		attempt.ErrorDetails = upErr.Details
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
 	}
@@ -1564,12 +1567,14 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
+		upErr.Details = s.extractUpstreamErrorDetails(raw, httpResp.StatusCode, upErr.Class, attemptIndex, attempt.TS)
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
 		attempt.ErrorClass = upErr.Class
 		attempt.ErrorMessage = upErr.Message
 		attempt.Retryable = upErr.Retryable
 		attempt.RetryAfterMS = durationMillis(upErr.RetryAfter)
+		attempt.ErrorDetails = upErr.Details
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
 	}
@@ -1787,7 +1792,7 @@ func classifyUpstreamStatus(status int, raw []byte) upstreamError {
 		Class:      class,
 		Message:    upstreamStatusMessage(status, raw, class),
 		StatusCode: status,
-		Retryable:  class == "upstream_quota_exhausted" || class == "upstream_rate_limited" || status >= 500,
+		Retryable:  class == "upstream_quota_exhausted" || class == "upstream_rate_limited" || class == "upstream_timeout" || status >= 500,
 	}
 }
 
@@ -1797,6 +1802,16 @@ func statusErrorClass(status int, raw []byte) string {
 		return "upstream_quota_exhausted"
 	case status == http.StatusTooManyRequests:
 		return "upstream_rate_limited"
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return "upstream_auth_failed"
+	case status == http.StatusNotFound:
+		return "upstream_not_found"
+	case status == http.StatusRequestTimeout:
+		return "upstream_timeout"
+	case status == http.StatusRequestEntityTooLarge:
+		return "upstream_request_too_large"
+	case status == http.StatusBadRequest || status == http.StatusUnprocessableEntity:
+		return "upstream_bad_request"
 	case status >= 500:
 		return "upstream_status_5xx"
 	default:

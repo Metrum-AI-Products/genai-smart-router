@@ -7907,7 +7907,7 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	if err := svc.usage.db.Find(&attempts).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(attempts) != 1 || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_status" {
+	if len(attempts) != 1 || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_bad_request" {
 		t.Fatalf("unexpected attempts: %#v", attempts)
 	}
 }
@@ -8188,6 +8188,34 @@ func TestUpstreamStatusClassifiesQuotaRateBillingFailures(t *testing.T) {
 			status:    http.StatusTooManyRequests,
 			body:      `{"error":{"message":"rate limit exceeded"}}`,
 			wantClass: "upstream_rate_limited",
+			wantRetry: true,
+		},
+		{
+			name:      "ordinary bad request",
+			status:    http.StatusBadRequest,
+			body:      `{"error":{"message":"invalid request"}}`,
+			wantClass: "upstream_bad_request",
+			wantRetry: false,
+		},
+		{
+			name:      "ordinary auth failure",
+			status:    http.StatusUnauthorized,
+			body:      `{"error":{"message":"invalid API key"}}`,
+			wantClass: "upstream_auth_failed",
+			wantRetry: false,
+		},
+		{
+			name:      "ordinary not found",
+			status:    http.StatusNotFound,
+			body:      `{"error":{"message":"model not found"}}`,
+			wantClass: "upstream_not_found",
+			wantRetry: false,
+		},
+		{
+			name:      "ordinary request timeout",
+			status:    http.StatusRequestTimeout,
+			body:      `{"error":{"message":"request timeout"}}`,
+			wantClass: "upstream_timeout",
 			wantRetry: true,
 		},
 		{
@@ -8607,6 +8635,88 @@ func TestDiagnosticsSanitizeTruncatedUpstreamErrorBeforePersistence(t *testing.T
 	for _, field := range []string{`"prompt"`, `"authorization"`, `"token_hash"`, `"provider_api_key"`} {
 		if strings.Contains(diagnosticsText, field) {
 			t.Fatalf("sanitized diagnostics retained upstream body field %q in: %s", field, diagnosticsText)
+		}
+	}
+}
+
+func TestSanitizedUpstreamErrorDetailsPersistAllowlistedFields(t *testing.T) {
+	const (
+		echoedPrompt = "customer prompt should never be stored"
+		bearerToken  = "Bearer detail-provider-token-1234567890"
+		providerKey  = "sk-detail-provider-key-1234567890"
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"message": "Unsupported value for parameter temperature",
+				"type":    "invalid_request_error",
+				"code":    "unsupported_value",
+				"param":   "temperature",
+				"details": map[string]any{
+					"prompt":           echoedPrompt,
+					"authorization":    bearerToken,
+					"provider_api_key": providerKey,
+				},
+			},
+			"request_id": "req_provider_safe_123",
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"caller prompt should not be stored"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_bad_request" || attempts[0].Retryable {
+		t.Fatalf("unexpected attempt: %#v", attempts)
+	}
+	var details []requestUpstreamErrorDetailRecord
+	if err := svc.usage.db.Order("field_name").Find(&details).Error; err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	allText := ""
+	for _, detail := range details {
+		got[detail.FieldName] = detail.FieldValue
+		allText += detail.FieldName + "=" + detail.FieldValue + " source=" + detail.Source + "\n"
+		if detail.RequestID == "" || detail.AttemptIndex != 1 || detail.StatusCode != http.StatusBadRequest || detail.ErrorClass != "upstream_bad_request" {
+			t.Fatalf("bad detail row: %#v", detail)
+		}
+	}
+	for key, want := range map[string]string{
+		"code":       "unsupported_value",
+		"message":    "provider_message:unsupported_field",
+		"param":      "temperature",
+		"request_id": "req_provider_safe_123",
+		"type":       "invalid_request_error",
+	} {
+		if got[key] != want {
+			t.Fatalf("detail %s=%q, want %q; all details:\n%s", key, got[key], want, allText)
+		}
+	}
+	for _, forbidden := range []string{echoedPrompt, bearerToken, providerKey, "caller prompt should not be stored", "Unsupported value for parameter temperature", "authorization", "provider_api_key"} {
+		if strings.Contains(allText, forbidden) {
+			t.Fatalf("upstream error details leaked %q in:\n%s", forbidden, allText)
 		}
 	}
 }

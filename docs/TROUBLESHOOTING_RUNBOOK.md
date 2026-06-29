@@ -31,6 +31,7 @@ Use `X-Request-Id` to inspect relational usage tables:
 - `request_attempts`: upstream provider/model attempts, status, duration, timeout/cancel flags.
 - `request_trace_events`: routing decisions, fallback, cache, timeout, terminal failure.
 - `request_traffic_shape_events`: per-bucket caller traffic-shaping decisions when shaping was applied.
+- `request_upstream_error_details`: bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and sanitized message when `store_sanitized_upstream_errors` is enabled.
 - `request_errors`: sanitized terminal error class/message.
 
 Diagnostic tables must not store raw prompts, raw image payloads, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
@@ -98,7 +99,7 @@ For issuance, renewal, replacement, volume top-up, offline support, and SKU-spec
 
 Provider rate limits are recorded as `upstream_rate_limited` and return `503 upstream-rate-limited` only after eligible fallbacks are exhausted. When adaptive backoff is configured, the next requests can skip that provider/model/target and either route around it or return `503 upstream-capacity-throttled` if no alternative is available. Do not paste raw provider error bodies, account IDs, API keys, router tokens, token hashes, prompts, images, or tool outputs into incident notes.
 
-Ordinary upstream 4xx policy, authorization, and malformed-request errors are non-retryable and stop fallback so the same caller payload is not replayed to another provider. Provider quota, credit, billing, rate-limit, timeout, network, and 5xx classes remain retryable when another eligible target exists. Redirect responses are not followed; investigate the configured provider base URL instead of expecting the router to chase `Location` headers.
+Ordinary upstream 4xx policy, authorization, and malformed-request errors are non-retryable and stop fallback so the same caller payload is not replayed to another provider. The router classifies common upstream 4xx cases as `upstream_auth_failed`, `upstream_bad_request`, `upstream_not_found`, `upstream_request_too_large`, or generic `upstream_status`; provider 408, quota, credit, billing, rate-limit, timeout, network, and 5xx classes remain retryable when another eligible target exists. Redirect responses are not followed; investigate the configured provider base URL instead of expecting the router to chase `Location` headers.
 
 If an image-bearing request fails before upstream with `image_url_forbidden`, inspect only the URL class, not the raw image content. The default policy blocks `http`/`https` image URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, or unspecified addresses. Prefer data URLs or a reviewed public object-store URL; use `server.upstream.allow_private_image_urls: true` only for a private VLM deployment with reviewed egress controls.
 

@@ -413,6 +413,7 @@ type usageRecord struct {
 	FallbackTransitions                []fallbackTransitionRecord         `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCacheReasons               []decisionCacheReasonRecord        `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	TrafficShapeEvents                 []requestTrafficShapeEventRecord   `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	UpstreamErrorDetails               []requestUpstreamErrorDetailRecord `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 func (usageRecord) TableName() string {
@@ -1138,6 +1139,23 @@ func (requestErrorRecord) TableName() string {
 	return "request_errors"
 }
 
+type requestUpstreamErrorDetailRecord struct {
+	RequestID    string `gorm:"column:request_id;primaryKey;type:text;index:idx_upstream_error_detail_request"`
+	AttemptIndex int    `gorm:"column:attempt_index;primaryKey;not null;index:idx_upstream_error_detail_attempt"`
+	Seq          int    `gorm:"column:seq;primaryKey;not null"`
+	TS           string `gorm:"column:ts;type:text;not null;index:idx_upstream_error_detail_ts"`
+	StatusCode   int    `gorm:"column:status_code;not null;index:idx_upstream_error_detail_status"`
+	ErrorClass   string `gorm:"column:error_class;type:text;not null;index:idx_upstream_error_detail_class"`
+	FieldName    string `gorm:"column:field_name;type:text;not null;index:idx_upstream_error_detail_field"`
+	FieldValue   string `gorm:"column:field_value;type:text;not null"`
+	Source       string `gorm:"column:source;type:text;not null"`
+	Truncated    bool   `gorm:"column:truncated;not null;default:false"`
+}
+
+func (requestUpstreamErrorDetailRecord) TableName() string {
+	return "request_upstream_error_details"
+}
+
 type agg struct {
 	Calls                    int64
 	Errors                   int64
@@ -1338,6 +1356,7 @@ func (s *usageStore) migrate() error {
 		&fallbackTransitionRecord{},
 		&decisionCacheReasonRecord{},
 		&requestErrorRecord{},
+		&requestUpstreamErrorDetailRecord{},
 		&contentCaptureRecord{},
 		&contentCaptureHeaderRecord{},
 		&contentCaptureAuditRecord{},
@@ -1396,6 +1415,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_fallback_transitions",
 		"request_cache_reasons",
 		"request_errors",
+		"request_upstream_error_details",
 		"request_content_captures",
 		"request_content_headers",
 		"request_content_audit_events",
@@ -1432,7 +1452,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1453,6 +1473,9 @@ func (s *usageStore) Emit(rec logRecord) {
 	_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(recordFromRow(row)).Error
 	for _, attempt := range rec.AttemptsDetail {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(attemptRecordFromLog(rec.RequestID, attempt)).Error
+		for _, detail := range attempt.ErrorDetails {
+			_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(upstreamErrorDetailRecordFromLog(rec.RequestID, detail)).Error
+		}
 	}
 	for _, event := range rec.TraceEvents {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(traceRecordFromLog(rec.RequestID, event)).Error
@@ -1518,6 +1541,27 @@ func attemptRecordFromLog(requestID string, rec attemptLogRecord) *requestAttemp
 		AttemptTimeoutMS: rec.AttemptTimeoutMS,
 		RetryAfterMS:     rec.RetryAfterMS,
 	}
+}
+
+func upstreamErrorDetailRecordFromLog(requestID string, rec upstreamErrorDetailLogRecord) *requestUpstreamErrorDetailRecord {
+	return &requestUpstreamErrorDetailRecord{
+		RequestID:    requestID,
+		AttemptIndex: rec.AttemptIndex,
+		Seq:          rec.Seq,
+		TS:           rec.TS,
+		StatusCode:   rec.StatusCode,
+		ErrorClass:   safeOptionalReasonToken(rec.ErrorClass),
+		FieldName:    safeOptionalReasonToken(rec.FieldName),
+		FieldValue:   sanitizePersistedUpstreamErrorDetailScalar(rec.FieldValue),
+		Source:       sanitizePersistedUpstreamErrorDetailScalar(rec.Source),
+		Truncated:    rec.Truncated,
+	}
+}
+
+func sanitizePersistedUpstreamErrorDetailScalar(value string) string {
+	value = normalizeDiagnosticText(value)
+	value = redactDiagnosticSecrets(value)
+	return truncateDiagnosticText(value, upstreamErrorDetailMaxValueBytes)
 }
 
 func traceRecordFromLog(requestID string, rec traceLogRecord) *requestTraceEventRecord {
@@ -2453,6 +2497,7 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_traffic_shape_events", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_upstream_shape_events", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_errors", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_upstream_error_details", TSColumn: "ts"},
 		}
 	case retentionDataClassDecisionTelemetry:
 		return []retentionTableSpec{
@@ -2644,6 +2689,8 @@ func deleteRetentionBatch(tx *gorm.DB, table retentionTableSpec, cutoff string, 
 			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestUpstreamShapeEventRecord{})
 		case "request_errors":
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestErrorRecord{})
+		case "request_upstream_error_details":
+			res = tx.Where("request_id = ? AND attempt_index = ? AND seq = ?", key.RequestID, key.AttemptIndex, key.Seq).Delete(&requestUpstreamErrorDetailRecord{})
 		case "request_usage":
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&usageRecord{})
 		default:
@@ -2709,6 +2756,12 @@ func selectRetentionDeleteKeys(tx *gorm.DB, table retentionTableSpec, cutoff str
 			FROM request_errors r
 			WHERE r.ts < ? ` + baseHoldClause + `
 			ORDER BY r.ts ASC, r.request_id ASC
+			LIMIT ?`
+	case "request_upstream_error_details":
+		query = `SELECT r.request_id AS request_id, r.attempt_index AS attempt_index, r.seq AS seq
+			FROM request_upstream_error_details r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.attempt_index ASC, r.seq ASC
 			LIMIT ?`
 	case "request_usage":
 		query = `SELECT r.request_id AS request_id

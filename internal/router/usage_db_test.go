@@ -82,6 +82,23 @@ INSERT INTO request_attempts (
 	}
 }
 
+func TestUsageStoreMigratesUpstreamErrorDetailsTable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if !store.db.Migrator().HasTable(&requestUpstreamErrorDetailRecord{}) {
+		t.Fatal("request_upstream_error_details table was not created")
+	}
+	for _, column := range []string{"request_id", "attempt_index", "seq", "status_code", "error_class", "field_name", "field_value", "source", "truncated"} {
+		if !store.db.Migrator().HasColumn(&requestUpstreamErrorDetailRecord{}, column) {
+			t.Fatalf("request_upstream_error_details missing column %s", column)
+		}
+	}
+}
+
 func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "requests.jsonl")

@@ -98,7 +98,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
+With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_upstream_error_details`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
 
 Use retention language carefully in commercial reviews:
 
@@ -228,6 +228,7 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 - `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
 - `request_traffic_shape_events` for per-bucket caller/server traffic-shaping decisions, costs, retry-after, and queue wait.
 - `request_upstream_shape_events` for provider/model/target admission, skip, rejection, and adaptive-backoff cooldown decisions.
+- `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and sanitized message when `store_sanitized_upstream_errors` is enabled.
 - `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_fallback_transitions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, score/ranking term rows include scalar score buckets, policy execution rows cover fail-closed errors before selection, and fallback transition rows link failed attempts to fallback targets.
 - `request_errors` for the terminal sanitized error summary.
 

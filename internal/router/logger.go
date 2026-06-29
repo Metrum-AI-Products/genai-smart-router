@@ -123,25 +123,38 @@ type logRecord struct {
 }
 
 type attemptLogRecord struct {
-	Index            int    `json:"index"`
-	TS               string `json:"ts"`
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	Dialect          string `json:"dialect"`
-	EndpointHost     string `json:"endpoint_host,omitempty"`
-	DurationMS       int64  `json:"duration_ms"`
-	StatusCode       int    `json:"status_code,omitempty"`
-	ErrorClass       string `json:"error_class,omitempty"`
-	ErrorMessage     string `json:"error_message,omitempty"`
-	Retryable        bool   `json:"retryable,omitempty"`
-	TimedOut         bool   `json:"timed_out,omitempty"`
-	ClientCanceled   bool   `json:"client_canceled,omitempty"`
-	Selected         bool   `json:"selected,omitempty"`
-	FallbackReason   string `json:"fallback_reason,omitempty"`
-	RequestBytes     int64  `json:"request_bytes,omitempty"`
-	ResponseBytes    int64  `json:"response_bytes,omitempty"`
-	AttemptTimeoutMS int    `json:"attempt_timeout_ms,omitempty"`
-	RetryAfterMS     int64  `json:"retry_after_ms,omitempty"`
+	Index            int                            `json:"index"`
+	TS               string                         `json:"ts"`
+	Provider         string                         `json:"provider"`
+	Model            string                         `json:"model"`
+	Dialect          string                         `json:"dialect"`
+	EndpointHost     string                         `json:"endpoint_host,omitempty"`
+	DurationMS       int64                          `json:"duration_ms"`
+	StatusCode       int                            `json:"status_code,omitempty"`
+	ErrorClass       string                         `json:"error_class,omitempty"`
+	ErrorMessage     string                         `json:"error_message,omitempty"`
+	Retryable        bool                           `json:"retryable,omitempty"`
+	TimedOut         bool                           `json:"timed_out,omitempty"`
+	ClientCanceled   bool                           `json:"client_canceled,omitempty"`
+	Selected         bool                           `json:"selected,omitempty"`
+	FallbackReason   string                         `json:"fallback_reason,omitempty"`
+	RequestBytes     int64                          `json:"request_bytes,omitempty"`
+	ResponseBytes    int64                          `json:"response_bytes,omitempty"`
+	AttemptTimeoutMS int                            `json:"attempt_timeout_ms,omitempty"`
+	RetryAfterMS     int64                          `json:"retry_after_ms,omitempty"`
+	ErrorDetails     []upstreamErrorDetailLogRecord `json:"error_details,omitempty"`
+}
+
+type upstreamErrorDetailLogRecord struct {
+	Seq          int    `json:"seq"`
+	TS           string `json:"ts"`
+	AttemptIndex int    `json:"attempt_index"`
+	StatusCode   int    `json:"status_code"`
+	ErrorClass   string `json:"error_class"`
+	FieldName    string `json:"field_name"`
+	FieldValue   string `json:"field_value"`
+	Source       string `json:"source"`
+	Truncated    bool   `json:"truncated,omitempty"`
 }
 
 type traceLogRecord struct {
