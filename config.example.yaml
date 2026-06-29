@@ -726,6 +726,21 @@ providers:
       deepseek-v4-flash-nitro:
         model: deepseek/deepseek-v4-flash:nitro
         tier: balanced
+        # Optional request-shape compatibility metadata. Known limits are enforced
+        # before target selection; omitted/unknown limits remain eligible but are
+        # recorded as limit_unknown in decision telemetry.
+        # request_shape_support:
+        #   max_request_bytes: 300000
+        #   max_estimated_input_tokens: 90000
+        #   max_requested_output_tokens: 8192
+        #   max_tool_schema_bytes: 100000
+        #   supports_large_coding_agent_payloads: false
+        #   supported_inbound_dialects: [openai-chat]
+        #   unsupported_request_features:
+        #   - previous_response_id
+        #   - function_call_output
+        #   validation_status: limited
+        #   validation_notes: Synthetic large coding-agent payload validation has not passed.
         input_price_per_million_usd: 0.09
         output_price_per_million_usd: 0.18
         pricing_source: https://openrouter.ai/api/v1/models
@@ -1258,6 +1273,12 @@ models:
     targets:
     - provider: crusoe
       model_ref: llama-3-3-70b-instruct
+      # Targets may override catalog request_shape_support when a model group
+      # needs stricter request-size, token, or tool-schema limits than the
+      # provider catalog default.
+      # request_shape_support:
+      #   max_estimated_input_tokens: 120000
+      #   max_requested_output_tokens: 8192
   crusoe-gemma-smoke:
     strategy: static
     targets:

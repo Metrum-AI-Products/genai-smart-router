@@ -126,7 +126,7 @@ func TestReasoningRequestFiltersTargetsAndTranslates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := svc.targetsForRequest(cfg.Models["default"].Targets, req, "openai-chat")
+	got := svc.targetsForRequest(nil, cfg.Models["default"].Targets, req, "openai-chat")
 	if len(got) != 1 || got[0].Model != "reasoning-chat" {
 		t.Fatalf("eligible targets=%#v", got)
 	}

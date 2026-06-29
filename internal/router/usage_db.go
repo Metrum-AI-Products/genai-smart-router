@@ -286,6 +286,12 @@ type usageRow struct {
 	ToolSchemaFingerprint              string
 	RequestShapeBucket                 string
 	TranslationShapeBucket             string
+	EstimatedInputTokens               int
+	EstimatedToolSchemaTokens          int
+	EstimatedImageTokens               int
+	EstimatedTotalInputTokens          int
+	RequestedOutputCapTokens           int
+	TotalReservedTokens                int
 	MaxTokenBucket                     string
 	InputTokenBucket                   string
 	AdmissionReason                    string
@@ -422,6 +428,7 @@ type usageRecord struct {
 	RoutingPolicyFingerprint           string                             `gorm:"column:routing_policy_fingerprint;type:text;not null;default:'';index:idx_request_usage_policy_fp"`
 	PricingCatalogFingerprint          string                             `gorm:"column:pricing_catalog_fingerprint;type:text;not null;default:'';index:idx_request_usage_pricing_fp"`
 	Error                              string                             `gorm:"column:error;type:text;not null"`
+	TokenEstimate                      requestTokenEstimateRecord         `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionShapeFeatures              []decisionShapeFeatureRecord       `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionCandidates                 []decisionTargetCandidateRecord    `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	DecisionFilterReasons              []decisionTargetFilterReasonRecord `gorm:"foreignKey:RequestID;references:RequestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -1040,6 +1047,33 @@ func (requestTranslationShapeRecord) TableName() string {
 	return "request_translation_shapes"
 }
 
+type requestTokenEstimateRecord struct {
+	RequestID                     string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_token_estimate_request"`
+	TS                            string `gorm:"column:ts;type:text;not null;index:idx_request_token_estimate_ts"`
+	InboundDialect                string `gorm:"column:inbound_dialect;type:text;not null;index:idx_request_token_estimate_inbound"`
+	RequestedModel                string `gorm:"column:requested_model;type:text;not null;index:idx_request_token_estimate_requested_model"`
+	ResolvedGroup                 string `gorm:"column:resolved_group;type:text;not null;default:'';index:idx_request_token_estimate_group"`
+	EstimateMethod                string `gorm:"column:estimate_method;type:text;not null;default:''"`
+	EstimateVersion               string `gorm:"column:estimate_version;type:text;not null;default:''"`
+	EstimatedInputTokens          int    `gorm:"column:estimated_input_tokens;not null;default:0;index:idx_request_token_estimate_input"`
+	EstimatedToolSchemaTokens     int    `gorm:"column:estimated_tool_schema_tokens;not null;default:0"`
+	EstimatedImageTokens          int    `gorm:"column:estimated_image_tokens;not null;default:0"`
+	EstimatedAudioTokens          int    `gorm:"column:estimated_audio_tokens;not null;default:0"`
+	EstimatedTotalInputTokens     int    `gorm:"column:estimated_total_input_tokens;not null;default:0;index:idx_request_token_estimate_total_input"`
+	RequestedOutputCapTokens      int    `gorm:"column:requested_output_cap_tokens;not null;default:0;index:idx_request_token_estimate_output_cap"`
+	RequestedOutputCapField       string `gorm:"column:requested_output_cap_field;type:text;not null;default:''"`
+	RouterDefaultOutputCapApplied bool   `gorm:"column:router_default_output_cap_applied;not null;default:false"`
+	TotalReservedTokens           int    `gorm:"column:total_reserved_tokens;not null;default:0;index:idx_request_token_estimate_reserved"`
+	RequestBytes                  int    `gorm:"column:request_bytes;not null;default:0;index:idx_request_token_estimate_bytes"`
+	TranslatedRequestBytes        int    `gorm:"column:translated_request_bytes;not null;default:0"`
+	EstimateWarningCount          int    `gorm:"column:estimate_warning_count;not null;default:0"`
+	EstimateConfidenceBucket      string `gorm:"column:estimate_confidence_bucket;type:text;not null;default:'';index:idx_request_token_estimate_confidence"`
+}
+
+func (requestTokenEstimateRecord) TableName() string {
+	return "request_token_estimates"
+}
+
 type requestTranslationFieldEventRecord struct {
 	RequestID    string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_translation_field_request"`
 	AttemptIndex int    `gorm:"column:attempt_index;primaryKey;not null;index:idx_request_translation_field_attempt"`
@@ -1067,31 +1101,46 @@ func (decisionShapeFeatureRecord) TableName() string {
 }
 
 type decisionTargetCandidateRecord struct {
-	RequestID        string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_candidate_request" json:"requestId"`
-	CandidateIndex   int    `gorm:"column:candidate_index;primaryKey;not null" json:"candidateIndex"`
-	GroupTargetIndex int    `gorm:"column:group_target_index;not null" json:"groupTargetIndex"`
-	Provider         string `gorm:"column:provider;type:text;not null;index:idx_decision_candidate_provider_model,priority:1" json:"provider"`
-	Model            string `gorm:"column:model;type:text;not null;index:idx_decision_candidate_provider_model,priority:2" json:"model"`
-	ModelRef         string `gorm:"column:model_ref;type:text;not null" json:"modelRef"`
-	Dialect          string `gorm:"column:dialect;type:text;not null" json:"dialect"`
-	Weight           int    `gorm:"column:weight;not null" json:"weight"`
-	ToolOnly         bool   `gorm:"column:tool_only;not null" json:"toolOnly"`
-	ContextTokens    int    `gorm:"column:context_tokens;not null;default:0" json:"contextTokens"`
-	InputImage       bool   `gorm:"column:input_image;not null;default:false;index:idx_decision_candidate_input_image" json:"inputImage"`
-	OutputImage      bool   `gorm:"column:output_image;not null;default:false" json:"outputImage"`
-	ToolSupport      bool   `gorm:"column:tool_support;not null;default:false;index:idx_decision_candidate_tool_support" json:"toolSupport"`
-	ForcedToolChoice bool   `gorm:"column:forced_tool_choice;not null;default:false" json:"forcedToolChoice"`
-	StructuredOutput bool   `gorm:"column:structured_output;not null;default:false" json:"structuredOutput"`
-	HonorsMaxTokens  bool   `gorm:"column:honors_max_tokens;not null" json:"honorsMaxTokens"`
-	ReasoningSupport bool   `gorm:"column:reasoning_support;not null;default:false;index:idx_decision_candidate_reasoning_support" json:"reasoningSupport"`
-	ReasoningMode    string `gorm:"column:reasoning_mode;type:text;not null;default:''" json:"reasoningMode"`
-	ReasoningControl string `gorm:"column:reasoning_control;type:text;not null;default:''" json:"reasoningControl"`
-	ReasoningDefault bool   `gorm:"column:reasoning_default;not null;default:false" json:"reasoningDefault"`
-	ReasoningStream  string `gorm:"column:reasoning_stream_block;type:text;not null;default:''" json:"reasoningStreamBlock"`
-	ValidationStatus string `gorm:"column:validation_status;type:text;not null;default:'';index:idx_decision_candidate_validation_status" json:"validationStatus"`
-	ValidationAge    string `gorm:"column:validation_age_bucket;type:text;not null;default:''" json:"validationAgeBucket"`
-	Eligible         bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible" json:"eligible"`
-	Selected         bool   `gorm:"column:selected;not null;index:idx_decision_candidate_selected" json:"selected"`
+	RequestID                   string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_candidate_request" json:"requestId"`
+	CandidateIndex              int    `gorm:"column:candidate_index;primaryKey;not null" json:"candidateIndex"`
+	GroupTargetIndex            int    `gorm:"column:group_target_index;not null" json:"groupTargetIndex"`
+	Provider                    string `gorm:"column:provider;type:text;not null;index:idx_decision_candidate_provider_model,priority:1" json:"provider"`
+	Model                       string `gorm:"column:model;type:text;not null;index:idx_decision_candidate_provider_model,priority:2" json:"model"`
+	ModelRef                    string `gorm:"column:model_ref;type:text;not null" json:"modelRef"`
+	Dialect                     string `gorm:"column:dialect;type:text;not null" json:"dialect"`
+	Weight                      int    `gorm:"column:weight;not null" json:"weight"`
+	ToolOnly                    bool   `gorm:"column:tool_only;not null" json:"toolOnly"`
+	ContextTokens               int    `gorm:"column:context_tokens;not null;default:0" json:"contextTokens"`
+	MaxEstimatedInputTokens     int    `gorm:"column:max_estimated_input_tokens;not null;default:0" json:"maxEstimatedInputTokens"`
+	MaxRequestedOutputTokens    int    `gorm:"column:max_requested_output_tokens;not null;default:0" json:"maxRequestedOutputTokens"`
+	MaxRequestBytes             int    `gorm:"column:max_request_bytes;not null;default:0" json:"maxRequestBytes"`
+	MaxToolSchemaBytes          int    `gorm:"column:max_tool_schema_bytes;not null;default:0" json:"maxToolSchemaBytes"`
+	EstimatedTotalInputTokens   int    `gorm:"column:estimated_total_input_tokens;not null;default:0" json:"estimatedTotalInputTokens"`
+	RequestedOutputCapTokens    int    `gorm:"column:requested_output_cap_tokens;not null;default:0" json:"requestedOutputCapTokens"`
+	EstimatedTotalWithOutputCap int    `gorm:"column:estimated_total_with_output_cap;not null;default:0" json:"estimatedTotalWithOutputCap"`
+	RequestBytes                int    `gorm:"column:request_bytes;not null;default:0" json:"requestBytes"`
+	ToolSchemaBytes             int    `gorm:"column:tool_schema_bytes;not null;default:0" json:"toolSchemaBytes"`
+	ContextHeadroomTokens       int    `gorm:"column:context_headroom_tokens;not null;default:0" json:"contextHeadroomTokens"`
+	ContextFit                  bool   `gorm:"column:context_fit;not null;default:false;index:idx_decision_candidate_context_fit" json:"contextFit"`
+	RequestBytesFit             bool   `gorm:"column:request_bytes_fit;not null;default:false" json:"requestBytesFit"`
+	ToolSchemaFit               bool   `gorm:"column:tool_schema_fit;not null;default:false" json:"toolSchemaFit"`
+	EligibilityDecision         string `gorm:"column:eligibility_decision;type:text;not null;default:'';index:idx_decision_candidate_eligibility_decision" json:"eligibilityDecision"`
+	EligibilityReason           string `gorm:"column:eligibility_reason;type:text;not null;default:'';index:idx_decision_candidate_eligibility_reason" json:"eligibilityReason"`
+	InputImage                  bool   `gorm:"column:input_image;not null;default:false;index:idx_decision_candidate_input_image" json:"inputImage"`
+	OutputImage                 bool   `gorm:"column:output_image;not null;default:false" json:"outputImage"`
+	ToolSupport                 bool   `gorm:"column:tool_support;not null;default:false;index:idx_decision_candidate_tool_support" json:"toolSupport"`
+	ForcedToolChoice            bool   `gorm:"column:forced_tool_choice;not null;default:false" json:"forcedToolChoice"`
+	StructuredOutput            bool   `gorm:"column:structured_output;not null;default:false" json:"structuredOutput"`
+	HonorsMaxTokens             bool   `gorm:"column:honors_max_tokens;not null" json:"honorsMaxTokens"`
+	ReasoningSupport            bool   `gorm:"column:reasoning_support;not null;default:false;index:idx_decision_candidate_reasoning_support" json:"reasoningSupport"`
+	ReasoningMode               string `gorm:"column:reasoning_mode;type:text;not null;default:''" json:"reasoningMode"`
+	ReasoningControl            string `gorm:"column:reasoning_control;type:text;not null;default:''" json:"reasoningControl"`
+	ReasoningDefault            bool   `gorm:"column:reasoning_default;not null;default:false" json:"reasoningDefault"`
+	ReasoningStream             string `gorm:"column:reasoning_stream_block;type:text;not null;default:''" json:"reasoningStreamBlock"`
+	ValidationStatus            string `gorm:"column:validation_status;type:text;not null;default:'';index:idx_decision_candidate_validation_status" json:"validationStatus"`
+	ValidationAge               string `gorm:"column:validation_age_bucket;type:text;not null;default:''" json:"validationAgeBucket"`
+	Eligible                    bool   `gorm:"column:eligible;not null;index:idx_decision_candidate_eligible" json:"eligible"`
+	Selected                    bool   `gorm:"column:selected;not null;index:idx_decision_candidate_selected" json:"selected"`
 }
 
 func (decisionTargetCandidateRecord) TableName() string {
@@ -1453,6 +1502,7 @@ func (s *usageStore) migrate() error {
 		&requestUpstreamShapeEventRecord{},
 		&requestShapeRecord{},
 		&requestTranslationShapeRecord{},
+		&requestTokenEstimateRecord{},
 		&requestTranslationFieldEventRecord{},
 		&decisionShapeFeatureRecord{},
 		&decisionTargetCandidateRecord{},
@@ -1515,6 +1565,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_upstream_shape_events",
 		"request_shapes",
 		"request_translation_shapes",
+		"request_token_estimates",
 		"request_translation_field_events",
 		"request_decision_shape_features",
 		"request_target_candidates",
@@ -1563,7 +1614,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_shapes', 'request_translation_shapes', 'request_translation_field_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_shapes', 'request_translation_shapes', 'request_token_estimates', 'request_translation_field_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1599,6 +1650,9 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	if rec.RequestShape != nil {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestShapeRecordFromLog(rec.RequestID, *rec.RequestShape)).Error
+	}
+	if rec.TokenEstimate != nil {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestTokenEstimateRecordFromLog(rec.RequestID, *rec.TokenEstimate)).Error
 	}
 	for _, shape := range rec.TranslationShapes {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestTranslationShapeRecordFromLog(rec.RequestID, shape)).Error
@@ -1808,6 +1862,31 @@ func requestTranslationShapeRecordFromLog(requestID string, rec translationShape
 	}
 }
 
+func requestTokenEstimateRecordFromLog(requestID string, rec requestTokenEstimateLogRecord) *requestTokenEstimateRecord {
+	return &requestTokenEstimateRecord{
+		RequestID:                     requestID,
+		TS:                            rec.TS,
+		InboundDialect:                rec.InboundDialect,
+		RequestedModel:                rec.RequestedModel,
+		ResolvedGroup:                 rec.ResolvedGroup,
+		EstimateMethod:                rec.EstimateMethod,
+		EstimateVersion:               rec.EstimateVersion,
+		EstimatedInputTokens:          rec.EstimatedInputTokens,
+		EstimatedToolSchemaTokens:     rec.EstimatedToolSchemaTokens,
+		EstimatedImageTokens:          rec.EstimatedImageTokens,
+		EstimatedAudioTokens:          rec.EstimatedAudioTokens,
+		EstimatedTotalInputTokens:     rec.EstimatedTotalInputTokens,
+		RequestedOutputCapTokens:      rec.RequestedOutputCapTokens,
+		RequestedOutputCapField:       safeOptionalReasonToken(rec.RequestedOutputCapField),
+		RouterDefaultOutputCapApplied: rec.RouterDefaultOutputCapApplied,
+		TotalReservedTokens:           rec.TotalReservedTokens,
+		RequestBytes:                  rec.RequestBytes,
+		TranslatedRequestBytes:        rec.TranslatedRequestBytes,
+		EstimateWarningCount:          rec.EstimateWarningCount,
+		EstimateConfidenceBucket:      safeOptionalReasonToken(rec.EstimateConfidenceBucket),
+	}
+}
+
 func requestTranslationFieldEventRecordFromLog(requestID string, rec translationFieldEventLogRecord) *requestTranslationFieldEventRecord {
 	return &requestTranslationFieldEventRecord{
 		RequestID:    requestID,
@@ -1832,31 +1911,46 @@ func decisionShapeFeatureRecordFromLog(requestID string, rec decisionShapeFeatur
 
 func decisionCandidateRecordFromLog(requestID string, rec decisionCandidateLogRecord) *decisionTargetCandidateRecord {
 	return &decisionTargetCandidateRecord{
-		RequestID:        requestID,
-		CandidateIndex:   rec.CandidateIndex,
-		GroupTargetIndex: rec.GroupTargetIndex,
-		Provider:         rec.Provider,
-		Model:            rec.Model,
-		ModelRef:         rec.ModelRef,
-		Dialect:          rec.Dialect,
-		Weight:           rec.Weight,
-		ToolOnly:         rec.ToolOnly,
-		ContextTokens:    rec.ContextTokens,
-		InputImage:       rec.InputImage,
-		OutputImage:      rec.OutputImage,
-		ToolSupport:      rec.ToolSupport,
-		ForcedToolChoice: rec.ForcedToolChoice,
-		StructuredOutput: rec.StructuredOutput,
-		HonorsMaxTokens:  rec.HonorsMaxTokens,
-		ReasoningSupport: rec.ReasoningSupport,
-		ReasoningMode:    rec.ReasoningMode,
-		ReasoningControl: rec.ReasoningControl,
-		ReasoningDefault: rec.ReasoningDefault,
-		ReasoningStream:  rec.ReasoningStream,
-		ValidationStatus: rec.ValidationStatus,
-		ValidationAge:    rec.ValidationAge,
-		Eligible:         rec.Eligible,
-		Selected:         rec.Selected,
+		RequestID:                   requestID,
+		CandidateIndex:              rec.CandidateIndex,
+		GroupTargetIndex:            rec.GroupTargetIndex,
+		Provider:                    rec.Provider,
+		Model:                       rec.Model,
+		ModelRef:                    rec.ModelRef,
+		Dialect:                     rec.Dialect,
+		Weight:                      rec.Weight,
+		ToolOnly:                    rec.ToolOnly,
+		ContextTokens:               rec.ContextTokens,
+		MaxEstimatedInputTokens:     rec.MaxEstimatedInputTokens,
+		MaxRequestedOutputTokens:    rec.MaxRequestedOutputTokens,
+		MaxRequestBytes:             rec.MaxRequestBytes,
+		MaxToolSchemaBytes:          rec.MaxToolSchemaBytes,
+		EstimatedTotalInputTokens:   rec.EstimatedTotalInputTokens,
+		RequestedOutputCapTokens:    rec.RequestedOutputCapTokens,
+		EstimatedTotalWithOutputCap: rec.EstimatedTotalWithOutputCap,
+		RequestBytes:                rec.RequestBytes,
+		ToolSchemaBytes:             rec.ToolSchemaBytes,
+		ContextHeadroomTokens:       rec.ContextHeadroomTokens,
+		ContextFit:                  rec.ContextFit,
+		RequestBytesFit:             rec.RequestBytesFit,
+		ToolSchemaFit:               rec.ToolSchemaFit,
+		EligibilityDecision:         safeOptionalReasonToken(rec.EligibilityDecision),
+		EligibilityReason:           safeOptionalReasonToken(rec.EligibilityReason),
+		InputImage:                  rec.InputImage,
+		OutputImage:                 rec.OutputImage,
+		ToolSupport:                 rec.ToolSupport,
+		ForcedToolChoice:            rec.ForcedToolChoice,
+		StructuredOutput:            rec.StructuredOutput,
+		HonorsMaxTokens:             rec.HonorsMaxTokens,
+		ReasoningSupport:            rec.ReasoningSupport,
+		ReasoningMode:               rec.ReasoningMode,
+		ReasoningControl:            rec.ReasoningControl,
+		ReasoningDefault:            rec.ReasoningDefault,
+		ReasoningStream:             rec.ReasoningStream,
+		ValidationStatus:            rec.ValidationStatus,
+		ValidationAge:               rec.ValidationAge,
+		Eligible:                    rec.Eligible,
+		Selected:                    rec.Selected,
 	}
 }
 
@@ -4397,6 +4491,20 @@ func (s *usageStore) loadUsageReportBuckets(rows []usageRow) {
 			boolBucket("reasoning", shape.ReasoningPresent),
 			boolBucket("multimodal", shape.ImageCount > 0 || shape.AudioPresent || shape.VideoPresent),
 		)
+	}
+	var tokenEstimates []requestTokenEstimateRecord
+	_ = s.db.Where("request_id IN ?", requestIDs).Find(&tokenEstimates).Error
+	for _, estimate := range tokenEstimates {
+		row := rowByRequestID[estimate.RequestID]
+		if row == nil {
+			continue
+		}
+		row.EstimatedInputTokens = estimate.EstimatedInputTokens
+		row.EstimatedToolSchemaTokens = estimate.EstimatedToolSchemaTokens
+		row.EstimatedImageTokens = estimate.EstimatedImageTokens
+		row.EstimatedTotalInputTokens = estimate.EstimatedTotalInputTokens
+		row.RequestedOutputCapTokens = estimate.RequestedOutputCapTokens
+		row.TotalReservedTokens = estimate.TotalReservedTokens
 	}
 	var translationShapes []requestTranslationShapeRecord
 	_ = s.db.Where("request_id IN ?", requestIDs).Find(&translationShapes).Error

@@ -18,7 +18,7 @@ Every model request follows the same routing pipeline:
 1. Authenticate the caller token and verify that the caller is allowed to request the model group.
 2. Load only the targets configured under that requested group.
 3. Apply model-group contracts and hard eligibility filters.
-4. Filter targets for API skin, tools, structured outputs, input modalities, reasoning controls, and max-token cap behavior.
+4. Filter targets for API skin, tools, structured outputs, input modalities, reasoning controls, max-token cap behavior, and known request-size/context fit.
 5. Exclude targets that are temporarily unavailable because of provider/model/target shared traffic shaping or adaptive upstream backoff.
 6. Run the group's routing strategy over the remaining eligible targets.
 7. Retry through configured fallback targets when the selected upstream fails in a retryable way.
@@ -52,8 +52,15 @@ Request-shape filtering happens before the routing strategy runs. A weighted or 
 | Image input | `input_modalities` includes `image`. |
 | Explicit reasoning or thinking | Target `reasoning` metadata is compatible with the caller field. |
 | Positive max-token cap | Target is not marked as unsafe for caller caps. |
+| Large input or output reserve | Estimated input plus requested output cap fits the target context window and configured request-shape limits. |
 
-If no target in the requested group satisfies the full request shape, the router returns `502 no-eligible-target` before sending an upstream request.
+If no target in the requested group satisfies the full request shape, the router returns `502 no-eligible-target` before sending an upstream request. Error details include the request ID and bounded requirement/reason labels, not prompts, tool schemas, images, tokens, provider keys, or deployment config.
+
+## Context And Large-Agent Payloads
+
+For large coding-agent clients, target eligibility also compares safe router-side estimates with configured target metadata. The router considers request bytes, estimated input tokens, tool-schema size, caller output cap or router default reserve, and `context_tokens`. Known limits are enforced before the routing strategy runs, so weighted routing recalculates over targets that can fit the request.
+
+Unknown limits are allowed by default for compatibility with existing deployments, but decision telemetry records `limit_unknown` so operators can inventory gaps. To keep a target out of large coding-agent traffic until validation passes, configure `request_shape_support.supports_large_coding_agent_payloads: false` or explicit limits such as `max_request_bytes`, `max_estimated_input_tokens`, and `max_tool_schema_bytes`.
 
 ## Shared Upstream Capacity
 
@@ -111,6 +118,7 @@ Before exposing a group broadly:
 - Call `/v1/models` with the intended caller token and confirm the group is visible only to the right callers.
 - Run text requests through each supported API skin: Chat Completions, Responses, or Messages.
 - Run tool, forced-tool, structured-output, image, reasoning, streaming, and low max-token cap smokes when those request shapes are in scope.
+- Run large-context and explicit-output-cap smokes when coding-agent or retrieval-heavy payloads are in scope.
 - Confirm selected targets stay inside the requested group and record usage, cost, latency, attempts, and fallback telemetry.
 - Validate quality with a workload-appropriate harness such as unit tests, extraction accuracy checks, OCR targets, browser-control tasks, tool-call correctness checks, golden datasets, product acceptance tests, or an agent benchmark.
 - Roll back by removing the target from `models.<group>.targets[]`, removing the capability metadata that made it eligible for the failing request shape, isolating it in a restricted smoke group, or changing the group to a simpler known-good strategy.

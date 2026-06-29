@@ -690,6 +690,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	captureDecision := s.contentCaptureFor(rc.caller, req.Model, group)
 	s.captureRequestContent(rc, req, r.Header, captureDecision)
 	s.recordRequestShapeTelemetry(rc, req, dialect, len(body))
+	s.recordRequestTokenEstimateTelemetry(rc, req, dialect, len(body))
 	s.recordDecisionShape(rc, req, dialect)
 	s.recordEligibilityTelemetry(rc, req.Model, group, req, dialect)
 	dec, err := s.pick(rc, req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
@@ -1179,7 +1180,7 @@ func adminBasicDummyHash() []byte {
 
 func (s *Service) pick(rc *requestContext, groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, tokenID string) (decision, error) {
 	targets := append([]Target(nil), group.Targets...)
-	targets = s.targetsForRequest(targets, req, callerDialect)
+	targets = s.targetsForRequest(rc, targets, req, callerDialect)
 	if len(targets) == 0 {
 		return decision{}, routingEligibilityError{
 			Model:        groupName,
@@ -1963,19 +1964,22 @@ func requestShapePassthrough(callerDialect, outDialect string, req *IRRequest) b
 	return callerDialect == outDialect && requestHasStructuredOutput(req) && (outDialect == "openai-responses" || outDialect == "openai-chat")
 }
 
-func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDialect string) []Target {
+func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *IRRequest, callerDialect string) []Target {
 	requiredModalities := requestInputModalities(req)
 	requiresStructuredOutput := requestHasStructuredOutput(req)
+	estimate := s.requestTokenEstimateForSelection(rc, req, callerDialect)
 	if len(req.Tools) == 0 {
 		out := make([]Target, 0, len(targets))
 		for _, target := range targets {
 			provider := s.cfg.Provider[target.Provider]
 			outDialect := targetDialect(provider, target)
+			fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
 			if !target.ToolOnly &&
 				targetSupportsInputModalities(target, requiredModalities) &&
 				targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 				targetCanSatisfyReasoning(target, outDialect, req) &&
-				targetHonorsExplicitMaxTokens(target, req) {
+				targetHonorsExplicitMaxTokens(target, req) &&
+				fit.FilterReason == "" {
 				out = append(out, target)
 			}
 		}
@@ -1985,12 +1989,14 @@ func (s *Service) targetsForRequest(targets []Target, req *IRRequest, callerDial
 	for _, target := range targets {
 		provider := s.cfg.Provider[target.Provider]
 		outDialect := targetDialect(provider, target)
+		fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
 		if toolPassthrough(callerDialect, outDialect, req) &&
 			targetSupportsTools(target, outDialect) &&
 			targetSupportsInputModalities(target, requiredModalities) &&
 			targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 			targetCanSatisfyReasoning(target, outDialect, req) &&
-			targetHonorsExplicitMaxTokens(target, req) {
+			targetHonorsExplicitMaxTokens(target, req) &&
+			fit.FilterReason == "" {
 			out = append(out, target)
 		}
 	}
@@ -2137,9 +2143,9 @@ func (s *Service) supportedToolsForGroup(name string) []string {
 		return []string{}
 	}
 	req := &IRRequest{Tools: []map[string]any{{"type": "local_shell"}}}
-	if len(s.targetsForRequest(group.Targets, req, "openai-responses")) == 0 {
-		if len(s.targetsForRequest(group.Targets, req, "anthropic")) == 0 {
-			if len(s.targetsForRequest(group.Targets, req, "openai-chat")) == 0 {
+	if len(s.targetsForRequest(nil, group.Targets, req, "openai-responses")) == 0 {
+		if len(s.targetsForRequest(nil, group.Targets, req, "anthropic")) == 0 {
+			if len(s.targetsForRequest(nil, group.Targets, req, "openai-chat")) == 0 {
 				return []string{}
 			}
 		}
@@ -2654,7 +2660,9 @@ func (s *Service) writeTrafficShapeError(w http.ResponseWriter, rc *requestConte
 
 func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *requestContext, err routingEligibilityError) {
 	code := "no-eligible-target"
+	requestID := ""
 	if rc != nil {
+		requestID = rc.id
 		rc.trace("routing_no_eligible_target", strings.Join(err.Requirements, ","), Target{}, 0, http.StatusBadGateway, code, false, 0)
 		rc.rec.Status = http.StatusBadGateway
 		rc.rec.Error = &code
@@ -2675,6 +2683,7 @@ func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *reques
 			"details": map[string]any{
 				"model":        err.Model,
 				"dialect":      err.Dialect,
+				"request_id":   requestID,
 				"requirements": err.Requirements,
 				"hint":         "ask the router administrator to add or enable an upstream target for this model group that supports the requested API dialect, tools, and input modalities",
 			},

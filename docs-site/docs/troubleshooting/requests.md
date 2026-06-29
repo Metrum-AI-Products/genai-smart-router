@@ -18,7 +18,7 @@ Record these safe fields:
 - requested model group;
 - API shape, such as Chat Completions, Responses, or Anthropic Messages;
 - client name, such as Codex CLI, Claude Code, Cursor, or an internal service;
-- whether the request used streaming, tools, images, or a large output cap.
+- whether the request used streaming, tools, images, large input context, or a large output cap.
 
 Do not record raw prompts, image payloads, bearer tokens, provider keys, tool outputs, or full request bodies unless a governed content-capture process is explicitly enabled for the deployment.
 
@@ -105,11 +105,16 @@ Common request-shape causes:
 - requested model group does not support the API skin used by the client;
 - tool calls are sent to a target without validated tool support;
 - image input is sent to a text-only target;
-- output cap or context length exceeds target limits;
+- estimated input plus output cap exceeds target context limits;
+- request bytes or tool schema bytes exceed configured target request-shape limits;
 - a forced tool-choice shape is unsupported by the selected upstream;
 - streaming behavior differs from the caller expectation.
 
 Model-group contracts and provider catalog metadata should describe validated modalities, tools, dialects, pricing, and max-token behavior.
+
+For “small requests work but large Cursor/Codex/Claude Code requests fail,” inspect the request drilldown or usage DB rows for `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`. Safe fields to compare are estimated total input tokens, requested output cap, total reserved tokens, request bytes, target `context_tokens`, context headroom, `request_bytes_fit`, `tool_schema_fit`, and bounded reasons such as `request-shape-context-exceeded`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`. These diagnostics intentionally do not contain raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config.
+
+If every target is skipped, callers receive `502 no-eligible-target` before upstream with a request ID. Recovery is usually a config change: add accurate `context_tokens` or `request_shape_support`, remove a too-small target from the affected group, or keep the target in a smoke group until a large-payload validation passes.
 
 ## 7. Verify Recovery
 

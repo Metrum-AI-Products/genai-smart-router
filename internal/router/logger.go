@@ -110,6 +110,7 @@ type logRecord struct {
 	AttemptsDetail                     []attemptLogRecord               `json:"attempts_detail,omitempty"`
 	TraceEvents                        []traceLogRecord                 `json:"trace_events,omitempty"`
 	RequestShape                       *requestShapeLogRecord           `json:"request_shape,omitempty"`
+	TokenEstimate                      *requestTokenEstimateLogRecord   `json:"request_token_estimate,omitempty"`
 	TranslationShapes                  []translationShapeLogRecord      `json:"translation_shapes,omitempty"`
 	TranslationFieldEvents             []translationFieldEventLogRecord `json:"translation_field_events,omitempty"`
 	DecisionShapeFeatures              []decisionShapeFeatureLogRecord  `json:"decision_shape_features,omitempty"`
@@ -247,6 +248,28 @@ type requestShapeLogRecord struct {
 	RequestShapeFingerprint    string `json:"request_shape_fingerprint,omitempty"`
 }
 
+type requestTokenEstimateLogRecord struct {
+	TS                            string `json:"ts"`
+	InboundDialect                string `json:"inbound_dialect"`
+	RequestedModel                string `json:"requested_model"`
+	ResolvedGroup                 string `json:"resolved_group,omitempty"`
+	EstimateMethod                string `json:"estimate_method"`
+	EstimateVersion               string `json:"estimate_version"`
+	EstimatedInputTokens          int    `json:"estimated_input_tokens,omitempty"`
+	EstimatedToolSchemaTokens     int    `json:"estimated_tool_schema_tokens,omitempty"`
+	EstimatedImageTokens          int    `json:"estimated_image_tokens,omitempty"`
+	EstimatedAudioTokens          int    `json:"estimated_audio_tokens,omitempty"`
+	EstimatedTotalInputTokens     int    `json:"estimated_total_input_tokens,omitempty"`
+	RequestedOutputCapTokens      int    `json:"requested_output_cap_tokens,omitempty"`
+	RequestedOutputCapField       string `json:"requested_output_cap_field,omitempty"`
+	RouterDefaultOutputCapApplied bool   `json:"router_default_output_cap_applied,omitempty"`
+	TotalReservedTokens           int    `json:"total_reserved_tokens,omitempty"`
+	RequestBytes                  int    `json:"request_bytes,omitempty"`
+	TranslatedRequestBytes        int    `json:"translated_request_bytes,omitempty"`
+	EstimateWarningCount          int    `json:"estimate_warning_count,omitempty"`
+	EstimateConfidenceBucket      string `json:"estimate_confidence_bucket,omitempty"`
+}
+
 type translationShapeLogRecord struct {
 	TS                           string `json:"ts"`
 	AttemptIndex                 int    `json:"attempt_index"`
@@ -286,30 +309,45 @@ type decisionShapeFeatureLogRecord struct {
 }
 
 type decisionCandidateLogRecord struct {
-	CandidateIndex   int    `json:"candidate_index"`
-	GroupTargetIndex int    `json:"group_target_index"`
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	ModelRef         string `json:"model_ref,omitempty"`
-	Dialect          string `json:"dialect"`
-	Weight           int    `json:"weight,omitempty"`
-	ToolOnly         bool   `json:"tool_only,omitempty"`
-	ContextTokens    int    `json:"context_tokens,omitempty"`
-	InputImage       bool   `json:"input_image,omitempty"`
-	OutputImage      bool   `json:"output_image,omitempty"`
-	ToolSupport      bool   `json:"tool_support,omitempty"`
-	ForcedToolChoice bool   `json:"forced_tool_choice,omitempty"`
-	StructuredOutput bool   `json:"structured_output,omitempty"`
-	HonorsMaxTokens  bool   `json:"honors_max_tokens,omitempty"`
-	ReasoningSupport bool   `json:"reasoning_support,omitempty"`
-	ReasoningMode    string `json:"reasoning_mode,omitempty"`
-	ReasoningControl string `json:"reasoning_control,omitempty"`
-	ReasoningDefault bool   `json:"reasoning_default,omitempty"`
-	ReasoningStream  string `json:"reasoning_stream_block,omitempty"`
-	ValidationStatus string `json:"validation_status,omitempty"`
-	ValidationAge    string `json:"validation_age_bucket,omitempty"`
-	Eligible         bool   `json:"eligible"`
-	Selected         bool   `json:"selected,omitempty"`
+	CandidateIndex              int    `json:"candidate_index"`
+	GroupTargetIndex            int    `json:"group_target_index"`
+	Provider                    string `json:"provider"`
+	Model                       string `json:"model"`
+	ModelRef                    string `json:"model_ref,omitempty"`
+	Dialect                     string `json:"dialect"`
+	Weight                      int    `json:"weight,omitempty"`
+	ToolOnly                    bool   `json:"tool_only,omitempty"`
+	ContextTokens               int    `json:"context_tokens,omitempty"`
+	MaxEstimatedInputTokens     int    `json:"max_estimated_input_tokens,omitempty"`
+	MaxRequestedOutputTokens    int    `json:"max_requested_output_tokens,omitempty"`
+	MaxRequestBytes             int    `json:"max_request_bytes,omitempty"`
+	MaxToolSchemaBytes          int    `json:"max_tool_schema_bytes,omitempty"`
+	EstimatedTotalInputTokens   int    `json:"estimated_total_input_tokens,omitempty"`
+	RequestedOutputCapTokens    int    `json:"requested_output_cap_tokens,omitempty"`
+	EstimatedTotalWithOutputCap int    `json:"estimated_total_with_output_cap,omitempty"`
+	RequestBytes                int    `json:"request_bytes,omitempty"`
+	ToolSchemaBytes             int    `json:"tool_schema_bytes,omitempty"`
+	ContextHeadroomTokens       int    `json:"context_headroom_tokens,omitempty"`
+	ContextFit                  bool   `json:"context_fit,omitempty"`
+	RequestBytesFit             bool   `json:"request_bytes_fit,omitempty"`
+	ToolSchemaFit               bool   `json:"tool_schema_fit,omitempty"`
+	EligibilityDecision         string `json:"eligibility_decision,omitempty"`
+	EligibilityReason           string `json:"eligibility_reason,omitempty"`
+	InputImage                  bool   `json:"input_image,omitempty"`
+	OutputImage                 bool   `json:"output_image,omitempty"`
+	ToolSupport                 bool   `json:"tool_support,omitempty"`
+	ForcedToolChoice            bool   `json:"forced_tool_choice,omitempty"`
+	StructuredOutput            bool   `json:"structured_output,omitempty"`
+	HonorsMaxTokens             bool   `json:"honors_max_tokens,omitempty"`
+	ReasoningSupport            bool   `json:"reasoning_support,omitempty"`
+	ReasoningMode               string `json:"reasoning_mode,omitempty"`
+	ReasoningControl            string `json:"reasoning_control,omitempty"`
+	ReasoningDefault            bool   `json:"reasoning_default,omitempty"`
+	ReasoningStream             string `json:"reasoning_stream_block,omitempty"`
+	ValidationStatus            string `json:"validation_status,omitempty"`
+	ValidationAge               string `json:"validation_age_bucket,omitempty"`
+	Eligible                    bool   `json:"eligible"`
+	Selected                    bool   `json:"selected,omitempty"`
 }
 
 type decisionFilterReasonLogRecord struct {

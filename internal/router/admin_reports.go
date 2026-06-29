@@ -418,6 +418,7 @@ type adminShapingTelemetryDetail struct {
 
 type adminRequestShapeTelemetryDetail struct {
 	RequestShape      *requestShapeRecord                  `json:"requestShape,omitempty"`
+	TokenEstimate     *requestTokenEstimateRecord          `json:"tokenEstimate,omitempty"`
 	TranslationShapes []requestTranslationShapeRecord      `json:"translationShapes,omitempty"`
 	FieldEvents       []requestTranslationFieldEventRecord `json:"fieldEvents,omitempty"`
 }
@@ -516,6 +517,13 @@ type adminEvidenceSection struct {
 }
 
 func optionalRequestShapeRecord(rec requestShapeRecord, ok bool) *requestShapeRecord {
+	if !ok {
+		return nil
+	}
+	return &rec
+}
+
+func optionalRequestTokenEstimateRecord(rec requestTokenEstimateRecord, ok bool) *requestTokenEstimateRecord {
 	if !ok {
 		return nil
 	}
@@ -1471,6 +1479,7 @@ func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAu
 	var trafficShapeEvents []requestTrafficShapeEventRecord
 	var upstreamShapeEvents []requestUpstreamShapeEventRecord
 	var requestShape requestShapeRecord
+	var tokenEstimate requestTokenEstimateRecord
 	var translationShapes []requestTranslationShapeRecord
 	var translationFieldEvents []requestTranslationFieldEventRecord
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&attempts).Error
@@ -1480,6 +1489,7 @@ func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAu
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&trafficShapeEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&upstreamShapeEvents).Error
 	requestShapeFound := s.usage.db.Where("request_id = ?", requestID).First(&requestShape).Error == nil
+	tokenEstimateFound := s.usage.db.Where("request_id = ?", requestID).First(&tokenEstimate).Error == nil
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&translationShapes).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC, seq ASC").Find(&translationFieldEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&shapeFeatures).Error
@@ -1503,6 +1513,7 @@ func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAu
 	}
 	requestShapeTelemetry := adminRequestShapeTelemetryDetail{
 		RequestShape:      optionalRequestShapeRecord(requestShape, requestShapeFound),
+		TokenEstimate:     optionalRequestTokenEstimateRecord(tokenEstimate, tokenEstimateFound),
 		TranslationShapes: translationShapes,
 		FieldEvents:       translationFieldEvents,
 	}

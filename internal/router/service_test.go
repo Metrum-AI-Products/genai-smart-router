@@ -3020,7 +3020,7 @@ func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	defer svc.Close()
 
 	req := &IRRequest{Tools: []map[string]any{{"type": "function"}}, Messages: []IRMessage{{Role: "user", Content: "hi"}}}
-	if got := svc.targetsForRequest(cfg.Models["default"].Targets, req, "openai-chat"); len(got) != 0 {
+	if got := svc.targetsForRequest(nil, cfg.Models["default"].Targets, req, "openai-chat"); len(got) != 0 {
 		t.Fatalf("openai-chat target without explicit tool metadata was eligible: %#v", got)
 	}
 }
@@ -3039,7 +3039,7 @@ func TestAnthropicToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	defer svc.Close()
 
 	req := &IRRequest{Tools: []map[string]any{{"name": "echo", "input_schema": map[string]any{"type": "object"}}}, Messages: []IRMessage{{Role: "user", Content: "hi"}}}
-	got := svc.targetsForRequest(cfg.Models["default"].Targets, req, "anthropic")
+	got := svc.targetsForRequest(nil, cfg.Models["default"].Targets, req, "anthropic")
 	if len(got) != 1 || got[0].Model != "messages-tools" {
 		t.Fatalf("anthropic tool eligibility=%#v, want only explicit tool target", got)
 	}
@@ -3297,7 +3297,7 @@ func TestToolAndStructuredOutputRequestsRequireBothCapabilities(t *testing.T) {
 		{Provider: "mock", Model: "tools-and-structured", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice", "structured_outputs"}}},
 		{Provider: "mock", Model: "neither"},
 	}
-	got := svc.targetsForRequest(targets, req, "openai-chat")
+	got := svc.targetsForRequest(nil, targets, req, "openai-chat")
 	if len(got) != 1 || got[0].Model != "tools-and-structured" {
 		t.Fatalf("eligible targets=%#v, want only tools-and-structured", got)
 	}

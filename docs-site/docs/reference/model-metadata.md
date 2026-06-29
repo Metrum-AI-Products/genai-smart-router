@@ -81,6 +81,29 @@ Provider-hosted tool types such as OpenAI Responses `mcp` or `sse` execute serve
 
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
 
+## Request-Shape Support
+
+`request_shape_support` is optional metadata for known request-size, token-estimate, tool-schema, and dialect limits. It can be declared on a provider catalog model and overridden on a model-group target.
+
+```yaml
+request_shape_support:
+  max_request_bytes: 300000
+  max_estimated_input_tokens: 90000
+  max_requested_output_tokens: 8192
+  max_tool_schema_bytes: 100000
+  supports_large_coding_agent_payloads: false
+  supported_inbound_dialects: [openai-chat]
+  unsupported_request_features:
+    - previous_response_id
+    - function_call_output
+  validation_status: limited
+  validation_notes: Large coding-agent payload validation has not passed yet.
+```
+
+Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
+
+Estimate and context-fit telemetry is diagnostic, not billed usage. The router stores scalar estimates, caps, request bytes, target context, headroom, fit booleans, and bounded reason labels in relational rows. It does not store raw prompts, raw tool schemas, tool outputs, images, router tokens, token hashes, provider keys, or full config.
+
 ## Responses Retention Controls
 
 The router controls provider-side retention fields through target metadata. Same-dialect OpenAI Chat and Responses passthrough strips caller-supplied provider `metadata`; it sends `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated OpenAI Responses calls use the same flag. Validate that text, tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before setting the flag, because some OpenAI-compatible upstreams reject the `store` field.

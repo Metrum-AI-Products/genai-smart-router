@@ -23,6 +23,7 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Provider/model/target shaping | enable a low local `traffic_shape`, send parallel requests from two caller tokens, verify skip/fallback or `503 upstream-capacity-throttled`, `Retry-After` when calculable, and safe `request_upstream_shape_events` rows |
 | Provider-shaping reports | after provider/model/target shaping smoke, open Provider shaping and Backoff admin tabs and confirm charts/tables show skipped targets or cooldown starts without prompts, tokens, token hashes, or provider keys |
 | Adaptive upstream backoff | simulate upstream `429` with bounded `Retry-After` and provider quota/billing exhaustion; verify the next request skips the affected target until cooldown expires and records `adaptive-backoff-provider-429` or `adaptive-backoff-provider-quota` |
+| Request-shape context fit | send small text, large coding-agent, explicit output-cap, and all-target-too-small requests; verify target candidates show estimates, context headroom, safe skip reasons, and no raw prompt/tool/image data |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 | Multimodal/VLM routing | direct upstream image smoke for the exact provider/model/dialect, router-level image smoke through the intended model group, URL safety negative smoke, tiny-cap smoke, usage row image/cost fields, and no raw image persistence |
 | Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
@@ -276,6 +277,21 @@ Router-level checks for a dedicated Crusoe smoke group:
 | OpenRouter-specific tool route | validate the OpenRouter skin used by the target |
 
 For agent CLI smokes, the agent must create a file and the test must assert the file contents.
+
+## Request-Shape Context-Fit Smokes
+
+Run these smokes when adding or changing `request_shape_support`, `context_tokens`, tool metadata, coding-agent groups, or provider targets that previously returned invalid-request or context-limit errors for large Cursor, Codex, Claude Code, or opencode payloads.
+
+| Case | Smoke |
+|---|---|
+| Small text request | Send a short text-only request with no tools and a modest output cap. Expect the normal target pool to remain eligible. |
+| Large coding-agent payload | Send a synthetic large request with safe filler text, many messages or tool-output-shaped items, and representative tool schemas. Targets whose context/request/tool limits cannot fit the estimate must be skipped before upstream. |
+| Explicit output reserve | Repeat a request with low and high `max_tokens`, `max_completion_tokens`, or `max_output_tokens`. The high cap should skip targets where estimated input plus reserve exceeds context. |
+| Unknown limits | Include one target without `context_tokens` or request-size metadata. By default it remains eligible and records `limit_unknown`; use this as an inventory gap, not proof of support. |
+| All targets too small | Configure a test group where every target is too small. Expect `502 no-eligible-target`, a request ID, safe requirement/reason details, and no upstream attempt. |
+| Safe persistence | Query `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`; verify scalar estimates, caps, limits, headroom, decisions, and reasons are present, and raw prompts, raw tool schemas, raw tool outputs, image data/URLs, router tokens, token hashes, and provider keys are absent. |
+
+Rollback is metadata-only unless code changed: remove or relax the affected `request_shape_support` override, remove the target from the affected model groups, or move it into a restricted smoke group. Then rerun the small request, large request, and all-target-too-small smokes to confirm the selected target and diagnostics match the intended behavior.
 
 ## Multimodal And VLM Smokes
 

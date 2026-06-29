@@ -24,10 +24,11 @@ Provider examples in public docs are validation patterns. A provider, account, r
 2. Add environment placeholders for provider credentials where applicable. Public examples should use placeholders such as `${PROVIDER_API_KEY}` and must not include raw keys.
 3. Add provider catalog metadata with `base_url`, `dialect`, auth settings, `key_id`, served model ID, modalities, pricing fields, pricing source/date, and safe capability notes.
 4. Run direct upstream smokes for every API skin and capability that will be claimed.
-5. Add a smoke-only model group and run the same requests through the router.
-6. Confirm usage, request-time price inputs, calculated cost, latency, upstream attempts, fallback status, and safe decision telemetry are recorded.
-7. Add the target to production groups conservatively after workload acceptance passes.
-8. Update public and operator docs when the new provider, capability, API behavior, or rollout process is user-visible.
+5. For coding-agent or retrieval-heavy groups, run a synthetic large-payload smoke with representative message count, tool schemas, tool outputs, and explicit output caps. Record `context_tokens` and optional `request_shape_support` limits before broad activation.
+6. Add a smoke-only model group and run the same requests through the router.
+7. Confirm usage, request-time price inputs, calculated cost, latency, upstream attempts, fallback status, estimated tokens, context headroom, eligibility skips, and safe decision telemetry are recorded.
+8. Add the target to production groups conservatively after workload acceptance passes.
+9. Update public and operator docs when the new provider, capability, API behavior, or rollout process is user-visible.
 
 For the detailed reference process, see [Add A Provider Or Model](../reference/add-provider-model) and [Model Metadata](../reference/model-metadata).
 
@@ -53,6 +54,11 @@ providers:
         honors_max_tokens: true
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
+        request_shape_support:
+          max_estimated_input_tokens: 120000
+          max_requested_output_tokens: 8192
+          max_tool_schema_bytes: 100000
+          supports_large_coding_agent_payloads: true
 ```
 
 Keep routing weights out of provider catalogs. Weights belong only under model groups:
@@ -86,6 +92,8 @@ Do not claim tool support, image support, reasoning support, structured outputs,
 
 The router owns provider-side persistence policy for OpenAI-compatible passthrough. Caller-supplied provider `metadata` is stripped, and OpenAI Chat/Responses passthrough sends `store: false` upstream only when the resolved target sets `force_store_false: true`. OpenAI Chat passthrough also uses target metadata such as `output_token_field` to choose `max_tokens` or `max_completion_tokens`. Tool schemas and structured-output schemas still pass through to compatible targets, but their serialized size contributes to token-budget admission.
 
+Large coding-agent payload support is not implied by a model name, a context-window claim, or an ordinary text smoke. Validate the exact provider/model/dialect/account with realistic request bytes, tool schema size, requested output cap, and router translation path. If a target is useful for small requests but not validated for large agent payloads, keep it in smoke groups or configure explicit `request_shape_support` limits such as `max_request_bytes`, `max_estimated_input_tokens`, `max_tool_schema_bytes`, or `supports_large_coding_agent_payloads: false`.
+
 Upstream HTTP redirects are not followed. A 301, 302, 303, 307, or 308 response is treated as an upstream failure instead of replaying the prompt, image, tool, or schema payload to the redirect target. Successful upstream response bodies are bounded by `server.upstream.max_response_bytes` before decode or synthesized streaming.
 
 ## Hosted And Private Upstreams
@@ -107,8 +115,8 @@ Start with catalog-only metadata, then use a smoke group with restricted caller 
 Rollback should usually be a config-only change:
 
 - remove the target from affected groups;
-- remove the target from affected groups;
 - move traffic to a failover-safe target;
+- tighten or remove `request_shape_support` metadata if context/request-size validation was wrong;
 - remove an unsafe capability label such as `structured_outputs`, `image`, or tool support;
 - keep the catalog entry with dated notes when the model still exists but is not safe for active traffic.
 
