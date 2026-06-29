@@ -4,7 +4,7 @@ title: Deployment
 
 # Deployment
 
-GenAI Smart Router can be deployed as a compiled Linux binary or as a Docker Compose package. Release binaries embed this documentation site, so the router can serve product docs at `/` without a separate web server.
+GenAI Smart Router can be deployed as a compiled Linux binary, as a Docker Compose package, or inside Kubernetes using the packaged container image plus reviewed manifests. Release binaries embed this documentation site, so the router can serve product docs at `/` without a separate web server.
 
 <div class="contactBanner">
   <p>For deployment planning, TLS setup, or managed rollout, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -18,12 +18,14 @@ Normal customer deployments use shipped release packages. The target host does n
 
 Choose the package that matches the host CPU architecture:
 
-| Host architecture | Binary package | Docker Compose package |
-|---|---|---|
-| Intel/AMD Linux servers, `amd64`, `x86_64`, and common EC2 x86 instances | `smart-llmrouter-<version>-linux-amd64.tar.gz` | `smart-llmrouter-<version>-docker-linux-amd64.tar.gz` |
-| ARM64 Linux servers, including AWS Graviton | `smart-llmrouter-<version>-linux-arm64.tar.gz` | `smart-llmrouter-<version>-docker-linux-arm64.tar.gz` |
+| Host architecture | Binary package | Docker Compose package | Kubernetes image tag |
+|---|---|---|---|
+| Intel/AMD Linux servers, `amd64`, `x86_64`, and common EC2 x86 instances | `smart-llmrouter-<version>-linux-amd64.tar.gz` | `smart-llmrouter-<version>-docker-linux-amd64.tar.gz` | `<version>-linux-amd64` |
+| ARM64 Linux servers, including AWS Graviton | `smart-llmrouter-<version>-linux-arm64.tar.gz` | `smart-llmrouter-<version>-docker-linux-arm64.tar.gz` | `<version>-linux-arm64` |
 
 Docker Compose packages include a prebuilt image tarball named `images/smart-llmrouter-<version>-linux-<arch>.tar`. After loading that image, set `SMART_LLMROUTER_VERSION` in `compose/.env` to the matching image tag, such as `<version>-linux-amd64` or `<version>-linux-arm64`. The value must match the loaded package architecture and must not be `latest`.
+
+Kubernetes deployments use the same per-architecture image tarballs after loading and pushing them to a deployment-owned registry. See [Kubernetes Deployment](./kubernetes-deployment) for manifests, Secrets, external Postgres, ingress, probes, network policy, smoke tests, and rollback.
 
 ## Typical Production Shape
 

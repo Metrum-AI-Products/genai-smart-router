@@ -21,6 +21,7 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Provider-shaping reports | after provider/model/target shaping smoke, open Provider shaping and Backoff admin tabs and confirm charts/tables show skipped targets or cooldown starts without prompts, tokens, token hashes, or provider keys |
 | Adaptive upstream backoff | simulate upstream `429` with bounded `Retry-After` and provider quota/billing exhaustion; verify the next request skips the affected target until cooldown expires and records `adaptive-backoff-provider-429` or `adaptive-backoff-provider-quota` |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
+| Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
 ## Evidence Evaluation Smokes
 

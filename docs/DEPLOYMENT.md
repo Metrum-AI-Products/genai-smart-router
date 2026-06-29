@@ -75,6 +75,8 @@ make package-docker
 
 Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host. Use `docs/DEPLOYMENT_PATTERNS.md` when choosing between evaluation-hosted, self-hosted central, per-environment, per-team, hierarchical/federated, and private managed topologies.
 
+Kubernetes examples are maintained under `deploy/kubernetes/`. They are Kustomize-friendly raw manifests with placeholder-only Secret examples, an external Postgres DSN, `/readyz` and `/healthz` probes, ingress, network policy, a state PVC, and a PDB. The base kustomization does not apply `secret.example.yaml`; operators must create real Secrets through the deployment secret-management process first. Before using the manifests in production, operators must push the per-architecture package image to a deployment-owned registry, replace every placeholder, review the network policy against the cluster CNI, and smoke `/readyz`, `/docs/`, `/v1/models`, one caller request, and admin reports if enabled. Keep the example at one router replica unless the selected state/license/quota design has been validated for horizontal scaling.
+
 ## Example Deployment Host
 
 Use a deployment-owned hostname for the router, for example:

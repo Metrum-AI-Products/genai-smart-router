@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: smart-llmrouter
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smart-llmrouter

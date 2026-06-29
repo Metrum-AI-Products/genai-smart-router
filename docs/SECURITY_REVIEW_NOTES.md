@@ -58,3 +58,9 @@ For production changes, take timestamped backups, use structured config edits, k
 Release Docker builds must use the pinned Go builder image from `Dockerfile`; do not replace it with a floating `golang:<minor>-alpine` tag during packaging. When Go standard-library advisories are reported by `govulncheck`, verify both the local toolchain and the Docker builder image patch version.
 
 For hosted docs, run `npm audit --prefix docs-site --audit-level=moderate` after dependency updates. As of 2026-06-24, remaining moderate npm audit findings are Docusaurus-transitive `gray-matter` usage of `js-yaml@3` with no patched Docusaurus dependency path available. The docs dependency tree is used to build trusted repository documentation and is not part of the router API request path.
+
+## Kubernetes Deployment Artifacts
+
+Kubernetes manifests under `deploy/kubernetes/` must stay placeholder-only. They may show example Secret keys and file names, but must never include real provider credentials, router tokens, token hashes, signed license payloads, Postgres passwords, private registry names, private hostnames, private IPs, or full production config. Do not include `secret.example.yaml` in applied kustomizations because it can overwrite deployment-owned Secrets with placeholders. Review ConfigMaps and examples for secret interpolation before packaging or publishing docs.
+
+The default manifests should preserve least-privilege posture: service account token automounting disabled, non-root container, read-only root filesystem, dropped Linux capabilities, read-only config/license mounts, readiness/liveness probes, and explicit ingress/egress NetworkPolicy examples. Any production rollout must validate that the cluster CNI enforces the intended deny/allow behavior, that Postgres and provider egress are deliberately allowed, and that `/metrics` and `/admin/reports/` remain restricted to authorized subjects.

@@ -22,6 +22,7 @@ const sidebars = {
         "installation/index",
         "installation/docker-compose",
         "installation/binary",
+        "operations/kubernetes-deployment",
         "operations/deployment",
       ],
     },
@@ -127,6 +128,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "operations/deployment-patterns",
+        "operations/kubernetes-deployment",
         "operations/observability",
         "operations/key-generation",
         "evaluation/deployment-readiness",

@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-llmrouter
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smart-llmrouter
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smart-llmrouter
+    spec:
+      serviceAccountName: smart-llmrouter
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: router
+          image: registry.example.com/smart-llmrouter:<version>-linux-amd64
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/app/config/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ROUTER_USAGE_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: smart-llmrouter-secrets
+                  key: ROUTER_USAGE_DB_DSN
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: secrets
+              mountPath: /app/config/env.json
+              subPath: env.json
+              readOnly: true
+            - name: secrets
+              mountPath: /app/config/license.json
+              subPath: license.json
+              readOnly: true
+            - name: state
+              mountPath: /app/state
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: smart-llmrouter-config
+        - name: secrets
+          secret:
+            secretName: smart-llmrouter-secrets
+            defaultMode: 0400
+        - name: state
+          persistentVolumeClaim:
+            claimName: smart-llmrouter-state
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

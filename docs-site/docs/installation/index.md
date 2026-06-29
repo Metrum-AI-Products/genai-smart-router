@@ -14,6 +14,7 @@ Use this section for customer-managed deployments where an operator receives a b
 |---|---|---|
 | Docker Compose | The deployment host can run Docker and Compose, and the team wants the packaged router plus managed Postgres service. | [Docker Compose Install](/docs/installation/docker-compose) |
 | Linux binary | The team manages the process supervisor, database, TLS proxy, and filesystem layout directly. | [Binary Install](/docs/installation/binary) |
+| Kubernetes | The team operates a cluster with ingress, Secrets, external Postgres, and network policy controls. | [Kubernetes Deployment](/docs/operations/kubernetes-deployment) |
 
 Both deployment shapes use the same runtime configuration model:
 

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smart-llmrouter-config
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+data:
+  config.yaml: |
+    server:
+      listen: ":8080"
+      env_file: /app/config/env.json
+      logging:
+        path: /app/logs/requests.jsonl
+      usage_db:
+        enabled: true
+        driver: postgres
+        dsn: ${ROUTER_USAGE_DB_DSN}
+      license:
+        enabled: true
+        path: /app/config/license.json
+        state_path: /app/state/license-state.json
+      admin_reports:
+        enabled: false
+      upstream:
+        timeout_ms: 120000
+        max_response_bytes: 52428800
+    state_path: /app/state/router-state.json
+    providers: {}
+    models: {}
+    users: []
+    projects: []
+    project_memberships: []
+    callers: []
