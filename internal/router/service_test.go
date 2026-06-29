@@ -7819,8 +7819,8 @@ func TestOpenAIChatPassthroughStripsRetentionFields(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if upstreamBody["store"] != false {
-		t.Fatalf("upstream store=%#v, want false", upstreamBody["store"])
+	if _, ok := upstreamBody["store"]; ok {
+		t.Fatalf("upstream store should be omitted for OpenAI-compatible providers: %#v", upstreamBody)
 	}
 	if _, ok := upstreamBody["metadata"]; ok {
 		t.Fatalf("upstream metadata should be stripped: %#v", upstreamBody)
