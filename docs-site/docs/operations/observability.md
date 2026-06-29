@@ -16,7 +16,7 @@ GenAI Smart Router exposes operational signals for health, readiness, metrics, l
 | Metrics | `/metrics` | Caller subject with metrics authorization | Prometheus-style operational telemetry. |
 | Usage reports | `router-usage-report` | Secure admin shell with DB access | Markdown usage, cost, latency, throughput, and rollup reports. |
 | Browser reports | `/admin/reports/` | Admin authentication plus authorization | Authenticated cost, performance, cache, fallback, security, and drilldown views. |
-| Request diagnostics | usage DB child tables | Admin/report authorization or DB access | Request attempts, trace events, terminal errors, and decision telemetry. |
+| Request diagnostics | usage DB child tables | Admin/report authorization or DB access | Request attempts, trace events, terminal errors, request-shape and translation-shape telemetry, traffic-shaping events, and optional decision telemetry. |
 
 Ordinary application caller tokens must not receive `/metrics` or admin report data. They should receive `403 metrics-forbidden` or `403 reports-forbidden` when they are not authorized for those surfaces.
 

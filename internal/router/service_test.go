@@ -9754,6 +9754,107 @@ func assertDecisionFilterReason(t *testing.T, svc *Service, want string) {
 	}
 }
 
+func TestRequestShapeTelemetryPersistsForSuccessfulAndRejectedAttempts(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		statusCode int
+		wantStatus int
+	}{
+		{name: "success", statusCode: http.StatusOK, wantStatus: http.StatusOK},
+		{name: "upstream-400", statusCode: http.StatusBadRequest, wantStatus: http.StatusBadGateway},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/chat/completions" {
+					t.Fatalf("path=%s", r.URL.Path)
+				}
+				if tc.statusCode >= 400 {
+					writeJSON(w, tc.statusCode, map[string]any{"error": map[string]any{"message": "provider rejected shape"}})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id": "chatcmpl_shape",
+					"choices": []map[string]any{{
+						"message":       map[string]any{"role": "assistant", "content": "ok"},
+						"finish_reason": "stop",
+					}},
+					"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
+				})
+			}))
+			defer upstream.Close()
+			dir := t.TempDir()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "mock-model", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice", "structured_outputs"}}}}}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			body := `{
+				"model":"default",
+				"stream":true,
+				"messages":[{"role":"user","content":"do not persist prompt ` + tc.name + `"}],
+				"tools":[{"type":"function","function":{"name":"secret_lookup","parameters":{"type":"object","properties":{"secret_field":{"type":"string","description":"do not persist schema"}}}}}],
+				"tool_choice":"auto",
+				"store":true,
+				"metadata":{"customer":"do not persist metadata"},
+				"max_tokens":64
+			}`
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			req.Header.Set("User-Agent", "codex-test")
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != tc.wantStatus {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+
+			var usage usageRecord
+			if err := svc.usage.db.First(&usage).Error; err != nil {
+				t.Fatal(err)
+			}
+			var shape requestShapeRecord
+			if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&shape).Error; err != nil {
+				t.Fatal(err)
+			}
+			if shape.ToolCount != 1 || shape.ToolChoiceMode != "auto" || !shape.StorePresent || !shape.MetadataPresent || shape.RequestShapeFingerprint == "" || shape.ToolSchemaFingerprint == "" {
+				t.Fatalf("shape=%#v", shape)
+			}
+			var translated requestTranslationShapeRecord
+			if err := svc.usage.db.Where("request_id = ? AND attempt_index = ?", usage.RequestID, 1).First(&translated).Error; err != nil {
+				t.Fatal(err)
+			}
+			if translated.TranslatedToolCount != 1 || translated.TranslatedToolChoiceMode != "auto" || translated.TranslatedRequestBytesBucket == "" {
+				t.Fatalf("translated=%#v", translated)
+			}
+			var events []requestTranslationFieldEventRecord
+			if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&events).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(events) == 0 {
+				t.Fatal("missing translation field events")
+			}
+			assertPersistedShapeRowsDoNotContain(t, shape, translated, events, "do not persist", "secret_lookup", "secret_field", "provider-key", testToken)
+		})
+	}
+}
+
+func assertPersistedShapeRowsDoNotContain(t *testing.T, shape requestShapeRecord, translated requestTranslationShapeRecord, events []requestTranslationFieldEventRecord, forbidden ...string) {
+	t.Helper()
+	raw, err := json.Marshal([]any{shape, translated, events})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ToLower(string(raw))
+	for _, value := range forbidden {
+		if strings.Contains(text, strings.ToLower(value)) {
+			t.Fatalf("persisted shape telemetry leaked %q: %s", value, string(raw))
+		}
+	}
+}
+
 const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {

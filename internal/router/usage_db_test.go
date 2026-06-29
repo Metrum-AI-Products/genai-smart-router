@@ -931,6 +931,9 @@ func TestUsageDBSchemaIsRelationalOnly(t *testing.T) {
 		"request_usage",
 		"request_attempts",
 		"request_trace_events",
+		"request_shapes",
+		"request_translation_shapes",
+		"request_translation_field_events",
 		"request_decision_shape_features",
 		"request_target_candidates",
 		"request_target_filter_reasons",
@@ -1512,5 +1515,21 @@ func TestContentCaptureRetentionPurgeDeletesRowsAndAudits(t *testing.T) {
 	}
 	if audit.RequestID != "req_expired" || audit.RowsAffected != 1 || audit.ActorCallerID != "content-admin" {
 		t.Fatalf("unexpected audit row: %#v", audit)
+	}
+}
+
+func TestRequestTranslationFieldEventRecordPreservesOtherBucket(t *testing.T) {
+	rec := requestTranslationFieldEventRecordFromLog("req_other", translationFieldEventLogRecord{
+		AttemptIndex: 2,
+		Seq:          3,
+		FieldName:    "other",
+		Action:       "unsupported",
+		Reason:       "unsupported_source_field",
+	})
+	if rec.FieldName != "other" {
+		t.Fatalf("field name=%q, want safe other bucket", rec.FieldName)
+	}
+	if rec.Action != "unsupported" || rec.Reason != "unsupported_source_field" {
+		t.Fatalf("unexpected action/reason: %#v", rec)
 	}
 }

@@ -376,6 +376,19 @@ type adminShapingTelemetryDetail struct {
 	UpstreamShapeEvents []requestUpstreamShapeEventRecord `json:"upstreamShapeEvents,omitempty"`
 }
 
+type adminRequestShapeTelemetryDetail struct {
+	RequestShape      *requestShapeRecord                  `json:"requestShape,omitempty"`
+	TranslationShapes []requestTranslationShapeRecord      `json:"translationShapes,omitempty"`
+	FieldEvents       []requestTranslationFieldEventRecord `json:"fieldEvents,omitempty"`
+}
+
+func optionalRequestShapeRecord(rec requestShapeRecord, ok bool) *requestShapeRecord {
+	if !ok {
+		return nil
+	}
+	return &rec
+}
+
 type adminSavingsRow struct {
 	Key             string  `json:"key"`
 	Requests        int64   `json:"requests"`
@@ -1252,11 +1265,17 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	var cacheReasons []decisionCacheReasonRecord
 	var trafficShapeEvents []requestTrafficShapeEventRecord
 	var upstreamShapeEvents []requestUpstreamShapeEventRecord
+	var requestShape requestShapeRecord
+	var translationShapes []requestTranslationShapeRecord
+	var translationFieldEvents []requestTranslationFieldEventRecord
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&attempts).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&traces).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Find(&errors).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&trafficShapeEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&upstreamShapeEvents).Error
+	requestShapeFound := s.usage.db.Where("request_id = ?", requestID).First(&requestShape).Error == nil
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&translationShapes).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC, seq ASC").Find(&translationFieldEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&shapeFeatures).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("candidate_index ASC").Find(&candidates).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&filterReasons).Error
@@ -1274,6 +1293,11 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 		"shapingTelemetry": adminShapingTelemetryDetail{
 			TrafficShapeEvents:  trafficShapeEvents,
 			UpstreamShapeEvents: upstreamShapeEvents,
+		},
+		"requestShapeTelemetry": adminRequestShapeTelemetryDetail{
+			RequestShape:      optionalRequestShapeRecord(requestShape, requestShapeFound),
+			TranslationShapes: translationShapes,
+			FieldEvents:       translationFieldEvents,
 		},
 		"decisionTelemetry": adminDecisionTelemetryDetail{
 			ShapeFeatures:       shapeFeatures,
@@ -1379,6 +1403,24 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		}
 		status = parsed
 	}
+	var streamOnly *bool
+	if raw := strings.TrimSpace(q.Get("stream")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeInvalidReportFilter(w, "invalid stream")
+			return adminReportFilters{}, false
+		}
+		streamOnly = &parsed
+	}
+	var reasoningPresent *bool
+	if raw := strings.TrimSpace(q.Get("reasoning_present")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeInvalidReportFilter(w, "invalid reasoning_present")
+			return adminReportFilters{}, false
+		}
+		reasoningPresent = &parsed
+	}
 	opts := UsageReportOptions{
 		From:               from,
 		To:                 to,
@@ -1399,6 +1441,17 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		Client:             q.Get("client"),
 		TrafficShapeBucket: strings.TrimSpace(q.Get("traffic_shape_bucket")),
 		TrafficShapeScope:  strings.TrimSpace(q.Get("traffic_shape_scope")),
+		InboundDialect:     strings.TrimSpace(q.Get("inbound_dialect")),
+		StreamOnly:         streamOnly,
+		ToolChoiceMode:     strings.TrimSpace(q.Get("tool_choice_mode")),
+		ToolCountBucket:    strings.TrimSpace(q.Get("tool_count_bucket")),
+		RequestBytesBucket: strings.TrimSpace(q.Get("request_bytes_bucket")),
+		InputTokensBucket:  strings.TrimSpace(q.Get("estimated_input_tokens_bucket")),
+		OutputCapBucket:    strings.TrimSpace(q.Get("output_cap_bucket")),
+		ReasoningPresent:   reasoningPresent,
+		MultimodalOnly:     parseTruthy(q.Get("multimodal")),
+		RequestShapeFP:     strings.TrimSpace(q.Get("request_shape_fingerprint")),
+		ToolSchemaFP:       strings.TrimSpace(q.Get("tool_schema_fingerprint")),
 	}
 	if !global {
 		applyAdminDomainScope(&opts, subject.domain)
@@ -1479,6 +1532,15 @@ func writeInvalidReportFilter(w http.ResponseWriter, message string) {
 		message = "invalid-report-filter"
 	}
 	writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": message}})
+}
+
+func parseTruthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateAdminCursorPageParams(w http.ResponseWriter, filters adminReportFilters) bool {

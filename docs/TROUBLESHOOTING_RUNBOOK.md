@@ -31,10 +31,13 @@ Use `X-Request-Id` to inspect relational usage tables:
 - `request_attempts`: upstream provider/model attempts, status, duration, timeout/cancel flags.
 - `request_trace_events`: routing decisions, fallback, cache, timeout, terminal failure.
 - `request_traffic_shape_events`: per-bucket caller traffic-shaping decisions when shaping was applied.
-- `request_upstream_error_details`: bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and sanitized message when `store_sanitized_upstream_errors` is enabled.
+- `request_shapes`: one safe request-shape row with dialect, stream flag, item/message/role counts, tool count, tool-choice mode, structured-output/reasoning/multimodal flags, coarse size/token/output-cap buckets, and non-reversible request/tool-schema fingerprints.
+- `request_translation_shapes`: one safe translated-shape row per upstream attempt with provider/model/dialect/path, translated stream/tools/tool-choice/output-cap/reasoning controls, translated request bytes bucket, and strip/rewrite/warning counts.
+- `request_translation_field_events`: bounded child rows for allowlisted translated fields or `other`, with actions such as `stripped`, `rewritten`, and `unsupported`.
+- `request_upstream_error_details`: bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and categorized provider message when `store_sanitized_upstream_errors` is enabled.
 - `request_errors`: sanitized terminal error class/message.
 
-Diagnostic tables must not store raw prompts, raw image payloads, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
+Diagnostic tables must not store raw prompts, raw image payloads, image URLs, raw tool schemas, raw tool outputs, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
 
 For incident windows with many requests, page the admin request API instead of asking the browser to load the whole result set:
 
@@ -116,6 +119,69 @@ Validate the exact client dialect:
 - Claude Code uses `/v1/messages`.
 
 Run the appropriate real tool smoke and assert file contents, not only assistant text.
+
+### Request-Shape-Specific Upstream 400s
+
+Use this flow when direct provider smokes pass but production agent traffic receives upstream `400` or another non-retryable provider rejection.
+
+1. Confirm the failed request IDs, UTC window, provider, model, and dialect from `request_usage` and `request_attempts`.
+2. Compare successful and failed attempts for the same provider/model/dialect using only safe shape fields:
+
+```sql
+SELECT
+  u.status,
+  a.status_code AS upstream_status,
+  rs.request_shape_fingerprint,
+  rs.tool_schema_fingerprint,
+  rs.total_request_bytes_bucket,
+  rs.tool_schema_bytes_bucket,
+  rs.estimated_input_tokens_bucket,
+  rs.requested_output_cap_field,
+  rs.requested_output_cap_bucket,
+  rs.tool_count,
+  rs.tool_choice_mode,
+  rs.structured_output_present,
+  rs.reasoning_present,
+  rs.image_count,
+  ts.endpoint_path,
+  ts.translated_output_cap_field,
+  ts.translated_output_cap_bucket,
+  ts.translated_reasoning_control,
+  ts.fields_stripped_count,
+  ts.fields_rewritten_count,
+  ts.unsupported_fields_present,
+  COUNT(*) AS requests
+FROM request_usage u
+JOIN request_attempts a ON a.request_id = u.request_id
+LEFT JOIN request_shapes rs ON rs.request_id = u.request_id
+LEFT JOIN request_translation_shapes ts
+  ON ts.request_id = a.request_id AND ts.attempt_index = a.attempt_index
+WHERE u.ts >= :from
+  AND u.ts < :to
+  AND a.provider = :provider
+  AND a.model = :model
+  AND a.dialect = :dialect
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21
+ORDER BY requests DESC;
+```
+
+3. If `unsupported_fields_present` is true, inspect `request_translation_field_events` for safe field names and actions:
+
+```sql
+SELECT field_name, action, reason, COUNT(*) AS events
+FROM request_translation_field_events e
+JOIN request_attempts a
+  ON a.request_id = e.request_id AND a.attempt_index = e.attempt_index
+WHERE a.ts >= :from
+  AND a.ts < :to
+  AND a.provider = :provider
+  AND a.model = :model
+  AND a.dialect = :dialect
+GROUP BY 1,2,3
+ORDER BY events DESC;
+```
+
+4. Reproduce with the same safe shape, not the raw content: same dialect, stream flag, tool count, tool-choice mode, structured-output flag, reasoning controls, multimodal presence, output-cap field/bucket, and a similarly sized sanitized payload. Do not copy user prompts, repository contents, images, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, or full production config into the reproduction.
 
 ## Logs
 

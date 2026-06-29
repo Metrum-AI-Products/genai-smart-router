@@ -28,6 +28,10 @@ Generated reports are Markdown files with structured tables for usage, cost, lat
 
 Provider/model/target shared shaping writes safe scalar `request_upstream_shape_events` rows keyed by `request_id`. Use these rows with `request_usage`, `request_attempts`, and `request_trace_events` to explain why an otherwise eligible target was admitted, skipped, rejected, or placed into adaptive backoff after an upstream `429` or provider quota signal. The rows include scope, provider, model label, dialect, bucket, decision, bounded retry-after milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and safe backoff reason; they do not store prompts, images, raw upstream bodies, provider keys, router tokens, or token hashes.
 
+Request-shape diagnostics write one safe `request_shapes` row per routed request and one `request_translation_shapes` row per upstream attempt. These rows are independent of optional decision telemetry and are intended for upstream rejection triage. They capture scalar counts, booleans, buckets, and non-reversible HMAC fingerprints for fields such as inbound API shape, stream flag, input item and message counts, role counts, tool-result and function-call-output counts, tool count, tool-choice mode, structured-output presence, reasoning presence/control buckets, include/truncation/store/metadata/previous-response flags, image/audio/video presence, input-text bytes bucket, tool-schema bytes bucket, total request bytes bucket, estimated input token bucket, requested and translated output-cap fields/buckets, translated provider/model/dialect/path, translated tool count, translated reasoning control, field strip/rewrite counts, and translation warning counts. `request_translation_field_events` stores one bounded child row per safe field action using only allowlisted field names or `other`.
+
+Bucket definitions are intentionally coarse: byte buckets are `none`, `1b-1kb`, `1kb-16kb`, `16kb-64kb`, `64kb-256kb`, `256kb-1mb`, and `gt-1mb`; reasoning budget buckets are `none`, `tiny`, `small`, `medium`, `large`, and `xlarge`; max-token and estimated-input-token buckets reuse the router's existing reporting buckets. Fingerprints are for comparing repeated request shapes inside a deployment without storing prompts or tool schemas.
+
 Traffic-shaping report sections appear when the selected window contains caller shaping or upstream shared-capacity events. They include:
 
 - Traffic Shaping Summary;
@@ -98,7 +102,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_upstream_error_details`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
+With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_shapes`, `request_translation_shapes`, `request_translation_field_events`, `request_upstream_error_details`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
 
 Use retention language carefully in commercial reviews:
 
@@ -228,11 +232,46 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 - `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
 - `request_traffic_shape_events` for per-bucket caller/server traffic-shaping decisions, costs, retry-after, and queue wait.
 - `request_upstream_shape_events` for provider/model/target admission, skip, rejection, and adaptive-backoff cooldown decisions.
-- `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and sanitized message when `store_sanitized_upstream_errors` is enabled.
+- `request_shapes`, `request_translation_shapes`, and `request_translation_field_events` for safe request-shape and provider-translation triage. Use these to compare successful and failed requests for the same provider/model/dialect by stream flag, tool count, tool-choice mode, request bytes bucket, input-token bucket, output-cap bucket, reasoning controls, multimodal presence, request-shape fingerprint, and tool-schema fingerprint.
+- `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and categorized provider message when `store_sanitized_upstream_errors` is enabled.
 - `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_fallback_transitions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, score/ranking term rows include scalar score buckets, policy execution rows cover fail-closed errors before selection, and fallback transition rows link failed attempts to fallback targets.
 - `request_errors` for the terminal sanitized error summary.
 
 Diagnostic and decision telemetry rows do not store raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, full config, or unsanitized upstream response bodies.
+
+For “small prompts work but real coding-agent requests fail,” filter to the same provider/model/dialect and compare successful versus failed attempts by request shape:
+
+```sql
+SELECT
+  u.status,
+  a.status_code AS upstream_status,
+  rs.request_shape_fingerprint,
+  rs.tool_schema_fingerprint,
+  rs.total_request_bytes_bucket,
+  rs.tool_schema_bytes_bucket,
+  rs.estimated_input_tokens_bucket,
+  rs.tool_count,
+  rs.tool_choice_mode,
+  rs.structured_output_present,
+  rs.reasoning_present,
+  rs.image_count,
+  ts.translated_output_cap_field,
+  ts.translated_output_cap_bucket,
+  ts.translated_reasoning_control,
+  COUNT(*) AS requests
+FROM request_usage u
+JOIN request_attempts a ON a.request_id = u.request_id
+LEFT JOIN request_shapes rs ON rs.request_id = u.request_id
+LEFT JOIN request_translation_shapes ts
+  ON ts.request_id = a.request_id AND ts.attempt_index = a.attempt_index
+WHERE u.ts >= :from
+  AND u.ts < :to
+  AND a.provider = :provider
+  AND a.model = :model
+  AND a.dialect = :dialect
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+ORDER BY requests DESC;
+```
 
 When operators generate rollups, `usage_rollup_decision_buckets` preserves report-critical bucket counts after raw request or decision detail retention. Browser admin scalar APIs include `/admin/reports/api/dynamic-signals`, `/admin/reports/api/dynamic-score-buckets`, `/admin/reports/api/dynamic-thresholds`, `/admin/reports/api/max-token-buckets`, `/admin/reports/api/input-token-buckets`, and `/admin/reports/api/admission-reasons`.
 

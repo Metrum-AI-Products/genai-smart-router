@@ -54,6 +54,17 @@ type UsageReportOptions struct {
 	TrafficShapedOnly  bool
 	TrafficShapeBucket string
 	TrafficShapeScope  string
+	InboundDialect     string
+	StreamOnly         *bool
+	ToolChoiceMode     string
+	ToolCountBucket    string
+	RequestBytesBucket string
+	InputTokensBucket  string
+	OutputCapBucket    string
+	ReasoningPresent   *bool
+	MultimodalOnly     bool
+	RequestShapeFP     string
+	ToolSchemaFP       string
 }
 
 type UsageRollupOptions struct {
@@ -948,6 +959,92 @@ func (requestUpstreamShapeEventRecord) TableName() string {
 	return "request_upstream_shape_events"
 }
 
+type requestShapeRecord struct {
+	RequestID                  string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_shape_request"`
+	TS                         string `gorm:"column:ts;type:text;not null;index:idx_request_shape_ts"`
+	InboundDialect             string `gorm:"column:inbound_dialect;type:text;not null;index:idx_request_shape_inbound"`
+	RequestedModel             string `gorm:"column:requested_model;type:text;not null;index:idx_request_shape_requested_model"`
+	ResolvedGroup              string `gorm:"column:resolved_group;type:text;not null;default:'';index:idx_request_shape_group"`
+	Client                     string `gorm:"column:client;type:text;not null;default:'';index:idx_request_shape_client"`
+	Stream                     bool   `gorm:"column:stream;not null;default:false;index:idx_request_shape_stream"`
+	InputItemCount             int    `gorm:"column:input_item_count;not null;default:0"`
+	MessageCount               int    `gorm:"column:message_count;not null;default:0"`
+	SystemMessageCount         int    `gorm:"column:system_message_count;not null;default:0"`
+	DeveloperMessageCount      int    `gorm:"column:developer_message_count;not null;default:0"`
+	UserMessageCount           int    `gorm:"column:user_message_count;not null;default:0"`
+	AssistantMessageCount      int    `gorm:"column:assistant_message_count;not null;default:0"`
+	ToolResultCount            int    `gorm:"column:tool_result_count;not null;default:0"`
+	FunctionCallOutputCount    int    `gorm:"column:function_call_output_count;not null;default:0"`
+	ToolCount                  int    `gorm:"column:tool_count;not null;default:0;index:idx_request_shape_tool_count"`
+	ToolChoiceMode             string `gorm:"column:tool_choice_mode;type:text;not null;default:'';index:idx_request_shape_tool_choice"`
+	ParallelToolCallsPresent   bool   `gorm:"column:parallel_tool_calls_present;not null;default:false"`
+	ResponseFormatPresent      bool   `gorm:"column:response_format_present;not null;default:false"`
+	StructuredOutputPresent    bool   `gorm:"column:structured_output_present;not null;default:false;index:idx_request_shape_structured"`
+	ReasoningPresent           bool   `gorm:"column:reasoning_present;not null;default:false;index:idx_request_shape_reasoning"`
+	ReasoningEffortBucket      string `gorm:"column:reasoning_effort_bucket;type:text;not null;default:''"`
+	ReasoningBudgetBucket      string `gorm:"column:reasoning_budget_bucket;type:text;not null;default:''"`
+	IncludePresent             bool   `gorm:"column:include_present;not null;default:false"`
+	TruncationPresent          bool   `gorm:"column:truncation_present;not null;default:false"`
+	MetadataPresent            bool   `gorm:"column:metadata_present;not null;default:false"`
+	StorePresent               bool   `gorm:"column:store_present;not null;default:false"`
+	PreviousResponseIDPresent  bool   `gorm:"column:previous_response_id_present;not null;default:false"`
+	ImageCount                 int    `gorm:"column:image_count;not null;default:0;index:idx_request_shape_image_count"`
+	AudioPresent               bool   `gorm:"column:audio_present;not null;default:false"`
+	VideoPresent               bool   `gorm:"column:video_present;not null;default:false"`
+	InputTextBytesBucket       string `gorm:"column:input_text_bytes_bucket;type:text;not null;default:''"`
+	ToolSchemaBytesBucket      string `gorm:"column:tool_schema_bytes_bucket;type:text;not null;default:'';index:idx_request_shape_tool_schema_bucket"`
+	TotalRequestBytesBucket    string `gorm:"column:total_request_bytes_bucket;type:text;not null;default:'';index:idx_request_shape_bytes_bucket"`
+	EstimatedInputTokensBucket string `gorm:"column:estimated_input_tokens_bucket;type:text;not null;default:'';index:idx_request_shape_input_token_bucket"`
+	RequestedOutputCapField    string `gorm:"column:requested_output_cap_field;type:text;not null;default:''"`
+	RequestedOutputCapBucket   string `gorm:"column:requested_output_cap_bucket;type:text;not null;default:'';index:idx_request_shape_output_cap_bucket"`
+	ToolSchemaFingerprint      string `gorm:"column:tool_schema_fingerprint;type:text;not null;default:'';index:idx_request_shape_tool_schema_fp"`
+	RequestShapeFingerprint    string `gorm:"column:request_shape_fingerprint;type:text;not null;default:'';index:idx_request_shape_fp"`
+}
+
+func (requestShapeRecord) TableName() string {
+	return "request_shapes"
+}
+
+type requestTranslationShapeRecord struct {
+	RequestID                    string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_translation_shape_request"`
+	AttemptIndex                 int    `gorm:"column:attempt_index;primaryKey;not null"`
+	TS                           string `gorm:"column:ts;type:text;not null;index:idx_request_translation_shape_ts"`
+	Provider                     string `gorm:"column:provider;type:text;not null;index:idx_request_translation_shape_provider_model,priority:1"`
+	Model                        string `gorm:"column:model;type:text;not null;index:idx_request_translation_shape_provider_model,priority:2"`
+	Dialect                      string `gorm:"column:dialect;type:text;not null;index:idx_request_translation_shape_dialect"`
+	EndpointPath                 string `gorm:"column:endpoint_path;type:text;not null;default:''"`
+	TranslatedStream             bool   `gorm:"column:translated_stream;not null;default:false;index:idx_request_translation_shape_stream"`
+	TranslatedToolCount          int    `gorm:"column:translated_tool_count;not null;default:0;index:idx_request_translation_shape_tool_count"`
+	TranslatedToolChoiceMode     string `gorm:"column:translated_tool_choice_mode;type:text;not null;default:'';index:idx_request_translation_shape_tool_choice"`
+	TranslatedOutputCapField     string `gorm:"column:translated_output_cap_field;type:text;not null;default:''"`
+	TranslatedOutputCapBucket    string `gorm:"column:translated_output_cap_bucket;type:text;not null;default:'';index:idx_request_translation_shape_output_cap"`
+	TranslatedReasoningControl   string `gorm:"column:translated_reasoning_control;type:text;not null;default:'';index:idx_request_translation_shape_reasoning"`
+	TranslatedRequestBytesBucket string `gorm:"column:translated_request_bytes_bucket;type:text;not null;default:'';index:idx_request_translation_shape_bytes"`
+	FieldsStrippedCount          int    `gorm:"column:fields_stripped_count;not null;default:0"`
+	FieldsRewrittenCount         int    `gorm:"column:fields_rewritten_count;not null;default:0"`
+	UnsupportedFieldsPresent     bool   `gorm:"column:unsupported_fields_present;not null;default:false;index:idx_request_translation_shape_unsupported"`
+	TranslationWarningCount      int    `gorm:"column:translation_warning_count;not null;default:0"`
+	RequestShapeFingerprint      string `gorm:"column:request_shape_fingerprint;type:text;not null;default:'';index:idx_request_translation_shape_request_fp"`
+	ToolSchemaFingerprint        string `gorm:"column:tool_schema_fingerprint;type:text;not null;default:'';index:idx_request_translation_shape_tool_fp"`
+}
+
+func (requestTranslationShapeRecord) TableName() string {
+	return "request_translation_shapes"
+}
+
+type requestTranslationFieldEventRecord struct {
+	RequestID    string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_translation_field_request"`
+	AttemptIndex int    `gorm:"column:attempt_index;primaryKey;not null;index:idx_request_translation_field_attempt"`
+	Seq          int    `gorm:"column:seq;primaryKey;not null"`
+	FieldName    string `gorm:"column:field_name;type:text;not null;index:idx_request_translation_field_name"`
+	Action       string `gorm:"column:action;type:text;not null;index:idx_request_translation_field_action"`
+	Reason       string `gorm:"column:reason;type:text;not null;default:''"`
+}
+
+func (requestTranslationFieldEventRecord) TableName() string {
+	return "request_translation_field_events"
+}
+
 type decisionShapeFeatureRecord struct {
 	RequestID   string `gorm:"column:request_id;primaryKey;type:text;index:idx_decision_shape_request" json:"requestId"`
 	Seq         int    `gorm:"column:seq;primaryKey;not null" json:"seq"`
@@ -1346,6 +1443,9 @@ func (s *usageStore) migrate() error {
 		&requestTraceEventRecord{},
 		&requestTrafficShapeEventRecord{},
 		&requestUpstreamShapeEventRecord{},
+		&requestShapeRecord{},
+		&requestTranslationShapeRecord{},
+		&requestTranslationFieldEventRecord{},
 		&decisionShapeFeatureRecord{},
 		&decisionTargetCandidateRecord{},
 		&decisionTargetFilterReasonRecord{},
@@ -1405,6 +1505,9 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_trace_events",
 		"request_traffic_shape_events",
 		"request_upstream_shape_events",
+		"request_shapes",
+		"request_translation_shapes",
+		"request_translation_field_events",
 		"request_decision_shape_features",
 		"request_target_candidates",
 		"request_target_filter_reasons",
@@ -1452,7 +1555,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_shapes', 'request_translation_shapes', 'request_translation_field_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1485,6 +1588,15 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	for _, event := range rec.UpstreamShapeEvents {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(upstreamShapeEventRecordFromLog(rec.RequestID, event)).Error
+	}
+	if rec.RequestShape != nil {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestShapeRecordFromLog(rec.RequestID, *rec.RequestShape)).Error
+	}
+	for _, shape := range rec.TranslationShapes {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestTranslationShapeRecordFromLog(rec.RequestID, shape)).Error
+	}
+	for _, event := range rec.TranslationFieldEvents {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(requestTranslationFieldEventRecordFromLog(rec.RequestID, event)).Error
 	}
 	for _, feature := range rec.DecisionShapeFeatures {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionShapeFeatureRecordFromLog(rec.RequestID, feature)).Error
@@ -1616,6 +1728,86 @@ func upstreamShapeEventRecordFromLog(requestID string, rec upstreamShapeEventLog
 		TotalReservedTokens:  rec.TotalReservedTokens,
 		BackoffReason:        rec.BackoffReason,
 		QueueWaitMS:          rec.QueueWaitMS,
+	}
+}
+
+func requestShapeRecordFromLog(requestID string, rec requestShapeLogRecord) *requestShapeRecord {
+	return &requestShapeRecord{
+		RequestID:                  requestID,
+		TS:                         rec.TS,
+		InboundDialect:             rec.InboundDialect,
+		RequestedModel:             rec.RequestedModel,
+		ResolvedGroup:              rec.ResolvedGroup,
+		Client:                     rec.Client,
+		Stream:                     rec.Stream,
+		InputItemCount:             rec.InputItemCount,
+		MessageCount:               rec.MessageCount,
+		SystemMessageCount:         rec.SystemMessageCount,
+		DeveloperMessageCount:      rec.DeveloperMessageCount,
+		UserMessageCount:           rec.UserMessageCount,
+		AssistantMessageCount:      rec.AssistantMessageCount,
+		ToolResultCount:            rec.ToolResultCount,
+		FunctionCallOutputCount:    rec.FunctionCallOutputCount,
+		ToolCount:                  rec.ToolCount,
+		ToolChoiceMode:             rec.ToolChoiceMode,
+		ParallelToolCallsPresent:   rec.ParallelToolCallsPresent,
+		ResponseFormatPresent:      rec.ResponseFormatPresent,
+		StructuredOutputPresent:    rec.StructuredOutputPresent,
+		ReasoningPresent:           rec.ReasoningPresent,
+		ReasoningEffortBucket:      rec.ReasoningEffortBucket,
+		ReasoningBudgetBucket:      rec.ReasoningBudgetBucket,
+		IncludePresent:             rec.IncludePresent,
+		TruncationPresent:          rec.TruncationPresent,
+		MetadataPresent:            rec.MetadataPresent,
+		StorePresent:               rec.StorePresent,
+		PreviousResponseIDPresent:  rec.PreviousResponseIDPresent,
+		ImageCount:                 rec.ImageCount,
+		AudioPresent:               rec.AudioPresent,
+		VideoPresent:               rec.VideoPresent,
+		InputTextBytesBucket:       rec.InputTextBytesBucket,
+		ToolSchemaBytesBucket:      rec.ToolSchemaBytesBucket,
+		TotalRequestBytesBucket:    rec.TotalRequestBytesBucket,
+		EstimatedInputTokensBucket: rec.EstimatedInputTokensBucket,
+		RequestedOutputCapField:    rec.RequestedOutputCapField,
+		RequestedOutputCapBucket:   rec.RequestedOutputCapBucket,
+		ToolSchemaFingerprint:      rec.ToolSchemaFingerprint,
+		RequestShapeFingerprint:    rec.RequestShapeFingerprint,
+	}
+}
+
+func requestTranslationShapeRecordFromLog(requestID string, rec translationShapeLogRecord) *requestTranslationShapeRecord {
+	return &requestTranslationShapeRecord{
+		RequestID:                    requestID,
+		AttemptIndex:                 rec.AttemptIndex,
+		TS:                           rec.TS,
+		Provider:                     rec.Provider,
+		Model:                        rec.Model,
+		Dialect:                      rec.Dialect,
+		EndpointPath:                 rec.EndpointPath,
+		TranslatedStream:             rec.TranslatedStream,
+		TranslatedToolCount:          rec.TranslatedToolCount,
+		TranslatedToolChoiceMode:     rec.TranslatedToolChoiceMode,
+		TranslatedOutputCapField:     rec.TranslatedOutputCapField,
+		TranslatedOutputCapBucket:    rec.TranslatedOutputCapBucket,
+		TranslatedReasoningControl:   rec.TranslatedReasoningControl,
+		TranslatedRequestBytesBucket: rec.TranslatedRequestBytesBucket,
+		FieldsStrippedCount:          rec.FieldsStrippedCount,
+		FieldsRewrittenCount:         rec.FieldsRewrittenCount,
+		UnsupportedFieldsPresent:     rec.UnsupportedFieldsPresent,
+		TranslationWarningCount:      rec.TranslationWarningCount,
+		RequestShapeFingerprint:      rec.RequestShapeFingerprint,
+		ToolSchemaFingerprint:        rec.ToolSchemaFingerprint,
+	}
+}
+
+func requestTranslationFieldEventRecordFromLog(requestID string, rec translationFieldEventLogRecord) *requestTranslationFieldEventRecord {
+	return &requestTranslationFieldEventRecord{
+		RequestID:    requestID,
+		AttemptIndex: rec.AttemptIndex,
+		Seq:          rec.Seq,
+		FieldName:    safeTranslationFieldName(rec.FieldName),
+		Action:       safeOptionalReasonToken(rec.Action),
+		Reason:       safeOptionalReasonToken(rec.Reason),
 	}
 }
 
@@ -2496,6 +2688,9 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_trace_events", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_traffic_shape_events", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_upstream_shape_events", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_shapes", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_translation_shapes", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_translation_field_events", TSColumn: "ts", UseRequestUsageTS: true},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_errors", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_upstream_error_details", TSColumn: "ts"},
 		}
@@ -2687,6 +2882,12 @@ func deleteRetentionBatch(tx *gorm.DB, table retentionTableSpec, cutoff string, 
 			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestTrafficShapeEventRecord{})
 		case "request_upstream_shape_events":
 			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestUpstreamShapeEventRecord{})
+		case "request_shapes":
+			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestShapeRecord{})
+		case "request_translation_shapes":
+			res = tx.Where("request_id = ? AND attempt_index = ?", key.RequestID, key.AttemptIndex).Delete(&requestTranslationShapeRecord{})
+		case "request_translation_field_events":
+			res = tx.Where("request_id = ? AND attempt_index = ? AND seq = ?", key.RequestID, key.AttemptIndex, key.Seq).Delete(&requestTranslationFieldEventRecord{})
 		case "request_errors":
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestErrorRecord{})
 		case "request_upstream_error_details":
@@ -2750,6 +2951,25 @@ func selectRetentionDeleteKeys(tx *gorm.DB, table retentionTableSpec, cutoff str
 			FROM request_upstream_shape_events r
 			WHERE r.ts < ? ` + baseHoldClause + `
 			ORDER BY r.ts ASC, r.request_id ASC, r.seq ASC
+			LIMIT ?`
+	case "request_shapes":
+		query = `SELECT r.request_id AS request_id
+			FROM request_shapes r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC
+			LIMIT ?`
+	case "request_translation_shapes":
+		query = `SELECT r.request_id AS request_id, r.attempt_index AS attempt_index
+			FROM request_translation_shapes r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.attempt_index ASC
+			LIMIT ?`
+	case "request_translation_field_events":
+		query = `SELECT r.request_id AS request_id, r.attempt_index AS attempt_index, r.seq AS seq
+			FROM request_translation_field_events r
+			JOIN request_usage u ON u.request_id = r.request_id
+			WHERE u.ts < ? ` + strings.ReplaceAll(baseHoldClause, "r.ts", "u.ts") + `
+			ORDER BY u.ts ASC, r.request_id ASC, r.attempt_index ASC, r.seq ASC
 			LIMIT ?`
 	case "request_errors":
 		query = `SELECT r.request_id AS request_id
@@ -3944,6 +4164,12 @@ func (s *usageStore) usageRowsQuery(opts UsageReportOptions) *gorm.DB {
 	if opts.Client != "" {
 		q = q.Where("client = ?", opts.Client)
 	}
+	if opts.InboundDialect != "" {
+		q = q.Where("inbound_dialect = ?", opts.InboundDialect)
+	}
+	if opts.StreamOnly != nil {
+		q = q.Where("stream = ?", *opts.StreamOnly)
+	}
 	if opts.TrafficShapedOnly {
 		q = q.Where("traffic_shape_applied = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE decision IN (?, ?))", true, shapeDecisionSkipped, shapeDecisionCooldownStarted)
 	}
@@ -3952,6 +4178,46 @@ func (s *usageStore) usageRowsQuery(opts UsageReportOptions) *gorm.DB {
 	}
 	if opts.TrafficShapeScope != "" {
 		q = q.Where("traffic_shape_scope = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE scope = ?)", opts.TrafficShapeScope, opts.TrafficShapeScope)
+	}
+	if opts.ToolChoiceMode != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_choice_mode = ? UNION SELECT request_id FROM request_translation_shapes WHERE translated_tool_choice_mode = ?)", opts.ToolChoiceMode, opts.ToolChoiceMode)
+	}
+	if opts.ToolCountBucket != "" {
+		switch opts.ToolCountBucket {
+		case "none":
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_count = 0)")
+		case "one":
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_count = 1)")
+		case "small":
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_count BETWEEN 2 AND 8)")
+		case "large":
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_count > 8)")
+		}
+	}
+	if opts.RequestBytesBucket != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE total_request_bytes_bucket = ? UNION SELECT request_id FROM request_translation_shapes WHERE translated_request_bytes_bucket = ?)", opts.RequestBytesBucket, opts.RequestBytesBucket)
+	}
+	if opts.InputTokensBucket != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE estimated_input_tokens_bucket = ?)", opts.InputTokensBucket)
+	}
+	if opts.OutputCapBucket != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE requested_output_cap_bucket = ? UNION SELECT request_id FROM request_translation_shapes WHERE translated_output_cap_bucket = ?)", opts.OutputCapBucket, opts.OutputCapBucket)
+	}
+	if opts.ReasoningPresent != nil {
+		if *opts.ReasoningPresent {
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE reasoning_present = ? UNION SELECT request_id FROM request_translation_shapes WHERE translated_reasoning_control != '')", true)
+		} else {
+			q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE reasoning_present = ?) AND request_id NOT IN (SELECT request_id FROM request_translation_shapes WHERE translated_reasoning_control != '')", false)
+		}
+	}
+	if opts.MultimodalOnly {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE image_count > 0 OR audio_present = ? OR video_present = ?)", true, true)
+	}
+	if opts.RequestShapeFP != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE request_shape_fingerprint = ? UNION SELECT request_id FROM request_translation_shapes WHERE request_shape_fingerprint = ?)", opts.RequestShapeFP, opts.RequestShapeFP)
+	}
+	if opts.ToolSchemaFP != "" {
+		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_schema_fingerprint = ? UNION SELECT request_id FROM request_translation_shapes WHERE tool_schema_fingerprint = ?)", opts.ToolSchemaFP, opts.ToolSchemaFP)
 	}
 	return q
 }

@@ -666,6 +666,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	}
 	captureDecision := s.contentCaptureFor(rc.caller, req.Model, group)
 	s.captureRequestContent(rc, req, r.Header, captureDecision)
+	s.recordRequestShapeTelemetry(rc, req, dialect, len(body))
 	s.recordDecisionShape(rc, req, dialect)
 	s.recordEligibilityTelemetry(rc, req.Model, group, req, dialect)
 	dec, err := s.pick(rc, req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
@@ -1419,7 +1420,7 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 			continue
 		}
 		attemptIndex := len(rc.rec.AttemptsDetail) + 1
-		resp, attempt, err := s.callOne(ctx, callerDialect, req, dec.GroupName, tgt, attemptIndex)
+		resp, attempt, err := s.callOne(ctx, rc, callerDialect, req, dec.GroupName, tgt, attemptIndex)
 		if attempt.ErrorMessage != "" {
 			attempt.ErrorMessage = s.sanitizeDiagnosticError(attempt.ErrorMessage)
 		}
@@ -1470,7 +1471,7 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 	return nil, len(rc.rec.AttemptsDetail), len(rc.rec.AttemptsDetail) > 1, lastErr
 }
 
-func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
+func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
 	provider := s.cfg.Provider[target.Provider]
 	outDialect := targetDialect(provider, target)
 	attempt := attemptLogRecord{
@@ -1502,6 +1503,7 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 		return nil, attempt, upstreamError{Class: "encode_error", Message: err.Error(), Err: err}
 	}
 	endpoint := upstreamEndpoint(provider.BaseURL, outDialect, target)
+	s.recordTranslationShapeTelemetry(rc, req, target, provider, outDialect, endpoint, attemptIndex, upReqBody)
 	attemptCtx := ctx
 	var cancel context.CancelFunc
 	if attempt.AttemptTimeoutMS > 0 {
