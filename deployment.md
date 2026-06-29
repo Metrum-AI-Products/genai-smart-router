@@ -32,6 +32,43 @@ Last deployed: 2026-06-29
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-29 Bounded Queue Config Raise
+
+Raised the production default caller traffic-shaping queue policy for all callers after coding-agent users saw repeated `429 traffic-shaped` retries on `big-coder`.
+
+Config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.raise-bounded-queue-20260629T124348Z
+```
+
+Updated live defaults:
+
+```text
+request_start_per_sec=3.0
+request_burst=12
+input_tokens_per_sec=150000
+input_token_burst=900000
+output_reservation_tokens_per_sec=120000
+output_reservation_token_burst=500000
+total_reserved_tokens_per_sec=240000
+total_reserved_token_burst=1200000
+queue.max_wait_ms=8000
+queue.max_depth=32
+```
+
+Validation:
+
+```text
+production docker compose config: passed
+production router restarted cleanly on smart-llmrouter:d36f886-linux-amd64
+production /readyz after restart: 200, version d36f886
+ignored local config.production.yaml synced from live production config after the patch
+config.example.yaml updated with the same reference caller defaults
+python YAML parse for config.example.yaml and config.production.yaml: passed
+go test ./internal/router -run TestExampleConfigDefaultIncludesLatestCodingTargets -count=1: passed
+```
+
 ## 2026-06-29 Bounded Queue And Admin Sidebar Production Refresh
 
 Deployed package/image `smart-llmrouter:d36f886-linux-amd64` from source commit `d36f886` after merging issue #244 bounded queue rollout and issue #248 admin sidebar navigation.
