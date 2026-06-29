@@ -40,6 +40,33 @@ Prepared the admin reports SPA follow-up for issue #252. This is a frontend-only
 
 Prepared the admin reports SPA follow-up for issue #251. This is a frontend-only bundle change: tab-specific filters now render inside per-tab panels, the URL-backed `Rows` limit moved into the table toolbar, and the combined `/admin/reports/` query contract remains unchanged.
 
+## 2026-06-29 Admin Reports Filters Production Refresh
+
+Deployed package/image `smart-llmrouter:70e69f3-linux-amd64` from source commit `70e69f3`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.admin-filters-20260629T144410Z
+```
+
+Validation:
+
+- `go test ./cmd/... ./internal/...`: passed, 448 tests.
+- `make docs-build`: passed.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 packages.
+- Local Harbor big-coder smoke: `local-big-coder-claude-20260629T143131Z`, `reward=1`, `errors=0`.
+- Production `/readyz`: `version=70e69f3`, `commit=70e69f3`, `ok=true`.
+- Production `/admin/reports/` with Basic admin credentials returned HTML.
+- Production `/docs/overview` returned hosted Docusaurus HTML.
+- Production Harbor big-coder smoke: `prod-big-coder-claude-20260629T144436Z`, `reward=1`, `errors=0`.
+
+Cleanup:
+
+- Removed uploaded package from `/tmp`.
+- Removed temporary `/opt/smart-llmrouter.prev`.
+- Ran `docker system prune -f`; reclaimed `0B`.
+
 ## 2026-06-29 Bounded Queue Config Raise
 
 Raised the production default caller traffic-shaping queue policy for all callers after coding-agent users saw repeated `429 traffic-shaped` retries on `big-coder`.
