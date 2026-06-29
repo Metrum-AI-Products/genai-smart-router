@@ -16,8 +16,8 @@ Last deployed: 2026-06-29
 
 ## Deployed Version
 
-- Router package/image version: `6371492-linux-amd64`
-- Source commit: `6371492`
+- Router package/image version: `d36f886-linux-amd64`
+- Source commit: `d36f886`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,48 @@ Last deployed: 2026-06-29
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-29 Bounded Queue And Admin Sidebar Production Refresh
+
+Deployed package/image `smart-llmrouter:d36f886-linux-amd64` from source commit `d36f886` after merging issue #244 bounded queue rollout and issue #248 admin sidebar navigation.
+
+Included changes:
+
+- Enabled bounded default caller queueing for the Metrum-managed engineering endpoint with finite `max_wait_ms: 1500` and `max_depth: 16`.
+- Added queue/reporting docs and admin report fields for queue wait, queue depth, shaping decisions, provider capacity shaping, and adaptive upstream backoff.
+- Replaced the admin reports horizontal tab row with grouped responsive sidebar navigation and a mobile drawer.
+- Preserved live production config, state, logs, `.env`, and router token files during package replacement.
+
+Production backups:
+
+```text
+/opt/smart-llmrouter.backup.docs-sidebar-queue-20260629T071722Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.enable-bounded-queue-20260629T071722Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/... -timeout=10m: passed, 448 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-d36f886-docker-linux-amd64.tar.gz
+local Harbor big-coder smoke: CASE_ID=local-big-coder-claude-rerun-20260629T070908Z, agent=claude-code, reward=1, errors=0
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version d36f886, build_date 2026-06-29T07:12:39Z
+hosted docs /docs/ returned 200 with x-smart-llmrouter-version d36f886
+admin reports /admin/reports/ returned 200 with no-store headers under Basic admin auth
+production authenticated /v1/chat/completions smoke against high returned 200
+live config summary after patch: server.traffic_shape.enabled=true, default queue enabled=true, max_wait_ms=1500, max_depth=16
+production Harbor big-coder smoke: CASE_ID=prod-big-coder-claude-20260629T071820Z, agent=claude-code, reward=1, errors=0
+production cleanup: removed uploaded package from /tmp, removed superseded switch directory, and ran docker system prune
+```
+
+Rollback:
+
+```text
+Disable server.traffic_shape.default_caller.queue.enabled to keep fail-fast shaping, or disable server.traffic_shape.enabled for full rollback, then restart the router and verify /readyz plus absence of new queued events.
+```
 
 ## 2026-06-29 Traffic shaping production refresh
 
@@ -64,19 +106,6 @@ production authenticated /v1/chat/completions smoke against high returned 200
 production Harbor big-coder smoke: CASE_ID=prod-big-coder-claude-20260629T061702Z, agent=claude-code, reward=1, errors=0
 production cleanup: removed uploaded package from /tmp, removed superseded switch directory, and ran docker system prune
 ```
-
-### Issue #244 bounded queue status
-
-As of 2026-06-29 UTC, a redacted live config summary showed no `server.traffic_shape` default and no caller `traffic_shape` blocks on `llm-api-engg.metrum.ai`. The deployed binary is queue-capable, but the hosted engineering endpoint still needs a config-only rollout before issue #244 is complete.
-
-Recommended config-only rollout:
-
-1. Baseline at least one production usage window with `router-usage-report --traffic-shaped-only --since 24h` plus ordinary latency/error reports.
-2. Add bounded queueing to the intended production caller set, starting with coding-agent callers, with `queue.enabled: true`, `max_wait_ms: 1500`, and `max_depth: 16` unless the baseline supports tighter values.
-3. Create a timestamped backup of `/opt/smart-llmrouter/compose/config/config.yaml`, patch with structured YAML, run `sudo docker compose config >/dev/null`, restart the router, and verify `/readyz`.
-4. Smoke a normal request, a short burst that queues and succeeds, a burst beyond `max_depth` that returns `429 traffic-shaped`, and a client-cancel case.
-5. Confirm usage/admin reports show queued count, queue wait, rejection count, max queue depth, caller/project/client/model-group dimensions, and upstream 429/error rates.
-6. Roll back by setting `traffic_shape.queue.enabled: false` for fail-fast shaping, or disabling the caller/server `traffic_shape` block entirely, then restart and verify no new queued events appear.
 
 ## 2026-06-28 Upstream-head production refresh
 
