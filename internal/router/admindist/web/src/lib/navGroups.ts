@@ -54,7 +54,7 @@ export const navGroups: NavGroup[] = [
     id: "performance",
     label: "Performance",
     description: "Investigate latency, throughput, errors, fallbacks, and cache behavior.",
-    tabIds: ["latency-throughput", "errors-fallbacks", "cache-report"],
+    tabIds: ["latency-throughput", "errors-fallbacks", "upstream-failures", "request-shape-failures", "fallback-health", "user-client-impact", "cache-report"],
   },
   {
     id: "traffic-shaping",

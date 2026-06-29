@@ -65,6 +65,7 @@ type UsageReportOptions struct {
 	MultimodalOnly     bool
 	RequestShapeFP     string
 	ToolSchemaFP       string
+	ErrorClass         string
 }
 
 type UsageRollupOptions struct {
@@ -278,6 +279,13 @@ type usageRow struct {
 	RoutingPolicyFingerprint           string
 	PricingCatalogFingerprint          string
 	Error                              string
+	UpstreamErrorCode                  string
+	UpstreamErrorParam                 string
+	UpstreamErrorMessageCategory       string
+	RequestShapeFingerprint            string
+	ToolSchemaFingerprint              string
+	RequestShapeBucket                 string
+	TranslationShapeBucket             string
 	MaxTokenBucket                     string
 	InputTokenBucket                   string
 	AdmissionReason                    string
@@ -4219,6 +4227,14 @@ func (s *usageStore) usageRowsQuery(opts UsageReportOptions) *gorm.DB {
 	if opts.ToolSchemaFP != "" {
 		q = q.Where("request_id IN (SELECT request_id FROM request_shapes WHERE tool_schema_fingerprint = ? UNION SELECT request_id FROM request_translation_shapes WHERE tool_schema_fingerprint = ?)", opts.ToolSchemaFP, opts.ToolSchemaFP)
 	}
+	if opts.ErrorClass != "" {
+		q = q.Where(`request_id IN (
+			SELECT request_id FROM request_attempts WHERE error_class = ?
+			UNION SELECT request_id FROM request_errors WHERE error_class = ?
+			UNION SELECT request_id FROM request_fallback_transitions WHERE error_class = ?
+			UNION SELECT request_id FROM request_upstream_error_details WHERE error_class = ?
+		)`, opts.ErrorClass, opts.ErrorClass, opts.ErrorClass, opts.ErrorClass)
+	}
 	return q
 }
 
@@ -4361,6 +4377,65 @@ func (s *usageStore) loadUsageReportBuckets(rows []usageRow) {
 			row.InputTokenBucket = defaultString(shape.TextValue, row.InputTokenBucket)
 		}
 	}
+	var requestShapes []requestShapeRecord
+	_ = s.db.Where("request_id IN ?", requestIDs).Find(&requestShapes).Error
+	for _, shape := range requestShapes {
+		row := rowByRequestID[shape.RequestID]
+		if row == nil {
+			continue
+		}
+		row.RequestShapeFingerprint = defaultString(shape.RequestShapeFingerprint, row.RequestShapeFingerprint)
+		row.ToolSchemaFingerprint = defaultString(shape.ToolSchemaFingerprint, row.ToolSchemaFingerprint)
+		row.RequestShapeBucket = joinKey(
+			defaultString(shape.InboundDialect, "unknown"),
+			boolBucket("stream", shape.Stream),
+			toolCountReportBucket(shape.ToolCount),
+			defaultString(shape.ToolChoiceMode, "tool-choice:none"),
+			defaultString(shape.TotalRequestBytesBucket, "bytes:unknown"),
+			defaultString(shape.EstimatedInputTokensBucket, "tokens:unknown"),
+			defaultString(shape.RequestedOutputCapBucket, "output:unknown"),
+			boolBucket("reasoning", shape.ReasoningPresent),
+			boolBucket("multimodal", shape.ImageCount > 0 || shape.AudioPresent || shape.VideoPresent),
+		)
+	}
+	var translationShapes []requestTranslationShapeRecord
+	_ = s.db.Where("request_id IN ?", requestIDs).Find(&translationShapes).Error
+	for _, shape := range translationShapes {
+		row := rowByRequestID[shape.RequestID]
+		if row == nil {
+			continue
+		}
+		row.RequestShapeFingerprint = defaultString(shape.RequestShapeFingerprint, row.RequestShapeFingerprint)
+		row.ToolSchemaFingerprint = defaultString(shape.ToolSchemaFingerprint, row.ToolSchemaFingerprint)
+		row.TranslationShapeBucket = joinKey(
+			defaultString(shape.Provider, "unknown"),
+			defaultString(shape.Model, "unknown"),
+			defaultString(shape.Dialect, "unknown"),
+			boolBucket("stream", shape.TranslatedStream),
+			toolCountReportBucket(shape.TranslatedToolCount),
+			defaultString(shape.TranslatedToolChoiceMode, "tool-choice:none"),
+			defaultString(shape.TranslatedRequestBytesBucket, "bytes:unknown"),
+			defaultString(shape.TranslatedOutputCapBucket, "output:unknown"),
+			defaultString(shape.TranslatedReasoningControl, "reasoning:none"),
+			boolBucket("unsupported", shape.UnsupportedFieldsPresent),
+		)
+	}
+	var upstreamErrorDetails []requestUpstreamErrorDetailRecord
+	_ = s.db.Where("request_id IN ? AND field_name IN ?", requestIDs, []string{"code", "param", "message", "error"}).Order("attempt_index ASC, seq ASC").Find(&upstreamErrorDetails).Error
+	for _, detail := range upstreamErrorDetails {
+		row := rowByRequestID[detail.RequestID]
+		if row == nil {
+			continue
+		}
+		switch detail.FieldName {
+		case "code":
+			row.UpstreamErrorCode = defaultString(detail.FieldValue, row.UpstreamErrorCode)
+		case "param":
+			row.UpstreamErrorParam = defaultString(detail.FieldValue, row.UpstreamErrorParam)
+		case "message", "error":
+			row.UpstreamErrorMessageCategory = defaultString(detail.FieldValue, row.UpstreamErrorMessageCategory)
+		}
+	}
 	var signals []routingSignalRecord
 	_ = s.db.Where("request_id IN ? AND strategy = ? AND source = ? AND bool_value = ?", requestIDs, "dynamic_score", "dynamic_score", true).Find(&signals).Error
 	for _, signal := range signals {
@@ -4432,6 +4507,26 @@ func splitScoreBucketReportKey(key string) []string {
 		return []string{parts[0], ""}
 	}
 	return parts
+}
+
+func boolBucket(name string, value bool) string {
+	if value {
+		return name + ":yes"
+	}
+	return name + ":no"
+}
+
+func toolCountReportBucket(count int) string {
+	switch {
+	case count <= 0:
+		return "tools:none"
+	case count == 1:
+		return "tools:one"
+	case count <= 8:
+		return "tools:small"
+	default:
+		return "tools:large"
+	}
 }
 
 func inputTokenBucket(tokens int) string {

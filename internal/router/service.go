@@ -311,21 +311,20 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 		publicModalities := publicModelInputModalities(internalModalities)
 		hasImage := stringSliceContains(internalModalities, "image")
 		reasoningLevels, reasoningSummaries, defaultReasoningLevel := s.reasoningMetadataForGroup(name)
-		data = append(data, map[string]any{
+		model := map[string]any{
 			"id":                               name,
 			"slug":                             name,
 			"name":                             name,
 			"display_name":                     name,
 			"description":                      "Smart LLM Router model group " + name,
 			"mode":                             "default",
-			"base_instructions":                "You are Codex, a coding agent using Smart LLM Router.",
+			"base_instructions":                "Use GenAI Smart Router as the model gateway.",
 			"context_window":                   131072,
 			"max_context_window":               131072,
 			"effective_context_window_percent": 95,
-			"default_reasoning_level":          defaultReasoningLevel,
 			"default_reasoning_summary":        "none",
 			"default_verbosity":                "low",
-			"supported_reasoning_levels":       reasoningLevels,
+			"supported_reasoning_levels":       reasoningLevelPresets(reasoningLevels),
 			"supports_reasoning_summaries":     reasoningSummaries,
 			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
 			"supports_search_tool":             false,
@@ -349,10 +348,35 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"object":                           "model",
 			"created":                          0,
 			"owned_by":                         "smart-llmrouter",
-		})
+		}
+		if defaultReasoningLevel != "" && defaultReasoningLevel != "none" {
+			model["default_reasoning_level"] = defaultReasoningLevel
+		}
+		data = append(data, model)
 	}
 	sort.Slice(data, func(i, j int) bool { return data[i]["id"].(string) < data[j]["id"].(string) })
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "mode": "default", "data": data, "models": data})
+}
+
+func reasoningLevelPresets(levels []string) []map[string]string {
+	presets := make([]map[string]string, 0, len(levels))
+	for _, level := range levels {
+		switch level {
+		case "low":
+			presets = append(presets, map[string]string{"effort": "low", "description": "Fast responses with lighter reasoning"})
+		case "medium":
+			presets = append(presets, map[string]string{"effort": "medium", "description": "Balances speed and reasoning depth for everyday tasks"})
+		case "high":
+			presets = append(presets, map[string]string{"effort": "high", "description": "Greater reasoning depth for complex problems"})
+		case "xhigh":
+			presets = append(presets, map[string]string{"effort": "xhigh", "description": "Extra high reasoning depth for complex problems"})
+		default:
+			if strings.TrimSpace(level) != "" {
+				presets = append(presets, map[string]string{"effort": level, "description": "Deployment-defined reasoning depth"})
+			}
+		}
+	}
+	return presets
 }
 
 func (s *Service) handleUsage(w http.ResponseWriter, r *http.Request) {
@@ -2831,17 +2855,10 @@ func inferClient(r *http.Request) string {
 	if v := r.Header.Get("X-Router-Client"); v != "" {
 		return v
 	}
-	ua := strings.ToLower(r.UserAgent())
-	switch {
-	case strings.Contains(ua, "claude"):
-		return "claude-code"
-	case strings.Contains(ua, "codex"):
-		return "codex"
-	case ua != "":
+	if ua := strings.TrimSpace(r.UserAgent()); ua != "" {
 		return r.UserAgent()
-	default:
-		return "unknown"
 	}
+	return "unknown"
 }
 
 func callerIP(r *http.Request) string {

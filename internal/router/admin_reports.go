@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"smart-llmrouter/internal/buildinfo"
+
+	"gorm.io/gorm"
 )
 
 //go:embed admindist/index.html admindist/static
@@ -283,13 +285,32 @@ type adminSecurityEventRow struct {
 type adminScalarReportRow struct {
 	Key                                  string   `json:"key"`
 	SecondaryKey                         string   `json:"secondaryKey,omitempty"`
+	Status                               int      `json:"status,omitempty"`
+	ErrorClass                           string   `json:"errorClass,omitempty"`
+	Provider                             string   `json:"provider,omitempty"`
+	Model                                string   `json:"model,omitempty"`
+	Dialect                              string   `json:"dialect,omitempty"`
+	RequestShapeFingerprint              string   `json:"requestShapeFingerprint,omitempty"`
+	ToolSchemaFingerprint                string   `json:"toolSchemaFingerprint,omitempty"`
 	Requests                             int64    `json:"requests"`
 	Errors                               int64    `json:"errors"`
 	ErrorRatePct                         float64  `json:"errorRatePct"`
 	Streams                              int64    `json:"streams"`
 	Attempts                             int64    `json:"attempts"`
+	RetryableAttempts                    int64    `json:"retryableAttempts,omitempty"`
+	TimeoutAttempts                      int64    `json:"timeoutAttempts,omitempty"`
 	Fallbacks                            int64    `json:"fallbacks"`
 	FallbackRatePct                      float64  `json:"fallbackRatePct"`
+	FallbackSucceeded                    int64    `json:"fallbackSucceeded,omitempty"`
+	FallbackFailed                       int64    `json:"fallbackFailed,omitempty"`
+	TerminalErrors                       int64    `json:"terminalErrors,omitempty"`
+	UpstreamErrorDetails                 int64    `json:"upstreamErrorDetails,omitempty"`
+	FieldsStrippedCount                  int64    `json:"fieldsStrippedCount,omitempty"`
+	FieldsRewrittenCount                 int64    `json:"fieldsRewrittenCount,omitempty"`
+	UnsupportedFieldsCount               int64    `json:"unsupportedFieldsCount,omitempty"`
+	TranslationWarningCount              int64    `json:"translationWarningCount,omitempty"`
+	AffectedUsers                        int64    `json:"affectedUsers,omitempty"`
+	AffectedClients                      int64    `json:"affectedClients,omitempty"`
 	CacheHits                            int64    `json:"cacheHits"`
 	CacheMisses                          int64    `json:"cacheMisses"`
 	CacheBypass                          int64    `json:"cacheBypass"`
@@ -380,6 +401,10 @@ type adminRequestShapeTelemetryDetail struct {
 	RequestShape      *requestShapeRecord                  `json:"requestShape,omitempty"`
 	TranslationShapes []requestTranslationShapeRecord      `json:"translationShapes,omitempty"`
 	FieldEvents       []requestTranslationFieldEventRecord `json:"fieldEvents,omitempty"`
+}
+
+type adminUpstreamErrorTelemetryDetail struct {
+	Details []adminReportUpstreamErrorDetail `json:"details,omitempty"`
 }
 
 func optionalRequestShapeRecord(rec requestShapeRecord, ok bool) *requestShapeRecord {
@@ -503,6 +528,7 @@ type adminReportFilterDTO struct {
 	Status            int    `json:"status,omitempty"`
 	Cache             string `json:"cache,omitempty"`
 	Client            string `json:"client,omitempty"`
+	ErrorClass        string `json:"error_class,omitempty"`
 }
 
 type adminReportTableRow struct {
@@ -608,6 +634,19 @@ type adminReportError struct {
 	Dialect      string `json:"dialect"`
 }
 
+type adminReportUpstreamErrorDetail struct {
+	RequestID    string `json:"requestId"`
+	AttemptIndex int    `json:"attemptIndex"`
+	Seq          int    `json:"seq"`
+	TimeUTC      string `json:"timeUtc"`
+	Status       int    `json:"status"`
+	ErrorClass   string `json:"errorClass"`
+	FieldName    string `json:"fieldName"`
+	FieldValue   string `json:"fieldValue"`
+	Source       string `json:"source"`
+	Truncated    bool   `json:"truncated"`
+}
+
 type adminScalarEndpointSpec struct {
 	Report       string
 	Dimension    string
@@ -617,6 +656,7 @@ type adminScalarEndpointSpec struct {
 	Anomalies    bool
 	WithBaseline bool
 	ShapeReport  string
+	Diagnostic   string
 }
 
 func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
@@ -792,6 +832,12 @@ func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 		"/api/provider-model-mix":        {Report: "provider-model-mix", Dimension: "provider_model", Secondary: "dialect", Sort: "tokens"},
 		"/api/latency-throughput":        {Report: "latency-throughput", Dimension: "provider_model", Secondary: "client", Sort: "latency"},
 		"/api/errors-fallbacks":          {Report: "errors-fallbacks", Dimension: "status_error", Secondary: "provider_model", Sort: "errors"},
+		"/api/upstream-failures":         {Report: "upstream-failures", Sort: "errors", Diagnostic: "upstream_failures"},
+		"/api/request-shape-failures":    {Report: "request-shape-failures", Sort: "errors", Diagnostic: "request_shape_mismatches"},
+		"/api/request-shape-mismatches":  {Report: "request-shape-mismatches", Sort: "errors", Diagnostic: "request_shape_mismatches"},
+		"/api/fallback-health":           {Report: "fallback-health", Sort: "fallbacks", Diagnostic: "fallback_health"},
+		"/api/user-client-impact":        {Report: "user-client-impact", Sort: "errors", Diagnostic: "client_impact"},
+		"/api/client-impact":             {Report: "client-impact", Sort: "errors", Diagnostic: "client_impact"},
 		"/api/cache":                     {Report: "cache", Dimension: "cache", Secondary: "model_group", Sort: "requests"},
 		"/api/quotas-budgets":            {Report: "quotas-budgets", Dimension: "quota_key_state", Secondary: "token_id", Sort: "requests"},
 		"/api/troubleshooting-buckets":   {Report: "troubleshooting-buckets", Dimension: "troubleshooting_bucket", Secondary: "provider_model", Sort: "requests"},
@@ -965,6 +1011,22 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !validateAdminTopNPageParams(w, filters) {
+		return
+	}
+	if spec.Diagnostic != "" {
+		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, spec.Sort)
+		parentOpts := adminDiagnosticParentOptions(filters.UsageReportOptions, spec.Diagnostic)
+		rows, err := s.usage.rows(parentOpts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		resp, err := s.buildAdminDiagnosticReportResponse(filters, rows, spec)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 	rows, err := s.usage.rows(filters.UsageReportOptions)
@@ -1254,6 +1316,7 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	var attempts []requestAttemptRecord
 	var traces []requestTraceEventRecord
 	var errors []requestErrorRecord
+	var upstreamErrorDetails []requestUpstreamErrorDetailRecord
 	var shapeFeatures []decisionShapeFeatureRecord
 	var candidates []decisionTargetCandidateRecord
 	var filterReasons []decisionTargetFilterReasonRecord
@@ -1271,6 +1334,7 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&attempts).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&traces).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Find(&errors).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC, seq ASC").Find(&upstreamErrorDetails).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&trafficShapeEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&upstreamShapeEvents).Error
 	requestShapeFound := s.usage.db.Where("request_id = ?", requestID).First(&requestShape).Error == nil
@@ -1285,11 +1349,13 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&policyExecutions).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&fallbackTransitions).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&cacheReasons).Error
+	upstreamDetailRows := adminUpstreamErrorDetailsFromRecords(upstreamErrorDetails)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"request":  adminRequestFromRow(row),
-		"attempts": adminAttemptsFromRecords(attempts),
-		"trace":    adminTraceFromRecords(traces),
-		"errors":   adminErrorsFromRecords(errors),
+		"request":              adminRequestFromRow(row),
+		"attempts":             adminAttemptsFromRecords(attempts),
+		"trace":                adminTraceFromRecords(traces),
+		"errors":               adminErrorsFromRecords(errors),
+		"upstreamErrorDetails": upstreamDetailRows,
 		"shapingTelemetry": adminShapingTelemetryDetail{
 			TrafficShapeEvents:  trafficShapeEvents,
 			UpstreamShapeEvents: upstreamShapeEvents,
@@ -1298,6 +1364,9 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 			RequestShape:      optionalRequestShapeRecord(requestShape, requestShapeFound),
 			TranslationShapes: translationShapes,
 			FieldEvents:       translationFieldEvents,
+		},
+		"upstreamErrorTelemetry": adminUpstreamErrorTelemetryDetail{
+			Details: upstreamDetailRows,
 		},
 		"decisionTelemetry": adminDecisionTelemetryDetail{
 			ShapeFeatures:       shapeFeatures,
@@ -1452,6 +1521,7 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		MultimodalOnly:     parseTruthy(q.Get("multimodal")),
 		RequestShapeFP:     strings.TrimSpace(q.Get("request_shape_fingerprint")),
 		ToolSchemaFP:       strings.TrimSpace(q.Get("tool_schema_fingerprint")),
+		ErrorClass:         strings.TrimSpace(q.Get("error_class")),
 	}
 	if !global {
 		applyAdminDomainScope(&opts, subject.domain)
@@ -2186,6 +2256,13 @@ func adminSeriesFromCounts(name, unit, colorKey string, counts map[string]float6
 	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
 }
 
+func adminMaxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, baseline adminSavingsBaselineDTO, baselines []adminSavingsBaselineDTO) adminSavingsResponse {
 	total := &adminSavingsAgg{}
 	byHour := map[string]*adminSavingsAgg{}
@@ -2323,6 +2400,654 @@ func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, 
 	}
 	resp.Charts = adminShapeCharts(filters, generatedAt, spec, resp.Rows)
 	return resp
+}
+
+func adminDiagnosticParentOptions(opts UsageReportOptions, diagnostic string) UsageReportOptions {
+	opts.TargetProvider = ""
+	opts.TargetModel = ""
+	opts.TargetDialect = ""
+	if diagnostic == "upstream_failures" {
+		opts.Status = 0
+	}
+	opts.ErrorClass = ""
+	return opts
+}
+
+func (s *Service) buildAdminDiagnosticReportResponse(filters adminReportFilters, rows []usageRow, spec adminScalarEndpointSpec) (adminScalarReportResponse, error) {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	total := &agg{}
+	for _, row := range rows {
+		total.add(row)
+	}
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		GeneratedUTC: generatedAt,
+	}
+	rowByRequestID := adminUsageRowsByRequestID(rows)
+	requestIDs := sortedRequestIDs(rowByRequestID)
+	if len(requestIDs) == 0 {
+		resp.Pagination = adminTopNPagination(filters, 0, false, "Diagnostic aggregate rows are top-N for the selected filters.")
+		return resp, nil
+	}
+	var table map[string]*adminDiagnosticAgg
+	var err error
+	switch spec.Diagnostic {
+	case "upstream_failures":
+		table, err = s.adminUpstreamFailureAggs(requestIDs, rowByRequestID, filters.UsageReportOptions)
+	case "request_shape_mismatches":
+		table, err = s.adminRequestShapeMismatchAggs(requestIDs, rowByRequestID, filters.UsageReportOptions)
+	case "fallback_health":
+		table, err = s.adminFallbackHealthAggs(requestIDs, rowByRequestID, filters.UsageReportOptions)
+	case "client_impact":
+		table, err = s.adminClientImpactAggs(requestIDs, rowByRequestID, filters.UsageReportOptions)
+	default:
+		table = map[string]*adminDiagnosticAgg{}
+	}
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	reportRows := adminDiagnosticRowsFromAgg(table, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	resp.Rows = reportRows
+	resp.Charts = adminDiagnosticCharts(filters, generatedAt, spec, reportRows)
+	resp.Pagination = adminTopNPagination(filters, len(reportRows), len(table) > filters.Limit, "Diagnostic aggregate rows are top-N for the selected filters.")
+	return resp, nil
+}
+
+type adminDiagnosticAgg struct {
+	Key                     string
+	SecondaryKey            string
+	Status                  int
+	ErrorClass              string
+	Provider                string
+	Model                   string
+	Dialect                 string
+	RequestShapeFingerprint string
+	ToolSchemaFingerprint   string
+	RequestIDs              map[string]bool
+	Users                   map[string]bool
+	Clients                 map[string]bool
+	Errors                  int64
+	Attempts                int64
+	RetryableAttempts       int64
+	TimeoutAttempts         int64
+	Fallbacks               int64
+	FallbackSucceeded       int64
+	FallbackFailed          int64
+	TerminalErrors          int64
+	UpstreamErrorDetails    int64
+	FieldsStripped          int64
+	FieldsRewritten         int64
+	UnsupportedFields       int64
+	TranslationWarnings     int64
+	LatencyMS               int64
+	UpstreamMS              int64
+	UpstreamMSCount         int64
+	MaxLatencyMS            int64
+	MaxUpstreamMS           int64
+}
+
+func adminDiagnosticAggFor(table map[string]*adminDiagnosticAgg, key, secondary string) *adminDiagnosticAgg {
+	key = defaultString(key, "unknown")
+	mapKey := joinKey(key, secondary)
+	if table[mapKey] == nil {
+		table[mapKey] = &adminDiagnosticAgg{
+			Key:          key,
+			SecondaryKey: secondary,
+			RequestIDs:   map[string]bool{},
+			Users:        map[string]bool{},
+			Clients:      map[string]bool{},
+		}
+	}
+	return table[mapKey]
+}
+
+func (a *adminDiagnosticAgg) addRequest(row usageRow) {
+	if row.RequestID != "" {
+		a.RequestIDs[row.RequestID] = true
+	}
+	if row.CallerUser != "" {
+		a.Users[row.CallerUser] = true
+	}
+	if row.Client != "" {
+		a.Clients[row.Client] = true
+	}
+	a.LatencyMS += row.LatencyMS
+	a.MaxLatencyMS = adminMaxInt64(a.MaxLatencyMS, row.LatencyMS)
+	if row.UpstreamMS != nil {
+		a.UpstreamMS += *row.UpstreamMS
+		a.UpstreamMSCount++
+		a.MaxUpstreamMS = adminMaxInt64(a.MaxUpstreamMS, *row.UpstreamMS)
+	}
+	if row.FallbackUsed {
+		a.Fallbacks++
+	}
+}
+
+func (a *adminDiagnosticAgg) row() adminScalarReportRow {
+	requests := int64(len(a.RequestIDs))
+	return adminScalarReportRow{
+		Key:                     a.Key,
+		SecondaryKey:            a.SecondaryKey,
+		Status:                  a.Status,
+		ErrorClass:              a.ErrorClass,
+		Provider:                a.Provider,
+		Model:                   a.Model,
+		Dialect:                 a.Dialect,
+		RequestShapeFingerprint: a.RequestShapeFingerprint,
+		ToolSchemaFingerprint:   a.ToolSchemaFingerprint,
+		Requests:                requests,
+		Errors:                  a.Errors,
+		ErrorRatePct:            ratioPct(a.Errors, adminMaxInt64(requests, 1)),
+		Attempts:                a.Attempts,
+		RetryableAttempts:       a.RetryableAttempts,
+		TimeoutAttempts:         a.TimeoutAttempts,
+		Fallbacks:               a.Fallbacks,
+		FallbackRatePct:         ratioPct(a.Fallbacks, adminMaxInt64(requests, 1)),
+		FallbackSucceeded:       a.FallbackSucceeded,
+		FallbackFailed:          a.FallbackFailed,
+		TerminalErrors:          a.TerminalErrors,
+		UpstreamErrorDetails:    a.UpstreamErrorDetails,
+		FieldsStrippedCount:     a.FieldsStripped,
+		FieldsRewrittenCount:    a.FieldsRewritten,
+		UnsupportedFieldsCount:  a.UnsupportedFields,
+		TranslationWarningCount: a.TranslationWarnings,
+		AffectedUsers:           int64(len(a.Users)),
+		AffectedClients:         int64(len(a.Clients)),
+		AvgLatencyMS:            avg(a.LatencyMS, requests),
+		MaxLatencyMS:            a.MaxLatencyMS,
+		AvgUpstreamMS:           avg(a.UpstreamMS, a.UpstreamMSCount),
+		MaxUpstreamMS:           a.MaxUpstreamMS,
+	}
+}
+
+func adminUsageRowsByRequestID(rows []usageRow) map[string]usageRow {
+	out := make(map[string]usageRow, len(rows))
+	for _, row := range rows {
+		if row.RequestID != "" {
+			out[row.RequestID] = row
+		}
+	}
+	return out
+}
+
+func sortedRequestIDs(rows map[string]usageRow) []string {
+	out := make([]string, 0, len(rows))
+	for requestID := range rows {
+		out = append(out, requestID)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func adminDiagnosticRowsFromAgg(table map[string]*adminDiagnosticAgg, sortBy string, limit int) []adminScalarReportRow {
+	out := make([]adminScalarReportRow, 0, len(table))
+	for _, agg := range table {
+		out = append(out, agg.row())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		switch sortBy {
+		case "errors":
+			if out[i].Errors != out[j].Errors {
+				return out[i].Errors > out[j].Errors
+			}
+		case "fallbacks":
+			if out[i].Fallbacks != out[j].Fallbacks {
+				return out[i].Fallbacks > out[j].Fallbacks
+			}
+		case "latency":
+			if out[i].AvgLatencyMS != out[j].AvgLatencyMS {
+				return out[i].AvgLatencyMS > out[j].AvgLatencyMS
+			}
+		default:
+			if out[i].Requests != out[j].Requests {
+				return out[i].Requests > out[j].Requests
+			}
+		}
+		if out[i].Key == out[j].Key {
+			return out[i].SecondaryKey < out[j].SecondaryKey
+		}
+		return out[i].Key < out[j].Key
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
+	}
+	return out
+}
+
+func (s *Service) adminUpstreamFailureAggs(requestIDs []string, rows map[string]usageRow, opts UsageReportOptions) (map[string]*adminDiagnosticAgg, error) {
+	var attempts []requestAttemptRecord
+	q := s.usage.db.Where("request_id IN ? AND (status_code >= 400 OR error_class <> '' OR timed_out = ? OR client_canceled = ?)", requestIDs, true, true)
+	q = applyAdminAttemptDiagnosticFilters(q, opts)
+	if err := q.Order("ts ASC, request_id ASC, attempt_index ASC").Find(&attempts).Error; err != nil {
+		return nil, err
+	}
+	table := map[string]*adminDiagnosticAgg{}
+	for _, attempt := range attempts {
+		row, ok := rows[attempt.RequestID]
+		if !ok {
+			continue
+		}
+		errorClass := defaultString(attempt.ErrorClass, upstreamFailureStatusClass(attempt.StatusCode, attempt.TimedOut, attempt.ClientCanceled))
+		statusKey := "status:" + strconv.Itoa(attempt.StatusCode)
+		if attempt.StatusCode == 0 {
+			statusKey = "status:none"
+		}
+		key := joinKey(errorClass, statusKey)
+		secondary := joinKey(defaultString(attempt.Provider, "unknown"), defaultString(attempt.Model, "unknown"), defaultString(attempt.Dialect, "unknown"))
+		agg := adminDiagnosticAggFor(table, key, secondary)
+		agg.ErrorClass = errorClass
+		agg.Status = attempt.StatusCode
+		agg.Provider = attempt.Provider
+		agg.Model = attempt.Model
+		agg.Dialect = attempt.Dialect
+		agg.addRequest(row)
+		agg.Errors++
+		agg.Attempts++
+		if attempt.Retryable {
+			agg.RetryableAttempts++
+		}
+		if attempt.TimedOut {
+			agg.TimeoutAttempts++
+		}
+	}
+	if len(table) == 0 {
+		return table, nil
+	}
+	var details []requestUpstreamErrorDetailRecord
+	dq := s.usage.db.Where("request_id IN ?", requestIDs)
+	dq = applyAdminUpstreamDetailDiagnosticFilters(dq, opts)
+	if err := dq.Find(&details).Error; err != nil {
+		return nil, err
+	}
+	for _, detail := range details {
+		row, ok := rows[detail.RequestID]
+		if !ok {
+			continue
+		}
+		key := joinKey(defaultString(detail.ErrorClass, "unknown"), "field:"+defaultString(detail.FieldName, "unknown"))
+		agg := adminDiagnosticAggFor(table, key, defaultString(detail.Source, "upstream"))
+		agg.ErrorClass = detail.ErrorClass
+		agg.Status = detail.StatusCode
+		agg.addRequest(row)
+		agg.UpstreamErrorDetails++
+	}
+	return table, nil
+}
+
+func upstreamFailureStatusClass(status int, timedOut, clientCanceled bool) string {
+	switch {
+	case timedOut:
+		return "upstream_timeout"
+	case clientCanceled:
+		return "client_canceled"
+	case status >= 500:
+		return "upstream_5xx"
+	case status >= 400:
+		return "upstream_4xx"
+	default:
+		return "upstream_error"
+	}
+}
+
+func (s *Service) adminRequestShapeMismatchAggs(requestIDs []string, rows map[string]usageRow, opts UsageReportOptions) (map[string]*adminDiagnosticAgg, error) {
+	var shapes []requestShapeRecord
+	sq := s.usage.db.Where("request_id IN ?", requestIDs)
+	if opts.RequestShapeFP != "" {
+		sq = sq.Where("request_shape_fingerprint = ?", opts.RequestShapeFP)
+	}
+	if opts.ToolSchemaFP != "" {
+		sq = sq.Where("tool_schema_fingerprint = ?", opts.ToolSchemaFP)
+	}
+	if err := sq.Find(&shapes).Error; err != nil {
+		return nil, err
+	}
+	shapeByRequestID := map[string]requestShapeRecord{}
+	for _, shape := range shapes {
+		shapeByRequestID[shape.RequestID] = shape
+	}
+	var translations []requestTranslationShapeRecord
+	tq := s.usage.db.Where("request_id IN ?", requestIDs)
+	tq = applyAdminTranslationDiagnosticFilters(tq, opts)
+	if err := tq.Order("request_id ASC, attempt_index ASC").Find(&translations).Error; err != nil {
+		return nil, err
+	}
+	table := map[string]*adminDiagnosticAgg{}
+	for _, translated := range translations {
+		row, ok := rows[translated.RequestID]
+		if !ok {
+			continue
+		}
+		shape := shapeByRequestID[translated.RequestID]
+		for _, key := range adminTranslationMismatchKeys(shape, translated) {
+			secondary := joinKey(defaultString(translated.Provider, "unknown"), defaultString(translated.Model, "unknown"), defaultString(translated.Dialect, "unknown"))
+			agg := adminDiagnosticAggFor(table, key, secondary)
+			agg.Provider = translated.Provider
+			agg.Model = translated.Model
+			agg.Dialect = translated.Dialect
+			agg.RequestShapeFingerprint = defaultString(translated.RequestShapeFingerprint, shape.RequestShapeFingerprint)
+			agg.ToolSchemaFingerprint = defaultString(translated.ToolSchemaFingerprint, shape.ToolSchemaFingerprint)
+			agg.addRequest(row)
+			agg.Attempts++
+			if translated.UnsupportedFieldsPresent {
+				agg.Errors++
+			}
+			agg.FieldsStripped += int64(translated.FieldsStrippedCount)
+			agg.FieldsRewritten += int64(translated.FieldsRewrittenCount)
+			if translated.UnsupportedFieldsPresent {
+				agg.UnsupportedFields++
+			}
+			agg.TranslationWarnings += int64(translated.TranslationWarningCount)
+		}
+	}
+	var events []requestTranslationFieldEventRecord
+	eq := s.usage.db.Where("request_id IN ?", requestIDs)
+	if err := eq.Order("request_id ASC, attempt_index ASC, seq ASC").Find(&events).Error; err != nil {
+		return nil, err
+	}
+	for _, event := range events {
+		row, ok := rows[event.RequestID]
+		if !ok {
+			continue
+		}
+		shape := shapeByRequestID[event.RequestID]
+		key := joinKey("field", defaultString(event.FieldName, "other"), defaultString(event.Action, "unknown"))
+		agg := adminDiagnosticAggFor(table, key, defaultString(event.Reason, "unspecified"))
+		agg.RequestShapeFingerprint = shape.RequestShapeFingerprint
+		agg.ToolSchemaFingerprint = shape.ToolSchemaFingerprint
+		agg.addRequest(row)
+		switch event.Action {
+		case "stripped":
+			agg.FieldsStripped++
+		case "rewritten":
+			agg.FieldsRewritten++
+		case "unsupported":
+			agg.UnsupportedFields++
+			agg.Errors++
+		}
+	}
+	return table, nil
+}
+
+func adminTranslationMismatchKeys(shape requestShapeRecord, translated requestTranslationShapeRecord) []string {
+	keys := []string{}
+	if translated.UnsupportedFieldsPresent {
+		keys = append(keys, "unsupported-fields")
+	}
+	if translated.FieldsStrippedCount > 0 {
+		keys = append(keys, "fields-stripped")
+	}
+	if translated.FieldsRewrittenCount > 0 {
+		keys = append(keys, "fields-rewritten")
+	}
+	if translated.TranslationWarningCount > 0 {
+		keys = append(keys, "translation-warning")
+	}
+	if shape.RequestID != "" {
+		if shape.ToolCount != translated.TranslatedToolCount {
+			keys = append(keys, "tool-count-changed")
+		}
+		if shape.ToolChoiceMode != "" && translated.TranslatedToolChoiceMode != "" && shape.ToolChoiceMode != translated.TranslatedToolChoiceMode {
+			keys = append(keys, "tool-choice-changed")
+		}
+		if shape.RequestedOutputCapField != "" && translated.TranslatedOutputCapField != "" && shape.RequestedOutputCapField != translated.TranslatedOutputCapField {
+			keys = append(keys, "output-cap-field-changed")
+		}
+		if shape.RequestedOutputCapBucket != "" && translated.TranslatedOutputCapBucket != "" && shape.RequestedOutputCapBucket != translated.TranslatedOutputCapBucket {
+			keys = append(keys, "output-cap-bucket-changed")
+		}
+		if shape.ReasoningPresent && translated.TranslatedReasoningControl != "" {
+			keys = append(keys, "reasoning-control-translated")
+		}
+		if shape.TotalRequestBytesBucket != "" && translated.TranslatedRequestBytesBucket != "" && shape.TotalRequestBytesBucket != translated.TranslatedRequestBytesBucket {
+			keys = append(keys, "request-bytes-bucket-changed")
+		}
+	}
+	if len(keys) == 0 {
+		keys = append(keys, "translated-without-warning")
+	}
+	return dedupeSortedStrings(keys)
+}
+
+func (s *Service) adminFallbackHealthAggs(requestIDs []string, rows map[string]usageRow, opts UsageReportOptions) (map[string]*adminDiagnosticAgg, error) {
+	var transitions []fallbackTransitionRecord
+	q := s.usage.db.Where("request_id IN ?", requestIDs)
+	q = applyAdminFallbackDiagnosticFilters(q, opts)
+	if err := q.Order("request_id ASC, seq ASC").Find(&transitions).Error; err != nil {
+		return nil, err
+	}
+	table := map[string]*adminDiagnosticAgg{}
+	if len(transitions) == 0 {
+		for _, row := range rows {
+			if !adminFallbackParentRowMatches(row, opts) {
+				continue
+			}
+			adminAddFallbackParentRow(table, row)
+		}
+		return table, nil
+	}
+	covered := map[string]bool{}
+	for _, transition := range transitions {
+		row, ok := rows[transition.RequestID]
+		if !ok {
+			continue
+		}
+		covered[transition.RequestID] = true
+		key := joinKey(defaultString(transition.FallbackReason, "fallback"), defaultString(transition.ErrorClass, "unknown"))
+		secondary := joinKey(defaultString(transition.FailedProvider, "unknown"), defaultString(transition.FailedModel, "unknown"), "to", defaultString(transition.FallbackProvider, "unknown"), defaultString(transition.FallbackModel, "unknown"))
+		agg := adminDiagnosticAggFor(table, key, secondary)
+		agg.ErrorClass = transition.ErrorClass
+		agg.Provider = transition.FailedProvider
+		agg.Model = transition.FailedModel
+		agg.Dialect = transition.FailedDialect
+		agg.addRequest(row)
+		agg.Errors++
+		agg.Attempts++
+		if !row.FallbackUsed {
+			agg.Fallbacks++
+		}
+		if transition.Retryable {
+			agg.RetryableAttempts++
+		}
+		if transition.FallbackSucceeded {
+			agg.FallbackSucceeded++
+		} else {
+			agg.FallbackFailed++
+		}
+	}
+	for _, row := range rows {
+		if covered[row.RequestID] || !adminFallbackParentRowMatches(row, opts) {
+			continue
+		}
+		adminAddFallbackParentRow(table, row)
+	}
+	return table, nil
+}
+
+func adminFallbackParentRowMatches(row usageRow, opts UsageReportOptions) bool {
+	if !row.FallbackUsed && row.Attempts <= 1 {
+		return false
+	}
+	if opts.Status != 0 && row.Status != opts.Status {
+		return false
+	}
+	if opts.TargetProvider != "" && row.TargetProvider != opts.TargetProvider {
+		return false
+	}
+	if opts.TargetModel != "" && row.TargetModel != opts.TargetModel {
+		return false
+	}
+	if opts.TargetDialect != "" && row.TargetDialect != opts.TargetDialect {
+		return false
+	}
+	return true
+}
+
+func adminAddFallbackParentRow(table map[string]*adminDiagnosticAgg, row usageRow) {
+	key := adminScalarDimension(row, "fallback_health")
+	secondary := adminScalarDimension(row, "provider_model")
+	agg := adminDiagnosticAggFor(table, key, secondary)
+	agg.Provider = row.TargetProvider
+	agg.Model = row.TargetModel
+	agg.Dialect = row.TargetDialect
+	agg.addRequest(row)
+	if row.FallbackUsed {
+		if row.Status < 400 {
+			agg.FallbackSucceeded++
+		} else {
+			agg.FallbackFailed++
+		}
+	}
+}
+
+func (s *Service) adminClientImpactAggs(requestIDs []string, rows map[string]usageRow, opts UsageReportOptions) (map[string]*adminDiagnosticAgg, error) {
+	var errors []requestErrorRecord
+	q := s.usage.db.Where("request_id IN ?", requestIDs)
+	q = applyAdminRequestErrorDiagnosticFilters(q, opts)
+	if err := q.Find(&errors).Error; err != nil {
+		return nil, err
+	}
+	errorByRequestID := map[string]requestErrorRecord{}
+	for _, record := range errors {
+		errorByRequestID[record.RequestID] = record
+	}
+	table := map[string]*adminDiagnosticAgg{}
+	for _, row := range rows {
+		record := errorByRequestID[row.RequestID]
+		if opts.ErrorClass != "" && record.ErrorClass != opts.ErrorClass {
+			continue
+		}
+		key := joinKey(defaultString(row.Client, "unknown"), defaultString(row.CallerUser, "unknown"))
+		secondary := joinKey(defaultString(row.CallerProject, "unknown"), defaultString(row.CallerEnvironment, "unknown"), defaultString(row.ResolvedGroup, row.RequestedModel))
+		agg := adminDiagnosticAggFor(table, key, secondary)
+		agg.Status = row.Status
+		agg.ErrorClass = record.ErrorClass
+		agg.Provider = row.TargetProvider
+		agg.Model = row.TargetModel
+		agg.Dialect = row.TargetDialect
+		agg.addRequest(row)
+		agg.Attempts += int64(row.Attempts)
+		if row.Status >= 400 {
+			agg.Errors++
+		}
+		if record.RequestID != "" {
+			agg.TerminalErrors++
+		}
+	}
+	return table, nil
+}
+
+func applyAdminAttemptDiagnosticFilters(q *gorm.DB, opts UsageReportOptions) *gorm.DB {
+	if opts.TargetProvider != "" {
+		q = q.Where("provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("dialect = ?", opts.TargetDialect)
+	}
+	if opts.Status != 0 {
+		q = q.Where("status_code = ?", opts.Status)
+	}
+	if opts.ErrorClass != "" {
+		q = q.Where("error_class = ?", opts.ErrorClass)
+	}
+	return q
+}
+
+func applyAdminUpstreamDetailDiagnosticFilters(q *gorm.DB, opts UsageReportOptions) *gorm.DB {
+	if opts.Status != 0 {
+		q = q.Where("status_code = ?", opts.Status)
+	}
+	if opts.ErrorClass != "" {
+		q = q.Where("error_class = ?", opts.ErrorClass)
+	}
+	return q
+}
+
+func applyAdminTranslationDiagnosticFilters(q *gorm.DB, opts UsageReportOptions) *gorm.DB {
+	if opts.TargetProvider != "" {
+		q = q.Where("provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("dialect = ?", opts.TargetDialect)
+	}
+	if opts.RequestShapeFP != "" {
+		q = q.Where("request_shape_fingerprint = ?", opts.RequestShapeFP)
+	}
+	if opts.ToolSchemaFP != "" {
+		q = q.Where("tool_schema_fingerprint = ?", opts.ToolSchemaFP)
+	}
+	return q
+}
+
+func applyAdminFallbackDiagnosticFilters(q *gorm.DB, opts UsageReportOptions) *gorm.DB {
+	if opts.TargetProvider != "" {
+		q = q.Where("(failed_provider = ? OR fallback_provider = ?)", opts.TargetProvider, opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("(failed_model = ? OR fallback_model = ?)", opts.TargetModel, opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("(failed_dialect = ? OR fallback_dialect = ?)", opts.TargetDialect, opts.TargetDialect)
+	}
+	if opts.ErrorClass != "" {
+		q = q.Where("error_class = ?", opts.ErrorClass)
+	}
+	return q
+}
+
+func applyAdminRequestErrorDiagnosticFilters(q *gorm.DB, opts UsageReportOptions) *gorm.DB {
+	if opts.TargetProvider != "" {
+		q = q.Where("provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("dialect = ?", opts.TargetDialect)
+	}
+	if opts.Status != 0 {
+		q = q.Where("status = ?", opts.Status)
+	}
+	if opts.ErrorClass != "" {
+		q = q.Where("error_class = ?", opts.ErrorClass)
+	}
+	return q
+}
+
+func adminDiagnosticCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminScalarReportRow) []adminReportChart {
+	if len(rows) == 0 {
+		return nil
+	}
+	charts := []adminReportChart{
+		adminCategoryChart(filters, generatedAt, spec.Report+"_requests", spec.Report+" affected requests", "Bucket", "Requests", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Affected requests", "count", "magenta", rows, func(row adminScalarReportRow) float64 { return float64(row.Requests) }),
+		}),
+		adminCategoryChart(filters, generatedAt, spec.Report+"_errors", spec.Report+" errors", "Bucket", "Errors", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Errors", "count", "red", rows, func(row adminScalarReportRow) float64 { return float64(row.Errors) }),
+			adminChartSeriesFromScalarRows("Fallbacks", "count", "warning", rows, func(row adminScalarReportRow) float64 { return float64(row.Fallbacks) }),
+		}),
+	}
+	if spec.Diagnostic == "request_shape_mismatches" {
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_translation_counts", spec.Report+" translation changes", "Bucket", "Events", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Stripped", "count", "warning", rows, func(row adminScalarReportRow) float64 { return float64(row.FieldsStrippedCount) }),
+			adminChartSeriesFromScalarRows("Rewritten", "count", "blue", rows, func(row adminScalarReportRow) float64 { return float64(row.FieldsRewrittenCount) }),
+			adminChartSeriesFromScalarRows("Unsupported", "count", "red", rows, func(row adminScalarReportRow) float64 { return float64(row.UnsupportedFieldsCount) }),
+		}))
+	}
+	if spec.Diagnostic == "fallback_health" {
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_outcomes", spec.Report+" outcomes", "Bucket", "Fallbacks", "count", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Succeeded", "count", "success", rows, func(row adminScalarReportRow) float64 { return float64(row.FallbackSucceeded) }),
+			adminChartSeriesFromScalarRows("Failed", "count", "red", rows, func(row adminScalarReportRow) float64 { return float64(row.FallbackFailed) }),
+		}))
+	}
+	return charts
 }
 
 type adminShapeAgg struct {
@@ -2663,6 +3388,46 @@ func adminScalarDimension(row usageRow, dimension string) string {
 			errorKey = defaultString(row.Error, "error")
 		}
 		return joinKey(strconv.Itoa(row.Status), errorKey)
+	case "upstream_failure":
+		status := strconv.Itoa(row.Status)
+		if row.Status == 0 {
+			status = "status:unknown"
+		}
+		code := defaultString(row.UpstreamErrorCode, row.Error)
+		param := defaultString(row.UpstreamErrorParam, "param:none")
+		messageCategory := defaultString(row.UpstreamErrorMessageCategory, "provider_message:none")
+		return joinKey(defaultString(row.TargetProvider, "unknown"), defaultString(row.TargetModel, "unknown"), defaultString(row.TargetDialect, "unknown"), status, defaultString(code, "error:none"), param, messageCategory)
+	case "request_shape_failure":
+		shape := defaultString(row.TranslationShapeBucket, row.RequestShapeBucket)
+		if shape == "" {
+			shape = joinKey(defaultString(row.InboundDialect, "unknown"), defaultString(row.TargetDialect, "unknown"), defaultString(row.InputTokenBucket, "tokens:unknown"), defaultString(row.MaxTokenBucket, "output:unknown"))
+		}
+		fp := defaultString(row.RequestShapeFingerprint, "shape-fp:none")
+		toolFP := defaultString(row.ToolSchemaFingerprint, "tool-fp:none")
+		return joinKey(shape, fp, toolFP)
+	case "fallback_health":
+		status := "success"
+		switch {
+		case row.Status >= 500:
+			status = "terminal-5xx"
+		case row.Status >= 400:
+			status = "terminal-4xx"
+		}
+		fallback := "fallback:not-used"
+		if row.FallbackUsed {
+			if row.Status < 400 {
+				fallback = "fallback:recovered"
+			} else {
+				fallback = "fallback:failed"
+			}
+		}
+		attempts := "attempts:single"
+		if row.Attempts > 1 {
+			attempts = "attempts:multi"
+		}
+		return joinKey(defaultString(row.ResolvedGroup, row.RequestedModel), fallback, attempts, status)
+	case "caller_user_client":
+		return joinKey(defaultString(row.CallerUser, "unknown"), defaultString(row.Client, "unknown"))
 	case "cache":
 		return defaultString(row.Cache, "bypass")
 	case "quota_key_state":
@@ -3183,6 +3948,7 @@ func adminFilterDTO(filters adminReportFilters) adminReportFilterDTO {
 		Status:            filters.Status,
 		Cache:             filters.Cache,
 		Client:            filters.Client,
+		ErrorClass:        filters.ErrorClass,
 	}
 }
 
@@ -3285,6 +4051,25 @@ func adminErrorsFromRecords(records []requestErrorRecord) []adminReportError {
 			Provider:     record.Provider,
 			Model:        record.Model,
 			Dialect:      record.Dialect,
+		})
+	}
+	return out
+}
+
+func adminUpstreamErrorDetailsFromRecords(records []requestUpstreamErrorDetailRecord) []adminReportUpstreamErrorDetail {
+	out := make([]adminReportUpstreamErrorDetail, 0, len(records))
+	for _, record := range records {
+		out = append(out, adminReportUpstreamErrorDetail{
+			RequestID:    record.RequestID,
+			AttemptIndex: record.AttemptIndex,
+			Seq:          record.Seq,
+			TimeUTC:      record.TS,
+			Status:       record.StatusCode,
+			ErrorClass:   record.ErrorClass,
+			FieldName:    safeOptionalReasonToken(record.FieldName),
+			FieldValue:   sanitizePersistedUpstreamErrorDetailScalar(record.FieldValue),
+			Source:       sanitizePersistedUpstreamErrorDetailScalar(record.Source),
+			Truncated:    record.Truncated,
 		})
 	}
 	return out

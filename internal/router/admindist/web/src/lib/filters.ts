@@ -13,7 +13,10 @@ export type GlobalFilterName =
   | "provider"
   | "target_model"
   | "dialect"
-  | "client";
+  | "client"
+  | "error_class"
+  | "request_shape_fingerprint"
+  | "tool_schema_fingerprint";
 
 export type TabFilterName = "baseline" | "status" | "cache" | "sort" | "direction" | "traffic_shape_bucket" | "traffic_shape_scope" | "limit";
 
@@ -35,6 +38,9 @@ export const globalFilterFields = [
   ["target_model", "Target", ""],
   ["dialect", "Dialect", ""],
   ["client", "Client", ""],
+  ["error_class", "Error class", ""],
+  ["request_shape_fingerprint", "Shape FP", ""],
+  ["tool_schema_fingerprint", "Tool FP", ""],
 ] as const satisfies ReadonlyArray<FilterField<GlobalFilterName>>;
 
 export const tabFilterFields = [

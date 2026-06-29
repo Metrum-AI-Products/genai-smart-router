@@ -184,11 +184,22 @@ func TestReasoningNoEligibleTargetAndModelListMetadata(t *testing.T) {
 	foundReasoning := false
 	for _, item := range body["data"].([]any) {
 		model := item.(map[string]any)
+		if model["id"] == "default" {
+			if _, ok := model["default_reasoning_level"]; ok {
+				t.Fatalf("non-reasoning model advertised default reasoning level: %#v", model)
+			}
+		}
 		if model["id"] == "reasoning" {
 			foundReasoning = true
 			levels := model["supported_reasoning_levels"].([]any)
 			if len(levels) != 3 || model["supports_reasoning_summaries"] != true {
 				t.Fatalf("reasoning model metadata=%#v", model)
+			}
+			for _, level := range levels {
+				preset, ok := level.(map[string]any)
+				if !ok || preset["effort"] == "" || preset["description"] == "" {
+					t.Fatalf("reasoning level should be model-catalog preset object, got %#v in %#v", level, model)
+				}
 			}
 		}
 	}

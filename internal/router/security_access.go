@@ -218,12 +218,8 @@ func safeMethod(r *http.Request) string {
 func userAgentFamily(ua string) string {
 	lower := strings.ToLower(ua)
 	switch {
-	case strings.Contains(lower, "codex"):
-		return "codex"
-	case strings.Contains(lower, "claude"):
-		return "claude-code"
 	case strings.Contains(lower, "curl"):
-		return "curl"
+		return "command-line"
 	case strings.Contains(lower, "mozilla"):
 		return "browser"
 	case strings.TrimSpace(ua) == "":

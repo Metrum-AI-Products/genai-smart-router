@@ -177,8 +177,8 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
 	body := providerPassthroughBody(req)
 	body["model"] = model
-	// The router's first tool-capable path is unary. Codex accepts non-streaming
-	// Responses payloads and this keeps usage accounting deterministic.
+	// The router's first tool-capable path is unary. Non-streaming Responses
+	// payloads keep usage accounting deterministic for compatible clients.
 	body["stream"] = false
 	body["store"] = false
 	if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {

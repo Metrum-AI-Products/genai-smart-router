@@ -39,6 +39,15 @@ Use `X-Request-Id` to inspect relational usage tables:
 
 Diagnostic tables must not store raw prompts, raw image payloads, image URLs, raw tool schemas, raw tool outputs, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
 
+For browser-first incident response, use `/admin/reports/` before falling back to manual SQL:
+
+- Upstream failures: filter by `since`, provider, target model, dialect, status, caller user, project, environment, client, request bytes bucket, or tool-choice mode to find provider/model/status/error-code spikes.
+- Shape failures: compare success and failure rates by safe request-shape bucket, translated-shape bucket, request-shape fingerprint, and tool-schema fingerprint.
+- Fallback health: confirm whether multi-attempt requests recovered through fallback or still ended in caller-visible 4xx/5xx responses.
+- User impact: rank affected caller users and clients by error rate, latency, and resolved model group.
+
+These reports use only safe scalar telemetry and request IDs. They do not expose raw prompts, image payloads, image URLs, raw tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, raw upstream bodies, or free-form provider prose. Use request drilldown from a report row when a single request needs attempt, trace, upstream-error, request-shape, translation-shape, or decision telemetry.
+
 For incident windows with many requests, page the admin request API instead of asking the browser to load the whole result set:
 
 ```bash

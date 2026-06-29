@@ -941,6 +941,10 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/provider-model-mix?since=24h",
 		"/admin/reports/api/latency-throughput?since=24h",
 		"/admin/reports/api/errors-fallbacks?since=24h",
+		"/admin/reports/api/upstream-failures?since=24h",
+		"/admin/reports/api/request-shape-failures?since=24h",
+		"/admin/reports/api/fallback-health?since=24h",
+		"/admin/reports/api/user-client-impact?since=24h",
 		"/admin/reports/api/cache?since=24h",
 		"/admin/reports/api/quotas-budgets?since=24h",
 		"/admin/reports/api/traffic-shaping-overview?since=24h",
@@ -1790,6 +1794,205 @@ func TestAdminReportExpensiveRequestsAndTopNMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminTroubleshootingReportsUseSafeDiagnosticTelemetry(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	rawProviderMessage := "Bad request: prompt contained customer SSN 123-45-6789"
+	upstreamFailed := "upstream-failed"
+	for i, rec := range []logRecord{
+		{
+			RequestID:         "diag-failed",
+			CallerID:          "caller-a",
+			CallerUser:        "william",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			Client:            "codex-cli",
+			InboundDialect:    "openai-responses",
+			RequestedModel:    "big-coder",
+			ResolvedGroup:     "big-coder",
+			TargetProvider:    "minimax",
+			TargetModel:       "MiniMax-M3",
+			TargetDialect:     "openai-responses",
+			Stream:            true,
+			Cache:             "bypass",
+			Status:            502,
+			Attempts:          2,
+			FallbackUsed:      true,
+			LatencyMS:         900,
+			Usage:             Usage{InputTokens: 5000, OutputTokens: 20, TotalTokens: 5020},
+			Error:             &upstreamFailed,
+			QuotaState:        "ok",
+			KeyState:          "ok",
+			RequestShape: &requestShapeLogRecord{
+				InboundDialect:             "openai-responses",
+				RequestedModel:             "big-coder",
+				ResolvedGroup:              "big-coder",
+				Client:                     "codex-cli",
+				Stream:                     true,
+				ToolCount:                  4,
+				ToolChoiceMode:             "auto",
+				ReasoningPresent:           true,
+				TotalRequestBytesBucket:    "bytes:large",
+				EstimatedInputTokensBucket: "tokens:large",
+				RequestedOutputCapBucket:   "output:large",
+				RequestShapeFingerprint:    "shape_safe_fp",
+				ToolSchemaFingerprint:      "tool_safe_fp",
+			},
+			TranslationShapes: []translationShapeLogRecord{{
+				AttemptIndex:                 0,
+				Provider:                     "minimax",
+				Model:                        "MiniMax-M3",
+				Dialect:                      "openai-responses",
+				TranslatedStream:             true,
+				TranslatedToolCount:          4,
+				TranslatedToolChoiceMode:     "auto",
+				TranslatedOutputCapBucket:    "output:large",
+				TranslatedReasoningControl:   "reasoning:effort",
+				TranslatedRequestBytesBucket: "bytes:large",
+				UnsupportedFieldsPresent:     true,
+				RequestShapeFingerprint:      "shape_safe_fp",
+				ToolSchemaFingerprint:        "tool_safe_fp",
+			}},
+			AttemptsDetail: []attemptLogRecord{{
+				Index:        0,
+				StatusCode:   400,
+				Provider:     "minimax",
+				Model:        "MiniMax-M3",
+				Dialect:      "openai-responses",
+				ErrorClass:   "upstream-failed",
+				ErrorMessage: "provider_message:invalid_request",
+				ErrorDetails: []upstreamErrorDetailLogRecord{
+					{Seq: 0, AttemptIndex: 0, StatusCode: 400, ErrorClass: "upstream-failed", FieldName: "code", FieldValue: "invalid_request", Source: "json"},
+					{Seq: 1, AttemptIndex: 0, StatusCode: 400, ErrorClass: "upstream-failed", FieldName: "message", FieldValue: "provider_message:invalid_request", Source: "json"},
+				},
+			}},
+			FallbackTransitions: []fallbackTransitionLogRecord{{
+				Seq:                    0,
+				AttemptIndex:           0,
+				FailedProvider:         "minimax",
+				FailedModel:            "MiniMax-M3",
+				FailedDialect:          "openai-responses",
+				FallbackProvider:       "baseten",
+				FallbackModel:          "gpt-oss-120b",
+				FallbackDialect:        "openai-responses",
+				FallbackReason:         "upstream-failed",
+				ErrorClass:             "upstream-failed",
+				Retryable:              true,
+				FallbackSucceeded:      false,
+				FailedCandidateIndex:   0,
+				FallbackCandidateIndex: 1,
+			}},
+		},
+		{
+			RequestID:         "diag-success",
+			CallerID:          "caller-a",
+			CallerUser:        "william",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			Client:            "codex-cli",
+			InboundDialect:    "openai-responses",
+			RequestedModel:    "big-coder",
+			ResolvedGroup:     "big-coder",
+			TargetProvider:    "baseten",
+			TargetModel:       "gpt-oss-120b",
+			TargetDialect:     "openai-responses",
+			Stream:            true,
+			Cache:             "bypass",
+			Status:            200,
+			Attempts:          2,
+			FallbackUsed:      true,
+			LatencyMS:         700,
+			Usage:             Usage{InputTokens: 5000, OutputTokens: 200, TotalTokens: 5200},
+			QuotaState:        "ok",
+			KeyState:          "ok",
+			RequestShape: &requestShapeLogRecord{
+				InboundDialect:             "openai-responses",
+				RequestedModel:             "big-coder",
+				ResolvedGroup:              "big-coder",
+				Client:                     "codex-cli",
+				Stream:                     true,
+				ToolCount:                  4,
+				ToolChoiceMode:             "auto",
+				ReasoningPresent:           true,
+				TotalRequestBytesBucket:    "bytes:large",
+				EstimatedInputTokensBucket: "tokens:large",
+				RequestedOutputCapBucket:   "output:large",
+				RequestShapeFingerprint:    "shape_safe_fp",
+				ToolSchemaFingerprint:      "tool_safe_fp",
+			},
+			TranslationShapes: []translationShapeLogRecord{{
+				AttemptIndex:                 0,
+				Provider:                     "baseten",
+				Model:                        "gpt-oss-120b",
+				Dialect:                      "openai-responses",
+				TranslatedStream:             true,
+				TranslatedToolCount:          4,
+				TranslatedToolChoiceMode:     "auto",
+				TranslatedOutputCapBucket:    "output:large",
+				TranslatedReasoningControl:   "reasoning:effort",
+				TranslatedRequestBytesBucket: "bytes:large",
+				RequestShapeFingerprint:      "shape_safe_fp",
+				ToolSchemaFingerprint:        "tool_safe_fp",
+			}},
+			AttemptsDetail: []attemptLogRecord{{
+				Index:        0,
+				StatusCode:   400,
+				Provider:     "minimax",
+				Model:        "MiniMax-M3",
+				Dialect:      "openai-responses",
+				ErrorClass:   "upstream-failed",
+				ErrorMessage: "provider_message:invalid_request",
+				Retryable:    true,
+			}},
+		},
+	} {
+		rec.TS = base.Add(time.Duration(i) * time.Second).Format(time.RFC3339)
+		svc.usage.Emit(rec)
+	}
+
+	for _, path := range []string{
+		"/admin/reports/api/upstream-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+		"/admin/reports/api/upstream-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&status=400&limit=10",
+		"/admin/reports/api/request-shape-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+		"/admin/reports/api/fallback-health?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+		"/admin/reports/api/user-client-impact?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+	} {
+		body := adminReportJSON(t, svc, path)
+		if len(body["rows"].([]any)) == 0 || len(body["charts"].([]any)) == 0 {
+			t.Fatalf("%s missing rows or charts: %#v", path, body)
+		}
+		encoded, _ := json.Marshal(body)
+		if strings.Contains(string(encoded), rawProviderMessage) || strings.Contains(string(encoded), "123-45-6789") {
+			t.Fatalf("%s leaked raw provider text: %s", path, encoded)
+		}
+	}
+	fallbackHealth := adminReportJSON(t, svc, "/admin/reports/api/fallback-health?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10")
+	var sawParentFallback bool
+	for _, item := range fallbackHealth["rows"].([]any) {
+		row := item.(map[string]any)
+		if rate, ok := row["fallbackRatePct"].(float64); ok && rate > 100 {
+			t.Fatalf("fallback health produced impossible fallback rate: %#v", row)
+		}
+		if row["fallbackSucceeded"] == float64(1) {
+			sawParentFallback = true
+		}
+	}
+	if !sawParentFallback {
+		t.Fatalf("fallback health did not include parent-only fallback row in mixed telemetry: %#v", fallbackHealth)
+	}
+	shapeStatus := adminReportJSON(t, svc, "/admin/reports/api/request-shape-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&status=400&limit=10")
+	if rows, ok := shapeStatus["rows"].([]any); ok && len(rows) != 0 {
+		t.Fatalf("status-filtered shape report included non-400 parent rows: %#v", shapeStatus)
+	}
+
+	detail := adminReportJSON(t, svc, "/admin/reports/api/request/diag-failed")
+	upstream := detail["upstreamErrorTelemetry"].(map[string]any)
+	if len(upstream["details"].([]any)) == 0 {
+		t.Fatalf("request detail missing upstream error telemetry: %#v", detail)
+	}
+}
+
 func TestAdminSecurityReportCursorPagination(t *testing.T) {
 	svc := newAdminReportPaginationTestService(t, true)
 	defer svc.Close()
@@ -2139,7 +2342,7 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 	}
 }
 
-func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
+func TestModelsEndpointIncludesCompatibilityModelsField(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()
 
@@ -2164,9 +2367,9 @@ func TestModelsEndpointIncludesCodexModelsField(t *testing.T) {
 		}
 	}
 	if models, ok := body["models"].([]any); !ok || len(models) == 0 {
-		t.Fatalf("missing Codex models field: %#v", body)
+		t.Fatalf("missing compatibility models field: %#v", body)
 	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["supported_reasoning_levels"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
-		t.Fatalf("missing Codex model compatibility fields: %#v", body)
+		t.Fatalf("missing model compatibility fields: %#v", body)
 	}
 }
 
