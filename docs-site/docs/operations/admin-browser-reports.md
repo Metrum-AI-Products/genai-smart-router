@@ -97,6 +97,8 @@ Configure `server.client_ip.trusted_proxy_cidrs` before relying on IP-based secu
 
 The browser report shell provides shared controls for every tab:
 
+- grouped left-sidebar navigation on desktop, with a header drawer on narrow screens;
+- collapsible navigation groups with preferences stored in browser `localStorage`;
 - time range filters from the top filter bar;
 - filters for caller ID, caller IP, project, requested model, resolved group, provider, target model, dialect, HTTP status, cache state, and client;
 - selected tab and search stored in shareable URL query parameters;
@@ -113,23 +115,24 @@ These controls are presentation helpers over bounded authenticated APIs. They do
 
 Tables use per-tab column schemas instead of first-row key discovery. Column order, labels, and units are stable for each tab, CSV export follows the same visible columns, Markdown export escapes raw HTML and active Markdown table-cell syntax, and duplicate compatibility aliases are suppressed when they carry the same value. For example, usage tabs show `Input tokens`, `Output tokens`, and `Total tokens`; they do not show both `tokens` and `totalTokens` when those fields are equivalent. Cost fields follow the same rule: input, image, output, total, baseline, savings, and upstream-billed values are labeled separately when present.
 
+## Navigation
+
+Desktop report users navigate with a fixed left sidebar labeled `Report sections`. The sidebar groups reports by operator intent: Overview, Usage, Savings, Performance, Traffic shaping, Routing decisions, Provider catalog, Security, Request drilldown, and System status. The report header, filters, Markdown export, active tab URL, CSV export, and request drilldown stay in the main content area.
+
+Each group header is keyboard-focusable and exposes expanded/collapsed state to assistive technology. Collapsed groups are remembered in browser `localStorage` under a versioned UI key so an administrator's browser keeps the same sidebar density after reloads. The preference is local presentation state only; it is not sent to report APIs, stored in the router, or included in shareable URLs.
+
+On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, so bookmarked links, filters, exports, and Casbin authorization behavior are unchanged.
+
 ## Report Tabs
 
-The current browser surface includes:
+The current browser surface includes these grouped reports:
 
 - Overview: high-level usage, cost, latency, cache, fallback, and provider trends.
-- Savings: actual request-time cost compared with selected source-dated baseline prices.
-- Savings by user, key, model group, project, and provider/model.
-- Model groups by user.
-- Usage by API key, caller ID, and requested model.
-- Provider and model mix. This tab reports actual provider/model usage, input/output/total tokens, input/output/total cost, latency, and throughput. It does not include baseline or savings fields by default; use the Savings tabs when a hypothetical baseline comparison is needed.
-- Latency and throughput.
-- Errors and fallbacks.
-- Cache.
-- Quotas and budgets.
-- Traffic shaping overview, by user, by key, by client, and by model group. These tabs distinguish caller/server shaping decisions such as `rejected` and `queued`, show limiting scope/bucket, retry-after, average/p50/p95/max queue wait, estimated input tokens, reserved output tokens, and total reserved tokens.
-- Provider capacity shaping and adaptive upstream backoff. These tabs show provider/model/target admission, skipped targets, cooldown starts, upstream 429/quota backoff reasons, and successful route-around counts.
-- Troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
+- Usage: model groups, providers, API keys, model groups by user, key usage, caller usage, requested models, provider/model mix, clients, projects, and capability usage. The Provider/model tab reports actual provider/model usage, input/output/total tokens, input/output/total cost, latency, and throughput. It does not include baseline or savings fields by default; use the Savings tabs when a hypothetical baseline comparison is needed.
+- Savings: actual request-time cost compared with selected source-dated baseline prices, plus savings by user, key, model group, project, and provider/model.
+- Performance: latency and throughput, errors and fallbacks, and cache.
+- Traffic shaping: overview, by user, by key, by client, by model group, provider capacity shaping, and adaptive upstream backoff. These tabs distinguish caller/server shaping decisions such as `rejected` and `queued`, show limiting scope/bucket, retry-after, queue wait, estimated input tokens, reserved output tokens, and total reserved tokens. Provider shaping and backoff tabs show provider/model/target admission, skipped targets, cooldown starts, upstream 429/quota backoff reasons, and successful route-around counts.
+- Routing decisions: routing decisions, dynamic-score enabled signals, score buckets, threshold buckets, max-token buckets, input-token buckets, admission reasons, and troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
 
 Example shaping URLs:
 
@@ -140,21 +143,10 @@ Example shaping URLs:
 ```
 
 Use caller shaping tabs when the caller received `429 traffic-shaped` or had queued requests. Use provider capacity shaping when the caller received `503 upstream-capacity-throttled` or when a target was skipped and another target succeeded. Use adaptive backoff when a prior upstream `429` or quota/billing response should temporarily protect that provider/model/target.
-- Routing decisions.
-- Dynamic-score enabled signals, score buckets, and threshold buckets.
-- Max-token buckets, input-token buckets, and admission reasons.
-- Provider catalog status from safe runtime configuration metadata. The tab separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. This endpoint does not expose provider API keys, headers, full config, or private deployment files.
-- Retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent hourly/daily/monthly rollup runs. This is a read-only status view; retention execution and rollup generation remain operator-controlled workflows.
-- Contract buckets. This tab groups contract-present/pass/fail and failure-reason buckets by model group so operators can see whether a group is satisfying its configured quality and capability contract.
-- Contract workloads. This tab groups deployment-defined contract workload labels by model group so validation and production traffic can be compared without exposing request content.
-- Target validation. This tab groups target-validation status buckets by provider/model so stale, missing, or failing validation metadata is visible before it becomes a routing incident.
-- Expensive requests.
-- Client breakdown.
-- Project chargeback.
-- Capability usage for image/VLM, streaming, PII filter, cacheable, and dialect signals available in usage rows.
-- Anomalies from deterministic rule-based operational signals such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. This tab is not machine-learning anomaly detection; normal active key state is not anomalous, and baseline/savings fields are reserved for savings reports.
-- Security access events for authorized and unauthorized access paths when enabled.
-- Recent requests and request-ID drilldown.
+- Provider catalog: provider catalog status from safe runtime configuration metadata, target validation, contract buckets, and contract workloads. Catalog status separates `catalog` rows from `active_target` rows so per-group target overrides for modalities, tools, pricing, max-token behavior, and validation are visible without changing catalog metadata. This endpoint does not expose provider API keys, headers, full config, or private deployment files. Contract reports show contract-present/pass/fail, failure reasons, and deployment-defined workload labels without exposing request content.
+- Security: security access events for authorized and unauthorized access paths when enabled.
+- Request drilldown: expensive requests, recent requests and request-ID drilldown, and deterministic anomalies such as errors, fallbacks, multi-attempt requests, slow requests, expensive requests, non-ok quota states, and abnormal key states such as disabled, revoked, expired, or suspended. This is not machine-learning anomaly detection; normal active key state is not anomalous, and baseline/savings fields are reserved for savings reports.
+- System status: quotas/budgets plus retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent hourly/daily/monthly rollup runs. Retention status is read-only; retention execution and rollup generation remain operator-controlled workflows.
 
 Recent request rows include visible columns for time, request ID, caller ID, caller IP, public token ID, caller user/project/environment, client, requested model, resolved model group, provider, model, dialect, status, cache state, attempts, fallback flag, latency, input/output/total tokens, and stored total cost.
 

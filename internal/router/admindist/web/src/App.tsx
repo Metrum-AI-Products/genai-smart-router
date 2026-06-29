@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Menu } from "lucide-react";
+import { MobileNavDrawer } from "@/components/MobileNavDrawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ReportPanel } from "@/components/ReportPanel";
+import { Sidebar } from "@/components/Sidebar";
 import { fetchReport, fetchVersion, filterFields, tabSpecs, type ReportFilters, type ReportResponse, type TabSpec, type VersionResponse } from "@/lib/reports";
 
 function filtersFromUrl(): ReportFilters {
@@ -25,6 +28,7 @@ export default function App() {
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(filtersFromUrl);
   const [report, setReport] = useState<ReportResponse>();
   const [version, setVersion] = useState<VersionResponse>();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadSequence = useRef(0);
@@ -77,7 +81,7 @@ export default function App() {
   const buildLabel = version?.build_date && version.build_date !== "unknown" ? version.build_date : "";
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 lg:px-6">
+    <div className="mx-auto w-full max-w-[1700px] space-y-5 px-4 py-5 lg:px-6">
       <header className="rounded-lg border border-white/10 bg-black p-4 shadow-2xl">
         <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
           <div className="flex min-w-0 items-center gap-4">
@@ -96,7 +100,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6" onSubmit={applyFilters}>
+          <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" onSubmit={applyFilters}>
             {filterFields.map(([name, label, defaultValue]) => (
               <label key={name} className="grid gap-1 font-mono text-[0.68rem] uppercase text-white/58">
                 {label}
@@ -119,6 +123,10 @@ export default function App() {
             </label>
             <div className="flex items-end gap-2">
               <Button type="submit">Apply</Button>
+              <Button type="button" variant="outline" className="lg:hidden" aria-label="Open report navigation" onClick={() => setMobileNavOpen(true)}>
+                <Menu className="mr-2 h-4 w-4" aria-hidden="true" />
+                Sections
+              </Button>
               <a className="inline-flex h-9 items-center rounded-md border border-white/15 px-3 text-sm text-white hover:bg-white/[0.08]" href={`export.md?${new URLSearchParams(filters)}`}>
                 Markdown
               </a>
@@ -126,19 +134,13 @@ export default function App() {
           </form>
         </div>
       </header>
-      <nav className="flex gap-2 overflow-x-auto rounded-lg border border-white/10 bg-white/[0.035] p-2" aria-label="Report sections">
-        {tabSpecs.map((spec) => (
-          <button
-            key={spec.id}
-            type="button"
-            className={`shrink-0 rounded-md px-3 py-2 text-sm ${spec.id === activeTab ? "bg-metrum-purple text-white" : "text-white/64 hover:bg-white/[0.07] hover:text-white"}`}
-            onClick={() => setActiveTab(spec.id)}
-          >
-            {spec.label}
-          </button>
-        ))}
-      </nav>
-      <ReportPanel tab={tab} report={report} filters={filters} loading={loading} error={error} onRefresh={() => void load(tab, filters)} />
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <Sidebar tabs={tabSpecs} activeTab={activeTab} onTabChange={setActiveTab} className="sticky top-5 hidden max-h-[calc(100vh-2.5rem)] overflow-y-auto lg:block" />
+        <div className="min-w-0">
+          <ReportPanel tab={tab} report={report} filters={filters} loading={loading} error={error} onRefresh={() => void load(tab, filters)} />
+        </div>
+      </div>
+      <MobileNavDrawer open={mobileNavOpen} tabs={tabSpecs} activeTab={activeTab} onOpenChange={setMobileNavOpen} onTabChange={setActiveTab} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { navGroups, validateNavGroups } from "../src/lib/navGroups";
 import { tabSpecs, type ReportChart, type ReportRow } from "../src/lib/reports";
 
 const generatedUtc = "2026-06-28T12:00:00Z";
@@ -7,6 +8,27 @@ let apiRequests: string[] = [];
 test.beforeEach(async ({ page }) => {
   apiRequests = [];
   await installAdminApiMocks(page, apiRequests);
+});
+
+test("admin report nav groups cover every tab exactly once", async () => {
+  const result = validateNavGroups(navGroups, tabSpecs);
+  expect(result.duplicateTabs).toEqual([]);
+  expect(result.missingTabs).toEqual([]);
+  expect(result.unknownTabs).toEqual([]);
+  expect(result.uniqueGroupIds).toBe(true);
+  expect(result.nonEmptyLabels).toBe(true);
+  expect(navGroups.map((group) => group.id)).toEqual([
+    "overview",
+    "usage",
+    "savings",
+    "performance",
+    "traffic-shaping",
+    "routing-decisions",
+    "provider-catalog",
+    "security",
+    "request-drilldown",
+    "system-status",
+  ]);
 });
 
 test("admin reports shell renders every tab with mocked report APIs", async ({ page }) => {
@@ -22,15 +44,81 @@ test("admin reports shell renders every tab with mocked report APIs", async ({ p
   await expect(page.getByText("Commit e2ecommit123")).toBeVisible();
 
   const reportNav = page.getByRole("navigation", { name: "Report sections" });
-  await expect(reportNav.getByRole("button")).toHaveCount(tabSpecs.length);
+  await expect(reportNav.locator("[data-report-tab]")).toHaveCount(tabSpecs.length);
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(horizontalOverflow).toBe(false);
 
   for (const spec of tabSpecs) {
-    await reportNav.getByRole("button", { name: spec.label, exact: true }).click();
+    await reportNav.locator(`[data-report-tab="${spec.id}"]`).click();
     await expect(page.getByRole("heading", { name: spec.label, exact: true })).toBeVisible();
     await expect(page.locator("main canvas, main table").first()).toBeVisible();
   }
 
   expect(consoleErrors).toEqual([]);
+});
+
+test("sidebar groups collapse and expand on click", async ({ page }) => {
+  await page.goto("/");
+
+  const reportNav = page.getByRole("navigation", { name: "Report sections" });
+  for (const group of navGroups) {
+    await expect(reportNav.locator(`[data-nav-group="${group.id}"] > button`).first()).toBeVisible();
+  }
+
+  await reportNav.getByRole("button", { name: "Usage", exact: true }).click();
+  await expect(reportNav.getByRole("button", { name: "Groups", exact: true })).toBeHidden();
+
+  await reportNav.getByRole("button", { name: "Usage", exact: true }).click();
+  await expect(reportNav.getByRole("button", { name: "Groups", exact: true })).toBeVisible();
+
+  await reportNav.getByRole("button", { name: "Usage", exact: true }).click();
+  await page.reload();
+  const reloadedNav = page.getByRole("navigation", { name: "Report sections" });
+  await expect(reloadedNav.getByRole("button", { name: "Groups", exact: true })).toBeHidden();
+});
+
+test("sidebar keyboard navigation reaches every group", async ({ page }) => {
+  await page.goto("/");
+
+  const reportNav = page.getByRole("navigation", { name: "Report sections" });
+  await reportNav.locator('[data-nav-group="overview"] button').first().focus();
+
+  const reachedGroups = new Set<string>();
+  for (let index = 0; index < tabSpecs.length + navGroups.length + 8; index += 1) {
+    const groupId = await page.evaluate(() => {
+      const focused = document.activeElement;
+      if (!(focused instanceof HTMLElement) || !focused.hasAttribute("data-report-tab")) return "";
+      return focused.closest("[data-nav-group]")?.getAttribute("data-nav-group") || "";
+    });
+    if (groupId) reachedGroups.add(groupId);
+    await page.keyboard.press("Tab");
+  }
+
+  expect(Array.from(reachedGroups).sort()).toEqual(navGroups.map((group) => group.id).sort());
+});
+
+test("mobile viewport shows drawer toggle and hidden sidebar", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/");
+
+  await expect(page.locator("[data-report-sidebar]:visible")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open report navigation" }).click();
+
+  const reportNav = page.getByRole("navigation", { name: "Report sections" });
+  await expect(reportNav).toBeVisible();
+  await expect(reportNav.locator("[data-report-tab]")).toHaveCount(tabSpecs.length);
+  await reportNav.getByRole("button", { name: "Requests", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(page.locator("[data-report-sidebar]:visible")).toHaveCount(0);
+});
+
+test("deep link requests tab opens active sidebar item", async ({ page }) => {
+  await page.goto("/?tab=requests");
+
+  const reportNav = page.getByRole("navigation", { name: "Report sections" });
+  const requestsTab = reportNav.getByRole("button", { name: "Requests", exact: true });
+  await expect(requestsTab).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
 });
 
 test("filter URL state and CSV export remain usable", async ({ page }) => {

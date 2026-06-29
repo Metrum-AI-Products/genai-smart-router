@@ -1,0 +1,137 @@
+import type { TabSpec } from "@/lib/reports";
+
+export type NavGroupId =
+  | "overview"
+  | "usage"
+  | "savings"
+  | "performance"
+  | "traffic-shaping"
+  | "routing-decisions"
+  | "provider-catalog"
+  | "security"
+  | "request-drilldown"
+  | "system-status";
+
+export type NavGroup = {
+  id: NavGroupId;
+  label: string;
+  tabIds: string[];
+};
+
+export const navGroups: NavGroup[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    tabIds: ["overview"],
+  },
+  {
+    id: "usage",
+    label: "Usage",
+    tabIds: [
+      "groups",
+      "providers",
+      "tokens",
+      "model-groups-by-user",
+      "usage-by-key",
+      "usage-by-caller",
+      "requested-models",
+      "provider-model-mix",
+      "client-breakdown",
+      "project-chargeback",
+      "capability-usage",
+    ],
+  },
+  {
+    id: "savings",
+    label: "Savings",
+    tabIds: ["savings", "savings-by-user", "savings-by-key", "savings-by-group", "savings-by-project", "savings-by-provider-model"],
+  },
+  {
+    id: "performance",
+    label: "Performance",
+    tabIds: ["latency-throughput", "errors-fallbacks", "cache-report"],
+  },
+  {
+    id: "traffic-shaping",
+    label: "Traffic shaping",
+    tabIds: [
+      "traffic-shaping-overview",
+      "traffic-shaping-by-user",
+      "traffic-shaping-by-key",
+      "traffic-shaping-by-client",
+      "traffic-shaping-by-group",
+      "provider-capacity-shaping",
+      "adaptive-upstream-backoff",
+    ],
+  },
+  {
+    id: "routing-decisions",
+    label: "Routing decisions",
+    tabIds: [
+      "routing-decisions",
+      "dynamic-signals",
+      "dynamic-score-buckets",
+      "dynamic-thresholds",
+      "max-token-buckets",
+      "input-token-buckets",
+      "admission-reasons",
+      "troubleshooting-buckets",
+    ],
+  },
+  {
+    id: "provider-catalog",
+    label: "Provider catalog",
+    tabIds: ["provider-catalog-status", "target-validation", "contract-buckets", "contract-workloads"],
+  },
+  {
+    id: "security",
+    label: "Security",
+    tabIds: ["security-events"],
+  },
+  {
+    id: "request-drilldown",
+    label: "Request drilldown",
+    tabIds: ["expensive-requests", "requests", "anomalies"],
+  },
+  {
+    id: "system-status",
+    label: "System status",
+    tabIds: ["quotas-budgets", "retention-status"],
+  },
+];
+
+export function groupedTabs(groups: NavGroup[], tabs: TabSpec[]) {
+  const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+  return groups.map((group) => ({
+    ...group,
+    tabs: group.tabIds.map((tabId) => {
+      const tab = byId.get(tabId);
+      if (!tab) throw new Error(`Unknown admin report tab in nav group ${group.id}: ${tabId}`);
+      return tab;
+    }),
+  }));
+}
+
+export function validateNavGroups(groups: NavGroup[], tabs: TabSpec[]) {
+  const tabIds = new Set(tabs.map((tab) => tab.id));
+  const seen = new Map<string, string>();
+  const duplicateTabs: string[] = [];
+  const unknownTabs: string[] = [];
+
+  for (const group of groups) {
+    for (const tabId of group.tabIds) {
+      if (!tabIds.has(tabId)) unknownTabs.push(tabId);
+      if (seen.has(tabId)) duplicateTabs.push(tabId);
+      seen.set(tabId, group.id);
+    }
+  }
+
+  const missingTabs = tabs.map((tab) => tab.id).filter((tabId) => !seen.has(tabId));
+  return {
+    duplicateTabs,
+    missingTabs,
+    unknownTabs,
+    uniqueGroupIds: new Set(groups.map((group) => group.id)).size === groups.length,
+    nonEmptyLabels: groups.every((group) => group.label.trim().length > 0),
+  };
+}
