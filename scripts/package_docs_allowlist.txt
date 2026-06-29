@@ -1,15 +1,11 @@
-# Source docs copied into binary and Docker release packages.
-README.md
-docs/DEPLOYMENT.md
-docs/DEPLOYMENT_PATTERNS.md
-docs/DOCKER_DEPLOYMENT.md
-docs/DYNAMIC_SCORE_ROUTING.md
-docs/EXTERNAL_ROUTING_POLICY.md
-docs/PII_FILTERING.md
-docs/PRODUCT_CAPABILITY_MATRIX.md
-docs/SECURITY_REVIEW_NOTES.md
-docs/SELF_HOSTED_UPSTREAMS.md
-docs/SMOKE_TEST_MATRIX.md
-docs/USAGE_DB_DESIGN.md
-docs/USAGE_REPORTING_PLAYBOOK.md
+# Package-safe offline bootstrap docs copied into binary and Docker release
+# packages. Full customer/admin docs are embedded in the router binary and
+# served from /docs/ after startup. Internal source-checkout runbooks must stay
+# out of this allowlist unless they are rewritten and reviewed as package-safe
+# bootstrap material.
+docs/PACKAGE_README.md
+docs/BINARY_INSTALL.md
+docs/DOCKER_COMPOSE_INSTALL.md
+docs/KUBERNETES_INSTALL.md
+docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md

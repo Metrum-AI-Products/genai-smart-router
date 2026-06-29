@@ -37,6 +37,20 @@ Release packaging smokes prove that artifacts are deterministic, external-safe, 
 | macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
 | Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
 
+## Release Package Smokes
+
+Release packaging smokes prove that artifacts are deterministic, external-safe, and architecture-correct before handoff.
+
+| Artifact | Required smoke |
+|---|---|
+| Package validation self-test | `python3 scripts/validate_package_contents_test.py` and `python3 scripts/validate_release_clean_test.py` |
+| Binary amd64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-amd64.tar.gz`, confirm x86-64 ELF binaries |
+| Binary arm64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-arm64.tar.gz`, confirm aarch64 ELF binaries |
+| Docker amd64 package | Docker daemon available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-amd64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands |
+| Docker arm64 package | Docker daemon and buildx platform support available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-arm64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands where runner architecture or emulation allows |
+| macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
+| Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
+
 ## Evidence Evaluation Smokes
 
 Before promoting or rolling back a model group based on a quality claim:

@@ -6,6 +6,8 @@ title: Binary Install
 
 The binary package is for teams that already operate Linux services with their own process supervisor, database, log pipeline, and TLS proxy.
 
+For package selection and architecture guidance, start with [Deployment Artifacts](./deployment-artifacts). For package inspection and security checks, see [Package Validation And Security Checks](./package-validation).
+
 ## Package Layout
 
 ```text
@@ -113,6 +115,7 @@ export ROUTER_BASE_URL="https://llm-api.example.com"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"
+curl -fsS "$ROUTER_BASE_URL/docs/"
 curl -fsS "$ROUTER_BASE_URL/version"
 curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
   "$ROUTER_BASE_URL/v1/models"
@@ -121,7 +124,16 @@ curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
 Expected results:
 
 - `/readyz` returns success only when required runtime checks pass, including license enforcement.
+- `/docs/` serves the embedded Docusaurus administrator docs from the running binary.
 - `/version` returns safe release metadata.
 - `/v1/models` returns only model groups allowed for the caller token.
 
 For request-level diagnostics after installation, use [Troubleshooting Requests](../troubleshooting/requests).
+
+## Upgrade And Rollback
+
+Before an upgrade, back up `config.yaml`, `env.json` or equivalent secret-manager state, `license.json`, license state, router state, usage database data, logs needed by the retention policy, and the previous package artifact.
+
+Install the new package beside the old package, run `smart-llmrouter --version` or `bin/router --version`, review config template changes, then restart the supervised service with the new binary. After restart, repeat `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
+
+Rollback is restoring the previous binary package, config, license inputs, and compatible state or database snapshot, then rerunning the same smokes before sending production traffic.

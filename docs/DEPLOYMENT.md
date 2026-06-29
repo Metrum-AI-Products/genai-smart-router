@@ -1,5 +1,7 @@
 # Smart LLM Router Deployment
 
+Source-only operator runbook. Do not add this file to `scripts/package_docs_allowlist.txt`; package-safe external bootstrap deployment guidance belongs in `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, and the router-served Docusaurus installation docs.
+
 This project is packaged as a binary distribution. A deployment host does not need the Go toolchain, Node.js, Docusaurus, or source tree. Release binaries embed the customer-facing Docusaurus documentation and serve it under `/docs/`; browser requests to `/` redirect there.
 
 ## Package Contents
@@ -20,24 +22,24 @@ bin/router-usage-report
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-docs/README.md
-docs/DEPLOYMENT.md
-docs/DEPLOYMENT_PATTERNS.md
-docs/DOCKER_DEPLOYMENT.md
-docs/DYNAMIC_SCORE_ROUTING.md
-docs/EXTERNAL_ROUTING_POLICY.md
-docs/PII_FILTERING.md
-docs/PRODUCT_CAPABILITY_MATRIX.md
-docs/SECURITY_REVIEW_NOTES.md
-docs/SELF_HOSTED_UPSTREAMS.md
-docs/SMOKE_TEST_MATRIX.md
-docs/USAGE_DB_DESIGN.md
-docs/USAGE_REPORTING_PLAYBOOK.md
+docs/PACKAGE_README.md
+docs/BINARY_INSTALL.md
+docs/DOCKER_COMPOSE_INSTALL.md
+docs/KUBERNETES_INSTALL.md
+docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
 
-Package docs are an explicit allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages.
+Package docs are an explicit Tier 2 bootstrap allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks, source-maintenance notes, and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages. Full external admin guidance belongs in the embedded Docusaurus docs served under `/docs/`.
+
+Release package targets require a clean git tree and reject versions containing `-dirty`. Commit the intended code, generated embedded docs, and admin assets before building customer release artifacts. For a local development artifact that will not be shipped, set `ALLOW_DIRTY_PACKAGE=1` explicitly:
+
+```bash
+ALLOW_DIRTY_PACKAGE=1 make package-one-no-docs
+```
+
+All package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. `scripts/validate_package_contents.py` rejects AppleDouble entries, unexpected files, missing allowlisted docs, internal runbooks, local secret/state filenames, private production markers, raw token/provider-key patterns, and binary-package ELF architecture mismatches. The validation step is part of each package target and must pass before publishing an artifact.
 
 Release package targets require a clean git tree and reject versions containing `-dirty`. Commit the intended code, generated embedded docs, and admin assets before building customer release artifacts. For a local development artifact that will not be shipped, set `ALLOW_DIRTY_PACKAGE=1` explicitly:
 

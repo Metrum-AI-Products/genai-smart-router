@@ -65,23 +65,16 @@ bin/router-usage-report
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-docs/README.md
-docs/DEPLOYMENT.md
-docs/DOCKER_DEPLOYMENT.md
-docs/DYNAMIC_SCORE_ROUTING.md
-docs/EXTERNAL_ROUTING_POLICY.md
-docs/PII_FILTERING.md
-docs/PRODUCT_CAPABILITY_MATRIX.md
-docs/SECURITY_REVIEW_NOTES.md
-docs/SELF_HOSTED_UPSTREAMS.md
-docs/SMOKE_TEST_MATRIX.md
-docs/USAGE_DB_DESIGN.md
-docs/USAGE_REPORTING_PLAYBOOK.md
+docs/PACKAGE_README.md
+docs/BINARY_INSTALL.md
+docs/DOCKER_COMPOSE_INSTALL.md
+docs/KUBERNETES_INSTALL.md
+docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
 
-Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. `docs/DOCS_MAINTENANCE.md` is an internal source-checkout alignment runbook and is intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.
+Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. That allowlist is limited to package-safe offline bootstrap docs such as `docs/PACKAGE_README.md`, quick install notes, validation notes, and the package-safe solution brief. Full customer/admin docs are built from `docs-site/` and served by the router under `/docs/`. Internal source-checkout runbooks such as `docs/DOCS_MAINTENANCE.md`, production runbooks, private host procedures, source-maintenance notes, and security-review working notes are intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.
 
 The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/admin/*`, `/healthz`, and `/readyz` keep precedence. Authenticated admin report assets, when enabled, are embedded separately under `/admin/reports/` and are not part of public Docusaurus docs.
 
@@ -103,18 +96,11 @@ compose/.env.example
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-README.md
-docs/DEPLOYMENT.md
-docs/DOCKER_DEPLOYMENT.md
-docs/DYNAMIC_SCORE_ROUTING.md
-docs/EXTERNAL_ROUTING_POLICY.md
-docs/PII_FILTERING.md
-docs/PRODUCT_CAPABILITY_MATRIX.md
-docs/SECURITY_REVIEW_NOTES.md
-docs/SELF_HOSTED_UPSTREAMS.md
-docs/SMOKE_TEST_MATRIX.md
-docs/USAGE_DB_DESIGN.md
-docs/USAGE_REPORTING_PLAYBOOK.md
+docs/PACKAGE_README.md
+docs/BINARY_INSTALL.md
+docs/DOCKER_COMPOSE_INSTALL.md
+docs/KUBERNETES_INSTALL.md
+docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 ```
 

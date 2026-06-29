@@ -14,9 +14,11 @@ Release artifacts are validated before handoff. The package validator rejects pl
 
 | Deployment shape | Use when | Start here |
 |---|---|---|
+| Artifact selection | The administrator needs to choose binary, Docker Compose, or Kubernetes deployment packaging. | [Deployment Artifacts](/docs/installation/deployment-artifacts) |
 | Docker Compose | The deployment host can run Docker and Compose, and the team wants the packaged router plus managed Postgres service. | [Docker Compose Install](/docs/installation/docker-compose) |
 | Linux binary | The team manages the process supervisor, database, TLS proxy, and filesystem layout directly. | [Binary Install](/docs/installation/binary) |
-| Kubernetes | The team operates a cluster with ingress, Secrets, external Postgres, and network policy controls. | [Kubernetes Deployment](/docs/operations/kubernetes-deployment) |
+| Kubernetes | The platform team operates Kubernetes and supplies reviewed manifests. | [Deploy To Kubernetes](/docs/installation/kubernetes) |
+| Package checks | The administrator wants to inspect package layout and verify runtime health. | [Package Validation And Security Checks](/docs/installation/package-validation) |
 
 Both deployment shapes use the same runtime configuration model:
 
@@ -48,7 +50,7 @@ Do not place raw router tokens, provider API keys, token hashes, private signing
 2. Create the config, state, and log directories with permissions limited to deployment operators.
 3. Install `config.yaml`, `env.json`, and the issued `license.json`.
 4. Start the router with Docker Compose or the local process supervisor.
-5. Verify `/readyz`, `/version`, `/v1/models`, and one caller request.
+5. Verify `/readyz`, `/docs/`, `/version`, `/v1/models`, and one caller request.
 6. Enable admin reports, metrics scraping, and log collection only for authorized operational subjects.
 7. Record the deployed router version, build timestamp, config checksum, and rollback artifact in the deployment change record.
 

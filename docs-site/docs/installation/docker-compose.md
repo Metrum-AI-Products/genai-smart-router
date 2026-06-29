@@ -6,6 +6,8 @@ title: Docker Compose Install
 
 The Docker Compose package is the usual customer-managed installation path. It includes a prebuilt router image tarball, Compose files, and example runtime configuration. The target host needs Docker Engine and Docker Compose, but it does not need Go, Node.js, Docusaurus, or the source repository.
 
+For package selection and architecture guidance, start with [Deployment Artifacts](./deployment-artifacts). For package inspection and security checks, see [Package Validation And Security Checks](./package-validation).
+
 ## Package Layout
 
 A release package follows this shape:
@@ -115,6 +117,7 @@ export ROUTER_BASE_URL="https://llm-api.example.com"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"
+curl -fsS "$ROUTER_BASE_URL/docs/"
 curl -fsS "$ROUTER_BASE_URL/version"
 curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
   "$ROUTER_BASE_URL/v1/models"
@@ -141,4 +144,12 @@ curl -fsS "$ROUTER_BASE_URL/v1/chat/completions" \
 - Keep `compose/config/`, `compose/state/`, database volumes, logs, and backups under the deployment's secret-handling policy.
 - Back up `config.yaml`, `license.json`, license state, and the usage database before upgrades.
 
-For upgrade sequencing, see [Release Notes And Upgrades](../release-notes/upgrade-guide).
+## Upgrade And Rollback
+
+Before an upgrade, back up `compose/.env`, `compose/config/`, `compose/state/`, Postgres data, logs needed by the retention policy, and the previous package artifact. Load the new image tar, update `SMART_LLMROUTER_VERSION` to the packaged image tag, review config template changes, run `docker compose config`, then recreate the router service.
+
+After restart, repeat `/readyz`, `/docs/`, `/v1/models`, one caller smoke, and an admin report smoke when reports are enabled.
+
+Rollback is restoring the previous image tag, Compose files, config, license inputs, and compatible state or database snapshot, then rerunning the same smokes before sending production traffic.
+
+For release-to-release sequencing, see [Release Notes And Upgrades](../release-notes/upgrade-guide).

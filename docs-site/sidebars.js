@@ -20,8 +20,11 @@ const sidebars = {
       collapsed: false,
       items: [
         "installation/index",
+        "installation/deployment-artifacts",
         "installation/docker-compose",
         "installation/binary",
+        "installation/kubernetes",
+        "installation/package-validation",
         "operations/kubernetes-deployment",
         "operations/deployment",
       ],

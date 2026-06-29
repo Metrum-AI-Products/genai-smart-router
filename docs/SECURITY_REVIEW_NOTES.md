@@ -1,5 +1,7 @@
 # Security Review Notes
 
+Source-only internal security-review notes. Do not add this file to `scripts/package_docs_allowlist.txt`; package-safe administrator bootstrap guidance belongs in `docs/PACKAGE_VALIDATION.md` and the router-served Docusaurus docs.
+
 This document records product security expectations for implementation and operations.
 
 ## Secrets
@@ -50,6 +52,26 @@ Governed content capture is opt-in and disabled by default. When enabled, captur
 Public docs must not hardcode the current Metrum-managed production URL as the product endpoint. Use deployment placeholders except for historical case studies or explicitly labeled hosted-deployment examples.
 
 Model group names are deployment-defined. Public docs may show names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` only as examples or historical deployment names.
+
+## Package Content Threat Model
+
+Release packages are external administrator artifacts. They may be forwarded to customer operators, scanned by customer security teams, and unpacked on deployment hosts before the router is running. Package contents therefore must be safe without relying on repository context.
+
+Threats to review for every package change:
+
+- accidental inclusion of private production runbooks, SSH procedures, private hostnames, live config paths, source-maintenance notes, or issue-triage material;
+- accidental inclusion of raw provider keys, raw router tokens, token hashes, GitHub tokens, signing keys, signing-service credentials, real license files, license state, DB files, logs, or JSONL state;
+- accidental inclusion of source checkout directories, build artifacts, sourcemaps, platform archive metadata, or Docker image layers containing source-only paths;
+- stale bootstrap docs that tell external admins to use source checkout commands instead of packaged binaries, Compose files, or embedded `/docs/`;
+- package docs that omit validation, upgrade, rollback, or support paths and cause administrators to depend on internal runbooks.
+
+Required controls:
+
+- keep `scripts/package_docs_allowlist.txt` limited to Tier 2 bootstrap docs;
+- keep full external administrator guidance in Docusaurus Tier 1 docs embedded under `/docs/`;
+- mark Tier 3 source-only runbooks explicitly when they are likely to be confused with package docs;
+- run `python3 scripts/validate_package_contents_test.py` after validator or allowlist changes;
+- run package validation against every release tarball and inspect packaged `docs/` against the allowlist.
 
 ## Production Change Safety
 

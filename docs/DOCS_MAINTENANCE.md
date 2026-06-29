@@ -1,16 +1,19 @@
 # Documentation Maintenance Runbook
 
+Source-only internal runbook. Do not add this file to `scripts/package_docs_allowlist.txt` or the public Docusaurus sidebar.
+
 This runbook is the internal source of truth for keeping operator docs, packaged docs, and hosted Docusaurus product docs aligned with shipped behavior. It is not part of the public Docusaurus site and should not be added to `docs-site/sidebars.js`.
 
 ## Documentation Surfaces
 
-| Surface | Location | Audience | Private details allowed? | Release/package status |
-|---|---|---|---|---|
-| Root README | `README.md` | Developers and operators working from source | No raw secrets; avoid private host details except clearly internal pointers | Included in binary and Docker packages |
-| Internal operator docs | `docs/*.md` | Metrum operators, implementation reviewers, deployment owners | Some internal process detail is acceptable; never include raw provider keys, raw router tokens, token hashes, real private keys, real customer payloads, or full production config | Only files in `scripts/package_docs_allowlist.txt` are packaged |
-| Public hosted docs | `docs-site/docs/**` | Customers, evaluators, application developers, platform admins | No private hostnames, SSH usernames, key paths, raw secrets, token hashes, full config, internal source-control workflow, or private deployment procedures | Built into the router binary and served under `/docs/` |
-| Deployment notes | `deployment.md`, selected `docs/DEPLOYMENT.md` sections | Internal deployment operators and packaged deployment readers | Keep live host-specific operations in internal notes only; packaged docs must remain generic | `deployment.md` is not packaged; `docs/DEPLOYMENT.md` is packaged |
-| Config examples | `config.example.yaml`, `env.example.json`, docs snippets | Operators and evaluators | Placeholders only | `config.example.yaml` and `env.example.json` are packaged |
+| Tier | Surface | Location | Audience | Private details allowed? | Release/package status | Owner | Review checklist |
+|---|---|---|---|---|---|---|---|
+| Tier 1 | Router-served external docs | `docs-site/docs/**` | Customers, evaluators, application developers, platform admins | No private hostnames, SSH usernames, key paths, raw secrets, token hashes, full config, internal source-control workflow, or private deployment procedures | Built into the router binary and served under `/docs/` | Product/docs owner with feature owner | Complete external admin flow, links in `docs-site/sidebars.js`, `rtk make docs-qa`, `rtk make docs-build` when feasible |
+| Tier 2 | Package-safe bootstrap Markdown | Files named in `scripts/package_docs_allowlist.txt`, currently `docs/PACKAGE_README.md`, `docs/BINARY_INSTALL.md`, `docs/DOCKER_COMPOSE_INSTALL.md`, `docs/KUBERNETES_INSTALL.md`, `docs/PACKAGE_VALIDATION.md`, and `docs/solution-brief.md` | External administrators before the router is running | Placeholders only; no private operational details or source-maintenance process | Copied into binary and Docker packages under `docs/` | Release/package owner with docs owner | Verify allowlist, generic install path, `/docs/` pointer, package validator, no secrets/private markers |
+| Tier 3 | Internal source-checkout runbooks | `docs/*.md`, `deployment.md`, scripts, source comments not in Tier 2 | Metrum operators, implementation reviewers, deployment owners | Some internal process detail is acceptable; never include raw provider keys, raw router tokens, token hashes, real private keys, real customer payloads, or full production config | Not packaged unless explicitly reviewed and listed in the allowlist | Owning engineering area | Source-only header where appropriate, stale-doc search, matching Tier 1 public docs when behavior is external |
+| Config examples | Packaged config templates | `config.example.yaml`, `env.example.json`, docs snippets | Operators and evaluators | Placeholders only | `config.example.yaml` and `env.example.json` are packaged as config templates, not docs | Runtime config owner | Placeholder-only secret review and config validation |
+
+Tier rule: Tier 1 is the primary external reference, Tier 2 is only the offline bootstrap needed to start Tier 1, and Tier 3 remains source-only unless a file is deliberately rewritten for package-safe bootstrap use.
 
 ## Source-Of-Truth Map
 
@@ -119,7 +122,15 @@ rtk make secret-check
 
 ## Packaging Boundaries
 
-Do not add this runbook to `scripts/package_docs_allowlist.txt` unless the release package should intentionally include internal maintenance guidance. Packaged docs should remain customer/operator safe and must pass package validation.
+Do not add this runbook to `scripts/package_docs_allowlist.txt`. Packaged docs should remain customer/operator safe and must pass package validation.
+
+When packaging changes, review the allowlist explicitly:
+
+- keep Tier 2 limited to offline bootstrap files and package-safe solution material;
+- verify every allowlisted file explains how to reach `/docs/` after startup;
+- remove source-checkout runbooks such as `docs/DEPLOYMENT.md`, `docs/DOCKER_DEPLOYMENT.md`, `docs/SECURITY_REVIEW_NOTES.md`, `docs/SMOKE_TEST_MATRIX.md`, and `README.md` unless they have been rewritten and reviewed as package-safe bootstrap docs;
+- run the package validator self-test after allowlist changes;
+- when building packages, confirm packaged docs exactly match `scripts/package_docs_allowlist.txt`.
 
 If a new internal runbook contains production-specific operations, keep it out of `docs-site/`, out of the package allowlist, and out of public examples. If customer-facing behavior depends on that runbook, write a separate sanitized Docusaurus explanation.
 

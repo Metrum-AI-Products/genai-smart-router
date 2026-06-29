@@ -1,5 +1,7 @@
 # Docker Compose Deployment
 
+Source-only operator runbook. Do not add this file to `scripts/package_docs_allowlist.txt`; package-safe external bootstrap deployment guidance belongs in `docs/DOCKER_COMPOSE_INSTALL.md` and the router-served Docusaurus installation docs.
+
 Docker packages are intended for AWS EC2 or similar hosts where the source tree is not present and no image registry is required. The router image embeds the customer-facing Docusaurus documentation and serves it under `/docs/`; browser requests to `/` redirect there.
 
 Kubernetes deployments use the same packaged image tarballs after loading and pushing the image to a deployment-owned registry, but they should use the manifests under `deploy/kubernetes/` instead of Compose files. Do not copy Compose `.env` files or local volume paths into Kubernetes manifests.
@@ -37,23 +39,15 @@ compose/.env.example
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
-docs/README.md
-docs/DEPLOYMENT.md
-docs/DEPLOYMENT_PATTERNS.md
-docs/DOCKER_DEPLOYMENT.md
-docs/DYNAMIC_SCORE_ROUTING.md
-docs/EXTERNAL_ROUTING_POLICY.md
-docs/PII_FILTERING.md
-docs/PRODUCT_CAPABILITY_MATRIX.md
-docs/SECURITY_REVIEW_NOTES.md
-docs/SELF_HOSTED_UPSTREAMS.md
-docs/SMOKE_TEST_MATRIX.md
+docs/PACKAGE_README.md
+docs/BINARY_INSTALL.md
+docs/DOCKER_COMPOSE_INSTALL.md
+docs/KUBERNETES_INSTALL.md
+docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
-docs/USAGE_DB_DESIGN.md
-docs/USAGE_REPORTING_PLAYBOOK.md
 ```
 
-Package docs are copied only from `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/router`, `/app/bin/router-token-gen`, and `/app/bin/router-usage-report`.
+Package docs are copied only from the Tier 2 bootstrap allowlist in `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/router`, `/app/bin/router-token-gen`, and `/app/bin/router-usage-report`.
 
 Run the full local package validation before release handoff:
 

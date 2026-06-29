@@ -11,10 +11,19 @@ from pathlib import Path
 
 import validate_package_contents
 
+PACKAGE_DOCS = [
+    "PACKAGE_README.md",
+    "BINARY_INSTALL.md",
+    "DOCKER_COMPOSE_INSTALL.md",
+    "KUBERNETES_INSTALL.md",
+    "PACKAGE_VALIDATION.md",
+    "solution-brief.md",
+]
+
 
 def write_allowlist(root: Path) -> Path:
     allowlist = root / "allowlist.txt"
-    allowlist.write_text("README.md\ndocs/DEPLOYMENT.md\n", encoding="utf-8")
+    allowlist.write_text("".join(f"docs/{doc}\n" for doc in PACKAGE_DOCS), encoding="utf-8")
     return allowlist
 
 
@@ -50,7 +59,7 @@ def expect_ok(archive: Path, allowlist: Path) -> None:
 
 
 def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> dict[str, str | bytes]:
-    return {
+    files: dict[str, str | bytes] = {
         f"{root}/bin/router": elf(62),
         f"{root}/bin/router-token-gen": elf(62),
         f"{root}/bin/router-usage-report": elf(62),
@@ -58,9 +67,10 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
         f"{root}/caddy/Caddyfile": ":80\n",
-        f"{root}/docs/README.md": "package-safe docs\n",
-        f"{root}/docs/DEPLOYMENT.md": "generic deployment docs\n",
     }
+    for doc in PACKAGE_DOCS:
+        files[f"{root}/docs/{doc}"] = "package-safe docs\n"
+    return files
 
 
 def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) -> bytes:
@@ -94,7 +104,7 @@ def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) ->
 
 
 def docker_package_files(root: str = "smart-llmrouter-v1.0.0-docker-linux-amd64") -> dict[str, str | bytes]:
-    return {
+    files: dict[str, str | bytes] = {
         f"{root}/compose/docker-compose.yml": "services: {}\n",
         f"{root}/compose/docker-compose.postgres-localhost.yml": "services: {}\n",
         f"{root}/compose/Caddyfile.compose": ":80\n",
@@ -104,9 +114,10 @@ def docker_package_files(root: str = "smart-llmrouter-v1.0.0-docker-linux-amd64"
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
         f"{root}/images/smart-llmrouter-v1.0.0-linux-amd64.tar": docker_image_tar(),
-        f"{root}/docs/README.md": "package-safe docs\n",
-        f"{root}/docs/DEPLOYMENT.md": "generic deployment docs\n",
     }
+    for doc in PACKAGE_DOCS:
+        files[f"{root}/docs/{doc}"] = "package-safe docs\n"
+    return files
 
 
 def main() -> int:
@@ -146,7 +157,7 @@ def main() -> int:
 
         apple_double = root / "appledouble.tar.gz"
         apple_files = binary_package_files()
-        apple_files["smart-llmrouter-v1.0.0-linux-amd64/docs/._README.md"] = "mac metadata\n"
+        apple_files["smart-llmrouter-v1.0.0-linux-amd64/docs/._PACKAGE_README.md"] = "mac metadata\n"
         write_tar(apple_double, apple_files)
         expect_errors(apple_double, allowlist, ["AppleDouble metadata entry"])
 
@@ -158,13 +169,13 @@ def main() -> int:
 
         private_marker = root / "private-marker.tar.gz"
         marker_files = binary_package_files()
-        marker_files["smart-llmrouter-v1.0.0-linux-amd64/docs/README.md"] = "Host: 100.30.225.66\n"
+        marker_files["smart-llmrouter-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = "Host: 100.30.225.66\n"
         write_tar(private_marker, marker_files)
         expect_errors(private_marker, allowlist, ["private production host marker"])
 
         raw_token = root / "raw-token.tar.gz"
         token_files = binary_package_files()
-        token_files["smart-llmrouter-v1.0.0-linux-amd64/docs/README.md"] = (
+        token_files["smart-llmrouter-v1.0.0-linux-amd64/docs/PACKAGE_README.md"] = (
             "token rtr_metrum_user_project_prod_key_abcdefghijklmnopqrstuvwxyz\n"
         )
         write_tar(raw_token, token_files)
@@ -196,7 +207,7 @@ def main() -> int:
 
         missing_doc = root / "missing-doc.tar.gz"
         missing_files = binary_package_files()
-        del missing_files["smart-llmrouter-v1.0.0-linux-amd64/docs/DEPLOYMENT.md"]
+        del missing_files["smart-llmrouter-v1.0.0-linux-amd64/docs/PACKAGE_VALIDATION.md"]
         write_tar(missing_doc, missing_files)
         expect_errors(missing_doc, allowlist, ["from package docs allowlist is missing"])
 
