@@ -52,6 +52,20 @@ Run direct upstream requests before involving the router:
 - usage and cost inspection when the upstream returns token or billed-cost fields;
 - client compatibility smoke for Codex, Claude Code, Cursor, Warp, or another client that depends on a specific skin.
 
+For coding-agent or retrieval-heavy groups, add a large OpenAI Chat payload smoke when the target will receive Chat Completions traffic from agents. Use a sanitized synthetic fixture rather than captured customer content. The repository helper below generates filler messages and representative function schemas, prints only scalar request-shape metrics, and can run against either a direct upstream endpoint or a router model group:
+
+```bash
+rtk python3 scripts/large_payload_chat_smoke.py \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --target-bytes 524288 \
+  --tool-count 24 \
+  --max-tokens 32
+```
+
+Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, and prompt-token scale in `validation_notes`.
+
 OpenRouter Nitro variants may not appear as separate model IDs in `/models`; validate the exact `:nitro` suffix with a real completion call.
 
 Reasoning-heavy models can return HTTP 200 with empty final content when the output budget is too small. Test both a tiny cap and a realistic budget before activating them.

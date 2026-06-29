@@ -210,7 +210,7 @@ curl -fsS https://api.inference.crusoecloud.com/v1/chat/completions \
 
 Run OpenAI Chat tool, forced `tool_choice`, and `response_format` structured-output checks only for models intended to serve those request shapes. Add `tool_support.openai_chat` entries only after both direct Crusoe and router-level smokes pass for the exact model. Keep Crusoe out of Codex Responses and Claude Code Anthropic groups unless Crusoe exposes and passes those exact skins.
 
-For Fireworks, public docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing for active reference candidates. Use `FIREWORKS_API_KEY` only from a protected environment or ignored `env.json`; never print it. Direct validation showed completions may require an explicit `User-Agent` from this environment. Configure one under provider `headers`. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, OpenAI Chat `reasoning_effort` low/medium/high, auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes on 2026-06-27. Fireworks `accounts/fireworks/models/glm-5p2`, `accounts/fireworks/models/kimi-k2p7-code`, `accounts/fireworks/models/deepseek-v4-flash`, and `accounts/fireworks/models/qwen3p6-plus` passed direct OpenAI Chat text and auto-tool smokes on 2026-06-28, then production router-level text smokes through `big-coder`. Keep Fireworks image-capable targets text-only until direct image and router-level image smokes pass for the exact endpoint.
+For Fireworks, public docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing for active reference candidates. Use `FIREWORKS_API_KEY` only from a protected environment or ignored `env.json`; never print it. Direct validation showed completions may require an explicit `User-Agent` from this environment. Configure one under provider `headers`. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, OpenAI Chat `reasoning_effort` low/medium/high, auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes on 2026-06-27. Fireworks `accounts/fireworks/models/glm-5p2`, `accounts/fireworks/models/kimi-k2p7-code`, `accounts/fireworks/models/deepseek-v4-flash`, and `accounts/fireworks/models/qwen3p6-plus` passed direct OpenAI Chat text and auto-tool smokes on 2026-06-28, then production router-level text smokes through `big-coder`. Fireworks DeepSeek-V4-Flash passed direct and local router-level synthetic 524 KB OpenAI Chat coding-agent payload smokes on 2026-06-29 with 24 tools, about 50 KB of serialized tool schemas, `max_tokens:32`, and about 91K prompt tokens. The production dedicated Fireworks GPT OSS 20B smoke group passed the same request shape on 2026-06-29 with about 90K prompt tokens. Keep this evidence source-dated and revalidate larger requests, image-bearing requests, or materially different tool-schema shapes before increasing broad routing weight. Keep Fireworks image-capable targets text-only until direct image and router-level image smokes pass for the exact endpoint.
 
 Direct Fireworks checks before any active route:
 
@@ -230,6 +230,15 @@ curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
   -H "Authorization: Bearer ${FIREWORKS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"model":"accounts/fireworks/models/gpt-oss-20b","messages":[{"role":"user","content":"Reply OK only."}],"reasoning_effort":"low","max_tokens":128,"stream":false}'
+
+rtk python3 scripts/large_payload_chat_smoke.py \
+  --base-url https://api.fireworks.ai/inference/v1 \
+  --model accounts/fireworks/models/deepseek-v4-flash \
+  --api-key-env FIREWORKS_API_KEY \
+  --env-json env.json \
+  --target-bytes 524288 \
+  --tool-count 24 \
+  --max-tokens 32
 ```
 
 Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks Anthropic Messages and image/audio/video routes disabled until those exact direct and router-level skins pass.

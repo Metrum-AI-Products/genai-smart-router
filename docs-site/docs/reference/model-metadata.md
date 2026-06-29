@@ -102,6 +102,8 @@ request_shape_support:
 
 Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
 
+Set `supports_large_coding_agent_payloads: true` only after a direct upstream smoke and a router-level smoke pass for the exact provider, model ID, dialect, account, and request shape. The validation note should include the date, approximate request bytes, tool count, serialized tool-schema size, output cap, and prompt-token scale. If that evidence is missing, leave the value unset or set it to `false` with a reason and keep the target in a restricted smoke group.
+
 Estimate and context-fit telemetry is diagnostic, not billed usage. The router stores scalar estimates, caps, request bytes, target context, headroom, fit booleans, and bounded reason labels in relational rows. It does not store raw prompts, raw tool schemas, tool outputs, images, router tokens, token hashes, provider keys, or full config.
 
 ## Responses Retention Controls

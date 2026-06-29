@@ -265,6 +265,8 @@ For “small prompts work but real coding-agent requests fail,” filter to the 
 
 For encoding-related upstream 400/403 triage, filter Upstream failures or raw Requests by `provider`, `target_model`, `dialect`, `status`, and large-payload buckets such as `request_bytes_bucket`. Compare the failed active target with `/admin/reports/api/provider-catalog-status`: `forceStoreFalse=true` explains intentional `store:false` injection, while `outputTokenField=max_completion_tokens` explains Chat Completions cap translation. A 403 on `store` or a 400 on `max_tokens` usually points to catalog metadata drift rather than a provider outage.
 
+For Fireworks-style large Chat payload investigations, use only safe scalar shape fields. A useful first report is provider/model/dialect plus byte bucket, tool-count bucket, request-shape fingerprint, tool-schema fingerprint, upstream status, terminal status, request count, and error rate. Reproduce the dominant failed shape with a sanitized fixture such as `scripts/large_payload_chat_smoke.py`, first against the direct upstream endpoint and then through a router smoke group pinned to the same target. If direct and router both pass, treat older failures as stale evidence and update the issue/runbook with the passed request bytes and token scale. If the direct upstream passes but router fails, inspect translation rows and config metadata. If the direct upstream fails at the same shape, configure `request_shape_support` limits or keep the target out of broad coding-agent groups.
+
 ```sql
 SELECT
   u.status,

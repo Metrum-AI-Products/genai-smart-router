@@ -568,6 +568,15 @@ providers:
           even though it was not listed by /models for the validated account. Do not claim
           OpenAI Responses, Anthropic Messages, image, video, or audio support until those
           exact skins pass direct and router-level smokes.
+        request_shape_support:
+          supports_large_coding_agent_payloads: true
+          validation_status: passed
+          validation_notes: Production router-level Fireworks Chat smoke through the
+            dedicated smoke group passed on 2026-06-29 with a synthetic 524 KB
+            OpenAI Chat coding-agent payload, 24 tools, about 50 KB of serialized
+            tool schemas, max_tokens=32, and about 90K prompt tokens. Keep this
+            evidence source-dated; validate larger or different tool-schema shapes
+            before raising broad coding-agent weight.
         tool_support:
           openai_chat:
           - tools
@@ -631,7 +640,18 @@ providers:
           input, $0.03/M cached input, and $0.28/M output. Direct Fireworks OpenAI
           Chat text and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent;
           tiny text budgets can be spent on reasoning before visible final content,
-          so use realistic budgets for acceptance.
+          so use realistic budgets for acceptance. Direct Fireworks Chat and local
+          router-level large coding-agent smokes passed on 2026-06-29 with a
+          synthetic 524 KB OpenAI Chat payload, 24 tools, about 50 KB of serialized
+          tool schemas, max_tokens=32, and about 91K prompt tokens.
+        request_shape_support:
+          supports_large_coding_agent_payloads: true
+          validation_status: passed
+          validation_notes: Direct Fireworks Chat and local router-level smokes
+            passed on 2026-06-29 with a synthetic 524 KB coding-agent payload.
+            This validates the active reference Chat route shape for ordinary
+            large OpenAI Chat agent requests; revalidate before enabling image,
+            Responses, Anthropic Messages, or materially larger tool-schema shapes.
         tool_support:
           openai_chat:
           - tools
