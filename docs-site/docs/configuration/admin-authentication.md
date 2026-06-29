@@ -204,7 +204,7 @@ server:
         - p, reports_admin, example/prod, admin:reports, read|export|drilldown
 ```
 
-The report surface checks object `admin:reports` with action `read` for pages, aggregate JSON APIs, and static assets. Markdown export checks action `export`. Request detail under `/admin/reports/api/request/<request_id>` checks action `drilldown`.
+The report surface checks object `admin:reports` with action `read` for pages, aggregate JSON APIs, and static assets. Markdown export checks action `export`. Request detail under `/admin/reports/api/request/<request_id>` and request evidence under `/admin/reports/api/request-evidence?request_id=<request_id>` check action `drilldown`.
 
 Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete` in the captured row's caller project/environment domain, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants for their own domain at startup.
 

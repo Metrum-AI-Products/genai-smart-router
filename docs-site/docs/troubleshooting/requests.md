@@ -40,7 +40,22 @@ Common access outcomes:
 | `403 metrics-forbidden` | Ordinary caller attempted `/metrics`. | Use a metrics-admin token only for metrics scraping. |
 | `403 reports-forbidden` | Ordinary caller attempted admin reports. | Use an authorized admin report identity. |
 
-## 3. Check Quota And Token Admission
+## 3. Open Request Evidence
+
+With an authorized admin report identity, open the safe evidence bundle:
+
+```bash
+curl -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/request-evidence?request_id=<request_id>"
+```
+
+The bundle shows what the router safely knew and recorded: caller/project/client labels, requested model group, resolved group, selected target, stored request-time token and cost fields, latency/throughput, quota/key/cache state, traffic-shaping state, target candidate/filter summaries, attempts, sanitized upstream errors, and trace rows when those sections exist.
+
+Use `diagnosticCompleteness` and `evidenceSections` to interpret gaps. `missing` on a failed request means a diagnostic section expected for that phase was not recorded; `not_applicable` means the request path did not reach that phase or the feature was disabled.
+
+Evidence bundles do not expose raw prompts, image URLs or payloads, tool schemas, tool outputs, provider API keys, router bearer tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
+
+## 4. Check Quota And Token Admission
 
 Router-side quota, traffic-shaping, and admission failures usually return `429`. Distinguish them from upstream provider `429` attempts:
 
@@ -51,7 +66,7 @@ Router-side quota, traffic-shaping, and admission failures usually return `429`.
 
 Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals.
 
-## 4. Check Upstream Attempts
+## 5. Check Upstream Attempts
 
 For a slow or failed request, inspect:
 
@@ -65,7 +80,7 @@ For a slow or failed request, inspect:
 
 If only one provider/model/dialect is failing, isolate that upstream before changing the broader model group. If all targets are failing, inspect shared config, network, license, database, or caller request shape.
 
-## 5. Check Request Shape
+## 6. Check Request Shape
 
 Common request-shape causes:
 
@@ -78,7 +93,7 @@ Common request-shape causes:
 
 Model-group contracts and provider catalog metadata should describe validated modalities, tools, dialects, pricing, and max-token behavior.
 
-## 6. Verify Recovery
+## 7. Verify Recovery
 
 After a config, credential, quota, or upstream fix:
 

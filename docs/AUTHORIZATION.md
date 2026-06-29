@@ -154,7 +154,7 @@ p, reports_admin, example/prod, admin:reports, read|export|drilldown
 p, reports_admin, example/prod, admin:security_reports, read|export
 ```
 
-Every report page, aggregate JSON API, static asset, request drilldown, and Markdown export checks Casbin on the server side. Browser UI gating is not sufficient. Request detail under `/admin/reports/api/request/<request_id>` requires the `admin:reports` `drilldown` action; page and aggregate API access requires `read`, and Markdown export requires `export`.
+Every report page, aggregate JSON API, static asset, request drilldown/evidence endpoint, and Markdown export checks Casbin on the server side. Browser UI gating is not sufficient. Request detail under `/admin/reports/api/request/<request_id>` and request evidence under `/admin/reports/api/request-evidence?request_id=<request_id>` require the `admin:reports` `drilldown` action; page and aggregate API access requires `read`, and Markdown export requires `export`.
 
 Report data is scoped to the authorized admin domain by default. A subject authorized in `example/prod` sees usage and request-drilldown rows for caller project `example` and environment `prod`; cross-domain request IDs return `404`. To grant deployment-global report visibility, use an explicit `*` policy domain, for example:
 

@@ -119,7 +119,7 @@ Operators may instead grant the same resource/actions through explicit policy. M
 
 `/admin/reports/*` checks object `admin:reports`.
 
-Pages, aggregate JSON APIs, static report assets, request drilldown, and Markdown export all enforce server-side authorization. Request detail uses the separate `drilldown` action. A reports administrator needs policy similar to:
+Pages, aggregate JSON APIs, static report assets, request drilldown/evidence, and Markdown export all enforce server-side authorization. Request detail and request evidence use the separate `drilldown` action. A reports administrator needs policy similar to:
 
 ```text
 g, basic:reports-admin, reports_admin, example/prod

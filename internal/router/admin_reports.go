@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"io/fs"
+	"math"
 	"net/http"
 	"path"
 	"sort"
@@ -407,6 +408,95 @@ type adminUpstreamErrorTelemetryDetail struct {
 	Details []adminReportUpstreamErrorDetail `json:"details,omitempty"`
 }
 
+type adminEvidenceBundleResponse struct {
+	Request                     adminReportRequest                `json:"request"`
+	Attempts                    []adminReportAttempt              `json:"attempts"`
+	Trace                       []adminReportTraceEvent           `json:"trace"`
+	Errors                      []adminReportError                `json:"errors"`
+	UpstreamErrorDetails        []adminReportUpstreamErrorDetail  `json:"upstreamErrorDetails"`
+	ShapingTelemetry            adminShapingTelemetryDetail       `json:"shapingTelemetry"`
+	RequestShapeTelemetry       adminRequestShapeTelemetryDetail  `json:"requestShapeTelemetry"`
+	UpstreamErrorTelemetry      adminUpstreamErrorTelemetryDetail `json:"upstreamErrorTelemetry"`
+	DecisionTelemetry           adminDecisionTelemetryDetail      `json:"decisionTelemetry"`
+	EvidenceBundle              adminRequestEvidenceBundle        `json:"evidenceBundle"`
+	DiagnosticCompleteness      string                            `json:"diagnosticCompleteness"`
+	EvidenceSections            []adminEvidenceSection            `json:"evidenceSections"`
+	DiagnosticCompletenessScore int                               `json:"diagnosticCompletenessScore"`
+}
+
+type adminRequestEvidenceBundle struct {
+	RequestSummary      adminReportRequest             `json:"requestSummary"`
+	CostAccounting      adminEvidenceCostAccounting    `json:"costAccounting"`
+	AdmissionAndShaping adminEvidenceAdmissionShaping  `json:"admissionAndShaping"`
+	TargetEligibility   adminEvidenceTargetEligibility `json:"targetEligibility"`
+	Completeness        adminEvidenceCompleteness      `json:"completeness"`
+	PrivacyBoundaries   []string                       `json:"privacyBoundaries"`
+}
+
+type adminEvidenceCostAccounting struct {
+	InputTokens                        int     `json:"inputTokens"`
+	OutputTokens                       int     `json:"outputTokens"`
+	TotalTokens                        int     `json:"totalTokens"`
+	InputImageCount                    int     `json:"inputImageCount"`
+	InputImageTokens                   int     `json:"inputImageTokens"`
+	InputPricePerMillionUSD            float64 `json:"inputPricePerMillionUsd"`
+	OutputPricePerMillionUSD           float64 `json:"outputPricePerMillionUsd"`
+	ImageInputPricePerMillionTokensUSD float64 `json:"imageInputPricePerMillionTokensUsd"`
+	ImageInputPricePerImageUSD         float64 `json:"imageInputPricePerImageUsd"`
+	InputCostUSD                       float64 `json:"inputCostUsd"`
+	ImageCostUSD                       float64 `json:"imageCostUsd"`
+	OutputCostUSD                      float64 `json:"outputCostUsd"`
+	TotalCostUSD                       float64 `json:"totalCostUsd"`
+	UpstreamReportedInputCostUSD       float64 `json:"upstreamReportedInputCostUsd"`
+	UpstreamReportedOutputCostUSD      float64 `json:"upstreamReportedOutputCostUsd"`
+	UpstreamReportedTotalCostUSD       float64 `json:"upstreamReportedTotalCostUsd"`
+	PricingSource                      string  `json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string  `json:"pricingUpdatedAt,omitempty"`
+	StoredRequestTimeValues            bool    `json:"storedRequestTimeValues"`
+	UnknownPricing                     bool    `json:"unknownPricing"`
+}
+
+type adminEvidenceAdmissionShaping struct {
+	QuotaState                       string `json:"quotaState,omitempty"`
+	KeyState                         string `json:"keyState,omitempty"`
+	Cache                            string `json:"cache,omitempty"`
+	CacheEnabled                     bool   `json:"cacheEnabled"`
+	TrafficShapeApplied              bool   `json:"trafficShapeApplied"`
+	TrafficShapeDecision             string `json:"trafficShapeDecision,omitempty"`
+	TrafficShapeScope                string `json:"trafficShapeScope,omitempty"`
+	TrafficShapeBucket               string `json:"trafficShapeBucket,omitempty"`
+	TrafficShapeRetryAfterMS         int64  `json:"trafficShapeRetryAfterMs"`
+	TrafficShapeQueueWaitMS          int64  `json:"trafficShapeQueueWaitMs"`
+	TrafficShapeEstimatedInputTokens int    `json:"trafficShapeEstimatedInputTokens"`
+	TrafficShapeReservedOutputTokens int    `json:"trafficShapeReservedOutputTokens"`
+	TrafficShapeTotalReservedTokens  int    `json:"trafficShapeTotalReservedTokens"`
+}
+
+type adminEvidenceTargetEligibility struct {
+	SelectedProvider        string `json:"selectedProvider,omitempty"`
+	SelectedModel           string `json:"selectedModel,omitempty"`
+	SelectedDialect         string `json:"selectedDialect,omitempty"`
+	CandidateCount          int    `json:"candidateCount"`
+	EligibleCandidateCount  int    `json:"eligibleCandidateCount"`
+	FilterReasonCount       int    `json:"filterReasonCount"`
+	RoutingDecisionCount    int    `json:"routingDecisionCount"`
+	FallbackTransitionCount int    `json:"fallbackTransitionCount"`
+}
+
+type adminEvidenceCompleteness struct {
+	Status   string                 `json:"status"`
+	Score    int                    `json:"score"`
+	Sections []adminEvidenceSection `json:"sections"`
+}
+
+type adminEvidenceSection struct {
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason,omitempty"`
+	Rows     int    `json:"rows"`
+	Expected bool   `json:"expected"`
+}
+
 func optionalRequestShapeRecord(rec requestShapeRecord, ok bool) *requestShapeRecord {
 	if !ok {
 		return nil
@@ -602,6 +692,7 @@ type adminReportAttempt struct {
 	RequestBytes     int64  `json:"requestBytes"`
 	ResponseBytes    int64  `json:"responseBytes"`
 	AttemptTimeoutMS int    `json:"attemptTimeoutMs"`
+	RetryAfterMS     int64  `json:"retryAfterMs"`
 }
 
 type adminReportTraceEvent struct {
@@ -687,7 +778,7 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/export.md") || strings.HasSuffix(r.URL.Path, "/export.csv") {
 		action = "export"
 	}
-	if strings.HasPrefix(relPath, "/api/request/") {
+	if strings.HasPrefix(relPath, "/api/request/") || relPath == "/api/request-evidence" {
 		action = authzActionDrilldown
 	}
 	object := authzObjectAdminReports
@@ -768,6 +859,11 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAdminReportRequestDetail(w, r, strings.TrimPrefix(r.URL.Path, prefix+"/api/request/"), subject, globalReports)
+	case r.URL.Path == prefix+"/api/request-evidence":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminReportRequestDetail(w, r, r.URL.Query().Get("request_id"), subject, globalReports)
 	case r.URL.Path == prefix+"/export.md":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -1299,19 +1395,32 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid-report-filter"}})
 		return
 	}
-	var usage usageRecord
-	if err := s.usage.db.Where("request_id = ?", requestID).First(&usage).Error; err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	row, err := rowFromUsageRecord(usage)
-	if err != nil {
+	resp, found, queryOK := s.adminRequestEvidenceResponse(requestID, subject, global)
+	if !queryOK {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
-	if !global && !adminDomainAllowsUsageRow(subject.domain, row) {
+	if !found {
 		http.NotFound(w, r)
 		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAuthSubject, global bool) (adminEvidenceBundleResponse, bool, bool) {
+	var usage usageRecord
+	if err := s.usage.db.Where("request_id = ?", requestID).First(&usage).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return adminEvidenceBundleResponse{}, false, true
+		}
+		return adminEvidenceBundleResponse{}, false, false
+	}
+	row, err := rowFromUsageRecord(usage)
+	if err != nil {
+		return adminEvidenceBundleResponse{}, false, false
+	}
+	if !global && !adminDomainAllowsUsageRow(subject.domain, row) {
+		return adminEvidenceBundleResponse{}, false, true
 	}
 	var attempts []requestAttemptRecord
 	var traces []requestTraceEventRecord
@@ -1349,37 +1458,218 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&policyExecutions).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&fallbackTransitions).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&cacheReasons).Error
+
+	requestDTO := adminRequestFromRow(row)
+	attemptDTOs := adminAttemptsFromRecords(attempts)
+	traceDTOs := adminTraceFromRecords(traces)
+	errorDTOs := adminErrorsFromRecords(errors)
 	upstreamDetailRows := adminUpstreamErrorDetailsFromRecords(upstreamErrorDetails)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"request":              adminRequestFromRow(row),
-		"attempts":             adminAttemptsFromRecords(attempts),
-		"trace":                adminTraceFromRecords(traces),
-		"errors":               adminErrorsFromRecords(errors),
-		"upstreamErrorDetails": upstreamDetailRows,
-		"shapingTelemetry": adminShapingTelemetryDetail{
-			TrafficShapeEvents:  trafficShapeEvents,
-			UpstreamShapeEvents: upstreamShapeEvents,
+	shaping := adminShapingTelemetryDetail{
+		TrafficShapeEvents:  trafficShapeEvents,
+		UpstreamShapeEvents: upstreamShapeEvents,
+	}
+	requestShapeTelemetry := adminRequestShapeTelemetryDetail{
+		RequestShape:      optionalRequestShapeRecord(requestShape, requestShapeFound),
+		TranslationShapes: translationShapes,
+		FieldEvents:       translationFieldEvents,
+	}
+	upstreamErrorTelemetry := adminUpstreamErrorTelemetryDetail{Details: upstreamDetailRows}
+	decisionTelemetry := adminDecisionTelemetryDetail{
+		ShapeFeatures:       shapeFeatures,
+		Candidates:          candidates,
+		FilterReasons:       filterReasons,
+		RoutingDecisions:    routingDecisions,
+		RoutingSignals:      routingSignals,
+		DynamicScoreTerms:   dynamicScoreTerms,
+		PolicyExecutions:    policyExecutions,
+		FallbackTransitions: fallbackTransitions,
+		CacheReasons:        cacheReasons,
+	}
+	sections, completeness, score := adminEvidenceCompletenessFor(row, s.cfg.Server.DecisionTelemetry.Enabled, requestShapeFound, attempts, traces, errors, upstreamErrorDetails, trafficShapeEvents, upstreamShapeEvents, translationShapes, translationFieldEvents, shapeFeatures, candidates, filterReasons, routingDecisions, routingSignals, dynamicScoreTerms, policyExecutions, fallbackTransitions, cacheReasons)
+	evidence := adminEvidenceBundleFrom(row, requestDTO, sections, completeness, score, candidates, filterReasons, routingDecisions, fallbackTransitions)
+	return adminEvidenceBundleResponse{
+		Request:                     requestDTO,
+		Attempts:                    attemptDTOs,
+		Trace:                       traceDTOs,
+		Errors:                      errorDTOs,
+		UpstreamErrorDetails:        upstreamDetailRows,
+		ShapingTelemetry:            shaping,
+		RequestShapeTelemetry:       requestShapeTelemetry,
+		UpstreamErrorTelemetry:      upstreamErrorTelemetry,
+		DecisionTelemetry:           decisionTelemetry,
+		EvidenceBundle:              evidence,
+		DiagnosticCompleteness:      completeness,
+		EvidenceSections:            sections,
+		DiagnosticCompletenessScore: score,
+	}, true, true
+}
+
+func adminEvidenceBundleFrom(row usageRow, request adminReportRequest, sections []adminEvidenceSection, completeness string, score int, candidates []decisionTargetCandidateRecord, filterReasons []decisionTargetFilterReasonRecord, routingDecisions []routingDecisionRecord, fallbackTransitions []fallbackTransitionRecord) adminRequestEvidenceBundle {
+	eligibleCandidates := 0
+	for _, candidate := range candidates {
+		if candidate.Eligible {
+			eligibleCandidates++
+		}
+	}
+	unknownPricing := row.PricingSource == "" && row.InputPricePerMillionUSD == 0 && row.OutputPricePerMillionUSD == 0 && row.ImageInputPricePerMillionTokensUSD == 0 && row.ImageInputPricePerImageUSD == 0 && row.TotalCostUSD == 0
+	return adminRequestEvidenceBundle{
+		RequestSummary: request,
+		CostAccounting: adminEvidenceCostAccounting{
+			InputTokens:                        row.InputTokens,
+			OutputTokens:                       row.OutputTokens,
+			TotalTokens:                        row.TotalTokens,
+			InputImageCount:                    row.InputImageCount,
+			InputImageTokens:                   row.InputImageTokens,
+			InputPricePerMillionUSD:            row.InputPricePerMillionUSD,
+			OutputPricePerMillionUSD:           row.OutputPricePerMillionUSD,
+			ImageInputPricePerMillionTokensUSD: row.ImageInputPricePerMillionTokensUSD,
+			ImageInputPricePerImageUSD:         row.ImageInputPricePerImageUSD,
+			InputCostUSD:                       row.InputCostUSD,
+			ImageCostUSD:                       row.ImageCostUSD,
+			OutputCostUSD:                      row.OutputCostUSD,
+			TotalCostUSD:                       row.TotalCostUSD,
+			UpstreamReportedInputCostUSD:       row.UpstreamReportedInputCostUSD,
+			UpstreamReportedOutputCostUSD:      row.UpstreamReportedOutputCostUSD,
+			UpstreamReportedTotalCostUSD:       row.UpstreamReportedTotalCostUSD,
+			PricingSource:                      row.PricingSource,
+			PricingUpdatedAt:                   row.PricingUpdatedAt,
+			StoredRequestTimeValues:            true,
+			UnknownPricing:                     unknownPricing,
 		},
-		"requestShapeTelemetry": adminRequestShapeTelemetryDetail{
-			RequestShape:      optionalRequestShapeRecord(requestShape, requestShapeFound),
-			TranslationShapes: translationShapes,
-			FieldEvents:       translationFieldEvents,
+		AdmissionAndShaping: adminEvidenceAdmissionShaping{
+			QuotaState:                       row.QuotaState,
+			KeyState:                         row.KeyState,
+			Cache:                            row.Cache,
+			CacheEnabled:                     row.CacheEnabled,
+			TrafficShapeApplied:              row.TrafficShapeApplied,
+			TrafficShapeDecision:             row.TrafficShapeDecision,
+			TrafficShapeScope:                row.TrafficShapeScope,
+			TrafficShapeBucket:               row.TrafficShapeBucket,
+			TrafficShapeRetryAfterMS:         row.TrafficShapeRetryAfterMS,
+			TrafficShapeQueueWaitMS:          row.TrafficShapeQueueWaitMS,
+			TrafficShapeEstimatedInputTokens: row.TrafficShapeEstimatedInputTokens,
+			TrafficShapeReservedOutputTokens: row.TrafficShapeReservedOutputTokens,
+			TrafficShapeTotalReservedTokens:  row.TrafficShapeTotalReservedTokens,
 		},
-		"upstreamErrorTelemetry": adminUpstreamErrorTelemetryDetail{
-			Details: upstreamDetailRows,
+		TargetEligibility: adminEvidenceTargetEligibility{
+			SelectedProvider:        row.TargetProvider,
+			SelectedModel:           row.TargetModel,
+			SelectedDialect:         row.TargetDialect,
+			CandidateCount:          len(candidates),
+			EligibleCandidateCount:  eligibleCandidates,
+			FilterReasonCount:       len(filterReasons),
+			RoutingDecisionCount:    len(routingDecisions),
+			FallbackTransitionCount: len(fallbackTransitions),
 		},
-		"decisionTelemetry": adminDecisionTelemetryDetail{
-			ShapeFeatures:       shapeFeatures,
-			Candidates:          candidates,
-			FilterReasons:       filterReasons,
-			RoutingDecisions:    routingDecisions,
-			RoutingSignals:      routingSignals,
-			DynamicScoreTerms:   dynamicScoreTerms,
-			PolicyExecutions:    policyExecutions,
-			FallbackTransitions: fallbackTransitions,
-			CacheReasons:        cacheReasons,
+		Completeness: adminEvidenceCompleteness{
+			Status:   completeness,
+			Score:    score,
+			Sections: sections,
 		},
-	})
+		PrivacyBoundaries: []string{
+			"no raw prompts",
+			"no raw responses",
+			"no raw tool schemas or outputs",
+			"no raw image URLs or payloads",
+			"no provider keys",
+			"no router tokens or token hashes",
+			"no unsanitized upstream bodies",
+		},
+	}
+}
+
+func adminEvidenceCompletenessFor(row usageRow, decisionTelemetryEnabled bool, requestShapeFound bool, attempts []requestAttemptRecord, traces []requestTraceEventRecord, errors []requestErrorRecord, upstreamErrorDetails []requestUpstreamErrorDetailRecord, trafficShapeEvents []requestTrafficShapeEventRecord, upstreamShapeEvents []requestUpstreamShapeEventRecord, translationShapes []requestTranslationShapeRecord, translationFieldEvents []requestTranslationFieldEventRecord, shapeFeatures []decisionShapeFeatureRecord, candidates []decisionTargetCandidateRecord, filterReasons []decisionTargetFilterReasonRecord, routingDecisions []routingDecisionRecord, routingSignals []routingSignalRecord, dynamicScoreTerms []dynamicScoreTermRecord, policyExecutions []policyExecutionRecord, fallbackTransitions []fallbackTransitionRecord, cacheReasons []decisionCacheReasonRecord) ([]adminEvidenceSection, string, int) {
+	sections := make([]adminEvidenceSection, 0, 9)
+	add := func(name, status, reason string, rows int, expected bool) {
+		sections = append(sections, adminEvidenceSection{Name: name, Status: status, Reason: reason, Rows: rows, Expected: expected})
+	}
+	addPresentOrMissing := func(name string, rows int, expected bool, missingReason string) {
+		if rows > 0 {
+			add(name, "present", "", rows, expected)
+			return
+		}
+		if expected {
+			add(name, "missing", missingReason, 0, true)
+			return
+		}
+		add(name, "not_applicable", "section was not expected for this request path", 0, false)
+	}
+
+	add("request_summary", "present", "", 1, true)
+	add("cost_accounting", "present", "stored request-time usage and cost values", 1, true)
+	add("admission_and_shaping", evidenceStatus(row.TrafficShapeApplied || len(trafficShapeEvents) > 0 || len(upstreamShapeEvents) > 0), evidenceReason(row.TrafficShapeApplied || len(trafficShapeEvents) > 0 || len(upstreamShapeEvents) > 0, "traffic shaping evaluated or recorded", "traffic shaping was not applied or not enabled for this request"), len(trafficShapeEvents)+len(upstreamShapeEvents), row.TrafficShapeApplied || len(trafficShapeEvents) > 0 || len(upstreamShapeEvents) > 0)
+
+	requestShapeRows := 0
+	if requestShapeFound {
+		requestShapeRows++
+	}
+	requestShapeRows += len(translationShapes) + len(translationFieldEvents)
+	addPresentOrMissing("request_shape", requestShapeRows, row.Status >= 400, "errored requests should include safe shape telemetry or an explicit marker")
+
+	targetRows := len(candidates) + len(filterReasons) + len(routingDecisions) + len(routingSignals) + len(dynamicScoreTerms) + len(policyExecutions) + len(fallbackTransitions) + len(cacheReasons)
+	targetExpected := decisionTelemetryEnabled && (row.TargetProvider != "" || row.Attempts > 0 || row.Status >= 500)
+	addPresentOrMissing("target_eligibility", targetRows, targetExpected, "target selection happened but candidate/filter/routing rows are absent")
+
+	addPresentOrMissing("attempts", len(attempts), row.Attempts > 0, "usage row reports upstream attempts but request_attempts rows are absent")
+	addPresentOrMissing("terminal_errors", len(errors), row.Status >= 400, "non-2xx request is missing request_errors rows")
+
+	upstreamErrorExpected := false
+	for _, attempt := range attempts {
+		if attempt.StatusCode >= 400 || attempt.ErrorClass != "" || attempt.TimedOut || attempt.ClientCanceled {
+			upstreamErrorExpected = true
+			break
+		}
+	}
+	addPresentOrMissing("sanitized_upstream_errors", len(upstreamErrorDetails), upstreamErrorExpected, "failed upstream attempt is missing sanitized provider error detail rows")
+	addPresentOrMissing("trace_timeline", len(traces), row.Status >= 400 || row.FallbackUsed, "errored or fallback request is missing trace event rows")
+
+	expected := 0
+	present := 0
+	missing := 0
+	notApplicable := 0
+	for _, section := range sections {
+		if section.Expected {
+			expected++
+			if section.Status == "present" {
+				present++
+			}
+			if section.Status == "missing" {
+				missing++
+			}
+			continue
+		}
+		if section.Status == "not_applicable" {
+			notApplicable++
+		}
+	}
+	score := 100
+	if expected > 0 {
+		score = int(math.Round(float64(present) * 100 / float64(expected)))
+	}
+	status := "complete"
+	switch {
+	case missing > 0 && present <= 2:
+		status = "minimal"
+	case missing > 0:
+		status = "partial_missing"
+	case notApplicable > 0:
+		status = "partial_expected"
+	}
+	return sections, status, score
+}
+
+func evidenceStatus(present bool) string {
+	if present {
+		return "present"
+	}
+	return "not_applicable"
+}
+
+func evidenceReason(present bool, presentReason, absentReason string) string {
+	if present {
+		return presentReason
+	}
+	return absentReason
 }
 
 func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -4009,6 +4299,7 @@ func adminAttemptsFromRecords(records []requestAttemptRecord) []adminReportAttem
 			RequestBytes:     record.RequestBytes,
 			ResponseBytes:    record.ResponseBytes,
 			AttemptTimeoutMS: record.AttemptTimeoutMS,
+			RetryAfterMS:     record.RetryAfterMS,
 		})
 	}
 	return out

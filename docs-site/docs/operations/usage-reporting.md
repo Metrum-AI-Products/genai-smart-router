@@ -169,10 +169,13 @@ Common endpoints:
 - `/admin/reports/api/security/events?since=24h` returns safe scalar access events for authorized calls, unauthorized attempts, forbidden admin/report/metrics access, and Basic admin auth checks when security reports are enabled.
 - `/admin/reports/security/export.csv?since=24h` exports the filtered security event table with spreadsheet formula-leading values neutralized and requires `admin:security_reports` `export`.
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
-- `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, and terminal error rows.
+- `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, terminal error, shape, sanitized upstream-error, and decision-telemetry rows.
+- `/admin/reports/api/request-evidence?request_id=<request_id>` returns the same request-level evidence bundle with `diagnosticCompleteness`, `diagnosticCompletenessScore`, and per-section `present` / `not_applicable` / `missing` states.
 - `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.
 
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
+
+Request evidence bundles are assembled from normalized relational tables. They expose safe request ID, caller/project/environment/client labels, requested and resolved model group, selected provider/model/dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency/throughput, quota/key/cache state, traffic-shaping state, candidate/filter summaries, attempts, sanitized upstream error fields, and trace rows where available. Evidence APIs require `admin:reports` `drilldown`, use `Cache-Control: no-store`, and must not expose raw prompts, raw responses, raw image URLs or payloads, raw tool schemas, raw tool outputs, provider API keys, router tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
 
 Report APIs also return `pagination` metadata. Raw request and security-event endpoints use cursor pagination with `limit`, `cursor`, `sort`, and `direction`:
 

@@ -20,7 +20,7 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Request-time cost accounting | Implemented | Usage rows/logs include configured price fields and calculated costs. |
 | Upstream-reported billed cost | Implemented where provider returns it | Stored separately from calculated router cost when available. |
 | Usage DB/reporting | Implemented | GORM-backed relational usage storage and markdown report tool. |
-| Browser admin reports | Implemented first slice | Disabled by default; browser-admin identity plus Casbin policy gates embedded report UI, domain-scoped JSON APIs, request drilldown, spreadsheet-safe CSV, and escaped Markdown export under `/admin/reports/`. |
+| Browser admin reports | Implemented first slice | Disabled by default; browser-admin identity plus Casbin policy gates embedded report UI, domain-scoped JSON APIs, request drilldown/evidence bundles, spreadsheet-safe CSV, and escaped Markdown export under `/admin/reports/`. |
 | Diagnostics tables | Implemented | Attempts, trace events, and sanitized request errors. |
 | Governed content capture foundation | Implemented first slice | Disabled by default; opt-in redacted request/response/upstream-error rows, content-admin delete/purge, retention timestamps, and audit events. KMS/encryption and export/read APIs remain follow-ups. |
 | Commercial retention foundation | Implemented first slice | Disabled by default; config-derived policy/rule rows, legal holds and audits, dry-run status jobs, and batch purge for usage diagnostics plus rollup-gated usage detail. Archive/export, scheduler, broader purge classes, and full admin UI/API workflows remain follow-ups. |

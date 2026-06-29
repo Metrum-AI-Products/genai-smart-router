@@ -74,6 +74,10 @@ Request usage rows also store non-secret reproducibility fields: router version/
 
 Decision telemetry must not store prompt text, image URLs or bytes, tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full config, policy request/response JSON, or routing script raw request mirrors. Keep new reason names stable, lowercase, and safe for reports.
 
+Request evidence bundles are assembled at query time from these normalized tables. They are returned as JSON by admin report APIs, but no evidence bundle is persisted as a JSON/JSONB/array/blob column. The assembler joins `request_usage` to diagnostic child tables by `request_id` and returns safe sections for request summary, admission/shaping, request shape, target eligibility, attempts, sanitized upstream errors, trace timeline, and cost accounting. It also returns section-level completeness states so operators can distinguish present evidence, disabled or not-applicable evidence, and unexpectedly missing rows.
+
+Evidence completeness is a reporting assertion, not a routing decision. For non-2xx requests, a missing expected section such as attempts, terminal error, request shape, target eligibility, sanitized upstream error detail, or trace timeline should be treated as a telemetry regression unless the request was rejected before that phase. The bundle may summarize row counts, selected target, candidate/filter counts, stored request-time prices/costs, upstream-reported billed costs, and latency/throughput fields, but it must not include raw prompts, raw responses, raw image URLs or payloads, raw tool schemas, raw tool outputs, provider keys, router tokens, token hashes, full headers, unsanitized upstream bodies, or full config.
+
 Governed content-capture tables are separate from diagnostics and also follow the relational-only rule:
 
 - `request_content_captures`: redacted request, response, and upstream-error content rows with scalar request/route metadata, retention timestamp, redaction counts, and truncation flags.

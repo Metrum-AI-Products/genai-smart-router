@@ -13,7 +13,7 @@ For health checks, metrics, log dimensions, and alerting, see [Observability](./
 
 ## Access Model
 
-Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
+Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail/evidence uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
 
 ```yaml
 server:
@@ -69,7 +69,7 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 
 ## What It Shows
 
-The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, traffic-shaping decisions, routing strategy summaries, dynamic-score signal/score/threshold buckets, max-token and input-token buckets, request-shape and translated-shape buckets, admission reasons, policy execution outcomes/errors, fallback transition reasons, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, terminal-error, traffic-shaping, request-shape, translation-shape, and decision-telemetry rows by request ID.
+The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, traffic-shaping decisions, routing strategy summaries, dynamic-score signal/score/threshold buckets, max-token and input-token buckets, request-shape and translated-shape buckets, admission reasons, policy execution outcomes/errors, fallback transition reasons, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown and evidence bundles join the relational usage, attempt, trace-event, terminal-error, traffic-shaping, request-shape, translation-shape, sanitized upstream-error, cost, and decision-telemetry rows by request ID.
 
 Admin report APIs accept safe request-shape filters such as inbound dialect, stream flag, tool-choice mode, tool-count bucket, request-bytes bucket, estimated-input-token bucket, output-cap bucket, reasoning presence, multimodal presence, request-shape fingerprint, and tool-schema fingerprint. These filters help compare successful and failed requests to the same provider/model/dialect when a small smoke test passes but a real agent request receives an upstream rejection.
 
@@ -183,6 +183,22 @@ For those aggregate reports, browser search and table sorting operate over the r
 CSV export from the browser exports the currently returned table scope: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for legacy unpaged responses. Markdown export is labeled as a full current-filter report and omits page cursors; it remains an operational report export, not an unbounded full-history job.
 
 The browser table footer mirrors this distinction. Cursor-paged reports show ranges such as `Showing 51-100 of 1,234`, expose first/previous/next controls, and keep the opaque `cursor` in the URL for sharing the current page. Previous is available after in-session forward navigation or when the API supplies a previous cursor. Aggregate reports show labels such as `Showing top 50 rows` or `Showing top 50 rows, more available` and do not show cursor navigation controls because they are bounded ranked summaries, not page 1 of every possible provider, key, or bucket.
+
+## Request Evidence
+
+When a caller provides a request ID, use the request evidence API to open a safe diagnostic bundle:
+
+```text
+/admin/reports/api/request-evidence?request_id=<request_id>
+```
+
+The same bundle is available through path-style drilldown links at `/admin/reports/api/request/<request_id>`. Both endpoints require `admin:reports` `drilldown`, are scoped to the admin's Casbin domain, and use `Cache-Control: no-store`. Ordinary application caller tokens receive `403 reports-forbidden`.
+
+The bundle is assembled from relational usage and diagnostic rows. It can include request ID, caller/project/environment/client labels, requested model and resolved model group, selected provider/model/dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency and throughput measurements, quota/key/cache state, traffic-shaping state, target candidate and filter summaries, attempts, sanitized upstream error details, trace events, request-shape and translation-shape buckets, and decision telemetry.
+
+Use `diagnosticCompleteness`, `diagnosticCompletenessScore`, and `evidenceSections` to understand gaps. Sections are marked `present`, `not_applicable`, or `missing`; bundle-level status is `complete`, `partial_expected`, `partial_missing`, or `minimal`. A `missing` section on a failed request usually means diagnostics were disabled for that path or a telemetry regression needs investigation.
+
+Evidence APIs must not return raw prompts, raw responses, raw image URLs or payloads, raw tool schemas, raw tool outputs, provider API keys, router bearer tokens, token hashes, full upstream headers, unsanitized upstream bodies, full config, cookies, OIDC tokens, or spreadsheet-active values.
 
 ## Navigation
 

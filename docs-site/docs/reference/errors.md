@@ -172,7 +172,7 @@ The error body is sanitized. It does not include provider account identifiers, r
 
 ## Troubleshooting With Request IDs
 
-Administrators can use `X-Request-Id` to inspect:
+Administrators can use `X-Request-Id` with `/admin/reports/api/request-evidence?request_id=<request_id>` or the path-style drilldown `/admin/reports/api/request/<request_id>` to inspect:
 
 - `request_usage` for terminal status, selected target, token counts, cost, and cache behavior.
 - `request_attempts` for each provider/model attempt.
@@ -181,7 +181,7 @@ Administrators can use `X-Request-Id` to inspect:
 - `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields when sanitized upstream error storage is enabled.
 - `request_errors` for sanitized terminal error summaries.
 
-Diagnostic rows exclude prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies.
+The evidence bundle also reports diagnostic completeness so operators can tell whether a section is present, not applicable, or unexpectedly missing. Evidence and diagnostic rows exclude prompt text, raw image payloads, raw image URLs, raw tool schemas, raw tool outputs, raw router tokens, token hashes, provider API keys, full upstream headers, cookies, OIDC tokens, full config, and unsanitized upstream bodies.
 
 For provider quota or billing incidents, look for `request_attempts.error_class = 'upstream_quota_exhausted'` and terminal `request_errors.error_type = 'upstream-quota-exhausted'`. A successful request can still have an `upstream_quota_exhausted` attempt row when fallback succeeded.
 

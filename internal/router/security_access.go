@@ -190,6 +190,9 @@ func adminPathTemplate(r *http.Request) string {
 	if strings.Contains(path, "/api/request/") {
 		return "/admin/reports/api/request/{request_id}"
 	}
+	if strings.Contains(path, "/api/request-evidence") {
+		return "/admin/reports/api/request-evidence"
+	}
 	return path
 }
 

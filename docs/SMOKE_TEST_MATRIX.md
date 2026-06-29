@@ -16,6 +16,7 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | Usage/cost fields | query usage DB/report after a request |
+| Request evidence bundle | produce one success or error request, query `/admin/reports/api/request-evidence?request_id=<request_id>` with a drilldown-authorized admin, verify section completeness, attempts when applicable, stored request-time costs, `Cache-Control: no-store`, ordinary caller `403 reports-forbidden`, and no raw prompts/images/tool schemas/tool outputs/tokens/token hashes/provider keys/upstream bodies |
 | Caller traffic-shaping reports | enable a low caller `traffic_shape`, produce one queued or rejected request, run `router-usage-report --traffic-shaped-only`, and open Traffic shaping overview / Shaping users in admin reports |
 | Provider/model/target shaping | enable a low local `traffic_shape`, send parallel requests from two caller tokens, verify skip/fallback or `503 upstream-capacity-throttled`, `Retry-After` when calculable, and safe `request_upstream_shape_events` rows |
 | Provider-shaping reports | after provider/model/target shaping smoke, open Provider shaping and Backoff admin tabs and confirm charts/tables show skipped targets or cooldown starts without prompts, tokens, token hashes, or provider keys |

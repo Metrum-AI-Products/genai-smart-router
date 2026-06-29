@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -612,6 +613,27 @@ func TestAdminOIDCSessionAuthorizesReportsWithCasbin(t *testing.T) {
 	}
 }
 
+func TestAdminEvidenceCompletenessDecisionTelemetryDisabledNotApplicable(t *testing.T) {
+	sections, status, score := adminEvidenceCompletenessFor(
+		usageRow{TargetProvider: "mock", Attempts: 1, Status: 200},
+		false,
+		false,
+		[]requestAttemptRecord{{RequestID: "req", AttemptIndex: 1, StatusCode: 200}}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	if status == "partial_missing" || score != 100 {
+		t.Fatalf("status=%s score=%d sections=%#v", status, score, sections)
+	}
+	for _, section := range sections {
+		if section.Name == "target_eligibility" {
+			if section.Status != "not_applicable" || section.Expected {
+				t.Fatalf("target eligibility section=%#v, want not_applicable when decision telemetry disabled", section)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing target_eligibility section: %#v", sections)
+}
+
 func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	hash := mustBcryptHash(t, "yell-yell-yum")
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
@@ -682,55 +704,63 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	upstreamTPS := 42.5
 	downstreamTPS := 39.25
 	svc.usage.Emit(logRecord{
-		TS:                           time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
-		RequestID:                    "admin-report-synthetic-expensive",
-		CallerID:                     "alice",
-		CallerUser:                   "alice",
-		CallerProject:                "metrum-insights",
-		CallerEnvironment:            "test",
-		CallerIP:                     "203.0.113.10",
-		TokenID:                      "rtr_alice_test",
-		Client:                       "codex-cli",
-		InboundDialect:               "openai-responses",
-		RequestedModel:               "default",
-		ResolvedGroup:                "default",
-		Strategy:                     "weighted",
-		TargetProvider:               "mock",
-		TargetModel:                  "mock-model",
-		TargetDialect:                "openai",
-		Stream:                       true,
-		Cache:                        "hit",
-		Status:                       504,
-		Attempts:                     2,
-		FallbackUsed:                 true,
-		LatencyMS:                    30150,
-		TTFBMS:                       &ttfbMS,
-		UpstreamMS:                   &upstreamMS,
-		DownstreamMS:                 &downstreamMS,
-		UpstreamOutputTPS:            &upstreamTPS,
-		DownstreamOutputTPS:          &downstreamTPS,
-		Usage:                        Usage{InputTokens: 1_000_000, OutputTokens: 500_000, TotalTokens: 1_500_000},
-		InputHasImage:                true,
-		InputImageCount:              1,
-		InputImageTokens:             1234,
-		PIIFilterApplied:             true,
-		PIIFilterMode:                "redact",
-		PIIFilterReplacements:        2,
-		PIIFilterRuleCount:           1,
-		InputCostUSD:                 1.25,
-		OutputCostUSD:                1.25,
-		TotalCostUSD:                 2.50,
-		UpstreamReportedTotalCostUSD: 2.75,
-		CacheEnabled:                 true,
-		CacheItems:                   7,
-		CacheBytes:                   4096,
-		CacheMaxBytes:                8192,
-		CacheOccupancyPct:            50,
-		QuotaState:                   "soft_limit",
-		KeyState:                     "ok",
-		Error:                        &errType,
-		ErrorClass:                   "timeout",
-		ErrorMessage:                 "upstream timeout",
+		TS:                                 time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
+		RequestID:                          "admin-report-synthetic-expensive",
+		CallerID:                           "alice",
+		CallerUser:                         "alice",
+		CallerProject:                      "metrum-insights",
+		CallerEnvironment:                  "test",
+		CallerIP:                           "203.0.113.10",
+		TokenID:                            "rtr_alice_test",
+		Client:                             "codex-cli",
+		InboundDialect:                     "openai-responses",
+		RequestedModel:                     "default",
+		ResolvedGroup:                      "default",
+		Strategy:                           "weighted",
+		TargetProvider:                     "mock",
+		TargetModel:                        "mock-model",
+		TargetDialect:                      "openai",
+		Stream:                             true,
+		Cache:                              "hit",
+		Status:                             504,
+		Attempts:                           2,
+		FallbackUsed:                       true,
+		LatencyMS:                          30150,
+		TTFBMS:                             &ttfbMS,
+		UpstreamMS:                         &upstreamMS,
+		DownstreamMS:                       &downstreamMS,
+		UpstreamOutputTPS:                  &upstreamTPS,
+		DownstreamOutputTPS:                &downstreamTPS,
+		Usage:                              Usage{InputTokens: 1_000_000, OutputTokens: 500_000, TotalTokens: 1_500_000},
+		InputHasImage:                      true,
+		InputImageCount:                    1,
+		InputImageTokens:                   1234,
+		PIIFilterApplied:                   true,
+		PIIFilterMode:                      "redact",
+		PIIFilterReplacements:              2,
+		PIIFilterRuleCount:                 1,
+		InputPricePerMillionUSD:            1.25,
+		OutputPricePerMillionUSD:           2.50,
+		ImageInputPricePerMillionTokensUSD: 0.75,
+		InputCostUSD:                       1.25,
+		ImageCostUSD:                       0.25,
+		OutputCostUSD:                      1.25,
+		TotalCostUSD:                       2.75,
+		UpstreamReportedInputCostUSD:       1.30,
+		UpstreamReportedOutputCostUSD:      1.45,
+		UpstreamReportedTotalCostUSD:       2.95,
+		PricingSource:                      "https://example.test/pricing",
+		PricingUpdatedAt:                   "2026-06-29",
+		CacheEnabled:                       true,
+		CacheItems:                         7,
+		CacheBytes:                         4096,
+		CacheMaxBytes:                      8192,
+		CacheOccupancyPct:                  50,
+		QuotaState:                         "soft_limit",
+		KeyState:                           "ok",
+		Error:                              &errType,
+		ErrorClass:                         "timeout",
+		ErrorMessage:                       "upstream timeout",
 		AttemptsDetail: []attemptLogRecord{{
 			Index:        1,
 			TS:           time.Now().UTC().Format(time.RFC3339),
@@ -744,6 +774,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			Retryable:    true,
 			TimedOut:     true,
 			Selected:     true,
+			RetryAfterMS: 1500,
 		}},
 		DecisionShapeFeatures: []decisionShapeFeatureLogRecord{{Seq: 1, Name: "has_tools", BoolValue: true}},
 		DecisionCandidates: []decisionCandidateLogRecord{{
@@ -803,6 +834,13 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	svc.Handler().ServeHTTP(ordinaryRR, ordinary)
 	if ordinaryRR.Code != http.StatusForbidden || !strings.Contains(ordinaryRR.Body.String(), "reports-forbidden") {
 		t.Fatalf("ordinary status=%d body=%s", ordinaryRR.Code, ordinaryRR.Body.String())
+	}
+	ordinaryEvidence := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request-evidence?request_id=admin-report-synthetic-expensive", nil)
+	ordinaryEvidence.Header.Set("Authorization", "Bearer "+testToken)
+	ordinaryEvidenceRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ordinaryEvidenceRR, ordinaryEvidence)
+	if ordinaryEvidenceRR.Code != http.StatusForbidden || !strings.Contains(ordinaryEvidenceRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("ordinary evidence status=%d body=%s", ordinaryEvidenceRR.Code, ordinaryEvidenceRR.Body.String())
 	}
 
 	versionUnauth := httptest.NewRequest(http.MethodGet, "/admin/reports/api/version", nil)
@@ -1142,6 +1180,13 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if readerDetailRR.Code != http.StatusForbidden || !strings.Contains(readerDetailRR.Body.String(), "reports-forbidden") {
 		t.Fatalf("reader detail status=%d body=%s", readerDetailRR.Code, readerDetailRR.Body.String())
 	}
+	readerEvidence := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request-evidence?request_id="+url.QueryEscape(requestID), nil)
+	readerEvidence.SetBasicAuth("reader", "yell-yell-yum")
+	readerEvidenceRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(readerEvidenceRR, readerEvidence)
+	if readerEvidenceRR.Code != http.StatusForbidden || !strings.Contains(readerEvidenceRR.Body.String(), "reports-forbidden") {
+		t.Fatalf("reader evidence status=%d body=%s", readerEvidenceRR.Code, readerEvidenceRR.Body.String())
+	}
 
 	detail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/"+url.PathEscape(requestID), nil)
 	detail.SetBasicAuth("admin", "yell-yell-yum")
@@ -1150,6 +1195,9 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if detailRR.Code != http.StatusOK {
 		t.Fatalf("detail status=%d body=%s", detailRR.Code, detailRR.Body.String())
 	}
+	if detailRR.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("detail missing no-store header: %#v", detailRR.Header())
+	}
 	var detailBody map[string]any
 	if err := json.Unmarshal(detailRR.Body.Bytes(), &detailBody); err != nil {
 		t.Fatal(err)
@@ -1157,6 +1205,9 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	attempts := detailBody["attempts"].([]any)
 	if len(attempts) == 0 || attempts[0].(map[string]any)["attemptIndex"] == nil {
 		t.Fatalf("detail missing safe attempt DTO fields: %#v", detailBody)
+	}
+	if attempts[0].(map[string]any)["retryAfterMs"].(float64) != 1500 {
+		t.Fatalf("detail missing attempt retry-after evidence: %#v", attempts[0])
 	}
 	decisionTelemetry := detailBody["decisionTelemetry"].(map[string]any)
 	for _, key := range []string{"shapeFeatures", "candidates", "filterReasons", "routingDecisions", "routingSignals", "dynamicScoreTerms", "policyExecutions", "cacheReasons"} {
@@ -1169,9 +1220,76 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	if candidate["contextTokens"].(float64) != 8192 || candidate["toolSupport"] != true || candidate["structuredOutput"] != true {
 		t.Fatalf("detail candidate metadata missing phase-2 fields: %#v", candidate)
 	}
+	if detailBody["diagnosticCompleteness"] != "partial_missing" {
+		t.Fatalf("detail completeness=%#v, want partial_missing: %#v", detailBody["diagnosticCompleteness"], detailBody)
+	}
+	evidence := detailBody["evidenceBundle"].(map[string]any)
+	cost := evidence["costAccounting"].(map[string]any)
+	for key, want := range map[string]float64{
+		"inputPricePerMillionUsd":            1.25,
+		"outputPricePerMillionUsd":           2.50,
+		"imageInputPricePerMillionTokensUsd": 0.75,
+		"inputCostUsd":                       1.25,
+		"imageCostUsd":                       0.25,
+		"outputCostUsd":                      1.25,
+		"totalCostUsd":                       2.75,
+		"upstreamReportedInputCostUsd":       1.30,
+		"upstreamReportedOutputCostUsd":      1.45,
+		"upstreamReportedTotalCostUsd":       2.95,
+	} {
+		if got := cost[key].(float64); got != want {
+			t.Fatalf("cost %s=%v, want %v: %#v", key, got, want, cost)
+		}
+	}
+	if cost["storedRequestTimeValues"] != true || cost["unknownPricing"] == true || cost["pricingSource"] != "https://example.test/pricing" {
+		t.Fatalf("cost evidence missing request-time accounting metadata: %#v", cost)
+	}
+	admission := evidence["admissionAndShaping"].(map[string]any)
+	if admission["quotaState"] != "soft_limit" || admission["keyState"] != "ok" || admission["cache"] != "hit" {
+		t.Fatalf("admission evidence missing safe state: %#v", admission)
+	}
+	target := evidence["targetEligibility"].(map[string]any)
+	if target["selectedProvider"] != "mock" || target["candidateCount"].(float64) != 1 || target["filterReasonCount"].(float64) != 1 {
+		t.Fatalf("target evidence missing candidate summary: %#v", target)
+	}
+	completeness := evidence["completeness"].(map[string]any)
+	if completeness["status"] != "partial_missing" || completeness["score"].(float64) <= 0 || completeness["score"].(float64) >= 100 {
+		t.Fatalf("unexpected completeness summary: %#v", completeness)
+	}
+	var sawMissingShape bool
+	for _, sectionAny := range completeness["sections"].([]any) {
+		section := sectionAny.(map[string]any)
+		if section["name"] == "request_shape" && section["status"] == "missing" {
+			sawMissingShape = true
+		}
+	}
+	if !sawMissingShape {
+		t.Fatalf("completeness did not mark missing request shape evidence: %#v", completeness)
+	}
+	privacy := evidence["privacyBoundaries"].([]any)
+	if len(privacy) == 0 || privacy[0].(string) != "no raw prompts" {
+		t.Fatalf("evidence privacy boundary missing: %#v", privacy)
+	}
+	evidenceReq := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request-evidence?request_id="+url.QueryEscape(requestID), nil)
+	evidenceReq.SetBasicAuth("admin", "yell-yell-yum")
+	evidenceRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(evidenceRR, evidenceReq)
+	if evidenceRR.Code != http.StatusOK {
+		t.Fatalf("evidence status=%d body=%s", evidenceRR.Code, evidenceRR.Body.String())
+	}
+	if evidenceRR.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("evidence missing no-store header: %#v", evidenceRR.Header())
+	}
+	evidenceBody := mustJSONMap(t, evidenceRR.Body.String())
+	if evidenceBody["diagnosticCompleteness"] != "partial_missing" || evidenceBody["request"].(map[string]any)["requestId"] != requestID {
+		t.Fatalf("query evidence endpoint returned wrong request evidence: %#v", evidenceBody)
+	}
 	for _, forbidden := range []string{"TokenSHA256", "token_sha256", "provider-key", testToken, "messages"} {
 		if strings.Contains(detailRR.Body.String(), forbidden) {
 			t.Fatalf("detail leaked %q: %s", forbidden, detailRR.Body.String())
+		}
+		if strings.Contains(evidenceRR.Body.String(), forbidden) {
+			t.Fatalf("evidence leaked %q: %s", forbidden, evidenceRR.Body.String())
 		}
 	}
 	crossDomainDetail := httptest.NewRequest(http.MethodGet, "/admin/reports/api/request/admin-report-cross-domain", nil)
@@ -1285,6 +1403,31 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		if !strings.Contains(exportRR.Body.String(), want) {
 			t.Fatalf("export missing transparent report label %q: %s", want, exportRR.Body.String())
 		}
+	}
+}
+
+func TestAdminSavingsUsesStoredRequestTimeActualCost(t *testing.T) {
+	var agg adminSavingsAgg
+	baseline := adminSavingsBaselineDTO{
+		BaselineID:                       "fixed-baseline",
+		BaselineInputPricePerMillionUSD:  1,
+		BaselineOutputPricePerMillionUSD: 2,
+	}
+	agg.add(usageRow{
+		InputTokens:              1_000_000,
+		OutputTokens:             1_000_000,
+		InputPricePerMillionUSD:  99,
+		OutputPricePerMillionUSD: 199,
+		InputCostUSD:             0.10,
+		OutputCostUSD:            0.32,
+		TotalCostUSD:             0.42,
+	}, baseline)
+	row := agg.row("default")
+	if math.Abs(row.ActualCostUSD-0.42) > 0.0000001 {
+		t.Fatalf("actual cost=%v, want stored total_cost_usd 0.42", row.ActualCostUSD)
+	}
+	if math.Abs(row.BaselineCostUSD-3.0) > 0.0000001 || math.Abs(row.SavingsUSD-2.58) > 0.0000001 {
+		t.Fatalf("baseline/savings calculation mismatch: %#v", row)
 	}
 }
 

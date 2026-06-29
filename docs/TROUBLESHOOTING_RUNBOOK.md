@@ -48,6 +48,26 @@ For browser-first incident response, use `/admin/reports/` before falling back t
 
 These reports use only safe scalar telemetry and request IDs. They do not expose raw prompts, image payloads, image URLs, raw tool schemas, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, raw upstream bodies, or free-form provider prose. Use request drilldown from a report row when a single request needs attempt, trace, upstream-error, request-shape, translation-shape, or decision telemetry.
 
+For a single failed request, prefer the evidence bundle endpoint before writing ad hoc SQL:
+
+```bash
+rtk curl -u admin:<password> \
+  "https://llm-api-engg.metrum.ai/admin/reports/api/request-evidence?request_id=<request_id>"
+```
+
+The same data is available at `/admin/reports/api/request/<request_id>` for path-style drilldown links. Both endpoints require `admin:reports` `drilldown`, send `Cache-Control: no-store`, and return `403 reports-forbidden` to ordinary router caller tokens. Domain-scoped admins receive `404` for request IDs outside their Casbin domain.
+
+Evidence bundles are assembled from normalized relational rows keyed by `request_id`. They include a safe request summary, caller/project/client labels, requested and resolved model group, selected provider/model/dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency/TTFB/upstream/downstream timing, quota/key/cache state, traffic-shaping state, target candidate/filter/routing summaries, attempt rows, sanitized upstream error fields, trace rows, and completeness metadata.
+
+Use `diagnosticCompleteness` and `evidenceSections` to decide whether missing evidence is expected:
+
+- `complete`: expected sections are present.
+- `partial_expected`: only disabled or not-applicable sections are absent.
+- `partial_missing`: one or more expected diagnostic sections are missing unexpectedly.
+- `minimal`: only the usage row and a small subset of expected evidence are present.
+
+Do not treat a missing optional section as proof that routing skipped that phase unless the section status says `not_applicable`. For non-2xx requests, missing `attempts`, `terminal_errors`, `request_shape`, `target_eligibility`, `sanitized_upstream_errors`, or `trace_timeline` should be investigated as a telemetry regression unless the request was rejected before that phase.
+
 For incident windows with many requests, page the admin request API instead of asking the browser to load the whole result set:
 
 ```bash
