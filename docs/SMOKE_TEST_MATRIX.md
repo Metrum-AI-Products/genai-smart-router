@@ -23,6 +23,20 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
+## Release Package Smokes
+
+Release packaging smokes prove that artifacts are deterministic, external-safe, and architecture-correct before handoff.
+
+| Artifact | Required smoke |
+|---|---|
+| Package validation self-test | `python3 scripts/validate_package_contents_test.py` and `python3 scripts/validate_release_clean_test.py` |
+| Binary amd64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-amd64.tar.gz`, confirm x86-64 ELF binaries |
+| Binary arm64 package | Clean tree, `make package-all`, validate `dist/smart-llmrouter-*-linux-arm64.tar.gz`, confirm aarch64 ELF binaries |
+| Docker amd64 package | Docker daemon available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-amd64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands |
+| Docker arm64 package | Docker daemon and buildx platform support available, `make package-docker-all`, validate `dist/smart-llmrouter-*-docker-linux-arm64.tar.gz`, load image tar, run `/app/bin/router --version` and helper `--version` commands where runner architecture or emulation allows |
+| macOS release host | Confirm package tarballs contain no AppleDouble `._*` entries; package recipes set `COPYFILE_DISABLE=1` and validator rejects any accidental metadata entries |
+| Compose assets | Extract Docker package, verify `compose/.env` pins `SMART_LLMROUTER_VERSION=<version>-linux-<arch>`, set deployment-owned passwords/DSNs, and run `docker compose config >/dev/null` |
+
 ## Evidence Evaluation Smokes
 
 Before promoting or rolling back a model group based on a quality claim:

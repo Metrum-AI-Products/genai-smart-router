@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import io
+import json
 import re
 import sys
 import tarfile
@@ -12,6 +14,41 @@ from typing import Iterable
 
 
 TEXT_SCAN_LIMIT = 10 * 1024 * 1024
+BINARY_PACKAGE_FILES = {
+    "bin/router",
+    "bin/router-token-gen",
+    "bin/router-usage-report",
+    "config/config.example.yaml",
+    "config/env.example.json",
+    "config/scripts/router.ts",
+    "caddy/Caddyfile",
+}
+DOCKER_PACKAGE_FILES = {
+    "compose/docker-compose.yml",
+    "compose/docker-compose.postgres-localhost.yml",
+    "compose/Caddyfile.compose",
+    "compose/.env.example",
+    "compose/.env",
+    "config/config.example.yaml",
+    "config/env.example.json",
+    "config/scripts/router.ts",
+}
+PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report"}
+EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
+DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
+FORBIDDEN_IMAGE_PATH_RE = re.compile(
+    r"^/?(?:"
+    r"src/|"
+    r"app/(?:docs/|docs-site/|internal/|cmd/|go\.mod|go\.sum|env\.json|config\.production\.yaml|ROUTER_TOKEN[^/]*\.txt|license\.json)|"
+    r"docs/|"
+    r"docs-site/|"
+    r".*\.map|"
+    r".*\.log|"
+    r".*\.jsonl|"
+    r".*\.sqlite3?|"
+    r".*\.db"
+    r")"
+)
 
 FORBIDDEN_NAME_RE = re.compile(
     r"(^|/)(?:"
@@ -89,6 +126,97 @@ def is_docs_member(member_name: str) -> bool:
     return rel.startswith("docs/") and rel != "docs/"
 
 
+def has_appledouble_component(member_name: str) -> bool:
+    return any(part.startswith("._") for part in Path(member_name).parts)
+
+
+def expected_arch(archive: Path) -> str | None:
+    name = archive.name
+    if "-linux-amd64.tar" in name:
+        return "amd64"
+    if "-linux-arm64.tar" in name:
+        return "arm64"
+    return None
+
+
+def is_docker_package(archive: Path) -> bool:
+    return "-docker-linux-" in archive.name
+
+
+def expected_package_files(archive: Path, allowed_docs: set[str]) -> tuple[set[str], str | None]:
+    docs = {f"docs/{doc}" for doc in allowed_docs}
+    arch = expected_arch(archive)
+    if is_docker_package(archive):
+        return DOCKER_PACKAGE_FILES | docs, arch
+    return BINARY_PACKAGE_FILES | docs, arch
+
+
+def validate_elf_arch(blob: bytes, arch: str) -> str | None:
+    if len(blob) < 20 or blob[:4] != b"\x7fELF":
+        return "is not an ELF binary"
+    if blob[4] != 2:
+        return "is not a 64-bit ELF binary"
+    if blob[5] not in {1, 2}:
+        return "uses an unsupported ELF byte order"
+    byteorder = "little" if blob[5] == 1 else "big"
+    actual_machine = int.from_bytes(blob[18:20], byteorder)
+    expected_machine = EXPECTED_ELF_MACHINE[arch]
+    if actual_machine != expected_machine:
+        return f"has ELF machine {actual_machine}, expected {expected_machine} for linux-{arch}"
+    return None
+
+
+def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> list[str]:
+    errors: list[str] = []
+    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report"}
+    actual: set[str] = set()
+    try:
+        with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:
+            image_members = {member.name: member for member in image.getmembers()}
+            layer_names: list[str] = []
+            for image_member in image.getmembers():
+                if has_appledouble_component(image_member.name):
+                    errors.append(f"{archive}: {image_rel} contains AppleDouble metadata entry: {image_member.name}")
+                if image_member.name == "manifest.json" and image_member.isfile():
+                    manifest_file = image.extractfile(image_member)
+                    if manifest_file is not None:
+                        manifest = json.loads(manifest_file.read().decode("utf-8"))
+                        if isinstance(manifest, list):
+                            for item in manifest:
+                                layers = item.get("Layers") if isinstance(item, dict) else None
+                                if isinstance(layers, list):
+                                    layer_names.extend(layer for layer in layers if isinstance(layer, str))
+                elif image_member.isfile() and (
+                    image_member.name == "layer.tar" or image_member.name.endswith("/layer.tar")
+                ):
+                    layer_names.append(image_member.name)
+
+            for layer_name in dict.fromkeys(layer_names):
+                layer_member = image_members.get(layer_name)
+                if layer_member is None:
+                    errors.append(f"{archive}: {image_rel} manifest references missing layer {layer_name}")
+                    continue
+                layer_file = image.extractfile(layer_member)
+                if layer_file is None:
+                    continue
+                with tarfile.open(fileobj=io.BytesIO(layer_file.read()), mode="r:*") as layer:
+                    for layer_member in layer.getmembers():
+                        name = "/" + layer_member.name.lstrip("./")
+                        normalized_layer_name = name.lstrip("/")
+                        if has_appledouble_component(layer_member.name):
+                            errors.append(f"{archive}: {image_rel} layer contains AppleDouble metadata entry: {layer_member.name}")
+                        if FORBIDDEN_IMAGE_PATH_RE.search(normalized_layer_name):
+                            errors.append(f"{archive}: {image_rel} layer contains forbidden runtime/source path: {layer_member.name}")
+                        if name in required and layer_member.isfile():
+                            actual.add(name)
+    except (json.JSONDecodeError, tarfile.TarError, UnicodeDecodeError) as exc:
+        return [f"{archive}: {image_rel} is not a readable Docker image tar: {exc}"]
+
+    for path in sorted(required - actual):
+        errors.append(f"{archive}: {image_rel} is missing required image file {path}")
+    return errors
+
+
 def should_scan_text(member_name: str, size: int) -> bool:
     if size > TEXT_SCAN_LIMIT:
         return False
@@ -110,6 +238,9 @@ def decode_text(blob: bytes) -> str | None:
 def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
     errors: list[str] = []
     actual_docs: set[str] = set()
+    actual_files: set[str] = set()
+    image_files: set[str] = set()
+    expected_files, arch = expected_package_files(archive, allowed_docs)
 
     try:
         package = tarfile.open(archive, "r:*")
@@ -119,24 +250,62 @@ def validate_archive(archive: Path, allowed_docs: set[str]) -> list[str]:
     with package:
         for member in package.getmembers():
             rel = package_relative_name(member.name)
+            if has_appledouble_component(member.name):
+                errors.append(f"{archive}: AppleDouble metadata entry included: {rel}")
             if FORBIDDEN_NAME_RE.search(member.name):
                 errors.append(f"{archive}: forbidden local secret/state file included: {rel}")
+
+            if member.isfile():
+                actual_files.add(rel)
+                if DOCKER_IMAGE_RE.fullmatch(rel):
+                    image_files.add(rel)
 
             if is_docs_member(member.name) and member.isfile():
                 actual_docs.add(Path(rel).name)
 
-            if not member.isfile() or not should_scan_text(member.name, member.size):
+            if not member.isfile():
                 continue
 
             extracted = package.extractfile(member)
             if extracted is None:
                 continue
-            text = decode_text(extracted.read(TEXT_SCAN_LIMIT + 1))
+
+            blob = extracted.read()
+            if rel in PACKAGE_BINARIES and arch is not None:
+                arch_error = validate_elf_arch(blob[:64], arch)
+                if arch_error:
+                    errors.append(f"{archive}: {rel} {arch_error}")
+
+            if DOCKER_IMAGE_RE.fullmatch(rel):
+                errors.extend(validate_docker_image_tar(archive, rel, blob))
+
+            if not should_scan_text(member.name, member.size):
+                continue
+
+            text = decode_text(blob[: TEXT_SCAN_LIMIT + 1])
             if text is None:
                 continue
             for label, pattern in FORBIDDEN_TEXT_PATTERNS:
                 if pattern.search(text):
                     errors.append(f"{archive}: {rel} contains {label}")
+
+    unexpected_files = actual_files - expected_files
+    missing_files = expected_files - actual_files
+    if is_docker_package(archive):
+        for path in sorted(unexpected_files - image_files):
+            errors.append(f"{archive}: unexpected package file included: {path}")
+        if len(image_files) != 1:
+            errors.append(f"{archive}: expected exactly one packaged Docker image tar, found {len(image_files)}")
+        elif arch is not None:
+            image_arch = DOCKER_IMAGE_RE.fullmatch(next(iter(image_files))).group(1)
+            if image_arch != arch:
+                errors.append(f"{archive}: Docker image tar architecture {image_arch} does not match package linux-{arch}")
+    else:
+        for path in sorted(unexpected_files):
+            errors.append(f"{archive}: unexpected package file included: {path}")
+
+    for path in sorted(missing_files):
+        errors.append(f"{archive}: required package file is missing: {path}")
 
     extra_docs = actual_docs - allowed_docs
     missing_docs = allowed_docs - actual_docs

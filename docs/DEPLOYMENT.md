@@ -39,6 +39,14 @@ caddy/Caddyfile
 
 Package docs are an explicit allowlist maintained in `scripts/package_docs_allowlist.txt`. Internal production runbooks and troubleshooting notes with private hostnames, SSH paths, live compose paths, router token files, or provider-key material must stay out of release packages.
 
+Release package targets require a clean git tree and reject versions containing `-dirty`. Commit the intended code, generated embedded docs, and admin assets before building customer release artifacts. For a local development artifact that will not be shipped, set `ALLOW_DIRTY_PACKAGE=1` explicitly:
+
+```bash
+ALLOW_DIRTY_PACKAGE=1 make package-one-no-docs
+```
+
+All package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. `scripts/validate_package_contents.py` rejects AppleDouble entries, unexpected files, missing allowlisted docs, internal runbooks, local secret/state filenames, private production markers, raw token/provider-key patterns, and binary-package ELF architecture mismatches. The validation step is part of each package target and must pass before publishing an artifact.
+
 Release metadata is intentionally strict because package and Docker recipes use it in paths, tags, and linker flags. `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` must pass `scripts/validate_build_metadata.py` before package or image commands run. Versions may use ordinary `git describe` characters such as letters, digits, `.`, `_`, `+`, `/`, and `-`; shell metacharacters, empty values, absolute paths, and `..` path components are rejected.
 
 The config and routing script are packaged together so this command works after unpacking:
@@ -71,6 +79,14 @@ Docker Compose packages are built separately:
 
 ```bash
 make package-docker
+```
+
+Docker packages use `docker buildx build --platform linux/<arch> --load`, save exactly one image tar for the package architecture, and run the same package-content validation as binary packages. Validate both release families before handoff:
+
+```bash
+make package-all
+make package-docker-all
+python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*.tar.gz
 ```
 
 Use `docs/DOCKER_DEPLOYMENT.md` when deploying the packaged Docker image tarball plus Caddy compose stack to AWS EC2 or a similar host. Use `docs/DEPLOYMENT_PATTERNS.md` when choosing between evaluation-hosted, self-hosted central, per-environment, per-team, hierarchical/federated, and private managed topologies.

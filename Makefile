@@ -15,11 +15,14 @@ IMAGE_TAG ?= $(VERSION)-$(GOOS)-$(GOARCH)
 DOCS_SITE_DIR ?= docs-site
 DOCS_EMBED_DIR ?= internal/router/docsdist
 PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
+COPYFILE_DISABLE ?= 1
 export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG
+export COPYFILE_DISABLE
+TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: test secret-check validate-build-metadata docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test secret-check validate-build-metadata validate-release-clean docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test: secret-check
 	go test ./...
@@ -28,6 +31,7 @@ secret-check:
 	python3 scripts/check_env_example_secrets.py
 	python3 scripts/check_env_example_secrets_test.py
 	python3 scripts/validate_package_contents_test.py
+	python3 scripts/validate_release_clean_test.py
 	python3 scripts/validate_docker_context.py
 	python3 scripts/harness_security_test.py
 	python3 scripts/makefile_security_test.py
@@ -36,6 +40,9 @@ secret-check:
 
 validate-build-metadata:
 	python3 scripts/validate_build_metadata.py
+
+validate-release-clean:
+	python3 scripts/validate_release_clean.py
 
 docs-qa:
 	python3 scripts/check_docs_public_face.py
@@ -88,6 +95,7 @@ package: package-all
 package-one: docs-build admin-build package-one-no-docs
 
 package-one-no-docs:
+	$(MAKE) validate-release-clean
 	$(MAKE) validate-build-metadata
 	pkg_dir="$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"; \
 	rm -rf "$${pkg_dir}"; \
@@ -106,7 +114,7 @@ package-one-no-docs:
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type d -exec chmod 0755 {} \;
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type f -exec chmod 0644 {} \;
 	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report"
-	tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
+	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
 
 package-all: docs-build admin-build
@@ -124,6 +132,7 @@ package-docker: package-docker-all
 package-docker-one: docs-build admin-build package-docker-one-no-docs
 
 package-docker-one-no-docs:
+	$(MAKE) validate-release-clean
 	$(MAKE) validate-build-metadata
 	docker_pkg_dir="$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"; \
 	rm -rf "$${docker_pkg_dir}"; \
@@ -145,7 +154,7 @@ package-docker-one-no-docs:
 	done < "$(PACKAGE_DOC_ALLOWLIST)"
 	find "$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}" -type d -exec chmod 0755 {} \;
 	find "$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}" -type f -exec chmod 0644 {} \;
-	tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/docker" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"
+	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/docker" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz"
 
 package-docker-all: docs-build admin-build

@@ -54,6 +54,8 @@ make package-docker # linux amd64 and linux arm64 Docker packages
 make package-docker-all # same as package-docker
 ```
 
+Release package targets require a clean git tree and reject `-dirty` versions. Use `ALLOW_DIRTY_PACKAGE=1` only for local development artifacts that will not be shipped. Package tar creation runs with `COPYFILE_DISABLE=1`, and package validation rejects macOS AppleDouble metadata, unexpected package files, missing package-safe docs, internal/private markers, raw secrets, local state, and wrong binary architecture.
+
 Each tarball contains:
 
 ```text
@@ -79,7 +81,7 @@ docs/solution-brief.md
 caddy/Caddyfile
 ```
 
-Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. `docs/DOCS_MAINTENANCE.md` is an internal source-checkout alignment runbook and is intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, and raw token/provider-key patterns are blocked by package validation.
+Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. `docs/DOCS_MAINTENANCE.md` is an internal source-checkout alignment runbook and is intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.
 
 The `router` binary embeds the Docusaurus build output. At runtime, browser access to `/` redirects to `/docs/`; API and operations routes such as `/v1/*`, `/metrics`, `/admin/*`, `/healthz`, and `/readyz` keep precedence. Authenticated admin report assets, when enabled, are embedded separately under `/admin/reports/` and are not part of public Docusaurus docs.
 

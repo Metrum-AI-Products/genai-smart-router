@@ -23,7 +23,7 @@ dist/smart-llmrouter-<version>-docker-linux-arm64.tar.gz
 
 Docker image builds use `docker buildx build --load` for each packaged platform.
 
-Package and image targets validate build metadata before running build commands. Keep `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` to the safe release formats accepted by `scripts/validate_build_metadata.py`; shell metacharacters and path traversal are rejected. `make secret-check` also validates `.dockerignore` against local secret/state fixtures so ignored runtime files such as `env.json`, production config snapshots, router token files, license files/state, local DBs, logs, and generated artifacts do not enter the Docker build context.
+Package targets require a clean git tree and reject versions containing `-dirty`. Use `ALLOW_DIRTY_PACKAGE=1` only for a local development artifact that will not be shipped. Package and image targets validate build metadata before running build commands. Keep `VERSION`, `COMMIT`, `BUILD_DATE`, `GOOS`, `GOARCH`, `PKG_NAME`, `DIST_DIR`, `IMAGE_NAME`, and `IMAGE_TAG` to the safe release formats accepted by `scripts/validate_build_metadata.py`; shell metacharacters and path traversal are rejected. `make secret-check` also validates `.dockerignore` against local secret/state fixtures so ignored runtime files such as `env.json`, production config snapshots, router token files, license files/state, local DBs, logs, and generated artifacts do not enter the Docker build context.
 
 Each package contains:
 
@@ -53,7 +53,23 @@ docs/USAGE_DB_DESIGN.md
 docs/USAGE_REPORTING_PLAYBOOK.md
 ```
 
-Package docs are copied only from `scripts/package_docs_allowlist.txt`. The package build validates the resulting tarball and fails if it contains private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns.
+Package docs are copied only from `scripts/package_docs_allowlist.txt`. Package tar commands run with `COPYFILE_DISABLE=1` so macOS does not inject AppleDouble `._*` metadata. The package build validates the resulting tarball and fails if it contains AppleDouble entries, unexpected package files, missing allowlisted docs, private production runbooks, private host/IP markers, SSH key paths, live production compose config/env/token paths, local secret/state/license filenames, local DB/log artifacts, or raw token/provider-key patterns. The validator also checks that the package has exactly one image tar matching the package architecture and that the saved image layers include `/app/bin/router`, `/app/bin/router-token-gen`, and `/app/bin/router-usage-report`.
+
+Run the full local package validation before release handoff:
+
+```bash
+make package-docker-all
+python3 scripts/validate_package_contents.py --allowlist scripts/package_docs_allowlist.txt dist/smart-llmrouter-*-docker-linux-amd64.tar.gz dist/smart-llmrouter-*-docker-linux-arm64.tar.gz
+```
+
+When Docker is available, load each packaged image and run version checks before deployment:
+
+```bash
+docker load -i images/smart-llmrouter-<version>-linux-<arch>.tar
+docker run --rm --entrypoint /app/bin/router smart-llmrouter:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/router-usage-report smart-llmrouter:<version>-linux-<arch> --version
+```
 
 ## AWS EC2 Host Setup
 

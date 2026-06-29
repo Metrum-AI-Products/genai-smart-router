@@ -19,7 +19,12 @@ smart-llmrouter-<version>-linux-<arch>/
     env.example.json
     scripts/
       router.ts
+  caddy/
+    Caddyfile
+  docs/
 ```
+
+Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, internal runbooks, raw secrets, local state, and macOS archive metadata.
 
 Create a dedicated service account, then create deployment-owned directories:
 

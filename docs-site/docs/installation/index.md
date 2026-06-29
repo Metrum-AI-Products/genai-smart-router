@@ -8,6 +8,8 @@ GenAI Smart Router is installed from a release package. The package contains the
 
 Use this section for customer-managed deployments where an operator receives a binary or Docker Compose release artifact from Metrum.
 
+Release artifacts are validated before handoff. The package validator rejects platform archive metadata, internal runbooks, unexpected files, local state, raw secrets, and architecture mismatches; Docker Compose packages also include a saved image tar for the selected architecture.
+
 ## Choose A Package
 
 | Deployment shape | Use when | Start here |

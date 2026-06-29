@@ -30,6 +30,8 @@ smart-llmrouter-<version>-docker-linux-<arch>/
 
 The shipped Compose file bind-mounts `./config`, `./state`, and `./logs` relative to the `compose/` directory. Prepare those runtime directories from the package templates before starting the service.
 
+Use `docker-linux-amd64` for x86_64 hosts and `docker-linux-arm64` for ARM64 hosts. Release validation checks that the package has exactly one image tar for the selected architecture, required compose/config/docs files, required router binaries in the saved image layers, and no AppleDouble metadata, internal runbooks, raw secrets, or local state files.
+
 ```bash
 cd smart-llmrouter-<version>-docker-linux-<arch>
 docker load -i images/smart-llmrouter-<version>-linux-<arch>.tar
