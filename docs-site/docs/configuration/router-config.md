@@ -351,7 +351,7 @@ Internal vLLM and SGLang services use the same provider catalog structure as ext
 
 External OpenAI-compatible providers follow the same shape. For example, Baseten Model APIs use `base_url: https://inference.baseten.co/v1` with `dialect: openai-chat`, and Crusoe Managed Inference uses `base_url: https://api.inference.crusoecloud.com/v1` with `dialect: openai-chat`; callers still request a deployment-defined router model group, not the upstream provider model ID. For Claude Code-style traffic, Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider with `base_url: https://inference.baseten.co`. The router injects provider keys such as `BASETEN_API_KEY` or `CRUSOE_API_KEY` only when a matching target is selected.
 
-Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in an ordinary-text weighted group. The current/reference `big-coder` example uses Crusoe Nemotron 3 Nano Omni Reasoning only as a text target where configured; it does not claim Crusoe tool, vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it should be treated as historical/catalog/smoke-only unless a deployment revalidates it for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
+Crusoe support in these examples is OpenAI Chat only. A deployment can catalog Crusoe models, expose dedicated Crusoe smoke groups, and place a validated Crusoe target in a weighted group. The current/reference `big-coder` example uses Crusoe `zai/GLM-5.2` as one of its OpenAI Chat tool-capable targets after direct and router-level Chat tool smokes passed; it does not claim Crusoe vision, OpenAI Responses, or Anthropic Messages support until those exact direct and router-level smokes pass. Crusoe Gemma 4 31B-it and Crusoe Nemotron should be treated as historical/catalog/smoke-only unless a deployment revalidates them for the exact active route. If a Crusoe VLM accepts an image but fails the deployment's OCR or image-reasoning acceptance tests, keep it in a smoke group instead of broad `vision` routing.
 
 Fireworks Chat and Fireworks Responses are separate provider skins. Fireworks Chat uses `dialect: openai-chat`; Fireworks Responses uses a separate `dialect: openai-responses` provider. Fireworks docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible base URL and document Responses function tools, provider-hosted MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`. Direct Fireworks OpenAI Chat text and auto-tool smokes passed on 2026-06-28 for GLM 5.2, Kimi K2.7 Code, DeepSeek-V4-Flash, and Qwen3.6 Plus with an explicit `User-Agent`; GPT OSS 20B had already passed text, streaming, cap, reasoning effort, tool-choice, and structured-output smokes on 2026-06-27. Active router targets keep Fireworks image-capable Chat models text-only until direct image and router-level image smokes pass for each exact endpoint. The reference Responses entry is limited to `accounts/fireworks/models/kimi-k2p7-code` after direct and router-level text, function-tool, continuation, streaming, output-cap, and `store=false` smokes passed. Remote provider-hosted MCP/SSE, file-search, code-interpreter, and computer-use tools are rejected by the router before upstream unless a deployment adds a separate reviewed allowlist design; generic hosted search/image descriptors are stripped when those services are not exposed. Keep Fireworks Anthropic Messages, video, and audio support absent until those exact skins pass direct and router-level smokes.
 
@@ -477,28 +477,16 @@ models:
   big-coder:
     strategy: weighted
     targets:
-      - { provider: baseten, model_ref: gpt-oss-120b, weight: 15 }
-      - { provider: minimax, model_ref: m3, weight: 20 }
-      - { provider: kimi, model_ref: kimi-k2-7-code, weight: 17 }
-      - { provider: crusoe, model_ref: nemotron-3-nano-omni-reasoning-30b-a3b, weight: 11, input_modalities: [text] }
-      - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 2 }
-      - { provider: baseten, model_ref: glm-5-2, weight: 6 }
-      - { provider: fireworks, model_ref: gpt-oss-20b, weight: 11 }
-      - { provider: fireworks, model_ref: glm-5p2, weight: 3 }
-      - { provider: fireworks, model_ref: kimi-k2p7-code, weight: 5, input_modalities: [text] }
-      - { provider: fireworks, model_ref: deepseek-v4-flash, weight: 5 }
-      - { provider: fireworks, model_ref: qwen3p6-plus, weight: 5, input_modalities: [text] }
-      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
-      - { provider: minimax, model_ref: m3, dialect: openai-responses, tool_only: true, weight: 18 }
-      - { provider: fireworks_responses, model_ref: kimi-k2p7-code, dialect: openai-responses, tool_only: true, weight: 2 }
-      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
-      - { provider: kimi_anthropic, model_ref: kimi-k2.7-code, tool_only: true, weight: 4 }
-      - { provider: minimax_anthropic, model_ref: m3, tool_only: true, weight: 7 }
-      - { provider: openrouter_responses, model_ref: openrouter-xai-grok-4-3, tool_only: true, weight: 3 }
-      - { provider: openrouter_responses, model_ref: openrouter-minimax-m3, tool_only: true, weight: 1 }
-      - { provider: openrouter_anthropic, model_ref: gemma-4-26b-a4b-it-nitro, tool_only: true, weight: 2 }
-      - { provider: openrouter_anthropic, model_ref: openrouter-xai-grok-4-3, tool_only: true, weight: 3 }
-      - { provider: openrouter_anthropic, model_ref: openrouter-minimax-m3, tool_only: true, weight: 1 }
+      - { provider: fireworks, model_ref: deepseek-v4-flash, weight: 50 }
+      - { provider: crusoe, model_ref: glm-5-2, weight: 25 }
+      - { provider: openai, model_ref: gpt-5.4-nano, weight: 25 }
+      - provider: kimi_anthropic
+        model_ref: kimi-k2.7-code
+        weight: 33
+        tool_only: true
+        default_thinking:
+          type: enabled
+          budget_tokens: 1024
 ```
 
 ## Scripted Routing Options

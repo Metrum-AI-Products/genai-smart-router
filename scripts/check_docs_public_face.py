@@ -43,8 +43,8 @@ PRIVATE_PATTERNS = [
 
 STALE_CURRENT_ROUTE_PATTERNS = [
     (
-        "stale active DeepSeek route claim",
-        re.compile(r"\b(?:current|active|production|reference|hosted)[^\n.]{0,120}\bDeepSeek\b|\bDeepSeek\b[^\n.]{0,120}\b(?:current|active|production|reference|hosted)\b", re.IGNORECASE),
+        "stale active OpenRouter DeepSeek route claim",
+        re.compile(r"\b(?:current|active|production|reference|hosted)[^\n.]{0,120}\bOpenRouter\b[^\n.]{0,120}\bDeepSeek\b|\bOpenRouter\b[^\n.]{0,120}\bDeepSeek\b[^\n.]{0,120}\b(?:current|active|production|reference|hosted)\b", re.IGNORECASE),
     ),
     (
         "stale active Qwen route claim",

@@ -127,7 +127,7 @@ Direct Fireworks Responses results on 2026-06-28:
 |---|---|---|---|---|---|---|---|
 | `accounts/fireworks/models/kimi-k2p7-code` | Passed | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Added to `fireworks_responses`, smoke groups, and low-weight `big-coder` tool-only target |
 | `accounts/fireworks/models/glm-5p2` | Accepted but tiny text budget returned incomplete reasoning text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
-| `accounts/fireworks/models/deepseek-v4-flash` | Accepted but tiny text budget returned incomplete text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
+| `accounts/fireworks/models/deepseek-v4-flash` | Accepted but tiny text budget returned incomplete text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Active in production/reference `big-coder` ordinary-text routing at 50% as of 2026-06-29; keep image and non-Chat skins disabled until separately validated |
 | `accounts/fireworks/models/qwen3p6-plus` | Accepted but tiny text budget returned incomplete text | Passed | Passed | Passed | Returned one call with incomplete status | Honored cap with incomplete status | Not activated; keep for future workload validation |
 | `accounts/fireworks/models/gpt-oss-20b` | Passed | Passed | Failed acceptance: continuation returned unrelated incomplete content | Passed | Did not call the tool in the probe | Honored cap with incomplete status | Not activated for Responses tools |
 

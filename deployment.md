@@ -57,6 +57,87 @@ Validation:
 - Production Harbor retry `prod-big-coder-claude-retry-20260629T195211Z`: `claude-code` + `big-coder` completed without Harbor exceptions but failed task quality with reward 0. The artifact remained the starter `pass`; the Claude Code trajectory repeatedly issued `Read` calls through the selected `kimi-k2.7-code` upstream and did not edit `two_bucket.py`. This was not a router HTTP failure, but it means the production Harbor big-coder validation is not fully green for Claude Code.
 - Production cleanup performed: removed the uploaded package, removed temporary staging files, and deduplicated `SMART_LLMROUTER_VERSION` in `.env`.
 
+## 2026-06-29 temp-coder Anthropic-Compatible Production Targets
+
+Verified production `big-coder` already had both OpenAI-compatible and Anthropic-compatible upstreams. Added Anthropic-compatible tool-only upstreams to production `temp-coder` so both coding groups support OpenAI-shaped and Anthropic Messages-shaped client traffic:
+
+```text
+temp-coder ordinary OpenAI-compatible pool:
+openai/gpt-5.4-nano: 49
+openai/gpt-5.5: 21
+minimax/MiniMax-M3: 15
+kimi/kimi-k2.7-code: 15
+
+temp-coder Anthropic Messages tool-only pool:
+minimax_anthropic/MiniMax-M3: 50
+kimi_anthropic/kimi-k2.7-code: 50, default_thinking enabled with budget_tokens=1024
+```
+
+Production `big-coder` still has OpenAI-compatible ordinary targets and Kimi Anthropic-compatible tool routing:
+
+```text
+fireworks/accounts/fireworks/models/deepseek-v4-flash: 50
+crusoe/zai/GLM-5.2: 25
+openai/gpt-5.4-nano: 25
+kimi_anthropic/kimi-k2.7-code: 33, tool_only, default_thinking enabled with budget_tokens=1024
+```
+
+Config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.temp-coder-anthropic-20260629T193720Z
+```
+
+Validation:
+
+```text
+go test ./internal/router -run 'Test.*Config|TestLoad|TestExample': passed, 32 tests
+go test ./internal/router: passed, 441 tests
+production docker compose config: passed
+production router restarted cleanly on smart-llmrouter:6fc3131-linux-amd64
+production /readyz after restart: 200, version 6fc3131
+local config.production.yaml SHA-256 matched live production config SHA-256
+production big-coder OpenAI Chat smoke: passed
+production big-coder OpenAI Responses smoke: passed
+production big-coder Anthropic Messages tool smoke: passed; observed kimi_anthropic/kimi-k2.7-code with thinking/text blocks
+production temp-coder OpenAI Chat smoke: passed
+production temp-coder OpenAI Responses smoke: passed
+production temp-coder Anthropic Messages tool smoke: passed; observed kimi_anthropic/kimi-k2.7-code with thinking/text blocks
+```
+
+## 2026-06-29 big-coder Fireworks DeepSeek 50% Production Update
+
+Added Fireworks `accounts/fireworks/models/deepseek-v4-flash` back to production `big-coder` as 50% of ordinary non-tool traffic:
+
+```text
+fireworks/accounts/fireworks/models/deepseek-v4-flash: 50
+crusoe/zai/GLM-5.2: 25
+openai/gpt-5.4-nano: 25
+kimi_anthropic/kimi-k2.7-code: 33, tool_only, default_thinking enabled with budget_tokens=1024
+```
+
+The Kimi Anthropic target remains `tool_only` on the current hosted image (`6fc3131-linux-amd64`) so plain OpenAI-shaped requests do not translate into no-thinking Anthropic requests that Kimi rejects.
+
+Config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.big-coder-deepseek50-20260629T193233Z
+```
+
+Validation:
+
+```text
+Direct Fireworks DeepSeek-V4-Flash OpenAI Chat smoke from production host: passed
+go test ./internal/router -run 'Test.*Config|TestLoad|TestExample': passed, 32 tests
+go test ./internal/router: passed, 441 tests
+production docker compose config: passed
+production router restarted cleanly on smart-llmrouter:6fc3131-linux-amd64
+production /readyz after restart: 200, version 6fc3131
+local config.production.yaml SHA-256 matched live production config SHA-256
+production big-coder OpenAI Chat smokes: passed; observed fireworks/accounts/fireworks/models/deepseek-v4-flash, crusoe/zai/GLM-5.2, and openai/gpt-5.4-nano
+production big-coder Anthropic Messages tool smoke: passed; observed kimi_anthropic/kimi-k2.7-code with thinking/text blocks
+```
+
 ## 2026-06-29 Admin Reports, Packaging, And Kubernetes Docs Production Refresh
 
 Deployed package/image `smart-llmrouter:6fc3131-linux-amd64` from source commit `6fc3131`.
@@ -118,6 +199,87 @@ Cleanup:
 - Removed uploaded package from `/tmp`.
 - Removed temporary `/opt/smart-llmrouter.prev`.
 - Ran `docker system prune -f`; reclaimed `0B`.
+
+## 2026-06-29 big-coder Three-Target Production Reduction
+
+Reduced production `big-coder` to the requested three upstreams and removed the other active `big-coder` targets for now:
+
+```text
+crusoe/zai/GLM-5.2: 34
+openai/gpt-5.4-nano: 33
+kimi_anthropic/kimi-k2.7-code: 33, tool_only, default_thinking enabled with budget_tokens=1024
+```
+
+Kimi Anthropic is intentionally `tool_only` on the current hosted image (`6fc3131-linux-amd64`). Without that gate, OpenAI Chat/Responses non-tool requests can be translated to Anthropic Messages without an explicit `thinking` block and Kimi rejects them with upstream 400. Claude Code-style tool-bearing Anthropic Messages traffic passed through Kimi with injected thinking. A package deploy from current `origin/main` would remove that limitation, but local package creation was blocked because the Docker daemon was unavailable.
+
+Config backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.big-coder-three-targets-20260629T190632Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.big-coder-three-toolgate-20260629T191426Z
+```
+
+Validation:
+
+```text
+Direct Crusoe zai/GLM-5.2 OpenAI Chat smoke: passed
+Direct OpenAI gpt-5.4-nano Responses smoke: passed
+Direct Kimi Anthropic Messages smoke: passed only with thinking enabled; thinking disabled/no-thinking was rejected by upstream
+Direct Kimi Anthropic client-tool smoke with thinking enabled: passed
+go test ./internal/router -run 'Test.*Config|TestLoad|TestExample': passed, 32 tests
+go test ./internal/router: passed, 441 tests
+production docker compose config: passed
+production router restarted cleanly on smart-llmrouter:6fc3131-linux-amd64
+production /readyz after restart: 200, version 6fc3131
+local config.production.yaml SHA-256 matched live production config SHA-256
+production big-coder OpenAI Chat smokes: passed; observed crusoe/zai/GLM-5.2 and openai/gpt-5.4-nano
+production big-coder OpenAI Responses smokes: passed; observed openai/gpt-5.4-nano
+production big-coder Anthropic Messages tool smoke: passed; observed kimi_anthropic/kimi-k2.7-code with thinking/text blocks
+```
+
+## 2026-06-29 temp-coder Production Group
+
+Added production model group `temp-coder` for selected coding-agent users. This section records the original creation state; the current production target set was later extended with Anthropic-compatible tool-only upstreams in the 2026-06-29 `temp-coder` Anthropic-compatible section above. The original ordinary OpenAI-compatible pool used only direct upstreams:
+
+```text
+openai/gpt-5.4-nano: 49
+openai/gpt-5.5: 21
+minimax/MiniMax-M3: 15
+kimi/kimi-k2.7-code: 15
+```
+
+Allowed production callers:
+
+```text
+william-metrum-insights-prod
+aditya-metrum-insights-prod
+harbor-reusable-prod
+```
+
+`harbor-reusable-prod` was included because the reusable Harbor production caller is intended to see all deployed model groups for validation and benchmark comparisons.
+
+Config backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.temp-coder-20260629-20260629T184431Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.temp-coder-note-20260629T184918Z
+```
+
+Validation:
+
+```text
+Direct OpenAI gpt-5.4-nano Responses text/tool smoke: passed
+Direct OpenAI gpt-5.5 Responses text/tool smoke: passed with realistic caps; direct max_output_tokens=8 was rejected
+Direct MiniMax-M3 Chat text smoke: passed
+Direct Moonshot kimi-k2.7-code Chat text smoke: passed
+production docker compose config: passed
+production router restarted cleanly on smart-llmrouter:6fc3131-linux-amd64
+production /readyz after restart: 200, version 6fc3131
+local config.production.yaml SHA-256 matched live production config SHA-256
+production /v1/models with harbor-reusable-prod includes temp-coder
+production temp-coder router smokes with max_tokens=128: passed; observed upstreams included openai/gpt-5.4-nano, openai/gpt-5.5, minimax/MiniMax-M3, and kimi/kimi-k2.7-code
+go test ./internal/router -run 'Test.*Config|TestLoad|TestExample': passed, 32 tests
+```
 
 ## 2026-06-29 Bounded Queue Config Raise
 
@@ -606,6 +768,15 @@ admin /admin/reports/ returned 200 and includes dynamic report tabs plus provide
 admin /admin/reports/api/dynamic-score-buckets?since=24h returned report dynamic-score-buckets with rows
 admin /admin/reports/api/provider-catalog-status returned active target and catalog rows
 ```
+
+## 2026-06-29 Big-Coder Cursor Weight Mitigation
+
+- Applied a config-only production update to reduce `big-coder` ordinary OpenAI Chat traffic sent to targets that returned upstream 400s for Aditya's large Cursor payloads on 2026-06-28.
+- New `big-coder` ordinary weights: MiniMax-M3 45%, Kimi K2.7 Code 17%, Crusoe Nemotron 3 Nano Omni Reasoning 11% text-only, Baseten GLM 5.2 8%, Fireworks DeepSeek-V4-Flash 5%, Baseten GPT OSS 120B 3%, Baseten Nemotron 3%, Fireworks GPT OSS 20B 2%, Fireworks Kimi K2.7 Code 2% text-only, Fireworks Qwen3.6 Plus 2% text-only, Fireworks GLM 5.2 1%, OpenAI GPT-5.4 Nano 1%.
+- Reason: production diagnostics showed no recent router or upstream 429s for Aditya; the failures were Cursor `big-coder`/`fast` upstream 400s on Baseten GPT OSS 120B and Fireworks Chat targets, while MiniMax accepted similarly large Cursor OpenAI Chat payloads in the same window.
+- Production config backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.big-coder-cursor-weights-20260629T000535Z`.
+- Verified `sudo docker compose config`, restarted the router, verified `/readyz`, confirmed live `big-coder` ordinary weights total 100, and ran three authenticated `big-coder` chat smokes with HTTP 200 responses.
+- Updated `config.example.yaml`, local `config.production.yaml`, README, Docker deployment docs, and solution brief to match the production routing policy.
 
 ## 2026-06-25 Retention Dry-Run Package Refresh
 

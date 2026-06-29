@@ -464,9 +464,13 @@ providers:
         pricing_notes: Crusoe Managed Inference pay-as-you-go pricing lists GLM 5.2 at
           $1.40/M input, $4.40/M output, and $0.26/M cached tokens. Direct Crusoe text
           smoke passed on 2026-06-24; a max_tokens=1 probe honored the cap but returned
-          empty content with finish=length. Used only for ordinary OpenAI Chat text
-          routing in general groups; tool, structured-output, Responses, and Anthropic
-          skins remain disabled until separately validated.
+          empty content with finish=length. Direct and router-level OpenAI Chat auto-tool
+          smokes passed on 2026-06-29 for the current engineering deployment; Responses,
+          Anthropic, structured-output, and vision skins remain disabled until separately validated.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
       kimi-k2-6:
         model: moonshotai/Kimi-K2.6
         tier: coding
@@ -866,6 +870,25 @@ providers:
         tool_support:
           openai_responses:
           - function
+      gpt-5.5:
+        model: gpt-5.5
+        tier: heavy
+        input_price_per_million_usd: 5.0
+        output_price_per_million_usd: 30.0
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://developers.openai.com/api/docs/pricing
+        pricing_updated_at: '2026-06-25'
+        pricing_notes: Direct OpenAI Responses text smoke passed on 2026-06-29 for
+          the current project. Direct OpenAI Responses function-tool smoke passed
+          on 2026-06-29 with tool_choice auto-style selection. Direct smoke found
+          max_output_tokens 8 is rejected and 64+ works; use realistic output caps
+          for acceptance smokes and coding-agent traffic.
+        tool_support:
+          openai_responses:
+          - function
       gpt-5.4:
         model: gpt-5.4
         tier: vision
@@ -1246,6 +1269,29 @@ models:
     targets:
     - provider: openai
       model_ref: gpt-5.4
+  temp-coder:
+    strategy: weighted
+    targets:
+    - provider: openai
+      model_ref: gpt-5.4-nano
+      weight: 70
+    - provider: minimax
+      model_ref: m3
+      weight: 15
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 15
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 50
+      tool_only: true
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      weight: 50
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 1024
   vision:
     strategy: weighted
     targets:
@@ -1781,89 +1827,26 @@ models:
     strategy: weighted
     attempt_timeout_ms: 180000
     targets:
-    - provider: baseten
-      model_ref: gpt-oss-120b
-      weight: 15
-    - provider: minimax
-      model_ref: m3
-      weight: 20
-    - provider: baseten
-      model_ref: nemotron-120b-a12b
-      weight: 2
-    - provider: baseten
-      model_ref: glm-5-2
-      weight: 5
-    - provider: kimi
-      model_ref: kimi-k2.7-code
-      weight: 17
-    - provider: openai
-      model_ref: gpt-5.4-nano
-      weight: 1
-    - provider: crusoe
-      model_ref: nemotron-3-nano-omni-reasoning-30b-a3b
-      weight: 11
-      input_modalities: [text]
-    - provider: fireworks
-      model_ref: gpt-oss-20b
-      weight: 11
-    - provider: fireworks
-      model_ref: glm-5p2
-      weight: 3
-    - provider: fireworks
-      model_ref: kimi-k2p7-code
-      weight: 5
-      input_modalities: [text]
     - provider: fireworks
       model_ref: deepseek-v4-flash
-      weight: 5
-    - provider: fireworks
-      model_ref: qwen3p6-plus
-      weight: 5
-      input_modalities: [text]
-    - provider: minimax
-      model_ref: m3
-      weight: 18
-      dialect: openai-responses
+      weight: 50
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 25
+    - provider: openai
+      model_ref: gpt-5.4-nano
+      weight: 25
+    - provider: fireworks_responses
+      model_ref: kimi-k2p7-code
+      weight: 33
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
-      weight: 4
+      weight: 33
       tool_only: true
       default_thinking:
         type: enabled
-        budget_tokens: 512
-    - provider: minimax_anthropic
-      model_ref: m3
-      weight: 7
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: gemma-4-26b-a4b-it-nitro
-      weight: 2
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: openrouter-xai-grok-4-3
-      weight: 3
-      tool_only: true
-    - provider: openrouter_responses
-      model_ref: openrouter-minimax-m3
-      weight: 1
-      tool_only: true
-    - provider: fireworks_responses
-      model_ref: kimi-k2p7-code
-      weight: 2
-      tool_only: true
-    - provider: baseten_anthropic
-      model_ref: gpt-oss-120b
-      weight: 8
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: openrouter-xai-grok-4-3
-      weight: 3
-      tool_only: true
-    - provider: openrouter_anthropic
-      model_ref: openrouter-minimax-m3
-      weight: 1
-      tool_only: true
+        budget_tokens: 1024
   agent-tools-smoke:
     strategy: static
     targets:
@@ -2068,6 +2051,7 @@ callers:
   - crusoe-gemma-smoke
   - crusoe-nemotron-omni-smoke
   - openai-gpt54-vision-smoke
+  - temp-coder
   rate:
     rpm: 120
     tpm: 200000

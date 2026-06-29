@@ -1317,11 +1317,19 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		if group.Strategy != "weighted" {
 			t.Fatalf("example config group %s strategy=%q want weighted", name, group.Strategy)
 		}
+		if name == "temp-coder" {
+			assertTempCoderGroup(t, group)
+			continue
+		}
+		if name == "big-coder" {
+			assertReducedBigCoderGroup(t, cfg, group)
+			continue
+		}
 		assertActiveGroupPolicy(t, name, group)
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "temp-coder"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -1384,6 +1392,120 @@ func assertAnthropicCompatibleProvider(t *testing.T, provider ProviderConfig, re
 	t.Helper()
 	if provider.Dialect != "anthropic" || normalizeAuthScheme(provider.AuthScheme) != "bearer" || provider.Models[ref].Model != model {
 		t.Fatalf("provider not configured for Anthropic-compatible bearer skin: %#v", provider)
+	}
+}
+
+func assertTempCoderGroup(t *testing.T, group ModelGroup) {
+	t.Helper()
+	wantNormal := map[string]int{
+		"openai:gpt-5.4-nano": 70,
+		"minimax:MiniMax-M3":  15,
+		"kimi:kimi-k2.7-code": 15,
+	}
+	wantToolOnly := map[string]int{
+		"minimax_anthropic:MiniMax-M3":  50,
+		"kimi_anthropic:kimi-k2.7-code": 50,
+	}
+	normalTotal := 0
+	toolTotal := 0
+	gotNormal := map[string]int{}
+	gotToolOnly := map[string]int{}
+	for _, target := range group.Targets {
+		if target.Provider == "openrouter" || target.Provider == "openrouter_responses" || target.Provider == "openrouter_anthropic" {
+			t.Fatalf("temp-coder target uses OpenRouter, want only direct providers: %#v", target)
+		}
+		key := target.Provider + ":" + target.Model
+		if target.ToolOnly {
+			gotToolOnly[key] = target.Weight
+			toolTotal += target.Weight
+		} else {
+			gotNormal[key] = target.Weight
+			normalTotal += target.Weight
+		}
+		if target.Provider == "kimi_anthropic" {
+			if target.DefaultThinking["type"] != "enabled" || target.DefaultThinking["budget_tokens"] != 1024 {
+				t.Fatalf("temp-coder kimi_anthropic target default_thinking=%#v, want enabled budget 1024", target.DefaultThinking)
+			}
+		}
+	}
+	if normalTotal != 100 || len(gotNormal) != len(wantNormal) {
+		t.Fatalf("temp-coder normal weights=%#v total=%d, want %#v total=100", gotNormal, normalTotal, wantNormal)
+	}
+	for key, weight := range wantNormal {
+		if gotNormal[key] != weight {
+			t.Fatalf("temp-coder normal target %s weight=%d, want %d; all weights=%#v", key, gotNormal[key], weight, gotNormal)
+		}
+	}
+	if toolTotal != 100 || len(gotToolOnly) != len(wantToolOnly) {
+		t.Fatalf("temp-coder tool-only weights=%#v total=%d, want %#v total=100", gotToolOnly, toolTotal, wantToolOnly)
+	}
+	for key, weight := range wantToolOnly {
+		if gotToolOnly[key] != weight {
+			t.Fatalf("temp-coder tool-only target %s weight=%d, want %d; all weights=%#v", key, gotToolOnly[key], weight, gotToolOnly)
+		}
+	}
+}
+
+func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
+	t.Helper()
+	wantNormal := map[string]int{
+		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 50,
+		"crusoe:zai/GLM-5.2":  25,
+		"openai:gpt-5.4-nano": 25,
+	}
+	wantToolOnly := map[string]int{
+		"fireworks_responses:accounts/fireworks/models/kimi-k2p7-code": 33,
+		"kimi_anthropic:kimi-k2.7-code":                                33,
+	}
+	normalTotal := 0
+	gotNormal := map[string]int{}
+	gotToolOnly := map[string]int{}
+	chatToolCapable := map[string]bool{}
+	for _, target := range group.Targets {
+		key := target.Provider + ":" + target.Model
+		if target.ToolOnly {
+			gotToolOnly[key] = target.Weight
+		} else {
+			gotNormal[key] = target.Weight
+			normalTotal += target.Weight
+			provider := cfg.Provider[target.Provider]
+			model := provider.Models[target.ModelRef]
+			if target.Dialect == "openai-chat" || (target.Dialect == "" && provider.Dialect == "openai-chat") {
+				if supportsAnyCapability(model.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice") {
+					chatToolCapable[key] = true
+				}
+			}
+		}
+		if target.Provider == "kimi_anthropic" {
+			if !target.ToolOnly {
+				t.Fatalf("big-coder kimi_anthropic target tool_only=false, want true while hosted image requires default thinking for Kimi")
+			}
+			if target.DefaultThinking["type"] != "enabled" || target.DefaultThinking["budget_tokens"] != 1024 {
+				t.Fatalf("big-coder kimi_anthropic target default_thinking=%#v, want enabled budget 1024", target.DefaultThinking)
+			}
+		}
+	}
+	if normalTotal != 100 || len(gotNormal) != len(wantNormal) {
+		t.Fatalf("big-coder normal weights=%#v total=%d, want %#v total=100", gotNormal, normalTotal, wantNormal)
+	}
+	for key, weight := range wantNormal {
+		if gotNormal[key] != weight {
+			t.Fatalf("big-coder normal target %s weight=%d, want %d; all weights=%#v", key, gotNormal[key], weight, gotNormal)
+		}
+	}
+	if len(chatToolCapable) < 2 {
+		t.Fatalf("big-coder OpenAI Chat tool-capable normal targets=%#v, want at least two independent targets", chatToolCapable)
+	}
+	if !chatToolCapable["fireworks:accounts/fireworks/models/deepseek-v4-flash"] || !chatToolCapable["crusoe:zai/GLM-5.2"] {
+		t.Fatalf("big-coder Chat tool targets=%#v, want Fireworks DeepSeek and Crusoe GLM", chatToolCapable)
+	}
+	if len(gotToolOnly) != len(wantToolOnly) {
+		t.Fatalf("big-coder tool-only weights=%#v, want %#v", gotToolOnly, wantToolOnly)
+	}
+	for key, weight := range wantToolOnly {
+		if gotToolOnly[key] != weight {
+			t.Fatalf("big-coder tool-only target %s weight=%d, want %d; all weights=%#v", key, gotToolOnly[key], weight, gotToolOnly)
+		}
 	}
 }
 
@@ -1518,7 +1640,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 8},
 		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 8},
 		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 8},
-		"big-coder": {15, 20, 0, 17, 1, 2, 5, 0, 0, 11, 11, 3, 5, 5, 5, 12},
+		"big-coder": {3, 45, 0, 17, 1, 3, 8, 0, 0, 11, 2, 1, 2, 5, 2, 12},
 	}
 	expect, ok := want[name]
 	if !ok {

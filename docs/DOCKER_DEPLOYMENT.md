@@ -311,7 +311,7 @@ fast       Baseten GPT OSS 120B 56%, MiniMax-M3 26%, Kimi K2.7 Code 5%, Baseten 
 small      Baseten GPT OSS 120B 58%, MiniMax-M3 28%, Kimi K2.7 Code 4%, Baseten Nemotron 3%, Baseten GLM 5.2 2%, OpenRouter Gemma 4 26B Nitro 2%, Crusoe GLM 5.2 2%, OpenAI GPT-5.4 Nano 1%.
 medium     Baseten GPT OSS 120B 51%, MiniMax-M3 25%, Kimi K2.7 Code 8%, Baseten GLM 5.2 5%, Crusoe GLM 5.2 5%, Baseten Nemotron 3%, OpenRouter Gemma 4 26B Nitro 2%, OpenAI GPT-5.4 Nano 1%.
 high       Baseten GPT OSS 120B 45%, MiniMax-M3 26%, Kimi K2.7 Code 10%, Crusoe GLM 5.2 7%, Baseten GLM 5.2 6%, Baseten Nemotron 3%, OpenRouter Gemma 4 26B Nitro 2%, OpenAI GPT-5.4 Nano 1%.
-big-coder  Code-heavy route: MiniMax-M3 25%, Kimi K2.7 Code 20%, Baseten GPT OSS 120B 17%, Crusoe Nemotron 3 Nano Omni Reasoning 15% text-only, Fireworks GPT OSS 20B 15%, Baseten GLM 5.2 5%, Baseten Nemotron 2%, OpenAI GPT-5.4 Nano 1%.
+big-coder  Temporary code-heavy route: Fireworks DeepSeek-V4-Flash 50%, Crusoe GLM 5.2 25%, OpenAI GPT-5.4 Nano 25% for ordinary text; Kimi Anthropic-compatible Kimi K2.7 Code remains available for tool-bearing Anthropic Messages traffic with default thinking enabled at 1024 tokens.
 ```
 
 Caller tokens are restricted by `callers[].allow`. Model group names are deployment-defined; the names above are examples from this hosted/reference deployment. `/v1/models` only lists model groups allowed for the presented token, and disallowed requests return `403 model-not-allowed` before any upstream provider call.
