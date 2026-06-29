@@ -67,7 +67,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-`--retention-run` follows `server.retention.dry_run`. With `dry_run: true`, it behaves like a status job. With `dry_run: false`, it deletes at most one configured batch per supported table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`) and `usage_detail` (`request_usage`). Unsupported classes are counted and stored as `blocked_not_implemented` with zero deleted rows. `usage_detail` still requires continuous finalized daily rollup coverage for the candidate window before any batch can delete. This slice does not archive rows, schedule retention jobs, expose a full legal-hold admin API, or delete decision telemetry/security/content-capture rows through the generic retention runner.
+`--retention-run` follows `server.retention.dry_run`. With `dry_run: true`, it behaves like a status job. With `dry_run: false`, it deletes at most one configured batch per supported table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Unsupported classes are counted and stored as `blocked_not_implemented` with zero deleted rows. `usage_detail` still requires continuous finalized daily rollup coverage for the candidate window before any batch can delete. This slice does not archive rows, schedule retention jobs, expose a full legal-hold admin API, or delete decision telemetry/security/content-capture rows through the generic retention runner.
 
 Keep retention terms precise:
 
@@ -156,6 +156,8 @@ For policy-failure triage, join `request_usage` to `request_policy_executions` b
 
 For fallback triage, join `request_usage`, `request_attempts`, and `request_fallback_transitions` by `request_id`. A fallback transition row links the failed attempt/candidate to the next fallback candidate with the safe error class, retryable flag, and success flag, so operators can reconstruct cases such as "target selected first, provider returned 429, fallback target succeeded" without reading raw traces.
 
+For upstream shared-capacity triage, join `request_usage` to `request_upstream_shape_events` by `request_id`. Inspect `scope`, `provider`, `model`, `dialect`, `bucket`, `decision`, `retry_after_ms`, and `backoff_reason` to distinguish `provider-shape-throttled`, `model-shape-throttled`, `target-shape-throttled`, `adaptive-backoff-provider-429`, and `adaptive-backoff-provider-quota`. Use these rows with `request_attempts.error_class` to separate proactive local shaping from upstream-returned rate limits or provider quota failures.
+
 Smoke after enabling:
 
 1. Send a normal text request and confirm `request_target_candidates` has bounded candidate rows and `request_routing_decisions` has the selected strategy/target.
@@ -163,7 +165,8 @@ Smoke after enabling:
 3. Send a request with `Cache-Control: no-cache` and confirm `request_cache_reasons.reason = cache-request-no-cache`.
 4. Send an external or script policy failure and confirm a safe `request_policy_executions` row exists without a routing decision row.
 5. Send an upstream failure followed by fallback success and confirm `request_fallback_transitions.fallback_succeeded = true`.
-6. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
+6. Enable a very low provider `traffic_shape` on a local smoke target, send two quick requests, and confirm one `request_upstream_shape_events.decision = 'skipped'` row without raw prompt text or secrets.
+7. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
 
 Filtered benchmark or project report:
 

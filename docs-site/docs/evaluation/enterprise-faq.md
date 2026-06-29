@@ -22,6 +22,20 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Links:** [Prove Router Quality](./prove-router-quality), [Model Group Quality Criteria](./model-group-quality), [Harbor Case Study](./harbor-case-study).
 
+## What happens when an upstream provider rate-limits us?
+
+**Concern:** "Several teams share one provider account. What happens if they collectively exceed provider capacity?"
+
+**Short answer:** Caller limits protect individual keys, and provider/model/target traffic shaping can protect shared upstream capacity across all keys. When an upstream returns `429` or a quota/billing signal, adaptive backoff can temporarily remove that affected target from eligibility while other validated targets continue serving traffic.
+
+**How GenAI Smart Router handles it:** The router checks caller policy first, then request-shape eligibility, then shared upstream shaping. Weighted routing recalculates over targets that are not currently throttled. If every otherwise eligible target is locally throttled, callers receive `503 upstream-capacity-throttled` with a request ID and `Retry-After` when calculable. Provider quota or billing exhaustion remains a separate class from provider rate limiting.
+
+**What you own:** Provider account capacity, shaping limits, model-group fallback mix, adaptive backoff windows, and the rollout/rollback policy for changing those values.
+
+**Proof to request or run:** Configure a low traffic-shape limit on a smoke provider, send parallel requests from two caller tokens, verify one request routes around the throttled target or receives `upstream-capacity-throttled`, then inspect `request_upstream_shape_events` and `request_attempts` for safe scalar evidence.
+
+**Links:** [Router Configuration](../configuration/router-config), [Routing Overview](../routing/overview), [Errors](../reference/errors), [Usage Reporting](../operations/usage-reporting).
+
 ## Can we force some workloads to a specific model?
 
 **Concern:** "Can one sensitive or quality-critical workload always use an approved model?"

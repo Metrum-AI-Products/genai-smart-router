@@ -18,9 +18,10 @@ Every model request follows the same routing pipeline:
 2. Load only the targets configured under that requested group.
 3. Apply model-group contracts and hard eligibility filters.
 4. Filter targets for API skin, tools, structured outputs, input modalities, reasoning controls, and max-token cap behavior.
-5. Run the group's routing strategy over the remaining eligible targets.
-6. Retry through configured fallback targets when the selected upstream fails in a retryable way.
-7. Record safe request, usage, cost, latency, routing-decision, attempt, and fallback telemetry.
+5. Exclude targets that are temporarily unavailable because of provider/model/target shared traffic shaping or adaptive upstream backoff.
+6. Run the group's routing strategy over the remaining eligible targets.
+7. Retry through configured fallback targets when the selected upstream fails in a retryable way.
+8. Record safe request, usage, cost, latency, routing-decision, attempt, fallback, and upstream-shape telemetry.
 
 The router does not select targets from another group just because they are cheaper, lower latency, or more capable. The model group is the caller-facing contract.
 
@@ -52,6 +53,14 @@ Request-shape filtering happens before the routing strategy runs. A weighted or 
 | Positive max-token cap | Target is not marked as unsafe for caller caps. |
 
 If no target in the requested group satisfies the full request shape, the router returns `502 no-eligible-target` before sending an upstream request.
+
+## Shared Upstream Capacity
+
+Operators can configure provider, provider-model, and target `traffic_shape` buckets to protect shared upstream account capacity across all caller keys. This is different from caller RPM/TPM/concurrency policy: a caller can be within its own quota while a provider account or one upstream model is temporarily at capacity.
+
+Shared shaping is enforced at upstream admission time. Cache hits are served before provider capacity is consumed, and a cacheable repeat request does not get rerouted or rejected only because the upstream bucket is currently empty. If the selected target is throttled before an upstream attempt starts, the router skips it and tries the next fallback target. When every otherwise eligible upstream attempt is throttled by provider-side shared capacity, callers receive `503 upstream-capacity-throttled` with a request ID and `Retry-After` when calculable.
+
+Adaptive backoff uses safe upstream classifications. A provider `429` starts rate-limit backoff when configured; provider quota, billing, credit, or balance exhaustion starts a separate quota backoff. The router does not expose raw upstream response bodies in caller errors or telemetry.
 
 ## Stable Group, Changing Upstreams
 

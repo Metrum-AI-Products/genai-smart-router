@@ -22,6 +22,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `pii-filter-failed` | 502 | The router could not apply the configured PII filter. | Retry after the administrator resolves configuration. | Check regex validation, filter limits, and request shape. |
 | `no-eligible-target` | 502 | No configured upstream target satisfies the request requirements. | Try a different allowed group only if instructed. | Add or enable a target that supports the requested dialect, tools, modalities, and cap behavior. |
 | `upstream-rate-limited` | 503 | All eligible upstream attempts were rejected by provider-side rate limits. | Retry later with backoff, or contact the administrator with the request ID if it persists. | Inspect `request_attempts`, provider status, and upstream rate-limit policy. |
+| `upstream-capacity-throttled` | 503 | Every otherwise eligible target is temporarily unavailable because provider/model/target shared shaping or adaptive backoff is protecting upstream capacity. | Retry after the `Retry-After` window when present, or contact the administrator with the request ID. | Inspect `request_upstream_shape_events`, `request_trace_events`, current traffic-shape config, and recent upstream `429` or quota events. |
 | `upstream-quota-exhausted` | 503 | All eligible upstream attempts failed because a provider reported exhausted balance, credits, quota, billing, or payment state. | Retry later only after the provider account is funded or quota is restored; include the request ID when escalating. | Inspect `request_attempts` for `upstream_quota_exhausted`, then verify provider account balance, billing, quota, and entitlement state. |
 | `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class, or a request was blocked by upstream payload controls such as private image URL egress policy. | Retry only after checking whether the request shape is allowed; do not retry blocked private image URLs unchanged. | Inspect request attempts, fallback behavior, provider status, redirect responses, response-size limits, and image URL egress policy. |
 | `upstream-timeout` | 504 | The upstream did not complete within configured timeout. | Retry with a smaller task or larger timeout if available. | Tune timeout, fallback, provider mix, or client token budget. |
@@ -103,6 +104,26 @@ Administrator guidance:
 
 Provider-side balance, credit, quota, billing, and payment failures are distinct from caller-token `quota-exceeded` responses. The router first tries eligible fallback targets. If a fallback succeeds, the caller receives the successful response and diagnostics record the failed attempt. If every eligible attempt fails with provider quota or billing signals, the caller receives `503 upstream-quota-exhausted`.
 
+Provider/model shared traffic shaping is also distinct from caller `429` responses. It protects upstream account or model capacity shared by many callers, so the router returns `503 upstream-capacity-throttled` when all otherwise eligible targets are temporarily unavailable before an upstream call can start. The response includes a safe request ID, target count, and `Retry-After` when the current bucket or adaptive backoff window is calculable.
+
+```json
+{
+  "error": {
+    "type": "upstream-capacity-throttled",
+    "message": "all currently eligible upstream targets for model \"default\" are temporarily capacity-throttled; retry later or contact the router operator with the request_id",
+    "details": {
+      "model": "default",
+      "dialect": "openai-chat",
+      "target_count": 2,
+      "retry_after_ms": 1000,
+      "retryable": true,
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "fallbackUsed": false
+    }
+  }
+}
+```
+
 Safe example:
 
 ```json
@@ -132,6 +153,7 @@ Administrators can use `X-Request-Id` to inspect:
 - `request_usage` for terminal status, selected target, token counts, cost, and cache behavior.
 - `request_attempts` for each provider/model attempt.
 - `request_trace_events` for routing, fallback, timeout, and cache decisions.
+- `request_upstream_shape_events` for provider/model/target admission, skip, rejection, and adaptive-backoff cooldown decisions.
 - `request_errors` for sanitized terminal error summaries.
 
 Diagnostic rows exclude prompt text, raw image payloads, raw router tokens, token hashes, provider API keys, full upstream headers, and unsanitized upstream bodies.

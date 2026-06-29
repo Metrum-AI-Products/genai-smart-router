@@ -45,6 +45,7 @@ type Service struct {
 	license      *licenseManager
 	scripts      map[string]*scriptStrategy
 	observations *dynamicObservationStore
+	shaping      *trafficShapeManager
 }
 
 type adminBasicRuntime struct {
@@ -103,6 +104,7 @@ type upstreamError struct {
 	TimedOut    bool
 	Canceled    bool
 	ResponseLen int64
+	RetryAfter  time.Duration
 	Err         error
 }
 
@@ -153,6 +155,7 @@ func New(cfg *Config) (*Service, error) {
 		metrics:      newMetricsStore(),
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
+		shaping:      newTrafficShapeManager(),
 	}
 	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
 	if err != nil {
@@ -632,8 +635,13 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	s.captureRequestContent(rc, req, r.Header, captureDecision)
 	s.recordDecisionShape(rc, req, dialect)
 	s.recordEligibilityTelemetry(rc, req.Model, group, req, dialect)
-	dec, err := s.pick(req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
+	dec, err := s.pick(rc, req.Model, group, req, dialect, rc.caller, rc.rec.TokenID)
 	if err != nil {
+		var shapeErr upstreamCapacityThrottledError
+		if errors.As(err, &shapeErr) {
+			s.writeUpstreamCapacityThrottledError(w, rc, req.Model, dialect, shapeErr)
+			return
+		}
 		var eligibilityErr routingEligibilityError
 		if errors.As(err, &eligibilityErr) {
 			s.writeRoutingEligibilityError(w, rc, eligibilityErr)
@@ -1092,7 +1100,7 @@ func adminBasicDummyHash() []byte {
 	return []byte("$2a$10$PEWHfUFcvCRVUkh/hggt6eUYdDlrFr0cfzXvIXtLDKpS5uTtYq65i")
 }
 
-func (s *Service) pick(groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, tokenID string) (decision, error) {
+func (s *Service) pick(rc *requestContext, groupName string, group ModelGroup, req *IRRequest, callerDialect string, caller *callerRuntime, tokenID string) (decision, error) {
 	targets := append([]Target(nil), group.Targets...)
 	targets = s.targetsForRequest(targets, req, callerDialect)
 	if len(targets) == 0 {
@@ -1184,15 +1192,180 @@ func (s *Service) loadScripts() error {
 	return nil
 }
 
+func shapeInputForRequest(req *IRRequest, callerDialect string) shapeReservationInput {
+	input := estimateTokens(req)
+	total := reservationEstimate(req, callerDialect)
+	if total < input {
+		total = input
+	}
+	return shapeReservationInput{
+		EstimatedInputTokens: input,
+		ReservedOutputTokens: total - input,
+		TotalReservedTokens:  total,
+	}
+}
+
+func (s *Service) targetsForTrafficShape(rc *requestContext, groupName string, targets []Target, req *IRRequest, callerDialect string) ([]Target, error) {
+	if s == nil || s.shaping == nil || len(targets) == 0 {
+		return targets, nil
+	}
+	in := shapeInputForRequest(req, callerDialect)
+	out := make([]Target, 0, len(targets))
+	var maxRetryAfter time.Duration
+	for _, target := range targets {
+		result := s.shaping.Check(s.shapeScopes(groupName, target), in)
+		if result.OK {
+			out = append(out, target)
+			continue
+		}
+		if result.RetryAfter > maxRetryAfter {
+			maxRetryAfter = result.RetryAfter
+		}
+		s.recordShapeEvents(rc, result.Events)
+		s.recordShapeFilterReason(rc, target, result.Reason)
+		if rc != nil {
+			rc.trace("upstream_shape_filtered", result.Reason, target, 0, http.StatusServiceUnavailable, result.Reason, true, durationMillis(result.RetryAfter))
+		}
+	}
+	if len(out) == 0 {
+		return nil, upstreamCapacityThrottledError{RetryAfter: maxRetryAfter, TargetCount: len(targets)}
+	}
+	return out, nil
+}
+
+func (s *Service) admitTrafficShape(rc *requestContext, groupName string, target Target, in shapeReservationInput) shapeAdmissionResult {
+	if s == nil || s.shaping == nil {
+		return shapeAdmissionResult{OK: true}
+	}
+	result := s.shaping.Admit(s.shapeScopes(groupName, target), in)
+	s.recordShapeEvents(rc, result.Events)
+	return result
+}
+
+func (s *Service) recordAdaptiveTrafficBackoff(rc *requestContext, groupName string, target Target, err upstreamError, in shapeReservationInput) {
+	if s == nil || s.shaping == nil {
+		return
+	}
+	events := s.shaping.StartBackoff(s.shapeScopes(groupName, target), err.Class, err.RetryAfter, in)
+	s.recordShapeEvents(rc, events)
+	if rc != nil {
+		for _, event := range events {
+			rc.trace("upstream_shape_cooldown_started", event.BackoffReason, target, 0, http.StatusServiceUnavailable, event.BackoffReason, true, event.RetryAfterMS)
+		}
+	}
+}
+
+func (s *Service) shapeScopes(groupName string, target Target) []shapeScope {
+	if s == nil || s.cfg == nil {
+		return nil
+	}
+	provider := s.cfg.Provider[target.Provider]
+	dialect := targetDialect(provider, target)
+	modelRef := target.ModelRef
+	providerModel := ProviderModel{}
+	if modelRef != "" {
+		providerModel = provider.Models[modelRef]
+	} else {
+		for ref, model := range provider.Models {
+			if model.Model == target.Model {
+				modelRef = ref
+				providerModel = model
+				break
+			}
+		}
+	}
+	var scopes []shapeScope
+	if trafficShapeEnabled(provider.TrafficShape) {
+		scopes = append(scopes, shapeScope{
+			Scope:    shapeScopeProvider,
+			Key:      strings.Join([]string{shapeScopeProvider, target.Provider, dialect}, "|"),
+			Config:   provider.TrafficShape,
+			Provider: target.Provider,
+			ModelRef: modelRef,
+			Model:    target.Model,
+			Dialect:  dialect,
+		})
+	}
+	if trafficShapeEnabled(providerModel.TrafficShape) {
+		scopes = append(scopes, shapeScope{
+			Scope:    shapeScopeProviderModel,
+			Key:      strings.Join([]string{shapeScopeProviderModel, target.Provider, defaultString(modelRef, target.Model), dialect}, "|"),
+			Config:   providerModel.TrafficShape,
+			Provider: target.Provider,
+			ModelRef: modelRef,
+			Model:    target.Model,
+			Dialect:  dialect,
+		})
+	}
+	if trafficShapeEnabled(target.TrafficShape) {
+		targetKey := strings.Join([]string{shapeScopeTarget, groupName, target.Provider, defaultString(modelRef, target.Model), target.Model, dialect}, "|")
+		scopes = append(scopes, shapeScope{
+			Scope:    shapeScopeTarget,
+			Key:      targetKey,
+			Config:   target.TrafficShape,
+			Provider: target.Provider,
+			ModelRef: modelRef,
+			Model:    target.Model,
+			Dialect:  dialect,
+		})
+	}
+	return scopes
+}
+
+func (s *Service) recordShapeEvents(rc *requestContext, events []upstreamShapeEventLogRecord) {
+	if rc == nil || len(events) == 0 {
+		return
+	}
+	for _, event := range events {
+		event.Seq = len(rc.rec.UpstreamShapeEvents) + 1
+		if event.TS == "" {
+			event.TS = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+		}
+		rc.rec.UpstreamShapeEvents = append(rc.rec.UpstreamShapeEvents, event)
+	}
+}
+
+func (s *Service) recordShapeFilterReason(rc *requestContext, target Target, reason string) {
+	if !s.decisionTelemetryEnabled() || rc == nil || reason == "" {
+		return
+	}
+	maxReasons := s.cfg.Server.DecisionTelemetry.MaxFilterReasons
+	if maxReasons <= 0 {
+		maxReasons = 256
+	}
+	if len(rc.rec.DecisionFilterReasons) >= maxReasons {
+		return
+	}
+	rc.rec.DecisionFilterReasons = append(rc.rec.DecisionFilterReasons, decisionFilterReasonLogRecord{
+		Seq:            len(rc.rec.DecisionFilterReasons) + 1,
+		CandidateIndex: candidateIndexForTarget(rc.rec.DecisionCandidates, target),
+		Stage:          "traffic_shape",
+		Reason:         reason,
+	})
+}
+
 func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerDialect string, req *IRRequest, dec decision) (*IRResponse, int, bool, error) {
 	targets := append([]Target{dec.Target}, dec.Fallbacks...)
 	var lastErr error
+	skippedByShape := 0
+	var maxRetryAfter time.Duration
 	for i, tgt := range targets {
 		if err := ctx.Err(); err != nil {
 			lastErr = classifyContextError(err)
 			break
 		}
-		attemptIndex := i + 1
+		shapeInput := shapeInputForRequest(req, callerDialect)
+		shapeAd := s.admitTrafficShape(rc, dec.GroupName, tgt, shapeInput)
+		if !shapeAd.OK {
+			skippedByShape++
+			if shapeAd.RetryAfter > maxRetryAfter {
+				maxRetryAfter = shapeAd.RetryAfter
+			}
+			rc.trace("upstream_shape_skipped", shapeAd.Reason, tgt, 0, http.StatusServiceUnavailable, shapeAd.Reason, true, durationMillis(shapeAd.RetryAfter))
+			lastErr = upstreamCapacityThrottledError{RetryAfter: maxRetryAfter, TargetCount: len(targets)}
+			continue
+		}
+		attemptIndex := len(rc.rec.AttemptsDetail) + 1
 		resp, attempt, err := s.callOne(ctx, callerDialect, req, dec.GroupName, tgt, attemptIndex)
 		if attempt.ErrorMessage != "" {
 			attempt.ErrorMessage = s.sanitizeDiagnosticError(attempt.ErrorMessage)
@@ -1207,6 +1380,7 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 			return resp, attemptIndex, i > 0, nil
 		}
 		classified := classifyError(err)
+		s.recordAdaptiveTrafficBackoff(rc, dec.GroupName, tgt, classified, shapeInput)
 		if i < len(targets)-1 {
 			attempt.FallbackReason = classified.Class
 		}
@@ -1237,7 +1411,10 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 			s.recordFallbackTransitionTelemetry(rc, targets, i, attemptIndex, classified)
 		}
 	}
-	return nil, len(targets), len(targets) > 1, lastErr
+	if skippedByShape == len(targets) {
+		return nil, len(rc.rec.AttemptsDetail), false, upstreamCapacityThrottledError{RetryAfter: maxRetryAfter, TargetCount: len(targets)}
+	}
+	return nil, len(rc.rec.AttemptsDetail), len(rc.rec.AttemptsDetail) > 1, lastErr
 }
 
 func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequest, groupName string, target Target, attemptIndex int) (*IRResponse, attemptLogRecord, error) {
@@ -1321,22 +1498,26 @@ func (s *Service) callOne(ctx context.Context, callerDialect string, req *IRRequ
 	if httpResp.StatusCode == http.StatusTooManyRequests || httpResp.StatusCode >= 500 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
+		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
 		attempt.ErrorClass = upErr.Class
 		attempt.ErrorMessage = upErr.Message
 		attempt.Retryable = upErr.Retryable
+		attempt.RetryAfterMS = durationMillis(upErr.RetryAfter)
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
+		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ResponseBytes = int64(len(raw))
 		attempt.ErrorClass = upErr.Class
 		attempt.ErrorMessage = upErr.Message
 		attempt.Retryable = upErr.Retryable
+		attempt.RetryAfterMS = durationMillis(upErr.RetryAfter)
 		upErr.ResponseLen = attempt.ResponseBytes
 		return nil, attempt, upErr
 	}
@@ -1666,7 +1847,7 @@ func classifyError(err error) upstreamError {
 
 func errorTypeRetryable(errorType string) bool {
 	switch errorType {
-	case "upstream-timeout", "upstream-rate-limited", "upstream-quota-exhausted", "upstream-failed":
+	case "upstream-timeout", "upstream-rate-limited", "upstream-quota-exhausted", "upstream-capacity-throttled", "upstream-failed":
 		return true
 	default:
 		return false
@@ -2307,6 +2488,11 @@ func (s *Service) writeRoutingPolicyError(w http.ResponseWriter, rc *requestCont
 }
 
 func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestContext, req *IRRequest, dec decision, attempts int, err error, captureDecision contentCaptureDecision) {
+	var shapeErr upstreamCapacityThrottledError
+	if errors.As(err, &shapeErr) {
+		s.writeUpstreamCapacityThrottledError(w, rc, req.Model, rc.dialect, shapeErr)
+		return
+	}
 	classified := classifyError(err)
 	code, status := upstreamFailureResponse(classified, rc)
 	if rc != nil {
@@ -2341,6 +2527,43 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 				"request_id":   rc.id,
 				"fallbackUsed": attempts > 1,
 			},
+		},
+	})
+}
+
+func (s *Service) writeUpstreamCapacityThrottledError(w http.ResponseWriter, rc *requestContext, model, dialect string, err upstreamCapacityThrottledError) {
+	code := "upstream-capacity-throttled"
+	status := http.StatusServiceUnavailable
+	if header := retryAfterHeaderValue(err.RetryAfter); header != "" {
+		w.Header().Set("Retry-After", header)
+	}
+	if rc != nil {
+		rc.trace("upstream_capacity_throttled", code, Target{}, 0, status, code, true, durationMillis(err.RetryAfter))
+		rc.rec.Status = status
+		rc.rec.Error = &code
+		rc.rec.ErrorClass = code
+		rc.rec.ErrorMessage = code
+		s.finish(rc, status, &code)
+	}
+	details := map[string]any{
+		"model":        model,
+		"dialect":      dialect,
+		"target_count": err.TargetCount,
+		"retryable":    true,
+		"request_id":   "",
+		"fallbackUsed": false,
+	}
+	if rc != nil {
+		details["request_id"] = rc.id
+	}
+	if retryMS := int64(math.Ceil(float64(err.RetryAfter) / float64(time.Millisecond))); retryMS > 0 {
+		details["retry_after_ms"] = retryMS
+	}
+	writeJSON(w, status, map[string]any{
+		"error": map[string]any{
+			"type":    code,
+			"message": fmt.Sprintf("all currently eligible upstream targets for model %q are temporarily capacity-throttled; retry later or contact the router operator with the request_id", model),
+			"details": details,
 		},
 	})
 }

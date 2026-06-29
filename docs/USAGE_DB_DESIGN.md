@@ -24,9 +24,10 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 
 - `request_attempts`: one scalar row per upstream attempt, including provider/model, status, timing, timeout/cancel flags, retryability, and sanitized error class/message.
 - `request_trace_events`: ordered scalar router events such as request accepted, cache decision, upstream attempt, fallback, timeout, and terminal failure.
+- `request_upstream_shape_events`: one scalar row per provider/model/target shaping decision, including scope, provider, model reference or label, dialect, bucket, decision, retry-after milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and safe backoff reason.
 - `request_errors`: one scalar terminal error row per failed request for fast incident queries.
 
-These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, or unsanitized provider response bodies.
+These tables are keyed by `request_id`. They must not store raw prompts, image payloads, bearer tokens, provider keys, token hashes, full upstream headers, raw Retry-After headers, or unsanitized provider response bodies.
 
 Usage rollups are generated from stored `request_usage` rows and also follow the scalar relational rule:
 
@@ -50,7 +51,7 @@ Commercial retention tables also follow the scalar relational rule:
 - `legal_holds`: active or released holds keyed by hold ID, data class, optional request ID, timestamp range, reason, subject, creator/releaser, and timestamps.
 - `legal_hold_audit_events`: scalar audit rows for hold create/release/update workflows.
 
-The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_errors`) and rollup-gated `usage_detail` (`request_usage`) when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
+The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_upstream_shape_events`, `request_errors`) and rollup-gated `usage_detail` (`request_usage`) when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 

@@ -392,6 +392,61 @@ Use `control: effort_enum` for upstreams that accept levels such as `low`, `medi
 
 For a complete rollout guide with weighted-group examples, caller requests, `/v1/models` verification, and negative `no-eligible-target` tests, see [Reasoning Routing](./reasoning-routing).
 
+## Provider Shared Traffic Shaping
+
+Provider, provider-model, and target entries can declare optional `traffic_shape` blocks. These protect shared upstream capacity across all caller keys. They complement caller `rate` and `quota` policy: caller limits still run first, while provider shaping decides whether a selected upstream target can be used right now.
+
+```yaml
+providers:
+  baseten:
+    base_url: https://inference.example.com/v1
+    dialect: openai-chat
+    api_key_env: BASETEN_API_KEY
+    traffic_shape:
+      enabled: true
+      request_start_per_sec: 10
+      request_burst: 30
+      input_tokens_per_sec: 500000
+      input_token_burst: 1500000
+      total_reserved_tokens_per_sec: 750000
+      total_reserved_token_burst: 2000000
+      upstream_429_backoff:
+        enabled: true
+        min_backoff_ms: 1000
+        max_backoff_ms: 60000
+        multiplier: 2.0
+        honor_retry_after: true
+      upstream_quota_backoff:
+        enabled: true
+        min_backoff_ms: 30000
+        max_backoff_ms: 300000
+        multiplier: 2.0
+        honor_retry_after: true
+    models:
+      gpt-oss-120b:
+        model: openai/gpt-oss-120b
+        traffic_shape:
+          request_start_per_sec: 3
+          request_burst: 8
+
+models:
+  default:
+    strategy: weighted
+    targets:
+      - provider: baseten
+        model_ref: gpt-oss-120b
+        weight: 20
+        traffic_shape:
+          request_start_per_sec: 1
+          request_burst: 2
+```
+
+Active provider, provider-model, and target scopes are cumulative. A request must pass every configured scope before the router calls upstream. If a lower-level block is omitted, no extra lower-level bucket is created; the provider bucket still applies when configured. Shaping admission happens after cache lookup and immediately before each upstream attempt, so cache hits do not consume shared provider capacity. If the selected target is temporarily throttled, the attempt path skips that target and tries the next fallback target.
+
+`request_start_per_sec` limits upstream request starts. `input_tokens_per_sec` uses the router's request input-token estimate. `total_reserved_tokens_per_sec` uses estimated input plus the caller's output cap reservation. Burst fields are required for the matching rate field.
+
+Adaptive backoff starts when an upstream attempt is classified as `upstream_rate_limited` or `upstream_quota_exhausted`. `Retry-After` is honored only when enabled and bounded by the configured `max_backoff_ms`; provider quota/billing exhaustion can use a separate longer `upstream_quota_backoff`. Shape decisions are logged as safe scalar `request_upstream_shape_events` rows and trace events without request bodies, upstream response bodies, provider keys, router tokens, or token hashes.
+
 ## Per-Group Weighted Routing
 
 Weights are local to each model group. A target with weight `60` in one example group has no relationship to a target with weight `60` in another group. The group names in this snippet are examples; use names that match your deployment policy.
@@ -719,7 +774,7 @@ Image-bearing requests also bypass response caching. Usage logs and the usage da
 
 Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Requests that exceed `max_replacements_per_request` fail closed with `pii-filter-blocked` before any upstream call. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. External policy services receive only derived safe context unless `external_policy.include_request: true` is explicitly enabled, in which case the request mirror is redacted first. See [PII Filtering](./pii-filtering).
 
-Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture: arbitrary upstream bodies are collapsed to a redaction marker, and prompt-like fields, nested upstream bodies, and secret-shaped values are redacted before JSONL or usage DB persistence.
+Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, `request_upstream_shape_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class and safe shaping decision data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture: arbitrary upstream bodies are collapsed to a redaction marker, and prompt-like fields, nested upstream bodies, and secret-shaped values are redacted before JSONL or usage DB persistence.
 
 Browser-admin authentication is configured under `server.admin_auth.basic` and `server.admin_auth.oidc`; both remain disabled unless an operator explicitly enables them. Basic Auth establishes subjects such as `basic:admin`. OIDC sessions establish subjects such as `user:alice@example.com` when `subject_claim: email`. Browser-admin identity is separate from router caller tokens for `/v1/*` and from caller-token metrics access for `/metrics`. Keep password hashes and OIDC client secrets in environment variables, configure trusted proxy CIDRs for forwarded HTTPS state, and use secure session cookies in production. See [Admin Authentication](./admin-authentication) for bcrypt hash setup, TLS requirements, and admin auth validation endpoints. See [Admin Authorization](./admin-authorization) for Casbin metrics, content-capture maintenance, and report policy.
 
@@ -743,7 +798,7 @@ curl -X POST "$SMART_ROUTER_BASE_URL/v1/content-captures/purge-expired" \
   -H "Authorization: Bearer $CONTENT_ADMIN_ROUTER_TOKEN"
 ```
 
-Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. If every eligible attempt fails, exhausted upstream timeouts return `504 upstream-timeout`, provider rate limits return `503 upstream-rate-limited`, provider balance/credit/quota/billing exhaustion returns `503 upstream-quota-exhausted`, and other exhausted upstream failures return `502 upstream-failed`. Fallback targets are attempted before the router returns one of these terminal errors.
+Per-attempt upstream timeouts can be configured globally, per model group, or per target. `0` disables the per-attempt cap while the global `server.upstream.timeout_ms` still bounds the HTTP client. If every eligible attempt fails, exhausted upstream timeouts return `504 upstream-timeout`, provider rate limits return `503 upstream-rate-limited`, provider balance/credit/quota/billing exhaustion returns `503 upstream-quota-exhausted`, provider/model/target shared-capacity shaping returns `503 upstream-capacity-throttled`, and other exhausted upstream failures return `502 upstream-failed`. Fallback targets are attempted before the router returns one of these terminal errors.
 
 Cataloged vision models are not automatically active routes. Keep a vision candidate catalog-only until it passes the exact direct upstream and router-level image smoke for the intended task and API dialect.
 

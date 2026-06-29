@@ -226,6 +226,7 @@ The same token and model-group rules apply to SDK calls: `/v1/models` shows only
 | `502 no-eligible-target` for tools or images | The group is allowed but lacks a validated target for that request shape | Ask for a compatible group or target. |
 | `503 upstream-quota-exhausted` | All eligible upstream providers reported exhausted balance, credits, quota, billing, or payment state | Retry after the administrator restores provider quota or include the request ID when escalating. |
 | `503 upstream-rate-limited` | All eligible upstream providers were rate limited | Retry with backoff or include the request ID when escalating. |
+| `503 upstream-capacity-throttled` | Provider/model/target shared shaping or adaptive backoff temporarily removed all otherwise eligible targets | Retry after the `Retry-After` window when present or include the request ID when escalating. |
 | `504 upstream-timeout` | The selected upstream did not finish before timeout | Retry a smaller task or ask the administrator to inspect attempts. |
 
 See [Error Reference](../reference/errors) for the full structured error list.

@@ -253,34 +253,36 @@ type DecisionTelemetryConfig struct {
 }
 
 type ProviderConfig struct {
-	BaseURL    string                   `yaml:"base_url"`
-	Dialect    string                   `yaml:"dialect"`
-	APIKey     string                   `yaml:"api_key"`
-	APIKeyEnv  string                   `yaml:"api_key_env"`
-	KeyID      string                   `yaml:"key_id"`
-	AuthScheme string                   `yaml:"auth_scheme"`
-	Headers    map[string]string        `yaml:"headers"`
-	Models     map[string]ProviderModel `yaml:"models"`
+	BaseURL      string                   `yaml:"base_url"`
+	Dialect      string                   `yaml:"dialect"`
+	APIKey       string                   `yaml:"api_key"`
+	APIKeyEnv    string                   `yaml:"api_key_env"`
+	KeyID        string                   `yaml:"key_id"`
+	AuthScheme   string                   `yaml:"auth_scheme"`
+	Headers      map[string]string        `yaml:"headers"`
+	TrafficShape TrafficShapeConfig       `yaml:"traffic_shape" json:"trafficShape,omitempty"`
+	Models       map[string]ProviderModel `yaml:"models"`
 }
 
 type ProviderModel struct {
-	Model                              string           `yaml:"model" json:"model"`
-	Dialect                            string           `yaml:"dialect" json:"dialect,omitempty"`
-	DisplayName                        string           `yaml:"display_name" json:"displayName,omitempty"`
-	ContextTokens                      int              `yaml:"context_tokens" json:"contextTokens,omitempty"`
-	InputPricePerMillionUSD            float64          `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64          `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64          `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64          `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string           `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string           `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string           `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport      `yaml:"tool_support" json:"toolSupport,omitempty"`
-	Reasoning                          ReasoningSupport `yaml:"reasoning" json:"reasoning,omitempty"`
-	InputModalities                    []string         `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string         `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool            `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
-	ForceStoreFalse                    bool             `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	Model                              string             `yaml:"model" json:"model"`
+	Dialect                            string             `yaml:"dialect" json:"dialect,omitempty"`
+	DisplayName                        string             `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int                `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	InputPricePerMillionUSD            float64            `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64            `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64            `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64            `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string             `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string             `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string             `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport        `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport   `yaml:"reasoning" json:"reasoning,omitempty"`
+	InputModalities                    []string           `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string           `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool              `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse                    bool               `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	TrafficShape                       TrafficShapeConfig `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -520,34 +522,55 @@ type ExternalPolicyConfig struct {
 }
 
 type Target struct {
-	Provider                           string            `yaml:"provider" json:"provider"`
-	Model                              string            `yaml:"model" json:"model"`
-	ModelRef                           string            `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect                            string            `yaml:"dialect" json:"dialect"`
-	DisplayName                        string            `yaml:"display_name" json:"displayName,omitempty"`
-	ContextTokens                      int               `yaml:"context_tokens" json:"contextTokens,omitempty"`
-	ToolOnly                           bool              `yaml:"tool_only" json:"toolOnly,omitempty"`
-	TimeoutMS                          int               `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
-	DefaultThinking                    map[string]any    `yaml:"default_thinking" json:"defaultThinking,omitempty"`
-	Tags                               []string          `yaml:"tags" json:"tags,omitempty"`
-	Weight                             int               `yaml:"weight" json:"weight"`
-	RPM                                int               `yaml:"rpm" json:"rpm"`
-	Tier                               string            `yaml:"tier" json:"tier"`
-	Cost                               int               `yaml:"cost" json:"cost"`
-	InputPricePerMillionUSD            float64           `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64           `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64           `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64           `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string            `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string            `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string            `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport       `yaml:"tool_support" json:"toolSupport,omitempty"`
-	Reasoning                          ReasoningSupport  `yaml:"reasoning" json:"reasoning,omitempty"`
-	InputModalities                    []string          `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string          `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool             `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
-	ForceStoreFalse                    bool              `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
-	Validation                         *TargetValidation `yaml:"validation" json:"validation,omitempty"`
+	Provider                           string             `yaml:"provider" json:"provider"`
+	Model                              string             `yaml:"model" json:"model"`
+	ModelRef                           string             `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect                            string             `yaml:"dialect" json:"dialect"`
+	DisplayName                        string             `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int                `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	ToolOnly                           bool               `yaml:"tool_only" json:"toolOnly,omitempty"`
+	TimeoutMS                          int                `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
+	DefaultThinking                    map[string]any     `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Tags                               []string           `yaml:"tags" json:"tags,omitempty"`
+	Weight                             int                `yaml:"weight" json:"weight"`
+	RPM                                int                `yaml:"rpm" json:"rpm"`
+	Tier                               string             `yaml:"tier" json:"tier"`
+	Cost                               int                `yaml:"cost" json:"cost"`
+	InputPricePerMillionUSD            float64            `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64            `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64            `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64            `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string             `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string             `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string             `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport        `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport   `yaml:"reasoning" json:"reasoning,omitempty"`
+	InputModalities                    []string           `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string           `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool              `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse                    bool               `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	Validation                         *TargetValidation  `yaml:"validation" json:"validation,omitempty"`
+	TrafficShape                       TrafficShapeConfig `yaml:"traffic_shape" json:"trafficShape,omitempty"`
+}
+
+type TrafficShapeConfig struct {
+	Enabled                   *bool                `yaml:"enabled" json:"enabled,omitempty"`
+	RequestStartPerSec        float64              `yaml:"request_start_per_sec" json:"requestStartPerSec,omitempty"`
+	RequestBurst              int                  `yaml:"request_burst" json:"requestBurst,omitempty"`
+	InputTokensPerSec         float64              `yaml:"input_tokens_per_sec" json:"inputTokensPerSec,omitempty"`
+	InputTokenBurst           int                  `yaml:"input_token_burst" json:"inputTokenBurst,omitempty"`
+	TotalReservedTokensPerSec float64              `yaml:"total_reserved_tokens_per_sec" json:"totalReservedTokensPerSec,omitempty"`
+	TotalReservedTokenBurst   int                  `yaml:"total_reserved_token_burst" json:"totalReservedTokenBurst,omitempty"`
+	Upstream429Backoff        TrafficBackoffConfig `yaml:"upstream_429_backoff" json:"upstream429Backoff,omitempty"`
+	UpstreamQuotaBackoff      TrafficBackoffConfig `yaml:"upstream_quota_backoff" json:"upstreamQuotaBackoff,omitempty"`
+}
+
+type TrafficBackoffConfig struct {
+	Enabled         *bool   `yaml:"enabled" json:"enabled,omitempty"`
+	MinBackoffMS    int     `yaml:"min_backoff_ms" json:"minBackoffMs,omitempty"`
+	MaxBackoffMS    int     `yaml:"max_backoff_ms" json:"maxBackoffMs,omitempty"`
+	Multiplier      float64 `yaml:"multiplier" json:"multiplier,omitempty"`
+	HonorRetryAfter *bool   `yaml:"honor_retry_after" json:"honorRetryAfter,omitempty"`
 }
 
 type TargetValidation struct {
@@ -901,9 +924,15 @@ func (c *Config) Validate() error {
 		if p.AuthScheme != "" && normalizeAuthScheme(p.AuthScheme) == "" {
 			return fmt.Errorf("provider %s has unsupported auth_scheme %q", name, p.AuthScheme)
 		}
+		if err := validateTrafficShape("provider "+name+" traffic_shape", p.TrafficShape); err != nil {
+			return err
+		}
 		for ref, model := range p.Models {
 			if model.Model == "" {
 				return fmt.Errorf("provider %s model %s missing model", name, ref)
+			}
+			if err := validateTrafficShape("provider "+name+" model "+ref+" traffic_shape", model.TrafficShape); err != nil {
+				return err
 			}
 			if model.Dialect != "" && normalizeDialect(model.Dialect) == "" {
 				return fmt.Errorf("provider %s model %s has unsupported dialect %q", name, ref, model.Dialect)
@@ -1080,6 +1109,9 @@ func (c *Config) Validate() error {
 			if err := validateTargetValidation(name, resolved); err != nil {
 				return err
 			}
+			if err := validateTrafficShape("model group "+name+" target "+resolved.Model+" traffic_shape", resolved.TrafficShape); err != nil {
+				return err
+			}
 			m.Targets[i] = resolved
 		}
 		if err := c.validateModelGroupContract(name, m); err != nil {
@@ -1142,6 +1174,90 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validateTrafficShape(label string, cfg TrafficShapeConfig) error {
+	if cfg.RequestStartPerSec < 0 {
+		return fmt.Errorf("%s request_start_per_sec cannot be negative", label)
+	}
+	if cfg.RequestBurst < 0 {
+		return fmt.Errorf("%s request_burst cannot be negative", label)
+	}
+	if cfg.InputTokensPerSec < 0 {
+		return fmt.Errorf("%s input_tokens_per_sec cannot be negative", label)
+	}
+	if cfg.InputTokenBurst < 0 {
+		return fmt.Errorf("%s input_token_burst cannot be negative", label)
+	}
+	if cfg.TotalReservedTokensPerSec < 0 {
+		return fmt.Errorf("%s total_reserved_tokens_per_sec cannot be negative", label)
+	}
+	if cfg.TotalReservedTokenBurst < 0 {
+		return fmt.Errorf("%s total_reserved_token_burst cannot be negative", label)
+	}
+	for name, backoff := range map[string]TrafficBackoffConfig{
+		"upstream_429_backoff":   cfg.Upstream429Backoff,
+		"upstream_quota_backoff": cfg.UpstreamQuotaBackoff,
+	} {
+		if backoff.MinBackoffMS < 0 {
+			return fmt.Errorf("%s %s min_backoff_ms cannot be negative", label, name)
+		}
+		if backoff.MaxBackoffMS < 0 {
+			return fmt.Errorf("%s %s max_backoff_ms cannot be negative", label, name)
+		}
+		if backoff.Multiplier < 0 {
+			return fmt.Errorf("%s %s multiplier cannot be negative", label, name)
+		}
+		if backoff.MaxBackoffMS > 0 && backoff.MinBackoffMS > backoff.MaxBackoffMS {
+			return fmt.Errorf("%s %s min_backoff_ms cannot exceed max_backoff_ms", label, name)
+		}
+		if trafficBackoffConfigured(backoff) && !trafficShapeConfigured(cfg) {
+			return fmt.Errorf("%s %s requires traffic_shape enabled or at least one traffic limit", label, name)
+		}
+	}
+	if cfg.Enabled != nil && !*cfg.Enabled {
+		return nil
+	}
+	if cfg.RequestStartPerSec > 0 && cfg.RequestBurst == 0 {
+		return fmt.Errorf("%s request_burst is required when request_start_per_sec is set", label)
+	}
+	if cfg.InputTokensPerSec > 0 && cfg.InputTokenBurst == 0 {
+		return fmt.Errorf("%s input_token_burst is required when input_tokens_per_sec is set", label)
+	}
+	if cfg.TotalReservedTokensPerSec > 0 && cfg.TotalReservedTokenBurst == 0 {
+		return fmt.Errorf("%s total_reserved_token_burst is required when total_reserved_tokens_per_sec is set", label)
+	}
+	return nil
+}
+
+func trafficShapeConfigured(cfg TrafficShapeConfig) bool {
+	return cfg.Enabled != nil ||
+		cfg.RequestStartPerSec != 0 ||
+		cfg.RequestBurst != 0 ||
+		cfg.InputTokensPerSec != 0 ||
+		cfg.InputTokenBurst != 0 ||
+		cfg.TotalReservedTokensPerSec != 0 ||
+		cfg.TotalReservedTokenBurst != 0 ||
+		trafficBackoffConfigured(cfg.Upstream429Backoff) ||
+		trafficBackoffConfigured(cfg.UpstreamQuotaBackoff)
+}
+
+func trafficShapeEnabled(cfg TrafficShapeConfig) bool {
+	if cfg.Enabled != nil {
+		return *cfg.Enabled
+	}
+	return trafficShapeConfigured(cfg)
+}
+
+func trafficBackoffConfigured(cfg TrafficBackoffConfig) bool {
+	return cfg.Enabled != nil || cfg.MinBackoffMS != 0 || cfg.MaxBackoffMS != 0 || cfg.Multiplier != 0 || cfg.HonorRetryAfter != nil
+}
+
+func trafficBackoffEnabled(cfg TrafficBackoffConfig) bool {
+	if cfg.Enabled != nil {
+		return *cfg.Enabled
+	}
+	return trafficBackoffConfigured(cfg)
 }
 
 func validateAdminAuth(cfg AdminAuthConfig, usage UsageDBConfig) error {

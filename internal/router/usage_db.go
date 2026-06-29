@@ -850,6 +850,7 @@ type requestAttemptRecord struct {
 	RequestBytes     int64  `gorm:"column:request_bytes;not null"`
 	ResponseBytes    int64  `gorm:"column:response_bytes;not null"`
 	AttemptTimeoutMS int    `gorm:"column:attempt_timeout_ms;not null"`
+	RetryAfterMS     int64  `gorm:"column:retry_after_ms;not null;default:0"`
 }
 
 func (requestAttemptRecord) TableName() string {
@@ -874,6 +875,29 @@ type requestTraceEventRecord struct {
 
 func (requestTraceEventRecord) TableName() string {
 	return "request_trace_events"
+}
+
+type requestUpstreamShapeEventRecord struct {
+	RequestID            string `gorm:"column:request_id;primaryKey;type:text;index:idx_request_upstream_shape_request"`
+	Seq                  int    `gorm:"column:seq;primaryKey;not null"`
+	TS                   string `gorm:"column:ts;type:text;not null;index:idx_request_upstream_shape_ts"`
+	Scope                string `gorm:"column:scope;type:text;not null"`
+	Provider             string `gorm:"column:provider;type:text;not null"`
+	ModelRef             string `gorm:"column:model_ref;type:text;not null"`
+	Model                string `gorm:"column:model;type:text;not null"`
+	Dialect              string `gorm:"column:dialect;type:text;not null"`
+	Bucket               string `gorm:"column:bucket;type:text;not null"`
+	Decision             string `gorm:"column:decision;type:text;not null"`
+	RetryAfterMS         int64  `gorm:"column:retry_after_ms;not null"`
+	EstimatedInputTokens int    `gorm:"column:estimated_input_tokens;not null"`
+	ReservedOutputTokens int    `gorm:"column:reserved_output_tokens;not null"`
+	TotalReservedTokens  int    `gorm:"column:total_reserved_tokens;not null"`
+	BackoffReason        string `gorm:"column:backoff_reason;type:text;not null"`
+	QueueWaitMS          int64  `gorm:"column:queue_wait_ms;not null"`
+}
+
+func (requestUpstreamShapeEventRecord) TableName() string {
+	return "request_upstream_shape_events"
 }
 
 type decisionShapeFeatureRecord struct {
@@ -1255,6 +1279,7 @@ func (s *usageStore) migrate() error {
 		&usageRecord{},
 		&requestAttemptRecord{},
 		&requestTraceEventRecord{},
+		&requestUpstreamShapeEventRecord{},
 		&decisionShapeFeatureRecord{},
 		&decisionTargetCandidateRecord{},
 		&decisionTargetFilterReasonRecord{},
@@ -1288,7 +1313,17 @@ func (s *usageStore) migrate() error {
 	); err != nil {
 		return err
 	}
-	return ensureUsageRelationalSchema(s.db)
+	if err := ensureUsageRelationalSchema(s.db); err != nil {
+		return err
+	}
+	return s.backfillRequestAttemptRetryAfter()
+}
+
+func (s *usageStore) backfillRequestAttemptRetryAfter() error {
+	if s == nil || s.db == nil || !s.db.Migrator().HasColumn(&requestAttemptRecord{}, "retry_after_ms") {
+		return nil
+	}
+	return s.db.Model(&requestAttemptRecord{}).Where("retry_after_ms IS NULL").Update("retry_after_ms", 0).Error
 }
 
 func ensureUsageRelationalSchema(db *gorm.DB) error {
@@ -1301,6 +1336,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		"request_usage",
 		"request_attempts",
 		"request_trace_events",
+		"request_upstream_shape_events",
 		"request_decision_shape_features",
 		"request_target_candidates",
 		"request_target_filter_reasons",
@@ -1347,7 +1383,7 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	default:
 		if err := db.Raw(`SELECT column_name AS name, data_type AS type
 			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
+			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_upstream_shape_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
 			return err
 		}
 	}
@@ -1371,6 +1407,9 @@ func (s *usageStore) Emit(rec logRecord) {
 	}
 	for _, event := range rec.TraceEvents {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(traceRecordFromLog(rec.RequestID, event)).Error
+	}
+	for _, event := range rec.UpstreamShapeEvents {
+		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(upstreamShapeEventRecordFromLog(rec.RequestID, event)).Error
 	}
 	for _, feature := range rec.DecisionShapeFeatures {
 		_ = s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(decisionShapeFeatureRecordFromLog(rec.RequestID, feature)).Error
@@ -1425,6 +1464,7 @@ func attemptRecordFromLog(requestID string, rec attemptLogRecord) *requestAttemp
 		RequestBytes:     rec.RequestBytes,
 		ResponseBytes:    rec.ResponseBytes,
 		AttemptTimeoutMS: rec.AttemptTimeoutMS,
+		RetryAfterMS:     rec.RetryAfterMS,
 	}
 }
 
@@ -1443,6 +1483,27 @@ func traceRecordFromLog(requestID string, rec traceLogRecord) *requestTraceEvent
 		ErrorClass: rec.ErrorClass,
 		Retryable:  rec.Retryable,
 		Attempt:    rec.Attempt,
+	}
+}
+
+func upstreamShapeEventRecordFromLog(requestID string, rec upstreamShapeEventLogRecord) *requestUpstreamShapeEventRecord {
+	return &requestUpstreamShapeEventRecord{
+		RequestID:            requestID,
+		Seq:                  rec.Seq,
+		TS:                   rec.TS,
+		Scope:                rec.Scope,
+		Provider:             rec.Provider,
+		ModelRef:             rec.ModelRef,
+		Model:                rec.Model,
+		Dialect:              rec.Dialect,
+		Bucket:               rec.Bucket,
+		Decision:             rec.Decision,
+		RetryAfterMS:         rec.RetryAfterMS,
+		EstimatedInputTokens: rec.EstimatedInputTokens,
+		ReservedOutputTokens: rec.ReservedOutputTokens,
+		TotalReservedTokens:  rec.TotalReservedTokens,
+		BackoffReason:        rec.BackoffReason,
+		QueueWaitMS:          rec.QueueWaitMS,
 	}
 }
 
@@ -2289,6 +2350,7 @@ func retentionTablesForClass(dataClass string) []retentionTableSpec {
 		return []retentionTableSpec{
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_attempts", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_trace_events", TSColumn: "ts"},
+			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_upstream_shape_events", TSColumn: "ts"},
 			{DataClass: retentionDataClassUsageDiagnostics, TableName: "request_errors", TSColumn: "ts"},
 		}
 	case retentionDataClassDecisionTelemetry:
@@ -2475,6 +2537,8 @@ func deleteRetentionBatch(tx *gorm.DB, table retentionTableSpec, cutoff string, 
 			res = tx.Where("request_id = ? AND attempt_index = ?", key.RequestID, key.AttemptIndex).Delete(&requestAttemptRecord{})
 		case "request_trace_events":
 			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestTraceEventRecord{})
+		case "request_upstream_shape_events":
+			res = tx.Where("request_id = ? AND seq = ?", key.RequestID, key.Seq).Delete(&requestUpstreamShapeEventRecord{})
 		case "request_errors":
 			res = tx.Where("request_id = ?", key.RequestID).Delete(&requestErrorRecord{})
 		case "request_usage":
@@ -2521,6 +2585,12 @@ func selectRetentionDeleteKeys(tx *gorm.DB, table retentionTableSpec, cutoff str
 	case "request_trace_events":
 		query = `SELECT r.request_id AS request_id, r.seq AS seq
 			FROM request_trace_events r
+			WHERE r.ts < ? ` + baseHoldClause + `
+			ORDER BY r.ts ASC, r.request_id ASC, r.seq ASC
+			LIMIT ?`
+	case "request_upstream_shape_events":
+		query = `SELECT r.request_id AS request_id, r.seq AS seq
+			FROM request_upstream_shape_events r
 			WHERE r.ts < ? ` + baseHoldClause + `
 			ORDER BY r.ts ASC, r.request_id ASC, r.seq ASC
 			LIMIT ?`

@@ -159,6 +159,8 @@ Token-budget admission reserves estimated input tokens, tool/schema payload size
 
 Upstream request safety is controlled under `server.upstream`. `timeout_ms` bounds the shared upstream HTTP client, `default_attempt_timeout_ms` provides a default per-target cap when no group or target override is set, and `max_response_bytes` bounds successful upstream bodies before decode or synthesized streaming. The router does not follow upstream HTTP redirects. Image URL requests reject loopback, link-local, RFC1918/private, multicast, and unspecified destinations by default; keep `allow_private_image_urls: false` unless a reviewed private VLM deployment intentionally permits private URL dereference and has network controls around metadata and admin endpoints.
 
+Provider/model/target `traffic_shape` blocks are optional and should be rolled out disabled or conservatively. For a first production rollout, enable a low-risk provider or smoke group, set small request-start and token bursts, run two parallel caller tokens through the same group, and verify routing either skips the shaped target or returns `503 upstream-capacity-throttled` with a safe request ID. Query `request_upstream_shape_events` for `admitted`, `skipped`, and `cooldown_started` decisions before broadening limits. Roll back by removing or disabling the `traffic_shape` block and restarting the router; restart also clears in-memory token buckets and adaptive backoff state.
+
 Generate a caller token:
 
 ```bash

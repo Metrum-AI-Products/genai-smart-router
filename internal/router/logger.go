@@ -109,6 +109,7 @@ type logRecord struct {
 	PolicyExecutions                   []policyExecutionLogRecord      `json:"policy_executions,omitempty"`
 	FallbackTransitions                []fallbackTransitionLogRecord   `json:"fallback_transitions,omitempty"`
 	CacheReasons                       []cacheReasonLogRecord          `json:"cache_reasons,omitempty"`
+	UpstreamShapeEvents                []upstreamShapeEventLogRecord   `json:"upstream_shape_events,omitempty"`
 }
 
 type attemptLogRecord struct {
@@ -130,6 +131,25 @@ type attemptLogRecord struct {
 	RequestBytes     int64  `json:"request_bytes,omitempty"`
 	ResponseBytes    int64  `json:"response_bytes,omitempty"`
 	AttemptTimeoutMS int    `json:"attempt_timeout_ms,omitempty"`
+	RetryAfterMS     int64  `json:"retry_after_ms,omitempty"`
+}
+
+type upstreamShapeEventLogRecord struct {
+	Seq                  int    `json:"seq"`
+	TS                   string `json:"ts"`
+	Scope                string `json:"scope"`
+	Provider             string `json:"provider"`
+	ModelRef             string `json:"model_ref,omitempty"`
+	Model                string `json:"model"`
+	Dialect              string `json:"dialect"`
+	Bucket               string `json:"bucket"`
+	Decision             string `json:"decision"`
+	RetryAfterMS         int64  `json:"retry_after_ms,omitempty"`
+	EstimatedInputTokens int    `json:"estimated_input_tokens,omitempty"`
+	ReservedOutputTokens int    `json:"reserved_output_tokens,omitempty"`
+	TotalReservedTokens  int    `json:"total_reserved_tokens,omitempty"`
+	BackoffReason        string `json:"backoff_reason,omitempty"`
+	QueueWaitMS          int64  `json:"queue_wait_ms,omitempty"`
 }
 
 type traceLogRecord struct {

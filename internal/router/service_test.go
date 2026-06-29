@@ -4666,7 +4666,7 @@ export function route(ctx: RouteContext) {
 		t.Fatal(err)
 	}
 	defer svc.Close()
-	dec, err := svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
+	dec, err := svc.pick(nil, "scripted", cfg.Models["scripted"], &IRRequest{
 		Model:    "scripted",
 		Messages: []IRMessage{{Role: "user", Content: "short question"}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
@@ -4683,7 +4683,7 @@ export function route(ctx: RouteContext) {
 		t.Fatalf("short script fallbacks=%#v", dec.Fallbacks)
 	}
 
-	dec, err = svc.pick("scripted", cfg.Models["scripted"], &IRRequest{
+	dec, err = svc.pick(nil, "scripted", cfg.Models["scripted"], &IRRequest{
 		Model:    "scripted",
 		Messages: []IRMessage{{Role: "user", Content: strings.Repeat("large prompt ", 900)}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
@@ -4859,7 +4859,7 @@ func TestTypeScriptPIIPolicyExampleRoutesSensitiveWithoutLeakingPII(t *testing.T
 	defer svc.Close()
 
 	piiText := "Please summarize the account note for Jane Patient. Email jane.patient@example.com and SSN 123-45-6789 are in the record."
-	dec, err := svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+	dec, err := svc.pick(nil, "pii-aware", cfg.Models["pii-aware"], &IRRequest{
 		Model:    "pii-aware",
 		Messages: []IRMessage{{Role: "user", Content: piiText}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
@@ -4885,7 +4885,7 @@ func TestTypeScriptPIIPolicyExampleRoutesSensitiveWithoutLeakingPII(t *testing.T
 		}
 	}
 
-	dec, err = svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+	dec, err = svc.pick(nil, "pii-aware", cfg.Models["pii-aware"], &IRRequest{
 		Model:    "pii-aware",
 		Messages: []IRMessage{{Role: "user", Content: "Summarize this public release note in one sentence."}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")
@@ -4927,7 +4927,7 @@ func TestTypeScriptPIIPolicyExampleFailsClosedWithoutSensitiveTarget(t *testing.
 	}
 	defer svc.Close()
 
-	_, err = svc.pick("pii-aware", cfg.Models["pii-aware"], &IRRequest{
+	_, err = svc.pick(nil, "pii-aware", cfg.Models["pii-aware"], &IRRequest{
 		Model:    "pii-aware",
 		Messages: []IRMessage{{Role: "user", Content: "Contact Jane Patient at jane.patient@example.com."}},
 	}, "openai-chat", svc.quota.callers["alice"], "rtr_alice_test")

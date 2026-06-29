@@ -8,7 +8,79 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	sqliteDriver "github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
+
+func TestUsageStoreMigratesLegacyRequestAttemptsRetryAfter(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
+	db, err := gorm.Open(sqliteDriver.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`
+CREATE TABLE request_attempts (
+	request_id text NOT NULL,
+	attempt_index integer NOT NULL,
+	ts text NOT NULL,
+	provider text NOT NULL,
+	model text NOT NULL,
+	dialect text NOT NULL,
+	endpoint_host text NOT NULL,
+	duration_ms integer NOT NULL,
+	status_code integer NOT NULL,
+	error_class text NOT NULL,
+	error_message text NOT NULL,
+	retryable numeric NOT NULL,
+	timed_out numeric NOT NULL,
+	client_canceled numeric NOT NULL,
+	selected numeric NOT NULL,
+	fallback_reason text NOT NULL,
+	request_bytes integer NOT NULL,
+	response_bytes integer NOT NULL,
+	attempt_timeout_ms integer NOT NULL,
+	PRIMARY KEY (request_id, attempt_index)
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`
+INSERT INTO request_attempts (
+	request_id, attempt_index, ts, provider, model, dialect, endpoint_host,
+	duration_ms, status_code, error_class, error_message, retryable, timed_out,
+	client_canceled, selected, fallback_reason, request_bytes, response_bytes,
+	attempt_timeout_ms
+) VALUES (
+	'req_legacy', 1, '2026-06-29T00:00:00.000Z', 'mock', 'mock-model',
+	'openai-chat', 'example.test', 12, 200, '', '', false, false, false, true,
+	'', 123, 456, 1000
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if !store.db.Migrator().HasColumn(&requestAttemptRecord{}, "retry_after_ms") {
+		t.Fatal("retry_after_ms column was not added")
+	}
+	var retryAfterMS int64 = -1
+	if err := store.db.Raw("SELECT retry_after_ms FROM request_attempts WHERE request_id = ? AND attempt_index = ?", "req_legacy", 1).Scan(&retryAfterMS).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retryAfterMS != 0 {
+		t.Fatalf("retry_after_ms=%d, want legacy row backfilled to 0", retryAfterMS)
+	}
+}
 
 func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	dir := t.TempDir()

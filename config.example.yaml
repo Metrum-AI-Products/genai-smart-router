@@ -251,6 +251,30 @@ providers:
     api_key: ${BASETEN_API_KEY}
     api_key_env: BASETEN_API_KEY
     key_id: baseten-default
+    # Optional deployment-wide shared upstream protection. These buckets are
+    # shared across all caller keys for this provider skin and are disabled by
+    # default when omitted. Provider/model/target shaping protects upstream
+    # account capacity; caller rate/quota fields still enforce caller policy.
+    traffic_shape:
+      enabled: false
+      request_start_per_sec: 10
+      request_burst: 30
+      input_tokens_per_sec: 500000
+      input_token_burst: 1500000
+      total_reserved_tokens_per_sec: 750000
+      total_reserved_token_burst: 2000000
+      upstream_429_backoff:
+        enabled: true
+        min_backoff_ms: 1000
+        max_backoff_ms: 60000
+        multiplier: 2.0
+        honor_retry_after: true
+      upstream_quota_backoff:
+        enabled: true
+        min_backoff_ms: 30000
+        max_backoff_ms: 300000
+        multiplier: 2.0
+        honor_retry_after: true
     models:
       nemotron-120b-a12b:
         model: nvidia/Nemotron-120B-A12B
@@ -294,6 +318,12 @@ providers:
       gpt-oss-120b:
         model: openai/gpt-oss-120b
         tier: coding
+        # Optional model-level shared bucket for one upstream model ID.
+        traffic_shape:
+          request_start_per_sec: 3
+          request_burst: 8
+          total_reserved_tokens_per_sec: 250000
+          total_reserved_token_burst: 750000
         input_price_per_million_usd: 0.1
         output_price_per_million_usd: 0.5
         input_modalities:
@@ -1335,6 +1365,12 @@ models:
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
+      # Optional target-level cap for low-weight exploratory traffic. Cache
+      # hits bypass provider shaping; cache misses skip this target at upstream
+      # admission time if it is temporarily throttled.
+      traffic_shape:
+        request_start_per_sec: 1
+        request_burst: 2
     - provider: crusoe
       model_ref: glm-5-2
       weight: 5

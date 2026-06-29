@@ -27,7 +27,7 @@ func TestDynamicScoreColdStartUsesConfiguredWeightsDeterministically(t *testing.
 	}
 	req := &IRRequest{Messages: []IRMessage{{Role: "user", Content: "hello"}}}
 	for i := 0; i < 10; i++ {
-		dec, err := svc.pick("default", group, req, "openai-chat", nil, "")
+		dec, err := svc.pick(nil, "default", group, req, "openai-chat", nil, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestDynamicScoreRanksHealthyCheapTargetAfterObservations(t *testing.T) {
 			{Provider: "mock", Model: "expensive-fastest", Weight: 1, InputPricePerMillionUSD: 5, OutputPricePerMillionUSD: 10},
 		},
 	}
-	dec, err := svc.pick("default", group, &IRRequest{Input: "summarize this"}, "openai-chat", nil, "")
+	dec, err := svc.pick(nil, "default", group, &IRRequest{Input: "summarize this"}, "openai-chat", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestDynamicScoreZeroAdjustmentKeepsConfiguredWeightsAfterWarmup(t *testing.
 			{Provider: "mock", Model: "cheap-dynamic", Weight: 1, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.1},
 		},
 	}
-	dec, err := svc.pick("default", group, &IRRequest{Input: "hello"}, "openai-chat", nil, "")
+	dec, err := svc.pick(nil, "default", group, &IRRequest{Input: "hello"}, "openai-chat", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestDynamicScoreThresholdsFilterUnhealthyTargetInsideRequestedGroup(t *test
 			{Provider: "mock", Model: "healthy", Weight: 1, InputPricePerMillionUSD: 2, OutputPricePerMillionUSD: 4},
 		},
 	}
-	dec, err := svc.pick("default", group, &IRRequest{Input: "hello"}, "openai-chat", nil, "")
+	dec, err := svc.pick(nil, "default", group, &IRRequest{Input: "hello"}, "openai-chat", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestDynamicScoreHardFiltersForcedToolsAndStructuredOutput(t *testing.T) {
 			"response_format": map[string]any{"type": "json_schema"},
 		},
 	}
-	dec, err := svc.pick("default", group, req, "openai-chat", nil, "")
+	dec, err := svc.pick(nil, "default", group, req, "openai-chat", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestDynamicScoreHardFilterRequiresRequestedAPISkin(t *testing.T) {
 			{Provider: "responses", Model: "responses-target", Weight: 1},
 		},
 	}
-	dec, err := svc.pick("default", group, &IRRequest{Input: "hello"}, "openai-responses", nil, "")
+	dec, err := svc.pick(nil, "default", group, &IRRequest{Input: "hello"}, "openai-responses", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestDynamicScoreCannotSelectFromOtherModelGroup(t *testing.T) {
 	}
 	svc.observations.add(dynamicObservationKey("default", "mock", "allowed-expensive"), dynamicObservation{TS: time.Now().UTC(), Status: http.StatusOK, LatencyMS: 100}, defaultDynamicObservationWindow)
 	svc.observations.add(dynamicObservationKey("other", "mock", "forbidden-cheap"), dynamicObservation{TS: time.Now().UTC(), Status: http.StatusOK, LatencyMS: 1}, defaultDynamicObservationWindow)
-	dec, err := svc.pick("default", svc.cfg.Models["default"], &IRRequest{Input: "hello"}, "openai-chat", nil, "")
+	dec, err := svc.pick(nil, "default", svc.cfg.Models["default"], &IRRequest{Input: "hello"}, "openai-chat", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
