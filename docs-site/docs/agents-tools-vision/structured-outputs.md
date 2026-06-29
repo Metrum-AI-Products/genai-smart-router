@@ -1,5 +1,6 @@
 ---
 title: Structured Outputs
+doc_type: explanation
 ---
 
 # Structured Outputs

@@ -1,5 +1,6 @@
 ---
 title: Docker Compose Install
+doc_type: howto
 ---
 
 # Docker Compose Install

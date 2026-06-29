@@ -1,5 +1,6 @@
 ---
 title: Request Troubleshooting
+doc_type: howto
 ---
 
 # Request Troubleshooting

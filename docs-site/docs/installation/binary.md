@@ -1,5 +1,6 @@
 ---
 title: Binary Install
+doc_type: howto
 ---
 
 # Binary Install

@@ -1,5 +1,6 @@
 ---
 title: How Licensing Works
+doc_type: explanation
 ---
 
 # How Licensing Works

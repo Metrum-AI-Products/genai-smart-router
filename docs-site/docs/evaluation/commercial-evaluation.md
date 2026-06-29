@@ -1,5 +1,6 @@
 ---
 title: Commercial Evaluation Path
+doc_type: explanation
 ---
 
 # Commercial Evaluation Path

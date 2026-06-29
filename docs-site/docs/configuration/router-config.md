@@ -1,5 +1,6 @@
 ---
 title: Router Configuration
+doc_type: howto
 ---
 
 # Router Configuration
@@ -8,7 +9,7 @@ The router is configured with YAML plus environment-loaded provider keys. Custom
 
 Model group names are deployment-defined. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, or `vision` may appear in examples because they are used by a reference or hosted deployment; the product does not require those names.
 
-For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+For strategy selection, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
 <div class="contactBanner">
   <p>Metrum can help design a production routing policy. Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
@@ -493,7 +494,7 @@ models:
 
 Model groups can declare optional [model-group contracts](./model-group-contracts) for workload labels, supported API shapes, hard capability requirements, target validation quality floors, and operational thresholds. Contracts filter targets after caller authorization and ordinary request eligibility, before any strategy selects a target.
 
-For choosing between `static`, `failover`, `weighted`, `dynamic_score`, `script`, `external`, and contract-backed policies, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+For choosing between `static`, `failover`, `weighted`, `dynamic_score`, `script`, `external`, and contract-backed policies, see [Routing Strategy Decision Tree](../routing/strategy-decision-tree).
 
 Use `strategy: dynamic_score` when a group should adapt inside its own target list using bounded request-shape, prompt-feature, cost, observed-performance, reliability, and evaluation metadata signals. The strategy never scores targets from another model group; callers still request one allowed deployment-defined group. See [Dynamic Score Routing](./dynamic-score-routing) for configuration, diagnostics, rollout, and rollback guidance.
 

@@ -1,5 +1,6 @@
 ---
 title: Choose a Deployment Path
+doc_type: explanation
 ---
 
 # Choose a Deployment Path

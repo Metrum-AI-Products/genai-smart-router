@@ -1,5 +1,6 @@
 ---
 title: PII Filtering
+doc_type: howto
 ---
 
 # PII Filtering

@@ -1,5 +1,6 @@
 ---
 title: Upgrade Guide
+doc_type: reference
 ---
 
 # Upgrade Guide

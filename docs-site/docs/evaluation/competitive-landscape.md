@@ -1,5 +1,6 @@
 ---
 title: Competitive Landscape
+doc_type: explanation
 ---
 
 # Competitive Landscape

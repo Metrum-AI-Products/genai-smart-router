@@ -1,5 +1,6 @@
 ---
 title: Error Reference
+doc_type: reference
 ---
 
 # Error Reference

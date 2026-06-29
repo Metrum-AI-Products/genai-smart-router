@@ -26,6 +26,9 @@ HISTORICAL_FILES = {
     Path("docs/harbor-case-study.md"),
 }
 
+DOC_TYPE_VALUES = {"tutorial", "howto", "reference", "explanation"}
+DOCS_SITE_DOCS = ROOT / "docs-site" / "docs"
+
 PRIVATE_PATTERNS = [
     ("private production host/IP", re.compile(r"\b(?:100\.30\.225\.66|llm-api-engg\.metrum\.ai)\b")),
     ("private SSH detail", re.compile(r"(?:\bubuntu@[A-Za-z0-9_.-]+|~/.ssh/[^\s'\"`]+\.pem|\bssh\s+-i\s+[^\n]+\.pem)")),
@@ -77,6 +80,26 @@ def line_errors(path: Path, line_no: int, line: str) -> Iterable[str]:
             yield f"{rel}:{line_no}: contains {label}; mark historical or update to config.example.yaml"
 
 
+def doc_type_error(path: Path, text: str) -> str | None:
+    if not path.is_relative_to(DOCS_SITE_DOCS) or path.suffix not in {".md", ".mdx"}:
+        return None
+    rel = path.relative_to(ROOT)
+    if not text.startswith("---\n"):
+        return f"{rel}: missing frontmatter with doc_type"
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return f"{rel}: malformed frontmatter"
+    frontmatter = text[4:end]
+    matches = re.findall(r"^doc_type:\s*([A-Za-z_-]+)\s*$", frontmatter, flags=re.MULTILINE)
+    if not matches:
+        return f"{rel}: missing doc_type frontmatter"
+    if len(matches) > 1:
+        return f"{rel}: has multiple doc_type frontmatter fields"
+    if matches[0] not in DOC_TYPE_VALUES:
+        return f"{rel}: invalid doc_type {matches[0]!r}; expected one of {', '.join(sorted(DOC_TYPE_VALUES))}"
+    return None
+
+
 def main() -> int:
     errors: list[str] = []
     for path in iter_public_files():
@@ -84,6 +107,9 @@ def main() -> int:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
+        doc_type = doc_type_error(path, text)
+        if doc_type:
+            errors.append(doc_type)
         for idx, line in enumerate(text.splitlines(), start=1):
             errors.extend(line_errors(path, idx, line))
 

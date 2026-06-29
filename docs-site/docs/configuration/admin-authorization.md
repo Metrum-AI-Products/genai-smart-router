@@ -1,5 +1,6 @@
 ---
 title: Admin Authorization
+doc_type: howto
 ---
 
 # Admin Authorization

@@ -1,5 +1,6 @@
 ---
 title: Buying an Evaluation or Pilot License
+doc_type: explanation
 ---
 
 # Buying an Evaluation or Pilot License

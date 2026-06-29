@@ -1,5 +1,6 @@
 ---
 title: TypeScript Routing Policy
+doc_type: howto
 ---
 
 # TypeScript Routing Policy
@@ -8,7 +9,7 @@ Model groups can delegate target selection to a TypeScript routing script. Calle
 
 Use TypeScript for compact local policy that should run inside the router process. Use an [External Routing Policy Service](./external-routing-policy) when the policy should be developed, tested, deployed, logged, and debugged as its own web service.
 
-For the broader routing-policy ownership model and when to choose TypeScript instead of static, weighted, dynamic-score, external, or contract-backed routing, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+For the canonical strategy comparison, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the broader routing-policy ownership model, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
 <div class="contactBanner">
   <p>Need help designing routing policy? Contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>

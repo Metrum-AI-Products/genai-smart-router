@@ -1,5 +1,6 @@
 ---
 title: Admin Browser Reports
+doc_type: howto
 ---
 
 # Admin Browser Reports

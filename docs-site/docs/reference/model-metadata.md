@@ -1,5 +1,6 @@
 ---
 title: Model Metadata
+doc_type: reference
 ---
 
 # Model Metadata

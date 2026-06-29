@@ -1,5 +1,6 @@
 ---
 title: Solution Brief
+doc_type: explanation
 ---
 
 # GenAI Smart Router Solution Brief

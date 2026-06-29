@@ -1,5 +1,6 @@
 ---
 title: Add A Provider Or Model
+doc_type: reference
 ---
 
 # Add A Provider Or Model

@@ -1,5 +1,6 @@
 ---
 title: Enterprise Deployment Patterns
+doc_type: explanation
 ---
 
 # Enterprise Deployment Patterns
@@ -8,7 +9,7 @@ GenAI Smart Router is deployment-owned infrastructure. It is not a one-size-fits
 
 Model groups, provider credentials, private upstreams, caller access, telemetry retention, and routing strategy are deployment-defined. The product principle is that the customer or operating team owns its routing destiny. The router supplies the control surface, compatibility layer, evidence, and enforcement points so teams can evolve provider/model choices without rewriting every client.
 
-For installation mechanics, see [Deployment](./deployment). For licensing and commercial paths, see [Choose a Deployment Path](../licensing/deployment-paths).
+For installation mechanics and deployment-shape selection, see [Installation](../installation/). For licensing and commercial paths, see [Choose a Deployment Path](../licensing/deployment-paths).
 
 ## Pattern A: Metrum-Managed Evaluation Endpoint
 

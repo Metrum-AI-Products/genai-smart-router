@@ -1,5 +1,6 @@
 ---
 title: Self-Hosted Upstreams
+doc_type: howto
 ---
 
 # Self-Hosted Upstreams

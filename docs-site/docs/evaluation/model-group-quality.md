@@ -1,5 +1,6 @@
 ---
 title: Model Group Quality Criteria
+doc_type: explanation
 ---
 
 # Model Group Quality Criteria
@@ -8,7 +9,7 @@ Model groups are the caller-facing quality and cost contracts in GenAI Smart Rou
 
 This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when validation shows the group still meets its objective.
 
-For the full customer-controlled routing contract, strategy selection table, ownership controls, and proof workflow, see [Customer-Controlled Routing](../routing/customer-controlled-routing). For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality).
+For strategy selection, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the full customer-controlled routing contract, ownership controls, and proof workflow, see [Customer-Controlled Routing](../routing/customer-controlled-routing). For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality).
 
 ## Group Contract Fields
 

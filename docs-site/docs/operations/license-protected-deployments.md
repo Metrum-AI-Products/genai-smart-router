@@ -1,5 +1,6 @@
 ---
 title: License-Protected Deployments
+doc_type: explanation
 ---
 
 # License-Protected Deployments

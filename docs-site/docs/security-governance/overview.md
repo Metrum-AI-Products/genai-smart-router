@@ -1,5 +1,6 @@
 ---
 title: Security And Governance
+doc_type: explanation
 ---
 
 # Security And Governance

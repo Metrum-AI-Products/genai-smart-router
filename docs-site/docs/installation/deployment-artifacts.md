@@ -1,5 +1,6 @@
 ---
 title: Deployment Artifacts
+doc_type: howto
 ---
 
 # Deployment Artifacts
@@ -12,7 +13,7 @@ GenAI Smart Router is delivered as release artifacts. Deployment hosts do not ne
 |---|---|---|
 | Linux binary package | The platform team manages the service supervisor, TLS proxy, database, and filesystem layout. | Router binaries, config templates, Caddy example, package-safe bootstrap docs. |
 | Docker Compose package | The platform team wants a packaged router image tar plus Compose files and a bundled Postgres service. | Saved image tar, Compose files, config templates, package-safe bootstrap docs. |
-| Kubernetes manifests or Helm | The platform team operates Kubernetes and supplies reviewed manifests. | Not currently included in the release package; see [Deploy To Kubernetes](./kubernetes). |
+| Kubernetes manifests or Helm | The platform team operates Kubernetes and supplies reviewed manifests. | Obtained as a reviewed deployment artifact when needed; see [Deploy To Kubernetes](./kubernetes). |
 
 Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts, including ARM64 cloud instances. Docker packages use the same architecture suffix and include exactly one saved image tar for that architecture.
 
@@ -33,7 +34,7 @@ They intentionally do not include private production runbooks, source-maintenanc
 - Match the artifact architecture to the host CPU.
 - Choose binary install when the deployment already has a service supervisor, database, and TLS proxy.
 - Choose Docker Compose when a packaged image tar and Compose-managed Postgres fit the operating model.
-- Use Kubernetes only with reviewed deployment manifests, external database planning, Secret handling, network policy, readiness probes, and rollback controls.
+- Use Kubernetes only with reviewed deployment manifests and the canonical Kubernetes install guide.
 - Confirm `/readyz`, `/docs/`, `/v1/models`, and one caller smoke before sending production traffic.
 
 Next steps:

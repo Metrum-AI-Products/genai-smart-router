@@ -1,5 +1,6 @@
 ---
 title: Renewal And Top-Up
+doc_type: explanation
 ---
 
 # Renewal And Top-Up

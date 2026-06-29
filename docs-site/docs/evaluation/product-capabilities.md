@@ -1,5 +1,6 @@
 ---
 title: Product Capabilities
+doc_type: explanation
 ---
 
 # Product Capabilities

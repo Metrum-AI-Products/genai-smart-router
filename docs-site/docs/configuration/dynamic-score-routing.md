@@ -1,10 +1,15 @@
+---
+title: Dynamic Score Routing
+doc_type: howto
+---
+
 # Dynamic Score Routing
 
 `strategy: dynamic_score` is the built-in configurable routing strategy for model groups that should adapt to request shape, cost, observed performance, reliability, workload complexity, and evaluation metadata without adding custom router code.
 
 The caller-visible model group does not change. A client requests one deployment-defined model group from `/v1/models`, and the caller token must be allowed to use that group. The router then scores only that requested group's eligible `targets[]`. A cheaper or faster target in another group is never considered. If the group has an optional [model-group contract](./model-group-contracts), its hard requirements and quality floors run before dynamic scoring.
 
-For the broader routing-policy ownership model and when to choose dynamic scoring instead of static, failover, weighted, TypeScript, external, or contract-backed routing, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+For the canonical strategy comparison, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the broader routing-policy ownership model, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
 ## Configuration
 

@@ -1,5 +1,6 @@
 ---
 title: Licensing Troubleshooting
+doc_type: howto
 ---
 
 # Licensing Troubleshooting

@@ -1,5 +1,6 @@
 ---
 title: Observability
+doc_type: explanation
 ---
 
 # Observability

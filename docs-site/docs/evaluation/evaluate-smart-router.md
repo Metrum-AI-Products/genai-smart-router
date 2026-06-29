@@ -1,5 +1,6 @@
 ---
 title: Evaluate GenAI Smart Router
+doc_type: explanation
 ---
 
 # Evaluate GenAI Smart Router

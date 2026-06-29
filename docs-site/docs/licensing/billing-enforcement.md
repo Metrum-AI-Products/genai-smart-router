@@ -1,5 +1,6 @@
 ---
 title: Billing, Cancellation, and Runtime Enforcement
+doc_type: explanation
 ---
 
 # Billing, Cancellation, and Runtime Enforcement

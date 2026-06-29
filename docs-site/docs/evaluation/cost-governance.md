@@ -1,5 +1,6 @@
 ---
 title: Cost Governance
+doc_type: explanation
 ---
 
 # Cost Governance

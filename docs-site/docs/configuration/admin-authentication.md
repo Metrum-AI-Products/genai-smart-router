@@ -1,5 +1,6 @@
 ---
 title: Admin Authentication
+doc_type: howto
 ---
 
 # Admin Authentication

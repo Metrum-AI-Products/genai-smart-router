@@ -1,3 +1,8 @@
+---
+title: Model Group Contracts
+doc_type: explanation
+---
+
 # Model Group Contracts
 
 Model group contracts let an operator publish stable, deployment-defined model groups while changing the provider/model mix behind them. A contract describes the workloads, API shapes, minimum capabilities, validation quality floor, and operational targets that a group is intended to satisfy.

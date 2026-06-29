@@ -1,5 +1,6 @@
 ---
 title: Deployment Readiness
+doc_type: explanation
 ---
 
 # Deployment Readiness

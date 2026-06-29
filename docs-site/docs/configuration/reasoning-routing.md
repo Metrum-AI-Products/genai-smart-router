@@ -1,5 +1,6 @@
 ---
 title: Reasoning Routing
+doc_type: howto
 ---
 
 # Reasoning Routing

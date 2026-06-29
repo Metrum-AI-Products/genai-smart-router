@@ -1,5 +1,6 @@
 ---
 title: Image Analysis And VLM Routing
+doc_type: howto
 ---
 
 # Image Analysis And VLM Routing

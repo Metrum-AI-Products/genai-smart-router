@@ -1,5 +1,6 @@
 ---
 title: Enterprise and Private Managed Procurement
+doc_type: explanation
 ---
 
 # Enterprise and Private Managed Procurement

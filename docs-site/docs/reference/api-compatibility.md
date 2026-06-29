@@ -1,5 +1,6 @@
 ---
 title: API Compatibility
+doc_type: reference
 ---
 
 # API Compatibility

@@ -1,5 +1,6 @@
 ---
 title: Deployment Security Assessment
+doc_type: explanation
 ---
 
 # Deployment Security Assessment

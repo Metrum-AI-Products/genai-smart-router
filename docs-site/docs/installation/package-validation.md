@@ -1,5 +1,6 @@
 ---
 title: Package Validation And Security Checks
+doc_type: howto
 ---
 
 # Package Validation And Security Checks

@@ -1,5 +1,6 @@
 ---
 title: Evaluation And Case Studies
+doc_type: explanation
 ---
 
 # Evaluation And Case Studies

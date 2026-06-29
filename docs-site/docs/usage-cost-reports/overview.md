@@ -1,5 +1,6 @@
 ---
 title: Usage, Cost, And Reports
+doc_type: explanation
 ---
 
 # Usage, Cost, And Reports

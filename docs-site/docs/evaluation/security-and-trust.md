@@ -1,5 +1,6 @@
 ---
 title: Security And Trust
+doc_type: explanation
 ---
 
 # Security And Trust

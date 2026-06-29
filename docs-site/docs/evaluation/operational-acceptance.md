@@ -1,5 +1,6 @@
 ---
 title: Operational Readiness
+doc_type: explanation
 ---
 
 # Operational Readiness

@@ -49,7 +49,7 @@ func docsHandler() http.Handler {
 			return
 		}
 		if strings.Contains(r.Header.Get("Accept"), "text/html") || !strings.Contains(path.Base(name), ".") {
-			if serveEmbeddedDoc(w, r, sub, "index.html") {
+			if serveEmbeddedDocStatus(w, r, sub, "404.html", http.StatusNotFound) {
 				return
 			}
 			if name == "index.html" || !strings.Contains(path.Base(name), ".") {
@@ -72,6 +72,10 @@ func isReservedRouterPath(p string) bool {
 }
 
 func serveEmbeddedDoc(w http.ResponseWriter, r *http.Request, root fs.FS, name string) bool {
+	return serveEmbeddedDocStatus(w, r, root, name, http.StatusOK)
+}
+
+func serveEmbeddedDocStatus(w http.ResponseWriter, r *http.Request, root fs.FS, name string, status int) bool {
 	file, err := root.Open(name)
 	if err == nil {
 		defer file.Close()
@@ -85,13 +89,20 @@ func serveEmbeddedDoc(w http.ResponseWriter, r *http.Request, root fs.FS, name s
 				w.Header().Set("Content-Type", ct)
 			}
 			setDocsVersionHeaders(w)
-			http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(data))
+			if status == http.StatusOK {
+				http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(data))
+			} else {
+				w.WriteHeader(status)
+				if r.Method != http.MethodHead {
+					_, _ = w.Write(data)
+				}
+			}
 			return true
 		}
 	}
 	if !strings.HasSuffix(name, "/index.html") {
 		dirIndex := strings.TrimSuffix(name, "/") + "/index.html"
-		return serveEmbeddedDoc(w, r, root, dirIndex)
+		return serveEmbeddedDocStatus(w, r, root, dirIndex, status)
 	}
 	return false
 }

@@ -1,5 +1,6 @@
 ---
 title: Providers And Models
+doc_type: explanation
 ---
 
 # Providers And Models

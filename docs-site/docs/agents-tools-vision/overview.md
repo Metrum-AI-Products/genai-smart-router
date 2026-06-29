@@ -1,5 +1,6 @@
 ---
 title: Agents, Tools, And Vision
+doc_type: explanation
 ---
 
 # Agents, Tools, And Vision

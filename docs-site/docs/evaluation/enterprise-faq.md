@@ -1,5 +1,6 @@
 ---
 title: Enterprise FAQ
+doc_type: explanation
 ---
 
 # Enterprise FAQ
@@ -90,7 +91,7 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Proof to request or run:** Call the private upstream directly from the deployment network, call the same model through a router group, and verify clients never receive provider keys or private upstream URLs.
 
-**Links:** [Self-Hosted Upstreams](../configuration/self-hosted-upstreams), [Providers And Models](../providers-models/overview), [Deployment](../operations/deployment).
+**Links:** [Self-Hosted Upstreams](../configuration/self-hosted-upstreams), [Providers And Models](../providers-models/overview), [Installation](../installation/).
 
 ## Will this work with Codex, Claude Code, Cursor, Warp, or our OpenAI SDK?
 
@@ -202,7 +203,7 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Proof to request or run:** Review the deployment topology, run readiness checks inside the target environment, and verify provider egress paths and retention settings.
 
-**Links:** [Deployment](../operations/deployment), [Enterprise Deployment Patterns](../operations/deployment-patterns), [Deployment Readiness](./deployment-readiness).
+**Links:** [Installation](../installation/), [Enterprise Deployment Patterns](../operations/deployment-patterns), [Deployment Readiness](./deployment-readiness).
 
 ## How do we roll this out safely?
 
@@ -244,7 +245,7 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Proof to request or run:** Compare a central-router proof with a team-router or hierarchical proof, then verify `/v1/models`, reports, and provider-key custody match the chosen boundary.
 
-**Links:** [Enterprise Deployment Patterns](../operations/deployment-patterns), [Choose a Deployment Path](../licensing/deployment-paths), [Deployment](../operations/deployment).
+**Links:** [Enterprise Deployment Patterns](../operations/deployment-patterns), [Choose a Deployment Path](../licensing/deployment-paths), [Installation](../installation/).
 
 ## What is the smallest proof we can run this week?
 

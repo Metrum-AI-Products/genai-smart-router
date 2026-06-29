@@ -1,5 +1,6 @@
 ---
 title: Release Notes
+doc_type: reference
 ---
 
 # Release Notes

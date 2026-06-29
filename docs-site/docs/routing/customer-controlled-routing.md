@@ -1,12 +1,13 @@
 ---
 title: Customer-Controlled Routing
+doc_type: explanation
 ---
 
 # Customer-Controlled Routing
 
 GenAI Smart Router is not a black-box global model chooser. A caller requests one allowed, deployment-defined model group, and the deployment owner controls which providers, private upstreams, capabilities, policies, validation gates, and fallback paths exist inside that group.
 
-Use this page as the routing-policy ownership map. The detailed reference pages remain the source of truth for [router config](../configuration/router-config), [model metadata](../reference/model-metadata), [dynamic score routing](../configuration/dynamic-score-routing), [TypeScript routing](../configuration/routing-typescript), [external policy services](../configuration/external-routing-policy), [model-group contracts](../configuration/model-group-contracts), [PII filtering](../configuration/pii-filtering), [usage reporting](../operations/usage-reporting), and [deployment readiness](../evaluation/deployment-readiness).
+Use this page as the routing-policy ownership map. Start with the [Routing Strategy Decision Tree](./strategy-decision-tree) when choosing between static, failover, weighted, dynamic score, TypeScript, external, or contract-backed routing. The detailed reference pages remain the source of truth for [router config](../configuration/router-config), [model metadata](../reference/model-metadata), [dynamic score routing](../configuration/dynamic-score-routing), [TypeScript routing](../configuration/routing-typescript), [external policy services](../configuration/external-routing-policy), [model-group contracts](../configuration/model-group-contracts), [PII filtering](../configuration/pii-filtering), [usage reporting](../operations/usage-reporting), and [deployment readiness](../evaluation/deployment-readiness).
 
 Model group names are deployment-defined. Examples on this page use names such as `regulated-review`, `agent-coding`, `adaptive-support`, and `team-local-coding` only as examples. Callers should discover their allowed groups from [`/v1/models`](../getting-started/available-models).
 

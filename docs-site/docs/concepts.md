@@ -1,5 +1,6 @@
 ---
 title: Concepts And Glossary
+doc_type: explanation
 ---
 
 # Concepts And Glossary

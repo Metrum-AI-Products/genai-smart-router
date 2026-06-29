@@ -1,5 +1,6 @@
 ---
 title: Prove Router Quality
+doc_type: explanation
 ---
 
 # Prove Router Quality

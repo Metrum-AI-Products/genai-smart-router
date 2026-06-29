@@ -1,5 +1,6 @@
 ---
 title: Routing
+doc_type: explanation
 ---
 
 # Routing
@@ -8,7 +9,7 @@ GenAI Smart Router lets callers request a stable, deployment-defined model group
 
 Group names are deployment-defined. Names such as `fast`, `high`, `big-coder`, or `vision` may appear in examples from a reference or hosted deployment, but they are not product-required names. Callers should discover allowed groups from [`/v1/models`](../getting-started/available-models).
 
-For the full policy ownership model, strategy selection guide, examples, proof workflow, and warnings, see [Customer-Controlled Routing](./customer-controlled-routing).
+For strategy selection, start with [Routing Strategy Decision Tree](./strategy-decision-tree). For the full policy ownership model, examples, proof workflow, and warnings, see [Customer-Controlled Routing](./customer-controlled-routing).
 
 ## Routing Pipeline
 

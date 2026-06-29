@@ -1,5 +1,6 @@
 ---
 title: Usage Reporting
+doc_type: howto
 ---
 
 # Usage Reporting

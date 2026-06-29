@@ -1,5 +1,6 @@
 ---
 title: Troubleshooting
+doc_type: howto
 ---
 
 # Troubleshooting

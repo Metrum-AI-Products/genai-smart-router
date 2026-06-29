@@ -145,12 +145,44 @@
   color: var(--metrum-text-muted);
 }
 
+.notFoundHero {
+  min-height: 62vh;
+}
+
+.searchForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 34px;
+  max-width: 720px;
+}
+
+.searchInput {
+  min-width: min(100%, 360px);
+  flex: 1 1 360px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  padding: 12px 14px;
+}
+
+.searchInput::placeholder {
+  color: rgba(255, 255, 255, 0.64);
+}
+
 @media (max-width: 800px) {
   .featureGrid {
     grid-template-columns: 1fr;
   }
 
   .pathGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .searchForm {
+    display: grid;
     grid-template-columns: 1fr;
   }
 }

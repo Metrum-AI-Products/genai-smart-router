@@ -1,5 +1,6 @@
 ---
 title: User Key Generation
+doc_type: howto
 ---
 
 # User Key Generation
