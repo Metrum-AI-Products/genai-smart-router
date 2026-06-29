@@ -66,6 +66,24 @@ Router-side quota, traffic-shaping, and admission failures usually return `429`.
 
 Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals. For exact field names and retention classes, see the [Diagnostics Schema](../reference/diagnostics-schema).
 
+Use Traffic tuning advisor when the question is whether to increase burst, change queueing, slow a caller, tune provider capacity, or route around an incompatible target:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-tuning-advisor \
+  --caller-user <owner-user>
+```
+
+Examples:
+
+- User sees errors but all shaping buckets were admitted or absent: treat `route_around_incompatible_target` as a request-shape/provider compatibility issue. Inspect upstream failures and request-shape failures instead of increasing burst or queue depth.
+- User is being queued and cancellations increased: treat `disable_queue_for_latency_sensitive_client` as a signal to lower queue wait or fail fast for that client.
+- Provider 429s affect multiple users: treat `investigate_provider_429_capacity` as shared capacity or entitlement work. Tune provider/model shaping, adaptive backoff, route weights, or upstream account limits before increasing one caller's burst.
+- Large Cursor, Codex, Claude Code, or opencode payloads fail on selected upstreams: compare request-shape failure buckets, output-cap buckets, tool/modality metadata, and provider/model/dialect rows, then route around targets that cannot handle that shape.
+
 ## 5. Check Upstream Attempts
 
 For a slow or failed request, inspect:

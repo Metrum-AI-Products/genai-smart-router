@@ -1005,6 +1005,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/traffic-shaping-by-group?since=24h",
 		"/admin/reports/api/provider-capacity-shaping?since=24h",
 		"/admin/reports/api/adaptive-upstream-backoff?since=24h",
+		"/admin/reports/api/traffic-tuning-advisor?since=24h",
 		"/admin/reports/api/troubleshooting-buckets?since=24h",
 		"/admin/reports/api/routing-decisions?since=24h",
 		"/admin/reports/api/contract-buckets?since=24h",

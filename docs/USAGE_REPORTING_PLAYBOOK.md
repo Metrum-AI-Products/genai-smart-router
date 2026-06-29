@@ -223,6 +223,27 @@ router-usage-report \
 
 Read the caller sections first for `429 traffic-shaped`: confirm whether the request was rejected or queued, which bucket limited it, and whether queue wait p50/p95/max explains latency. Read Provider Capacity Shaping and Adaptive Backoff for `503 upstream-capacity-throttled`: confirm whether all eligible targets were locally skipped, whether a prior upstream `429`/quota event started cooldown, and whether successful route-arounds indicate the model group still had enough target diversity.
 
+Traffic tuning advisor:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-tuning-advisor \
+  --caller-user <owner-user>
+```
+
+The advisor is deterministic and report-only. It reads existing `request_usage`, `request_traffic_shape_events`, `request_upstream_shape_events`, and `request_attempts` data, then emits recommendation classes such as `enable_queue`, `increase_queue_depth`, `increase_caller_burst`, `disable_queue_for_latency_sensitive_client`, `investigate_provider_429_capacity`, `route_around_incompatible_target`, and `no_shaping_change_indicated`. Each row includes safe evidence counts, p50/p95/max queue wait, retry-after, upstream 400/429/5xx/timeout counts, client cancellations, fallback rate, affected user/client counts, triggering threshold, and config fields to inspect. It never prints raw prompts, raw images, raw tool schemas, bearer tokens, token hashes, provider keys, or full config.
+
+Use the advisor before changing production burst or queue values:
+
+- If all shaping buckets were admitted or absent while upstream 400s dominate, follow `route_around_incompatible_target`: inspect request-shape failures, provider/model/dialect compatibility, tool/modality metadata, and `models.<group>.targets[]`. Increasing burst or queue depth will not fix upstream invalid-request failures.
+- If router `429 traffic-shaped` rows or caller shaping rejections dominate while upstream errors are low, inspect the named `callers[].traffic_shape.*_burst` field and decide whether a small burst increase or client-side slowdown is safer.
+- If queued requests later reject or p95 queue wait is high, inspect `queue.max_depth` and `queue.max_wait_ms`. Increase them only for workflows that can tolerate added latency.
+- If client cancellations rise with high queue wait, reduce queue wait or disable queueing for that latency-sensitive caller.
+- If provider 429/backoff appears across users, tune provider/model shared `traffic_shape` and `upstream_429_backoff`, or shift route weights, before increasing one user's burst.
+
 Smoke after enabling:
 
 1. Send a normal text request and confirm `request_target_candidates` has bounded candidate rows and `request_routing_decisions` has the selected strategy/target.

@@ -68,6 +68,7 @@ export const navGroups: NavGroup[] = [
       "traffic-shaping-by-group",
       "provider-capacity-shaping",
       "adaptive-upstream-backoff",
+      "traffic-tuning-advisor",
     ],
   },
   {

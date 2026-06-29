@@ -61,6 +61,26 @@ router-usage-report \
 
 Use `--traffic-shape-scope caller` for caller/server shaping, or scopes such as `provider`, `provider_model`, and `target` for upstream shared-capacity shaping.
 
+Traffic tuning advisor output is available from the same CLI without production secrets beyond the usage database credentials:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-tuning-advisor \
+  --caller-user <owner-user>
+```
+
+The advisor reads existing usage, caller shaping, provider shaping, adaptive backoff, and upstream attempt rows. It emits recommendation classes, safe evidence counts, queue wait and retry-after percentiles, upstream 400/429/5xx/timeout counts, fallback rate, affected user/client counts, triggering threshold, and config fields to inspect. It does not change config automatically.
+
+Interpretation examples:
+
+- User sees errors but all shaping buckets were admitted or absent: `route_around_incompatible_target` points to request-shape/provider compatibility, not burst or queue depth.
+- User is queued and cancellations increase: `disable_queue_for_latency_sensitive_client` points to lower `queue.max_wait_ms` or fail-fast behavior.
+- Provider 429s appear across users: `investigate_provider_429_capacity` points to provider/model shared shaping, adaptive backoff, route weights, or upstream entitlement.
+- Large agent payloads fail on selected upstreams: use the advisor with Request-shape failures and Upstream failures, then adjust target eligibility or route around incompatible targets.
+
 ## Generate Usage Rollups
 
 Administrators can generate bounded hourly, daily, or monthly rollups from stored request-time usage rows:

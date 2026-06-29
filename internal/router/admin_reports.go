@@ -370,6 +370,22 @@ type adminScalarReportRow struct {
 	Upstream429Attempts                  int64    `json:"upstream429Attempts,omitempty"`
 	UpstreamQuotaAttempts                int64    `json:"upstreamQuotaAttempts,omitempty"`
 	RouteAroundSuccesses                 int64    `json:"routeAroundSuccesses,omitempty"`
+	Recommendation                       string   `json:"recommendation,omitempty"`
+	Severity                             string   `json:"severity,omitempty"`
+	Successes                            int64    `json:"successes,omitempty"`
+	SuccessRatePct                       float64  `json:"successRatePct,omitempty"`
+	Router429                            int64    `json:"router429,omitempty"`
+	TrafficShaped                        int64    `json:"trafficShaped,omitempty"`
+	Upstream400                          int64    `json:"upstream400,omitempty"`
+	Upstream5xx                          int64    `json:"upstream5xx,omitempty"`
+	UpstreamTimeouts                     int64    `json:"upstreamTimeouts,omitempty"`
+	ClientCanceled                       int64    `json:"clientCanceled,omitempty"`
+	SuccessAfterFallbacks                int64    `json:"successAfterFallbacks,omitempty"`
+	ObservedValues                       string   `json:"observedValues,omitempty"`
+	Threshold                            string   `json:"threshold,omitempty"`
+	ConfigFields                         []string `json:"configFields,omitempty"`
+	Explanation                          string   `json:"explanation,omitempty"`
+	Docs                                 string   `json:"docs,omitempty"`
 }
 
 type adminSavingsBaselineDTO struct {
@@ -961,6 +977,7 @@ func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 		"/api/traffic-shaping-by-group":  {Report: "traffic-shaping-by-group", Dimension: "model_group", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "caller"},
 		"/api/provider-capacity-shaping": {Report: "provider-capacity-shaping", Dimension: "provider_model", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "upstream"},
 		"/api/adaptive-upstream-backoff": {Report: "adaptive-upstream-backoff", Dimension: "backoff_reason", Secondary: "provider_model", Sort: "requests", ShapeReport: "adaptive"},
+		"/api/traffic-tuning-advisor":    {Report: "traffic-tuning-advisor", Sort: "severity"},
 	}
 	spec, ok := specs[path]
 	return spec, ok
@@ -1130,6 +1147,20 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	rows, err := s.usage.rows(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	if spec.Report == "traffic-tuning-advisor" {
+		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		attempts, err := s.usage.trafficTuningAttemptsForRows(rows, filters.UsageReportOptions)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, buildAdminTrafficTuningAdvisorResponse(filters, rows, events, attempts, spec))
 		return
 	}
 	if spec.ShapeReport != "" {
@@ -2696,6 +2727,69 @@ func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, 
 	}
 	resp.Charts = adminShapeCharts(filters, generatedAt, spec, resp.Rows)
 	return resp
+}
+
+func buildAdminTrafficTuningAdvisorResponse(filters adminReportFilters, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent, attempts []trafficTuningAttempt, spec adminScalarEndpointSpec) adminScalarReportResponse {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	total := &agg{}
+	for _, row := range rows {
+		total.add(row)
+	}
+	advisorRows := BuildTrafficTuningAdvisor(rows, upstreamEvents, attempts)
+	totalAdvisorRows := len(advisorRows)
+	if filters.Limit > 0 && len(advisorRows) > filters.Limit {
+		advisorRows = advisorRows[:filters.Limit]
+	}
+	respRows := make([]adminScalarReportRow, 0, len(advisorRows))
+	for _, row := range advisorRows {
+		respRows = append(respRows, adminScalarReportRow{
+			Key:                   row.Key,
+			SecondaryKey:          row.SecondaryKey,
+			Requests:              row.Requests,
+			Errors:                row.TerminalErrors,
+			ErrorRatePct:          row.ErrorRatePct,
+			Rejections:            row.Rejected,
+			Queued:                row.Queued,
+			AvgRetryAfterMS:       row.RetryAfterP50MS,
+			MaxRetryAfterMS:       row.RetryAfterMaxMS,
+			P50QueueWaitMS:        row.QueueWaitP50MS,
+			P95QueueWaitMS:        row.QueueWaitP95MS,
+			MaxQueueWaitMS:        row.QueueWaitMaxMS,
+			EstimatedInputTokens:  row.EstimatedInputP95,
+			ReservedOutputTokens:  row.ReservedOutputP95,
+			TotalReservedTokens:   row.TotalReservedP95,
+			Upstream429Attempts:   row.Upstream429,
+			Recommendation:        row.Recommendation,
+			Severity:              row.Severity,
+			Successes:             row.Successes,
+			SuccessRatePct:        row.SuccessRatePct,
+			Router429:             row.Router429,
+			TrafficShaped:         row.TrafficShaped,
+			Upstream400:           row.Upstream400,
+			Upstream5xx:           row.Upstream5xx,
+			UpstreamTimeouts:      row.UpstreamTimeouts,
+			ClientCanceled:        row.ClientCanceled,
+			FallbackRatePct:       row.FallbackRatePct,
+			SuccessAfterFallbacks: row.SuccessAfterFallbacks,
+			AvgLatencyMS:          row.LatencyP50MS,
+			MaxLatencyMS:          row.LatencyMaxMS,
+			AffectedUsers:         row.AffectedUsers,
+			AffectedClients:       row.AffectedClients,
+			ObservedValues:        row.ObservedValues,
+			Threshold:             row.Threshold,
+			ConfigFields:          row.ConfigFields,
+			Explanation:           row.Explanation,
+			Docs:                  row.Docs,
+		})
+	}
+	return adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		Rows:         respRows,
+		Pagination:   adminTopNPagination(filters, len(respRows), filters.Limit > 0 && totalAdvisorRows > filters.Limit, "Traffic tuning advisor rows are top-N by severity and request count."),
+		GeneratedUTC: generatedAt,
+	}
 }
 
 func adminDiagnosticParentOptions(opts UsageReportOptions, diagnostic string) UsageReportOptions {

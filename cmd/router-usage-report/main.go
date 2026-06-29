@@ -32,6 +32,7 @@ func main() {
 	provider := flag.String("provider", "", "filter report to one upstream provider")
 	targetModel := flag.String("target-model", "", "filter report to one upstream target model")
 	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
+	trafficTuningAdvisor := flag.Bool("traffic-tuning-advisor", false, "generate a traffic-shaping tuning advisor instead of the full usage report")
 	trafficShapedOnly := flag.Bool("traffic-shaped-only", false, "filter report to requests with caller or upstream traffic shaping events")
 	trafficShapeBucket := flag.String("traffic-shape-bucket", "", "filter report to one traffic-shaping bucket")
 	trafficShapeScope := flag.String("traffic-shape-scope", "", "filter report to one traffic-shaping scope")
@@ -133,7 +134,7 @@ func main() {
 		return
 	}
 
-	md, err := router.GenerateUsageMarkdown(router.UsageReportOptions{
+	reportOpts := router.UsageReportOptions{
 		Driver:             *driver,
 		DBPath:             *dbPath,
 		DSN:                *dsn,
@@ -152,7 +153,13 @@ func main() {
 		TrafficShapedOnly:  *trafficShapedOnly,
 		TrafficShapeBucket: *trafficShapeBucket,
 		TrafficShapeScope:  *trafficShapeScope,
-	})
+	}
+	var md string
+	if *trafficTuningAdvisor {
+		md, err = router.GenerateTrafficTuningAdvisorMarkdown(reportOpts)
+	} else {
+		md, err = router.GenerateUsageMarkdown(reportOpts)
+	}
 	if err != nil {
 		die("generate report: %v", err)
 	}

@@ -10,6 +10,7 @@ const sidebars = {
         "getting-started/hosted-quickstart",
         "getting-started/codex-cli",
         "getting-started/claude-code-cli",
+        "getting-started/coding-agent-clients",
       ],
     },
     {

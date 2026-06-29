@@ -117,6 +117,21 @@ Join `request_traffic_shape_events` by `request_id` for one row per evaluated bu
 
 For aggregate triage, run `router-usage-report --traffic-shaped-only --since 24h` and inspect Traffic Shaping Summary plus Traffic Shaping By User / Project, By Key, By Client, and By Model Group. In the browser admin UI, use the Traffic shaping overview, Shaping users, Shaping keys, Shaping clients, and Shaping groups tabs. A `queued` decision with nonzero queue wait explains bounded added latency; a `rejected` decision with nonzero queue wait usually means the request timed out in the bounded queue, while a `rejected` decision with zero queue wait usually means the queue was disabled, full, or the reservation could never fit within the burst.
 
+Run the traffic tuning advisor before changing production shaping values:
+
+```bash
+router-usage-report --driver postgres --dsn "$ROUTER_USAGE_DB_DSN" --since 24h --traffic-tuning-advisor --caller-user <owner-user>
+```
+
+Decision tree:
+
+- `route_around_incompatible_target`: the user saw errors, but caller shaping did not reject or queue the traffic and upstream 400/request-shape failures dominate. Inspect request-shape failures, upstream failures, target tool/modality/cap metadata, and remove or lower the incompatible target. Do not increase burst or queue depth for this symptom.
+- `enable_queue`, `increase_queue_depth`, or `increase_queue_wait`: router-side shaping is actually rejecting or queueing traffic. Change only the named caller/server queue or burst fields, then verify queue wait p50/p95/max, user latency, and upstream errors after rollout.
+- `disable_queue_for_latency_sensitive_client`: client cancellations rose while queue waits were high. Lower `queue.max_wait_ms` or disable queueing for that caller; fail-fast is better for many interactive coding clients.
+- `investigate_provider_429_capacity`: provider 429 or adaptive backoff is shared across users. Tune provider/model/target `traffic_shape`, `upstream_429_backoff`, route weights, or provider entitlement before raising one caller's burst.
+- `decrease_caller_rate`: user-visible errors and upstream 5xx/timeouts are both high. Slow the client, lower concurrency, or reduce retry intensity while provider health is investigated.
+- `no_shaping_change_indicated`: no conservative threshold crossed. Keep current shaping and inspect request-level failures, client behavior, provider health, or model compatibility instead.
+
 Separate caller-token quota failures from upstream provider quota or billing exhaustion. Caller policy failures return `429 rpm-exceeded`, `429 tpm-exceeded`, `429 concurrency-exceeded`, or `429 quota-exhausted` before any provider call. Provider balance, credit, billing, payment, or quota failures are recorded per attempted target as `request_attempts.error_class = 'upstream_quota_exhausted'`; if no fallback succeeds, callers receive `503 upstream-quota-exhausted` with a sanitized `request_id`. Use that request ID to inspect `request_attempts`, `request_trace_events`, and `request_errors`, then verify the provider account balance, billing state, quota entitlement, and provider status page. If a later fallback succeeds, the terminal `request_usage` row remains `200` with `fallback_used = true`, and the failed provider attempt still appears in `request_attempts`.
 
 Separate provider/model shared shaping from both caller limits and upstream-returned `429`. Provider shaping returns `503 upstream-capacity-throttled` when every otherwise eligible target is locally throttled before an upstream call starts. Use the request ID to inspect `request_upstream_shape_events`: `scope` identifies provider, provider_model, or target; `bucket` identifies request-start, input-token, total-reserved-token, or adaptive-backoff admission; `decision` shows admitted, skipped, rejected, or cooldown_started; and `backoff_reason` distinguishes `provider-shape-throttled`, `model-shape-throttled`, `target-shape-throttled`, `adaptive-backoff-provider-429`, and `adaptive-backoff-provider-quota`. If `request_attempts` has an `upstream_rate_limited` attempt immediately before shape skips, the router is backing off from a real upstream rate-limit response. If there are no new attempts, the local bucket is protecting configured shared capacity.

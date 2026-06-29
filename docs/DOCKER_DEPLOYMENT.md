@@ -292,6 +292,21 @@ Usage rows, throughput fields, request-time pricing/cost fields, and cache snaps
 
 For browser report rollout, smoke `/admin/reports/`, `/admin/reports/api/version`, and `/admin/reports/api/summary?since=24h` with an authorized browser-admin user, verify the Metrum-branded dark shell and version chip load, confirm ordinary router tokens receive `403 reports-forbidden`, and disable reports by setting `server.admin_reports.enabled: false` if rollback is needed. Also smoke `/admin/reports/?tab=requests&since=24h&limit=50&sort=timeUtc&direction=desc`; verify the table shows current-page range text, Next updates the URL with `cursor=<next_cursor>`, changing a filter resets the cursor, server-sortable headers update `sort` and `direction`, and `CSV current page` exports only the returned request rows. At the API layer, confirm `/admin/reports/api/requests?since=24h&limit=50&sort=timeUtc&direction=desc` has `pagination.mode: "cursor"`, `returned <= 50`, no secret fields, and no duplicated request IDs when fetching `cursor=<next_cursor>`. Pick one recent safe request ID and smoke `/admin/reports/api/request-evidence?request_id=<request_id>`; verify `diagnosticCompleteness`, `evidenceSections`, stored request-time cost fields, attempt rows when attempts happened, `Cache-Control: no-store`, Casbin domain scoping, and no raw prompts, images, tool schemas, tool outputs, tokens, token hashes, provider keys, upstream bodies, cookies, OIDC tokens, full config, or private paths. For an aggregate such as `/admin/reports/?tab=usage-by-key&since=24h&limit=50`, confirm the browser labels it as top-N and does not expose cursor navigation; at the API layer, confirm `/admin/reports/api/usage-by-key?since=24h&limit=50` returns `pagination.mode: "top_n"` so operators understand the table is a ranked bounded summary. If security reports are enabled, smoke `/admin/reports/api/security/events?since=24h&limit=50`, verify an admin without `admin:security_reports` receives `403 reports-forbidden`, confirm security events also return cursor pagination metadata, and verify CSV export contains no raw tokens, token hashes, provider keys, prompts, images, cookies, OIDC tokens, or full config.
 
+For traffic tuning advisor rollout, smoke both browser and CLI paths before changing any shaping config:
+
+```bash
+curl -fsS -u admin:<password> \
+  "$ROUTER_BASE_URL/admin/reports/api/traffic-tuning-advisor?since=24h&limit=50"
+
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-tuning-advisor
+```
+
+Verify the advisor returns only safe scalar evidence and recommendation/config-field hints, not raw prompts, images, tool schemas, bearer tokens, token hashes, provider keys, or full config. For a known heavy coding-agent user, compare the advisor with Traffic Shaping, Provider Capacity Shaping, Upstream Failures, Request Shape Failures, and Requests. If recommendations indicate `route_around_incompatible_target`, roll out by changing target eligibility or route weights, not burst/queue values. If recommendations indicate burst or queue changes, make one scoped caller/server change, restart or reload through the normal process, rerun controlled burst and normal-request smokes, then compare queue wait p50/p95/max, router 429 count, upstream 429/5xx, latency, and client cancellations. Roll back by restoring the previous config backup, disabling the caller queue, disabling the caller `traffic_shape`, or disabling inherited `server.traffic_shape.enabled`, depending on the changed field.
+
 To intentionally start production reporting clean after a schema change, stop the stack, back up the Postgres volume or database, remove the Postgres data volume, and start the stack again:
 
 ```bash
