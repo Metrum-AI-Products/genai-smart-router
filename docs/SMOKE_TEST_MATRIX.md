@@ -31,6 +31,25 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
+## Automated Capability Probe
+
+Use the capability probe before adding or changing provider catalog metadata. It runs direct upstream smokes, records pass/fail evidence, and emits a `recommended_config` block that maps directly to catalog fields:
+
+```bash
+scripts/probe-model-capabilities.sh \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialect openai-chat \
+  --output yaml | tee tmp/probe-results.yaml
+```
+
+Supported dialects are `openai-chat`, `openai-responses`, and `anthropic`. The probe covers basic text, streaming, tiny max-token cap, auto tools, forced tools where applicable, structured outputs, tools plus structured outputs, optional image input/OCR when `--receipt-image-url` is provided, and reasoning controls. It uses realistic default budgets for acceptance probes and a tiny budget only for cap-honoring checks.
+
+The output is direct-provider evidence only. Before adding active route weight, repeat every declared capability through a router smoke group, verify usage/cost/latency rows, and confirm requests that require omitted capabilities return safe `no-eligible-target` behavior without upstream attempts. Do not copy failed, skipped, or informational probe rows into `tool_support`, `input_modalities`, `reasoning`, or max-token metadata.
+
+The full onboarding procedure is tracked in `docs/onboard-model.md` when present; the probe automates the direct-smoke step but does not replace pricing source validation, catalog review, smoke group setup, router-level smokes, production rollout, or rollback documentation.
+
 ## Release Validation Matrix
 
 Use the release validation matrix before handing a binary, Docker package, Compose bundle, or Kubernetes manifest set to another operator:

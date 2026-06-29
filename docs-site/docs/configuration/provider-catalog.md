@@ -46,6 +46,35 @@ Provider-level fields identify the upstream API skin:
 
 Internal vLLM, SGLang, Baseten, Crusoe, Fireworks, OpenRouter, Anthropic, MiniMax, Kimi, xAI, and OpenAI-compatible services all use this same catalog shape. Configure separate provider skins when the same upstream exposes multiple dialects, such as OpenAI Chat and OpenAI Responses.
 
+## Capability Declaration Rules
+
+Capability fields are eligibility controls, not marketing descriptions. If a capability is omitted, the router treats it as unavailable and skips the target for requests that require it.
+
+Use `scripts/probe-model-capabilities.sh` as the repeatable first pass for direct upstream evidence:
+
+```bash
+scripts/probe-model-capabilities.sh \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialect openai-chat \
+  --output yaml
+```
+
+Map the probe output mechanically:
+
+| Probe | Passing metadata | Failure or not tested |
+|---|---|---|
+| `text` | catalog the exact `model` ID with `input_modalities: [text]` and `output_modalities: [text]` | do not activate the target |
+| `max-tokens-cap` | omit `honors_max_tokens` because the default is true | set `honors_max_tokens: false` when the cap is not honored |
+| `auto-tools` | add `tools`, `function`, or `client_tools` for the tested skin | omit tool support for that skin |
+| `forced-tools` | add `tool_choice` where the skin uses OpenAI-style tool choice | omit `tool_choice` |
+| `structured-outputs` | add `structured_outputs` for the tested skin | omit structured-output support |
+| `image-input` | add `image` to `input_modalities` after router-level image smoke also passes | keep text-only modalities |
+| `reasoning-effort` or Anthropic thinking | add `reasoning.supported`, `mode`, and the tested control type | omit reasoning metadata |
+
+Date-stamp the evidence in `pricing_notes` or validation notes. Include what passed, what failed, and what was not tested. A model passing one skin does not imply any other skin passed; validate OpenAI Chat, OpenAI Responses, and Anthropic Messages independently.
+
 ## Rollback
 
 If a cataloged model fails validation, remove it from every active `models.<group>.targets[]` entry first, keep the provider catalog entry only if it remains useful for smoke testing, and restart or reload through the normal deployment path. Remove capability fields such as `structured_outputs`, `image`, or `tool_choice` when only that request shape fails.

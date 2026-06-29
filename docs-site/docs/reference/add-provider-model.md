@@ -28,6 +28,19 @@ Keep unavailable or unvalidated provider models catalog-only. Move a model into 
 
 ## 2. Run Direct Provider Smokes
 
+For repeatable first-pass capability evidence, run the repository probe script from a protected shell that has only the relevant provider key in the named environment variable:
+
+```bash
+scripts/probe-model-capabilities.sh \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialect openai-chat \
+  --output yaml | tee probe-results.yaml
+```
+
+The probe is not a replacement for operator review or workload validation. It produces a structured checklist of direct upstream smokes and a `recommended_config` block that should be copied only after you inspect the failed, skipped, and informational rows. Capabilities that were not tested stay omitted from provider metadata; omitted metadata makes the router skip that target for requests that require the capability.
+
 Run direct upstream requests before involving the router:
 
 - text completion with a realistic output cap for the caller API, such as `max_tokens`, `max_completion_tokens`, or `max_output_tokens`;
@@ -58,6 +71,21 @@ Keep an onboarding result for every capability claim. The public-safe version sh
 - promotion decision, such as catalog-only, smoke-only, limited weight, active, or rolled back.
 
 Do not publish raw provider keys, router tokens, token hashes, private hostnames, full config, raw prompts, raw images, raw tool schemas, raw tool outputs, or unsanitized provider responses. Summarize the observed behavior and keep private evidence in deployment-controlled systems.
+
+Map probe results to catalog metadata mechanically:
+
+| Probe result | Catalog field to consider | Rule |
+|---|---|---|
+| `text: pass` | `model`, text modalities | Required before any route uses the target. |
+| `max-tokens-cap: fail` | `honors_max_tokens: false` | Mark false so explicit capped requests skip the target. |
+| `auto-tools: pass` | `tool_support.<skin>: [tools]` or `function` / `client_tools` | Add only for the tested dialect. |
+| `forced-tools: pass` | `tool_choice` | Add only when object/forced tool choice passed. |
+| `structured-outputs: pass` | `structured_outputs` | Add only for the tested dialect and schema form. |
+| `image-input: pass` | `input_modalities: [text, image]` | Add only after direct and router-level image smokes pass. |
+| `reasoning-effort: pass` | `reasoning` | Set the control type that was actually tested. |
+| `skip`, `fail`, or `info` | no active capability tag | Keep the capability omitted and document the result in `pricing_notes`. |
+
+Every API skin needs independent evidence. OpenAI Chat tool support does not prove OpenAI Responses function tools or Anthropic Messages client tools.
 
 ## 4. Add Catalog Metadata
 
