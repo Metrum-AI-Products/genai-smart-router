@@ -32,6 +32,9 @@ export function GlobalFilters({ draftFilters, filters, onDraftChange, onClearTab
     const value = filters[name]?.trim() || "";
     return value !== "" && value !== defaultValue;
   }).length;
+  const markdownParams = new URLSearchParams(
+    Object.entries(filters).filter(([key, value]) => value.trim() && key !== "cursor" && key !== "offset"),
+  );
 
   useEffect(() => {
     try {
@@ -52,9 +55,11 @@ export function GlobalFilters({ draftFilters, filters, onDraftChange, onClearTab
         <Button type="submit">Apply</Button>
         <a
           className="inline-flex h-9 items-center rounded-md border border-white/15 px-3 text-sm text-white hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metrum-blue"
-          href={`export.md?${new URLSearchParams(filters)}`}
+          href={`export.md?${markdownParams}`}
+          aria-label="Markdown full report for current filters"
+          title="Markdown full report for current filters"
         >
-          Markdown
+          Markdown report
         </a>
         {activeTabFilterCount > 0 ? (
           <Button type="button" variant="outline" onClick={onClearTabFilters}>

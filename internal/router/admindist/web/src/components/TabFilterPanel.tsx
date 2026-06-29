@@ -11,11 +11,12 @@ import { cn } from "@/lib/utils";
 type Props = {
   tab: TabSpec;
   columns: ReportColumn[];
+  supportedSortKeys?: ReadonlySet<string>;
   filters: ReportFilters;
   onFiltersChange: Dispatch<SetStateAction<ReportFilters>>;
 };
 
-export function TabFilterPanel({ tab, columns, filters, onFiltersChange }: Props) {
+export function TabFilterPanel({ tab, columns, supportedSortKeys, filters, onFiltersChange }: Props) {
   const visibleFilters = (tab.filters || []).filter((name) => name !== "limit");
   const [open, setOpen] = useState(() => readOpenState(tab.id));
   const panelId = useId();
@@ -55,7 +56,7 @@ export function TabFilterPanel({ tab, columns, filters, onFiltersChange }: Props
       </div>
       <div id={panelId} className={cn("gap-2 lg:grid lg:grid-cols-4 xl:grid-cols-6", open ? "grid pt-3 lg:pt-0" : "hidden lg:grid")}>
         {visibleFilters.map((name) => (
-          <TabFilterControl key={name} name={name} columns={columns} value={filters[name] ?? tabFilterDefaults[name]} onChange={updateFilter} />
+          <TabFilterControl key={name} name={name} columns={columns} supportedSortKeys={supportedSortKeys} value={filters[name] ?? tabFilterDefaults[name]} onChange={updateFilter} />
         ))}
         <div className="hidden items-end lg:flex">
           <button type="button" className="h-9 text-sm text-white/58 underline decoration-white/20 underline-offset-4 hover:text-white" onClick={resetFilters}>
@@ -70,11 +71,12 @@ export function TabFilterPanel({ tab, columns, filters, onFiltersChange }: Props
 type ControlProps = {
   name: TabFilterName;
   columns: ReportColumn[];
+  supportedSortKeys?: ReadonlySet<string>;
   value: string;
   onChange: (name: TabFilterName, value: string) => void;
 };
 
-function TabFilterControl({ name, columns, value, onChange }: ControlProps) {
+function TabFilterControl({ name, columns, supportedSortKeys, value, onChange }: ControlProps) {
   const label = tabFilterLabels[name];
   if (name === "cache") {
     return (
@@ -116,15 +118,17 @@ function TabFilterControl({ name, columns, value, onChange }: ControlProps) {
     );
   }
   if (name === "sort") {
+    const sortColumns = supportedSortKeys ? columns.filter((column) => supportedSortKeys.has(column.key)) : columns;
     return (
       <FilterLabel label={label} name={name}>
         <Select data-tab-filter={name} name={name} value={value} onChange={(event) => onChange(name, event.target.value)}>
           <option value="">Default</option>
-          {columns.map((column) => (
+          {sortColumns.map((column) => (
             <option key={column.key} value={column.key}>
               {column.label}
             </option>
           ))}
+          {value && !sortColumns.some((column) => column.key === value) ? <option value={value}>{value}</option> : null}
         </Select>
       </FilterLabel>
     );

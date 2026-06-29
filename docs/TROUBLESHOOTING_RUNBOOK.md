@@ -44,6 +44,8 @@ rtk curl -u admin:<password> \
 
 Use the returned `pagination.next_cursor` for the next page. The cursor is opaque and bound to the endpoint, sort, and direction; a malformed or stale cursor returns `400 invalid-report-filter`. Domain-scoped admins continue to see only their project/environment on every page. Aggregate tabs such as usage by key or provider/model are top-N summaries and should be used to identify dimensions before drilling into the cursor-paged request or security-event APIs.
 
+In the browser admin UI, use `/admin/reports/?tab=requests&since=24h&limit=50&sort=timeUtc&direction=desc` for the same flow. Add filters such as `caller_user`, `client`, `resolved_group`, or `status`, then page with Next. Filter, tab, limit, and sort changes reset the cursor to the first page. Use `CSV current page` only for the rows currently returned by the server; use top-N aggregate tabs such as Provider/model to find dimensions, not as page 1 of every matching request.
+
 ## Common Cases
 
 ### `no-eligible-target`

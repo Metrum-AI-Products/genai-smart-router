@@ -24,6 +24,8 @@ export type ReportPagination = {
   note?: string;
 };
 
+export type ReportPageAction = "first" | "previous" | "next" | "last";
+
 export type ReportChartPoint = {
   x?: string;
   y?: number;
@@ -382,7 +384,7 @@ export const tabSpecs: TabSpec[] = [
   { id: "capability-usage", label: "Capabilities", endpoint: "capability-usage", columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "anomalies", label: "Anomalies", endpoint: "anomalies", columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "security-events", label: "Security", endpoint: "security/events", columns: securityColumns, security: true, filters: sortDirectionFilters },
-  { id: "requests", label: "Requests", endpoint: "summary", columns: requestColumns, requests: true, filters: statusCacheFilters },
+  { id: "requests", label: "Requests", endpoint: "requests", columns: requestColumns, requests: true, filters: statusCacheSortFilters },
 ];
 
 export async function fetchReport(endpoint: string, filters: ReportFilters): Promise<ReportResponse> {
@@ -391,8 +393,19 @@ export async function fetchReport(endpoint: string, filters: ReportFilters): Pro
     if (value.trim()) params.set(key, value.trim());
   }
   const res = await fetch(`api/${endpoint}?${params}`, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`${endpoint} failed with HTTP ${res.status}`);
+  if (!res.ok) throw new Error(await reportErrorMessage(endpoint, res));
   return (await res.json()) as ReportResponse;
+}
+
+async function reportErrorMessage(endpoint: string, res: Response) {
+  try {
+    const body = (await res.json()) as { error?: { message?: string; type?: string } };
+    const message = body.error?.message || body.error?.type || "";
+    if (message) return `${endpoint} failed: ${message}`;
+  } catch {
+    // Fall through to the HTTP status when the server did not return JSON.
+  }
+  return `${endpoint} failed with HTTP ${res.status}`;
 }
 
 export async function fetchVersion(): Promise<VersionResponse> {
@@ -471,6 +484,7 @@ function rowsEveryEqual(rows: ReportRow[], left: string, right: string): boolean
 const sortAliases: Record<string, string[]> = {
   actualCostUsd: ["actual_cost_usd", "costUsd", "totalCostUsd"],
   baselineCostUsd: ["baseline_cost_usd", "baselineCostUsd"],
+  costUsd: ["totalCostUsd"],
   savingsUsd: ["savings_usd", "savingsUsd"],
   savingsPct: ["savings_pct", "savingsPct"],
   inputTokens: ["inputTokens", "input_tokens"],
@@ -481,8 +495,12 @@ const sortAliases: Record<string, string[]> = {
 export function resolveSortKey(requested: string | undefined, rows: ReportRow[], columns: ReportColumn[]): string {
   const raw = (requested || "").trim();
   if (!raw) return "";
-  const keys = new Set<string>();
-  for (const column of columns) keys.add(column.key);
+  const visibleKeys = new Set(columns.map((column) => column.key));
+  if (visibleKeys.has(raw)) return raw;
+  for (const alias of sortAliases[raw] || []) {
+    if (visibleKeys.has(alias)) return alias;
+  }
+  const keys = new Set<string>(visibleKeys);
   for (const row of rows) {
     for (const key of Object.keys(row)) keys.add(key);
   }

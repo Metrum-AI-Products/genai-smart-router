@@ -17,7 +17,9 @@ export type GlobalFilterName =
 
 export type TabFilterName = "baseline" | "status" | "cache" | "sort" | "direction" | "traffic_shape_bucket" | "traffic_shape_scope" | "limit";
 
-export type ReportFilterName = GlobalFilterName | TabFilterName;
+export type PaginationFilterName = "cursor" | "offset";
+
+export type ReportFilterName = GlobalFilterName | TabFilterName | PaginationFilterName;
 
 export const globalFilterFields = [
   ["since", "Since", "24h"],
@@ -46,7 +48,12 @@ export const tabFilterFields = [
   ["limit", "Rows", "50"],
 ] as const satisfies ReadonlyArray<FilterField<TabFilterName>>;
 
-export const filterFields = [...globalFilterFields, ...tabFilterFields] as const satisfies ReadonlyArray<FilterField<ReportFilterName>>;
+export const paginationFilterFields = [
+  ["cursor", "Cursor", ""],
+  ["offset", "Offset", ""],
+] as const satisfies ReadonlyArray<FilterField<PaginationFilterName>>;
+
+export const filterFields = [...globalFilterFields, ...tabFilterFields, ...paginationFilterFields] as const satisfies ReadonlyArray<FilterField<ReportFilterName>>;
 
 export const tabFilterLabels = Object.fromEntries(tabFilterFields.map(([name, label]) => [name, label])) as Record<TabFilterName, string>;
 export const tabFilterDefaults = Object.fromEntries(tabFilterFields.map(([name, , defaultValue]) => [name, defaultValue])) as Record<TabFilterName, string>;

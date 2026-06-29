@@ -102,15 +102,15 @@ The browser report shell provides shared controls for every tab:
 - a two-row header with the Metrum brand, title, and safe version chips on top, followed by a full-width global filter bar with the `Since` time range, Markdown export, mobile `Sections` drawer, and an accessible `Filters` disclosure for global investigation filters;
 - global filters for caller ID, caller user, public token ID, caller IP, caller project, caller environment, requested model, resolved group, provider, target model, dialect, and client; these remain active while switching tabs;
 - per-tab filter panels for tab-local controls such as baseline, status, cache state, sort, direction, and traffic-shaping bucket/scope; each report shows only the controls that apply to that tab;
-- a `Rows` select in the table toolbar for the URL-backed server row limit, alongside a separate client-side page-size select for visible rows;
-- selected tab, active filters, and search stored in shareable URL query parameters;
-- client-side search across visible safe scalar fields;
-- sortable table headers with click-to-sort controls and active ▲/▼ indicators;
-- bounded page-size selection;
+- a `Rows` select in the table toolbar for the URL-backed server row limit;
+- selected tab, active filters, server sort, direction, limit, and cursor stored in shareable URL query parameters;
+- clearly labeled quick filtering across the returned page or returned top-N rows;
+- sortable table headers with click-to-sort controls and active ▲/▼ indicators; cursor-paged request and security tabs refetch with server-supported sort keys, while aggregate tabs sort the returned top-N rows;
+- bounded server page-size selection for 25, 50, 100, or 250 rows when allowed by the deployment's `max_rows`;
 - manual refresh with last-refresh state;
 - copy buttons for identifiers such as public token IDs, groups, providers, and request IDs;
 - request-ID drilldown from request rows;
-- CSV export of the visible table data with spreadsheet formula-leading values neutralized;
+- CSV export labeled as current page, top-N rows, or visible rows with spreadsheet formula-leading values neutralized;
 - consistent chart, table, loading, empty, and error states.
 
 These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, raw spreadsheet formulas, or unsanitized upstream responses.
@@ -175,7 +175,9 @@ Aggregate tabs such as usage by key, provider/model mix, savings by user, traffi
 
 For those aggregate reports, browser search and table sorting operate over the returned top-N rows. Use the aggregate tabs to identify a dimension, then drill into `/admin/reports/api/requests` or `/admin/reports/api/security/events` with matching filters when you need stable page-by-page review.
 
-CSV export from the browser exports the currently visible table columns. Markdown export is bounded by the selected report filters and remains an operational report export, not an unbounded full-history job.
+CSV export from the browser exports the currently returned table scope: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for legacy unpaged responses. Markdown export is labeled as a full current-filter report and omits page cursors; it remains an operational report export, not an unbounded full-history job.
+
+The browser table footer mirrors this distinction. Cursor-paged reports show ranges such as `Showing 51-100 of 1,234`, expose first/previous/next controls, and keep the opaque `cursor` in the URL for sharing the current page. Previous is available after in-session forward navigation or when the API supplies a previous cursor. Aggregate reports show labels such as `Showing top 50 rows` or `Showing top 50 rows, more available` and do not show cursor navigation controls because they are bounded ranked summaries, not page 1 of every possible provider, key, or bucket.
 
 ## Navigation
 

@@ -191,11 +191,11 @@ test("filter URL state and CSV export remain usable", async ({ page }) => {
   await expect(page).toHaveURL(/caller_ip=203\.0\.113\.10/);
   await expect(page).toHaveURL(/client=codex-cli/);
 
-  await page.getByPlaceholder("Search visible rows").fill("mock");
+  await page.getByPlaceholder("Filter returned top-N rows").fill("mock");
   await expect(page.locator("tbody tr")).toHaveCount(1);
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "CSV" }).click();
+  await page.getByRole("button", { name: "CSV top-N rows" }).click();
   await expect((await download).suggestedFilename()).toBe("admin-report.csv");
 });
 
@@ -273,7 +273,7 @@ test("deep link populates global inputs", async ({ page }) => {
 test("Markdown export uses combined global and tab filters", async ({ page }) => {
   await page.goto("/?tab=savings-by-key&baseline=gpt-5.5&caller_user=alice");
 
-  const href = await page.getByRole("link", { name: "Markdown" }).getAttribute("href");
+  const href = await page.getByRole("link", { name: "Markdown full report for current filters" }).getAttribute("href");
   expect(href).toContain("export.md?");
   expect(href).toContain("baseline=gpt-5.5");
   expect(href).toContain("caller_user=alice");
@@ -318,7 +318,7 @@ test("per-tab filter panel shows shaping filters only on shaping tabs", async ({
 test("Rows select in DataTable toolbar updates limit and URL", async ({ page }) => {
   await page.goto("/?tab=expensive-requests");
 
-  await page.getByLabel("Rows").selectOption("100");
+  await page.getByLabel("Rows", { exact: true }).selectOption("100");
   await expect(page).toHaveURL(/limit=100/);
   await globalFiltersButton(page).click();
   await page.getByRole("textbox", { name: "Caller" }).fill("alice");
@@ -326,7 +326,7 @@ test("Rows select in DataTable toolbar updates limit and URL", async ({ page }) 
   await expect(page).toHaveURL(/caller_id=alice/);
   await expect(page).toHaveURL(/limit=100/);
   await page.reload();
-  await expect(page.getByLabel("Rows")).toHaveValue("100");
+  await expect(page.getByLabel("Rows", { exact: true })).toHaveValue("100");
 });
 
 test("Reset filters link clears only per-tab filters", async ({ page }) => {
@@ -355,13 +355,73 @@ test("deep-linked savings URLs preserve baseline and sorting params", async ({ p
   expect(savingsRequest).toContain("direction=desc");
 });
 
+test("cursor-paged request table navigates with URL cursors", async ({ page }) => {
+  await page.goto("/?tab=requests&limit=2");
+
+  await expect(page.getByText("Showing 1-2 of 3.")).toBeVisible();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page).toHaveURL(/cursor=page-2/);
+  await expect(page.getByText("Showing 3-3 of 3.")).toBeVisible();
+  expect(apiRequests.some((url) => url.includes("/api/requests?") && url.includes("cursor=page-2"))).toBe(true);
+
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expect(page).not.toHaveURL(/cursor=/);
+  await expect(page.getByText("Showing 1-2 of 3.")).toBeVisible();
+});
+
+test("request table sort and filters reset cursor state", async ({ page }) => {
+  await page.goto("/?tab=requests&limit=2");
+
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page).toHaveURL(/cursor=page-2/);
+
+  await page.getByRole("button", { name: /Total cost/ }).click();
+  await expect(page).toHaveURL(/sort=totalCostUsd/);
+  await expect(page).toHaveURL(/direction=desc/);
+  await expect(page).not.toHaveURL(/cursor=/);
+
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page).toHaveURL(/cursor=page-2/);
+  await globalFiltersButton(page).click();
+  await page.getByRole("textbox", { name: "Caller" }).fill("alice");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/caller_id=alice/);
+  await expect(page).not.toHaveURL(/cursor=/);
+});
+
+test("top-N aggregate tables do not show cursor pagination controls", async ({ page }) => {
+  await page.goto("/?tab=provider-model-mix&limit=50");
+
+  await expect(page.getByText("Showing top 1 rows, more available.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next page" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "CSV top-N rows" })).toBeVisible();
+});
+
+test("expired cursor errors offer a first-page reset", async ({ page }) => {
+  await page.goto("/?tab=requests&limit=2&cursor=expired");
+
+  await expect(page.getByText("requests failed: invalid cursor")).toBeVisible();
+  await page.getByRole("button", { name: "Reset to first page" }).click();
+  await expect(page).not.toHaveURL(/cursor=/);
+  await expect(page.getByText("Showing 1-2 of 3.")).toBeVisible();
+});
+
 async function installAdminApiMocks(page: Page, requestedUrls?: string[]) {
   await page.route("**/api/**", async (route) => {
     requestedUrls?.push(route.request().url());
+    const response = responseForRoute(route);
+    if ("status" in response && "body" in response) {
+      await route.fulfill({
+        status: response.status,
+        contentType: "application/json",
+        body: JSON.stringify(response.body),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(responseForRoute(route)),
+      body: JSON.stringify(response),
     });
   });
 }
@@ -416,6 +476,7 @@ function responseForRoute(route: Route) {
     });
   }
   if (endpoint === "security/events") {
+    if (url.searchParams.get("cursor") === "expired") return invalidCursorResponse();
     return commonResponse("security/events", {
       rows: [
         {
@@ -431,7 +492,7 @@ function responseForRoute(route: Route) {
           authSource: "basic",
         },
       ],
-    });
+    }, cursorPagination(url, 1, 1, false));
   }
   if (endpoint === "savings") {
     return {
@@ -465,12 +526,19 @@ function responseForRoute(route: Route) {
     });
   }
   if (endpoint === "expensive-requests") {
-    return commonResponse(endpoint, { requests: [requestRow()] });
+    return commonResponse(endpoint, { requests: [requestRow()] }, cursorPagination(url, 1, 1, false, "costUsd"));
+  }
+  if (endpoint === "requests") {
+    if (url.searchParams.get("cursor") === "expired") return invalidCursorResponse();
+    const secondPage = url.searchParams.get("cursor") === "page-2";
+    return commonResponse(endpoint, {
+      requests: secondPage ? [requestRow("req_e2e_345", 345)] : [requestRow("req_e2e_123", 123), requestRow("req_e2e_234", 234)],
+    }, cursorPagination(url, secondPage ? 1 : 2, 3, !secondPage));
   }
   return commonResponse(endpoint, { rows: [row(endpoint)] });
 }
 
-function commonResponse(report: string, extra: Record<string, unknown>) {
+function commonResponse(report: string, extra: Record<string, unknown>, pagination = topNPagination(1, true)) {
   return {
     period: { from: "2026-06-28T11:00:00Z", to: generatedUtc },
     generatedUtc,
@@ -485,7 +553,47 @@ function commonResponse(report: string, extra: Record<string, unknown>) {
       avgLatencyMs: 245,
     },
     charts: [chart(report)],
+    pagination,
     ...extra,
+  };
+}
+
+function topNPagination(returned: number, hasMore = false) {
+  return {
+    limit: 50,
+    returned,
+    total_count: null,
+    has_more: hasMore,
+    sort: "requests",
+    direction: "desc",
+    mode: "top_n",
+    note: "Aggregate rows are top-N for the selected filters.",
+  };
+}
+
+function cursorPagination(url: URL, returned: number, totalCount: number, hasMore: boolean, defaultSort = "timeUtc") {
+  const limit = Number(url.searchParams.get("limit") || "50");
+  return {
+    limit,
+    returned,
+    total_count: totalCount,
+    has_more: hasMore,
+    next_cursor: hasMore ? "page-2" : undefined,
+    sort: url.searchParams.get("sort") || defaultSort,
+    direction: url.searchParams.get("direction") || "desc",
+    mode: "cursor",
+  };
+}
+
+function invalidCursorResponse() {
+  return {
+    status: 400,
+    body: {
+      error: {
+        type: "invalid-report-filter",
+        message: "invalid cursor",
+      },
+    },
   };
 }
 
@@ -525,10 +633,10 @@ function savingsRow(key: string): ReportRow {
   };
 }
 
-function requestRow(): ReportRow {
+function requestRow(requestId = "req_e2e_123", cost = 123): ReportRow {
   return {
     timeUtc: generatedUtc,
-    requestId: "req_e2e_123",
+    requestId,
     callerId: "alice",
     callerIp: "203.0.113.10",
     tokenId: "rtr_mock_public",
@@ -545,7 +653,7 @@ function requestRow(): ReportRow {
     inputTokens: 123,
     outputTokens: 222,
     totalTokens: 345,
-    totalCostUsd: 0.0123,
+    totalCostUsd: cost / 10000,
     latencyMs: 245,
   };
 }
