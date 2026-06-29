@@ -8,11 +8,12 @@ type SidebarGroupProps = NavGroup & {
   tabs: TabSpec[];
   activeTab: string;
   collapsed: boolean;
+  showDescriptions?: boolean;
   onToggle: (groupId: string) => void;
   onSelectTab: (tabId: string) => void;
 };
 
-export function SidebarGroup({ id, label, tabs, activeTab, collapsed, onToggle, onSelectTab }: SidebarGroupProps) {
+export function SidebarGroup({ id, label, description, tabs, activeTab, collapsed, showDescriptions = false, onToggle, onSelectTab }: SidebarGroupProps) {
   const listId = `admin-report-nav-${id}`;
   const containsActiveTab = tabs.some((tab) => tab.id === activeTab);
 
@@ -26,14 +27,16 @@ export function SidebarGroup({ id, label, tabs, activeTab, collapsed, onToggle, 
         )}
         aria-expanded={!collapsed}
         aria-controls={listId}
+        title={description}
         onClick={() => onToggle(id)}
       >
         <span>{label}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform motion-reduce:transition-none", collapsed && "-rotate-90")} aria-hidden="true" />
       </button>
+      {showDescriptions && !collapsed ? <p className="px-2 text-xs text-white/45">{description}</p> : null}
       <div id={listId} className="space-y-1" hidden={collapsed}>
         {tabs.map((tab) => (
-          <SidebarItem key={tab.id} tab={tab} active={tab.id === activeTab} onSelect={onSelectTab} />
+          <SidebarItem key={tab.id} tab={tab} active={tab.id === activeTab} showDescription={showDescriptions} onSelect={onSelectTab} />
         ))}
       </div>
     </section>

@@ -25,6 +25,7 @@ type SidebarProps = {
   tabs: TabSpec[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  showDescriptions?: boolean;
   className?: string;
 };
 
@@ -39,7 +40,7 @@ function readCollapsedGroups() {
   }
 }
 
-export function Sidebar({ tabs, activeTab, onTabChange, className }: SidebarProps) {
+export function Sidebar({ tabs, activeTab, onTabChange, showDescriptions = false, className }: SidebarProps) {
   const groups = useMemo(() => groupedTabs(navGroups, tabs), [tabs]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedGroups());
 
@@ -77,10 +78,12 @@ export function Sidebar({ tabs, activeTab, onTabChange, className }: SidebarProp
               <SidebarGroup
                 id={group.id}
                 label={group.label}
+                description={group.description}
                 tabIds={group.tabIds}
                 tabs={group.tabs}
                 activeTab={activeTab}
                 collapsed={collapsedGroups.has(group.id)}
+                showDescriptions={showDescriptions}
                 onToggle={toggleGroup}
                 onSelectTab={onTabChange}
               />

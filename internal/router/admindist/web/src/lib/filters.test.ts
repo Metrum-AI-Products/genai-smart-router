@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { filterFields, globalFilterFields, paginationFilterFields, tabFilterFields } from "./filters";
-import { resolveSortKey, type ReportColumn } from "./reports";
+import { columnsForTab, reportMetadataById, resolveSortKey, tabSpecs, type ReportColumn } from "./reports";
 
 function names(fields: ReadonlyArray<readonly [string, string, string]>) {
   return fields.map(([name]) => name);
@@ -28,6 +28,35 @@ describe("admin report filters", () => {
     }
     for (const [name] of globalFilterFields) {
       expect(accepted.has(name), `${name} must be accepted by parseAdminReportFilters`).toBe(true);
+    }
+  });
+});
+
+describe("admin report help metadata", () => {
+  test("defines complete help metadata for every report tab", () => {
+    for (const tab of tabSpecs) {
+      expect(tab.metadata.shortDescription.trim(), tab.id).not.toBe("");
+      expect(tab.metadata.purpose.trim(), tab.id).not.toBe("");
+      expect(tab.metadata.dataSemantics.trim(), tab.id).not.toBe("");
+      expect(tab.metadata.caveats.trim(), tab.id).not.toBe("");
+      expect(tab.metadata.emptyState.trim(), tab.id).not.toBe("");
+      expect(tab.metadata.docsPath, tab.id).toContain(`#${tab.id}`);
+      expect(tab.metadata.commonFilters.length, tab.id).toBeGreaterThan(0);
+      expect(tab.metadata.keyColumns.length, tab.id).toBeGreaterThan(0);
+      expect(tab.metadata.relatedReports.length, tab.id).toBeGreaterThan(0);
+    }
+    expect(Object.keys(reportMetadataById).sort()).toEqual(tabSpecs.map((tab) => tab.id).sort());
+  });
+
+  test("adds column descriptions to tab schemas", () => {
+    for (const tab of tabSpecs) {
+      const columns = columnsForTab(
+        tab,
+        Object.fromEntries((tab.columns || []).map((column) => [column.key, column.key])) ? [Object.fromEntries((tab.columns || []).map((column) => [column.key, column.key]))] : [],
+      );
+      for (const column of columns) {
+        expect(column.description?.trim(), `${tab.id}.${column.key}`).not.toBe("");
+      }
     }
   });
 });

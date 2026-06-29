@@ -178,6 +178,17 @@ test("deep link requests tab opens active sidebar item", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
 });
 
+test("report help related links navigate to another report", async ({ page }) => {
+  await page.goto("/?tab=errors-fallbacks&since=24h&cursor=stale");
+
+  await page.getByText("How to use this report").click();
+  await page.locator("main").getByRole("link", { name: "Requests", exact: true }).click();
+
+  await expect(page).toHaveURL(/tab=requests/);
+  await expect(page).not.toHaveURL(/cursor=stale/);
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+});
+
 test("filter URL state and CSV export remain usable", async ({ page }) => {
   await page.goto("/");
 

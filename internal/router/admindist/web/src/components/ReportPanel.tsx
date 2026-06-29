@@ -6,7 +6,7 @@ import { ReportCharts } from "@/components/ReportCharts";
 import { TabFilterPanel } from "@/components/TabFilterPanel";
 import { Button } from "@/components/ui/button";
 import type { ReportFilters, ReportPageAction, ReportResponse, TabSpec } from "@/lib/reports";
-import { columnsForTab, resolveSortKey, rowsForTab } from "@/lib/reports";
+import { columnsForTab, resolveSortKey, rowsForTab, tabById } from "@/lib/reports";
 
 type Props = {
   tab: TabSpec;
@@ -32,10 +32,47 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
       <div>
         <p className="font-mono text-xs uppercase text-metrum-red">{tab.endpoint}</p>
         <h2 className="font-display text-2xl text-white">{tab.label}</h2>
-        <p className="text-sm text-white/58">
+        <p className="mt-1 max-w-4xl text-sm text-white/70">{tab.metadata.shortDescription}</p>
+        <p className="mt-1 text-sm text-white/50">
           {report?.period?.from && report?.period?.to ? `${report.period.from} to ${report.period.to}` : report?.generatedUtc ? `Generated ${report.generatedUtc}` : "Current report"}
         </p>
       </div>
+      <details className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm text-white/72">
+        <summary className="cursor-pointer select-none font-mono text-xs uppercase text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metrum-blue">
+          How to use this report
+        </summary>
+        <div className="mt-3 grid gap-4 lg:grid-cols-[1.25fr_1fr]">
+          <div className="space-y-3">
+            <p>{tab.metadata.purpose}</p>
+            <p className="text-white/58">{tab.metadata.dataSemantics}</p>
+            <p className="text-white/58">{tab.metadata.caveats}</p>
+          </div>
+          <div className="space-y-3">
+            <HelpList title="Common filters" items={tab.metadata.commonFilters} />
+            <HelpList
+              title="Key columns"
+              items={tab.metadata.keyColumns.slice(0, 4).map((column) => `${column.key}: ${column.description}`)}
+            />
+            <div>
+              <p className="font-mono text-[0.68rem] uppercase text-white/50">Related reports</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tab.metadata.relatedReports
+                  .map((id) => tabById(id))
+                  .filter((related): related is TabSpec => Boolean(related))
+                  .map((related) => (
+                    <a
+                      key={related.id}
+                      href={relatedReportHref(related.id)}
+                      className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:border-metrum-blue/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metrum-blue"
+                    >
+                      {related.label}
+                    </a>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
       {error ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-metrum-red/40 bg-metrum-red/10 p-4 text-sm text-white">
           <span>{error}</span>
@@ -81,6 +118,27 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
         onRefresh={onRefresh}
       />
     </main>
+  );
+}
+
+function relatedReportHref(tabId: string) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("tab", tabId);
+  params.delete("cursor");
+  return `?${params.toString()}`;
+}
+
+function HelpList({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div>
+      <p className="font-mono text-[0.68rem] uppercase text-white/50">{title}</p>
+      <ul className="mt-1 space-y-1 text-white/62">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

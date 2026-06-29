@@ -113,6 +113,8 @@ The browser report shell provides shared controls for every tab:
 - CSV export labeled as current page, top-N rows, or visible rows with spreadsheet formula-leading values neutralized;
 - consistent chart, table, loading, empty, and error states.
 
+Every report header includes a short purpose statement and an expandable **How to use this report** panel. The panel explains the page purpose, data semantics, caveats, common filters, key columns, and related reports. Desktop navigation exposes concise tab descriptions through hover/focus tooltips, while the mobile `Sections` drawer shows descriptions inline so the help is not hover-only.
+
 These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, raw spreadsheet formulas, or unsanitized upstream responses.
 
 Tables use per-tab column schemas instead of first-row key discovery. Column order, labels, and units are stable for each tab, CSV export follows the same visible columns, Markdown export escapes raw HTML and active Markdown table-cell syntax, and duplicate compatibility aliases are suppressed when they carry the same value. For example, usage tabs show `Input tokens`, `Output tokens`, and `Total tokens`; they do not show both `tokens` and `totalTokens` when those fields are equivalent. Cost fields follow the same rule: input, image, output, total, baseline, savings, and upstream-billed values are labeled separately when present.
@@ -215,6 +217,8 @@ Use caller shaping tabs when the caller received `429 traffic-shaped` or had que
 - System status: quotas/budgets plus retention and rollup status from existing usage DB status tables, including the latest retention job, per-table candidate/held/eligible/blocked/deleted counts, and recent hourly/daily/monthly rollup runs. Retention status is read-only; retention execution and rollup generation remain operator-controlled workflows.
 
 Recent request rows include visible columns for time, request ID, caller ID, caller IP, public token ID, caller user/project/environment, client, requested model, resolved model group, provider, model, dialect, status, cache state, attempts, fallback flag, latency, input/output/total tokens, and stored total cost.
+
+Use the related-report links in each help panel as the standard investigation path: errors lead to Requests and Provider/model, burst issues lead to Traffic shaping and Provider shaping, spend issues lead to Savings and Expensive requests, slow UX leads to Latency and Requests, access review leads to Security, and model-group quality review leads to Contracts, Validation, and Catalog status.
 
 ## Charts
 

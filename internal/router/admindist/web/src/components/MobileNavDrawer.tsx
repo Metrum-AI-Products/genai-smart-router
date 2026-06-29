@@ -35,6 +35,7 @@ export function MobileNavDrawer({ open, tabs, activeTab, onOpenChange, onTabChan
         <Sidebar
           tabs={tabs}
           activeTab={activeTab}
+          showDescriptions={true}
           className="min-h-0 flex-1 overflow-y-auto"
           onTabChange={(tabId) => {
             onTabChange(tabId);
