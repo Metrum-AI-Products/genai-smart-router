@@ -177,6 +177,9 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {
 	body := providerPassthroughBody(req)
 	body["model"] = model
+	if tools, ok := body["tools"]; ok {
+		body["tools"] = filterResponsesToolsForUpstream(tools)
+	}
 	// The router's first tool-capable path is unary. Non-streaming Responses
 	// payloads keep usage accounting deterministic for compatible clients.
 	body["stream"] = false

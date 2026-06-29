@@ -119,7 +119,7 @@ curl -fsS https://api.fireworks.ai/inference/v1/chat/completions \
 
 Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks Anthropic Messages and image/audio/video routes disabled until those exact direct and router-level skins pass.
 
-Fireworks Responses validation on 2026-06-28 used the official Responses API docs and Serverless pricing docs. The docs list `/inference/v1/responses`, client-executed function tools, provider-executed MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`; they also note the Responses API has different retention behavior from Chat Completions. The router config uses a separate `fireworks_responses` provider, sets `force_store_false: true` on the validated target, and rejects caller-supplied `mcp`/`sse` provider-hosted tools before upstream.
+Fireworks Responses validation on 2026-06-28 used the official Responses API docs and Serverless pricing docs. The docs list `/inference/v1/responses`, client-executed function tools, provider-executed MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`; they also note the Responses API has different retention behavior from Chat Completions. The router config uses a separate `fireworks_responses` provider, sets `force_store_false: true` on the validated target, rejects caller-supplied remote provider-hosted `mcp`/`sse` tools before upstream, and strips generic hosted search/image tool descriptors when the router is not exposing those services.
 
 Direct Fireworks Responses results on 2026-06-28:
 

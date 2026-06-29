@@ -7580,7 +7580,7 @@ func TestResponsesToolPassthroughRequiresExplicitTargetSupport(t *testing.T) {
 	}
 }
 
-func TestOpenAIResponsesRejectsProviderHostedToolsBeforeUpstream(t *testing.T) {
+func TestOpenAIResponsesRejectsRemoteProviderHostedToolsBeforeUpstream(t *testing.T) {
 	upstreamCalls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalls++
@@ -7611,12 +7611,12 @@ func TestOpenAIResponsesRejectsProviderHostedToolsBeforeUpstream(t *testing.T) {
 			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"mcp","server_url":"https://example.com/mcp"}]}`,
 		},
 		{
-			name: "web_search_preview",
-			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"web_search_preview"}]}`,
-		},
-		{
 			name: "file_search",
 			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"file_search","vector_store_ids":["vs_123"]}]}`,
+		},
+		{
+			name: "code_interpreter",
+			body: `{"model":"responses-tools","input":"hi","tools":[{"type":"code_interpreter","container":{"type":"auto"}}]}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -7634,6 +7634,59 @@ func TestOpenAIResponsesRejectsProviderHostedToolsBeforeUpstream(t *testing.T) {
 				t.Fatal("upstream called for provider-hosted Responses tool")
 			}
 		})
+	}
+}
+
+func TestOpenAIResponsesStripsGenericHostedToolsBeforeUpstream(t *testing.T) {
+	var gotTools []any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotTools, _ = body["tools"].([]any)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_tool_filter",
+			"object": "response",
+			"status": "completed",
+			"model":  body["model"],
+			"output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "responses",
+		Model:       "responses-tool-model",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"responses-tools","input":"hi","tools":[{"type":"function","name":"shell","parameters":{"type":"object"}},{"type":"namespace","name":"multi_tool_use","tools":[]},{"type":"web_search","external_web_access":false},{"type":"image_generation","output_format":"png"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(gotTools) != 2 {
+		t.Fatalf("upstream tools=%#v, want function and namespace only", gotTools)
+	}
+	gotTypes := []string{}
+	for _, rawTool := range gotTools {
+		tool, _ := rawTool.(map[string]any)
+		gotTypes = append(gotTypes, stringValue(tool["type"]))
+	}
+	if !stringSliceEqual(gotTypes, []string{"function", "namespace"}) {
+		t.Fatalf("upstream tool types=%#v", gotTypes)
 	}
 }
 

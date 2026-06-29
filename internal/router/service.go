@@ -331,7 +331,6 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"supports_image_detail_original":   hasImage,
 			"support_verbosity":                true,
 			"apply_patch_tool_type":            "freeform",
-			"web_search_tool_type":             "text_and_image",
 			"additional_speed_tiers":           []string{},
 			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
 			"experimental_supported_tools":     s.supportedToolsForGroup(name),
@@ -595,7 +594,7 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		s.writeError(w, rc, http.StatusBadRequest, "missing-model")
 		return
 	}
-	if dialect == "openai-responses" && requestHasProviderHostedTools(req) {
+	if dialect == "openai-responses" && requestHasForbiddenProviderHostedTools(req) {
 		s.writeError(w, rc, http.StatusBadRequest, "provider-hosted-tools-forbidden")
 		return
 	}
@@ -2042,19 +2041,47 @@ func targetSupportsTools(target Target, dialect string) bool {
 	}
 }
 
-func requestHasProviderHostedTools(req *IRRequest) bool {
+func requestHasForbiddenProviderHostedTools(req *IRRequest) bool {
 	if req == nil {
 		return false
 	}
 	for _, tool := range req.Tools {
-		switch strings.ToLower(strings.TrimSpace(stringValue(tool["type"]))) {
-		case "", "function", "function_tool":
-			continue
-		default:
+		if forbiddenProviderHostedResponsesToolType(stringValue(tool["type"])) {
 			return true
 		}
 	}
 	return false
+}
+
+func forbiddenProviderHostedResponsesToolType(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "mcp", "sse", "file_search", "code_interpreter", "computer_use_preview":
+		return true
+	default:
+		return false
+	}
+}
+
+func filterResponsesToolsForUpstream(tools any) any {
+	rawTools, ok := tools.([]any)
+	if !ok {
+		return tools
+	}
+	out := make([]any, 0, len(rawTools))
+	for _, rawTool := range rawTools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			out = append(out, rawTool)
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(stringValue(tool["type"]))) {
+		case "web_search", "web_search_preview", "image_generation":
+			continue
+		default:
+			out = append(out, rawTool)
+		}
+	}
+	return out
 }
 
 func supportsAnyCapability(values []string, capabilities ...string) bool {
