@@ -49,6 +49,8 @@ release-validation-matrix:
 
 docs-qa:
 	python3 scripts/check_docs_public_face.py
+	python3 scripts/check_docs_sidebar.py
+	go run ./cmd/docs-config-example-check
 
 docs-build: docs-qa
 	cd "$(DOCS_SITE_DIR)" && npm ci && DOCS_ROUTER_VERSION="$${VERSION}" DOCS_ROUTER_BUILD_DATE="$${BUILD_DATE}" npm run build

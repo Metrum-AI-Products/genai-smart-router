@@ -49,9 +49,7 @@ providers:
         output_modalities: [text]
         input_price_per_million_usd: 0.20
         output_price_per_million_usd: 0.80
-        pricing_source: https://provider.example.com/pricing
-        pricing_updated_at: "2026-06-27"
-        pricing_notes: Replace with deployment validation notes and provider-specific billing caveats.
+        pricing_notes: Keep pricing source and update-date evidence in config.example.yaml alongside deployment validation notes and provider-specific billing caveats.
         honors_max_tokens: true
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]

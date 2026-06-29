@@ -27,8 +27,6 @@ providers:
         output_price_per_million_usd: 1.25
         input_modalities: [text, image]
         output_modalities: [text]
-        pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
-        pricing_updated_at: "2026-06-17"
       gpt-5-4:
         model: gpt-5.4
         tier: vision
@@ -36,9 +34,7 @@ providers:
         output_price_per_million_usd: 15.00
         input_modalities: [text, image]
         output_modalities: [text]
-        pricing_source: https://developers.openai.com/api/docs/pricing
-        pricing_updated_at: "2026-06-25"
-        pricing_notes: Direct Responses text and receipt-image OCR smokes passed on 2026-06-25; use as a direct-provider replacement for OpenRouter-hosted Anthropic vision weight when the deployment accepts the cost profile
+        pricing_notes: Keep pricing source and update-date evidence in config.example.yaml. Use as a direct-provider replacement for OpenRouter-hosted Anthropic vision weight only when validation passes and the deployment accepts the cost profile.
 
   xai:
     base_url: https://api.x.ai/v1
@@ -55,8 +51,6 @@ providers:
         image_input_price_per_million_tokens_usd: 1.25
         input_modalities: [text, image]
         output_modalities: [text]
-        pricing_source: https://docs.x.ai/developers/models/grok-4.3
-        pricing_updated_at: "2026-06-17"
         tool_support:
           openai_chat: [tools, structured_outputs]
 
@@ -74,9 +68,7 @@ providers:
         output_price_per_million_usd: 15.00
         input_modalities: [text, image]
         output_modalities: [text]
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: receipt image smoke returned Rite Aid on 2026-06-17
+        pricing_notes: Keep pricing source and update-date evidence in config.example.yaml; activate only after the intended image workload passes.
 
 models:
   # Example dedicated VLM route. Your deployment can use any group name.

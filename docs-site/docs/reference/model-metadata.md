@@ -24,8 +24,7 @@ providers:
         output_modalities: [text]
         input_price_per_million_usd: 0.20
         output_price_per_million_usd: 1.00
-        pricing_source: https://provider.example.com/pricing
-        pricing_updated_at: "2026-06-19"
+        pricing_notes: Link source and update-date evidence in config.example.yaml.
         honors_max_tokens: true
         force_store_false: true
         tool_support:

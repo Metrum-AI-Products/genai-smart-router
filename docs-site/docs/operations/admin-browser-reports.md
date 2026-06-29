@@ -45,14 +45,12 @@ server:
         name: GPT-5.5
         input_price_per_million_usd: 5.00
         output_price_per_million_usd: 30.00
-        pricing_source: https://developers.openai.com/api/docs/pricing
-        pricing_updated_at: "2026-06-25"
+        notes: Keep pricing source and update-date evidence in config.example.yaml.
       - id: claude-opus-4.8
         name: Claude Opus 4.8
         input_price_per_million_usd: 5.00
         output_price_per_million_usd: 25.00
-        pricing_source: https://docs.anthropic.com/en/docs/about-claude/pricing
-        pricing_updated_at: "2026-06-25"
+        notes: Keep pricing source and update-date evidence in config.example.yaml.
     security:
       enabled: true
       retention_days: 90

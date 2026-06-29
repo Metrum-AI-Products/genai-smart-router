@@ -73,9 +73,7 @@ providers:
         output_price_per_million_usd: 0.75
         input_modalities: [text]
         output_modalities: [text]
-        pricing_source: https://www.crusoe.ai/cloud/pricing
-        pricing_updated_at: "2026-06-24"
-        pricing_notes: Direct Crusoe and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed on 2026-06-24 with an explicit User-Agent; keep out of broad groups until workload gates pass for this account and model.
+        pricing_notes: Keep source and update-date evidence in config.example.yaml. Direct Crusoe and local router-level text, streaming, max_tokens=1, auto tool, forced tool_choice, structured-output, usage, cost, latency, and no-fallback smokes passed with an explicit User-Agent; keep out of broad groups until workload gates pass for this account and model.
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
 

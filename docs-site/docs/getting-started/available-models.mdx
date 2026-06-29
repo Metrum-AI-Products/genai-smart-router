@@ -9,6 +9,8 @@ import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/Ro
 
 Use `/v1/models` to see which deployment-defined router model groups your token can request. This is the first check to run after receiving a router endpoint and caller token.
 
+From Getting Started, you might be looking for CLI guides: see [Codex CLI](./codex-cli) or [Claude Code CLI](./claude-code-cli).
+
 <DeploymentSpecificNote />
 
 ## Check Your Allowed Groups
@@ -64,6 +66,6 @@ Each group is a policy contract. The platform team can change the upstream provi
 
 ## For Administrators
 
-Administrators control this list with each caller token's `allow` entries. Use [User Key Generation](../operations/key-generation) for token creation and [Router Configuration](../configuration/router-config#caller-tokens-and-allow-lists) for allow-list behavior.
+Administrators control this list with each caller token's `allow` entries. Use [Key Generation And Rotation](../operations/key-generation) for token creation and [Caller Tokens](../configuration/caller-tokens) for allow-list behavior.
 
 For API details and compatible endpoint shapes, see [API Compatibility](../reference/api-compatibility).

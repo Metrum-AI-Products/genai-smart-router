@@ -7,6 +7,8 @@ doc_type: howto
 
 Use this section to triage customer-visible failures without exposing secrets or private deployment details. Start with the request ID, the caller-visible error code, and the affected model group.
 
+From Troubleshooting, you might be looking for the canonical error catalog: see [Error Responses](/docs/reference/errors).
+
 ## First Checks
 
 ```bash
