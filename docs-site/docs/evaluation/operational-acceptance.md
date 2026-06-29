@@ -33,6 +33,8 @@ Run:
 - Claude Code smoke for Anthropic Messages-compatible agent workflows;
 - usage report check after traffic.
 - if enabled, browser admin report smoke with browser-admin identity plus Casbin authorization, including `/admin/reports/`, `/admin/reports/api/summary?since=24h`, and `/admin/reports/export.md`.
+- robustness smoke for fallback ordering, upstream timeout, provider `429`, caller limit rejection, and diagnostics redaction using mock or staging targets.
+- outcome workload gate summary for changed model groups, including verifier/reward, client matrix, pass/fail thresholds, cost, latency, selected upstream distribution, and request/report correlation.
 
 ## Quota And Cost Checks
 

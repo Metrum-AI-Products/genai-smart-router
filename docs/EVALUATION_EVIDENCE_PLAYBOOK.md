@@ -80,6 +80,29 @@ For Harbor, join by run matrix, client, model group, task ID, seed, attempt, tim
 
 For non-Harbor evaluations, keep the external result table normalized enough to join on task ID, seed, attempt, app cohort, and request ID. Store raw private content only in a governed customer system, not in router reports.
 
+## Outcome Gate Command
+
+Use `scripts/evaluate_workload_gate.py` to turn Harbor or equivalent workload results into a deterministic pass/fail artifact. The gate accepts Harbor `results.tsv` or JSON result rows, plus an optional safe usage-report JSON export. It reports pass rate, Wilson confidence interval, reward, p95 latency, cost per successful task, error rate, fallback rate, selected upstream distribution, and request IDs for correlation.
+
+Mock CI check:
+
+```bash
+python3 scripts/evaluate_workload_gate_test.py
+```
+
+Example Harbor gate:
+
+```bash
+python3 scripts/evaluate_workload_gate.py \
+  --matrix examples/harbor-algotune-pca/workload_gate_matrix.json \
+  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
+  --usage-json examples/harbor-algotune-pca/reports/<CASE_ID>/usage-rows.json \
+  --out-json examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.json \
+  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
+```
+
+The matrix must define the reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls where practical, pass/fail criteria, cost and latency thresholds, and rollback criteria. A gate failure should block promotion unless the reviewer explicitly records why the failure is outside the changed route scope.
+
 ## Metrics To Inspect
 
 Report:

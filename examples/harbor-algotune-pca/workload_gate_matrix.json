@@ -1,0 +1,25 @@
+{
+  "name": "harbor-coding-agent-smoke",
+  "description": "Example outcome gate for Harbor or equivalent coding-agent workload runs. Group names and thresholds are deployment examples.",
+  "gates": {
+    "required_clients": ["codex", "claude-code"],
+    "required_model_groups": ["small"],
+    "min_pass_rate": 1.0,
+    "min_reward": 1.0,
+    "max_p95_latency_ms": 900000,
+    "max_cost_per_success_usd": 5.0,
+    "max_error_rate": 0.0,
+    "max_fallback_rate": 0.5
+  },
+  "run_matrix": {
+    "task": "aider/polyglot_python_two-bucket",
+    "verifier": "Harbor task verifier plus task-specific artifact checks",
+    "reward": "Harbor reward must be 1.0 for every smoke run",
+    "clients": ["codex", "claude-code"],
+    "model_groups": ["small"],
+    "attempts_per_cell": 1,
+    "fixed_model_controls": [],
+    "local_results": "runs/<CASE_ID>/results.tsv",
+    "safe_usage_rows": "reports/<CASE_ID>/usage-rows.json"
+  }
+}

@@ -17,7 +17,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `key-suspended` | 403 | The matched caller key is temporarily suspended. | Use another active key or wait for an administrator to restore access. | Review the suspension reason and reactivate only after the hold is cleared. |
 | `key-expired` | 403 | The matched caller key is past its configured expiration time. | Rotate to a current key. | Issue a replacement key and retire the expired one according to rotation policy. |
 | `key-rotated` | 403 | The matched caller key has been replaced by a newer key. | Switch the client to the replacement key issued by the administrator. | Confirm clients have migrated, then retire or delete the rotated key when appropriate. |
-| `quota-exceeded` or `rate-limited` | 429 | Request, token, daily, monthly, or concurrency policy blocked the request. | Reduce traffic, lower an unrealistic output cap, or ask for a quota change. | Inspect caller limits, recent usage, and in-flight traffic. |
+| `rpm-exceeded`, `tpm-exceeded`, `concurrency-exceeded`, or `quota-exhausted` | 429 | Request, token, daily/monthly, or concurrency policy blocked the request before an upstream call. | Honor `Retry-After` when present, reduce traffic, lower an unrealistic output cap, or ask for a quota change. | Inspect caller limits, recent usage, in-flight traffic, and `request_errors` retryability. |
 | `traffic-shaped` | 429 | Caller traffic-shaping buckets rejected a burst immediately or timed out a bounded queue wait before upstream calls. | Retry after `Retry-After`, reduce burst size, reduce context, or lower output caps. | Inspect `traffic_shape_*` fields and `request_traffic_shape_events` for the limiting bucket and queue wait. |
 | `key-exhausted` | 403 | The caller's lifetime token budget is exhausted or the request's reserved token budget would exceed the remaining lifetime budget. | Use a key with remaining budget, lower an unrealistic output cap, or ask for a new budget. | Inspect the key lifetime budget and issue or re-enable keys according to policy. |
 | `pii-filter-blocked` | 400 | The requested model group is configured to reject requests that match PII filter rules, or the request exceeded the configured PII replacement cap. | Remove the sensitive value, reduce matched values, or use an approved workflow. | Review the model group's `pii_filter` rules, mode, and `max_replacements_per_request`. |
@@ -80,7 +80,7 @@ Explicit output caps also affect quota admission. The router reserves estimated 
 
 ## Traffic-Shaped Responses
 
-`traffic-shaped` is a router-side 429 used for configured caller burst smoothing. It is distinct from hard `rpm`, `tpm`, `concurrent`, quota, and lifetime-budget failures, and distinct from upstream provider 429s that can later become `503 upstream-rate-limited`.
+`traffic-shaped` is a router-side 429 used for configured caller burst smoothing. It is distinct from hard `rpm-exceeded`, `tpm-exceeded`, `concurrency-exceeded`, `quota-exhausted`, and lifetime-budget failures, and distinct from upstream provider 429s that can later become `503 upstream-rate-limited`.
 
 Safe example:
 
@@ -121,12 +121,12 @@ Administrator guidance:
 - inspect usage by client, owner user, project, public token ID, requested model group, input-token bucket, max-token bucket, and quota bucket;
 - raise TPM for trusted production keys when the workload is approved;
 - route routine large-context work to cheaper or smaller groups only after those groups pass the workload verifier;
-- distinguish router `429 quota-exceeded`, `rate-limited`, or `tpm-exceeded` from upstream provider `429` attempts and client cancellations by reviewing `request_usage`, `request_attempts`, `request_trace_events`, and `request_errors`.
+- distinguish router `429 rpm-exceeded`, `tpm-exceeded`, `concurrency-exceeded`, or `quota-exhausted` from upstream provider `429` attempts and client cancellations by reviewing `request_usage`, `request_attempts`, `request_trace_events`, and `request_errors`.
 - distinguish `429 traffic-shaped` from hard `tpm-exceeded` by checking `traffic_shape_bucket`, queue wait, retry-after, and per-bucket rows in `request_traffic_shape_events`.
 
 ## Upstream Provider Quota And Billing Errors
 
-Provider-side balance, credit, quota, billing, and payment failures are distinct from caller-token `quota-exceeded` responses. The router first tries eligible fallback targets. If a fallback succeeds, the caller receives the successful response and diagnostics record the failed attempt. If every eligible attempt fails with provider quota or billing signals, the caller receives `503 upstream-quota-exhausted`.
+Provider-side balance, credit, quota, billing, and payment failures are distinct from caller-token `quota-exhausted` responses. The router first tries eligible fallback targets. If a fallback succeeds, the caller receives the successful response and diagnostics record the failed attempt. If every eligible attempt fails with provider quota or billing signals, the caller receives `503 upstream-quota-exhausted`.
 
 Provider/model shared traffic shaping is also distinct from caller `429` responses. It protects upstream account or model capacity shared by many callers, so the router returns `503 upstream-capacity-throttled` when all otherwise eligible targets are temporarily unavailable before an upstream call can start. The response includes a safe request ID, target count, and `Retry-After` when the current bucket or adaptive backoff window is calculable.
 

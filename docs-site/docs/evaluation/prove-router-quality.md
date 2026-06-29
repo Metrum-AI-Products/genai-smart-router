@@ -76,6 +76,27 @@ Report the task-level reward or pass/fail result, agent errors, elapsed time, se
 
 See the [Harbor Case Study](./harbor-case-study) for one historical example of this decision loop.
 
+## Outcome Gate Artifact
+
+For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. The repository includes a generic gate summarizer that can run against Harbor `results.tsv` files or JSON result rows, and can merge safe usage-report rows when available:
+
+```bash
+python3 scripts/evaluate_workload_gate.py \
+  --matrix examples/harbor-algotune-pca/workload_gate_matrix.json \
+  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
+  --usage-json examples/harbor-algotune-pca/reports/<CASE_ID>/usage-rows.json \
+  --out-json examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.json \
+  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
+```
+
+The matrix should declare the task set, reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls, pass-rate and reward thresholds, p95 latency ceiling, cost-per-success ceiling, error and fallback ceilings, and rollback criteria. A mock fixture self-test is available for local or CI environments where live Harbor is not installed:
+
+```bash
+python3 scripts/evaluate_workload_gate_test.py
+```
+
+The gate report is safe to share when populated from safe result and usage rows: it includes task/run counts, pass rate with confidence interval, reward, cost, latency, fallback/error rates, selected upstream distribution, and request IDs. It intentionally excludes raw router tokens, token hashes, provider keys, prompts, images, tool outputs, and full deployment config.
+
 ## Non-Harbor Examples
 
 | Workload | Objective evidence |

@@ -102,6 +102,56 @@ The conformance gate is intentionally mock-upstream and deterministic. It proves
 
 For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
 
+## Robustness And Fallback Smokes
+
+Use deterministic mock upstreams for robustness gates. Do not use live providers for timeout, malformed body, controlled `429`, forced `5xx`, or queue-depth failure injection unless the provider explicitly offers a staging endpoint for that behavior.
+
+| Failure mode | Required proof |
+|---|---|
+| Fallback ordering | Static/failover groups attempt targets in configured order; weighted groups use a deterministic test seed or mock distribution check; fallback stays inside the requested group. |
+| Retryable upstream failure | `429`, `5xx`, timeout, connection reset, malformed JSON, and truncated streaming fixtures either recover through a compatible fallback or return the documented terminal error. |
+| Non-retryable upstream failure | Ordinary upstream `400` stops fallback unless a deployment explicitly treats the class as safe to replay. |
+| Request-shape fallback safety | Tool, image, structured-output, reasoning, and explicit max-token-cap requests never fallback to a target that was filtered out for that request shape. |
+| Caller limits | RPM, TPM, concurrency, quota, lifetime budget, and `traffic_shape` failures return safe `429` or `403` errors with request IDs and no upstream attempt when blocked before routing. |
+| Adaptive backoff | Provider `429` with and without `Retry-After` and provider quota/billing responses start bounded cooldown rows and route around the affected target when another compatible target exists. |
+| Diagnostics | `request_usage`, `request_attempts`, `request_trace_events`, `request_fallback_transitions`, `request_traffic_shape_events`, and `request_upstream_shape_events` contain safe scalar fields for the request ID without prompts, images, raw provider bodies, provider keys, router tokens, or token hashes. |
+
+Focused local command:
+
+```bash
+go test ./internal/router -run 'TestFallbackOrdering429RetryAfterTelemetryAndSecretRedaction|TestFallbackDoesNotCrossToolEligibility|TestCallerRPMErrorIsSafeAndSkipsUpstream|TestAdaptiveBackoffHonorsBoundedRetryAfter|TestTrafficShapeRequestStartRejectsBeforeUpstream'
+```
+
+Production-safe robustness smoke:
+
+1. Use a dedicated test caller and a mock/staging upstream target for forced timeout, `429`, and `5xx` behavior.
+2. Run a small burst within limits, then a controlled burst exceeding the test caller's shaping or RPM limit.
+3. Run one route-around smoke where one target is cooled down and a compatible fallback succeeds.
+4. Query a report window by request IDs, caller project/environment, client, and model group.
+5. Confirm the report shows attempts, fallback, shaping/backoff, latency, cost, errors, and selected upstreams without secret material.
+
+## Outcome Workload Gates
+
+Smoke tests prove transport compatibility; outcome gates prove the model group still completes the workload. Before promotion, document the run matrix, reward/verifier, client/API matrix, fixed-model or previous-policy control when practical, pass/fail thresholds, cost and latency ceilings, and rollback criteria.
+
+Local/mock CI command:
+
+```bash
+python3 scripts/evaluate_workload_gate_test.py
+```
+
+Harbor/workload gate command:
+
+```bash
+python3 scripts/evaluate_workload_gate.py \
+  --matrix examples/harbor-algotune-pca/workload_gate_matrix.json \
+  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
+  --out-json examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.json \
+  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
+```
+
+When a safe usage JSON export is available, pass `--usage-json` so the gate summary includes selected provider/model distribution, request IDs, stored request-time cost, latency, status, and fallback correlation. Generated gate outputs belong under ignored artifact directories. Do not print raw Harbor caller tokens, provider keys, token hashes, raw prompts, raw images, raw tool outputs, or full production config.
+
 ## Hosted OpenAI-Compatible Provider Smokes
 
 Hosted OpenAI-compatible providers such as Crusoe Managed Inference and Fireworks AI use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.

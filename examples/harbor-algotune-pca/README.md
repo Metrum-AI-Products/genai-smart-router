@@ -118,6 +118,40 @@ export MODEL_GROUPS="small,big-coder"
 export DRY_RUN=1
 ```
 
+## Evaluate The Outcome Gate
+
+`workload_gate_matrix.json` is a safe example matrix for a minimal Harbor promotion gate. It records the task, verifier, reward rule, client matrix, deployment-defined model groups, and thresholds for pass rate, reward, p95 latency, cost per successful task, error rate, and fallback rate. Adjust the thresholds for the deployment before using the gate for promotion.
+
+After `run_case_study.sh` writes `runs/$CASE_ID/results.tsv`, evaluate the outcome gate locally:
+
+```bash
+cd examples/harbor-algotune-pca
+python3 ../../scripts/evaluate_workload_gate.py \
+  --matrix workload_gate_matrix.json \
+  --results "runs/$CASE_ID/results.tsv" \
+  --out-json "reports/$CASE_ID/workload-gate.json" \
+  --out-md "reports/$CASE_ID/workload-gate.md"
+```
+
+If a safe usage-report JSON export is available, include it so the gate report shows selected upstream distribution, request IDs, stored request-time cost, latency, status, and fallback correlation:
+
+```bash
+python3 ../../scripts/evaluate_workload_gate.py \
+  --matrix workload_gate_matrix.json \
+  --results "runs/$CASE_ID/results.tsv" \
+  --usage-json "reports/$CASE_ID/usage-rows.json" \
+  --out-json "reports/$CASE_ID/workload-gate.json" \
+  --out-md "reports/$CASE_ID/workload-gate.md"
+```
+
+CI and local development can validate the gate logic without Harbor or live provider access:
+
+```bash
+python3 scripts/evaluate_workload_gate_test.py
+```
+
+The gate exits non-zero when configured thresholds fail unless `--no-fail` is supplied for exploratory reporting. Its outputs omit raw router tokens, token hashes, provider keys, authorization headers, raw prompts, images, and tool outputs.
+
 For a different Harbor task, override `HARBOR_TASK`, `HARBOR_ARTIFACTS`, and `EXTRA_INSTRUCTION_PATHS` together so the captured artifact and task-specific self-check instructions match the task being evaluated.
 
 The tested default is:

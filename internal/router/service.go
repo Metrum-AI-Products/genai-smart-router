@@ -1945,6 +1945,8 @@ func errorTypeRetryable(errorType string) bool {
 	switch errorType {
 	case "upstream-timeout", "upstream-rate-limited", "upstream-quota-exhausted", "upstream-capacity-throttled", "upstream-failed":
 		return true
+	case "concurrency-exceeded", "rpm-exceeded", "tpm-exceeded", "quota-exhausted", "traffic-shaped":
+		return true
 	default:
 		return false
 	}

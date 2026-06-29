@@ -77,7 +77,24 @@ Before a group receives broad caller access:
 - capped request behavior is tested for the caller API's output cap field, including OpenAI Chat `max_completion_tokens`;
 - usage rows include selected provider/model, token counts, status, latency, cache behavior, and cost fields;
 - Harbor or workload-specific validation meets the group success criteria;
+- a gate artifact records the run matrix, verifier/reward, client matrix, pass/fail thresholds, cost and latency results, selected upstream distribution, request IDs, and promotion or rollback decision;
 - rollback criteria are documented.
+
+For local or CI checks where live Harbor is unavailable, use the mock fixture gate:
+
+```bash
+python3 scripts/evaluate_workload_gate_test.py
+```
+
+For a Harbor or workload run, generate a gate summary after the run results and safe usage rows are available:
+
+```bash
+python3 scripts/evaluate_workload_gate.py \
+  --matrix examples/harbor-algotune-pca/workload_gate_matrix.json \
+  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
+  --usage-json examples/harbor-algotune-pca/reports/<CASE_ID>/usage-rows.json \
+  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
+```
 
 ## Ongoing Governance
 

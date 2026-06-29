@@ -59,7 +59,7 @@ Evidence bundles do not expose raw prompts, image URLs or payloads, tool schemas
 
 Router-side quota, traffic-shaping, and admission failures usually return `429`. Distinguish them from upstream provider `429` attempts:
 
-- Router quota failures appear as the terminal caller response.
+- Router hard-limit failures such as `rpm-exceeded`, `tpm-exceeded`, `concurrency-exceeded`, and `quota-exhausted` appear as the terminal caller response before any upstream attempt.
 - `traffic-shaped` appears as a terminal caller response with a safe bucket and `Retry-After` when a configured caller/server shaping bucket limits the burst.
 - Upstream `429` attempts may be followed by fallback to another target.
 - Large-context developer tools can exhaust TPM through in-flight reservations even when daily or monthly budget remains available.
