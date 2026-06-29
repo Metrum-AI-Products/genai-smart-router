@@ -16,8 +16,8 @@ Last deployed: 2026-06-29
 
 ## Deployed Version
 
-- Router package/image version: `6fc3131-linux-amd64`
-- Source commit: `6fc3131`
+- Router package/image version: `762592b-linux-amd64`
+- Source commit: `762592b`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,31 @@ Last deployed: 2026-06-29
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-29 Responses Tool Filtering And OpenAI-Compatible Chat Refresh
+
+Deployed package/image `smart-llmrouter:762592b-linux-amd64` from source commit `762592b`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.deploy-762592b-20260629T194123Z
+```
+
+Validation:
+
+- `go test ./internal/router -run 'TestOpenAIChatPassthroughStripsRetentionFields|TestEncodeChatPassthroughStoreAndMaxTokensByProvider|TestOpenAIResponsesStripsGenericHostedToolsBeforeUpstream'`: passed, 3 tests.
+- `go test ./...`: passed, 468 tests.
+- `make docs-build`: passed; Docusaurus npm audit still reports one existing moderate dependency advisory.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 from a clean tree.
+- Local Harbor smoke `local-big-coder-codex-retry-20260629T191548Z`: `codex` + `big-coder`, exit 0, reward 1, errors 0. Earlier local full matrix selected a passing `claude-code` cell and a Codex setup-timeout cell before the Codex retry passed.
+- Production `/readyz`: 200, version `762592b`, build date `2026-06-29T19:32:41Z`.
+- Hosted docs `/docs/`: 200.
+- Authenticated `/v1/models`: 200 with `big-coder` available.
+- Production Harbor smoke `prod-big-coder-20260629T194233Z`: `codex` + `big-coder`, exit 0, reward 1, errors 0.
+- Production Anthropic Messages direct smoke against `big-coder`: 200 and selected a Fireworks upstream.
+- Production Harbor retry `prod-big-coder-claude-retry-20260629T195211Z`: `claude-code` + `big-coder` completed without Harbor exceptions but failed task quality with reward 0. The artifact remained the starter `pass`; the Claude Code trajectory repeatedly issued `Read` calls through the selected `kimi-k2.7-code` upstream and did not edit `two_bucket.py`. This was not a router HTTP failure, but it means the production Harbor big-coder validation is not fully green for Claude Code.
+- Production cleanup performed: removed the uploaded package, removed temporary staging files, and deduplicated `SMART_LLMROUTER_VERSION` in `.env`.
 
 ## 2026-06-29 Admin Reports, Packaging, And Kubernetes Docs Production Refresh
 
