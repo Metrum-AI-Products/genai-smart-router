@@ -10,10 +10,12 @@ type Props = {
   columns: ReportColumn[];
   initialSortKey?: string;
   initialSortDir?: "asc" | "desc";
+  limit?: string;
+  onLimitChange?: (limit: string) => void;
   onRefresh?: () => void;
 };
 
-export function DataTable({ rows, columns, initialSortKey = "", initialSortDir = "desc", onRefresh }: Props) {
+export function DataTable({ rows, columns, initialSortKey = "", initialSortDir = "desc", limit = "50", onLimitChange, onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState(50);
   const [sortKey, setSortKey] = useState(initialSortKey);
@@ -93,10 +95,19 @@ export function DataTable({ rows, columns, initialSortKey = "", initialSortDir =
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-xs" placeholder="Search visible rows" value={search} onChange={(event) => setSearch(event.target.value)} />
-        <Select value={String(pageSize)} onChange={(event) => setPageSize(Number(event.target.value))}>
-          <option value="25">25 rows</option>
-          <option value="50">50 rows</option>
-          <option value="100">100 rows</option>
+        <label className="grid gap-1 font-mono text-[0.68rem] uppercase text-white/58">
+          Rows
+          <Select value={limit || "50"} onChange={(event) => onLimitChange?.(event.target.value)}>
+            <option value="25">25 rows</option>
+            <option value="50">50 rows</option>
+            <option value="100">100 rows</option>
+            {limit && !["25", "50", "100"].includes(limit) ? <option value={limit}>{limit} rows</option> : null}
+          </Select>
+        </label>
+        <Select aria-label="Page size" value={String(pageSize)} onChange={(event) => setPageSize(Number(event.target.value))}>
+          <option value="25">25 visible</option>
+          <option value="50">50 visible</option>
+          <option value="100">100 visible</option>
         </Select>
         <Button type="button" variant="outline" onClick={onRefresh}>
           Refresh

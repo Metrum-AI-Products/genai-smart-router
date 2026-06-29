@@ -74,6 +74,11 @@ export default function App() {
     setFilters(draftFilters);
   }
 
+  function updateFilters(updater: React.SetStateAction<ReportFilters>) {
+    setFilters(updater);
+    setDraftFilters(updater);
+  }
+
   function clearTabFilters() {
     const clear = (current: ReportFilters) => {
       const next = { ...current };
@@ -121,7 +126,7 @@ export default function App() {
       <div className="grid min-w-0 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <Sidebar tabs={tabSpecs} activeTab={activeTab} onTabChange={setActiveTab} className="sticky top-5 hidden max-h-[calc(100vh-2.5rem)] overflow-y-auto lg:block" />
         <div className="min-w-0">
-          <ReportPanel tab={tab} report={report} filters={filters} loading={loading} error={error} onRefresh={() => void load(tab, filters)} />
+          <ReportPanel tab={tab} report={report} filters={filters} loading={loading} error={error} onFiltersChange={updateFilters} onRefresh={() => void load(tab, filters)} />
         </div>
       </div>
       <MobileNavDrawer open={mobileNavOpen} tabs={tabSpecs} activeTab={activeTab} onOpenChange={setMobileNavOpen} onTabChange={setActiveTab} />

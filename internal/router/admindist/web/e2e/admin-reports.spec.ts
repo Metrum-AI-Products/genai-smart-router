@@ -10,6 +10,10 @@ test.beforeEach(async ({ page }) => {
   await installAdminApiMocks(page, apiRequests);
 });
 
+function globalFiltersButton(page: Page) {
+  return page.getByRole("button", { name: "Filters", exact: true }).first();
+}
+
 test("admin report nav groups cover every tab exactly once", async () => {
   const result = validateNavGroups(navGroups, tabSpecs);
   expect(result.duplicateTabs).toEqual([]);
@@ -134,7 +138,7 @@ test("deep link requests tab opens active sidebar item", async ({ page }) => {
 test("filter URL state and CSV export remain usable", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await page.getByLabel("Caller").fill("alice");
   await page.getByLabel("IP").fill("203.0.113.10");
   await page.getByLabel("Client").fill("codex-cli");
@@ -156,7 +160,7 @@ test("header slim global filters render and survive tab switch", async ({ page }
   await page.goto("/?caller_user=alice&provider=mock&since=6d");
 
   await expect(page.getByLabel("Since")).toHaveValue("6d");
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await expect(page.getByLabel("User")).toHaveValue("alice");
   await expect(page.getByLabel("Provider")).toHaveValue("mock");
 
@@ -167,39 +171,39 @@ test("header slim global filters render and survive tab switch", async ({ page }
   await expect(page).toHaveURL(/provider=mock/);
   await expect(page).toHaveURL(/since=6d/);
   await expect(page.getByLabel("User")).toHaveValue("alice");
-  await expect(page.getByLabel("Provider")).toHaveValue("mock");
+  await expect(page.getByRole("textbox", { name: "Provider" })).toHaveValue("mock");
 });
 
 test("header disclosure hides tab-specific inputs and persists state", async ({ page }) => {
   await page.goto("/");
 
-  const filtersButton = page.getByRole("button", { name: "Filters" });
+  const filtersButton = globalFiltersButton(page);
   await expect(filtersButton).toHaveAttribute("aria-expanded", "false");
   for (const label of ["Status", "Baseline", "Sort", "Direction", "Shape bucket", "Shape scope", "Rows"]) {
-    await expect(page.getByLabel(label)).toHaveCount(0);
+    await expect(page.locator("header").getByLabel(label)).toHaveCount(0);
   }
 
   await filtersButton.click();
   await expect(filtersButton).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByLabel("Provider")).toBeVisible();
   for (const label of ["Status", "Baseline", "Sort", "Direction", "Shape bucket", "Shape scope", "Rows"]) {
-    await expect(page.getByLabel(label)).toHaveCount(0);
+    await expect(page.locator("header").getByLabel(label)).toHaveCount(0);
   }
 
   await page.reload();
-  await expect(page.getByRole("button", { name: "Filters" })).toHaveAttribute("aria-expanded", "true");
+  await expect(globalFiltersButton(page)).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByLabel("Provider")).toBeVisible();
 
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Filters" })).toHaveAttribute("aria-expanded", "false");
+  await expect(globalFiltersButton(page)).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByLabel("Provider")).toBeHidden();
 });
 
 test("header Apply still commits all global filter changes to URL", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await page.getByLabel("Caller").fill("alice");
   await page.getByLabel("IP").fill("203.0.113.10");
   await page.getByRole("button", { name: "Apply" }).click();
@@ -207,7 +211,7 @@ test("header Apply still commits all global filter changes to URL", async ({ pag
   await expect(page).toHaveURL(/caller_ip=203\.0\.113\.10/);
 
   await page.getByLabel("Provider").fill("mock");
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(/provider=mock/);
 });
@@ -216,7 +220,7 @@ test("deep link populates global inputs", async ({ page }) => {
   await page.goto("/?caller_id=alice&caller_user=alice%40example.com&provider=mock&since=6d&dialect=openai");
 
   await expect(page.getByLabel("Since")).toHaveValue("6d");
-  await page.getByRole("button", { name: "Filters" }).click();
+  await globalFiltersButton(page).click();
   await expect(page.getByLabel("Caller")).toHaveValue("alice");
   await expect(page.getByLabel("User")).toHaveValue("alice@example.com");
   await expect(page.getByLabel("Provider")).toHaveValue("mock");
@@ -244,13 +248,60 @@ test("active hidden tab filters are surfaced and can be cleared", async ({ page 
   await expect(page.getByRole("button", { name: /Clear tab filters/ })).toHaveCount(0);
 });
 
+test("per-tab filter panel shows only relevant inputs for savings tabs", async ({ page }) => {
+  await page.goto("/?tab=savings-by-key");
+
+  await expect(page.locator('[data-tab-filter="baseline"]')).toBeVisible();
+  await expect(page.locator('[data-tab-filter="sort"]')).toBeVisible();
+  await expect(page.locator('[data-tab-filter="direction"]')).toBeVisible();
+  await expect(page.locator('[data-tab-filter="status"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-filter="cache"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-filter="traffic_shape_bucket"]')).toHaveCount(0);
+});
+
+test("per-tab filter panel shows shaping filters only on shaping tabs", async ({ page }) => {
+  await page.goto("/?tab=traffic-shaping-by-user");
+
+  await expect(page.locator('[data-tab-filter="traffic_shape_bucket"]')).toBeVisible();
+  await expect(page.locator('[data-tab-filter="traffic_shape_scope"]')).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: "Errors", exact: true }).click();
+  await expect(page.locator('[data-tab-filter="traffic_shape_bucket"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-filter="traffic_shape_scope"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-filter="status"]')).toBeVisible();
+  await expect(page.locator('[data-tab-filter="cache"]')).toBeVisible();
+});
+
+test("Rows select in DataTable toolbar updates limit and URL", async ({ page }) => {
+  await page.goto("/?tab=expensive-requests");
+
+  await page.getByLabel("Rows").selectOption("100");
+  await expect(page).toHaveURL(/limit=100/);
+  await globalFiltersButton(page).click();
+  await page.getByRole("textbox", { name: "Caller" }).fill("alice");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/caller_id=alice/);
+  await expect(page).toHaveURL(/limit=100/);
+  await page.reload();
+  await expect(page.getByLabel("Rows")).toHaveValue("100");
+});
+
+test("Reset filters link clears only per-tab filters", async ({ page }) => {
+  await page.goto("/?caller_user=alice&tab=savings-by-key&baseline=gpt-5.5&sort=savingsUsd");
+
+  await page.getByRole("button", { name: "Reset filters" }).click();
+  await expect(page).not.toHaveURL(/baseline=/);
+  await expect(page).not.toHaveURL(/sort=/);
+  await expect(page).toHaveURL(/caller_user=alice/);
+});
+
 test("deep-linked savings URLs preserve baseline and sorting params", async ({ page }) => {
   await page.goto("/?tab=savings-by-key&since=6d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc");
 
   await expect(page.getByRole("heading", { name: "Savings by key", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Baseline")).toHaveCount(0);
-  await expect(page.getByLabel("Sort")).toHaveCount(0);
-  await expect(page.getByLabel("Direction")).toHaveCount(0);
+  await expect(page.locator('[data-tab-filter="baseline"]')).toHaveValue("gpt-5.5");
+  await expect(page.locator('[data-tab-filter="sort"]')).toHaveValue("savingsUsd");
+  await expect(page.locator('[data-tab-filter="direction"]')).toHaveValue("desc");
   await expect(page.getByRole("columnheader", { name: "Savings(USD)" })).toBeVisible();
   await expect(page.locator("tbody tr").first()).toContainText("rtr_mock_public");
   await expect(page.locator("main canvas").first()).toBeVisible();

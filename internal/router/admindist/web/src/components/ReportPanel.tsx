@@ -1,7 +1,9 @@
+import type { Dispatch, SetStateAction } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/DataTable";
 import { MetricGrid } from "@/components/MetricGrid";
 import { ReportCharts } from "@/components/ReportCharts";
+import { TabFilterPanel } from "@/components/TabFilterPanel";
 import type { ReportFilters, ReportResponse, TabSpec } from "@/lib/reports";
 import { columnsForTab, resolveSortKey, rowsForTab } from "@/lib/reports";
 
@@ -11,10 +13,11 @@ type Props = {
   filters: ReportFilters;
   loading: boolean;
   error?: string;
+  onFiltersChange: Dispatch<SetStateAction<ReportFilters>>;
   onRefresh: () => void;
 };
 
-export function ReportPanel({ tab, report, filters, loading, error, onRefresh }: Props) {
+export function ReportPanel({ tab, report, filters, loading, error, onFiltersChange, onRefresh }: Props) {
   const rows = report ? rowsForTab(tab, report) : [];
   const columns = columnsForTab(tab, rows);
   const sortKey = resolveSortKey(filters.sort, rows, columns);
@@ -30,6 +33,7 @@ export function ReportPanel({ tab, report, filters, loading, error, onRefresh }:
       </div>
       {error ? <div className="rounded-lg border border-metrum-red/40 bg-metrum-red/10 p-4 text-sm text-white">{error}</div> : null}
       {loading ? <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">Loading report data...</div> : null}
+      <TabFilterPanel tab={tab} columns={columns} filters={filters} onFiltersChange={onFiltersChange} />
       <MetricGrid summary={report?.summary} />
       {tab.id === "savings" && report?.warnings?.length ? (
         <Card className="border-metrum-red/30 bg-metrum-red/10">
@@ -46,7 +50,15 @@ export function ReportPanel({ tab, report, filters, loading, error, onRefresh }:
         </Card>
       ) : null}
       <ReportCharts charts={report?.charts} />
-      <DataTable rows={rows} columns={columns} initialSortKey={sortKey} initialSortDir={sortDir} onRefresh={onRefresh} />
+      <DataTable
+        rows={rows}
+        columns={columns}
+        initialSortKey={sortKey}
+        initialSortDir={sortDir}
+        limit={filters.limit}
+        onLimitChange={(limit) => onFiltersChange((current) => ({ ...current, limit }))}
+        onRefresh={onRefresh}
+      />
     </main>
   );
 }

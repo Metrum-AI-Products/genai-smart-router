@@ -36,6 +36,10 @@ Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTE
 
 Prepared the admin reports SPA follow-up for issue #252. This is a frontend-only bundle change: the large all-filter header is replaced by a slim global filter header with a disclosure for cross-tab investigation filters, while existing `/admin/reports/` URL query parameters, Markdown export parameters, report APIs, Casbin policy, and production endpoint behavior remain unchanged.
 
+## 2026-06-29 Admin Reports Per-Tab Filters Follow-up
+
+Prepared the admin reports SPA follow-up for issue #251. This is a frontend-only bundle change: tab-specific filters now render inside per-tab panels, the URL-backed `Rows` limit moved into the table toolbar, and the combined `/admin/reports/` query contract remains unchanged.
+
 ## 2026-06-29 Bounded Queue Config Raise
 
 Raised the production default caller traffic-shaping queue policy for all callers after coding-agent users saw repeated `429 traffic-shaped` retries on `big-coder`.

@@ -958,7 +958,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/expensive-requests?since=24h&limit=1",
 		"/admin/reports/api/client-breakdown?since=24h",
 		"/admin/reports/api/project-chargeback?since=24h",
-		"/admin/reports/api/capability-usage?since=24h&limit=10",
+		"/admin/reports/api/capability-usage?since=24h&limit=1",
 		"/admin/reports/api/anomalies?since=24h",
 	}
 	for _, path := range reportPaths {

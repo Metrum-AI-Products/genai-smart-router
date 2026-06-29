@@ -1,3 +1,4 @@
+import type { TabFilterName } from "@/lib/filters";
 export { filterFields, globalFilterFields, tabFilterFields, validateFilterModel, type GlobalFilterName, type TabFilterName } from "@/lib/filters";
 
 export type ReportFilters = Record<string, string>;
@@ -95,6 +96,7 @@ export type TabSpec = {
   overview?: boolean;
   requests?: boolean;
   security?: boolean;
+  filters?: ReadonlyArray<TabFilterName>;
 };
 
 const identityColumns: ReportColumn[] = [
@@ -313,53 +315,59 @@ const catalogColumns: ReportColumn[] = [
   { key: "pricingMissing", label: "Pricing missing" },
 ];
 
+const statusCacheFilters = ["status", "cache"] as const satisfies ReadonlyArray<TabFilterName>;
+const savingsFilters = ["baseline", "sort", "direction"] as const satisfies ReadonlyArray<TabFilterName>;
+const statusCacheSortFilters = ["status", "cache", "sort", "direction"] as const satisfies ReadonlyArray<TabFilterName>;
+const shapingFilters = ["traffic_shape_bucket", "traffic_shape_scope", "sort", "direction"] as const satisfies ReadonlyArray<TabFilterName>;
+const sortDirectionFilters = ["sort", "direction"] as const satisfies ReadonlyArray<TabFilterName>;
+
 export const tabSpecs: TabSpec[] = [
   { id: "overview", label: "Overview", endpoint: "summary", overview: true },
-  { id: "groups", label: "Groups", endpoint: "summary", columns: defaultScalarColumns },
-  { id: "providers", label: "Providers", endpoint: "summary", columns: defaultScalarColumns },
-  { id: "tokens", label: "Keys", endpoint: "summary", columns: defaultScalarColumns },
-  { id: "savings", label: "Savings", endpoint: "savings", columns: savingsColumns, savings: true },
-  { id: "savings-by-user", label: "Savings by user", endpoint: "savings-by-user", columns: defaultScalarColumns, savings: true },
-  { id: "savings-by-key", label: "Savings by key", endpoint: "savings-by-key", columns: defaultScalarColumns, savings: true },
-  { id: "savings-by-group", label: "Savings by group", endpoint: "savings-by-group", columns: defaultScalarColumns, savings: true },
-  { id: "savings-by-project", label: "Savings by project", endpoint: "savings-by-project", columns: defaultScalarColumns, savings: true },
-  { id: "savings-by-provider-model", label: "Savings by provider", endpoint: "savings-by-provider-model", columns: defaultScalarColumns, savings: true },
-  { id: "model-groups-by-user", label: "User groups", endpoint: "model-groups-by-user", columns: defaultScalarColumns },
-  { id: "usage-by-key", label: "Key usage", endpoint: "usage-by-key", columns: defaultScalarColumns },
-  { id: "usage-by-caller", label: "Caller usage", endpoint: "usage-by-caller", columns: defaultScalarColumns },
-  { id: "requested-models", label: "Requested models", endpoint: "requested-models", columns: defaultScalarColumns },
-  { id: "provider-model-mix", label: "Provider/model", endpoint: "provider-model-mix", columns: defaultScalarColumns },
-  { id: "latency-throughput", label: "Latency", endpoint: "latency-throughput", columns: [...identityColumns, ...trafficColumns, ...latencyColumns, ...throughputColumns, ...tokenColumns] },
-  { id: "errors-fallbacks", label: "Errors", endpoint: "errors-fallbacks", columns: [...identityColumns, ...trafficColumns, ...latencyColumns] },
-  { id: "cache-report", label: "Cache", endpoint: "cache", columns: [...identityColumns, ...trafficColumns, ...cacheColumns] },
-  { id: "quotas-budgets", label: "Quotas", endpoint: "quotas-budgets", columns: defaultScalarColumns },
-  { id: "traffic-shaping-overview", label: "Shaping", endpoint: "traffic-shaping-overview", columns: [...identityColumns, ...shapingColumns] },
-  { id: "traffic-shaping-by-user", label: "Shaping users", endpoint: "traffic-shaping-by-user", columns: [...identityColumns, ...shapingColumns] },
-  { id: "traffic-shaping-by-key", label: "Shaping keys", endpoint: "traffic-shaping-by-key", columns: [...identityColumns, ...shapingColumns] },
-  { id: "traffic-shaping-by-client", label: "Shaping clients", endpoint: "traffic-shaping-by-client", columns: [...identityColumns, ...shapingColumns] },
-  { id: "traffic-shaping-by-group", label: "Shaping groups", endpoint: "traffic-shaping-by-group", columns: [...identityColumns, ...shapingColumns] },
-  { id: "provider-capacity-shaping", label: "Provider shaping", endpoint: "provider-capacity-shaping", columns: [...identityColumns, ...shapingColumns] },
-  { id: "adaptive-upstream-backoff", label: "Backoff", endpoint: "adaptive-upstream-backoff", columns: [...identityColumns, ...shapingColumns] },
-  { id: "troubleshooting-buckets", label: "Troubleshooting", endpoint: "troubleshooting-buckets", columns: defaultScalarColumns },
-  { id: "routing-decisions", label: "Routing", endpoint: "routing-decisions", columns: defaultScalarColumns },
-  { id: "dynamic-signals", label: "Dynamic signals", endpoint: "dynamic-signals", columns: defaultScalarColumns },
-  { id: "dynamic-score-buckets", label: "Dynamic scores", endpoint: "dynamic-score-buckets", columns: defaultScalarColumns },
-  { id: "dynamic-thresholds", label: "Dynamic thresholds", endpoint: "dynamic-thresholds", columns: defaultScalarColumns },
-  { id: "max-token-buckets", label: "Max tokens", endpoint: "max-token-buckets", columns: defaultScalarColumns },
-  { id: "input-token-buckets", label: "Input tokens", endpoint: "input-token-buckets", columns: defaultScalarColumns },
-  { id: "admission-reasons", label: "Admission", endpoint: "admission-reasons", columns: defaultScalarColumns },
-  { id: "provider-catalog-status", label: "Catalog status", endpoint: "provider-catalog-status", columns: catalogColumns },
-  { id: "retention-status", label: "Retention", endpoint: "retention-status", columns: retentionColumns },
-  { id: "contract-buckets", label: "Contracts", endpoint: "contract-buckets", columns: defaultScalarColumns },
-  { id: "contract-workloads", label: "Workloads", endpoint: "contract-workloads", columns: defaultScalarColumns },
-  { id: "target-validation", label: "Validation", endpoint: "target-validation", columns: defaultScalarColumns },
-  { id: "expensive-requests", label: "Expensive", endpoint: "expensive-requests", columns: requestColumns, requests: true },
-  { id: "client-breakdown", label: "Clients", endpoint: "client-breakdown", columns: defaultScalarColumns },
-  { id: "project-chargeback", label: "Projects", endpoint: "project-chargeback", columns: defaultScalarColumns },
-  { id: "capability-usage", label: "Capabilities", endpoint: "capability-usage", columns: defaultScalarColumns },
-  { id: "anomalies", label: "Anomalies", endpoint: "anomalies", columns: defaultScalarColumns },
-  { id: "security-events", label: "Security", endpoint: "security/events", columns: securityColumns, security: true },
-  { id: "requests", label: "Requests", endpoint: "summary", columns: requestColumns, requests: true },
+  { id: "groups", label: "Groups", endpoint: "summary", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "providers", label: "Providers", endpoint: "summary", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "tokens", label: "Keys", endpoint: "summary", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "savings", label: "Savings", endpoint: "savings", columns: savingsColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-user", label: "Savings by user", endpoint: "savings-by-user", columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-key", label: "Savings by key", endpoint: "savings-by-key", columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-group", label: "Savings by group", endpoint: "savings-by-group", columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-project", label: "Savings by project", endpoint: "savings-by-project", columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-provider-model", label: "Savings by provider", endpoint: "savings-by-provider-model", columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "model-groups-by-user", label: "User groups", endpoint: "model-groups-by-user", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "usage-by-key", label: "Key usage", endpoint: "usage-by-key", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "usage-by-caller", label: "Caller usage", endpoint: "usage-by-caller", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "requested-models", label: "Requested models", endpoint: "requested-models", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "provider-model-mix", label: "Provider/model", endpoint: "provider-model-mix", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "latency-throughput", label: "Latency", endpoint: "latency-throughput", columns: [...identityColumns, ...trafficColumns, ...latencyColumns, ...throughputColumns, ...tokenColumns], filters: statusCacheSortFilters },
+  { id: "errors-fallbacks", label: "Errors", endpoint: "errors-fallbacks", columns: [...identityColumns, ...trafficColumns, ...latencyColumns], filters: statusCacheSortFilters },
+  { id: "cache-report", label: "Cache", endpoint: "cache", columns: [...identityColumns, ...trafficColumns, ...cacheColumns], filters: statusCacheSortFilters },
+  { id: "quotas-budgets", label: "Quotas", endpoint: "quotas-budgets", columns: defaultScalarColumns, filters: ["status"] },
+  { id: "traffic-shaping-overview", label: "Shaping", endpoint: "traffic-shaping-overview", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "traffic-shaping-by-user", label: "Shaping users", endpoint: "traffic-shaping-by-user", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "traffic-shaping-by-key", label: "Shaping keys", endpoint: "traffic-shaping-by-key", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "traffic-shaping-by-client", label: "Shaping clients", endpoint: "traffic-shaping-by-client", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "traffic-shaping-by-group", label: "Shaping groups", endpoint: "traffic-shaping-by-group", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "provider-capacity-shaping", label: "Provider shaping", endpoint: "provider-capacity-shaping", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "adaptive-upstream-backoff", label: "Backoff", endpoint: "adaptive-upstream-backoff", columns: [...identityColumns, ...shapingColumns], filters: shapingFilters },
+  { id: "troubleshooting-buckets", label: "Troubleshooting", endpoint: "troubleshooting-buckets", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "routing-decisions", label: "Routing", endpoint: "routing-decisions", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "dynamic-signals", label: "Dynamic signals", endpoint: "dynamic-signals", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "dynamic-score-buckets", label: "Dynamic scores", endpoint: "dynamic-score-buckets", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "dynamic-thresholds", label: "Dynamic thresholds", endpoint: "dynamic-thresholds", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "max-token-buckets", label: "Max tokens", endpoint: "max-token-buckets", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "input-token-buckets", label: "Input tokens", endpoint: "input-token-buckets", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "admission-reasons", label: "Admission", endpoint: "admission-reasons", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "provider-catalog-status", label: "Catalog status", endpoint: "provider-catalog-status", columns: catalogColumns, filters: sortDirectionFilters },
+  { id: "retention-status", label: "Retention", endpoint: "retention-status", columns: retentionColumns, filters: sortDirectionFilters },
+  { id: "contract-buckets", label: "Contracts", endpoint: "contract-buckets", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "contract-workloads", label: "Workloads", endpoint: "contract-workloads", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "target-validation", label: "Validation", endpoint: "target-validation", columns: defaultScalarColumns, filters: sortDirectionFilters },
+  { id: "expensive-requests", label: "Expensive", endpoint: "expensive-requests", columns: requestColumns, requests: true, filters: sortDirectionFilters },
+  { id: "client-breakdown", label: "Clients", endpoint: "client-breakdown", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "project-chargeback", label: "Projects", endpoint: "project-chargeback", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "capability-usage", label: "Capabilities", endpoint: "capability-usage", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "anomalies", label: "Anomalies", endpoint: "anomalies", columns: defaultScalarColumns, filters: statusCacheFilters },
+  { id: "security-events", label: "Security", endpoint: "security/events", columns: securityColumns, security: true, filters: sortDirectionFilters },
+  { id: "requests", label: "Requests", endpoint: "summary", columns: requestColumns, requests: true, filters: statusCacheFilters },
 ];
 
 export async function fetchReport(endpoint: string, filters: ReportFilters): Promise<ReportResponse> {

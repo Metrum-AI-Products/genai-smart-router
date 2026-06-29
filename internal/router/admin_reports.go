@@ -1183,7 +1183,7 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary, upstreamShapeEvents)))
 }
 
-func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, withLimit bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {
+func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, _ bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {
 	to := time.Now().UTC()
 	q := r.URL.Query()
 	if raw := strings.TrimSpace(q.Get("to")); raw != "" {
@@ -1215,7 +1215,7 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		return adminReportFilters{}, false
 	}
 	limit := s.cfg.Server.AdminReports.MaxRows
-	if withLimit && strings.TrimSpace(q.Get("limit")) != "" {
+	if strings.TrimSpace(q.Get("limit")) != "" {
 		parsed, err := strconv.Atoi(q.Get("limit"))
 		if err != nil || parsed <= 0 || parsed > s.cfg.Server.AdminReports.MaxRows {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid-report-filter"}})

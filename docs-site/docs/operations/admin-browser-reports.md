@@ -101,7 +101,8 @@ The browser report shell provides shared controls for every tab:
 - collapsible navigation groups with preferences stored in browser `localStorage`;
 - a slim header with the `Since` time range, Markdown export, mobile `Sections` drawer, and an accessible `Filters` disclosure for global investigation filters;
 - global filters for caller ID, caller user, public token ID, caller IP, caller project, caller environment, requested model, resolved group, provider, target model, dialect, and client; these remain active while switching tabs;
-- tab-specific URL filters for baseline, status, cache state, sort, direction, traffic-shaping bucket, traffic-shaping scope, and row limit; these remain accepted by deep links and report APIs, are surfaced by a compact clear action when active, and are reserved for tab-local controls rather than the global header;
+- per-tab filter panels for tab-local controls such as baseline, status, cache state, sort, direction, and traffic-shaping bucket/scope; each report shows only the controls that apply to that tab;
+- a `Rows` select in the table toolbar for the URL-backed server row limit, alongside a separate client-side page-size select for visible rows;
 - selected tab, active filters, and search stored in shareable URL query parameters;
 - client-side search across visible safe scalar fields;
 - sortable table headers with click-to-sort controls and active ▲/▼ indicators;
@@ -123,6 +124,8 @@ Desktop report users navigate with a fixed left sidebar labeled `Report sections
 Each group header is keyboard-focusable and exposes expanded/collapsed state to assistive technology. Collapsed groups are remembered in browser `localStorage` under a versioned UI key so an administrator's browser keeps the same sidebar density after reloads. The preference is local presentation state only; it is not sent to report APIs, stored in the router, or included in shareable URLs.
 
 On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, and global or tab-specific filters continue to use one combined URL such as `/admin/reports/?tab=savings-by-key&since=6d&caller_user=alice&baseline=gpt-5.5`, so bookmarked links, filters, exports, and Casbin authorization behavior are unchanged.
+
+Per-tab panels are mounted above the metrics, charts, and table. Savings tabs expose `Baseline`, `Sort`, and `Direction`; cache/error/performance tabs expose `Status`, `Cache`, `Sort`, and `Direction`; traffic-shaping tabs expose `Shape bucket`, `Shape scope`, `Sort`, and `Direction`; and diagnostic/status tabs expose sorting controls where a natural table sort applies. `Reset filters` clears only the active tab's local filters and never clears global investigation filters such as caller user or provider.
 
 ## Report Tabs
 

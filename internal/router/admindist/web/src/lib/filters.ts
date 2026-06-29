@@ -48,6 +48,33 @@ export const tabFilterFields = [
 
 export const filterFields = [...globalFilterFields, ...tabFilterFields] as const satisfies ReadonlyArray<FilterField<ReportFilterName>>;
 
+export const tabFilterLabels = Object.fromEntries(tabFilterFields.map(([name, label]) => [name, label])) as Record<TabFilterName, string>;
+export const tabFilterDefaults = Object.fromEntries(tabFilterFields.map(([name, , defaultValue]) => [name, defaultValue])) as Record<TabFilterName, string>;
+
+export const cacheFilterOptions = [
+  ["", "Any cache state"],
+  ["hit", "Hit"],
+  ["miss", "Miss"],
+  ["bypass", "Bypass"],
+] as const;
+
+export const directionFilterOptions = [
+  ["", "Default"],
+  ["desc", "Descending"],
+  ["asc", "Ascending"],
+] as const;
+
+export const statusFilterOptions = [
+  ["", "Any status"],
+  ["200", "200 OK"],
+  ["400", "400"],
+  ["401", "401"],
+  ["403", "403"],
+  ["404", "404"],
+  ["429", "429"],
+  ["500", "500"],
+] as const;
+
 export function validateFilterModel() {
   const names = filterFields.map(([name]) => name);
   const globalNames = globalFilterFields.map(([name]) => name);
