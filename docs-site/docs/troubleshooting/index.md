@@ -29,7 +29,7 @@ If `/v1/models` does not include the expected model group, inspect caller access
 | One request failed, timed out, or was slow | Request attempts, trace events, upstream provider path, quota, context, or fallback | [Request Troubleshooting](/docs/troubleshooting/requests) |
 | `/readyz` fails with `license-*` status | License file, expiry, feature gate, volume, instance scope, or clock state | [Licensing Troubleshooting](/docs/troubleshooting/licensing) |
 | Caller gets `401` or `403` | Missing token, disabled key, model-group access, metrics/report authorization, or admin policy | [Request Troubleshooting](/docs/troubleshooting/requests) |
-| Caller gets `429` | Router quota, TPM/RPM, concurrency, license volume/window, or upstream provider limit | [Request Troubleshooting](/docs/troubleshooting/requests) |
+| Caller gets `429` | Router quota, traffic shaping, TPM/RPM, concurrency, license volume/window, or upstream provider limit | [Request Troubleshooting](/docs/troubleshooting/requests) |
 | `/metrics` returns forbidden | Caller is not authorized for metrics admin | [Observability](/docs/operations/observability) |
 | Admin reports unavailable | Admin authentication, Casbin policy, usage DB, or report feature license | [Admin Browser Reports](/docs/operations/admin-browser-reports) |
 

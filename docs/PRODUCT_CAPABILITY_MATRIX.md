@@ -10,7 +10,7 @@ This matrix records what is visible in this repository and current docs. Keep it
 | Filtered model discovery | Implemented | `/v1/models` returns groups allowed for the caller token. |
 | Caller tokens | Implemented | Raw tokens are generated once; config stores hashes. |
 | Per-key allow lists | Implemented | Disallowed model requests return before provider routing. |
-| Rate/usage limits | Implemented | RPM, TPM, concurrency, quota, and lifetime budget fields exist in config/state behavior. |
+| Rate/usage limits | Implemented | RPM, TPM, concurrency, caller/server traffic shaping, quota, and lifetime budget fields exist in config/state behavior. |
 | Weighted/failover/static routing | Implemented | Configured under deployment-defined model groups. |
 | Model-group routing contracts | Implemented | Optional `models.<group>.contract` filters group-local targets by declared API surfaces, capability requirements, validation metadata, quality floors, and operational thresholds before strategy selection. |
 | TypeScript routing | Implemented | Scripts run inside router with safe context and optional allowlisted HTTP helper. |

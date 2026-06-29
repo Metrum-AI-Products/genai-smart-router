@@ -42,10 +42,11 @@ type Service struct {
 	logger       *requestLogger
 	usage        *usageStore
 	metrics      *metricsStore
+	trafficShape *trafficShapeManager
 	license      *licenseManager
 	scripts      map[string]*scriptStrategy
 	observations *dynamicObservationStore
-	shaping      *trafficShapeManager
+	shaping      *upstreamShapeManager
 }
 
 type adminBasicRuntime struct {
@@ -153,9 +154,10 @@ func New(cfg *Config) (*Service, error) {
 		logger:       logger,
 		usage:        usage,
 		metrics:      newMetricsStore(),
+		trafficShape: newTrafficShapeManager(),
 		scripts:      map[string]*scriptStrategy{},
 		observations: newDynamicObservationStore(),
-		shaping:      newTrafficShapeManager(),
+		shaping:      newUpstreamShapeManager(),
 	}
 	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
 	if err != nil {
@@ -371,7 +373,7 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	defer s.finish(rc, http.StatusOK, nil)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, s.metrics.Prometheus(s.license))
+	_, _ = io.WriteString(w, s.metrics.Prometheus(s.license, s.trafficShape))
 }
 
 func (s *Service) handleAdminLicenseStatus(w http.ResponseWriter, r *http.Request) {
@@ -589,6 +591,29 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 			return
 		}
 	}
+	shapeCfg, shapeScope, shapeEnabled := resolveTrafficShapeConfig(s.cfg.Server.TrafficShape, rc.caller.cfg)
+	inputTokens := estimateTokens(req)
+	outputReservationTokens := trafficShapeOutputReservation(req, dialect)
+	totalReservationTokens := inputTokens + outputReservationTokens
+	if shapeEnabled {
+		shapeRes := s.trafficShape.Admit(r.Context(), trafficShapeRequest{
+			CallerID:                 rc.caller.cfg.ID,
+			ModelGroup:               req.Model,
+			Config:                   shapeCfg,
+			Scope:                    shapeScope,
+			Phase:                    trafficShapeBucketRequestStart,
+			EstimatedInputTokens:     inputTokens,
+			ReservedOutputTokens:     outputReservationTokens,
+			TotalReservedTokens:      totalReservationTokens,
+			IncludeRequestStart:      true,
+			IncludeTokenReservations: false,
+		})
+		recordTrafficShapeResult(rc, shapeRes)
+		if shapeRes.Decision == trafficShapeDecisionRejected {
+			s.writeTrafficShapeError(w, rc, req.Model, shapeRes)
+			return
+		}
+	}
 	ad := s.quota.Admit(rc.caller, 0)
 	if !ad.OK {
 		s.writeAdmissionError(w, rc, ad)
@@ -732,6 +757,25 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 		w.Header().Add("X-Router-Warning", resAd.WarningText)
 		rc.rec.Warnings = append(rc.rec.Warnings, resAd.WarningText)
 	}
+	if shapeEnabled {
+		shapeRes := s.trafficShape.Admit(r.Context(), trafficShapeRequest{
+			CallerID:                 rc.caller.cfg.ID,
+			ModelGroup:               req.Model,
+			Config:                   shapeCfg,
+			Scope:                    shapeScope,
+			Phase:                    "token_reservation",
+			EstimatedInputTokens:     inputTokens,
+			ReservedOutputTokens:     outputReservationTokens,
+			TotalReservedTokens:      totalReservationTokens,
+			IncludeRequestStart:      false,
+			IncludeTokenReservations: true,
+		})
+		recordTrafficShapeResult(rc, shapeRes)
+		if shapeRes.Decision == trafficShapeDecisionRejected {
+			s.writeTrafficShapeError(w, rc, req.Model, shapeRes)
+			return
+		}
+	}
 
 	upstreamStart := time.Now()
 	rc.trace("upstream_start", "", dec.Target, 0, 0, "", false, 0)
@@ -807,15 +851,16 @@ func (s *Service) begin(w http.ResponseWriter, r *http.Request, dialect string) 
 		pathTemplate:         requestPathTemplate(r),
 		sanitizeTraceMessage: s.sanitizeDiagnosticTraceMessage,
 		rec: logRecord{
-			RequestID:      id,
-			Client:         inferClient(r),
-			CallerIP:       ipInfo.Address,
-			InboundDialect: dialect,
-			Cache:          "bypass",
-			QuotaState:     "ok",
-			KeyState:       "active",
-			Attempts:       0,
-			Warnings:       []string{},
+			RequestID:            id,
+			Client:               inferClient(r),
+			CallerIP:             ipInfo.Address,
+			InboundDialect:       dialect,
+			Cache:                "bypass",
+			QuotaState:           "ok",
+			KeyState:             "active",
+			TrafficShapeDecision: trafficShapeDecisionDisabled,
+			Attempts:             0,
+			Warnings:             []string{},
 		},
 	}
 	if err != nil {
@@ -2421,6 +2466,67 @@ func durationMillis(d time.Duration) int64 {
 	return ms
 }
 
+func recordTrafficShapeResult(rc *requestContext, result trafficShapeResult) {
+	if rc == nil || !result.Applied {
+		return
+	}
+	rc.rec.TrafficShapeApplied = true
+	previousDecision := rc.rec.TrafficShapeDecision
+	rc.rec.TrafficShapeDecision = mergeTrafficShapeDecision(rc.rec.TrafficShapeDecision, result.Decision)
+	rc.rec.TrafficShapeScope = result.Scope
+	if result.Bucket != "" && shouldReplaceTrafficShapeBucket(previousDecision, result.Decision) {
+		rc.rec.TrafficShapeBucket = result.Bucket
+	}
+	if result.RetryAfterMS > rc.rec.TrafficShapeRetryAfterMS {
+		rc.rec.TrafficShapeRetryAfterMS = result.RetryAfterMS
+	}
+	if result.QueueWaitMS > rc.rec.TrafficShapeQueueWaitMS {
+		rc.rec.TrafficShapeQueueWaitMS = result.QueueWaitMS
+	}
+	rc.rec.TrafficShapeEstimatedInputTokens = result.EstimatedInputTokens
+	rc.rec.TrafficShapeReservedOutputTokens = result.ReservedOutputTokens
+	rc.rec.TrafficShapeTotalReservedTokens = result.TotalReservedTokens
+	if len(result.Events) > 0 {
+		offset := len(rc.rec.TrafficShapeEvents)
+		for _, event := range result.Events {
+			event.Seq += offset
+			rc.rec.TrafficShapeEvents = append(rc.rec.TrafficShapeEvents, event)
+		}
+	}
+}
+
+func mergeTrafficShapeDecision(current, next string) string {
+	switch current {
+	case "":
+		return next
+	case trafficShapeDecisionRejected:
+		return current
+	case trafficShapeDecisionQueued:
+		if next == trafficShapeDecisionRejected {
+			return next
+		}
+		return current
+	default:
+		if next == trafficShapeDecisionRejected || next == trafficShapeDecisionQueued {
+			return next
+		}
+		return current
+	}
+}
+
+func shouldReplaceTrafficShapeBucket(current, next string) bool {
+	if current == "" {
+		return true
+	}
+	if next == trafficShapeDecisionRejected {
+		return true
+	}
+	if next == trafficShapeDecisionQueued && current != trafficShapeDecisionRejected {
+		return true
+	}
+	return false
+}
+
 func (s *Service) writeAdmissionError(w http.ResponseWriter, rc *requestContext, ad admission) {
 	if ad.RetryAfter != "" {
 		w.Header().Set("Retry-After", ad.RetryAfter)
@@ -2429,6 +2535,40 @@ func (s *Service) writeAdmissionError(w http.ResponseWriter, rc *requestContext,
 	rc.rec.KeyState = ad.KeyState
 	rc.trace("admission_rejected", ad.Reason, Target{}, 0, ad.Status, ad.Reason, true, 0)
 	s.writeError(w, rc, ad.Status, ad.Reason)
+}
+
+func (s *Service) writeTrafficShapeError(w http.ResponseWriter, rc *requestContext, modelGroup string, result trafficShapeResult) {
+	code := "traffic-shaped"
+	retrySeconds := int64(0)
+	if result.RetryAfterMS > 0 {
+		retrySeconds = int64(math.Ceil(float64(result.RetryAfterMS) / 1000))
+		if retrySeconds < 1 {
+			retrySeconds = 1
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySeconds))
+	}
+	message := fmt.Sprintf("caller traffic shaping limit exceeded for model group %s; retry later or reduce request burst", modelGroup)
+	if rc != nil {
+		rc.trace("traffic_shape_rejected", result.Bucket, Target{}, 0, http.StatusTooManyRequests, code, true, 0)
+		rc.rec.Status = http.StatusTooManyRequests
+		rc.rec.Error = &code
+		rc.rec.ErrorClass = code
+		rc.rec.ErrorMessage = message
+		s.finish(rc, http.StatusTooManyRequests, &code)
+	}
+	errBody := map[string]any{
+		"type":       code,
+		"message":    message,
+		"request_id": "",
+		"bucket":     result.Bucket,
+	}
+	if rc != nil {
+		errBody["request_id"] = rc.id
+	}
+	if retrySeconds > 0 {
+		errBody["retry_after_seconds"] = retrySeconds
+	}
+	writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": errBody})
 }
 
 func (s *Service) writeRoutingEligibilityError(w http.ResponseWriter, rc *requestContext, err routingEligibilityError) {

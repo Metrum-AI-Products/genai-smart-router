@@ -666,6 +666,116 @@ Disallowed model requests return `403 model-not-allowed` before any upstream pro
 
 Reports can group by caller ID, owner user, project, environment, public token ID/key label, client, requested model group, selected provider/model/dialect, source IP when stored, status, quota/rate-limit bucket, and cost. `/v1/models` is the caller-facing source of truth for the allowed model groups attached to the presented key.
 
+## Caller Traffic Shaping
+
+Traffic shaping smooths how quickly one caller can start requests and reserve estimated token capacity. It complements hard controls instead of replacing them:
+
+- `rpm` limits requests over a rolling minute.
+- `tpm` limits estimated input plus reserved output tokens over a rolling minute.
+- `concurrent` limits in-flight requests.
+- daily, monthly, and lifetime quotas limit total use.
+- traffic shaping limits short-burst request starts, input-token throughput, output-reservation throughput, and total reserved-token throughput.
+
+Shaping runs after authentication, model-group allow-list checks, hard rate/quota checks, and request token estimation, but before upstream calls. Request-start shaping applies to all admitted requests, including cache hits. Input/output/total token-reservation shaping applies only to cache misses that would otherwise call an upstream. Bucket state is in memory and resets on router restart.
+
+Server defaults are disabled unless `server.traffic_shape.enabled: true`. Caller-level `callers[].traffic_shape` overrides the server default; set `enabled: false` on a caller to opt out of an enabled default. Project/user inheritance is not part of this release.
+
+Disabled inherited default:
+
+```yaml
+server:
+  traffic_shape:
+    enabled: false
+    default_caller:
+      request_start_per_sec: 0
+      request_burst: 0
+      input_tokens_per_sec: 0
+      input_token_burst: 0
+      output_reservation_tokens_per_sec: 0
+      output_reservation_token_burst: 0
+      total_reserved_tokens_per_sec: 0
+      total_reserved_token_burst: 0
+      queue:
+        enabled: false
+        max_wait_ms: 0
+        max_depth: 0
+```
+
+Conservative coding-agent caller:
+
+```yaml
+callers:
+  - id: example-coding-prod
+    owner_user: example-coding
+    project: example-project
+    environment: prod
+    allow: [default, fast, small, medium, high, big-coder]
+    rate: { rpm: 120, tpm: 200000, concurrent: 8 }
+    traffic_shape:
+      enabled: true
+      request_start_per_sec: 2.0
+      request_burst: 8
+      input_tokens_per_sec: 50000
+      input_token_burst: 200000
+      output_reservation_tokens_per_sec: 30000
+      output_reservation_token_burst: 120000
+      total_reserved_tokens_per_sec: 70000
+      total_reserved_token_burst: 250000
+      queue:
+        enabled: false
+        max_wait_ms: 0
+        max_depth: 0
+```
+
+Large-context Cursor or Codex caller:
+
+```yaml
+callers:
+  - id: example-large-context-prod
+    owner_user: example-coding
+    project: example-project
+    environment: prod
+    allow: [default, high, big-coder]
+    rate: { rpm: 240, tpm: 5000000, concurrent: 16 }
+    traffic_shape:
+      enabled: true
+      request_start_per_sec: 2.0
+      request_burst: 8
+      input_tokens_per_sec: 75000
+      input_token_burst: 300000
+      output_reservation_tokens_per_sec: 60000
+      output_reservation_token_burst: 250000
+      total_reserved_tokens_per_sec: 120000
+      total_reserved_token_burst: 500000
+      queue:
+        enabled: false
+        max_wait_ms: 0
+        max_depth: 0
+```
+
+Bounded queue example:
+
+```yaml
+callers:
+  - id: example-bounded-queue-prod
+    traffic_shape:
+      enabled: true
+      request_start_per_sec: 1.0
+      request_burst: 2
+      input_tokens_per_sec: 25000
+      input_token_burst: 100000
+      total_reserved_tokens_per_sec: 40000
+      total_reserved_token_burst: 160000
+      queue:
+        enabled: true
+        max_wait_ms: 250
+        max_depth: 4
+```
+
+Default behavior is reject, not queue. Shaping rejections return `429 traffic-shaped` with `Retry-After` when a retry time is known and a safe `bucket` such as `caller.input_tokens_per_sec`. Queued requests count against the per-caller queue depth while waiting and count against `concurrent` only after admission. Client disconnects cancel queued admission.
+
+Roll out by leaving server defaults disabled, enabling one canary caller, running a controlled burst test, then comparing `traffic_shape_*` usage fields, upstream provider 429 attempts, and user latency before broadening the policy. Roll back by setting the caller or server default `traffic_shape.enabled: false` and restarting or reloading through the normal deployment process.
+
 ## Cache And Usage Store
 
 ```yaml
@@ -774,7 +884,7 @@ Image-bearing requests also bypass response caching. Usage logs and the usage da
 
 Model groups can enable `pii_filter` to redact configured text expressions before routing policy, cache keys, and upstream calls. Requests that exceed `max_replacements_per_request` fail closed with `pii-filter-blocked` before any upstream call. Usage rows record only safe scalar PII-filter metadata such as whether filtering applied, mode, replacement count, and matched-rule count; raw matched values and placeholder mappings are not persisted or passed to policy contexts by default. External policy services receive only derived safe context unless `external_policy.include_request: true` is explicitly enabled, in which case the request mirror is redacted first. See [PII Filtering](./pii-filtering).
 
-Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, `request_upstream_shape_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class and safe shaping decision data; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture: arbitrary upstream bodies are collapsed to a redaction marker, and prompt-like fields, nested upstream bodies, and secret-shaped values are redacted before JSONL or usage DB persistence.
+Diagnostics add relational child rows for troubleshooting: `request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, and `request_errors`. Use the `X-Request-Id` header or the `request_id` in an error body to join these rows with `request_usage`. Diagnostic rows store provider/model/status/timing/error-class data plus safe caller and upstream shaping bucket decisions; they do not store raw prompts, images, bearer tokens, provider keys, token hashes, full upstream headers, or raw upstream response bodies. `store_sanitized_upstream_errors` can keep bounded sanitized error context, but it is not content capture: arbitrary upstream bodies are collapsed to a redaction marker, and prompt-like fields, nested upstream bodies, and secret-shaped values are redacted before JSONL or usage DB persistence.
 
 Browser-admin authentication is configured under `server.admin_auth.basic` and `server.admin_auth.oidc`; both remain disabled unless an operator explicitly enables them. Basic Auth establishes subjects such as `basic:admin`. OIDC sessions establish subjects such as `user:alice@example.com` when `subject_claim: email`. Browser-admin identity is separate from router caller tokens for `/v1/*` and from caller-token metrics access for `/metrics`. Keep password hashes and OIDC client secrets in environment variables, configure trusted proxy CIDRs for forwarded HTTPS state, and use secure session cookies in production. See [Admin Authentication](./admin-authentication) for bcrypt hash setup, TLS requirements, and admin auth validation endpoints. See [Admin Authorization](./admin-authorization) for Casbin metrics, content-capture maintenance, and report policy.
 

@@ -166,13 +166,13 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Concern:** "Agent clients can send large contexts, many tool calls, and retries in a short period."
 
-**Short answer:** Rate limits and budgets should be assigned to caller tokens, projects, and model groups based on expected workload. Large-context developer tools need TPM, RPM, concurrency, and output-cap policies that match their real request shape.
+**Short answer:** Rate limits, budgets, and traffic shaping should be assigned to caller tokens and model groups based on expected workload. Large-context developer tools need TPM, RPM, concurrency, output-cap, and burst-smoothing policies that match their real request shape.
 
-**How GenAI Smart Router handles it:** Caller policies can enforce request, token, concurrency, daily, monthly, or lifetime limits before provider calls. Usage and attempt data help distinguish router-side quota failures from upstream provider quota or billing exhaustion.
+**How GenAI Smart Router handles it:** Caller policies can enforce request, token, concurrency, daily, monthly, or lifetime limits before provider calls. Optional traffic shaping smooths request starts, estimated input-token throughput, output reservations, and total reserved-token throughput before upstream calls. Usage and attempt data help distinguish hard quota failures, `429 traffic-shaped` burst smoothing, and upstream provider quota or billing exhaustion.
 
-**What you own:** Caller tiering, developer-group access, burst limits, provider account capacity, and escalation procedure for production-critical agents.
+**What you own:** Caller tiering, developer-group access, burst limits, queue or reject behavior, provider account capacity, and escalation procedure for production-critical agents.
 
-**Proof to request or run:** Run a controlled burst test with a known token cap, verify expected `429` behavior, and inspect usage reports for caller, project, model group, and upstream attempts.
+**Proof to request or run:** Run a controlled burst test with a known token cap, verify expected `429 traffic-shaped` or hard-limit behavior, and inspect usage reports for caller, project, model group, traffic-shaping bucket, queue wait, retry-after, and upstream attempts.
 
 **Links:** [Troubleshooting Requests](../troubleshooting/requests), [Usage Reporting](../operations/usage-reporting), [Available Models And Access](../getting-started/available-models).
 

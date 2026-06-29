@@ -24,6 +24,7 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 
 - `request_attempts`: one scalar row per upstream attempt, including provider/model, status, timing, timeout/cancel flags, retryability, and sanitized error class/message.
 - `request_trace_events`: ordered scalar router events such as request accepted, cache decision, upstream attempt, fallback, timeout, and terminal failure.
+- `request_traffic_shape_events`: one scalar row per evaluated caller/server traffic-shaping bucket, with scope, bucket, decision, cost, retry-after, queue wait, estimated input tokens, reserved output tokens, and total reserved tokens.
 - `request_upstream_shape_events`: one scalar row per provider/model/target shaping decision, including scope, provider, model reference or label, dialect, bucket, decision, retry-after milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and safe backoff reason.
 - `request_errors`: one scalar terminal error row per failed request for fast incident queries.
 
@@ -51,7 +52,7 @@ Commercial retention tables also follow the scalar relational rule:
 - `legal_holds`: active or released holds keyed by hold ID, data class, optional request ID, timestamp range, reason, subject, creator/releaser, and timestamps.
 - `legal_hold_audit_events`: scalar audit rows for hold create/release/update workflows.
 
-The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_upstream_shape_events`, `request_errors`) and rollup-gated `usage_detail` (`request_usage`) when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
+The current retention foundation initializes policy rows from `server.retention`, records dry-run counts for all known classes, and can delete one configured batch for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_errors`) and rollup-gated `usage_detail` (`request_usage`) when `dry_run: false`. Legal holds are checked by `data_class`, optional `request_id`, and timestamp range when counting skipped rows and selecting delete batches; request-scoped legal holds on child data classes also block `usage_detail` parent deletion so cascade rules cannot remove held child telemetry. Decision telemetry child rows are counted through their parent `request_usage.ts`. It does not archive content, schedule jobs, delete unsupported classes through the generic runner, or provide a full admin UI/API for hold lifecycle.
 
 Normalized decision telemetry is an optional first-slice diagnostic feature under `server.decision_telemetry`. It is disabled by default and writes only safe scalar child rows:
 
@@ -99,6 +100,7 @@ Each request row stores:
 - request-time pricing: input/output dollars per million tokens, pricing source/update date, and calculated input/output/total USD cost.
 - PII-filter metadata: `pii_filter_applied`, `pii_filter_mode`, `pii_filter_replacements`, and `pii_filter_rule_count`; never raw matched values or placeholder mappings.
 - diagnostic traceability: child rows keyed by request ID for upstream attempts, trace events, and terminal errors.
+- traffic-shaping metadata: `traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, retry-after, queue-wait, estimated input tokens, reserved output tokens, total reserved tokens, and child rows in `request_traffic_shape_events` for each evaluated bucket.
 - optional decision telemetry traceability: child rows keyed by request ID for request-shape features, candidate eligibility/capability metadata, filter buckets, routing decisions, routing signals, score/ranking term rows, policy execution rows, fallback transition rows, and cache reason buckets when `server.decision_telemetry.enabled: true`.
 - derived report buckets: max-token bucket, input-token bucket, admission reason, enabled dynamic-score signal names, score buckets, and threshold buckets. Multi-value decision buckets are kept as child/rollup rows, never arrays or packed JSON.
 - optional governed content-capture traceability: separate content rows keyed by request ID only when `server.content_capture.enabled` and a capture scope are configured.
@@ -115,6 +117,7 @@ Durable across container restarts when volumes are preserved:
 - JSONL request logs.
 - per-request timing, TPS, and cache snapshot fields.
 - diagnostic attempt, trace, and terminal error rows when diagnostics are enabled.
+- traffic-shaping request rows and per-bucket event rows for admitted, queued, and rejected shaped requests.
 - decision telemetry rows when `server.decision_telemetry.enabled: true`.
 - content-capture rows and content-capture audit rows when governed content capture is enabled.
 - authz policy sets, policy rows, role links, and policy audit rows when DB-backed authorization is enabled.
@@ -124,6 +127,7 @@ Durable across container restarts when volumes are preserved:
 Not durable across router restarts:
 
 - in-memory response cache contents.
+- in-memory traffic-shaping token buckets and queue depths.
 - in-process Prometheus counters and gauges.
 
 ## Production Reset

@@ -38,7 +38,7 @@ Run:
 Validate:
 
 - disallowed model groups return `403 model-not-allowed`;
-- RPM/TPM/concurrency limits enforce as configured;
+- RPM/TPM/concurrency and traffic-shaping limits enforce as configured;
 - daily, monthly, and lifetime budgets count usage as expected;
 - request-time input/output/image cost fields populate;
 - upstream-reported billed cost is stored separately when available;

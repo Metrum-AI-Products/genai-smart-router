@@ -41,13 +41,14 @@ Common access outcomes:
 
 ## 3. Check Quota And Token Admission
 
-Router-side quota and admission failures usually return `429`. Distinguish them from upstream provider `429` attempts:
+Router-side quota, traffic-shaping, and admission failures usually return `429`. Distinguish them from upstream provider `429` attempts:
 
 - Router quota failures appear as the terminal caller response.
+- `traffic-shaped` appears as a terminal caller response with a safe bucket and `Retry-After` when a configured caller/server shaping bucket limits the burst.
 - Upstream `429` attempts may be followed by fallback to another target.
 - Large-context developer tools can exhaust TPM through in-flight reservations even when daily or monthly budget remains available.
 
-Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, input-token, and max-token signals.
+Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals.
 
 ## 4. Check Upstream Attempts
 

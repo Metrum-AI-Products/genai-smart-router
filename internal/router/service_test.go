@@ -77,7 +77,13 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 		calls.Add(1)
 	}))
 	defer upstream.Close()
-	svc := newTestService(t, upstream.URL, "provider-key")
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer svc.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
@@ -314,7 +320,9 @@ func TestAdminBasicAuthDoesNotChangeProxyBearerAuth(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", mustBcryptHash(t, "yell-yell-yum"))
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
@@ -618,7 +626,9 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
 		Realm:             "Unit Test Admin",
@@ -1463,7 +1473,9 @@ func newTestOIDCAdminService(t *testing.T, issuer *fakeOIDCIssuer, policy []stri
 	t.Helper()
 	t.Setenv("TEST_OIDC_CLIENT_ID", "test-client-id")
 	t.Setenv("TEST_OIDC_CLIENT_SECRET", "client-secret")
-	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.OIDC = AdminOIDCConfig{
 		Enabled:         true,
 		IssuerURL:       issuer.URL(),
@@ -1586,7 +1598,9 @@ func TestAdminAnomalyKeysTreatActiveKeyStateAsNormal(t *testing.T) {
 func TestAdminReportsRejectWithoutCasbinPolicy(t *testing.T) {
 	hash := mustBcryptHash(t, "yell-yell-yum")
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", hash)
-	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
 		AllowInsecureHTTP: true,
@@ -1626,7 +1640,9 @@ func TestAdminSecurityReportsPersistSafeAccessEvents(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ClientIP = ClientIPConfig{TrustedProxyCIDRs: []string{"192.0.2.0/24"}, HeaderOrder: []string{"X-Forwarded-For", "X-Real-IP"}}
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
@@ -2472,7 +2488,9 @@ func TestOpenAIResponsesStructuredOutputPassthrough(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Provider["structured_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
 	cfg.Models["structured-responses-test"] = ModelGroup{Strategy: "static", Targets: []Target{{
 		Provider:    "structured_responses",
@@ -4242,6 +4260,7 @@ func TestCasbinAuthorizationForMetricsAndReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
 		AllowInsecureHTTP: true,
@@ -4327,7 +4346,9 @@ func TestAnthropicMaxTokensForwardedToAnthropicUpstream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Provider["anthropic_vision"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
 	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{{
 		Provider:         "anthropic_vision",
@@ -6234,7 +6255,9 @@ func TestPIIFilterCacheStoresRedactedResponseNotRestoredPII(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.Cache.DefaultTTL = time.Minute
 	cfg.Models["default"] = ModelGroup{
 		Strategy:  "static",
@@ -6284,7 +6307,9 @@ func TestContentCaptureResponseStoresPreRestorePIIPlaceholders(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.Cache.DefaultTTL = time.Minute
 	cfg.Server.ContentCapture = ContentCaptureConfig{
 		Enabled:             true,
@@ -7512,7 +7537,13 @@ func TestUpstreamRedirectsAreNotFollowed(t *testing.T) {
 			}))
 			defer upstream.Close()
 
-			svc := newTestService(t, upstream.URL, "provider-key")
+			dir := t.TempDir()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer svc.Close()
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"secret prompt"}]}`))
@@ -7548,7 +7579,9 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "bad-request-model"},
 		{Provider: "mock", Model: "fallback-model"},
@@ -7604,7 +7637,9 @@ func TestRetryableUpstream5xxStillFallsBack(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "temporary-failure"},
 		{Provider: "mock", Model: "fallback-model"},
@@ -7654,7 +7689,9 @@ func TestDecodeErrorStillFallsBack(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "schema-drift-model"},
 		{Provider: "mock", Model: "fallback-model"},
@@ -7691,7 +7728,9 @@ func TestSuccessfulUpstreamResponseSizeIsBounded(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.Upstream.MaxResponseBytes = 128
 	svc, err := New(cfg)
 	if err != nil {
@@ -7919,7 +7958,13 @@ func TestUpstreamQuotaExhaustionReturnsSanitizedErrorAcrossSurfaces(t *testing.T
 			}))
 			defer upstream.Close()
 
-			svc := newTestService(t, upstream.URL, "provider-key")
+			dir := t.TempDir()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer svc.Close()
 
 			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
@@ -7995,6 +8040,7 @@ func TestUpstreamQuotaExhaustionFallsBackAndRecordsAttempt(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "credit-empty"},
@@ -8109,6 +8155,7 @@ func TestDiagnosticsSanitizeUpstreamErrorBeforePersistence(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
 	svc, err := New(cfg)
 	if err != nil {
@@ -8201,6 +8248,7 @@ func TestDiagnosticsSanitizeTruncatedUpstreamErrorBeforePersistence(t *testing.T
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
 	cfg.Server.Diagnostics.MaxErrorBytes = maxErrorBytes
 	svc, err := New(cfg)
@@ -8396,6 +8444,7 @@ func TestContentCaptureStoresRedactedRequestResponseAndAllowedHeaders(t *testing
 	defer upstream.Close()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{
 		Enabled:                 true,
 		RetentionDays:           7,
@@ -8474,6 +8523,7 @@ func TestContentCaptureStoresSanitizedUpstreamError(t *testing.T) {
 	defer upstream.Close()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{
 		Enabled:               true,
 		RetentionDays:         7,
@@ -8524,6 +8574,7 @@ func TestContentCaptureAdminDeleteRequiresContentAdminAndAudits(t *testing.T) {
 	adminHash := sha256.Sum256([]byte(adminToken))
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
 	cfg.Callers = append(cfg.Callers, CallerConfig{
 		ID:           "content-admin",
@@ -8599,7 +8650,9 @@ func TestContentCaptureAdminDeleteRequiresTargetDomainAuthorization(t *testing.T
 	adminHash := sha256.Sum256([]byte(adminToken))
 	otherToken := "rtr_other_capture_owner_test_token"
 	otherHash := sha256.Sum256([]byte(otherToken))
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
 	cfg.Callers = append(cfg.Callers,
 		CallerConfig{
@@ -8675,7 +8728,9 @@ func TestContentCaptureAdminDeleteAllowsTargetDomainOnlyGrant(t *testing.T) {
 	centralHash := sha256.Sum256([]byte(centralToken))
 	ownerToken := "rtr_target_domain_owner_test_token"
 	ownerHash := sha256.Sum256([]byte(ownerToken))
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
 		Enabled: true,
@@ -8751,7 +8806,9 @@ func TestContentCaptureAdminDeleteUsesCaptureTimeDomain(t *testing.T) {
 	newAdminHash := sha256.Sum256([]byte(newAdminToken))
 	ownerToken := "rtr_movable_capture_owner_test_token"
 	ownerHash := sha256.Sum256([]byte(ownerToken))
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.ContentCapture = ContentCaptureConfig{Enabled: true, RetentionDays: 7, CaptureRequest: true}
 	cfg.Callers = append(cfg.Callers,
 		CallerConfig{
@@ -8830,6 +8887,7 @@ func TestContentCaptureAdminDeleteUsesCaptureTimeDomain(t *testing.T) {
 func TestContentCaptureMaintenanceUsesCasbinAuthorization(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
 		Enabled: true,
 		Policy: []string{
@@ -8939,7 +8997,9 @@ func TestUpstreamAttemptTimeoutReturnsGatewayTimeoutAndDiagnostics(t *testing.T)
 	}))
 	defer upstream.Close()
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	group := cfg.Models["default"]
 	group.AttemptTimeoutMS = 10
 	cfg.Models["default"] = group
@@ -9014,7 +9074,9 @@ func TestDecisionTelemetryEnabledRecordsTextCandidateAndDecision(t *testing.T) {
 		})
 	}))
 	defer upstream.Close()
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	svc, err := New(cfg)
 	if err != nil {
@@ -9068,7 +9130,9 @@ func TestDecisionTelemetryRecordsExternalPolicyFailureBeforeDecision(t *testing.
 		t.Fatal(err)
 	}
 
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Models["external-policy"] = ModelGroup{
 		Strategy: "external",
@@ -9149,7 +9213,9 @@ func TestRoutingFingerprintsRedactSecretsAndTrackRoutingChanges(t *testing.T) {
 }
 
 func TestDecisionTelemetryRecordsNoEligibleFilterReason(t *testing.T) {
-	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "tool-only", ToolOnly: true}}}
 	svc, err := New(cfg)
@@ -9170,7 +9236,9 @@ func TestDecisionTelemetryRecordsNoEligibleFilterReason(t *testing.T) {
 }
 
 func TestDecisionTelemetryRecordsToolSupportFilterReason(t *testing.T) {
-	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "plain-chat"}}}
 	svc, err := New(cfg)
@@ -9202,7 +9270,9 @@ func TestDecisionTelemetryRecordsCacheBypassReason(t *testing.T) {
 		})
 	}))
 	defer upstream.Close()
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.DecisionTelemetry.Enabled = true
 	svc, err := New(cfg)
 	if err != nil {
@@ -9277,7 +9347,10 @@ const testToken = "rtr_test_token"
 
 func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {
 	t.Helper()
-	svc, err := New(testConfig(t, upstreamURL, providerKey, t.TempDir()))
+	dir := t.TempDir()
+	cfg := testConfig(t, upstreamURL, providerKey, dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -9287,11 +9360,13 @@ func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {
 func testConfig(t *testing.T, upstreamURL, providerKey, dir string) *Config {
 	t.Helper()
 	sum := sha256.Sum256([]byte(testToken))
+	usageDBDisabled := false
 	return &Config{
 		Server: ServerConfig{
 			Listen:            ":0",
 			DefaultModelGroup: "default",
 			Cache:             CacheConfig{Enabled: true, MaxBytes: 1 << 20, DefaultTTL: 0},
+			UsageDB:           UsageDBConfig{Enable: &usageDBDisabled},
 			Logging: LoggingConfig{
 				Path: filepath.Join(dir, "requests.jsonl"),
 			},

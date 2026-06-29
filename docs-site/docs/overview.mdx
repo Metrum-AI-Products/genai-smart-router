@@ -28,7 +28,7 @@ GenAI Smart Router lets platform teams define deployment-owned model groups as q
 |---|---|
 | Keep clients stable while providers change | Apps, SDKs, Codex CLI, Claude Code, and agent frameworks keep calling one router endpoint and one allowed model group. |
 | Lower cost without losing task success | Route simple work to lower-cost targets and reserve stronger targets for requests that need them, using outcome evaluation instead of guesswork. |
-| Govern access centrally | Caller tokens enforce model-group allow lists, RPM/TPM limits, concurrency caps, budgets, and metrics-admin separation before any provider call. |
+| Govern access centrally | Caller tokens enforce model-group allow lists, RPM/TPM limits, concurrency caps, traffic shaping, budgets, and metrics-admin separation before any provider call. |
 | Route by real request requirements | Tool-bearing, image-bearing, capped, and dialect-specific requests are filtered to targets validated for that shape. |
 | Use private and hosted models together | vLLM, SGLang, Baseten-style, OpenRouter-style, and direct provider targets can participate in one deployment policy while private endpoints stay hidden. |
 | Make spend and performance explainable | Usage rows and reports preserve selected provider/model, token counts, image fields, cache behavior, latency, attempts, fallbacks, and request-time cost. |

@@ -68,7 +68,7 @@ Ordinary router caller tokens receive `403 reports-forbidden`. Missing or invali
 
 ## What It Shows
 
-The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, routing strategy summaries, dynamic-score signal/score/threshold buckets, max-token and input-token buckets, admission reasons, policy execution outcomes/errors, fallback transition reasons, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, terminal-error, and decision-telemetry rows by request ID.
+The browser UI displays requests, errors, input tokens, output tokens, total tokens, input cost, output cost, total cost, savings, latency, TTFB, upstream output/total throughput, downstream write output/total throughput, cache hit/miss/bypass, attempts, fallbacks, provider/model/dialect groups, requested model, model-group usage by user, public token IDs, caller ID/user/project/environment, caller IP when stored, quota/key states, traffic-shaping decisions, routing strategy summaries, dynamic-score signal/score/threshold buckets, max-token and input-token buckets, admission reasons, policy execution outcomes/errors, fallback transition reasons, contract buckets, target validation buckets, capability usage, troubleshooting buckets, anomaly signals, status codes, expensive requests, client breakdowns, project chargeback, provider catalog/validation status, retention/rollup status, and recent safe request rows. Request drilldown joins the relational usage, attempt, trace-event, terminal-error, traffic-shaping, and decision-telemetry rows by request ID.
 
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
 
@@ -79,7 +79,7 @@ Responses do not include raw router tokens, token hashes, provider keys, raw pro
 | Which teams are driving spend or savings? | Savings by user, project, key, group, and provider/model; project chargeback; client breakdown. |
 | Which model groups are used by each cohort? | Model groups by user/project/key and usage by requested model group. |
 | Which providers are actually serving traffic? | Provider/model mix, active target metadata, validation status, attempts, fallbacks, and errors. |
-| Are quotas and rate limits sized correctly? | Quotas/budgets, troubleshooting buckets, max-token and input-token buckets, TPM/RPM/concurrency signals. |
+| Are quotas and rate limits sized correctly? | Quotas/budgets, troubleshooting buckets, traffic-shaping buckets, max-token and input-token buckets, TPM/RPM/concurrency signals. |
 | Why was a request expensive or slow? | Expensive requests, request drilldown, downstream user performance, upstream endpoint performance, latency and throughput. |
 | Is access governed? | Security access events, ordinary-caller `403 reports-forbidden`, metrics-admin isolation, public token IDs, key state, and caller/project dimensions. |
 

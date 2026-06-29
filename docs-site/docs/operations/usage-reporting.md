@@ -70,7 +70,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
+With `dry_run: false`, the first implementation deletes at most one configured batch per table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Other data classes are counted and recorded as blocked. `usage_detail` candidate rows remain blocked unless finalized daily rollups continuously cover the candidate window. Archive/export, scheduler support, browser write workflows, and generic purge execution for decision telemetry, security events, and content capture are future slices.
 
 Use retention language carefully in commercial reviews:
 
@@ -168,6 +168,7 @@ Reports include:
 - Contract pass/fail buckets, optional contract workload labels, and target validation buckets when model-group contracts are configured.
 - Cache hits, misses, bypasses, occupancy, and hit rate.
 - Browser troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
+- Traffic-shaping fields: applied flag, decision, scope, limiting bucket, retry-after milliseconds, queue wait milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and per-bucket rows in `request_traffic_shape_events`.
 - Optional decision telemetry summary when `server.decision_telemetry.enabled: true`: request-shape feature row counts, target candidate row counts, target filter reason buckets, routing-decision strategy buckets, routing signal rows, score/ranking term rows, policy execution rows, fallback transition rows, cache decision reason buckets, enabled dynamic-score signal names, score buckets, threshold buckets, max-token buckets, input-token buckets, admission reason buckets, policy outcome/error-class buckets, and fallback-reason buckets.
 - Streaming and non-streaming request counts.
 - Request IDs that can be joined to diagnostic attempt, trace-event, and terminal-error rows by administrators.
@@ -179,6 +180,7 @@ Every response includes `X-Request-Id`. Structured error responses also include 
 - `request_usage` for the terminal request status, selected target, token counts, cost fields, and non-secret routing/model-group/policy/pricing fingerprints.
 - `request_attempts` for each upstream provider/model attempt, status code, duration, timeout/cancel flags, retryability, and sanitized error class/message.
 - `request_trace_events` for ordered router decisions such as cache handling, upstream attempts, fallback, timeout, or terminal failure.
+- `request_traffic_shape_events` for per-bucket caller/server traffic-shaping decisions, costs, retry-after, and queue wait.
 - `request_upstream_shape_events` for provider/model/target admission, skip, rejection, and adaptive-backoff cooldown decisions.
 - `request_decision_shape_features`, `request_target_candidates`, `request_target_filter_reasons`, `request_routing_decisions`, `request_routing_signals`, `request_dynamic_score_terms`, `request_policy_executions`, `request_fallback_transitions`, and `request_cache_reasons` for normalized decision explainability when decision telemetry is enabled. Shape features include safe max-token and input-token buckets, score/ranking term rows include scalar score buckets, policy execution rows cover fail-closed errors before selection, and fallback transition rows link failed attempts to fallback targets.
 - `request_errors` for the terminal sanitized error summary.

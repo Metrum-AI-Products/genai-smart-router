@@ -58,6 +58,8 @@ Before an upstream call, the router reserves the estimated input tokens plus the
 
 TPM, daily token, monthly token, and lifetime key budgets include in-flight reservations. This prevents several concurrent large-cap requests from collectively exceeding a caller's budget. When a request completes, the reservation is reconciled to the actual usage reported by the upstream. Failed or canceled upstream requests release the reservation, and cache hits do not consume persisted token quota.
 
+Optional caller traffic shaping can also smooth short bursts before upstream calls. It is separate from hard TPM/RPM/quota admission and can return `429 traffic-shaped` with `Retry-After` and a safe bucket label when request-start or token-reservation throughput is exceeded.
+
 Use realistic output caps in examples and clients. A small prompt with a very large output cap can be rejected near a token budget because the caller asked the router to reserve that much possible output.
 
 ## Model Names

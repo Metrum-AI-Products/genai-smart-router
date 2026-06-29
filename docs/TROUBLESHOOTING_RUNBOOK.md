@@ -30,6 +30,7 @@ Use `X-Request-Id` to inspect relational usage tables:
 - `request_usage`: terminal status, caller, selected target, token counts, cost fields, cache status.
 - `request_attempts`: upstream provider/model attempts, status, duration, timeout/cancel flags.
 - `request_trace_events`: routing decisions, fallback, cache, timeout, terminal failure.
+- `request_traffic_shape_events`: per-bucket caller traffic-shaping decisions when shaping was applied.
 - `request_errors`: sanitized terminal error class/message.
 
 Diagnostic tables must not store raw prompts, raw image payloads, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.
@@ -61,6 +62,14 @@ For token-budget rejections, inspect the caller's requested output cap as well a
 Safe large-context example: a Cursor or opencode user can hit `429 tpm-exceeded` after several repository-wide or large-diff requests even when RPM and concurrency look normal. Triage with the client, model group, UTC window, and public request IDs, then filter usage by `client` and `resolved_group` to compare input tokens, requested output cap, in-flight reservations, and retry timing. Do not collect raw prompts, repository contents, bearer tokens, token hashes, provider keys, or full production config. Operational fixes are usually to reduce the client's context window or retry burst, use a lower output cap, move the user to a caller policy with a larger TPM budget, or split the workload across smaller requests.
 
 When the workload is trusted and production-critical, raising TPM for that key can be the right fix. For routine or exploratory work, prefer reducing client context, lowering output caps, splitting requests, or moving the key to a cheaper/smaller model group only after that group passes the workload verifier. Distinguish router-side `429` policy failures from upstream provider `429` attempts and user/client cancellations before changing quotas.
+
+### Traffic Shaping
+
+`429 traffic-shaped` is separate from `tpm-exceeded`, `rpm-exceeded`, `concurrency-exceeded`, and upstream `503 upstream-rate-limited`. Traffic shaping smooths how quickly one caller can start requests or reserve estimated input/output token capacity after auth, model allow-list checks, hard quota/rate checks, and token estimation, but before upstream calls. It is disabled unless `server.traffic_shape.enabled` or a caller `traffic_shape.enabled` block is configured.
+
+Use the response `bucket`, `Retry-After`, and `X-Request-Id` first. Then inspect safe scalar usage fields: `traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, and `traffic_shape_total_reserved_tokens`.
+
+Join `request_traffic_shape_events` by `request_id` for one row per evaluated bucket. For large-context coding clients, compare shaped buckets with the caller's hard `rate.tpm`, requested output cap, and upstream `request_attempts.error_class`. Operational fixes are usually to reduce retry bursts or context size, lower output caps, increase the specific shaping bucket only for the trusted caller, or temporarily disable `traffic_shape.enabled` for rollback. Do not collect raw prompts, raw images, bearer tokens, token hashes, provider keys, or full production config while triaging.
 
 Separate caller-token quota failures from upstream provider quota or billing exhaustion. Caller policy failures return `429 quota-exceeded` or `429 rate-limited` before any provider call. Provider balance, credit, billing, payment, or quota failures are recorded per attempted target as `request_attempts.error_class = 'upstream_quota_exhausted'`; if no fallback succeeds, callers receive `503 upstream-quota-exhausted` with a sanitized `request_id`. Use that request ID to inspect `request_attempts`, `request_trace_events`, and `request_errors`, then verify the provider account balance, billing state, quota entitlement, and provider status page. If a later fallback succeeds, the terminal `request_usage` row remains `200` with `fallback_used = true`, and the failed provider attempt still appears in `request_attempts`.
 

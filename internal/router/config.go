@@ -33,20 +33,21 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen            string                  `yaml:"listen"`
-	DefaultModelGroup string                  `yaml:"default_model_group"`
-	AdminAuth         AdminAuthConfig         `yaml:"admin_auth"`
-	AdminReports      AdminReportsConfig      `yaml:"admin_reports"`
-	License           LicenseConfig           `yaml:"license" json:"license"`
-	ClientIP          ClientIPConfig          `yaml:"client_ip" json:"client_ip"`
-	Cache             CacheConfig             `yaml:"cache"`
-	Logging           LoggingConfig           `yaml:"logging"`
-	UsageDB           UsageDBConfig           `yaml:"usage_db"`
-	Upstream          UpstreamConfig          `yaml:"upstream"`
-	Diagnostics       DiagnosticsConfig       `yaml:"diagnostics"`
-	ContentCapture    ContentCaptureConfig    `yaml:"content_capture"`
-	Retention         RetentionConfig         `yaml:"retention"`
-	DecisionTelemetry DecisionTelemetryConfig `yaml:"decision_telemetry"`
+	Listen            string                   `yaml:"listen"`
+	DefaultModelGroup string                   `yaml:"default_model_group"`
+	AdminAuth         AdminAuthConfig          `yaml:"admin_auth"`
+	AdminReports      AdminReportsConfig       `yaml:"admin_reports"`
+	License           LicenseConfig            `yaml:"license" json:"license"`
+	ClientIP          ClientIPConfig           `yaml:"client_ip" json:"client_ip"`
+	Cache             CacheConfig              `yaml:"cache"`
+	Logging           LoggingConfig            `yaml:"logging"`
+	UsageDB           UsageDBConfig            `yaml:"usage_db"`
+	Upstream          UpstreamConfig           `yaml:"upstream"`
+	Diagnostics       DiagnosticsConfig        `yaml:"diagnostics"`
+	ContentCapture    ContentCaptureConfig     `yaml:"content_capture"`
+	Retention         RetentionConfig          `yaml:"retention"`
+	DecisionTelemetry DecisionTelemetryConfig  `yaml:"decision_telemetry"`
+	TrafficShape      ServerTrafficShapeConfig `yaml:"traffic_shape" json:"traffic_shape"`
 }
 
 type LicenseConfig struct {
@@ -554,15 +555,18 @@ type Target struct {
 }
 
 type TrafficShapeConfig struct {
-	Enabled                   *bool                `yaml:"enabled" json:"enabled,omitempty"`
-	RequestStartPerSec        float64              `yaml:"request_start_per_sec" json:"requestStartPerSec,omitempty"`
-	RequestBurst              int                  `yaml:"request_burst" json:"requestBurst,omitempty"`
-	InputTokensPerSec         float64              `yaml:"input_tokens_per_sec" json:"inputTokensPerSec,omitempty"`
-	InputTokenBurst           int                  `yaml:"input_token_burst" json:"inputTokenBurst,omitempty"`
-	TotalReservedTokensPerSec float64              `yaml:"total_reserved_tokens_per_sec" json:"totalReservedTokensPerSec,omitempty"`
-	TotalReservedTokenBurst   int                  `yaml:"total_reserved_token_burst" json:"totalReservedTokenBurst,omitempty"`
-	Upstream429Backoff        TrafficBackoffConfig `yaml:"upstream_429_backoff" json:"upstream429Backoff,omitempty"`
-	UpstreamQuotaBackoff      TrafficBackoffConfig `yaml:"upstream_quota_backoff" json:"upstreamQuotaBackoff,omitempty"`
+	Enabled                       *bool                   `yaml:"enabled" json:"enabled,omitempty"`
+	RequestStartPerSec            float64                 `yaml:"request_start_per_sec" json:"requestStartPerSec,omitempty"`
+	RequestBurst                  int                     `yaml:"request_burst" json:"requestBurst,omitempty"`
+	InputTokensPerSec             float64                 `yaml:"input_tokens_per_sec" json:"inputTokensPerSec,omitempty"`
+	InputTokenBurst               int                     `yaml:"input_token_burst" json:"inputTokenBurst,omitempty"`
+	OutputReservationTokensPerSec float64                 `yaml:"output_reservation_tokens_per_sec" json:"outputReservationTokensPerSec,omitempty"`
+	OutputReservationTokenBurst   int                     `yaml:"output_reservation_token_burst" json:"outputReservationTokenBurst,omitempty"`
+	TotalReservedTokensPerSec     float64                 `yaml:"total_reserved_tokens_per_sec" json:"totalReservedTokensPerSec,omitempty"`
+	TotalReservedTokenBurst       int                     `yaml:"total_reserved_token_burst" json:"totalReservedTokenBurst,omitempty"`
+	Queue                         TrafficShapeQueueConfig `yaml:"queue" json:"queue,omitempty"`
+	Upstream429Backoff            TrafficBackoffConfig    `yaml:"upstream_429_backoff" json:"upstream429Backoff,omitempty"`
+	UpstreamQuotaBackoff          TrafficBackoffConfig    `yaml:"upstream_quota_backoff" json:"upstreamQuotaBackoff,omitempty"`
 }
 
 type TrafficBackoffConfig struct {
@@ -597,6 +601,7 @@ type CallerConfig struct {
 	ContentAdmin   bool                 `yaml:"content_admin" json:"content_admin"`
 	ContentCapture ContentCaptureConfig `yaml:"content_capture" json:"content_capture"`
 	Rate           RateConfig           `yaml:"rate" json:"rate"`
+	TrafficShape   TrafficShapeConfig   `yaml:"traffic_shape" json:"traffic_shape"`
 	Quota          QuotaConfig          `yaml:"quota" json:"quota"`
 	Key            KeyConfig            `yaml:"key" json:"key"`
 }
@@ -630,6 +635,17 @@ type RateConfig struct {
 	RPM        int `yaml:"rpm" json:"rpm"`
 	TPM        int `yaml:"tpm" json:"tpm"`
 	Concurrent int `yaml:"concurrent" json:"concurrent"`
+}
+
+type ServerTrafficShapeConfig struct {
+	Enabled       bool               `yaml:"enabled" json:"enabled"`
+	DefaultCaller TrafficShapeConfig `yaml:"default_caller" json:"default_caller"`
+}
+
+type TrafficShapeQueueConfig struct {
+	Enabled   bool `yaml:"enabled" json:"enabled"`
+	MaxWaitMS int  `yaml:"max_wait_ms" json:"max_wait_ms"`
+	MaxDepth  int  `yaml:"max_depth" json:"max_depth"`
 }
 
 type QuotaConfig struct {
@@ -911,6 +927,9 @@ func (c *Config) Validate() error {
 	if c.Server.Retention.Enabled && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
 		return fmt.Errorf("server retention requires usage_db enabled")
 	}
+	if err := validateServerTrafficShape(c.Server.TrafficShape); err != nil {
+		return err
+	}
 	if _, err := c.validateAccounts(); err != nil {
 		return err
 	}
@@ -1171,6 +1190,12 @@ func (c *Config) Validate() error {
 		}
 		if err := validateContentCapture("caller "+caller.ID+" content_capture", caller.ContentCapture); err != nil {
 			return err
+		}
+		if trafficShapeConfigSet(caller.TrafficShape) {
+			requireActive := !trafficShapeExplicitlyDisabled(caller.TrafficShape)
+			if err := validateTrafficShapeConfig("caller "+caller.ID+" traffic_shape", caller.TrafficShape, requireActive); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

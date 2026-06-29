@@ -80,6 +80,15 @@ type logRecord struct {
 	CacheOccupancyPct                  float64                         `json:"cache_occupancy_pct"`
 	QuotaState                         string                          `json:"quota_state"`
 	KeyState                           string                          `json:"key_state"`
+	TrafficShapeApplied                bool                            `json:"traffic_shape_applied,omitempty"`
+	TrafficShapeDecision               string                          `json:"traffic_shape_decision,omitempty"`
+	TrafficShapeScope                  string                          `json:"traffic_shape_scope,omitempty"`
+	TrafficShapeBucket                 string                          `json:"traffic_shape_bucket,omitempty"`
+	TrafficShapeRetryAfterMS           int64                           `json:"traffic_shape_retry_after_ms,omitempty"`
+	TrafficShapeQueueWaitMS            int64                           `json:"traffic_shape_queue_wait_ms,omitempty"`
+	TrafficShapeEstimatedInputTokens   int                             `json:"traffic_shape_estimated_input_tokens,omitempty"`
+	TrafficShapeReservedOutputTokens   int                             `json:"traffic_shape_reserved_output_tokens,omitempty"`
+	TrafficShapeTotalReservedTokens    int                             `json:"traffic_shape_total_reserved_tokens,omitempty"`
 	LicenseStatus                      string                          `json:"license_status,omitempty"`
 	LicenseReason                      string                          `json:"license_reason,omitempty"`
 	LicenseID                          string                          `json:"license_id,omitempty"`
@@ -109,6 +118,7 @@ type logRecord struct {
 	PolicyExecutions                   []policyExecutionLogRecord      `json:"policy_executions,omitempty"`
 	FallbackTransitions                []fallbackTransitionLogRecord   `json:"fallback_transitions,omitempty"`
 	CacheReasons                       []cacheReasonLogRecord          `json:"cache_reasons,omitempty"`
+	TrafficShapeEvents                 []trafficShapeEventLogRecord    `json:"traffic_shape_events,omitempty"`
 	UpstreamShapeEvents                []upstreamShapeEventLogRecord   `json:"upstream_shape_events,omitempty"`
 }
 
@@ -165,6 +175,19 @@ type traceLogRecord struct {
 	ErrorClass string `json:"error_class,omitempty"`
 	Retryable  bool   `json:"retryable,omitempty"`
 	Attempt    int    `json:"attempt,omitempty"`
+}
+
+type trafficShapeEventLogRecord struct {
+	Seq                  int    `json:"seq"`
+	Scope                string `json:"scope"`
+	Bucket               string `json:"bucket"`
+	Decision             string `json:"decision"`
+	Cost                 int    `json:"cost"`
+	RetryAfterMS         int64  `json:"retry_after_ms,omitempty"`
+	QueueWaitMS          int64  `json:"queue_wait_ms,omitempty"`
+	EstimatedInputTokens int    `json:"estimated_input_tokens,omitempty"`
+	ReservedOutputTokens int    `json:"reserved_output_tokens,omitempty"`
+	TotalReservedTokens  int    `json:"total_reserved_tokens,omitempty"`
 }
 
 type decisionShapeFeatureLogRecord struct {

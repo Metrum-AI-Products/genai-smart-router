@@ -63,6 +63,26 @@ server:
     retention_days: 30
     store_sanitized_upstream_errors: false
     max_error_bytes: 2048
+  # Optional caller/server traffic shaping smooths short bursts before upstream
+  # calls. It is separate from hard rpm/tpm/concurrent limits and quotas.
+  # Bucket state is process-local and resets on restart. Caller-level
+  # traffic_shape overrides this default; set enabled: false on a caller to opt
+  # out of an enabled server default.
+  traffic_shape:
+    enabled: false
+    default_caller:
+      request_start_per_sec: 0
+      request_burst: 0
+      input_tokens_per_sec: 0
+      input_token_burst: 0
+      output_reservation_tokens_per_sec: 0
+      output_reservation_token_burst: 0
+      total_reserved_tokens_per_sec: 0
+      total_reserved_token_burst: 0
+      queue:
+        enabled: false
+        max_wait_ms: 0
+        max_depth: 0
   # Browser-admin HTTP Basic authentication is disabled by default. It only
   # establishes an admin subject; control-plane authorization uses explicit
   # Casbin grants under server.admin_auth.authorization.
@@ -1975,6 +1995,23 @@ callers:
     rpm: 120
     tpm: 200000
     concurrent: 8
+  # Conservative coding-agent traffic shaping smooths request starts and large
+  # context/output reservations before upstream calls. Queueing is disabled by
+  # default so clients receive predictable 429 traffic-shaped responses.
+  traffic_shape:
+    enabled: true
+    request_start_per_sec: 2.0
+    request_burst: 8
+    input_tokens_per_sec: 75000
+    input_token_burst: 300000
+    output_reservation_tokens_per_sec: 60000
+    output_reservation_token_burst: 250000
+    total_reserved_tokens_per_sec: 120000
+    total_reserved_token_burst: 500000
+    queue:
+      enabled: false
+      max_wait_ms: 0
+      max_depth: 0
   quota:
     day:
       requests: 5000

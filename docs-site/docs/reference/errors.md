@@ -17,6 +17,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `key-expired` | 403 | The matched caller key is past its configured expiration time. | Rotate to a current key. | Issue a replacement key and retire the expired one according to rotation policy. |
 | `key-rotated` | 403 | The matched caller key has been replaced by a newer key. | Switch the client to the replacement key issued by the administrator. | Confirm clients have migrated, then retire or delete the rotated key when appropriate. |
 | `quota-exceeded` or `rate-limited` | 429 | Request, token, daily, monthly, or concurrency policy blocked the request. | Reduce traffic, lower an unrealistic output cap, or ask for a quota change. | Inspect caller limits, recent usage, and in-flight traffic. |
+| `traffic-shaped` | 429 | Caller traffic-shaping buckets rejected or timed out a short burst after hard rate/quota checks but before upstream calls. | Retry after `Retry-After`, reduce burst size, reduce context, or lower output caps. | Inspect `traffic_shape_*` fields and `request_traffic_shape_events` for the limiting bucket and queue wait. |
 | `key-exhausted` | 403 | The caller's lifetime token budget is exhausted or the request's reserved token budget would exceed the remaining lifetime budget. | Use a key with remaining budget, lower an unrealistic output cap, or ask for a new budget. | Inspect the key lifetime budget and issue or re-enable keys according to policy. |
 | `pii-filter-blocked` | 400 | The requested model group is configured to reject requests that match PII filter rules, or the request exceeded the configured PII replacement cap. | Remove the sensitive value, reduce matched values, or use an approved workflow. | Review the model group's `pii_filter` rules, mode, and `max_replacements_per_request`. |
 | `pii-filter-failed` | 502 | The router could not apply the configured PII filter. | Retry after the administrator resolves configuration. | Check regex validation, filter limits, and request shape. |
@@ -76,6 +77,26 @@ If a caller sets `max_tokens`, OpenAI Chat `max_completion_tokens`, or Responses
 
 Explicit output caps also affect quota admission. The router reserves estimated input tokens plus `max_tokens`, `max_completion_tokens`, or `max_output_tokens` before upstream calls, then reconciles the reservation to actual usage when the request finishes. Failed or canceled upstream calls release the reservation, and cache hits do not consume persisted token quota.
 
+## Traffic-Shaped Responses
+
+`traffic-shaped` is a router-side 429 used for configured caller burst smoothing. It is distinct from hard `rpm`, `tpm`, `concurrent`, quota, and lifetime-budget failures, and distinct from upstream provider 429s that can later become `503 upstream-rate-limited`.
+
+Safe example:
+
+```json
+{
+  "error": {
+    "type": "traffic-shaped",
+    "message": "caller traffic shaping limit exceeded for model group big-coder; retry later or reduce request burst",
+    "request_id": "req_0123456789abcdef0123456789abcdef",
+    "retry_after_seconds": 2,
+    "bucket": "caller.input_tokens_per_sec"
+  }
+}
+```
+
+Clients should honor `Retry-After`, apply backoff, reduce concurrent bursts, reduce context size, or lower very large output caps. Administrators should inspect `request_usage.traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, `traffic_shape_total_reserved_tokens`, and child rows in `request_traffic_shape_events`.
+
 ## Cursor And Large-Context TPM Troubleshooting
 
 Router caller limits can include:
@@ -83,6 +104,7 @@ Router caller limits can include:
 - `rpm`: requests per rolling minute;
 - `tpm`: estimated input plus reserved output tokens per rolling minute;
 - `concurrent`: in-flight request count.
+- `traffic_shape`: optional short-burst smoothing for request starts and token-reservation throughput.
 
 Large-context clients such as Cursor, opencode, coding agents, and repository-wide tools can hit `429 tpm-exceeded` even when daily or monthly budgets are healthy. A few 150K-token requests inside the same rolling minute can exceed TPM, especially when each request also reserves the requested output cap.
 
@@ -99,6 +121,7 @@ Administrator guidance:
 - raise TPM for trusted production keys when the workload is approved;
 - route routine large-context work to cheaper or smaller groups only after those groups pass the workload verifier;
 - distinguish router `429 quota-exceeded`, `rate-limited`, or `tpm-exceeded` from upstream provider `429` attempts and client cancellations by reviewing `request_usage`, `request_attempts`, `request_trace_events`, and `request_errors`.
+- distinguish `429 traffic-shaped` from hard `tpm-exceeded` by checking `traffic_shape_bucket`, queue wait, retry-after, and per-bucket rows in `request_traffic_shape_events`.
 
 ## Upstream Provider Quota And Billing Errors
 

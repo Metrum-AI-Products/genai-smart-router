@@ -1,308 +1,205 @@
 package router
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestTrafficShapeValidation(t *testing.T) {
-	cfg := minimalConfig(t)
-	provider := cfg.Provider["mock"]
-	provider.TrafficShape = TrafficShapeConfig{RequestStartPerSec: 1}
-	cfg.Provider["mock"] = provider
+func TestTrafficShapeConfigValidationAndPrecedence(t *testing.T) {
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.setDefaults()
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "request_burst is required") {
-		t.Fatalf("Validate error=%v, want request_burst requirement", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("default config should validate: %v", err)
+	}
+	_, _, enabled := resolveTrafficShapeConfig(cfg.Server.TrafficShape, cfg.Callers[0])
+	if enabled {
+		t.Fatal("traffic shaping should be disabled by default")
 	}
 
-	provider.TrafficShape.RequestBurst = 2
-	provider.Models = map[string]ProviderModel{
-		"mock": {
-			Model: "mock-model",
-			TrafficShape: TrafficShapeConfig{
-				InputTokensPerSec: 10,
-				InputTokenBurst:   20,
-			},
+	on := true
+	cfg.Callers[0].TrafficShape = TrafficShapeConfig{
+		Enabled:            &on,
+		RequestStartPerSec: 2,
+		RequestBurst:       4,
+		Queue:              TrafficShapeQueueConfig{Enabled: true, MaxWaitMS: 50, MaxDepth: 2},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid caller traffic shape rejected: %v", err)
+	}
+
+	bad := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	bad.Callers[0].TrafficShape = TrafficShapeConfig{Enabled: &on, InputTokensPerSec: -1, InputTokenBurst: 10}
+	bad.setDefaults()
+	if err := bad.Validate(); err == nil {
+		t.Fatal("negative traffic shaping rate should fail validation")
+	}
+
+	badQueue := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	badQueue.Callers[0].TrafficShape = TrafficShapeConfig{
+		Enabled:            &on,
+		RequestStartPerSec: 1,
+		RequestBurst:       1,
+		Queue:              TrafficShapeQueueConfig{Enabled: true},
+	}
+	badQueue.setDefaults()
+	if err := badQueue.Validate(); err == nil {
+		t.Fatal("enabled queue without wait/depth should fail validation")
+	}
+
+	off := false
+	cfg.Server.TrafficShape = ServerTrafficShapeConfig{
+		Enabled: true,
+		DefaultCaller: TrafficShapeConfig{
+			RequestStartPerSec: 1,
+			RequestBurst:       1,
 		},
 	}
-	cfg.Provider["mock"] = provider
-	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
-		Provider: "mock",
-		ModelRef: "mock",
-		TrafficShape: TrafficShapeConfig{
-			TotalReservedTokensPerSec: 10,
-			TotalReservedTokenBurst:   50,
-		},
-	}}}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate returned error for valid traffic_shape: %v", err)
+	cfg.Callers[0].TrafficShape = TrafficShapeConfig{Enabled: &off}
+	_, scope, enabled := resolveTrafficShapeConfig(cfg.Server.TrafficShape, cfg.Callers[0])
+	if enabled || scope != trafficShapeScopeCaller {
+		t.Fatalf("caller disabled override should win, scope=%s enabled=%v", scope, enabled)
 	}
 }
 
-func TestTrafficShapeManagerConcurrentAdmission(t *testing.T) {
+func TestTrafficShapeManagerConcurrentDoesNotOverAdmit(t *testing.T) {
 	m := newTrafficShapeManager()
-	fixed := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
-	m.now = func() time.Time { return fixed }
-	scope := shapeScope{
-		Scope:    shapeScopeProvider,
-		Key:      "provider|mock|openai-chat",
-		Config:   TrafficShapeConfig{RequestStartPerSec: 1, RequestBurst: 1},
-		Provider: "mock",
-		Model:    "mock-model",
-		Dialect:  "openai-chat",
-	}
-	var admitted atomic.Int64
+	cfg := TrafficShapeConfig{RequestStartPerSec: 0.001, RequestBurst: 5}
 	var wg sync.WaitGroup
-	for i := 0; i < 32; i++ {
+	admitted := make(chan bool, 50)
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if m.Admit([]shapeScope{scope}, shapeReservationInput{EstimatedInputTokens: 1, TotalReservedTokens: 1}).OK {
-				admitted.Add(1)
-			}
+			res := m.Admit(context.Background(), trafficShapeRequest{
+				CallerID:            "alice",
+				Config:              cfg,
+				Scope:               trafficShapeScopeCaller,
+				IncludeRequestStart: true,
+			})
+			admitted <- res.Decision == trafficShapeDecisionAdmitted
 		}()
 	}
 	wg.Wait()
-	if got := admitted.Load(); got != 1 {
-		t.Fatalf("admitted=%d, want exactly one burst admission", got)
-	}
-}
-
-func TestProviderTrafficShapeRoutesAroundThrottledTarget(t *testing.T) {
-	var calls atomic.Int64
-	var fallbackCalls atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		model, _ := body["model"].(string)
-		if model == "fallback-model" {
-			fallbackCalls.Add(1)
+	close(admitted)
+	var count int
+	for ok := range admitted {
+		if ok {
+			count++
 		}
-		writeChatTestResponse(w, model+" ok")
-	}))
-	defer upstream.Close()
-
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
-	cfg.Server.Cache.Enabled = false
-	cfg.Provider["mock"] = ProviderConfig{
-		BaseURL: upstream.URL + "/v1",
-		Dialect: "openai-chat",
-		APIKey:  "provider-key",
-		TrafficShape: TrafficShapeConfig{
-			RequestStartPerSec: 0.1,
-			RequestBurst:       1,
-		},
 	}
-	cfg.Provider["fallback"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
-	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
-		{Provider: "mock", Model: "mock-model"},
-		{Provider: "fallback", Model: "fallback-model"},
-	}}
-	svc, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
-
-	first := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"one"}]}`)
-	if first.Code != http.StatusOK {
-		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
-	}
-	second := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"two"}]}`)
-	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "fallback-model ok") {
-		t.Fatalf("second status/body=%d %s, want fallback success", second.Code, second.Body.String())
-	}
-	if fallbackCalls.Load() != 1 {
-		t.Fatalf("fallback calls=%d, want 1", fallbackCalls.Load())
-	}
-	var events []requestUpstreamShapeEventRecord
-	if err := svc.usage.db.Where("decision = ?", shapeDecisionSkipped).Find(&events).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(events) == 0 || events[0].BackoffReason != "provider-shape-throttled" {
-		t.Fatalf("shape events=%#v, want provider-shape-throttled skip", events)
-	}
-	if calls.Load() != 2 {
-		t.Fatalf("upstream calls=%d, want first mock plus fallback", calls.Load())
+	if count != 5 {
+		t.Fatalf("admitted=%d, want burst capacity 5", count)
 	}
 }
 
-func TestProviderTrafficShapeAllTargetsThrottled(t *testing.T) {
-	var calls atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		writeChatTestResponse(w, "ok")
-	}))
-	defer upstream.Close()
-
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
-	cfg.Server.Cache.Enabled = false
-	cfg.Provider["mock"] = ProviderConfig{
-		BaseURL: upstream.URL + "/v1",
-		Dialect: "openai-chat",
-		APIKey:  "provider-key",
-		TrafficShape: TrafficShapeConfig{
-			RequestStartPerSec: 0.1,
-			RequestBurst:       1,
-		},
+func TestTrafficShapeManagerQueueWaitsForRefill(t *testing.T) {
+	m := newTrafficShapeManager()
+	cfg := TrafficShapeConfig{
+		RequestStartPerSec: 1000,
+		RequestBurst:       1,
+		Queue:              TrafficShapeQueueConfig{Enabled: true, MaxWaitMS: 100, MaxDepth: 1},
 	}
-	svc, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
+	req := trafficShapeRequest{CallerID: "alice", Config: cfg, Scope: trafficShapeScopeCaller, IncludeRequestStart: true}
+	first := m.Admit(context.Background(), req)
+	if first.Decision != trafficShapeDecisionAdmitted {
+		t.Fatalf("first decision=%s", first.Decision)
 	}
-	defer svc.Close()
-
-	if rr := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"one"}]}`); rr.Code != http.StatusOK {
-		t.Fatalf("first status=%d body=%s", rr.Code, rr.Body.String())
+	second := m.Admit(context.Background(), req)
+	if second.Decision != trafficShapeDecisionQueued {
+		t.Fatalf("second decision=%s retry=%d events=%#v", second.Decision, second.RetryAfterMS, second.Events)
 	}
-	rr := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"two"}]}`)
-	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"type":"upstream-capacity-throttled"`) {
-		t.Fatalf("second status/body=%d %s, want capacity throttle", rr.Code, rr.Body.String())
+	if second.QueueWaitMS <= 0 {
+		t.Fatalf("queue wait not recorded: %#v", second)
 	}
-	if rr.Header().Get("Retry-After") == "" {
-		t.Fatalf("Retry-After header missing on capacity throttle")
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("upstream calls=%d, want no second upstream call", calls.Load())
-	}
-	var reqErr requestErrorRecord
-	if err := svc.usage.db.Where("error_type = ?", "upstream-capacity-throttled").First(&reqErr).Error; err != nil {
-		t.Fatal(err)
-	}
-	if !reqErr.Retryable {
-		t.Fatalf("retryable=%v, want capacity throttle request error marked retryable", reqErr.Retryable)
+	if len(second.Events) != 1 || second.Events[0].Decision != trafficShapeDecisionQueued {
+		t.Fatalf("queued event missing: %#v", second.Events)
 	}
 }
 
-func TestProviderTrafficShapeCacheHitBypassesCapacity(t *testing.T) {
-	var calls atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		writeChatTestResponse(w, "cached ok")
-	}))
-	defer upstream.Close()
-
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
-	cfg.Server.Cache.Enabled = true
-	cfg.Provider["mock"] = ProviderConfig{
-		BaseURL: upstream.URL + "/v1",
-		Dialect: "openai-chat",
-		APIKey:  "provider-key",
-		TrafficShape: TrafficShapeConfig{
-			RequestStartPerSec: 0.1,
-			RequestBurst:       1,
-		},
+func TestTrafficShapeManagerQueueHonorsContextCancel(t *testing.T) {
+	m := newTrafficShapeManager()
+	cfg := TrafficShapeConfig{
+		RequestStartPerSec: 0.001,
+		RequestBurst:       1,
+		Queue:              TrafficShapeQueueConfig{Enabled: true, MaxWaitMS: 5000, MaxDepth: 1},
 	}
-	svc, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
+	req := trafficShapeRequest{CallerID: "alice", Config: cfg, Scope: trafficShapeScopeCaller, IncludeRequestStart: true}
+	if first := m.Admit(context.Background(), req); first.Decision != trafficShapeDecisionAdmitted {
+		t.Fatalf("first decision=%s", first.Decision)
 	}
-	defer svc.Close()
-
-	body := `{"model":"default","messages":[{"role":"user","content":"same deterministic prompt"}]}`
-	first := performChatRequest(t, svc, body)
-	if first.Code != http.StatusOK {
-		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
-	}
-	second := performChatRequest(t, svc, body)
-	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "cached ok") {
-		t.Fatalf("second status/body=%d %s, want cache hit bypassing shape capacity", second.Code, second.Body.String())
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("upstream calls=%d, want second request served from cache", calls.Load())
-	}
-	var skipped int64
-	if err := svc.usage.db.Model(&requestUpstreamShapeEventRecord{}).Where("decision = ?", shapeDecisionSkipped).Count(&skipped).Error; err != nil {
-		t.Fatal(err)
-	}
-	if skipped != 0 {
-		t.Fatalf("shape skipped events=%d, want cache hit to bypass capacity shaping", skipped)
-	}
-	var rows []usageRecord
-	if err := svc.usage.db.Order("ts asc").Find(&rows).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 2 || rows[0].Cache != "miss" || rows[1].Cache != "hit" {
-		t.Fatalf("cache states=%#v, want miss then hit", rows)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	second := m.Admit(ctx, req)
+	if second.Decision != trafficShapeDecisionRejected {
+		t.Fatalf("canceled queued admission decision=%s", second.Decision)
 	}
 }
 
-func TestAdaptiveBackoffHonorsBoundedRetryAfter(t *testing.T) {
-	var calls atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		w.Header().Set("Retry-After", "120")
-		http.Error(w, `{"error":{"message":"rate limited"}}`, http.StatusTooManyRequests)
-	}))
-	defer upstream.Close()
-
-	enabled := true
-	honor := true
-	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
-	cfg.Server.Cache.Enabled = false
-	cfg.Provider["mock"] = ProviderConfig{
-		BaseURL: upstream.URL + "/v1",
-		Dialect: "openai-chat",
-		APIKey:  "provider-key",
-		TrafficShape: TrafficShapeConfig{
-			Enabled: &enabled,
-			Upstream429Backoff: TrafficBackoffConfig{
-				Enabled:         &enabled,
-				MinBackoffMS:    100,
-				MaxBackoffMS:    1000,
-				Multiplier:      2,
-				HonorRetryAfter: &honor,
-			},
-		},
+func TestTrafficShapeManagerRejectsImpossibleReservationWithoutQueueWait(t *testing.T) {
+	m := newTrafficShapeManager()
+	cfg := TrafficShapeConfig{
+		TotalReservedTokensPerSec: 1,
+		TotalReservedTokenBurst:   10,
+		Queue:                     TrafficShapeQueueConfig{Enabled: true, MaxWaitMS: 250, MaxDepth: 1},
 	}
-	svc, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
+	req := trafficShapeRequest{
+		CallerID:                 "alice",
+		Config:                   cfg,
+		Scope:                    trafficShapeScopeCaller,
+		TotalReservedTokens:      50,
+		IncludeTokenReservations: true,
 	}
-	defer svc.Close()
-
-	first := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"one"}]}`)
-	if first.Code != http.StatusServiceUnavailable || !strings.Contains(first.Body.String(), `"type":"upstream-rate-limited"`) {
-		t.Fatalf("first status/body=%d %s, want upstream rate limited", first.Code, first.Body.String())
+	start := time.Now()
+	res := m.Admit(context.Background(), req)
+	elapsed := time.Since(start)
+	if res.Decision != trafficShapeDecisionRejected {
+		t.Fatalf("decision=%s, want rejected: %#v", res.Decision, res)
 	}
-	second := performChatRequest(t, svc, `{"model":"default","messages":[{"role":"user","content":"two"}]}`)
-	if second.Code != http.StatusServiceUnavailable || !strings.Contains(second.Body.String(), `"type":"upstream-capacity-throttled"`) {
-		t.Fatalf("second status/body=%d %s, want capacity throttle", second.Code, second.Body.String())
+	if elapsed >= 100*time.Millisecond {
+		t.Fatalf("impossible reservation waited %s before rejection", elapsed)
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("upstream calls=%d, want second request skipped by adaptive backoff", calls.Load())
+	if res.QueueWaitMS != 0 {
+		t.Fatalf("queue wait=%d, want 0", res.QueueWaitMS)
 	}
-	var cooldown requestUpstreamShapeEventRecord
-	if err := svc.usage.db.Where("decision = ?", shapeDecisionCooldownStarted).First(&cooldown).Error; err != nil {
-		t.Fatal(err)
-	}
-	if cooldown.BackoffReason != "adaptive-backoff-provider-429" || cooldown.RetryAfterMS <= 0 || cooldown.RetryAfterMS > 1000 {
-		t.Fatalf("cooldown=%#v, want bounded retry-after 429 backoff", cooldown)
+	if len(m.QueueDepths()) != 0 {
+		t.Fatalf("impossible reservation entered queue: %#v", m.QueueDepths())
 	}
 }
 
-func performChatRequest(t *testing.T, svc *Service, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	rr := httptest.NewRecorder()
-	svc.Handler().ServeHTTP(rr, req)
-	return rr
-}
-
-func writeChatTestResponse(w http.ResponseWriter, content string) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": "chatcmpl_test",
-		"choices": []map[string]any{{
-			"message": map[string]any{"role": "assistant", "content": content},
-		}},
-		"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-	})
+func TestTrafficShapeManagerPreservesEveryRejectedBucketEvent(t *testing.T) {
+	m := newTrafficShapeManager()
+	cfg := TrafficShapeConfig{
+		InputTokensPerSec:             1,
+		InputTokenBurst:               5,
+		OutputReservationTokensPerSec: 1,
+		OutputReservationTokenBurst:   5,
+		TotalReservedTokensPerSec:     1,
+		TotalReservedTokenBurst:       8,
+	}
+	req := trafficShapeRequest{
+		CallerID:                 "alice",
+		Config:                   cfg,
+		Scope:                    trafficShapeScopeCaller,
+		EstimatedInputTokens:     10,
+		ReservedOutputTokens:     10,
+		TotalReservedTokens:      20,
+		IncludeTokenReservations: true,
+	}
+	res := m.Admit(context.Background(), req)
+	if res.Decision != trafficShapeDecisionRejected {
+		t.Fatalf("decision=%s, want rejected: %#v", res.Decision, res)
+	}
+	rejected := map[string]bool{}
+	for _, event := range res.Events {
+		if event.Decision == trafficShapeDecisionRejected {
+			rejected[event.Bucket] = true
+		}
+	}
+	for _, bucket := range []string{trafficShapeBucketInputTokens, trafficShapeBucketOutputReservation, trafficShapeBucketTotalReserved} {
+		if !rejected[bucket] {
+			t.Fatalf("bucket %s was not recorded as rejected; events=%#v", bucket, res.Events)
+		}
+	}
 }

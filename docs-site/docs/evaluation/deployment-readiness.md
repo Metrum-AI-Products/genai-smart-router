@@ -122,7 +122,7 @@ Before production rollout, validate:
 - rollback command path;
 - request ID based troubleshooting;
 - diagnostic tables and sanitized error rows;
-- quota, budget, RPM, TPM, and concurrency behavior;
+- quota, budget, RPM, TPM, concurrency, and traffic-shaping behavior;
 - usage reports grouped by caller, project, environment, model group, provider, model, status, cache, latency, tokens, and cost;
 - optional browser admin reports checked for summary, request drilldown, Markdown export, no-store headers, local static assets, and `403 reports-forbidden` for ordinary caller tokens;
 - cleanup of uploaded packages, replaced deployment trees, stale `/tmp` files, and accumulated Docker artifacts.

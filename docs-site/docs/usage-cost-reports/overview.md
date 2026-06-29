@@ -21,7 +21,7 @@ Diagnostics use relational child rows for attempts, trace events, errors, and de
 | Which upstreams are slow? | Latency, TTFB, upstream throughput, downstream throughput, and attempt/fallback reports. |
 | Where did savings come from? | Savings reports using stored router actual cost and source-dated baseline assumptions. |
 | What failed? | Error, fallback, troubleshooting bucket, request drilldown, and terminal error reports. |
-| Are limits sized correctly? | Quota, TPM/RPM, concurrency, max-token, and input-token reports. |
+| Are limits sized correctly? | Quota, TPM/RPM, concurrency, traffic-shaping, max-token, and input-token reports. |
 
 ## Related Pages
 

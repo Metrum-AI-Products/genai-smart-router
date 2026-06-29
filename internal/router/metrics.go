@@ -145,7 +145,7 @@ func sanitizeMetricLabel(value, fallback string) string {
 	return out
 }
 
-func (m *metricsStore) Prometheus(license *licenseManager) string {
+func (m *metricsStore) Prometheus(license *licenseManager, trafficShape *trafficShapeManager) string {
 	if m == nil {
 		return ""
 	}
@@ -183,6 +183,7 @@ func (m *metricsStore) Prometheus(license *licenseManager) string {
 	writeHelpType(&b, "smart_llmrouter_license_seconds_until_expiry", "Seconds until current license expiry.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_license_grace_active", "Whether license validation grace is active.", "gauge")
 	writeHelp(&b, "smart_llmrouter_license_validation_failures_total", "License validation failures by safe reason.")
+	writeHelpType(&b, "smart_llmrouter_traffic_shape_queue_depth", "Current traffic-shaping queue depth by caller and scope.", "gauge")
 	fmt.Fprintf(&b, "smart_llmrouter_build_info{%s} 1\n", buildInfoLabels())
 	if license != nil {
 		st, failures := license.metrics()
@@ -212,6 +213,10 @@ func (m *metricsStore) Prometheus(license *licenseManager) string {
 		for _, reason := range reasons {
 			writeMetric(&b, "smart_llmrouter_license_validation_failures_total", `reason="`+escapeLabel(reason)+`"`, failures[reason])
 		}
+	}
+	for _, depth := range trafficShape.QueueDepths() {
+		labels := fmt.Sprintf(`scope="%s",caller_id="%s"`, escapeLabel(sanitizeMetricLabel(depth.Scope, "unknown")), escapeLabel(sanitizeMetricLabel(depth.CallerID, "unknown")))
+		writeMetric(&b, "smart_llmrouter_traffic_shape_queue_depth", labels, int64(depth.Depth))
 	}
 	for _, labels := range keys {
 		values := m.series[labels]

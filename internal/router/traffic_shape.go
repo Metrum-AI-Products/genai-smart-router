@@ -1,376 +1,498 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"math"
-	"net/http"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	shapeScopeProvider      = "provider"
-	shapeScopeProviderModel = "provider_model"
-	shapeScopeTarget        = "target"
+	trafficShapeDecisionDisabled = "disabled"
+	trafficShapeDecisionAdmitted = "admitted"
+	trafficShapeDecisionQueued   = "queued"
+	trafficShapeDecisionRejected = "rejected"
 
-	shapeBucketRequestStart  = "request_start"
-	shapeBucketInputTokens   = "input_tokens"
-	shapeBucketTotalReserved = "total_reserved"
-	shapeBucketBackoff       = "adaptive_backoff"
+	trafficShapeScopeCaller        = "caller"
+	trafficShapeScopeServerDefault = "server_default"
 
-	shapeDecisionAdmitted        = "admitted"
-	shapeDecisionSkipped         = "skipped"
-	shapeDecisionRejected        = "rejected"
-	shapeDecisionCooldownStarted = "cooldown_started"
+	trafficShapeBucketRequestStart      = "request_start"
+	trafficShapeBucketInputTokens       = "input_tokens"
+	trafficShapeBucketOutputReservation = "output_reservation"
+	trafficShapeBucketTotalReserved     = "total_reserved"
 )
 
 type trafficShapeManager struct {
-	mu       sync.Mutex
-	buckets  map[string]*trafficTokenBucket
-	backoffs map[string]*trafficBackoffState
-	now      func() time.Time
+	mu      sync.Mutex
+	now     func() time.Time
+	buckets map[string]*trafficShapeBucket
+	queues  map[string]int
 }
 
-type trafficTokenBucket struct {
-	tokens  float64
-	updated time.Time
+type trafficShapeBucket struct {
+	rate   float64
+	burst  float64
+	tokens float64
+	last   time.Time
 }
 
-type trafficBackoffState struct {
-	until       time.Time
-	failures    int
-	reason      string
-	lastUpdated time.Time
+type trafficShapeRequest struct {
+	CallerID                 string
+	ModelGroup               string
+	Config                   TrafficShapeConfig
+	Scope                    string
+	Phase                    string
+	EstimatedInputTokens     int
+	ReservedOutputTokens     int
+	TotalReservedTokens      int
+	IncludeRequestStart      bool
+	IncludeTokenReservations bool
 }
 
-type shapeReservationInput struct {
+type trafficShapeResult struct {
+	Applied              bool
+	Decision             string
+	Scope                string
+	Bucket               string
+	RetryAfterMS         int64
+	QueueWaitMS          int64
 	EstimatedInputTokens int
 	ReservedOutputTokens int
 	TotalReservedTokens  int
+	Events               []trafficShapeEventLogRecord
 }
 
-type shapeScope struct {
-	Scope    string
-	Key      string
-	Config   TrafficShapeConfig
-	Provider string
-	ModelRef string
-	Model    string
-	Dialect  string
+type trafficShapeBucketSpec struct {
+	name   string
+	suffix string
+	rate   float64
+	burst  int
+	cost   int
 }
 
-type shapeAdmissionResult struct {
-	OK         bool
-	Reason     string
-	Scope      string
-	Bucket     string
-	RetryAfter time.Duration
-	Events     []upstreamShapeEventLogRecord
-}
-
-type upstreamCapacityThrottledError struct {
-	RetryAfter  time.Duration
-	TargetCount int
-}
-
-func (e upstreamCapacityThrottledError) Error() string {
-	return "upstream capacity throttled"
+type trafficShapeBucketEval struct {
+	spec         trafficShapeBucketSpec
+	decision     string
+	retryAfterMS int64
+	impossible   bool
 }
 
 func newTrafficShapeManager() *trafficShapeManager {
 	return &trafficShapeManager{
-		buckets:  map[string]*trafficTokenBucket{},
-		backoffs: map[string]*trafficBackoffState{},
-		now:      func() time.Time { return time.Now().UTC() },
+		now:     time.Now,
+		buckets: map[string]*trafficShapeBucket{},
+		queues:  map[string]int{},
 	}
 }
 
-func (m *trafficShapeManager) Check(scopes []shapeScope, in shapeReservationInput) shapeAdmissionResult {
-	return m.admit(scopes, in, false)
+func resolveTrafficShapeConfig(server ServerTrafficShapeConfig, caller CallerConfig) (TrafficShapeConfig, string, bool) {
+	if trafficShapeConfigSet(caller.TrafficShape) {
+		if trafficShapeExplicitlyDisabled(caller.TrafficShape) {
+			return TrafficShapeConfig{}, trafficShapeScopeCaller, false
+		}
+		return caller.TrafficShape, trafficShapeScopeCaller, trafficShapeHasActiveBucket(caller.TrafficShape)
+	}
+	if !server.Enabled {
+		return TrafficShapeConfig{}, trafficShapeScopeServerDefault, false
+	}
+	cfg := server.DefaultCaller
+	if trafficShapeExplicitlyDisabled(cfg) {
+		return TrafficShapeConfig{}, trafficShapeScopeServerDefault, false
+	}
+	return cfg, trafficShapeScopeServerDefault, trafficShapeHasActiveBucket(cfg)
 }
 
-func (m *trafficShapeManager) Admit(scopes []shapeScope, in shapeReservationInput) shapeAdmissionResult {
-	return m.admit(scopes, in, true)
+func trafficShapeConfigSet(cfg TrafficShapeConfig) bool {
+	return cfg.Enabled != nil || trafficShapeHasAnyBucketField(cfg) || cfg.Queue.Enabled || cfg.Queue.MaxWaitMS != 0 || cfg.Queue.MaxDepth != 0
 }
 
-func (m *trafficShapeManager) admit(scopes []shapeScope, in shapeReservationInput, consume bool) shapeAdmissionResult {
+func trafficShapeExplicitlyDisabled(cfg TrafficShapeConfig) bool {
+	return cfg.Enabled != nil && !*cfg.Enabled
+}
+
+func trafficShapeHasAnyBucketField(cfg TrafficShapeConfig) bool {
+	return cfg.RequestStartPerSec != 0 || cfg.RequestBurst != 0 ||
+		cfg.InputTokensPerSec != 0 || cfg.InputTokenBurst != 0 ||
+		cfg.OutputReservationTokensPerSec != 0 || cfg.OutputReservationTokenBurst != 0 ||
+		cfg.TotalReservedTokensPerSec != 0 || cfg.TotalReservedTokenBurst != 0
+}
+
+func trafficShapeHasActiveBucket(cfg TrafficShapeConfig) bool {
+	for _, spec := range trafficShapeSpecs(cfg, 1, 1, 1, true, true) {
+		if spec.rate > 0 && spec.burst > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func validateServerTrafficShape(cfg ServerTrafficShapeConfig) error {
+	if err := validateTrafficShapeConfig("server traffic_shape.default_caller", cfg.DefaultCaller, cfg.Enabled); err != nil {
+		return err
+	}
+	if !cfg.Enabled && trafficShapeConfigSet(cfg.DefaultCaller) && !trafficShapeExplicitlyDisabled(cfg.DefaultCaller) {
+		if err := validateTrafficShapeConfig("server traffic_shape.default_caller", cfg.DefaultCaller, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrafficShapeConfig(label string, cfg TrafficShapeConfig, requireActive bool) error {
+	checkPair := func(rate float64, burst int, rateName, burstName string) error {
+		if rate < 0 {
+			return fmt.Errorf("%s %s cannot be negative", label, rateName)
+		}
+		if burst < 0 {
+			return fmt.Errorf("%s %s cannot be negative", label, burstName)
+		}
+		if (rate == 0) != (burst == 0) {
+			return fmt.Errorf("%s %s and %s must both be set or both be zero", label, rateName, burstName)
+		}
+		return nil
+	}
+	if err := checkPair(cfg.RequestStartPerSec, cfg.RequestBurst, "request_start_per_sec", "request_burst"); err != nil {
+		return err
+	}
+	if err := checkPair(cfg.InputTokensPerSec, cfg.InputTokenBurst, "input_tokens_per_sec", "input_token_burst"); err != nil {
+		return err
+	}
+	if err := checkPair(cfg.OutputReservationTokensPerSec, cfg.OutputReservationTokenBurst, "output_reservation_tokens_per_sec", "output_reservation_token_burst"); err != nil {
+		return err
+	}
+	if err := checkPair(cfg.TotalReservedTokensPerSec, cfg.TotalReservedTokenBurst, "total_reserved_tokens_per_sec", "total_reserved_token_burst"); err != nil {
+		return err
+	}
+	if cfg.Queue.MaxWaitMS < 0 {
+		return fmt.Errorf("%s queue max_wait_ms cannot be negative", label)
+	}
+	if cfg.Queue.MaxDepth < 0 {
+		return fmt.Errorf("%s queue max_depth cannot be negative", label)
+	}
+	if cfg.Queue.Enabled && (cfg.Queue.MaxWaitMS <= 0 || cfg.Queue.MaxDepth <= 0) {
+		return fmt.Errorf("%s queue enabled requires positive max_wait_ms and max_depth", label)
+	}
+	if requireActive && !trafficShapeHasActiveBucket(cfg) {
+		return fmt.Errorf("%s enabled requires at least one active bucket", label)
+	}
+	return nil
+}
+
+func (m *trafficShapeManager) Admit(ctx context.Context, req trafficShapeRequest) trafficShapeResult {
+	cfg := req.Config
+	result := trafficShapeResult{
+		Decision:             trafficShapeDecisionDisabled,
+		Scope:                req.Scope,
+		EstimatedInputTokens: req.EstimatedInputTokens,
+		ReservedOutputTokens: req.ReservedOutputTokens,
+		TotalReservedTokens:  req.TotalReservedTokens,
+	}
+	specs := trafficShapeSpecs(cfg, req.EstimatedInputTokens, req.ReservedOutputTokens, req.TotalReservedTokens, req.IncludeRequestStart, req.IncludeTokenReservations)
+	if len(specs) == 0 {
+		return result
+	}
 	if m == nil {
-		return shapeAdmissionResult{OK: true}
+		m = newTrafficShapeManager()
 	}
+	decision, events, retryAfterMS, bucket, impossible := m.tryConsume(req, specs)
+	if decision == trafficShapeDecisionAdmitted {
+		result.Applied = true
+		result.Decision = trafficShapeDecisionAdmitted
+		result.Bucket = bucket
+		result.Events = events
+		return result
+	} else if !cfg.Queue.Enabled || impossible {
+		result.Applied = true
+		result.Decision = trafficShapeDecisionRejected
+		result.Bucket = bucket
+		result.RetryAfterMS = retryAfterMS
+		result.Events = events
+		return result
+	}
+	queueKey := trafficShapeQueueKey(req)
+	if !m.enterQueue(queueKey, cfg.Queue.MaxDepth) {
+		result.Applied = true
+		result.Decision = trafficShapeDecisionRejected
+		result.Bucket = bucket
+		result.RetryAfterMS = retryAfterMS
+		result.Events = events
+		return result
+	}
+	defer m.leaveQueue(queueKey)
+
+	start := m.currentTime()
+	deadline := start.Add(time.Duration(cfg.Queue.MaxWaitMS) * time.Millisecond)
+	for {
+		decision, events, retryAfterMS, rejectedBucket, impossible := m.tryConsume(req, specs)
+		if decision == trafficShapeDecisionAdmitted {
+			waitMS := durationMillis(m.currentTime().Sub(start))
+			result.Applied = true
+			result.Decision = trafficShapeDecisionQueued
+			result.Bucket = rejectedBucket
+			result.QueueWaitMS = waitMS
+			result.Events = eventsWithQueueWait(events, waitMS, trafficShapeDecisionQueued)
+			return result
+		}
+		result.Bucket = rejectedBucket
+		result.RetryAfterMS = retryAfterMS
+		result.Events = events
+		now := m.currentTime()
+		if impossible || !deadline.After(now) {
+			result.Applied = true
+			result.Decision = trafficShapeDecisionRejected
+			result.QueueWaitMS = durationMillis(now.Sub(start))
+			result.Events = eventsWithQueueWait(events, result.QueueWaitMS, trafficShapeDecisionRejected)
+			return result
+		}
+		wait := time.Duration(retryAfterMS) * time.Millisecond
+		if wait <= 0 {
+			wait = 10 * time.Millisecond
+		}
+		if max := deadline.Sub(now); wait > max {
+			wait = max
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			result.Applied = true
+			result.Decision = trafficShapeDecisionRejected
+			result.QueueWaitMS = durationMillis(m.currentTime().Sub(start))
+			result.Events = eventsWithQueueWait(events, result.QueueWaitMS, trafficShapeDecisionRejected)
+			return result
+		case <-timer.C:
+		}
+	}
+}
+
+func (m *trafficShapeManager) tryConsume(req trafficShapeRequest, specs []trafficShapeBucketSpec) (string, []trafficShapeEventLogRecord, int64, string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := m.now().UTC()
-	var planned []shapeBucketDebit
-	for _, scope := range scopes {
-		if !trafficShapeEnabled(scope.Config) {
-			continue
-		}
-		if state := m.backoffs[scope.Key]; state != nil && now.Before(state.until) {
-			retry := state.until.Sub(now)
-			return shapeAdmissionResult{
-				OK:         false,
-				Reason:     state.reason,
-				Scope:      scope.Scope,
-				Bucket:     shapeBucketBackoff,
-				RetryAfter: retry,
-				Events:     []upstreamShapeEventLogRecord{shapeEvent(scope, shapeBucketBackoff, shapeDecisionSkipped, retry, in, state.reason)},
+	now := m.now()
+	evals := make([]trafficShapeBucketEval, 0, len(specs))
+	var rejected *trafficShapeBucketEval
+	var impossible bool
+	for _, spec := range specs {
+		key := trafficShapeBucketKey(req, spec.name)
+		b := m.bucket(key, spec, now)
+		b.refill(now)
+		eval := trafficShapeBucketEval{spec: spec, decision: trafficShapeDecisionAdmitted}
+		if spec.cost > int(math.Floor(b.tokens)) {
+			eval.decision = trafficShapeDecisionRejected
+			eval.retryAfterMS = b.retryAfterMS(spec.cost)
+			eval.impossible = float64(spec.cost) > b.burst
+			if eval.impossible {
+				impossible = true
+			}
+			if rejected == nil || eval.retryAfterMS > rejected.retryAfterMS || (eval.impossible && !rejected.impossible) {
+				copied := eval
+				rejected = &copied
 			}
 		}
-		if scope.Config.RequestStartPerSec > 0 {
-			debit, ok, retry := m.planDebit(now, scope, shapeBucketRequestStart, scope.Config.RequestStartPerSec, scope.Config.RequestBurst, 1)
-			if !ok {
-				return shapeAdmissionResult{
-					OK:         false,
-					Reason:     shapeReason(scope.Scope, shapeBucketRequestStart),
-					Scope:      scope.Scope,
-					Bucket:     shapeBucketRequestStart,
-					RetryAfter: retry,
-					Events:     []upstreamShapeEventLogRecord{shapeEvent(scope, shapeBucketRequestStart, shapeDecisionSkipped, retry, in, shapeReason(scope.Scope, shapeBucketRequestStart))},
-				}
-			}
-			planned = append(planned, debit)
-		}
-		if scope.Config.InputTokensPerSec > 0 && in.EstimatedInputTokens > 0 {
-			debit, ok, retry := m.planDebit(now, scope, shapeBucketInputTokens, scope.Config.InputTokensPerSec, scope.Config.InputTokenBurst, float64(in.EstimatedInputTokens))
-			if !ok {
-				return shapeAdmissionResult{
-					OK:         false,
-					Reason:     shapeReason(scope.Scope, shapeBucketInputTokens),
-					Scope:      scope.Scope,
-					Bucket:     shapeBucketInputTokens,
-					RetryAfter: retry,
-					Events:     []upstreamShapeEventLogRecord{shapeEvent(scope, shapeBucketInputTokens, shapeDecisionSkipped, retry, in, shapeReason(scope.Scope, shapeBucketInputTokens))},
-				}
-			}
-			planned = append(planned, debit)
-		}
-		if scope.Config.TotalReservedTokensPerSec > 0 && in.TotalReservedTokens > 0 {
-			debit, ok, retry := m.planDebit(now, scope, shapeBucketTotalReserved, scope.Config.TotalReservedTokensPerSec, scope.Config.TotalReservedTokenBurst, float64(in.TotalReservedTokens))
-			if !ok {
-				return shapeAdmissionResult{
-					OK:         false,
-					Reason:     shapeReason(scope.Scope, shapeBucketTotalReserved),
-					Scope:      scope.Scope,
-					Bucket:     shapeBucketTotalReserved,
-					RetryAfter: retry,
-					Events:     []upstreamShapeEventLogRecord{shapeEvent(scope, shapeBucketTotalReserved, shapeDecisionSkipped, retry, in, shapeReason(scope.Scope, shapeBucketTotalReserved))},
-				}
-			}
-			planned = append(planned, debit)
-		}
+		evals = append(evals, eval)
 	}
-	events := make([]upstreamShapeEventLogRecord, 0, len(planned))
-	if consume {
-		for _, debit := range planned {
-			b := m.bucket(debit.key, now, debit.burst)
-			b.tokens = debit.after
-			b.updated = now
-			events = append(events, shapeEvent(debit.scope, debit.bucket, shapeDecisionAdmitted, 0, in, ""))
-		}
+	if rejected != nil {
+		events := trafficShapeEvents(req, evals, trafficShapeDecisionRejected, rejected.spec.name, rejected.retryAfterMS, 0)
+		return trafficShapeDecisionRejected, events, rejected.retryAfterMS, trafficShapePublicBucket(req.Scope, rejected.spec), impossible
 	}
-	return shapeAdmissionResult{OK: true, Events: events}
+	for _, spec := range specs {
+		m.buckets[trafficShapeBucketKey(req, spec.name)].tokens -= float64(spec.cost)
+	}
+	events := trafficShapeEvents(req, evals, trafficShapeDecisionAdmitted, "", 0, 0)
+	return trafficShapeDecisionAdmitted, events, 0, "", false
 }
 
-type shapeBucketDebit struct {
-	key    string
-	scope  shapeScope
-	bucket string
-	burst  int
-	after  float64
-}
-
-func (m *trafficShapeManager) planDebit(now time.Time, scope shapeScope, bucketName string, rate float64, burst int, cost float64) (shapeBucketDebit, bool, time.Duration) {
-	key := scope.Key + "|" + bucketName
-	b := m.bucket(key, now, burst)
-	refillBucket(b, now, rate, burst)
-	if cost <= b.tokens {
-		return shapeBucketDebit{key: key, scope: scope, bucket: bucketName, burst: burst, after: b.tokens - cost}, true, 0
-	}
-	if rate <= 0 {
-		return shapeBucketDebit{}, false, time.Second
-	}
-	deficit := cost - b.tokens
-	return shapeBucketDebit{}, false, time.Duration(math.Ceil(deficit/rate*1000)) * time.Millisecond
-}
-
-func (m *trafficShapeManager) bucket(key string, now time.Time, burst int) *trafficTokenBucket {
+func (m *trafficShapeManager) bucket(key string, spec trafficShapeBucketSpec, now time.Time) *trafficShapeBucket {
 	b := m.buckets[key]
-	if b == nil {
-		b = &trafficTokenBucket{tokens: float64(burst), updated: now}
+	if b == nil || b.rate != spec.rate || b.burst != float64(spec.burst) {
+		b = &trafficShapeBucket{rate: spec.rate, burst: float64(spec.burst), tokens: float64(spec.burst), last: now}
 		m.buckets[key] = b
 	}
 	return b
 }
 
-func refillBucket(b *trafficTokenBucket, now time.Time, rate float64, burst int) {
-	if b == nil || rate <= 0 || burst <= 0 {
+func (b *trafficShapeBucket) refill(now time.Time) {
+	if b == nil {
 		return
 	}
-	if b.updated.IsZero() {
-		b.updated = now
-		b.tokens = float64(burst)
+	if b.last.IsZero() {
+		b.last = now
 		return
 	}
-	elapsed := now.Sub(b.updated).Seconds()
-	if elapsed > 0 {
-		b.tokens = math.Min(float64(burst), b.tokens+elapsed*rate)
-		b.updated = now
+	elapsed := now.Sub(b.last).Seconds()
+	if elapsed <= 0 {
+		return
 	}
+	b.tokens += elapsed * b.rate
+	if b.tokens > b.burst {
+		b.tokens = b.burst
+	}
+	b.last = now
 }
 
-func (m *trafficShapeManager) StartBackoff(scopes []shapeScope, class string, retryAfter time.Duration, in shapeReservationInput) []upstreamShapeEventLogRecord {
-	if m == nil {
-		return nil
+func (b *trafficShapeBucket) retryAfterMS(cost int) int64 {
+	if b == nil || b.rate <= 0 || float64(cost) > b.burst {
+		return 0
 	}
-	reason := ""
-	switch class {
-	case "upstream_rate_limited":
-		reason = "adaptive-backoff-provider-429"
-	case "upstream_quota_exhausted":
-		reason = "adaptive-backoff-provider-quota"
-	default:
+	missing := float64(cost) - b.tokens
+	if missing <= 0 {
+		return 0
+	}
+	ms := int64(math.Ceil(missing / b.rate * 1000))
+	if ms < 1 {
+		ms = 1
+	}
+	return ms
+}
+
+func (m *trafficShapeManager) enterQueue(key string, maxDepth int) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if maxDepth <= 0 || m.queues[key] >= maxDepth {
+		return false
+	}
+	m.queues[key]++
+	return true
+}
+
+func (m *trafficShapeManager) leaveQueue(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.queues[key] <= 1 {
+		delete(m.queues, key)
+		return
+	}
+	m.queues[key]--
+}
+
+func (m *trafficShapeManager) currentTime() time.Time {
+	if m == nil || m.now == nil {
+		return time.Now()
+	}
+	return m.now()
+}
+
+func (m *trafficShapeManager) QueueDepths() []trafficShapeQueueDepth {
+	if m == nil {
 		return nil
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := m.now().UTC()
-	var events []upstreamShapeEventLogRecord
-	for _, scope := range scopes {
-		cfg := backoffConfigForClass(scope.Config, class)
-		if !trafficShapeEnabled(scope.Config) || !trafficBackoffEnabled(cfg) {
-			continue
+	out := make([]trafficShapeQueueDepth, 0, len(m.queues))
+	for key, depth := range m.queues {
+		scope, callerID := parseTrafficShapeQueueKey(key)
+		out = append(out, trafficShapeQueueDepth{Scope: scope, CallerID: callerID, Depth: depth})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Scope != out[j].Scope {
+			return out[i].Scope < out[j].Scope
 		}
-		duration := boundedBackoffDuration(cfg, retryAfter)
-		if duration <= 0 {
-			continue
+		return out[i].CallerID < out[j].CallerID
+	})
+	return out
+}
+
+type trafficShapeQueueDepth struct {
+	Scope    string
+	CallerID string
+	Depth    int
+}
+
+func trafficShapeSpecs(cfg TrafficShapeConfig, inputTokens, outputTokens, totalTokens int, includeRequestStart, includeTokenReservations bool) []trafficShapeBucketSpec {
+	var specs []trafficShapeBucketSpec
+	add := func(name, suffix string, rate float64, burst, cost int) {
+		if rate <= 0 || burst <= 0 || cost <= 0 {
+			return
 		}
-		state := m.backoffs[scope.Key]
-		if state == nil {
-			state = &trafficBackoffState{}
-			m.backoffs[scope.Key] = state
+		specs = append(specs, trafficShapeBucketSpec{name: name, suffix: suffix, rate: rate, burst: burst, cost: cost})
+	}
+	if includeRequestStart {
+		add(trafficShapeBucketRequestStart, "request_start_per_sec", cfg.RequestStartPerSec, cfg.RequestBurst, 1)
+	}
+	if includeTokenReservations {
+		add(trafficShapeBucketInputTokens, "input_tokens_per_sec", cfg.InputTokensPerSec, cfg.InputTokenBurst, inputTokens)
+		add(trafficShapeBucketOutputReservation, "output_reservation_tokens_per_sec", cfg.OutputReservationTokensPerSec, cfg.OutputReservationTokenBurst, outputTokens)
+		add(trafficShapeBucketTotalReserved, "total_reserved_tokens_per_sec", cfg.TotalReservedTokensPerSec, cfg.TotalReservedTokenBurst, totalTokens)
+	}
+	return specs
+}
+
+func trafficShapeEvents(req trafficShapeRequest, evals []trafficShapeBucketEval, overallDecision, rejectedBucket string, retryAfterMS, queueWaitMS int64) []trafficShapeEventLogRecord {
+	events := make([]trafficShapeEventLogRecord, 0, len(evals))
+	for i, eval := range evals {
+		decision := eval.decision
+		retry := eval.retryAfterMS
+		if decision == "" {
+			decision = overallDecision
 		}
-		if state.failures > 0 && cfg.Multiplier > 1 {
-			prior := state.until.Sub(now)
-			if prior < duration {
-				prior = duration
-			}
-			duration = time.Duration(float64(prior) * cfg.Multiplier)
-			if max := time.Duration(defaultBackoffMaxMS(cfg)) * time.Millisecond; max > 0 && duration > max {
-				duration = max
-			}
+		if decision != trafficShapeDecisionRejected {
+			retry = 0
 		}
-		state.failures++
-		state.until = now.Add(duration)
-		state.reason = reason
-		state.lastUpdated = now
-		events = append(events, shapeEvent(scope, shapeBucketBackoff, shapeDecisionCooldownStarted, duration, in, reason))
+		if eval.spec.name == rejectedBucket {
+			retry = retryAfterMS
+		}
+		events = append(events, trafficShapeEventLogRecord{
+			Seq:                  i + 1,
+			Scope:                req.Scope,
+			Bucket:               eval.spec.name,
+			Decision:             decision,
+			Cost:                 eval.spec.cost,
+			RetryAfterMS:         retry,
+			QueueWaitMS:          queueWaitMS,
+			EstimatedInputTokens: req.EstimatedInputTokens,
+			ReservedOutputTokens: req.ReservedOutputTokens,
+			TotalReservedTokens:  req.TotalReservedTokens,
+		})
 	}
 	return events
 }
 
-func backoffConfigForClass(cfg TrafficShapeConfig, class string) TrafficBackoffConfig {
-	if class == "upstream_quota_exhausted" {
-		return cfg.UpstreamQuotaBackoff
-	}
-	return cfg.Upstream429Backoff
-}
-
-func boundedBackoffDuration(cfg TrafficBackoffConfig, retryAfter time.Duration) time.Duration {
-	min := time.Duration(defaultBackoffMinMS(cfg)) * time.Millisecond
-	max := time.Duration(defaultBackoffMaxMS(cfg)) * time.Millisecond
-	if min <= 0 {
-		min = time.Second
-	}
-	if max <= 0 {
-		max = min
-	}
-	duration := min
-	honorRetryAfter := cfg.HonorRetryAfter == nil || *cfg.HonorRetryAfter
-	if honorRetryAfter && retryAfter > 0 {
-		if retryAfter > max {
-			duration = max
-		} else if retryAfter > duration {
-			duration = retryAfter
+func eventsWithQueueWait(events []trafficShapeEventLogRecord, queueWaitMS int64, decision string) []trafficShapeEventLogRecord {
+	out := append([]trafficShapeEventLogRecord(nil), events...)
+	for i := range out {
+		out[i].QueueWaitMS = queueWaitMS
+		if decision == trafficShapeDecisionQueued && out[i].Decision == trafficShapeDecisionAdmitted {
+			out[i].Decision = trafficShapeDecisionQueued
 		}
 	}
-	if duration > max {
-		duration = max
-	}
-	return duration
+	return out
 }
 
-func defaultBackoffMinMS(cfg TrafficBackoffConfig) int {
-	if cfg.MinBackoffMS > 0 {
-		return cfg.MinBackoffMS
-	}
-	return 1000
+func trafficShapeBucketKey(req trafficShapeRequest, bucket string) string {
+	return req.Scope + "\x00" + req.CallerID + "\x00" + bucket
 }
 
-func defaultBackoffMaxMS(cfg TrafficBackoffConfig) int {
-	if cfg.MaxBackoffMS > 0 {
-		return cfg.MaxBackoffMS
-	}
-	return 60000
+func trafficShapeQueueKey(req trafficShapeRequest) string {
+	return req.Scope + "\x00" + req.CallerID
 }
 
-func shapeReason(scope, bucket string) string {
-	switch scope {
-	case shapeScopeProvider:
-		return "provider-shape-throttled"
-	case shapeScopeProviderModel:
-		return "model-shape-throttled"
-	case shapeScopeTarget:
-		return "target-shape-throttled"
-	default:
-		return bucket + "-shape-throttled"
+func parseTrafficShapeQueueKey(key string) (string, string) {
+	parts := strings.SplitN(key, "\x00", 2)
+	if len(parts) != 2 {
+		return "unknown", "unknown"
 	}
+	return parts[0], parts[1]
 }
 
-func shapeEvent(scope shapeScope, bucket, decision string, retryAfter time.Duration, in shapeReservationInput, reason string) upstreamShapeEventLogRecord {
-	return upstreamShapeEventLogRecord{
-		TS:                   time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-		Scope:                scope.Scope,
-		Provider:             scope.Provider,
-		ModelRef:             scope.ModelRef,
-		Model:                scope.Model,
-		Dialect:              scope.Dialect,
-		Bucket:               bucket,
-		Decision:             decision,
-		RetryAfterMS:         int64(math.Ceil(float64(retryAfter) / float64(time.Millisecond))),
-		EstimatedInputTokens: in.EstimatedInputTokens,
-		ReservedOutputTokens: in.ReservedOutputTokens,
-		TotalReservedTokens:  in.TotalReservedTokens,
-		BackoffReason:        reason,
-	}
-}
-
-func parseRetryAfterHeader(value string, now time.Time) time.Duration {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0
-	}
-	if seconds, err := strconv.Atoi(value); err == nil {
-		if seconds <= 0 {
-			return 0
-		}
-		return time.Duration(seconds) * time.Second
-	}
-	if ts, err := http.ParseTime(value); err == nil {
-		if now.IsZero() {
-			now = time.Now().UTC()
-		}
-		if ts.After(now) {
-			return ts.Sub(now)
-		}
-	}
-	return 0
-}
-
-func retryAfterHeaderValue(d time.Duration) string {
-	if d <= 0 {
+func trafficShapePublicBucket(scope string, spec trafficShapeBucketSpec) string {
+	if spec.name == "" {
 		return ""
 	}
-	return fmt.Sprintf("%d", int(math.Ceil(d.Seconds())))
+	if spec.suffix == "" {
+		return scope + "." + spec.name
+	}
+	return scope + "." + spec.suffix
+}
+
+func trafficShapeOutputReservation(req *IRRequest, dialect string) int {
+	total := reservationEstimate(req, dialect)
+	input := estimateTokens(req)
+	output := total - input
+	if output < 0 {
+		return 0
+	}
+	return output
 }

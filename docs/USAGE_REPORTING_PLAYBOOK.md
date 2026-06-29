@@ -17,6 +17,8 @@ Performance sections are included for latency triage:
 - Downstream user performance groups by user, project, environment, and client with average/max latency, TTFB, downstream duration, downstream token throughput, errors, streams, and fallbacks.
 - Upstream endpoint performance groups by provider, model, and API dialect with average/max upstream duration, latency, TTFB, upstream token throughput, attempts, fallbacks, errors, and cost.
 
+Traffic-shaping triage uses safe scalar fields on `request_usage`: `traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, and `traffic_shape_total_reserved_tokens`. Join `request_traffic_shape_events` by `request_id` for one row per evaluated bucket. These fields distinguish shaped bursts from hard `rpm`/`tpm`/`concurrent` rejections and upstream provider 429 attempts without storing prompts, images, token hashes, provider keys, or full config.
+
 ## Common Reports
 
 Daily usage:
@@ -67,7 +69,7 @@ router-usage-report \
   --config /app/config/config.yaml
 ```
 
-`--retention-run` follows `server.retention.dry_run`. With `dry_run: true`, it behaves like a status job. With `dry_run: false`, it deletes at most one configured batch per supported table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Unsupported classes are counted and stored as `blocked_not_implemented` with zero deleted rows. `usage_detail` still requires continuous finalized daily rollup coverage for the candidate window before any batch can delete. This slice does not archive rows, schedule retention jobs, expose a full legal-hold admin API, or delete decision telemetry/security/content-capture rows through the generic retention runner.
+`--retention-run` follows `server.retention.dry_run`. With `dry_run: true`, it behaves like a status job. With `dry_run: false`, it deletes at most one configured batch per supported table for `usage_diagnostics` (`request_attempts`, `request_trace_events`, `request_traffic_shape_events`, `request_upstream_shape_events`, `request_errors`) and `usage_detail` (`request_usage`). Unsupported classes are counted and stored as `blocked_not_implemented` with zero deleted rows. `usage_detail` still requires continuous finalized daily rollup coverage for the candidate window before any batch can delete. This slice does not archive rows, schedule retention jobs, expose a full legal-hold admin API, or delete decision telemetry/security/content-capture rows through the generic retention runner.
 
 Keep retention terms precise:
 
