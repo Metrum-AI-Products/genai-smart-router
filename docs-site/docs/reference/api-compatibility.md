@@ -34,6 +34,23 @@ OIDC admin auth routes are not model APIs. They are available only when `server.
 
 `/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses Casbin policy decisions for read/export access. Report data is scoped to the admin's Casbin domain unless an explicit `*` policy domain grants deployment-wide access. Ordinary caller tokens receive `403 reports-forbidden`.
 
+
+## Conformance Test Matrix
+
+Router API compatibility is protected by a deterministic conformance suite in addition to live provider smokes. Run the focused suite before changing request parsing, upstream encoding, tool routing, structured outputs, reasoning controls, streaming behavior, max-token handling, or provider-hosted tool policy:
+
+```bash
+go test ./internal/router -run 'TestAPIDialectConformanceMatrix|TestOpenAIChatConformance|TestResponsesConformance'
+```
+
+| Surface | What the conformance suite proves |
+|---|---|
+| OpenAI Chat Completions | Plain text, caller streaming normalization, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` forwarding when the selected target supports reasoning. |
+| OpenAI Responses | `max_output_tokens`, same-dialect function/namespace tool passthrough, JSON-schema `text.format`, generic hosted search/image descriptor stripping, and remote provider-hosted tool rejection before upstream. |
+| Anthropic Messages | Message payload encoding, caller `max_tokens`, and `thinking` forwarding when the selected target supports Anthropic token-budget reasoning. |
+
+This suite uses mock upstreams and does not prove a real provider/model is entitled, fast, accurate, or compatible with every workload. Activating an upstream still requires direct provider smokes and router-level smokes for the exact provider, model, dialect, tools, images, structured-output, reasoning, and max-token behavior being advertised.
+
 ## Compatibility Matrix
 
 | Capability | Chat Completions | Responses | Messages |

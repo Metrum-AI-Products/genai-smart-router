@@ -61,6 +61,22 @@ Before promoting or rolling back a model group based on a quality claim:
 - if the smoke passes but the workload evaluation fails, treat it as a model-group quality issue rather than a transport compatibility issue;
 - if the smoke fails, fix or roll back the target before interpreting broader evaluation results.
 
+
+## API Dialect Conformance Gate
+
+Run this gate before changing request parsing, upstream encoding, tool routing, structured outputs, reasoning controls, streaming behavior, max-token handling, or provider-hosted tool policy.
+
+| Surface | Required deterministic checks | Router test coverage |
+|---|---|---|
+| OpenAI Chat Completions | Plain text, caller streaming flag, `max_tokens`, `max_completion_tokens`, same-dialect tool passthrough, `tool_choice`, JSON-schema `response_format`, and `reasoning_effort` | `go test ./internal/router -run TestAPIDialectConformance` |
+| OpenAI Responses | Plain input, `max_output_tokens`, same-dialect function/namespace tool passthrough, generic hosted search/image descriptor stripping, remote hosted tool rejection, JSON-schema `text.format` | `go test ./internal/router -run TestResponsesConformance` |
+| Anthropic Messages | Messages payloads, caller `max_tokens`, `thinking` passthrough, default max-token injection when omitted | `go test ./internal/router -run TestAPIDialectConformance` |
+| Cross-surface routing | Tool/structured/reasoning/image/cap eligibility and `no-eligible-target` behavior | existing `service_test.go` request-shape and target-filter tests plus live smokes for provider activation |
+
+The conformance gate is intentionally mock-upstream and deterministic. It proves router semantics, not provider quality. Provider/model activation still requires the direct and router-level live smokes in the provider sections below.
+
+For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
+
 ## Hosted OpenAI-Compatible Provider Smokes
 
 Hosted OpenAI-compatible providers such as Crusoe Managed Inference and Fireworks AI use the same router dialect as other `/v1/chat/completions` upstreams, but every provider/model/account combination still needs direct evidence before activation.
