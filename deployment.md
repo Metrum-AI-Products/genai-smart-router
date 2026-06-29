@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-28
+Last deployed: 2026-06-29
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-28
 
 ## Deployed Version
 
-- Router package/image version: `a3bbc54-linux-amd64`
-- Source commit: `a3bbc54`
+- Router package/image version: `6371492-linux-amd64`
+- Source commit: `6371492`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,39 @@ Last deployed: 2026-06-28
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-29 Traffic shaping production refresh
+
+Deployed package/image `smart-llmrouter:6371492-linux-amd64` from source commit `6371492` after merging the traffic-shaping and traffic-shaping-report PRs.
+
+Included changes:
+
+- Per-caller traffic shaping with queueing, rejected-decision telemetry, and concurrency-safe reservation handling.
+- Provider traffic shaping and adaptive-backoff report coverage for upstream capacity troubleshooting.
+- Refreshed embedded admin report assets for the production binary.
+- Updated hosted and internal docs for traffic shaping reports and operations.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.traffic-shaping-20260629T061635Z
+```
+
+Validation:
+
+```text
+rtk go test ./cmd/... ./internal/... -timeout=10m: passed, 447 tests across 7 packages
+rtk make docs-build: passed; npm audit still reports existing docs-site dependency advisories
+rtk make package-docker: passed for linux/amd64 and linux/arm64 package artifacts
+package artifact: dist/smart-llmrouter-6371492-docker-linux-amd64.tar.gz
+local Harbor big-coder smoke: CASE_ID=local-big-coder-claude-20260629T060115Z, agent=claude-code, reward=1, errors=0
+production docker compose config: passed during deployment
+production /readyz after deploy: 200, version 6371492, build_date 2026-06-29T06:11:16Z
+hosted docs /docs/ returned 200 with x-smart-llmrouter-version 6371492
+production authenticated /v1/chat/completions smoke against high returned 200
+production Harbor big-coder smoke: CASE_ID=prod-big-coder-claude-20260629T061702Z, agent=claude-code, reward=1, errors=0
+production cleanup: removed uploaded package from /tmp, removed superseded switch directory, and ran docker system prune
+```
 
 ## 2026-06-28 Upstream-head production refresh
 
