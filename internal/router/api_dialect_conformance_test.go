@@ -44,9 +44,9 @@ func TestAPIDialectConformanceMatrix(t *testing.T) {
 				"messages":[{"role":"user","content":"Reply OK only."}]
 			}`,
 			assertEncoded: func(t *testing.T, body map[string]any) {
-				assertConformanceValue(t, body, "max_completion_tokens", float64(1))
-				if _, ok := body["max_tokens"]; ok {
-					t.Fatalf("max_tokens should not be emitted for max_completion_tokens-only request: %#v", body)
+				assertConformanceValue(t, body, "max_tokens", float64(1))
+				if _, ok := body["max_completion_tokens"]; ok {
+					t.Fatalf("max_completion_tokens should be normalized for ordinary OpenAI-compatible targets: %#v", body)
 				}
 			},
 		},
