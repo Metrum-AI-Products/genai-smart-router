@@ -78,8 +78,19 @@ Run real CLI smokes for production-affecting routing or API changes:
 
 - Claude Code with `claude -p` through `ANTHROPIC_BASE_URL`;
 - Codex CLI through `/v1/responses`;
+- opencode and aider when OpenAI-compatible coding routes or customer client compatibility changed;
 - image smoke when modality metadata changes;
 - OpenAI Chat tools smoke for Warp-style clients when tool routing changes.
+
+For coding-agent route changes, run the deterministic matrix before live smokes:
+
+```bash
+rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
+```
+
+Then follow `docs/CODING_AGENT_E2E_MATRIX.md` for live Codex, Claude Code, opencode, and aider coverage. Record request IDs and verify usage rows instead of relying only on client stdout.
+
+For VLM route changes, run direct upstream and router-level image smokes with a realistic budget, normally at least `512` output tokens, plus a tiny-cap enforcement smoke and a negative private-image-URL smoke. If an image target fails OCR or workload quality, explicit cap behavior, or URL-safety validation, restore the previous config backup or remove the target from the affected group, restart the router, and rerun `/readyz`, `/v1/models`, text, and image smokes before reopening traffic.
 
 ## Cleanup
 

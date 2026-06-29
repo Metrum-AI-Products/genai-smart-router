@@ -35,10 +35,13 @@ Before adding or increasing an agent-capable target:
 - Use realistic output budgets for reasoning or VLM models; tiny budgets are useful only for cap-enforcement checks.
 - Record any limitation in provider metadata instead of broadening active routing.
 
+For coding-agent clients, validate the client workflow as well as the raw API shape. A passing client smoke should prove text, repository edits, tools, model-group selection, and image attachments where the client supports them. See [Coding-Agent Client Matrix](../getting-started/coding-agent-clients).
+
 ## Related Pages
 
 - [Codex CLI](../getting-started/codex-cli)
 - [Claude Code CLI](../getting-started/claude-code-cli)
+- [Coding-Agent Client Matrix](../getting-started/coding-agent-clients)
 - [Image Analysis And VLM Routing](../configuration/image-analysis-vlm)
 - [Structured Outputs](./structured-outputs)
 - [API Compatibility](../reference/api-compatibility)

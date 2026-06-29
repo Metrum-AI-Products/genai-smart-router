@@ -94,9 +94,11 @@ For capped requests, keep model quality and cap enforcement separate. A model ca
 
 ## Image URL Egress Policy
 
-The router validates dereferenceable `http` and `https` image URLs before selecting an upstream target. By default, URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, unspecified, or other reserved addresses are rejected before any provider call. Inline `data:` URLs and base64 image blocks remain supported because they do not ask the upstream VLM to fetch a network URL.
+The router validates dereferenceable `http` and `https` image URLs before selecting an upstream target. By default, URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, unspecified, or other reserved addresses are rejected before any provider call. Redirects are probed without downloading image bodies; a public URL that redirects to a private or reserved address is rejected before upstream. Inline `data:` URLs and base64 image blocks remain supported because they do not ask the upstream VLM to fetch a network URL.
 
 Keep `server.upstream.allow_private_image_urls: false` for hosted and ordinary private-upstream deployments. Set it to `true` only after a reviewed private VLM design intentionally permits server-side dereference of private image URLs and the deployment has network controls around metadata services and internal admin endpoints.
+
+Blocked image URLs fail before target selection and before provider authentication is used. A failure usually means the URL is malformed, uses a non-HTTP scheme, resolves to a private or reserved address, or redirects to a private or reserved address.
 
 ## OpenAI Chat Example
 

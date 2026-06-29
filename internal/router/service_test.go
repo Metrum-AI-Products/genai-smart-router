@@ -1690,6 +1690,12 @@ func testBoolPtr(v bool) *bool {
 	return &v
 }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestAdminCapabilityUsageReportsEverySignal(t *testing.T) {
 	rows := buildAdminScalarReportResponse(
 		adminReportFilters{
@@ -8460,12 +8466,18 @@ func TestSuccessfulUpstreamResponseSizeIsBounded(t *testing.T) {
 func TestImageURLPrivateDestinationsBlockedBeforeUpstream(t *testing.T) {
 	for _, imageURL := range []string{
 		"http://127.0.0.1/image.png",
+		"http://0.0.0.0/image.png",
 		"http://169.254.169.254/latest/meta-data/",
 		"http://10.0.0.1/image.png",
+		"http://172.16.0.1/image.png",
+		"http://192.168.1.10/image.png",
 		"http://100.64.0.1/image.png",
 		"http://198.18.0.1/image.png",
 		"http://192.0.2.1/image.png",
+		"http://224.0.0.1/image.png",
 		"http://240.0.0.1/image.png",
+		"file:///etc/passwd",
+		"ftp://example.com/image.png",
 	} {
 		t.Run(imageURL, func(t *testing.T) {
 			var calls atomic.Int64
@@ -8495,6 +8507,79 @@ func TestImageURLPrivateDestinationsBlockedBeforeUpstream(t *testing.T) {
 				t.Fatalf("upstream calls=%d, want 0", calls.Load())
 			}
 		})
+	}
+}
+
+func TestImageURLValidationDoesNotDereferenceRemoteImageURL(t *testing.T) {
+	var probeCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probeCalls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "vision_public_url",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"default","messages":[{"role":"user","content":[{"type":"text","text":"read"},{"type":"image_url","image_url":{"url":"https://example.com/redirect-on-get.png"}}]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if probeCalls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want exactly the selected provider call and no router-side image probe", probeCalls.Load())
+	}
+}
+
+func TestAllowPrivateImageURLsOnlyChangesImageURLAdmission(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "vision_private_url",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Server.Upstream.AllowPrivateImageURLs = true
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"default","messages":[{"role":"user","content":[{"type":"text","text":"read"},{"type":"image_url","image_url":{"url":"http://127.0.0.1/private.png"}}]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want 1", calls.Load())
 	}
 }
 
@@ -8538,6 +8623,94 @@ func TestImageURLPublicAndDataURLsRemainAllowed(t *testing.T) {
 				t.Fatalf("upstream calls=%d, want 1", calls.Load())
 			}
 		})
+	}
+}
+
+func TestMultipleInlineImagesPersistOnlySafeScalarUsageMetadata(t *testing.T) {
+	const rawImageOne = "RAW_OPENAI_IMAGE_DATA"
+	const rawImageTwo = "RAW_SECOND_IMAGE_DATA"
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "vision_multi_image",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{
+				"prompt_tokens":     80,
+				"completion_tokens": 2,
+				"total_tokens":      82,
+				"prompt_tokens_details": map[string]any{
+					"image_tokens": 32,
+				},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "vision-model", InputModalities: []string{"text", "image"}}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{
+		"model":"default",
+		"messages":[{
+			"role":"user",
+			"content":[
+				{"type":"text","text":"compare these images"},
+				{"type":"image_url","image_url":{"url":"data:image/png;base64,` + rawImageOne + `"}},
+				{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,` + rawImageTwo + `"}}
+			]
+		}]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	rawUpstream, _ := json.Marshal(upstreamBody)
+	if !strings.Contains(string(rawUpstream), rawImageOne) || !strings.Contains(string(rawUpstream), rawImageTwo) {
+		t.Fatalf("upstream did not receive inline image payloads: %s", rawUpstream)
+	}
+
+	var rows []usageRecord
+	if err := svc.usage.db.Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("usage rows=%d, want 1", len(rows))
+	}
+	row := rows[0]
+	if !row.InputHasImage || row.InputImageCount != 2 || row.InputImageTokens != 32 {
+		t.Fatalf("image usage metadata=%#v, want has_image count=2 tokens=32", row)
+	}
+	var shapeRows []requestShapeRecord
+	if err := svc.usage.db.Find(&shapeRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := json.Marshal(struct {
+		Usage  []usageRecord
+		Shapes []requestShapeRecord
+	}{Usage: rows, Shapes: shapeRows})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{rawImageOne, rawImageTwo, "data:image/png", "data:image/jpeg"} {
+		if strings.Contains(string(persisted), forbidden) {
+			t.Fatalf("usage diagnostics leaked raw image material %q: %s", forbidden, persisted)
+		}
 	}
 }
 

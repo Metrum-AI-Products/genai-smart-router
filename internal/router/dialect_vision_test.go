@@ -8,6 +8,121 @@ import (
 
 const receiptImageURL = "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png"
 
+func TestNativeImagePayloadsEncodeForEachDialect(t *testing.T) {
+	tests := []struct {
+		name    string
+		dialect string
+		raw     string
+		assert  func(t *testing.T, body map[string]any)
+	}{
+		{
+			name:    "openai chat image_url",
+			dialect: "openai-chat",
+			raw: `{
+				"model":"vision",
+				"messages":[{
+					"role":"user",
+					"content":[
+						{"type":"text","text":"Read it."},
+						{"type":"image_url","image_url":{"url":"` + receiptImageURL + `","detail":"high"}}
+					]
+				}],
+				"max_tokens":512
+			}`,
+			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				msgs := body["messages"].([]any)
+				parts := msgs[0].(map[string]any)["content"].([]any)
+				image := parts[1].(map[string]any)["image_url"].(map[string]any)
+				if image["url"] != receiptImageURL || image["detail"] != "high" {
+					t.Fatalf("chat image payload=%#v", image)
+				}
+				if body["max_tokens"] != float64(512) {
+					t.Fatalf("chat max_tokens=%#v", body["max_tokens"])
+				}
+			},
+		},
+		{
+			name:    "openai responses input_image",
+			dialect: "openai-responses",
+			raw: `{
+				"model":"vision",
+				"input":[{
+					"role":"user",
+					"content":[
+						{"type":"input_text","text":"Read it."},
+						{"type":"input_image","image_url":"` + receiptImageURL + `","detail":"high"}
+					]
+				}],
+				"max_output_tokens":512
+			}`,
+			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				input := body["input"].([]any)
+				parts := input[0].(map[string]any)["content"].([]any)
+				image := parts[1].(map[string]any)
+				if image["type"] != "input_image" || image["image_url"] != receiptImageURL || image["detail"] != "high" {
+					t.Fatalf("responses image payload=%#v", image)
+				}
+				if body["max_output_tokens"] != float64(512) {
+					t.Fatalf("responses max_output_tokens=%#v", body["max_output_tokens"])
+				}
+			},
+		},
+		{
+			name:    "anthropic url image",
+			dialect: "anthropic",
+			raw: `{
+				"model":"vision",
+				"max_tokens":512,
+				"messages":[{
+					"role":"user",
+					"content":[
+						{"type":"text","text":"Read it."},
+						{"type":"image","source":{"type":"url","url":"` + receiptImageURL + `"}}
+					]
+				}]
+			}`,
+			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				msgs := body["messages"].([]any)
+				parts := msgs[0].(map[string]any)["content"].([]any)
+				source := parts[1].(map[string]any)["source"].(map[string]any)
+				if source["type"] != "url" || source["url"] != receiptImageURL {
+					t.Fatalf("anthropic image source=%#v", source)
+				}
+				if body["max_tokens"] != float64(512) {
+					t.Fatalf("anthropic max_tokens=%#v", body["max_tokens"])
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := decodeRequest(tc.dialect, []byte(tc.raw), http.Header{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !requestHasImages(req) {
+				t.Fatalf("decoded request missing image metadata: %#v", req)
+			}
+			encoded, err := encodeUpstream(tc.dialect, "vision-upstream", req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(encoded, &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["model"] != "vision-upstream" {
+				t.Fatalf("model=%#v, want vision-upstream", body["model"])
+			}
+			tc.assert(t, body)
+		})
+	}
+}
+
 func TestOpenAIChatImageTranslatesToResponsesAndAnthropic(t *testing.T) {
 	req, err := decodeRequest("openai-chat", []byte(`{
 		"model": "default",

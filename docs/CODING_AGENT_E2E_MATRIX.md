@@ -1,0 +1,109 @@
+# Coding-Agent E2E Matrix
+
+Use this runbook before promoting routing changes that affect coding-agent clients, tool routing, Anthropic-compatible skins, OpenAI Responses skins, image-bearing agent requests, or model-group access.
+
+The deterministic harness is:
+
+```bash
+rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
+```
+
+Mock mode does not call live providers, the router, or installed client binaries. It creates isolated fixture repositories under `tmp/` by default, runs file-diff and unit-test verifiers, and writes:
+
+- `tmp/coding-agent-matrix/coding-agent-matrix.json`
+- `tmp/coding-agent-matrix/coding-agent-matrix.md`
+
+Use live mode only with a scoped router caller token in an ignored env file:
+
+```bash
+rtk python3 scripts/coding_agent_matrix.py \
+  --mode live \
+  --env-file tmp/router-client-smoke.env \
+  --model-group '<allowed-coding-group>' \
+  --output-dir tmp/coding-agent-matrix-live
+```
+
+The env file may contain `ROUTER_BASE_URL` and a client-specific router token variable such as `METRUM_ROUTER_KEY` or `ANTHROPIC_AUTH_TOKEN`. Do not commit it and do not print token values in logs.
+
+## Required Clients
+
+| Client | Router API shape | Automated status | Live validation path |
+|---|---|---|---|
+| Codex CLI | OpenAI Responses | Mock fixture verifier in `scripts/coding_agent_matrix.py` | `codex exec` against the router Responses provider config |
+| Claude Code CLI | Anthropic Messages | Mock fixture verifier in `scripts/coding_agent_matrix.py` | `claude --bare --print` with `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; unset `ANTHROPIC_API_KEY` |
+| opencode | Usually OpenAI-compatible Chat or Anthropic-compatible, depending on local config | Mock fixture verifier in `scripts/coding_agent_matrix.py` | Configure the router as the OpenAI or Anthropic provider and run the fixture edit task |
+| aider | OpenAI-compatible Chat via LiteLLM-style model strings in common setups | Mock fixture verifier in `scripts/coding_agent_matrix.py` | Use `.aider.conf.yml` or env vars that point to the router base URL and a deployment-defined model group |
+
+If a client is not installed in the runner, live mode records `client-not-installed` and the manual smoke path remains the acceptance path.
+
+## Workload Matrix
+
+Run each workload in an isolated temp checkout, never in the main router repository:
+
+| Workload | Verifier |
+|---|---|
+| Simple text completion | Response contains the exact requested sentinel |
+| Repository read/navigation | Output names the expected fixture files |
+| Single-file edit | `python3 tests.py` passes after editing `app.py` |
+| Multi-file edit | `python3 tests.py` passes and `CHANGELOG.md` contains the expected note |
+| Tool-heavy task | Client writes or reads files in the isolated workspace only |
+| Long-context task | Client summarizes the supplied long fixture without truncation errors |
+| Image-bearing task | Client returns the expected image fixture answer or passes the deployment image verifier |
+| Tiny output cap | Caller cap is forwarded and the selected target honors it |
+| Forced model group | Request uses the configured allowed model group |
+| Disallowed model group | Caller receives a safe auth/model error and no upstream provider call is attempted |
+
+## Production Smoke Matrix
+
+For production route changes, record client version, model group, request ID, selected provider/model/dialect from usage reports when available, status, verifier result, elapsed time, and token totals.
+
+| Smoke | Required when |
+|---|---|
+| Codex + deployment coding group | OpenAI Responses, Codex, tool, or coding-group target changes |
+| Claude Code + deployment coding group | Anthropic Messages, Claude Code, thinking, or Anthropic-compatible target changes |
+| opencode + deployment coding group | OpenAI-compatible Chat coding targets or opencode customer compatibility changes |
+| aider + deployment coding group | Repository edit compatibility or OpenAI-compatible Chat coding target changes |
+| One smoke through a temporary or restricted coding group | The change affects a group available only to selected callers |
+| Image-bearing Codex or Claude Code smoke | VLM target, modality metadata, URL safety, or mixed code/image routing changes |
+
+Use reusable non-secret caller token files on the host. Do not create throwaway production caller tokens for routine matrix runs unless an isolated investigation requires it; remove any temporary token and quota state immediately after the run.
+
+## Client Setup Notes
+
+### Codex CLI
+
+- Use OpenAI Responses wire API.
+- Set the router token in `METRUM_ROUTER_KEY`.
+- Use `codex exec` for non-interactive validation.
+- For image validation, attach an image with `--image` and use a coding group that includes validated multimodal Responses targets.
+- Provider-hosted tool descriptors should be stripped or rejected according to router Responses policy before upstream calls.
+
+### Claude Code CLI
+
+- Set `ANTHROPIC_BASE_URL` to the router origin and `ANTHROPIC_AUTH_TOKEN` to the router token.
+- Unset `ANTHROPIC_API_KEY`.
+- Use a model group returned by `/v1/models` for the caller token.
+- For Kimi-style Anthropic-compatible targets, include thinking/default-thinking smoke coverage when that behavior changes.
+
+### opencode
+
+- Prefer a config that points the OpenAI-compatible provider base URL at the router `/v1` endpoint and uses a router token.
+- If using an Anthropic-compatible opencode provider, use the router origin plus Anthropic Messages authentication variables.
+- Verify both a text task and a fixture edit task; add image coverage only when the installed opencode workflow supports attachments.
+
+### aider
+
+- Use an ignored `.aider.conf.yml` or env vars for the router base URL, router token, and model group.
+- Run an edit task in the fixture repo and verify with unit tests or exact file diff.
+- Link model selection to `/v1/models`; do not assume a hosted example group exists in every deployment.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Check |
+|---|---|---|
+| `403` or model access error | Caller token is not allowed to use the requested model group | Call `/v1/models` with the same token |
+| `502 no-eligible-target` | Group lacks a target for the requested tools, modality, dialect, structured output, or cap behavior | Inspect target `tool_support`, `input_modalities`, dialect, and `honors_max_tokens` metadata |
+| Claude Code authenticates against Anthropic instead of the router | `ANTHROPIC_API_KEY` is still set or base URL is wrong | Unset `ANTHROPIC_API_KEY`; verify `ANTHROPIC_BASE_URL` |
+| Codex uses Chat instead of Responses | Provider config is missing `wire_api="responses"` | Inspect the Codex provider config |
+| Image task reaches no upstream | URL safety rejected the image or no image-capable target is eligible | Check caller error, usage row, and target `input_modalities` |
+| Live client succeeds but verifier fails | Transport works but task quality is insufficient | Treat as model-group quality evidence, not a router compatibility pass |

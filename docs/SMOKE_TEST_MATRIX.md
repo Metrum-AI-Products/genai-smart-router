@@ -22,6 +22,8 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Provider-shaping reports | after provider/model/target shaping smoke, open Provider shaping and Backoff admin tabs and confirm charts/tables show skipped targets or cooldown starts without prompts, tokens, token hashes, or provider keys |
 | Adaptive upstream backoff | simulate upstream `429` with bounded `Retry-After` and provider quota/billing exhaustion; verify the next request skips the affected target until cooldown expires and records `adaptive-backoff-provider-429` or `adaptive-backoff-provider-quota` |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
+| Multimodal/VLM routing | direct upstream image smoke for the exact provider/model/dialect, router-level image smoke through the intended model group, URL safety negative smoke, tiny-cap smoke, usage row image/cost fields, and no raw image persistence |
+| Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
 ## Release Validation Matrix
@@ -222,6 +224,37 @@ Router-level checks for a dedicated Crusoe smoke group:
 | OpenRouter-specific tool route | validate the OpenRouter skin used by the target |
 
 For agent CLI smokes, the agent must create a file and the test must assert the file contents.
+
+## Multimodal And VLM Smokes
+
+Before activating an image-capable target in a broad coding or VLM group, run both direct-provider and router-level checks for the exact provider, model ID, dialect, and account entitlement.
+
+| Gate | Required evidence |
+|---|---|
+| Direct upstream image smoke | Exact upstream API path accepts the intended image shape and returns a useful answer with `max_tokens` or equivalent at least `512` |
+| Router-level image smoke | Same workload through the intended model group selects the expected image-capable target and records request ID, provider/model/dialect, latency, attempts, usage, and fallback state |
+| Payload shape | OpenAI Chat `image_url`, OpenAI Responses `input_image`, and Anthropic Messages `image.source` shapes are validated when the group serves those clients |
+| URL safety | Loopback, link-local, RFC1918/private, multicast, unspecified, malformed schemes, and redirect-to-private image URLs fail before upstream and no provider key is used |
+| Private URL override | `server.upstream.allow_private_image_urls: true` is tested only for deployments that intentionally allow private VLM dereference |
+| Cost and telemetry | Usage rows include `input_has_image`, `input_image_count`, upstream image tokens when reported, calculated image cost, and upstream-reported billed costs when present |
+| Cap behavior | Tiny explicit caps are forwarded exactly; targets marked `honors_max_tokens: false` are skipped for capped requests |
+| Quality | OCR-specific routes must return the expected merchant/name/value; merely accepting or describing an image is not sufficient |
+
+Production examples should include receipt OCR, screenshot/UI understanding, a mixed coding task with an attached image, and negative SSRF URL rejection. Keep raw images, provider keys, router tokens, token hashes, and full production config out of logs and reports.
+
+If an image target fails quality, cap, or URL-safety smokes after activation, roll back by removing or lowering that target in the affected model group, restoring the previous config backup, restarting the router, and rerunning `/readyz`, `/v1/models`, a text request, and the failing image smoke.
+
+## Coding-Agent Client Matrix
+
+Run [Coding-Agent E2E Matrix](CODING_AGENT_E2E_MATRIX.md) for route changes that affect coding groups, tool support, multimodal agent traffic, client authentication behavior, or model-group access.
+
+Minimum deterministic check:
+
+```bash
+rtk python3 scripts/coding_agent_matrix.py --mode mock --output-dir tmp/coding-agent-matrix
+```
+
+Production or staging promotion should add live smokes for Codex CLI over OpenAI Responses, Claude Code CLI over Anthropic Messages, opencode, and aider where the client is installed and supported. Record client version, model group, request dialect, request IDs, selected upstream provider/model/dialect when available from reports, verifier result, elapsed time, and token totals.
 
 ## Reasoning And Thinking Smokes
 

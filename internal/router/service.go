@@ -1710,6 +1710,10 @@ func validateImageURL(ctx context.Context, raw string) error {
 	if err != nil {
 		return fmt.Errorf("image URL is invalid")
 	}
+	return validateImageURLAddress(ctx, parsed)
+}
+
+func validateImageURLAddress(ctx context.Context, parsed *url.URL) error {
 	switch strings.ToLower(parsed.Scheme) {
 	case "data":
 		return nil
