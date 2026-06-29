@@ -6,252 +6,69 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 # Harbor Agentic Coding Case Study
 
-This case study shows how a platform team can decide whether a routed model group is good enough for a real agentic job while still optimizing cost. Harbor is one example of an agent evaluation harness that can run coding-agent tasks, check the produced artifact with a verifier, and give the router team outcome data instead of only benchmark anecdotes.
+This case study shows how a platform team can use outcome-based evaluation before changing routing weights. Harbor is one example of an agent evaluation harness: it runs a real coding task, lets an agent edit files, and scores the resulting artifact with an independent verifier.
 
-The model group names in this case study are historical deployment-specific names from the benchmark environment. GenAI Smart Router does not require names such as `default`, `fast`, `small`, `medium`, `high`, or `big-coder`.
-
-For a general router-versus-fixed-model evidence template, including non-Harbor workloads and rollout decisions, see [Prove Router Quality](./prove-router-quality).
+The model group names shown here are deployment examples from the Metrum engineering environment. GenAI Smart Router does not require names such as `big-coder`, and customer deployments can expose different model groups, providers, and policies.
 
 <div class="contactBanner">
   <p>For a benchmark tailored to your workloads, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
 
-## Why Outcome-Based Model Evaluation Matters
+## Current Production Run
 
-Different GenAI models are good at different kinds of work and to different degrees. A model that is strong at long-form coding may not be the fastest choice for short edits. A lower-cost model may be sufficient for structured extraction but too weak for a multi-step agent task. A vision-language model may be the right target for image-bearing requests while a text-only model remains better for simple text completions.
+The current published run was captured from the production engineering endpoint on **June 29, 2026** after deploying router build `762592b`.
 
-The practical goal is not to always call the largest or most expensive model. The goal is to use the best cheapest model, or mix of models, that completes the job with the required quality, latency, and reliability. GenAI Smart Router makes that operationally possible by letting callers request stable deployment-defined model groups while platform teams tune the upstream provider/model mix behind each group.
-
-The hard question is: given a workload, how does a platform team know that a model group is good enough?
-
-The answer should be objective evaluation. For agentic coding workloads, an agent evaluation framework such as Harbor can run the task end to end: start the agent, let it inspect files and call tools, collect the artifact it produces, and score that artifact with an independent verifier. The result is a model-group quality signal that can be compared with token usage, cost, latency, fallbacks, and throughput.
-
-Harbor is not the only possible harness. Teams can use any verifier that reflects their real workload: unit tests, extraction accuracy checks, OCR target answers, tool-call correctness, browser-control tasks, internal golden datasets, or product acceptance tests. The important pattern is the same: validate outcomes first, then tune cost and routing policy.
-
-## How To Read This Case Study
-
-This page is not a claim that one historical group name or one provider model is universally best. It is an example of the decision loop GenAI Smart Router supports:
-
-1. Define a caller-facing model group as a quality and cost contract.
-2. Run a real task through agents and the router.
-3. Verify whether the task outcome passes.
-4. Compare cost drivers such as input tokens, output tokens, latency, fallback behavior, and selected upstream models.
-5. Promote, demote, or reweight upstream targets only when the model group still meets the outcome criteria for its intended workload.
-
-The recorded June 15, 2026 run used router tokens scoped to individual `{agent, model_group}` pairs so usage and cost signals could be compared cleanly. Current production Harbor runs use one reusable Harbor caller token with access to all deployed model groups, then separate results by run matrix, client, model group, timestamps, and usage-report filters.
-
-## Task
-
-- Dataset/task: `aider/polyglot_python_two-bucket`
-- Goal: implement `two_bucket.py` so the verifier accepts the bucket-measuring algorithm and required `ValueError` behavior.
-- Agents: Codex CLI and Claude Code CLI.
-- Hosted router endpoint: Metrum GenAI Smart Router.
-
-## Reward Score
-
-Harbor reports `1.0` when the submitted artifact passes the verifier for the task. A score of `0.0` means the verifier rejected the artifact. Agent runtime exceptions are tracked separately because an agent can produce a passing artifact but still exit nonzero.
-
-## Model Groups Covered
-
-| Group | Intended use |
+| Field | Value |
 |---|---|
-| `default` | General-purpose route |
-| `fast` | Lower-latency, budget-aware route |
-| `small` | Lower-cost route for simple work |
-| `medium` | Balanced development route |
-| `high` | Stronger route for complex work |
-| `big-coder` | Coding-oriented agent route |
+| Router build | `762592b` |
+| Harbor task | `aider/polyglot_python_two-bucket` |
+| Model group | `big-coder` |
+| Harbor CLI | `0.13.2` |
+| Codex CLI | `0.142.0` |
+| Claude Code CLI | `2.1.186` |
+| Caller token model | reusable production Harbor caller |
 
-The evaluated routing policy used validated tool-capable targets from OpenRouter, MiniMax, Moonshot/Kimi, and low-weight compatible fallback paths where configured.
+The task asks the agent to implement `two_bucket.py` so the verifier accepts bucket-measuring behavior and required `ValueError` handling.
 
-## Models Used
+## Measurement Caveat
 
-| Provider route | Provider model | Role in study |
-|---|---|---|
-| MiniMax | `MiniMax-M3` | High-weight coding-capable target and tool-compatible route |
-| Moonshot AI / Kimi | `kimi-k2.7-code` | Direct coding target for Claude Code-compatible tool flows |
-| OpenRouter | `deepseek/deepseek-v4-flash:nitro` | High-throughput Nitro target used across general and tool-capable groups |
-| OpenRouter | `google/gemma-4-26b-a4b-it:nitro` | Validated secondary Nitro target in general/tool-capable routes |
-| OpenAI-compatible fallback | `gpt-5.4-nano` | Low-weight non-tool fallback path where configured |
-
-The point of the benchmark is not just "which model passed." It measures whether model groups can hide provider complexity while still exposing the numerical signals needed for routing and cost decisions: pass rate, latency, token volume, upstream attempts, fallback count, cache behavior, and token throughput.
-
-## Tokenomics Snapshot
-
-| Dimension | Value |
-|---|---:|
-| Router-tracked total tokens | 1,457,139 |
-| Input tokens | 1,149,320 |
-| Output tokens | 178,283 |
-| Output share of tracked tokens | 12.24% |
-| Requests | 89 |
-| Average tokens per request | 16,372 |
-| Upstream attempts | 86 |
-| Fallbacks | 5 |
-| Cache bypasses | 89 |
-
-Agentic coding workloads are token-heavy because the agent repeatedly reads context, reasons about files, calls tools, observes output, and updates artifacts. The router's tokenomics view is therefore central to cost governance: the same task can pass across model groups while consuming materially different token budgets and wall-clock time.
-
-## Cost Savings Using Actual Agents
-
-This benchmark compares endpoint economics on the same agentic coding task. Both OpenAI-priced comparison endpoints and Metrum-routed endpoints are treated as successful at completing the Harbor task; the comparison below applies pricing assumptions to the actual recorded agent token counts.
-
-Pricing assumptions:
-
-| Endpoint pricing assumption | Input price | Output price |
-|---|---:|---:|
-| GPT 5.5 comparison | $5.00 / 1M input tokens | $30.00 / 1M output tokens |
-| Opus 4.8 comparison | $5.00 / 1M input tokens | $25.00 / 1M output tokens |
-| Metrum routed benchmark | $0.10 / 1M input tokens | $0.20 / 1M output tokens |
-
-Estimated benchmark cost:
-
-| Scope | Input tokens | Output tokens | GPT 5.5 cost | Opus 4.8 cost | Metrum routed cost | Savings vs GPT 5.5 | Savings vs Opus 4.8 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| All runs | 1,149,320 | 178,283 | $11.10 | $10.20 | $0.15 | $10.94 / 98.64% | $10.05 / 98.52% |
-| Codex CLI | 716,391 | 88,837 | $6.25 | $5.80 | $0.09 | $6.16 / 98.57% | $5.71 / 98.46% |
-| Claude Code CLI | 432,929 | 89,446 | $4.85 | $4.40 | $0.06 | $4.79 / 98.74% | $4.34 / 98.61% |
-
-The absolute dollar values are for this single benchmark run, but the percentage deltas illustrate the operational lever: once task success is maintained, routing policy and provider mix become major cost-control tools for agentic development workloads.
-
-<HarborCharts />
+The table below is a production smoke/evaluation snapshot, not a statistically significant benchmark. A single deterministic Harbor task is useful for catching regressions and proving whether a route can complete a specific workload, but promotion decisions should use repeated runs, fixed-model controls, and workload-specific pass-rate thresholds.
 
 ## Results
 
-| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor input | Harbor cache | Harbor output |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| Codex | `default` | ok | 1 | 0 | 139 | 130360 | 80169 | 11314 |
-| Codex | `fast` | ok | 1 | 0 | 358 | 122024 | 45589 | 23731 |
-| Codex | `small` | ok | 1 | 0 | 156 | 145340 | 110951 | 8734 |
-| Codex | `medium` | ok | 1 | 0 | 116 | 49735 | 34133 | 10382 |
-| Codex | `high` | ok | 1 | 0 | 119 | 52790 | 7196 | 6519 |
-| Codex | `big-coder` | ok | 1 | 0 | 91 | 38315 | 9650 | 4630 |
-| Claude Code | `default` | ok | 1 | 0 | 405 | 134173 | 18162 | 25070 |
-| Claude Code | `fast` | ok | 1 | 0 | 128 | 86152 | 37888 | 9236 |
-| Claude Code | `small` | ok | 1 | 0 | 96 | 108230 | 39268 | 4887 |
-| Claude Code | `medium` | ok | 1 | 0 | 131 | 85710 | 38656 | 11781 |
-| Claude Code | `high` | ok | 1 | 0 | 267 | 85477 | 114 | 22646 |
-| Claude Code | `big-coder` | ok | 1 | 0 | 171 | 85437 | 18162 | 15826 |
+| Agent | Group | Status | Reward | Errors | Elapsed | Harbor input | Harbor cache | Harbor output | Interpretation |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Codex CLI | `big-coder` | ok | 1 | 0 | 68 s | 48,470 | 31,744 | 2,598 | Passed verifier |
+| Claude Code CLI | `big-coder` | failed | 0 | 0 | 348 s | 278,176 | 276,886 | 22,530 | Agent completed without router exceptions but left the starter implementation unchanged |
 
-## Router Usage Summary
+The Codex path passed the task. The Claude Code path did not pass task quality even though the request path completed without Harbor exceptions. The failed artifact still contained the starter `pass` implementation, and the trajectory showed repeated file-read calls rather than a successful edit. This is exactly why model-group validation should use outcome checks rather than HTTP status alone.
 
-| Metric | Value |
-|---|---:|
-| Requests | 89 |
-| Errors | 1 |
-| Total tokens | 1,457,139 |
-| Input tokens | 1,149,320 |
-| Output tokens | 178,283 |
-| Attempts | 86 |
-| Fallbacks | 5 |
-| Streaming requests | 82 |
-| Average upstream output throughput | 68.86 tok/s |
-| Average upstream total throughput | 2,889.24 tok/s |
-| Average latency | 21,493 ms |
-| Max latency | 278,090 ms |
+<HarborCharts />
 
-## Usage By External Model
+## What This Proves
 
-| Provider route | Model | Calls | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Kimi Anthropic-compatible | `kimi-k2.7-code` | 8 | 172,326 | 39,300 | 3,490 | 9 | 1 | 26.37 | 12,642 |
-| MiniMax OpenAI-compatible | `MiniMax-M3` | 22 | 456,843 | 452,073 | 4,770 | 22 | 0 | 35.06 | 4,929 |
-| MiniMax Anthropic-compatible | `MiniMax-M3` | 4 | 93,049 | 64,476 | 28,573 | 4 | 0 | 55.31 | 95,888 |
-| OpenAI-compatible fallback | `gpt-5.4-nano` | 5 | 82,268 | 58,764 | 23,504 | 9 | 4 | 50.56 | 60,010 |
-| OpenRouter Anthropic-compatible | `deepseek/deepseek-v4-flash:nitro` | 9 | 235,221 | 196,113 | 39,108 | 9 | 0 | 107.16 | 32,928 |
-| OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 6 | 151,315 | 133,040 | 18,275 | 6 | 0 | 79.37 | 30,973 |
-| OpenRouter Responses-compatible | `deepseek/deepseek-v4-flash:nitro` | 27 | 266,117 | 205,554 | 60,563 | 27 | 0 | 99.28 | 19,905 |
+- The `big-coder` route was reachable from the reusable production Harbor caller.
+- Codex CLI completed the Harbor task through the router on the deployed build.
+- Claude Code reached the router and upstream path, but the selected model behavior did not complete this workload.
+- The route should not be promoted as fully validated for Claude Code on this task until a follow-up run passes with reward `1`.
 
-This table is the tokenomics core of the case study: it shows which external models actually served the benchmark, how much token volume they carried, whether fallback was used, and how fast each route returned output tokens.
+## Upstream Reporting
 
-## Cache Behavior
+Public case studies should avoid exposing private routing internals as if they are a product contract. For this run, upstreams are reported by anonymized route family:
 
-| Requests | Cacheable | Hits | Misses | Bypass | Hit rate | Latest occupancy |
-|---:|---:|---:|---:|---:|---:|---:|
-| 89 | 0 | 0 | 0 | 89 | n/a | 0.00% |
+| Route family | Role in the run |
+|---|---|
+| Provider A, OpenAI Responses-compatible | Served the passing Codex trial |
+| Provider B, Anthropic Messages-compatible | Served the failed Claude Code trial |
 
-All Harbor requests in this run were agent/tool-bearing Codex or Claude Code requests. Tool calls can read and write files, run shell commands, and depend on container state, so the router bypassed response caching by design.
+Customer deployments can choose different provider families, hosted models, private upstreams, and weights. The stable product contract is the model group plus validation evidence, not a fixed upstream model name.
 
-## Case Study #2: Go Sublist On Hosted Default Route
+## How To Reproduce This Evaluation
 
-The second benchmark used the same hosted Metrum endpoint and the same pricing assumptions, but narrowed the routing policy under test to the `default` model group. Each agent used a separate one-use case-study router token so production usage could be attributed by router key, client, model group, provider model, and caller IP.
+1. Choose a model group and define the workload success criteria.
+2. Run Harbor or another workload-specific verifier with a reusable evaluation caller token.
+3. Record router build, config checksum, task ID, client versions, model group, run timestamps, and request IDs.
+4. Compare reward, errors, elapsed time, token demand, fallback behavior, selected route families, and task artifacts.
+5. Promote or reweight only if the target pass-rate and operational criteria are met.
 
-### Task
-
-- Dataset/task: `aider/polyglot_go_sublist`
-- Goal: implement `/app/sublist.go` so the Go verifier accepts `Sublist(l1, l2 []int) Relation`.
-- Required behavior: return `equal`, `sublist`, `superlist`, or `unequal` for two integer lists, treating sublists as contiguous sub-sequences.
-- Agents: Codex CLI and Claude Code CLI.
-- Router model group: `default`.
-- Case ID: `harbor-go-sublist-default-20260615T063200Z`.
-
-### Results
-
-| Agent | Group | Status | Reward | Errors | Elapsed s | Harbor input | Harbor cache | Harbor output |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| Codex CLI | `default` | ok | 1 | 0 | 100 | 77,886 | 50,807 | 2,190 |
-| Claude Code CLI | `default` | ok | 1 | 0 | 116 | 172,354 | 104,011 | 2,689 |
-
-Both final trials scored reward `1.0`. A reward score of `1.0` means Harbor's verifier accepted the generated `sublist.go`; the exported artifacts passed the Go tests supplied by the task.
-
-### Router Usage Summary
-
-| Metric | Value |
-|---|---:|
-| Production report period | `2026-06-14T06:36:19.835Z` to `2026-06-15T06:36:19.835Z` |
-| Scoped router requests | 19 |
-| Router errors | 0 |
-| Router-tracked total tokens | 189,764 |
-| Input tokens | 146,229 |
-| Output tokens | 4,879 |
-| Upstream attempts | 16 |
-| Fallbacks | 0 |
-| Streaming requests | 16 |
-| Average upstream output throughput | 37.11 tok/s |
-| Average upstream total throughput | 3,185.94 tok/s |
-| Average latency | 5,350 ms |
-| Max latency | 19,578 ms |
-| Caller IP | `69.212.113.95` |
-
-The three zero-token requests in the scoped report were setup/model-discovery calls, including `/v1/models`, and did not create upstream model attempts.
-
-### Usage By Agent Token
-
-| Agent token | Calls | Errors | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Codex CLI / `default` | 10 | 0 | 80,076 | 77,886 | 2,190 | 8 | 0 | 41.80 | 4,087 |
-| Claude Code CLI / `default` | 9 | 0 | 109,688 | 68,343 | 2,689 | 8 | 0 | 32.42 | 6,753 |
-
-### Usage By External Model
-
-| Provider route | Model | Calls | Total tokens | Input | Output | Attempts | Fallbacks | Avg upstream output tok/s | Avg latency ms |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| MiniMax OpenAI-compatible | `MiniMax-M3` | 6 | 53,584 | 52,034 | 1,550 | 6 | 0 | 39.48 | 5,057 |
-| MiniMax Anthropic-compatible | `MiniMax-M3` | 5 | 46,770 | 44,272 | 2,498 | 5 | 0 | 38.26 | 10,408 |
-| Moonshot/Kimi Anthropic-compatible | `kimi-k2.7-code` | 2 | 41,042 | 2,302 | 84 | 2 | 0 | 14.65 | 2,965 |
-| OpenAI-compatible fallback | `gpt-5.4-nano` | 2 | 26,492 | 25,852 | 640 | 2 | 0 | 48.76 | 5,265 |
-| OpenRouter Anthropic-compatible | `google/gemma-4-26b-a4b-it:nitro` | 1 | 21,876 | 21,769 | 107 | 1 | 0 | 38.74 | 2,805 |
-
-### Cost Savings Using Actual Agents
-
-The same pricing assumptions are applied to the router-tracked provider token counts from this Go benchmark.
-
-| Scope | Input tokens | Output tokens | GPT 5.5 cost | Opus 4.8 cost | Metrum routed cost | Savings vs GPT 5.5 | Savings vs Opus 4.8 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| All runs | 146,229 | 4,879 | $0.88 | $0.85 | $0.016 | $0.86 / 98.22% | $0.84 / 98.17% |
-| Codex CLI | 77,886 | 2,190 | $0.46 | $0.44 | $0.008 | $0.45 / 98.19% | $0.44 / 98.15% |
-| Claude Code CLI | 68,343 | 2,689 | $0.42 | $0.41 | $0.007 | $0.42 / 98.25% | $0.40 / 98.20% |
-
-### Cache Behavior
-
-| Requests | Cacheable | Hits | Misses | Bypass | Hit rate | Latest occupancy |
-|---:|---:|---:|---:|---:|---:|---:|
-| 19 | 0 | 0 | 0 | 19 | n/a | 0.00% |
-
-As in the first case study, these were tool-bearing agent requests that read and wrote files inside Harbor containers. The router bypassed response caching by design.
-
-## Interpretation
-
-Every final published run passed with reward `1.0`, which means the routed model groups were able to complete the coding tasks under both Codex CLI and Claude Code CLI. The report also shows why model-group validation should include more than pass/fail status: elapsed time, tokens, fallbacks, provider mix, cache eligibility, caller IP, and throughput vary materially by task, agent, and group.
-
-For production buyers, the key result is that GenAI Smart Router gives a single integration point plus evidence for routing policy. A platform team can compare groups using task success, cost drivers, throughput, fallback rate, and cache eligibility before deciding which model group each user, project, or workload should be allowed to call.
+For a general router-versus-fixed-model evidence template, including non-Harbor workloads and rollout decisions, see [Prove Router Quality](./prove-router-quality).

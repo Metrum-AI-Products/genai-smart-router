@@ -5,35 +5,23 @@ import {
   Chart as ChartJS,
   Legend,
   LinearScale,
-  LineElement,
-  PointElement,
   Tooltip,
 } from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
+import { Bar } from "react-chartjs-2";
 import styles from "./HarborCharts.module.css";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
-const labels = ["default", "fast", "small", "medium", "high", "big-coder"];
-const codexElapsed = [139, 358, 156, 116, 119, 91];
-const claudeElapsed = [405, 128, 96, 131, 267, 171];
-const codexTotalTokens = [221843, 191344, 265025, 94250, 66505, 52695];
-const claudeTotalTokens = [177405, 133276, 152385, 136147, 108237, 119425];
-const outputThroughput = [68.86, 68.61, 69.36];
-const costLabels = ["All runs", "Codex", "Claude Code"];
-const gptCosts = [11.09509, 6.247065, 4.848025];
-const opusCosts = [10.203675, 5.80288, 4.400795];
-const metrumCosts = [0.1505886, 0.0894065, 0.0611821];
-const goSublistCostLabels = ["All", "Codex", "Claude Code"];
-const goSublistGptCosts = [0.877515, 0.45513, 0.422385];
-const goSublistOpusCosts = [0.85312, 0.44418, 0.40894];
-const goSublistMetrumCosts = [0.0155987, 0.0082266, 0.0073721];
-const goSublistTokens = [189764, 80076, 109688];
+const labels = ["Codex CLI", "Claude Code CLI"];
+const reward = [1, 0];
+const elapsed = [68, 348];
+const totalTokens = [82812, 577592];
+const outputTokens = [2598, 22530];
 
 const gridColor = "rgba(255,255,255,0.11)";
 const textColor = "#d7d9e0";
 
-function baseOptions(title, yTitle) {
+function baseOptions(yTitle) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -41,7 +29,6 @@ function baseOptions(title, yTitle) {
       legend: {
         labels: { color: textColor, boxWidth: 14, boxHeight: 14 },
       },
-      title: { display: false, text: title },
       tooltip: {
         backgroundColor: "#08080a",
         borderColor: "#cc28af",
@@ -59,6 +46,7 @@ function baseOptions(title, yTitle) {
         title: { display: true, text: yTitle, color: textColor },
         ticks: { color: textColor },
         grid: { color: gridColor },
+        beginAtZero: true,
       },
     },
   };
@@ -69,17 +57,16 @@ export default function HarborCharts() {
     <div className={styles.grid}>
       <section className={styles.panel}>
         <div className={styles.heading}>
-          <p>Elapsed Time</p>
-          <h3>Agent runtime by model group</h3>
+          <p>Verifier Reward</p>
+          <h3>Outcome by agent</h3>
         </div>
         <div className={styles.chart}>
           <Bar
-            options={baseOptions("Agent runtime by model group", "seconds")}
+            options={baseOptions("reward")}
             data={{
               labels,
               datasets: [
-                { label: "Codex", data: codexElapsed, backgroundColor: "#fe005f" },
-                { label: "Claude Code", data: claudeElapsed, backgroundColor: "#465cda" },
+                { label: "Reward", data: reward, backgroundColor: "#fe005f" },
               ],
             }}
           />
@@ -88,17 +75,16 @@ export default function HarborCharts() {
 
       <section className={styles.panel}>
         <div className={styles.heading}>
-          <p>Token Demand</p>
-          <h3>Total Harbor tokens by agent and group</h3>
+          <p>Elapsed Time</p>
+          <h3>Runtime by agent</h3>
         </div>
         <div className={styles.chart}>
           <Bar
-            options={baseOptions("Total Harbor tokens by agent and group", "tokens")}
+            options={baseOptions("seconds")}
             data={{
               labels,
               datasets: [
-                { label: "Codex", data: codexTotalTokens, backgroundColor: "#cc28af" },
-                { label: "Claude Code", data: claudeTotalTokens, backgroundColor: "#9948cb" },
+                { label: "Elapsed seconds", data: elapsed, backgroundColor: "#465cda" },
               ],
             }}
           />
@@ -107,84 +93,20 @@ export default function HarborCharts() {
 
       <section className={styles.panelWide}>
         <div className={styles.heading}>
-          <p>Throughput</p>
-          <h3>Average upstream output throughput</h3>
-        </div>
-        <div className={styles.chartSmall}>
-          <Line
-            options={baseOptions("Average upstream output throughput", "output tokens/sec")}
-            data={{
-              labels: ["All requests", "Codex", "Claude Code"],
-              datasets: [
-                {
-                  label: "Output tok/s",
-                  data: outputThroughput,
-                  borderColor: "#ff3132",
-                  backgroundColor: "rgba(255,49,50,0.18)",
-                  pointBackgroundColor: "#fe005f",
-                  tension: 0.32,
-                },
-              ],
-            }}
-          />
-        </div>
-      </section>
-
-      <section className={styles.panelWide}>
-        <div className={styles.heading}>
-          <p>Cost Savings Using Actual Agents</p>
-          <h3>Same successful coding task, benchmarked by endpoint economics</h3>
+          <p>Token Demand</p>
+          <h3>Harbor-reported tokens by agent</h3>
         </div>
         <p className={styles.note}>
-          Both the OpenAI-priced comparison endpoint and the Metrum-routed endpoint are assumed successful on the same Harbor coding task. This chart applies the recorded benchmark token counts to three pricing assumptions.
+          Token totals are from the Harbor job summaries for the current production run. Cache-read tokens are included in total token demand because they affect context pressure and agent loop behavior.
         </p>
         <div className={styles.chart}>
           <Bar
-            options={baseOptions("Cost comparison", "estimated USD")}
+            options={baseOptions("tokens")}
             data={{
-              labels: costLabels,
+              labels,
               datasets: [
-                { label: "GPT 5.5 assumed", data: gptCosts, backgroundColor: "#ff3132" },
-                { label: "Opus 4.8 assumed", data: opusCosts, backgroundColor: "#9948cb" },
-                { label: "Metrum routed assumed", data: metrumCosts, backgroundColor: "#465cda" },
-              ],
-            }}
-          />
-        </div>
-      </section>
-
-      <section className={styles.panel}>
-        <div className={styles.heading}>
-          <p>Case Study #2</p>
-          <h3>Go sublist tokens by agent</h3>
-        </div>
-        <div className={styles.chart}>
-          <Bar
-            options={baseOptions("Go sublist tokens by agent", "router-tracked tokens")}
-            data={{
-              labels: goSublistCostLabels,
-              datasets: [
-                { label: "Total Tokens", data: goSublistTokens, backgroundColor: "#cc28af" },
-              ],
-            }}
-          />
-        </div>
-      </section>
-
-      <section className={styles.panel}>
-        <div className={styles.heading}>
-          <p>Case Study #2 Cost</p>
-          <h3>Default route endpoint economics</h3>
-        </div>
-        <div className={styles.chart}>
-          <Bar
-            options={baseOptions("Go sublist cost comparison", "estimated USD")}
-            data={{
-              labels: goSublistCostLabels,
-              datasets: [
-                { label: "GPT 5.5 assumed", data: goSublistGptCosts, backgroundColor: "#ff3132" },
-                { label: "Opus 4.8 assumed", data: goSublistOpusCosts, backgroundColor: "#9948cb" },
-                { label: "Metrum routed assumed", data: goSublistMetrumCosts, backgroundColor: "#465cda" },
+                { label: "Total tokens", data: totalTokens, backgroundColor: "#cc28af" },
+                { label: "Output tokens", data: outputTokens, backgroundColor: "#ff3132" },
               ],
             }}
           />
