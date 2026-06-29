@@ -69,6 +69,8 @@ type scriptTarget struct {
 	InputModalities                    []string                `json:"inputModalities,omitempty"`
 	OutputModalities                   []string                `json:"outputModalities,omitempty"`
 	HonorsMaxTokens                    *bool                   `json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse                    bool                    `json:"forceStoreFalse,omitempty"`
+	OutputTokenField                   string                  `json:"outputTokenField,omitempty"`
 	Validation                         *scriptTargetValidation `json:"validation,omitempty"`
 	KeyID                              string                  `json:"keyId,omitempty"`
 	APIKeyEnv                          string                  `json:"apiKeyEnv,omitempty"`
@@ -411,6 +413,8 @@ func buildScriptTargets(targets []Target, providers map[string]ProviderConfig) [
 			InputModalities:                    target.InputModalities,
 			OutputModalities:                   target.OutputModalities,
 			HonorsMaxTokens:                    target.HonorsMaxTokens,
+			ForceStoreFalse:                    target.ForceStoreFalse,
+			OutputTokenField:                   target.OutputTokenField,
 			Validation:                         buildScriptTargetValidation(target.Validation),
 			KeyID:                              provider.KeyID,
 			APIKeyEnv:                          provider.APIKeyEnv,

@@ -135,7 +135,7 @@ Tool-bearing requests bypass response caching because tool results depend on ext
 
 OpenAI Responses provider-hosted tools such as Fireworks-documented `mcp` and `sse` tools are not the same as client-executed function or namespace tools. By default, the router rejects caller-supplied remote provider-hosted entries such as `mcp`, `sse`, file-search, code-interpreter, and computer-use tools with `400 provider-hosted-tools-forbidden` before any upstream call. Generic hosted search or image-generation descriptors from compatible clients are stripped unless the deployment explicitly exposes those hosted services. Deployments should expose provider-hosted tools only after a separate security design covers allowlisted hosts, timeouts, network egress, and data-retention expectations.
 
-The router controls upstream persistence policy for OpenAI-compatible requests. Same-dialect Chat Completions and Responses passthrough strip caller-supplied provider `metadata` and send `store:false` upstream. For translated Responses calls, targets can also set `force_store_false: true` so the router sends `store:false` even when the caller did not use same-dialect passthrough.
+The router controls upstream persistence policy for OpenAI-compatible requests. Same-dialect Chat Completions and Responses passthrough strip caller-supplied provider `metadata`; they send `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated Responses calls use the same flag. Chat passthrough also honors target encoding metadata such as `output_token_field: max_completion_tokens` for upstreams that require `max_completion_tokens` instead of `max_tokens`.
 
 ## Reasoning And Thinking
 

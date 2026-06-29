@@ -84,7 +84,7 @@ Do not claim tool support, image support, reasoning support, structured outputs,
 
 ## Upstream Payload Controls
 
-The router owns provider-side persistence policy for OpenAI-compatible passthrough. Caller-supplied provider `metadata` is stripped and OpenAI Chat/Responses passthrough sends `store: false` upstream. Tool schemas and structured-output schemas still pass through to compatible targets, but their serialized size contributes to token-budget admission.
+The router owns provider-side persistence policy for OpenAI-compatible passthrough. Caller-supplied provider `metadata` is stripped, and OpenAI Chat/Responses passthrough sends `store: false` upstream only when the resolved target sets `force_store_false: true`. OpenAI Chat passthrough also uses target metadata such as `output_token_field` to choose `max_tokens` or `max_completion_tokens`. Tool schemas and structured-output schemas still pass through to compatible targets, but their serialized size contributes to token-budget admission.
 
 Upstream HTTP redirects are not followed. A 301, 302, 303, 307, or 308 response is treated as an upstream failure instead of replaying the prompt, image, tool, or schema payload to the redirect target. Successful upstream response bodies are bounded by `server.upstream.max_response_bytes` before decode or synthesized streaming.
 

@@ -462,6 +462,8 @@ function responseForRoute(route: Route) {
           activeGroups: ["default"],
           activeTargetCount: 1,
           validationStatus: "passed",
+          forceStoreFalse: true,
+          outputTokenField: "max_completion_tokens",
           pricingMissing: false,
         },
       ],

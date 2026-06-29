@@ -15,6 +15,7 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
+| OpenAI-compatible encoding | prove `force_store_false` and `output_token_field` produce the upstream payload the exact provider accepts |
 | Usage/cost fields | query usage DB/report after a request |
 | Request evidence bundle | produce one success or error request, query `/admin/reports/api/request-evidence?request_id=<request_id>` with a drilldown-authorized admin, verify section completeness, attempts when applicable, stored request-time costs, `Cache-Control: no-store`, ordinary caller `403 reports-forbidden`, and no raw prompts/images/tool schemas/tool outputs/tokens/token hashes/provider keys/upstream bodies |
 | Caller traffic-shaping reports | enable a low caller `traffic_shape`, produce one queued or rejected request, run `router-usage-report --traffic-shaped-only`, and open Traffic shaping overview / Shaping users in admin reports |
@@ -449,6 +450,8 @@ When declaring strict tool/function argument support, also run a tool-call reque
 ### Router-Level Checks
 
 After direct upstream checks pass, add the capability metadata to the target and run router-level smokes through a deployment-defined test group before activating or increasing the target in broad groups.
+
+For OpenAI-compatible providers, validate encoding metadata explicitly. Set `force_store_false: true` only after the upstream accepts `store:false`; leave it unset for providers that reject `store`. Set `output_token_field: max_completion_tokens` only after a Chat Completions smoke proves the target requires `max_completion_tokens` instead of `max_tokens`. If a tool route also needs a target-level dialect override, keep that routing/config change separate from the metadata unless the rollout scope includes it.
 
 OpenAI Chat through the router:
 

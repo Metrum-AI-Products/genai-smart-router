@@ -83,12 +83,15 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 			ToolSupport: ToolSupport{
 				OpenAIResponses: []string{"function"},
 			},
+			ForceStoreFalse:  true,
+			OutputTokenField: "max_completion_tokens",
 		},
 		"large": {Model: "mock-large", Weight: 99, Tier: "heavy"},
 	}
 	cfg.Provider["mock"] = provider
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", ModelRef: "small"},
+		{Provider: "mock", ModelRef: "small", Weight: 7, OutputTokenField: "max_tokens"},
 		{Provider: "mock", ModelRef: "large", Weight: 9},
 		{Provider: "mock", Model: "direct-model", Weight: 1},
 	}}
@@ -108,11 +111,17 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 		len(targets[0].ToolSupport.OpenAIResponses) != 1 || targets[0].ToolSupport.OpenAIResponses[0] != "function" {
 		t.Fatalf("small ref metadata not resolved: %#v", targets[0])
 	}
-	if targets[1].Model != "mock-large" || targets[1].Weight != 9 || targets[1].Tier != "heavy" {
-		t.Fatalf("large ref override not resolved: %#v", targets[1])
+	if !targets[0].ForceStoreFalse || targets[0].OutputTokenField != "max_completion_tokens" {
+		t.Fatalf("small ref encoding metadata not resolved: %#v", targets[0])
 	}
-	if targets[2].Model != "direct-model" {
-		t.Fatalf("direct model target changed: %#v", targets[2])
+	if targets[1].Model != "mock-small" || targets[1].Weight != 7 || !targets[1].ForceStoreFalse || targets[1].OutputTokenField != "max_tokens" {
+		t.Fatalf("small ref override not resolved: %#v", targets[1])
+	}
+	if targets[2].Model != "mock-large" || targets[2].Weight != 9 || targets[2].Tier != "heavy" {
+		t.Fatalf("large ref override not resolved: %#v", targets[2])
+	}
+	if targets[3].Model != "direct-model" {
+		t.Fatalf("direct model target changed: %#v", targets[3])
 	}
 	if got := cfg.Models["fast"].Targets[0].Weight; got != 3 {
 		t.Fatalf("group-local target weight = %d, want 3", got)
@@ -533,10 +542,21 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 			want:  "image_input_price_per_million_tokens_usd",
 		},
 		{
+			name:  "invalid provider output token field",
+			model: ProviderModel{Model: "mock-known", OutputTokenField: "tokens"},
+			want:  "output_token_field",
+		},
+		{
 			name:   "negative target image unit price",
 			model:  ProviderModel{Model: "mock-known"},
 			target: Target{ImageInputPricePerImageUSD: -0.01},
 			want:   "image_input_price_per_image_usd",
+		},
+		{
+			name:   "invalid target output token field",
+			model:  ProviderModel{Model: "mock-known"},
+			target: Target{OutputTokenField: "completion_tokens"},
+			want:   "output_token_field",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -553,6 +573,9 @@ func TestProviderModelPricingAndToolSupportValidation(t *testing.T) {
 			}
 			if tt.target.ImageInputPricePerImageUSD != 0 {
 				target.ImageInputPricePerImageUSD = tt.target.ImageInputPricePerImageUSD
+			}
+			if tt.target.OutputTokenField != "" {
+				target.OutputTokenField = tt.target.OutputTokenField
 			}
 			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
 			err := cfg.Validate()

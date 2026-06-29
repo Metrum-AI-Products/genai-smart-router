@@ -164,6 +164,7 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 		}
 		body := map[string]any{"model": model, "messages": msgs, "stream": false}
 		applyOpenAIChatMaxTokens(body, req, false)
+		applyTargetOpenAIChatEncoding(body, target)
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
@@ -183,7 +184,9 @@ func encodeResponsesPassthrough(model string, req *IRRequest, target Target) ([]
 	// The router's first tool-capable path is unary. Non-streaming Responses
 	// payloads keep usage accounting deterministic for compatible clients.
 	body["stream"] = false
-	body["store"] = false
+	if target.ForceStoreFalse {
+		body["store"] = false
+	}
 	if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {
 		return nil, err
 	}
@@ -196,18 +199,8 @@ func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte,
 	// The router calls upstreams in unary mode and synthesizes downstream SSE.
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
-	if target.Provider == "openai" {
-		// OpenAI Chat accepts store=false for deterministic usage accounting.
-		// Other OpenAI-compatible upstreams such as Crusoe reject the store field.
-		body["store"] = false
-	}
 	applyOpenAIChatMaxTokens(body, req, true)
-	if target.Provider == "openai" {
-		if value, ok := body["max_tokens"]; ok {
-			body["max_completion_tokens"] = value
-			delete(body, "max_tokens")
-		}
-	}
+	applyTargetOpenAIChatEncoding(body, target)
 	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
 		return nil, err
 	}
@@ -335,6 +328,24 @@ func applyOpenAIChatMaxTokens(body map[string]any, req *IRRequest, normalizeExis
 		delete(body, "max_output_tokens")
 	}
 	body[field] = req.MaxTokens
+}
+
+func applyTargetOpenAIChatEncoding(body map[string]any, target Target) {
+	if target.ForceStoreFalse {
+		body["store"] = false
+	}
+	switch target.OutputTokenField {
+	case "max_completion_tokens":
+		if value, ok := body["max_tokens"]; ok {
+			body["max_completion_tokens"] = value
+			delete(body, "max_tokens")
+		}
+	case "", "max_tokens":
+		if value, ok := body["max_completion_tokens"]; ok {
+			body["max_tokens"] = value
+			delete(body, "max_completion_tokens")
+		}
+	}
 }
 
 func decodeUpstreamResponse(dialect string, raw []byte, model string) (*IRResponse, error) {

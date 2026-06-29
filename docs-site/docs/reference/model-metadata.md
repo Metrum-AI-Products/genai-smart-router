@@ -27,6 +27,7 @@ providers:
         pricing_notes: Link source and update-date evidence in config.example.yaml.
         honors_max_tokens: true
         force_store_false: true
+        output_token_field: max_completion_tokens
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
           openai_responses: [function, structured_outputs]
@@ -82,7 +83,24 @@ The router forwards schema payloads to the selected upstream. It does not valida
 
 ## Responses Retention Controls
 
-The router controls provider-side retention fields. Same-dialect OpenAI Chat and Responses passthrough strips caller-supplied provider `metadata` and sends `store:false` upstream. `force_store_false` remains OpenAI Responses target metadata for translated Responses calls; when set, the router sends `store:false` upstream for that target. Validate that text, function tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before activating the target.
+The router controls provider-side retention fields through target metadata. Same-dialect OpenAI Chat and Responses passthrough strips caller-supplied provider `metadata`; it sends `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated OpenAI Responses calls use the same flag. Validate that text, tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before setting the flag, because some OpenAI-compatible upstreams reject the `store` field.
+
+```yaml
+models:
+  openai-nano:
+    model: gpt-5.4-nano
+    force_store_false: true
+    output_token_field: max_completion_tokens
+  crusoe-glm:
+    model: zai/GLM-5.2
+    # force_store_false omitted because this upstream rejects the store field.
+```
+
+## OpenAI Chat Encoding Controls
+
+`output_token_field` controls which output-token cap field the router sends to OpenAI Chat-compatible upstreams after normalizing caller caps. Allowed values are `max_tokens` and `max_completion_tokens`; omitting the field defaults to `max_tokens`.
+
+Use `output_token_field: max_completion_tokens` for models that reject Chat Completions `max_tokens`, including tool-bearing requests. This is independent of reasoning metadata: if reasoning compatibility also rewrites `max_tokens`, both rules converge on `max_completion_tokens` and the router avoids sending both cap fields.
 
 ## Reasoning And Thinking
 

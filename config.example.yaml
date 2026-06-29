@@ -465,8 +465,10 @@ providers:
           $1.40/M input, $4.40/M output, and $0.26/M cached tokens. Direct Crusoe text
           smoke passed on 2026-06-24; a max_tokens=1 probe honored the cap but returned
           empty content with finish=length. Direct and router-level OpenAI Chat auto-tool
-          smokes passed on 2026-06-29 for the current engineering deployment; Responses,
-          Anthropic, structured-output, and vision skins remain disabled until separately validated.
+          smokes passed on 2026-06-29 for the current engineering deployment when no
+          store field was sent; keep force_store_false unset because Crusoe rejects the
+          store parameter. Responses, Anthropic, structured-output, and vision skins
+          remain disabled until separately validated.
         tool_support:
           openai_chat:
           - tools
@@ -870,6 +872,8 @@ providers:
         tool_support:
           openai_responses:
           - function
+        force_store_false: true
+        output_token_field: max_completion_tokens
       gpt-5.5:
         model: gpt-5.5
         tier: heavy

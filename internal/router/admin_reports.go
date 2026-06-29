@@ -238,6 +238,8 @@ type adminCatalogStatusRow struct {
 	PricingUpdatedAt         string   `json:"pricingUpdatedAt,omitempty"`
 	PricingMissing           bool     `json:"pricingMissing"`
 	HonorsMaxTokens          *bool    `json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse          bool     `json:"forceStoreFalse,omitempty"`
+	OutputTokenField         string   `json:"outputTokenField,omitempty"`
 }
 
 type adminSecuritySummary struct {
@@ -2320,6 +2322,8 @@ func adminCatalogRowFromProviderModel(providerName, modelRef string, provider Pr
 		PricingSource:            model.PricingSource,
 		PricingUpdatedAt:         model.PricingUpdatedAt,
 		HonorsMaxTokens:          model.HonorsMaxTokens,
+		ForceStoreFalse:          model.ForceStoreFalse,
+		OutputTokenField:         model.OutputTokenField,
 	}
 }
 
@@ -2342,6 +2346,8 @@ func adminCatalogRowFromTarget(providerName string, provider ProviderConfig, tar
 		PricingSource:            target.PricingSource,
 		PricingUpdatedAt:         target.PricingUpdatedAt,
 		HonorsMaxTokens:          target.HonorsMaxTokens,
+		ForceStoreFalse:          target.ForceStoreFalse,
+		OutputTokenField:         target.OutputTokenField,
 	}
 }
 

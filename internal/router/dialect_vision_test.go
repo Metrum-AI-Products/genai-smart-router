@@ -248,11 +248,11 @@ func TestOpenAIChatMaxCompletionTokensForwardsOutputCap(t *testing.T) {
 	if err := json.Unmarshal(raw, &body); err != nil {
 		t.Fatal(err)
 	}
-	if got := body["max_completion_tokens"]; got != float64(1) {
-		t.Fatalf("max_completion_tokens=%#v, want 1; body=%#v", got, body)
+	if got := body["max_tokens"]; got != float64(1) {
+		t.Fatalf("max_tokens=%#v, want 1; body=%#v", got, body)
 	}
-	if _, ok := body["max_tokens"]; ok {
-		t.Fatalf("max_tokens also present in body=%#v", body)
+	if _, ok := body["max_completion_tokens"]; ok {
+		t.Fatalf("max_completion_tokens should be normalized for ordinary OpenAI-compatible targets; body=%#v", body)
 	}
 }
 
@@ -360,42 +360,125 @@ func TestResponsesImageMessageArrayTranslatesToChatAndAnthropicBase64(t *testing
 	}
 }
 
-func TestEncodeChatPassthroughStoreAndMaxTokensByProvider(t *testing.T) {
+func TestEncodeChatPassthroughStoreAndMaxTokensByTargetMetadata(t *testing.T) {
 	req := &IRRequest{
 		MaxTokens:      16,
 		MaxTokensField: "max_tokens",
 		Messages:       []IRMessage{{Role: "user", Content: "hi"}},
 	}
-	crusoeBody, err := encodeChatPassthrough("zai/GLM-5.2", req, Target{Provider: "crusoe"})
+	defaultBody, err := encodeChatPassthrough("zai/GLM-5.2", req, Target{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var crusoe map[string]any
-	if err := json.Unmarshal(crusoeBody, &crusoe); err != nil {
+	var defaultTarget map[string]any
+	if err := json.Unmarshal(defaultBody, &defaultTarget); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := crusoe["store"]; ok {
-		t.Fatalf("crusoe body should omit store: %#v", crusoe)
+	if _, ok := defaultTarget["store"]; ok {
+		t.Fatalf("default target body should omit store: %#v", defaultTarget)
 	}
-	if crusoe["max_tokens"] != float64(16) {
-		t.Fatalf("crusoe max_tokens=%#v", crusoe["max_tokens"])
+	if defaultTarget["max_tokens"] != float64(16) {
+		t.Fatalf("default target max_tokens=%#v", defaultTarget["max_tokens"])
 	}
 
-	openaiBody, err := encodeChatPassthrough("gpt-5.4-nano", req, Target{Provider: "openai"})
+	metadataBody, err := encodeChatPassthrough("gpt-5.4-nano", req, Target{
+		ForceStoreFalse:  true,
+		OutputTokenField: "max_completion_tokens",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var openai map[string]any
-	if err := json.Unmarshal(openaiBody, &openai); err != nil {
+	var metadataTarget map[string]any
+	if err := json.Unmarshal(metadataBody, &metadataTarget); err != nil {
 		t.Fatal(err)
 	}
-	if openai["store"] != false {
-		t.Fatalf("openai store=%#v, want false", openai["store"])
+	if metadataTarget["store"] != false {
+		t.Fatalf("metadata target store=%#v, want false", metadataTarget["store"])
 	}
-	if openai["max_completion_tokens"] != float64(16) {
-		t.Fatalf("openai max_completion_tokens=%#v", openai["max_completion_tokens"])
+	if metadataTarget["max_completion_tokens"] != float64(16) {
+		t.Fatalf("metadata target max_completion_tokens=%#v", metadataTarget["max_completion_tokens"])
 	}
-	if _, ok := openai["max_tokens"]; ok {
-		t.Fatalf("openai body should translate max_tokens: %#v", openai)
+	if _, ok := metadataTarget["max_tokens"]; ok {
+		t.Fatalf("metadata target body should translate max_tokens: %#v", metadataTarget)
+	}
+	completionReq := &IRRequest{
+		MaxTokens:      9,
+		MaxTokensField: "max_completion_tokens",
+		Messages:       []IRMessage{{Role: "user", Content: "hi"}},
+	}
+	maxTokensBody, err := encodeChatPassthrough("ordinary-chat", completionReq, Target{OutputTokenField: "max_tokens"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var maxTokensTarget map[string]any
+	if err := json.Unmarshal(maxTokensBody, &maxTokensTarget); err != nil {
+		t.Fatal(err)
+	}
+	if maxTokensTarget["max_tokens"] != float64(9) {
+		t.Fatalf("max_tokens target max_tokens=%#v", maxTokensTarget["max_tokens"])
+	}
+	if _, ok := maxTokensTarget["max_completion_tokens"]; ok {
+		t.Fatalf("max_tokens target body should translate max_completion_tokens: %#v", maxTokensTarget)
+	}
+
+}
+
+func TestEncodeResponsesPassthroughStoreByTargetMetadata(t *testing.T) {
+	req := &IRRequest{
+		Raw: map[string]any{
+			"input": "hi",
+			"store": true,
+		},
+	}
+	defaultBody, err := encodeResponsesPassthrough("responses-model", req, Target{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var defaultTarget map[string]any
+	if err := json.Unmarshal(defaultBody, &defaultTarget); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := defaultTarget["store"]; ok {
+		t.Fatalf("default target body should omit store: %#v", defaultTarget)
+	}
+
+	forcedBody, err := encodeResponsesPassthrough("responses-model", req, Target{ForceStoreFalse: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var forcedTarget map[string]any
+	if err := json.Unmarshal(forcedBody, &forcedTarget); err != nil {
+		t.Fatal(err)
+	}
+	if forcedTarget["store"] != false {
+		t.Fatalf("forced target store=%#v, want false", forcedTarget["store"])
+	}
+}
+
+func TestEncodeUpstreamOpenAIChatAppliesTargetEncodingMetadata(t *testing.T) {
+	req := &IRRequest{
+		MaxTokens:      16,
+		MaxTokensField: "max_tokens",
+		Messages:       []IRMessage{{Role: "user", Content: "hi"}},
+	}
+	raw, err := encodeUpstreamForTarget("openai-chat", "chat-model", req, Target{
+		ForceStoreFalse:  true,
+		OutputTokenField: "max_completion_tokens",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["store"] != false {
+		t.Fatalf("store=%#v, want false", body["store"])
+	}
+	if body["max_completion_tokens"] != float64(16) {
+		t.Fatalf("max_completion_tokens=%#v", body["max_completion_tokens"])
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("body should translate max_tokens: %#v", body)
 	}
 }

@@ -283,6 +283,7 @@ type ProviderModel struct {
 	OutputModalities                   []string           `yaml:"output_modalities" json:"outputModalities,omitempty"`
 	HonorsMaxTokens                    *bool              `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	ForceStoreFalse                    bool               `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	OutputTokenField                   string             `yaml:"output_token_field" json:"outputTokenField,omitempty"`
 	TrafficShape                       TrafficShapeConfig `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
@@ -550,6 +551,7 @@ type Target struct {
 	OutputModalities                   []string           `yaml:"output_modalities" json:"outputModalities,omitempty"`
 	HonorsMaxTokens                    *bool              `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
 	ForceStoreFalse                    bool               `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	OutputTokenField                   string             `yaml:"output_token_field" json:"outputTokenField,omitempty"`
 	Validation                         *TargetValidation  `yaml:"validation" json:"validation,omitempty"`
 	TrafficShape                       TrafficShapeConfig `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 }
@@ -983,6 +985,9 @@ func (c *Config) Validate() error {
 			if err := validateModalities(model.OutputModalities); err != nil {
 				return fmt.Errorf("provider %s model %s has invalid output_modalities: %w", name, ref, err)
 			}
+			if err := validateOutputTokenField(model.OutputTokenField); err != nil {
+				return fmt.Errorf("provider %s model %s has invalid output_token_field: %w", name, ref, err)
+			}
 		}
 	}
 	if len(c.Models) == 0 {
@@ -1122,6 +1127,9 @@ func (c *Config) Validate() error {
 			}
 			if err := validateModalities(resolved.OutputModalities); err != nil {
 				return fmt.Errorf("model group %s target %s has invalid output_modalities: %w", name, resolved.Model, err)
+			}
+			if err := validateOutputTokenField(resolved.OutputTokenField); err != nil {
+				return fmt.Errorf("model group %s target %s has invalid output_token_field: %w", name, resolved.Model, err)
 			}
 			resolved.InputModalities = defaultModalities(resolved.InputModalities)
 			resolved.OutputModalities = defaultModalities(resolved.OutputModalities)
@@ -2168,10 +2176,22 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	if !target.ForceStoreFalse {
 		target.ForceStoreFalse = catalog.ForceStoreFalse
 	}
+	if target.OutputTokenField == "" {
+		target.OutputTokenField = catalog.OutputTokenField
+	}
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)
 	}
 	return target, nil
+}
+
+func validateOutputTokenField(value string) error {
+	switch strings.TrimSpace(value) {
+	case "", "max_tokens", "max_completion_tokens":
+		return nil
+	default:
+		return fmt.Errorf("must be max_tokens or max_completion_tokens")
+	}
 }
 
 func validateToolSupport(ts ToolSupport) error {

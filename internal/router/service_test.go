@@ -650,6 +650,19 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:                 "mock",
+		Model:                    "mock-model",
+		ForceStoreFalse:          true,
+		OutputTokenField:         "max_completion_tokens",
+		HonorsMaxTokens:          boolPtr(true),
+		InputModalities:          []string{"text"},
+		OutputModalities:         []string{"text"},
+		ContextTokens:            8192,
+		ToolSupport:              ToolSupport{OpenAIChat: []string{"tools"}},
+		InputPricePerMillionUSD:  0.25,
+		OutputPricePerMillionUSD: 1.25,
+	}}}
 	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
@@ -1126,6 +1139,18 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		if _, ok := catalogRow[key]; !ok {
 			t.Fatalf("catalog row missing %q: %#v", key, catalogRow)
 		}
+	}
+	foundEncodingMetadata := false
+	for _, rawRow := range catalogBody["rows"].([]any) {
+		row := rawRow.(map[string]any)
+		if row["source"] == "active_target" && row["provider"] == "mock" && row["model"] == "mock-model" {
+			if row["forceStoreFalse"] == true && row["outputTokenField"] == "max_completion_tokens" && row["honorsMaxTokens"] == true {
+				foundEncodingMetadata = true
+			}
+		}
+	}
+	if !foundEncodingMetadata {
+		t.Fatalf("catalog report missing active target encoding row: %#v", catalogBody["rows"])
 	}
 	for _, forbidden := range []string{"token_sha256", "provider-key", testToken, "api_key"} {
 		if strings.Contains(catalogRR.Body.String(), forbidden) {
@@ -3324,11 +3349,11 @@ func TestOpenAIChatMaxCompletionTokensSkipsTargetsThatDoNotHonorCaps(t *testing.
 	if got := upstreamBody["model"]; got != "cap-safe-chat" {
 		t.Fatalf("upstream model=%#v, want cap-safe-chat; body=%#v", got, upstreamBody)
 	}
-	if got := upstreamBody["max_completion_tokens"]; got != float64(1) {
-		t.Fatalf("upstream max_completion_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	if got := upstreamBody["max_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_tokens=%#v, want 1; body=%#v", got, upstreamBody)
 	}
-	if _, ok := upstreamBody["max_tokens"]; ok {
-		t.Fatalf("upstream max_tokens should not be set when max_completion_tokens was used; body=%#v", upstreamBody)
+	if _, ok := upstreamBody["max_completion_tokens"]; ok {
+		t.Fatalf("upstream max_completion_tokens should be normalized for ordinary OpenAI-compatible targets; body=%#v", upstreamBody)
 	}
 }
 
@@ -3397,11 +3422,11 @@ func TestOpenAIChatToolPassthroughMaxCompletionTokensFiltersCapUnsafeTargets(t *
 	if got := upstreamBody["model"]; got != "cap-safe-tool" {
 		t.Fatalf("upstream model=%#v, want cap-safe-tool; body=%#v", got, upstreamBody)
 	}
-	if got := upstreamBody["max_completion_tokens"]; got != float64(1) {
-		t.Fatalf("upstream max_completion_tokens=%#v, want 1; body=%#v", got, upstreamBody)
+	if got := upstreamBody["max_tokens"]; got != float64(1) {
+		t.Fatalf("upstream max_tokens=%#v, want 1; body=%#v", got, upstreamBody)
 	}
-	if _, ok := upstreamBody["max_tokens"]; ok {
-		t.Fatalf("upstream max_tokens should not be set when max_completion_tokens was used; body=%#v", upstreamBody)
+	if _, ok := upstreamBody["max_completion_tokens"]; ok {
+		t.Fatalf("upstream max_completion_tokens should be normalized for ordinary OpenAI-compatible targets; body=%#v", upstreamBody)
 	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
@@ -7994,7 +8019,12 @@ func TestOpenAIResponsesPassthroughStripsRetentionFields(t *testing.T) {
 
 	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
 	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
-	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "responses", Model: "responses-tool-model", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
+	cfg.Models["responses-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "responses",
+		Model:           "responses-tool-model",
+		ForceStoreFalse: true,
+		ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+	}}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "responses-tools")
 	svc, err := New(cfg)
 	if err != nil {
