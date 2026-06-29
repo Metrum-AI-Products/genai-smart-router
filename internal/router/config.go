@@ -1214,11 +1214,23 @@ func validateTrafficShape(label string, cfg TrafficShapeConfig) error {
 	if cfg.InputTokenBurst < 0 {
 		return fmt.Errorf("%s input_token_burst cannot be negative", label)
 	}
+	if cfg.OutputReservationTokensPerSec < 0 {
+		return fmt.Errorf("%s output_reservation_tokens_per_sec cannot be negative", label)
+	}
+	if cfg.OutputReservationTokenBurst < 0 {
+		return fmt.Errorf("%s output_reservation_token_burst cannot be negative", label)
+	}
 	if cfg.TotalReservedTokensPerSec < 0 {
 		return fmt.Errorf("%s total_reserved_tokens_per_sec cannot be negative", label)
 	}
 	if cfg.TotalReservedTokenBurst < 0 {
 		return fmt.Errorf("%s total_reserved_token_burst cannot be negative", label)
+	}
+	if cfg.Queue.MaxWaitMS < 0 {
+		return fmt.Errorf("%s queue max_wait_ms cannot be negative", label)
+	}
+	if cfg.Queue.MaxDepth < 0 {
+		return fmt.Errorf("%s queue max_depth cannot be negative", label)
 	}
 	for name, backoff := range map[string]TrafficBackoffConfig{
 		"upstream_429_backoff":   cfg.Upstream429Backoff,
@@ -1249,8 +1261,14 @@ func validateTrafficShape(label string, cfg TrafficShapeConfig) error {
 	if cfg.InputTokensPerSec > 0 && cfg.InputTokenBurst == 0 {
 		return fmt.Errorf("%s input_token_burst is required when input_tokens_per_sec is set", label)
 	}
+	if cfg.OutputReservationTokensPerSec > 0 && cfg.OutputReservationTokenBurst == 0 {
+		return fmt.Errorf("%s output_reservation_token_burst is required when output_reservation_tokens_per_sec is set", label)
+	}
 	if cfg.TotalReservedTokensPerSec > 0 && cfg.TotalReservedTokenBurst == 0 {
 		return fmt.Errorf("%s total_reserved_token_burst is required when total_reserved_tokens_per_sec is set", label)
+	}
+	if cfg.Queue.Enabled && (cfg.Queue.MaxWaitMS <= 0 || cfg.Queue.MaxDepth <= 0) {
+		return fmt.Errorf("%s queue enabled requires positive max_wait_ms and max_depth", label)
 	}
 	return nil
 }
@@ -1261,8 +1279,13 @@ func trafficShapeConfigured(cfg TrafficShapeConfig) bool {
 		cfg.RequestBurst != 0 ||
 		cfg.InputTokensPerSec != 0 ||
 		cfg.InputTokenBurst != 0 ||
+		cfg.OutputReservationTokensPerSec != 0 ||
+		cfg.OutputReservationTokenBurst != 0 ||
 		cfg.TotalReservedTokensPerSec != 0 ||
 		cfg.TotalReservedTokenBurst != 0 ||
+		cfg.Queue.Enabled ||
+		cfg.Queue.MaxWaitMS != 0 ||
+		cfg.Queue.MaxDepth != 0 ||
 		trafficBackoffConfigured(cfg.Upstream429Backoff) ||
 		trafficBackoffConfigured(cfg.UpstreamQuotaBackoff)
 }

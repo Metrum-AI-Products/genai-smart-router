@@ -144,24 +144,6 @@ type attemptLogRecord struct {
 	RetryAfterMS     int64  `json:"retry_after_ms,omitempty"`
 }
 
-type upstreamShapeEventLogRecord struct {
-	Seq                  int    `json:"seq"`
-	TS                   string `json:"ts"`
-	Scope                string `json:"scope"`
-	Provider             string `json:"provider"`
-	ModelRef             string `json:"model_ref,omitempty"`
-	Model                string `json:"model"`
-	Dialect              string `json:"dialect"`
-	Bucket               string `json:"bucket"`
-	Decision             string `json:"decision"`
-	RetryAfterMS         int64  `json:"retry_after_ms,omitempty"`
-	EstimatedInputTokens int    `json:"estimated_input_tokens,omitempty"`
-	ReservedOutputTokens int    `json:"reserved_output_tokens,omitempty"`
-	TotalReservedTokens  int    `json:"total_reserved_tokens,omitempty"`
-	BackoffReason        string `json:"backoff_reason,omitempty"`
-	QueueWaitMS          int64  `json:"queue_wait_ms,omitempty"`
-}
-
 type traceLogRecord struct {
 	Seq        int    `json:"seq"`
 	TS         string `json:"ts"`
@@ -188,6 +170,24 @@ type trafficShapeEventLogRecord struct {
 	EstimatedInputTokens int    `json:"estimated_input_tokens,omitempty"`
 	ReservedOutputTokens int    `json:"reserved_output_tokens,omitempty"`
 	TotalReservedTokens  int    `json:"total_reserved_tokens,omitempty"`
+}
+
+type upstreamShapeEventLogRecord struct {
+	Seq                  int    `json:"seq"`
+	TS                   string `json:"ts"`
+	Scope                string `json:"scope"`
+	Provider             string `json:"provider"`
+	ModelRef             string `json:"model_ref,omitempty"`
+	Model                string `json:"model"`
+	Dialect              string `json:"dialect"`
+	Bucket               string `json:"bucket"`
+	Decision             string `json:"decision"`
+	RetryAfterMS         int64  `json:"retry_after_ms,omitempty"`
+	EstimatedInputTokens int    `json:"estimated_input_tokens,omitempty"`
+	ReservedOutputTokens int    `json:"reserved_output_tokens,omitempty"`
+	TotalReservedTokens  int    `json:"total_reserved_tokens,omitempty"`
+	BackoffReason        string `json:"backoff_reason,omitempty"`
+	QueueWaitMS          int64  `json:"queue_wait_ms,omitempty"`
 }
 
 type decisionShapeFeatureLogRecord struct {

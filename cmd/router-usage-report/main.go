@@ -29,7 +29,12 @@ func main() {
 	callerProject := flag.String("caller-project", "", "filter report to one caller project")
 	callerEnvironment := flag.String("caller-environment", "", "filter report to one caller environment")
 	resolvedGroup := flag.String("resolved-group", "", "filter report to one resolved router model group")
+	provider := flag.String("provider", "", "filter report to one upstream provider")
+	targetModel := flag.String("target-model", "", "filter report to one upstream target model")
 	client := flag.String("client", "", "filter report to one client, such as codex or claude-code")
+	trafficShapedOnly := flag.Bool("traffic-shaped-only", false, "filter report to requests with caller or upstream traffic shaping events")
+	trafficShapeBucket := flag.String("traffic-shape-bucket", "", "filter report to one traffic-shaping bucket")
+	trafficShapeScope := flag.String("traffic-shape-scope", "", "filter report to one traffic-shaping scope")
 	rollup := flag.Bool("rollup", false, "generate a daily usage rollup instead of markdown")
 	rollupType := flag.String("rollup-type", "daily", "rollup granularity: hourly, daily, or monthly")
 	rollupFinalize := flag.Bool("rollup-finalize", false, "finalize the generated rollup window; finalized windows are immutable")
@@ -129,19 +134,24 @@ func main() {
 	}
 
 	md, err := router.GenerateUsageMarkdown(router.UsageReportOptions{
-		Driver:            *driver,
-		DBPath:            *dbPath,
-		DSN:               *dsn,
-		LogPath:           *logPath,
-		From:              from,
-		To:                to,
-		TokenID:           *tokenID,
-		TokenIDPrefix:     *tokenIDPrefix,
-		CallerUser:        *callerUser,
-		CallerProject:     *callerProject,
-		CallerEnvironment: *callerEnvironment,
-		ResolvedGroup:     *resolvedGroup,
-		Client:            *client,
+		Driver:             *driver,
+		DBPath:             *dbPath,
+		DSN:                *dsn,
+		LogPath:            *logPath,
+		From:               from,
+		To:                 to,
+		TokenID:            *tokenID,
+		TokenIDPrefix:      *tokenIDPrefix,
+		CallerUser:         *callerUser,
+		CallerProject:      *callerProject,
+		CallerEnvironment:  *callerEnvironment,
+		ResolvedGroup:      *resolvedGroup,
+		TargetProvider:     *provider,
+		TargetModel:        *targetModel,
+		Client:             *client,
+		TrafficShapedOnly:  *trafficShapedOnly,
+		TrafficShapeBucket: *trafficShapeBucket,
+		TrafficShapeScope:  *trafficShapeScope,
 	})
 	if err != nil {
 		die("generate report: %v", err)

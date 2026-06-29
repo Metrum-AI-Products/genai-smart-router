@@ -28,6 +28,34 @@ Generated reports are Markdown files with structured tables for usage, cost, lat
 
 Provider/model/target shared shaping writes safe scalar `request_upstream_shape_events` rows keyed by `request_id`. Use these rows with `request_usage`, `request_attempts`, and `request_trace_events` to explain why an otherwise eligible target was admitted, skipped, rejected, or placed into adaptive backoff after an upstream `429` or provider quota signal. The rows include scope, provider, model label, dialect, bucket, decision, bounded retry-after milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and safe backoff reason; they do not store prompts, images, raw upstream bodies, provider keys, router tokens, or token hashes.
 
+Traffic-shaping report sections appear when the selected window contains caller shaping or upstream shared-capacity events. They include:
+
+- Traffic Shaping Summary;
+- Traffic Shaping By Bucket, User / Project, Key, Client, and Model Group;
+- Provider Capacity Shaping and Provider Capacity Shaping By Bucket;
+- Adaptive Backoff;
+- Before/After Investigation Helpers for upstream 429/quota attempts, fallbacks, and successful route-arounds.
+
+Example filters:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-shaped-only \
+  --caller-user <owner-user>
+
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --provider <provider-name> \
+  --traffic-shape-bucket adaptive_backoff
+```
+
+Use `--traffic-shape-scope caller` for caller/server shaping, or scopes such as `provider`, `provider_model`, and `target` for upstream shared-capacity shaping.
+
 ## Generate Usage Rollups
 
 Administrators can generate bounded hourly, daily, or monthly rollups from stored request-time usage rows:

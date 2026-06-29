@@ -268,6 +268,20 @@ type adminScalarReportRow struct {
 	LatestCacheBytes                     int64    `json:"latestCacheBytes"`
 	LatestCacheMaxBytes                  int64    `json:"latestCacheMaxBytes"`
 	LatestCacheOccupancyPct              float64  `json:"latestCacheOccupancyPct"`
+	Rejections                           int64    `json:"rejections,omitempty"`
+	Queued                               int64    `json:"queued,omitempty"`
+	SkippedTargets                       int64    `json:"skippedTargets,omitempty"`
+	CooldownsStarted                     int64    `json:"cooldownsStarted,omitempty"`
+	AvgRetryAfterMS                      int64    `json:"avgRetryAfterMs,omitempty"`
+	MaxRetryAfterMS                      int64    `json:"maxRetryAfterMs,omitempty"`
+	AvgQueueWaitMS                       int64    `json:"avgQueueWaitMs,omitempty"`
+	MaxQueueWaitMS                       int64    `json:"maxQueueWaitMs,omitempty"`
+	EstimatedInputTokens                 int64    `json:"estimatedInputTokens,omitempty"`
+	ReservedOutputTokens                 int64    `json:"reservedOutputTokens,omitempty"`
+	TotalReservedTokens                  int64    `json:"totalReservedTokens,omitempty"`
+	Upstream429Attempts                  int64    `json:"upstream429Attempts,omitempty"`
+	UpstreamQuotaAttempts                int64    `json:"upstreamQuotaAttempts,omitempty"`
+	RouteAroundSuccesses                 int64    `json:"routeAroundSuccesses,omitempty"`
 }
 
 type adminSavingsBaselineDTO struct {
@@ -291,6 +305,11 @@ type adminDecisionTelemetryDetail struct {
 	PolicyExecutions    []policyExecutionRecord            `json:"policyExecutions,omitempty"`
 	FallbackTransitions []fallbackTransitionRecord         `json:"fallbackTransitions,omitempty"`
 	CacheReasons        []decisionCacheReasonRecord        `json:"cacheReasons,omitempty"`
+}
+
+type adminShapingTelemetryDetail struct {
+	TrafficShapeEvents  []requestTrafficShapeEventRecord  `json:"trafficShapeEvents,omitempty"`
+	UpstreamShapeEvents []requestUpstreamShapeEventRecord `json:"upstreamShapeEvents,omitempty"`
 }
 
 type adminSavingsRow struct {
@@ -520,6 +539,7 @@ type adminScalarEndpointSpec struct {
 	Requests     bool
 	Anomalies    bool
 	WithBaseline bool
+	ShapeReport  string
 }
 
 func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
@@ -713,6 +733,13 @@ func adminScalarEndpointSpecs(path string) (adminScalarEndpointSpec, bool) {
 		"/api/project-chargeback":        {Report: "project-chargeback", Dimension: "project", Secondary: "environment", Sort: "cost"},
 		"/api/capability-usage":          {Report: "capability-usage", Dimension: "capability", Secondary: "model_group", Sort: "image"},
 		"/api/anomalies":                 {Report: "anomalies", Dimension: "anomaly", Secondary: "provider_model", Sort: "requests", Anomalies: true},
+		"/api/traffic-shaping-overview":  {Report: "traffic-shaping-overview", Dimension: "shape_surface", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "overview"},
+		"/api/traffic-shaping-by-user":   {Report: "traffic-shaping-by-user", Dimension: "caller_user", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "caller"},
+		"/api/traffic-shaping-by-key":    {Report: "traffic-shaping-by-key", Dimension: "token_id", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "caller"},
+		"/api/traffic-shaping-by-client": {Report: "traffic-shaping-by-client", Dimension: "client", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "caller"},
+		"/api/traffic-shaping-by-group":  {Report: "traffic-shaping-by-group", Dimension: "model_group", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "caller"},
+		"/api/provider-capacity-shaping": {Report: "provider-capacity-shaping", Dimension: "provider_model", Secondary: "shape_bucket", Sort: "requests", ShapeReport: "upstream"},
+		"/api/adaptive-upstream-backoff": {Report: "adaptive-upstream-backoff", Dimension: "backoff_reason", Secondary: "provider_model", Sort: "requests", ShapeReport: "adaptive"},
 	}
 	spec, ok := specs[path]
 	return spec, ok
@@ -829,6 +856,15 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	rows, err := s.usage.rows(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
+	if spec.ShapeReport != "" {
+		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, buildAdminShapeReportResponse(filters, rows, events, spec))
 		return
 	}
 	var baseline adminSavingsBaselineDTO
@@ -1082,9 +1118,13 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	var policyExecutions []policyExecutionRecord
 	var fallbackTransitions []fallbackTransitionRecord
 	var cacheReasons []decisionCacheReasonRecord
+	var trafficShapeEvents []requestTrafficShapeEventRecord
+	var upstreamShapeEvents []requestUpstreamShapeEventRecord
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("attempt_index ASC").Find(&attempts).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&traces).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Find(&errors).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&trafficShapeEvents).Error
+	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&upstreamShapeEvents).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&shapeFeatures).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("candidate_index ASC").Find(&candidates).Error
 	_ = s.usage.db.Where("request_id = ?", requestID).Order("seq ASC").Find(&filterReasons).Error
@@ -1099,6 +1139,10 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 		"attempts": adminAttemptsFromRecords(attempts),
 		"trace":    adminTraceFromRecords(traces),
 		"errors":   adminErrorsFromRecords(errors),
+		"shapingTelemetry": adminShapingTelemetryDetail{
+			TrafficShapeEvents:  trafficShapeEvents,
+			UpstreamShapeEvents: upstreamShapeEvents,
+		},
 		"decisionTelemetry": adminDecisionTelemetryDetail{
 			ShapeFeatures:       shapeFeatures,
 			Candidates:          candidates,
@@ -1128,8 +1172,13 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	decisionSummary := s.usage.decisionTelemetrySummary(rows)
+	upstreamShapeEvents, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary)))
+	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary, upstreamShapeEvents)))
 }
 
 func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, withLimit bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {
@@ -1182,23 +1231,25 @@ func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request
 		status = parsed
 	}
 	opts := UsageReportOptions{
-		From:              from,
-		To:                to,
-		CallerID:          strings.TrimSpace(q.Get("caller_id")),
-		CallerIP:          strings.TrimSpace(q.Get("caller_ip")),
-		TokenID:           q.Get("token_id"),
-		TokenIDPrefix:     q.Get("token_id_prefix"),
-		CallerUser:        q.Get("caller_user"),
-		CallerProject:     q.Get("caller_project"),
-		CallerEnvironment: q.Get("caller_environment"),
-		RequestedModel:    strings.TrimSpace(q.Get("requested_model")),
-		ResolvedGroup:     q.Get("resolved_group"),
-		TargetProvider:    strings.TrimSpace(q.Get("provider")),
-		TargetModel:       strings.TrimSpace(q.Get("target_model")),
-		TargetDialect:     strings.TrimSpace(q.Get("dialect")),
-		Status:            status,
-		Cache:             strings.TrimSpace(q.Get("cache")),
-		Client:            q.Get("client"),
+		From:               from,
+		To:                 to,
+		CallerID:           strings.TrimSpace(q.Get("caller_id")),
+		CallerIP:           strings.TrimSpace(q.Get("caller_ip")),
+		TokenID:            q.Get("token_id"),
+		TokenIDPrefix:      q.Get("token_id_prefix"),
+		CallerUser:         q.Get("caller_user"),
+		CallerProject:      q.Get("caller_project"),
+		CallerEnvironment:  q.Get("caller_environment"),
+		RequestedModel:     strings.TrimSpace(q.Get("requested_model")),
+		ResolvedGroup:      q.Get("resolved_group"),
+		TargetProvider:     strings.TrimSpace(q.Get("provider")),
+		TargetModel:        strings.TrimSpace(q.Get("target_model")),
+		TargetDialect:      strings.TrimSpace(q.Get("dialect")),
+		Status:             status,
+		Cache:              strings.TrimSpace(q.Get("cache")),
+		Client:             q.Get("client"),
+		TrafficShapeBucket: strings.TrimSpace(q.Get("traffic_shape_bucket")),
+		TrafficShapeScope:  strings.TrimSpace(q.Get("traffic_shape_scope")),
 	}
 	if !global {
 		applyAdminDomainScope(&opts, subject.domain)
@@ -1739,6 +1790,165 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 	resp.Rows = adminScalarRowsFromAgg(table, spec.Sort, filters.Limit)
 	resp.Charts = adminScalarCharts(filters, generatedAt, spec, resp.Rows)
 	return resp
+}
+
+func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent, spec adminScalarEndpointSpec) adminScalarReportResponse {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	table := map[string]*adminShapeAgg{}
+	includeCaller := spec.ShapeReport == "overview" || spec.ShapeReport == "caller"
+	includeUpstream := spec.ShapeReport == "overview" || spec.ShapeReport == "upstream" || spec.ShapeReport == "adaptive"
+	if includeCaller {
+		for _, row := range rows {
+			if !row.TrafficShapeApplied {
+				continue
+			}
+			key, secondary := adminShapeCallerKeys(row, spec)
+			adminShapeAggFor(table, key, secondary).addCaller(row)
+		}
+	}
+	if includeUpstream {
+		for _, event := range upstreamEvents {
+			if spec.ShapeReport == "adaptive" && event.Event.Bucket != shapeBucketBackoff {
+				continue
+			}
+			key, secondary := adminShapeUpstreamKeys(event, spec)
+			adminShapeAggFor(table, key, secondary).addUpstream(event)
+		}
+	}
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(&agg{Calls: int64(len(rows))}),
+		Rows:         adminShapeRowsFromAgg(table, filters.Limit),
+		GeneratedUTC: generatedAt,
+	}
+	resp.Charts = adminShapeCharts(filters, generatedAt, spec, resp.Rows)
+	return resp
+}
+
+type adminShapeAgg struct {
+	Key       string
+	Secondary string
+	Agg       shapingMarkdownAgg
+}
+
+func adminShapeAggFor(table map[string]*adminShapeAgg, key, secondary string) *adminShapeAgg {
+	key = defaultString(key, "unknown")
+	mapKey := joinKey(key, secondary)
+	if table[mapKey] == nil {
+		table[mapKey] = &adminShapeAgg{Key: key, Secondary: secondary}
+	}
+	return table[mapKey]
+}
+
+func (a *adminShapeAgg) addCaller(row usageRow) {
+	addCallerShape(&a.Agg, row)
+}
+
+func (a *adminShapeAgg) addUpstream(event upstreamShapeJoinedEvent) {
+	addUpstreamShape(&a.Agg, event)
+}
+
+func (a *adminShapeAgg) row() adminScalarReportRow {
+	return adminScalarReportRow{
+		Key:                   a.Key,
+		SecondaryKey:          a.Secondary,
+		Requests:              a.Agg.Requests,
+		Errors:                a.Agg.Rejected,
+		ErrorRatePct:          ratioPct(a.Agg.Rejected, a.Agg.Requests),
+		Fallbacks:             a.Agg.Fallbacks,
+		FallbackRatePct:       ratioPct(a.Agg.Fallbacks, a.Agg.Requests),
+		InputTokens:           a.Agg.EstimatedInput,
+		OutputTokens:          a.Agg.ReservedOutput,
+		Tokens:                a.Agg.TotalReserved,
+		TotalTokens:           a.Agg.TotalReserved,
+		Rejections:            a.Agg.Rejected,
+		Queued:                a.Agg.Queued,
+		SkippedTargets:        a.Agg.SkippedTargets,
+		CooldownsStarted:      a.Agg.CooldownsStarted,
+		AvgRetryAfterMS:       avg(a.Agg.RetryAfterMS, a.Agg.RetryAfterCount),
+		MaxRetryAfterMS:       a.Agg.MaxRetryAfterMS,
+		AvgQueueWaitMS:        avg(a.Agg.QueueWaitMS, a.Agg.QueueWaitCount),
+		MaxQueueWaitMS:        a.Agg.MaxQueueWaitMS,
+		EstimatedInputTokens:  a.Agg.EstimatedInput,
+		ReservedOutputTokens:  a.Agg.ReservedOutput,
+		TotalReservedTokens:   a.Agg.TotalReserved,
+		Upstream429Attempts:   a.Agg.Upstream429,
+		UpstreamQuotaAttempts: a.Agg.UpstreamQuota,
+		RouteAroundSuccesses:  a.Agg.RouteAroundSuccess,
+	}
+}
+
+func adminShapeRowsFromAgg(table map[string]*adminShapeAgg, limit int) []adminScalarReportRow {
+	rows := make([]adminScalarReportRow, 0, len(table))
+	for _, agg := range table {
+		rows = append(rows, agg.row())
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Requests == rows[j].Requests {
+			if rows[i].Key == rows[j].Key {
+				return rows[i].SecondaryKey < rows[j].SecondaryKey
+			}
+			return rows[i].Key < rows[j].Key
+		}
+		return rows[i].Requests > rows[j].Requests
+	})
+	if limit > 0 && len(rows) > limit {
+		return rows[:limit]
+	}
+	return rows
+}
+
+func adminShapeCallerKeys(row usageRow, spec adminScalarEndpointSpec) (string, string) {
+	key := adminScalarDimension(row, spec.Dimension)
+	secondary := adminShapeBucketKey(row.TrafficShapeScope, row.TrafficShapeBucket, row.TrafficShapeDecision)
+	if spec.Secondary != "shape_bucket" {
+		secondary = adminScalarDimension(row, spec.Secondary)
+	}
+	if spec.Dimension == "shape_surface" {
+		key = "caller"
+	}
+	return key, secondary
+}
+
+func adminShapeUpstreamKeys(joined upstreamShapeJoinedEvent, spec adminScalarEndpointSpec) (string, string) {
+	event := joined.Event
+	switch spec.Dimension {
+	case "shape_surface":
+		return "provider/model", adminShapeBucketKey(event.Scope, event.Bucket, event.Decision)
+	case "provider_model":
+		return joinKey(defaultString(event.Provider, "unknown"), defaultString(event.Model, "unknown")), adminShapeBucketKey(event.Scope, event.Bucket, event.Decision)
+	case "backoff_reason":
+		return defaultString(event.BackoffReason, "adaptive-backoff"), joinKey(defaultString(event.Provider, "unknown"), defaultString(event.Model, "unknown"))
+	default:
+		return adminScalarDimension(joined.Row, spec.Dimension), adminShapeBucketKey(event.Scope, event.Bucket, event.Decision)
+	}
+}
+
+func adminShapeBucketKey(scope, bucket, decision string) string {
+	return joinKey(defaultString(scope, "unknown"), defaultString(bucket, "unknown"), defaultString(decision, "unknown"))
+}
+
+func adminShapeCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminScalarReportRow) []adminReportChart {
+	byKey := map[string]float64{}
+	byRejected := map[string]float64{}
+	for _, row := range rows {
+		byKey[row.Key] += float64(row.Requests)
+		if row.Rejections > 0 {
+			byRejected[row.Key] += float64(row.Rejections)
+		}
+		if row.SkippedTargets > 0 {
+			byRejected[row.Key] += float64(row.SkippedTargets)
+		}
+	}
+	return []adminReportChart{
+		adminCategoryChart(filters, generatedAt, spec.Report+"_events", "Shaping events", "Category", "Events", "count", []adminReportChartSeries{
+			adminSeriesFromCounts("Events", "count", "magenta", byKey),
+		}),
+		adminCategoryChart(filters, generatedAt, spec.Report+"_limited", "Limited or skipped", "Category", "Events", "count", []adminReportChartSeries{
+			adminSeriesFromCounts("Limited", "count", "red", byRejected),
+		}),
+	}
 }
 
 type adminScalarKey struct {

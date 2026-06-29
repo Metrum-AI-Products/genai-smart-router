@@ -16,7 +16,9 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | Usage/cost fields | query usage DB/report after a request |
+| Caller traffic-shaping reports | enable a low caller `traffic_shape`, produce one queued or rejected request, run `router-usage-report --traffic-shaped-only`, and open Traffic shaping overview / Shaping users in admin reports |
 | Provider/model/target shaping | enable a low local `traffic_shape`, send parallel requests from two caller tokens, verify skip/fallback or `503 upstream-capacity-throttled`, `Retry-After` when calculable, and safe `request_upstream_shape_events` rows |
+| Provider-shaping reports | after provider/model/target shaping smoke, open Provider shaping and Backoff admin tabs and confirm charts/tables show skipped targets or cooldown starts without prompts, tokens, token hashes, or provider keys |
 | Adaptive upstream backoff | simulate upstream `429` with bounded `Retry-After` and provider quota/billing exhaustion; verify the next request skips the affected target until cooldown expires and records `adaptive-backoff-provider-429` or `adaptive-backoff-provider-quota` |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 

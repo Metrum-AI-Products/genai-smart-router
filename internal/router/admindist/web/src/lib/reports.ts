@@ -110,6 +110,24 @@ const trafficColumns: ReportColumn[] = [
   { key: "fallbackRatePct", label: "Fallback rate", unit: "%" },
 ];
 
+const shapingColumns: ReportColumn[] = [
+  { key: "requests", label: "Events" },
+  { key: "rejections", label: "Rejections" },
+  { key: "queued", label: "Queued" },
+  { key: "skippedTargets", label: "Skipped targets" },
+  { key: "cooldownsStarted", label: "Cooldowns" },
+  { key: "avgRetryAfterMs", label: "Avg retry-after", unit: "ms" },
+  { key: "maxRetryAfterMs", label: "Max retry-after", unit: "ms" },
+  { key: "avgQueueWaitMs", label: "Avg queue wait", unit: "ms" },
+  { key: "maxQueueWaitMs", label: "Max queue wait", unit: "ms" },
+  { key: "estimatedInputTokens", label: "Estimated input" },
+  { key: "reservedOutputTokens", label: "Reserved output" },
+  { key: "totalReservedTokens", label: "Total reserved" },
+  { key: "upstream429Attempts", label: "Upstream 429" },
+  { key: "upstreamQuotaAttempts", label: "Upstream quota" },
+  { key: "routeAroundSuccesses", label: "Route-around OK" },
+];
+
 const tokenColumns: ReportColumn[] = [
   { key: "inputTokens", label: "Input tokens" },
   { key: "outputTokens", label: "Output tokens" },
@@ -311,6 +329,13 @@ export const tabSpecs: TabSpec[] = [
   { id: "errors-fallbacks", label: "Errors", endpoint: "errors-fallbacks", columns: [...identityColumns, ...trafficColumns, ...latencyColumns] },
   { id: "cache-report", label: "Cache", endpoint: "cache", columns: [...identityColumns, ...trafficColumns, ...cacheColumns] },
   { id: "quotas-budgets", label: "Quotas", endpoint: "quotas-budgets", columns: defaultScalarColumns },
+  { id: "traffic-shaping-overview", label: "Shaping", endpoint: "traffic-shaping-overview", columns: [...identityColumns, ...shapingColumns] },
+  { id: "traffic-shaping-by-user", label: "Shaping users", endpoint: "traffic-shaping-by-user", columns: [...identityColumns, ...shapingColumns] },
+  { id: "traffic-shaping-by-key", label: "Shaping keys", endpoint: "traffic-shaping-by-key", columns: [...identityColumns, ...shapingColumns] },
+  { id: "traffic-shaping-by-client", label: "Shaping clients", endpoint: "traffic-shaping-by-client", columns: [...identityColumns, ...shapingColumns] },
+  { id: "traffic-shaping-by-group", label: "Shaping groups", endpoint: "traffic-shaping-by-group", columns: [...identityColumns, ...shapingColumns] },
+  { id: "provider-capacity-shaping", label: "Provider shaping", endpoint: "provider-capacity-shaping", columns: [...identityColumns, ...shapingColumns] },
+  { id: "adaptive-upstream-backoff", label: "Backoff", endpoint: "adaptive-upstream-backoff", columns: [...identityColumns, ...shapingColumns] },
   { id: "troubleshooting-buckets", label: "Troubleshooting", endpoint: "troubleshooting-buckets", columns: defaultScalarColumns },
   { id: "routing-decisions", label: "Routing", endpoint: "routing-decisions", columns: defaultScalarColumns },
   { id: "dynamic-signals", label: "Dynamic signals", endpoint: "dynamic-signals", columns: defaultScalarColumns },
@@ -350,6 +375,8 @@ export const filterFields = [
   ["status", "Status", ""],
   ["cache", "Cache", ""],
   ["client", "Client", ""],
+  ["traffic_shape_bucket", "Shape bucket", ""],
+  ["traffic_shape_scope", "Shape scope", ""],
   ["sort", "Sort", ""],
   ["direction", "Direction", ""],
 ] as const;

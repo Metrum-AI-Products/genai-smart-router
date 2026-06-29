@@ -127,7 +127,19 @@ The current browser surface includes:
 - Errors and fallbacks.
 - Cache.
 - Quotas and budgets.
+- Traffic shaping overview, by user, by key, by client, and by model group. These tabs distinguish caller/server shaping decisions such as `rejected` and `queued`, show limiting scope/bucket, retry-after, queue wait, estimated input tokens, reserved output tokens, and total reserved tokens.
+- Provider capacity shaping and adaptive upstream backoff. These tabs show provider/model/target admission, skipped targets, cooldown starts, upstream 429/quota backoff reasons, and successful route-around counts.
 - Troubleshooting buckets for quota, TPM/RPM or rate-limit, concurrency, max-token/context, upstream quota/billing, key-state, cache, fallback, multi-attempt, and HTTP error classes inferred from safe stored request fields.
+
+Example shaping URLs:
+
+```text
+/admin/reports/?tab=traffic-shaping-overview&since=24h&traffic_shape_scope=caller
+/admin/reports/?tab=provider-capacity-shaping&since=24h&provider=openai
+/admin/reports/?tab=adaptive-upstream-backoff&since=24h
+```
+
+Use caller shaping tabs when the caller received `429 traffic-shaped` or had queued requests. Use provider capacity shaping when the caller received `503 upstream-capacity-throttled` or when a target was skipped and another target succeeded. Use adaptive backoff when a prior upstream `429` or quota/billing response should temporarily protect that provider/model/target.
 - Routing decisions.
 - Dynamic-score enabled signals, score buckets, and threshold buckets.
 - Max-token buckets, input-token buckets, and admission reasons.

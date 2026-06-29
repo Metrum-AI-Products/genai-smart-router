@@ -160,6 +160,26 @@ For fallback triage, join `request_usage`, `request_attempts`, and `request_fall
 
 For upstream shared-capacity triage, join `request_usage` to `request_upstream_shape_events` by `request_id`. Inspect `scope`, `provider`, `model`, `dialect`, `bucket`, `decision`, `retry_after_ms`, and `backoff_reason` to distinguish `provider-shape-throttled`, `model-shape-throttled`, `target-shape-throttled`, `adaptive-backoff-provider-429`, and `adaptive-backoff-provider-quota`. Use these rows with `request_attempts.error_class` to separate proactive local shaping from upstream-returned rate limits or provider quota failures.
 
+Traffic-shaping incident reports:
+
+```bash
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --traffic-shaped-only \
+  --caller-user <owner-user>
+
+router-usage-report \
+  --driver postgres \
+  --dsn "$ROUTER_USAGE_DB_DSN" \
+  --since 24h \
+  --provider <provider-name> \
+  --traffic-shape-scope provider
+```
+
+Read the caller sections first for `429 traffic-shaped`: confirm whether the request was rejected or queued, which bucket limited it, and whether queue wait explains latency. Read Provider Capacity Shaping and Adaptive Backoff for `503 upstream-capacity-throttled`: confirm whether all eligible targets were locally skipped, whether a prior upstream `429`/quota event started cooldown, and whether successful route-arounds indicate the model group still had enough target diversity.
+
 Smoke after enabling:
 
 1. Send a normal text request and confirm `request_target_candidates` has bounded candidate rows and `request_routing_decisions` has the selected strategy/target.
@@ -168,7 +188,9 @@ Smoke after enabling:
 4. Send an external or script policy failure and confirm a safe `request_policy_executions` row exists without a routing decision row.
 5. Send an upstream failure followed by fallback success and confirm `request_fallback_transitions.fallback_succeeded = true`.
 6. Enable a very low provider `traffic_shape` on a local smoke target, send two quick requests, and confirm one `request_upstream_shape_events.decision = 'skipped'` row without raw prompt text or secrets.
-7. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
+7. Generate `router-usage-report --traffic-shaped-only` and confirm Traffic Shaping Summary, Provider Capacity Shaping, and Adaptive Backoff sections appear without raw prompt text or secrets.
+8. Open `/admin/reports/?tab=traffic-shaping-overview&since=24h`, `/admin/reports/?tab=provider-capacity-shaping&since=24h`, and `/admin/reports/?tab=adaptive-upstream-backoff&since=24h`; verify tables, charts, search, sort, and CSV export use safe scalar fields only.
+9. Generate `router-usage-report` and confirm the Decision Telemetry Summary appears without raw prompt text or secrets.
 
 Filtered benchmark or project report:
 

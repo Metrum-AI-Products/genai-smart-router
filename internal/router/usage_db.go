@@ -29,27 +29,30 @@ type usageStore struct {
 }
 
 type UsageReportOptions struct {
-	Driver            string
-	DBPath            string
-	DSN               string
-	LogPath           string
-	From              time.Time
-	To                time.Time
-	CallerID          string
-	CallerIP          string
-	TokenID           string
-	TokenIDPrefix     string
-	CallerUser        string
-	CallerProject     string
-	CallerEnvironment string
-	RequestedModel    string
-	ResolvedGroup     string
-	TargetProvider    string
-	TargetModel       string
-	TargetDialect     string
-	Status            int
-	Cache             string
-	Client            string
+	Driver             string
+	DBPath             string
+	DSN                string
+	LogPath            string
+	From               time.Time
+	To                 time.Time
+	CallerID           string
+	CallerIP           string
+	TokenID            string
+	TokenIDPrefix      string
+	CallerUser         string
+	CallerProject      string
+	CallerEnvironment  string
+	RequestedModel     string
+	ResolvedGroup      string
+	TargetProvider     string
+	TargetModel        string
+	TargetDialect      string
+	Status             int
+	Cache              string
+	Client             string
+	TrafficShapedOnly  bool
+	TrafficShapeBucket string
+	TrafficShapeScope  string
 }
 
 type UsageRollupOptions struct {
@@ -65,6 +68,11 @@ type UsageRollupOptions struct {
 	BaselineVersion                  string
 	BaselineInputPricePerMillionUSD  float64
 	BaselineOutputPricePerMillionUSD float64
+}
+
+type upstreamShapeJoinedEvent struct {
+	Event requestUpstreamShapeEventRecord
+	Row   usageRow
 }
 
 type UsageRollupResult struct {
@@ -2207,7 +2215,11 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 		return "", err
 	}
 	decisionSummary := store.decisionTelemetrySummary(rows)
-	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary), nil
+	upstreamShapeEvents, err := store.upstreamShapeEventsForRows(rows, opts)
+	if err != nil {
+		return "", err
+	}
+	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary, upstreamShapeEvents), nil
 }
 
 func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
@@ -3817,6 +3829,15 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if opts.Client != "" {
 		q = q.Where("client = ?", opts.Client)
 	}
+	if opts.TrafficShapedOnly {
+		q = q.Where("traffic_shape_applied = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE decision IN (?, ?))", true, shapeDecisionSkipped, shapeDecisionCooldownStarted)
+	}
+	if opts.TrafficShapeBucket != "" {
+		q = q.Where("traffic_shape_bucket = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE bucket = ?)", opts.TrafficShapeBucket, opts.TrafficShapeBucket)
+	}
+	if opts.TrafficShapeScope != "" {
+		q = q.Where("traffic_shape_scope = ? OR request_id IN (SELECT request_id FROM request_upstream_shape_events WHERE scope = ?)", opts.TrafficShapeScope, opts.TrafficShapeScope)
+	}
 	if err := q.Order("ts ASC, request_id ASC").Find(&records).Error; err != nil {
 		return nil, err
 	}
@@ -3829,6 +3850,49 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 		out = append(out, row)
 	}
 	s.loadUsageReportBuckets(out)
+	return out, nil
+}
+
+func (s *usageStore) upstreamShapeEventsForRows(rows []usageRow, opts UsageReportOptions) ([]upstreamShapeJoinedEvent, error) {
+	if s == nil || s.db == nil || len(rows) == 0 {
+		return nil, nil
+	}
+	requestIDs := make([]string, 0, len(rows))
+	rowByRequestID := map[string]usageRow{}
+	for _, row := range rows {
+		if row.RequestID == "" {
+			continue
+		}
+		requestIDs = append(requestIDs, row.RequestID)
+		rowByRequestID[row.RequestID] = row
+	}
+	if len(requestIDs) == 0 {
+		return nil, nil
+	}
+	q := s.db.Where("request_id IN ?", requestIDs)
+	if opts.TrafficShapeScope != "" {
+		q = q.Where("scope = ?", opts.TrafficShapeScope)
+	}
+	if opts.TrafficShapeBucket != "" {
+		q = q.Where("bucket = ?", opts.TrafficShapeBucket)
+	}
+	if opts.TargetProvider != "" {
+		q = q.Where("provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("dialect = ?", opts.TargetDialect)
+	}
+	var records []requestUpstreamShapeEventRecord
+	if err := q.Order("ts ASC, request_id ASC, seq ASC").Find(&records).Error; err != nil {
+		return nil, err
+	}
+	out := make([]upstreamShapeJoinedEvent, 0, len(records))
+	for _, event := range records {
+		out = append(out, upstreamShapeJoinedEvent{Event: event, Row: rowByRequestID[event.RequestID]})
+	}
 	return out, nil
 }
 
@@ -4046,7 +4110,7 @@ func (s *usageStore) securityAccessEvents(opts SecurityReportOptions) ([]securit
 	return out, nil
 }
 
-func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary) string {
+func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary, upstreamShapeEvents []upstreamShapeJoinedEvent) string {
 	total := &agg{}
 	byToken := map[string]*agg{}
 	byTokenMeta := map[string]usageRow{}
@@ -4119,6 +4183,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 
 	writeCacheSummary(&b, total)
 	writeDecisionTelemetrySummary(&b, decisionSummary)
+	writeTrafficShapingSummary(&b, rows, upstreamShapeEvents)
 	writeDownstreamUserPerformanceTable(&b, byDownstreamUser)
 	writeUpstreamEndpointPerformanceTable(&b, byUpstreamEndpoint)
 	writeRequestThroughputTable(&b, rows)
@@ -4301,6 +4366,247 @@ func writeDecisionTelemetrySummary(b *strings.Builder, summary decisionTelemetry
 	writeCountTable(b, "Max Token Buckets", "Bucket", summary.ByMaxTokenBucket)
 	writeCountTable(b, "Input Token Buckets", "Bucket", summary.ByInputTokenBucket)
 	writeCountTable(b, "Admission Reasons", "Reason", summary.ByAdmissionReason)
+}
+
+type shapingMarkdownAgg struct {
+	Requests           int64
+	Rejected           int64
+	Queued             int64
+	SkippedTargets     int64
+	CooldownsStarted   int64
+	RetryAfterMS       int64
+	RetryAfterCount    int64
+	MaxRetryAfterMS    int64
+	QueueWaitMS        int64
+	QueueWaitCount     int64
+	MaxQueueWaitMS     int64
+	EstimatedInput     int64
+	ReservedOutput     int64
+	TotalReserved      int64
+	Upstream429        int64
+	UpstreamQuota      int64
+	Fallbacks          int64
+	RouteAroundSuccess int64
+}
+
+func (a *shapingMarkdownAgg) addRetry(ms int64) {
+	if ms <= 0 {
+		return
+	}
+	a.RetryAfterMS += ms
+	a.RetryAfterCount++
+	if ms > a.MaxRetryAfterMS {
+		a.MaxRetryAfterMS = ms
+	}
+}
+
+func (a *shapingMarkdownAgg) addQueue(ms int64) {
+	if ms <= 0 {
+		return
+	}
+	a.QueueWaitMS += ms
+	a.QueueWaitCount++
+	if ms > a.MaxQueueWaitMS {
+		a.MaxQueueWaitMS = ms
+	}
+}
+
+func writeTrafficShapingSummary(b *strings.Builder, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent) {
+	callerTotal := &shapingMarkdownAgg{}
+	callerByBucket := map[string]*shapingMarkdownAgg{}
+	callerByUser := map[string]*shapingMarkdownAgg{}
+	callerByKey := map[string]*shapingMarkdownAgg{}
+	callerByClient := map[string]*shapingMarkdownAgg{}
+	callerByGroup := map[string]*shapingMarkdownAgg{}
+	for _, row := range rows {
+		if !row.TrafficShapeApplied {
+			continue
+		}
+		addCallerShape(callerTotal, row)
+		addCallerShape(getShapeAgg(callerByBucket, joinKey(defaultString(row.TrafficShapeScope, "unknown"), defaultString(row.TrafficShapeBucket, "unknown"), defaultString(row.TrafficShapeDecision, "unknown"))), row)
+		addCallerShape(getShapeAgg(callerByUser, joinKey(defaultString(row.CallerUser, "unknown"), defaultString(row.CallerProject, "unknown"))), row)
+		addCallerShape(getShapeAgg(callerByKey, defaultString(row.TokenID, "unknown")), row)
+		addCallerShape(getShapeAgg(callerByClient, defaultString(row.Client, "unknown")), row)
+		addCallerShape(getShapeAgg(callerByGroup, defaultString(row.ResolvedGroup, row.RequestedModel)), row)
+	}
+	upstreamTotal := &shapingMarkdownAgg{}
+	upstreamByBucket := map[string]*shapingMarkdownAgg{}
+	upstreamByProvider := map[string]*shapingMarkdownAgg{}
+	backoffByReason := map[string]*shapingMarkdownAgg{}
+	for _, joined := range upstreamEvents {
+		addUpstreamShape(upstreamTotal, joined)
+		event := joined.Event
+		addUpstreamShape(getShapeAgg(upstreamByBucket, joinKey(defaultString(event.Scope, "unknown"), defaultString(event.Bucket, "unknown"), defaultString(event.Decision, "unknown"))), joined)
+		addUpstreamShape(getShapeAgg(upstreamByProvider, joinKey(defaultString(event.Provider, "unknown"), defaultString(event.Model, "unknown"), defaultString(event.Dialect, "unknown"))), joined)
+		if event.BackoffReason != "" || event.Bucket == shapeBucketBackoff {
+			addUpstreamShape(getShapeAgg(backoffByReason, defaultString(event.BackoffReason, "adaptive-backoff")), joined)
+		}
+	}
+	if callerTotal.Requests == 0 && upstreamTotal.Requests == 0 {
+		return
+	}
+	fmt.Fprintln(b, "## Traffic Shaping Summary")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "| Surface | Events | Rejected | Queued | Skipped targets | Cooldowns | Avg retry-after ms | Max retry-after ms | Avg queue wait ms | Max queue wait ms | Estimated input tokens | Reserved output tokens | Total reserved tokens |")
+	fmt.Fprintln(b, "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	writeShapeAggLine(b, "caller", callerTotal)
+	writeShapeAggLine(b, "provider/model", upstreamTotal)
+	fmt.Fprintln(b)
+	writeShapeAggTable(b, "Traffic Shaping By Bucket", []string{"Scope", "Bucket", "Decision"}, callerByBucket, splitKey3)
+	writeShapeAggTable(b, "Traffic Shaping By User / Project", []string{"User", "Project"}, callerByUser, splitKey2)
+	writeShapeAggTable(b, "Traffic Shaping By Key", []string{"Token ID"}, callerByKey, splitKey1)
+	writeShapeAggTable(b, "Traffic Shaping By Client", []string{"Client"}, callerByClient, splitKey1)
+	writeShapeAggTable(b, "Traffic Shaping By Model Group", []string{"Model Group"}, callerByGroup, splitKey1)
+	writeShapeAggTable(b, "Provider Capacity Shaping", []string{"Provider", "Model", "Dialect"}, upstreamByProvider, splitKey3)
+	writeShapeAggTable(b, "Provider Capacity Shaping By Bucket", []string{"Scope", "Bucket", "Decision"}, upstreamByBucket, splitKey3)
+	writeShapeAggTable(b, "Adaptive Backoff", []string{"Reason"}, backoffByReason, splitKey1)
+	writeBeforeAfterShapeHelpers(b, rows, upstreamEvents)
+}
+
+func addCallerShape(a *shapingMarkdownAgg, row usageRow) {
+	a.Requests++
+	switch row.TrafficShapeDecision {
+	case trafficShapeDecisionRejected:
+		a.Rejected++
+	case trafficShapeDecisionQueued:
+		a.Queued++
+	}
+	a.addRetry(row.TrafficShapeRetryAfterMS)
+	a.addQueue(row.TrafficShapeQueueWaitMS)
+	a.EstimatedInput += int64(row.TrafficShapeEstimatedInputTokens)
+	a.ReservedOutput += int64(row.TrafficShapeReservedOutputTokens)
+	a.TotalReserved += int64(row.TrafficShapeTotalReservedTokens)
+}
+
+func addUpstreamShape(a *shapingMarkdownAgg, joined upstreamShapeJoinedEvent) {
+	a.Requests++
+	event := joined.Event
+	switch event.Decision {
+	case shapeDecisionSkipped:
+		a.SkippedTargets++
+	case shapeDecisionCooldownStarted:
+		a.CooldownsStarted++
+	case shapeDecisionRejected:
+		a.Rejected++
+	}
+	a.addRetry(event.RetryAfterMS)
+	a.addQueue(event.QueueWaitMS)
+	a.EstimatedInput += int64(event.EstimatedInputTokens)
+	a.ReservedOutput += int64(event.ReservedOutputTokens)
+	a.TotalReserved += int64(event.TotalReservedTokens)
+	switch event.BackoffReason {
+	case "adaptive-backoff-provider-429":
+		a.Upstream429++
+	case "adaptive-backoff-provider-quota":
+		a.UpstreamQuota++
+	}
+	if joined.Row.FallbackUsed {
+		a.Fallbacks++
+	}
+	if event.Decision == shapeDecisionSkipped && joined.Row.Status < 400 {
+		a.RouteAroundSuccess++
+	}
+}
+
+func getShapeAgg(m map[string]*shapingMarkdownAgg, key string) *shapingMarkdownAgg {
+	if m[key] == nil {
+		m[key] = &shapingMarkdownAgg{}
+	}
+	return m[key]
+}
+
+func writeShapeAggLine(b *strings.Builder, label string, a *shapingMarkdownAgg) {
+	fmt.Fprintf(b, "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+		esc(label), a.Requests, a.Rejected, a.Queued, a.SkippedTargets, a.CooldownsStarted,
+		avg(a.RetryAfterMS, a.RetryAfterCount), a.MaxRetryAfterMS,
+		avg(a.QueueWaitMS, a.QueueWaitCount), a.MaxQueueWaitMS,
+		a.EstimatedInput, a.ReservedOutput, a.TotalReserved)
+}
+
+func writeShapeAggTable(b *strings.Builder, title string, keyHeaders []string, data map[string]*shapingMarkdownAgg, split func(string) []string) {
+	fmt.Fprintf(b, "## %s\n\n", title)
+	for _, h := range keyHeaders {
+		fmt.Fprintf(b, "| %s ", h)
+	}
+	fmt.Fprintln(b, "| Events | Rejected | Queued | Skipped Targets | Cooldowns | Avg Retry-After ms | Max Retry-After ms | Avg Queue Wait ms | Max Queue Wait ms | Upstream 429 | Upstream Quota | Fallbacks | Route-Around OK | Total Reserved Tokens |")
+	for range keyHeaders {
+		fmt.Fprint(b, "|---")
+	}
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	if len(data) == 0 {
+		for range keyHeaders {
+			fmt.Fprint(b, "| _none_ ")
+		}
+		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+		fmt.Fprintln(b)
+		return
+	}
+	for _, key := range sortedShapeKeys(data) {
+		for _, part := range split(key) {
+			fmt.Fprintf(b, "| %s ", esc(part))
+		}
+		a := data[key]
+		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+			a.Requests, a.Rejected, a.Queued, a.SkippedTargets, a.CooldownsStarted,
+			avg(a.RetryAfterMS, a.RetryAfterCount), a.MaxRetryAfterMS,
+			avg(a.QueueWaitMS, a.QueueWaitCount), a.MaxQueueWaitMS,
+			a.Upstream429, a.UpstreamQuota, a.Fallbacks, a.RouteAroundSuccess, a.TotalReserved)
+	}
+	fmt.Fprintln(b)
+}
+
+func sortedShapeKeys(data map[string]*shapingMarkdownAgg) []string {
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if data[keys[i]].Requests == data[keys[j]].Requests {
+			return keys[i] < keys[j]
+		}
+		return data[keys[i]].Requests > data[keys[j]].Requests
+	})
+	return keys
+}
+
+func writeBeforeAfterShapeHelpers(b *strings.Builder, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent) {
+	if len(rows) == 0 {
+		return
+	}
+	mid := rows[0].TS.Add(rows[len(rows)-1].TS.Sub(rows[0].TS) / 2)
+	before := &shapingMarkdownAgg{}
+	after := &shapingMarkdownAgg{}
+	for _, row := range rows {
+		target := after
+		if row.TS.Before(mid) {
+			target = before
+		}
+		if row.Status == http.StatusTooManyRequests || row.Error == "upstream-rate-limited" {
+			target.Upstream429++
+		}
+		if row.Error == "upstream-quota-exhausted" {
+			target.UpstreamQuota++
+		}
+		if row.FallbackUsed {
+			target.Fallbacks++
+		}
+	}
+	for _, event := range upstreamEvents {
+		target := after
+		if event.Row.TS.Before(mid) {
+			target = before
+		}
+		if event.Event.Decision == shapeDecisionSkipped && event.Row.Status < 400 {
+			target.RouteAroundSuccess++
+		}
+	}
+	fmt.Fprintln(b, "## Before/After Investigation Helpers")
+	fmt.Fprintln(b)
+	fmt.Fprintf(b, "Window split point UTC: `%s`\n\n", formatUsageTime(mid))
+	fmt.Fprintln(b, "| Window | Upstream 429 / caller 429 | Upstream quota | Fallbacks | Successful route-arounds |")
+	fmt.Fprintln(b, "|---|---:|---:|---:|---:|")
+	fmt.Fprintf(b, "| Before | %d | %d | %d | %d |\n", before.Upstream429, before.UpstreamQuota, before.Fallbacks, before.RouteAroundSuccess)
+	fmt.Fprintf(b, "| After | %d | %d | %d | %d |\n\n", after.Upstream429, after.UpstreamQuota, after.Fallbacks, after.RouteAroundSuccess)
 }
 
 func writeCountTable(b *strings.Builder, title, keyHeader string, counts map[string]int64) {

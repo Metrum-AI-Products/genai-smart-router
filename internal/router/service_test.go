@@ -943,6 +943,13 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/errors-fallbacks?since=24h",
 		"/admin/reports/api/cache?since=24h",
 		"/admin/reports/api/quotas-budgets?since=24h",
+		"/admin/reports/api/traffic-shaping-overview?since=24h",
+		"/admin/reports/api/traffic-shaping-by-user?since=24h",
+		"/admin/reports/api/traffic-shaping-by-key?since=24h",
+		"/admin/reports/api/traffic-shaping-by-client?since=24h",
+		"/admin/reports/api/traffic-shaping-by-group?since=24h",
+		"/admin/reports/api/provider-capacity-shaping?since=24h",
+		"/admin/reports/api/adaptive-upstream-backoff?since=24h",
 		"/admin/reports/api/troubleshooting-buckets?since=24h",
 		"/admin/reports/api/routing-decisions?since=24h",
 		"/admin/reports/api/contract-buckets?since=24h",
@@ -971,7 +978,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			if len(requestRows) != 1 || requestRows[0].(map[string]any)["requestId"] != "admin-report-synthetic-expensive" {
 				t.Fatalf("%s did not return bounded cost-sorted requests: %#v", path, body)
 			}
-		} else if !strings.Contains(path, "overview") {
+		} else if !strings.Contains(path, "overview") && !strings.Contains(path, "traffic-shaping") && !strings.Contains(path, "provider-capacity-shaping") && !strings.Contains(path, "adaptive-upstream-backoff") {
 			rows := body["rows"].([]any)
 			if len(rows) == 0 || len(rows) > 1 {
 				t.Fatalf("%s rows len=%d, want bounded nonempty rows: %#v", path, len(rows), body)
@@ -1571,6 +1578,53 @@ func TestAdminCapabilityUsageReportsEverySignal(t *testing.T) {
 		if !got[want] {
 			t.Fatalf("missing capability %q in %#v", want, rows)
 		}
+	}
+}
+
+func TestAdminAdaptiveBackoffReportFiltersProviderCapacitySkips(t *testing.T) {
+	now := time.Now().UTC()
+	rows := buildAdminShapeReportResponse(
+		adminReportFilters{
+			From:  now.Add(-time.Hour),
+			To:    now,
+			Limit: 20,
+		},
+		[]usageRow{{RequestID: "req_shape", TS: now, TargetProvider: "mock", TargetModel: "mock-model"}},
+		[]upstreamShapeJoinedEvent{
+			{
+				Row: usageRow{RequestID: "req_shape", TS: now, TargetProvider: "mock", TargetModel: "mock-model"},
+				Event: requestUpstreamShapeEventRecord{
+					RequestID:     "req_shape",
+					Seq:           1,
+					Provider:      "mock",
+					Model:         "mock-model",
+					Dialect:       "openai-chat",
+					Bucket:        shapeBucketRequestStart,
+					Decision:      shapeDecisionSkipped,
+					BackoffReason: "provider-shape-throttled",
+				},
+			},
+			{
+				Row: usageRow{RequestID: "req_shape", TS: now, TargetProvider: "mock", TargetModel: "mock-model"},
+				Event: requestUpstreamShapeEventRecord{
+					RequestID:     "req_shape",
+					Seq:           2,
+					Provider:      "mock",
+					Model:         "mock-model",
+					Dialect:       "openai-chat",
+					Bucket:        shapeBucketBackoff,
+					Decision:      shapeDecisionCooldownStarted,
+					BackoffReason: "adaptive-backoff-provider-429",
+				},
+			},
+		},
+		adminScalarEndpointSpec{Report: "adaptive-upstream-backoff", Dimension: "backoff_reason", Secondary: "provider_model", ShapeReport: "adaptive"},
+	).Rows
+	if len(rows) != 1 {
+		t.Fatalf("adaptive rows=%d: %#v", len(rows), rows)
+	}
+	if rows[0].Key != "adaptive-backoff-provider-429" || rows[0].SkippedTargets != 0 || rows[0].CooldownsStarted != 1 {
+		t.Fatalf("unexpected adaptive row: %#v", rows[0])
 	}
 }
 
