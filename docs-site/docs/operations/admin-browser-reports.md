@@ -99,7 +99,7 @@ The browser report shell provides shared controls for every tab:
 
 - grouped left-sidebar navigation on desktop, with a header drawer on narrow screens;
 - collapsible navigation groups with preferences stored in browser `localStorage`;
-- a slim header with the `Since` time range, Markdown export, mobile `Sections` drawer, and an accessible `Filters` disclosure for global investigation filters;
+- a two-row header with the Metrum brand, title, and safe version chips on top, followed by a full-width global filter bar with the `Since` time range, Markdown export, mobile `Sections` drawer, and an accessible `Filters` disclosure for global investigation filters;
 - global filters for caller ID, caller user, public token ID, caller IP, caller project, caller environment, requested model, resolved group, provider, target model, dialect, and client; these remain active while switching tabs;
 - per-tab filter panels for tab-local controls such as baseline, status, cache state, sort, direction, and traffic-shaping bucket/scope; each report shows only the controls that apply to that tab;
 - a `Rows` select in the table toolbar for the URL-backed server row limit, alongside a separate client-side page-size select for visible rows;
@@ -119,7 +119,7 @@ Tables use per-tab column schemas instead of first-row key discovery. Column ord
 
 ## Navigation
 
-Desktop report users navigate with a fixed left sidebar labeled `Report sections`. The sidebar groups reports by operator intent: Overview, Usage, Savings, Performance, Traffic shaping, Routing decisions, Provider catalog, Security, Request drilldown, and System status. The report header, filters, Markdown export, active tab URL, CSV export, and request drilldown stay in the main content area.
+Desktop report users navigate with a fixed left sidebar labeled `Report sections`. The sidebar groups reports by operator intent: Overview, Usage, Savings, Performance, Traffic shaping, Routing decisions, Provider catalog, Security, Request drilldown, and System status. The report header stacks the brand row above the global filter row so filters use the same full content width as the reports below. Filters, Markdown export, active tab URL, CSV export, and request drilldown stay in the main content area.
 
 Each group header is keyboard-focusable and exposes expanded/collapsed state to assistive technology. Collapsed groups are remembered in browser `localStorage` under a versioned UI key so an administrator's browser keeps the same sidebar density after reloads. The preference is local presentation state only; it is not sent to report APIs, stored in the router, or included in shareable URLs.
 

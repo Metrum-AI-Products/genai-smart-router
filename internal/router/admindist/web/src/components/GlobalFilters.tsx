@@ -42,13 +42,13 @@ export function GlobalFilters({ draftFilters, filters, onDraftChange, onClearTab
   }, [expanded]);
 
   return (
-    <form className="flex flex-col gap-3 xl:items-end" onSubmit={onSubmit}>
-      <div className="flex w-full flex-wrap items-end gap-2 xl:justify-end">
+    <form className="flex flex-col gap-3" onSubmit={onSubmit}>
+      <div className="flex w-full flex-wrap items-end gap-2">
         <Button type="button" variant="outline" aria-expanded={expanded} aria-controls={panelId} onClick={() => setExpanded((open) => !open)}>
           Filters
           <ChevronDown className={cn("ml-2 h-4 w-4 transition-transform motion-reduce:transition-none", expanded && "rotate-180")} aria-hidden="true" />
         </Button>
-        <FilterInput field={sinceField} value={draftFilters[sinceField[0]]} onDraftChange={onDraftChange} className="w-32" />
+        <FilterInput field={sinceField} value={draftFilters[sinceField[0]]} onDraftChange={onDraftChange} className="w-32 sm:mr-auto" />
         <Button type="submit">Apply</Button>
         <a
           className="inline-flex h-9 items-center rounded-md border border-white/15 px-3 text-sm text-white hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-metrum-blue"

@@ -14,6 +14,12 @@ function globalFiltersButton(page: Page) {
   return page.getByRole("button", { name: "Filters", exact: true }).first();
 }
 
+async function boundingBox(locator: ReturnType<Page["locator"]>) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
 test("admin report nav groups cover every tab exactly once", async () => {
   const result = validateNavGroups(navGroups, tabSpecs);
   expect(result.duplicateTabs).toEqual([]);
@@ -126,6 +132,43 @@ test("mobile viewport shows drawer toggle and hidden sidebar", async ({ page }) 
   await expect(page.locator("[data-report-sidebar]:visible")).toHaveCount(0);
 });
 
+test("header uses two stacked rows on desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const header = page.locator("header");
+  const brandRow = header.locator("[data-admin-header-brand]");
+  const heading = header.getByRole("heading", { name: "Admin Reports" });
+  const filtersButton = globalFiltersButton(page);
+  await expect(brandRow).toBeVisible();
+  await expect(filtersButton).toBeVisible();
+
+  const headerBox = await boundingBox(header);
+  const brandBox = await boundingBox(brandRow);
+  const headingBox = await boundingBox(heading);
+  const filtersBox = await boundingBox(filtersButton);
+
+  expect(headerBox.height).toBeGreaterThan(brandBox.height + 40);
+  expect(headingBox.y).toBeLessThan(filtersBox.y);
+  expect(Math.abs(filtersBox.x - brandBox.x)).toBeLessThan(4);
+});
+
+test("header filter action row uses full available width", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const header = page.locator("header");
+  const headerBox = await boundingBox(header);
+  const filtersBox = await boundingBox(globalFiltersButton(page));
+  const applyBox = await boundingBox(page.getByRole("button", { name: "Apply" }));
+
+  expect(filtersBox.x - headerBox.x).toBeLessThan(100);
+  expect(applyBox.x - headerBox.x).toBeGreaterThan(600);
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(horizontalOverflow).toBe(false);
+});
+
 test("deep link requests tab opens active sidebar item", async ({ page }) => {
   await page.goto("/?tab=requests");
 
@@ -156,7 +199,7 @@ test("filter URL state and CSV export remain usable", async ({ page }) => {
   await expect((await download).suggestedFilename()).toBe("admin-report.csv");
 });
 
-test("header slim global filters render and survive tab switch", async ({ page }) => {
+test("header global filters render and survive tab switch", async ({ page }) => {
   await page.goto("/?caller_user=alice&provider=mock&since=6d");
 
   await expect(page.getByLabel("Since")).toHaveValue("6d");

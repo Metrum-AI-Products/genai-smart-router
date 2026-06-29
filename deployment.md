@@ -32,9 +32,13 @@ Last deployed: 2026-06-29
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-29 Admin Reports Two-Row Header Follow-up
+
+Prepared the admin reports SPA follow-up for issue #261. This is a frontend-only bundle change: the admin reports header now stacks the Metrum brand/title/version row above a full-width global filter row, with no `/admin/reports/` URL query contract, Markdown export parameter, report API, Casbin policy, or production endpoint behavior change.
+
 ## 2026-06-29 Admin Reports Header UI Follow-up
 
-Prepared the admin reports SPA follow-up for issue #252. This is a frontend-only bundle change: the large all-filter header is replaced by a slim global filter header with a disclosure for cross-tab investigation filters, while existing `/admin/reports/` URL query parameters, Markdown export parameters, report APIs, Casbin policy, and production endpoint behavior remain unchanged.
+Prepared the admin reports SPA follow-up for issue #252. This was a frontend-only bundle change: the large all-filter header was replaced by a compact global filter header with a disclosure for cross-tab investigation filters, while existing `/admin/reports/` URL query parameters, Markdown export parameters, report APIs, Casbin policy, and production endpoint behavior remained unchanged.
 
 ## 2026-06-29 Admin Reports Per-Tab Filters Follow-up
 

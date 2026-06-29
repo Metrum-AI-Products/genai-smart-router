@@ -96,15 +96,15 @@ export default function App() {
   return (
     <div className="mx-auto w-full max-w-[1700px] space-y-5 px-4 py-5 lg:px-6">
       <header className="rounded-lg border border-white/10 bg-black p-4 shadow-2xl">
-        <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="grid gap-4">
+          <div className="flex min-w-0 items-center gap-4" data-admin-header-brand>
             <img className="w-44 max-w-[42vw]" src="static/metrum_logo_white_new.png" alt="Metrum AI" />
             <div className="min-w-0">
               <p className="font-mono text-xs uppercase text-white/58">GenAI Smart Router</p>
               <h1 className="font-display text-3xl text-white">Admin Reports</h1>
               <p className="text-sm text-white/58">Operational usage, savings, routing, and security reporting.</p>
               {version && (
-                <div className="mt-2 flex flex-wrap gap-2 font-mono text-[0.68rem] uppercase text-white/66">
+                <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[0.68rem] uppercase text-white/66 xl:justify-end">
                   {versionLabel && <span className="rounded border border-white/14 bg-white/[0.06] px-2 py-1 text-white">{versionLabel}</span>}
                   {commitLabel && <span className="rounded border border-white/14 bg-white/[0.035] px-2 py-1">Commit {commitLabel}</span>}
                   {buildLabel && <span className="rounded border border-white/14 bg-white/[0.035] px-2 py-1">Built {buildLabel}</span>}
@@ -113,14 +113,16 @@ export default function App() {
               )}
             </div>
           </div>
-          <GlobalFilters
-            draftFilters={draftFilters}
-            filters={filters}
-            onDraftChange={setDraftFilters}
-            onClearTabFilters={clearTabFilters}
-            onSubmit={applyFilters}
-            onOpenMobileNav={() => setMobileNavOpen(true)}
-          />
+          <div className="border-t border-white/10 pt-4" data-admin-header-filters>
+            <GlobalFilters
+              draftFilters={draftFilters}
+              filters={filters}
+              onDraftChange={setDraftFilters}
+              onClearTabFilters={clearTabFilters}
+              onSubmit={applyFilters}
+              onOpenMobileNav={() => setMobileNavOpen(true)}
+            />
+          </div>
         </div>
       </header>
       <div className="grid min-w-0 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
