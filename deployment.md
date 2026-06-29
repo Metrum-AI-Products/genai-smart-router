@@ -16,8 +16,8 @@ Last deployed: 2026-06-29
 
 ## Deployed Version
 
-- Router package/image version: `d36f886-linux-amd64`
-- Source commit: `d36f886`
+- Router package/image version: `6fc3131-linux-amd64`
+- Source commit: `6fc3131`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-06-29
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-29 Admin Reports, Packaging, And Kubernetes Docs Production Refresh
+
+Deployed package/image `smart-llmrouter:6fc3131-linux-amd64` from source commit `6fc3131`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.docs-admin-6fc3131-20260629T165530Z
+```
+
+Validation:
+
+- `make docs-build`: passed; Docusaurus npm audit still reports one existing moderate dependency advisory.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 from a clean tree.
+- Local Harbor smoke `local-big-coder-claude-retry-20260629T164238Z`: `claude-code` + `big-coder`, exit 0, reward 1, errors 0. One earlier local run completed with no router exceptions but reward 0, so it was retried before deployment.
+- Production `/readyz`: 200, version `6fc3131`, build date `2026-06-29T16:51:16Z`.
+- Production `/version`: version `6fc3131`, commit `6fc3131`, Go `1.26.4`, linux/amd64, license compile mode `required`.
+- Hosted docs `/docs/`: 200 with `X-Smart-LLMRouter-Version: 6fc3131`.
+- Admin reports `/admin/reports/`: 200 with HTTP Basic admin credentials and expected security headers.
+- Authenticated `/v1/models`: 200 with `big-coder` available to the reusable Harbor caller.
+- Production Harbor smoke `prod-big-coder-claude-20260629T165621Z`: `claude-code` + `big-coder`, exit 0, reward 1, errors 0.
+- Production cleanup: removed uploaded package and Docker load log, then ran `sudo docker system prune -f` with `0B` reclaimed.
 
 ## 2026-06-29 Admin Reports Two-Row Header Follow-up
 
