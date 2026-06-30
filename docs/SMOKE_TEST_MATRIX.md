@@ -169,6 +169,7 @@ Use deterministic mock upstreams for robustness gates. Do not use live providers
 | Request-shape fallback safety | Tool, image, structured-output, reasoning, and explicit max-token-cap requests never fallback to a target that was filtered out for that request shape. |
 | Caller limits | RPM, TPM, concurrency, quota, lifetime budget, and `traffic_shape` failures return safe `429` or `403` errors with request IDs and no upstream attempt when blocked before routing. |
 | Adaptive backoff | Provider `429` with and without `Retry-After` and provider quota/billing responses start bounded cooldown rows and route around the affected target when another compatible target exists. |
+| Provider access fallback | Simulate provider `401`, entitlement-shaped `403`, generic access `403`, and model-access `404`. Invalid credentials should stop with sanitized `503 upstream-access-denied`; target-specific entitlement/model-access failures should route around to another eligible target without marking the failed attempt caller-retryable. |
 | Diagnostics | `request_usage`, `request_attempts`, `request_trace_events`, `request_fallback_transitions`, `request_traffic_shape_events`, and `request_upstream_shape_events` contain safe scalar fields for the request ID without prompts, images, raw provider bodies, provider keys, router tokens, or token hashes. |
 
 Focused local command:

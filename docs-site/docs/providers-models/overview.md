@@ -9,6 +9,8 @@ Providers and model catalogs describe what upstream endpoints exist, how to auth
 
 Provider examples in public docs are validation patterns. A provider, account, region, or model may be unavailable in a particular deployment until entitlement, pricing, request shape, direct upstream behavior, and router-level behavior are validated.
 
+Before active routing, validate entitlement for the exact provider key, account/project/region, model ID, dialect, and request shape. Provider `401`, `403`, and `404` responses can mean invalid credentials, missing entitlement, policy/privacy restriction, region/project restriction, or model access denial. Keep those targets catalog-only or in a restricted smoke group until the exact shape passes.
+
 ## Catalog, Smoke Group, Active Target
 
 | State | Meaning | Typical Use |

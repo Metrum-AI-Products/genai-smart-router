@@ -26,6 +26,8 @@ Record:
 
 Keep unavailable or unvalidated provider models catalog-only. Move a model into active routing after the deployment has entitlement and validation evidence for the API shapes it will serve.
 
+Treat provider access failures as activation blockers. A direct smoke returning `401`, entitlement-shaped `403`, generic access `403`, or model-access `404` means the target should not receive ordinary traffic until the exact provider credential, account/project/region, model ID, dialect, and request shape are fixed and retested. Router-level smokes should show sanitized access-failure classes and never expose provider keys or raw upstream bodies.
+
 ## 2. Run Direct Provider Smokes
 
 For repeatable first-pass capability evidence, run the repository probe script from a protected shell that has only the relevant provider key in the named environment variable:

@@ -8348,6 +8348,139 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	}
 }
 
+func TestUpstream403EntitlementFailureFallsBackWithoutCallerRetryability(t *testing.T) {
+	var fallbackCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "restricted-model":
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": map[string]any{"code": "not_entitled", "message": "project_restricted for this account"}})
+		case "fallback-model":
+			fallbackCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "fallback_ok",
+				"choices": []map[string]any{{
+					"message":       map[string]any{"role": "assistant", "content": "fallback ok"},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		default:
+			t.Fatalf("unexpected model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "restricted-model"},
+		{Provider: "mock", Model: "fallback-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"route around access failure"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if fallbackCalls.Load() != 1 {
+		t.Fatalf("fallback calls=%d, want 1", fallbackCalls.Load())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Order("attempt_index ASC").Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("attempts=%#v", attempts)
+	}
+	if attempts[0].ErrorClass != "upstream_entitlement_failed" || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_entitlement_failed" {
+		t.Fatalf("unexpected first attempt: %#v", attempts[0])
+	}
+	if !attempts[1].Selected {
+		t.Fatalf("fallback attempt not selected: %#v", attempts[1])
+	}
+	var transitions []fallbackTransitionRecord
+	if err := svc.usage.db.Find(&transitions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(transitions) != 1 || transitions[0].FallbackReason != "upstream_entitlement_failed" || transitions[0].Retryable || !transitions[0].FallbackSucceeded {
+		t.Fatalf("unexpected fallback transitions: %#v", transitions)
+	}
+}
+
+func TestUpstreamAuthFailureStopsFallbackWithAccessDeniedError(t *testing.T) {
+	var fallbackCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		switch stringValue(body["model"]) {
+		case "bad-key-model":
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_api_key", "message": "invalid API key provider-secret-value"}})
+		case "fallback-model":
+			fallbackCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+		default:
+			t.Fatalf("unexpected model %v", body["model"])
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock", Model: "bad-key-model"},
+		{Provider: "mock", Model: "fallback-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"do not retry bad credentials"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"type":"upstream-access-denied"`) {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "provider-secret-value") || strings.Contains(rr.Body.String(), "provider-key") {
+		t.Fatalf("response leaked secret: %s", rr.Body.String())
+	}
+	if fallbackCalls.Load() != 0 {
+		t.Fatalf("fallback calls=%d, want 0", fallbackCalls.Load())
+	}
+	var attempts []requestAttemptRecord
+	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_auth_failed" || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_auth_failed" {
+		t.Fatalf("unexpected attempts: %#v", attempts)
+	}
+	var errors []requestErrorRecord
+	if err := svc.usage.db.Find(&errors).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(errors) != 1 || errors[0].ErrorType != "upstream-access-denied" || errors[0].Status != http.StatusServiceUnavailable || errors[0].Retryable {
+		t.Fatalf("unexpected errors: %#v", errors)
+	}
+}
+
 func TestRetryableUpstream5xxStillFallsBack(t *testing.T) {
 	var fallbackCalls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -8808,10 +8941,24 @@ func TestUpstreamStatusClassifiesQuotaRateBillingFailures(t *testing.T) {
 			wantRetry: false,
 		},
 		{
+			name:      "model access denied beats generic access marker",
+			status:    http.StatusForbidden,
+			body:      `{"error":{"code":"model_access_denied","message":"access_denied for requested model"}}`,
+			wantClass: "upstream_model_access_denied",
+			wantRetry: false,
+		},
+		{
+			name:      "model not enabled beats entitlement marker",
+			status:    http.StatusForbidden,
+			body:      `{"error":{"code":"model_not_enabled","message":"model_not_enabled for this account"}}`,
+			wantClass: "upstream_model_access_denied",
+			wantRetry: false,
+		},
+		{
 			name:      "ordinary not found",
 			status:    http.StatusNotFound,
 			body:      `{"error":{"message":"model not found"}}`,
-			wantClass: "upstream_not_found",
+			wantClass: "upstream_model_access_denied",
 			wantRetry: false,
 		},
 		{

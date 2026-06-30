@@ -40,7 +40,7 @@ Run direct provider smokes before involving the router. Test every API skin and 
 - OpenAI Responses text, function tools, tool-result continuation, streaming, structured output, reasoning, and image inputs as applicable;
 - Anthropic Messages text, client tools, thinking, max-token cap, streaming, and image inputs as applicable.
 
-Use the placeholder curl templates in [smoke-commands-reference.md](smoke-commands-reference.md). A pass on one skin does not imply a pass on another skin. If the upstream returns `403`, model-not-found, empty content, malformed tools, or non-grounded image answers, keep the candidate out of active routing until the exact failure is understood.
+Use the placeholder curl templates in [smoke-commands-reference.md](smoke-commands-reference.md). A pass on one skin does not imply a pass on another skin. If the upstream returns `401`, `403`, model-not-found, empty content, malformed tools, or non-grounded image answers, keep the candidate out of active routing until the exact failure is understood. For `403` or `404`, distinguish invalid provider credentials from account entitlement, region/project restriction, policy/privacy block, and model-access denial; only the exact provider key, model ID, dialect, and request shape that passed the smoke should be promoted.
 
 ## 4. Capture Capability Probe Results
 

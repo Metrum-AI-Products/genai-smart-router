@@ -99,16 +99,17 @@ type requestContext struct {
 }
 
 type upstreamError struct {
-	Class       string
-	Message     string
-	StatusCode  int
-	Retryable   bool
-	TimedOut    bool
-	Canceled    bool
-	ResponseLen int64
-	RetryAfter  time.Duration
-	Details     []upstreamErrorDetailLogRecord
-	Err         error
+	Class        string
+	Message      string
+	StatusCode   int
+	Retryable    bool
+	Fallbackable bool
+	TimedOut     bool
+	Canceled     bool
+	ResponseLen  int64
+	RetryAfter   time.Duration
+	Details      []upstreamErrorDetailLogRecord
+	Err          error
 }
 
 func (e upstreamError) Error() string {
@@ -1468,22 +1469,25 @@ func (s *Service) callUpstreams(ctx context.Context, rc *requestContext, callerD
 		if classified.Canceled {
 			break
 		}
-		if !classified.Retryable {
+		canFallback := classified.Retryable || classified.Fallbackable
+		if !canFallback {
 			rc.trace("fallback_stopped", classified.Message, tgt, attemptIndex, attempt.StatusCode, classified.Class, false, attempt.DurationMS)
 			break
 		}
-		backoffMS := 100 * (1 << i)
-		if backoffMS > 1000 {
-			backoffMS = 1000
-		}
-		timer := time.NewTimer(time.Duration(backoffMS) * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			lastErr = classifyContextError(ctx.Err())
-			rc.trace("client_canceled", ctx.Err().Error(), tgt, attemptIndex, 499, "client_canceled", false, 0)
-			return nil, attemptIndex, attemptIndex > 1, lastErr
-		case <-timer.C:
+		if classified.Retryable {
+			backoffMS := 100 * (1 << i)
+			if backoffMS > 1000 {
+				backoffMS = 1000
+			}
+			timer := time.NewTimer(time.Duration(backoffMS) * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				lastErr = classifyContextError(ctx.Err())
+				rc.trace("client_canceled", ctx.Err().Error(), tgt, attemptIndex, 499, "client_canceled", false, 0)
+				return nil, attemptIndex, attemptIndex > 1, lastErr
+			case <-timer.C:
+			}
 		}
 		if i < len(targets)-1 {
 			s.recordFallbackTransitionTelemetry(rc, targets, i, attemptIndex, classified)
@@ -1819,10 +1823,11 @@ func (s *Service) diagnosticMaxErrorBytes() int {
 func classifyUpstreamStatus(status int, raw []byte) upstreamError {
 	class := statusErrorClass(status, raw)
 	return upstreamError{
-		Class:      class,
-		Message:    upstreamStatusMessage(status, raw, class),
-		StatusCode: status,
-		Retryable:  class == "upstream_quota_exhausted" || class == "upstream_rate_limited" || class == "upstream_timeout" || status >= 500,
+		Class:        class,
+		Message:      upstreamStatusMessage(status, raw, class),
+		StatusCode:   status,
+		Retryable:    class == "upstream_quota_exhausted" || class == "upstream_rate_limited" || class == "upstream_timeout" || status >= 500,
+		Fallbackable: upstreamAccessFailureFallbackable(class),
 	}
 }
 
@@ -1832,10 +1837,18 @@ func statusErrorClass(status int, raw []byte) string {
 		return "upstream_quota_exhausted"
 	case status == http.StatusTooManyRequests:
 		return "upstream_rate_limited"
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+	case upstreamBodyIndicatesAuthFailure(status, raw):
 		return "upstream_auth_failed"
+	case upstreamBodyIndicatesModelAccessDenied(status, raw):
+		return "upstream_model_access_denied"
+	case upstreamBodyIndicatesEntitlementFailure(status, raw):
+		return "upstream_entitlement_failed"
+	case status == http.StatusUnauthorized:
+		return "upstream_auth_failed"
+	case status == http.StatusForbidden:
+		return "upstream_access_denied"
 	case status == http.StatusNotFound:
-		return "upstream_not_found"
+		return "upstream_model_access_denied"
 	case status == http.StatusRequestTimeout:
 		return "upstream_timeout"
 	case status == http.StatusRequestEntityTooLarge:
@@ -1849,9 +1862,21 @@ func statusErrorClass(status int, raw []byte) string {
 	}
 }
 
+func upstreamAccessFailureFallbackable(class string) bool {
+	switch class {
+	case "upstream_access_denied", "upstream_entitlement_failed", "upstream_model_access_denied":
+		return true
+	default:
+		return false
+	}
+}
+
 func upstreamStatusMessage(status int, raw []byte, class string) string {
 	if class == "upstream_quota_exhausted" {
 		return fmt.Sprintf("upstream status %d upstream provider quota, credits, or billing limit exhausted", status)
+	}
+	if upstreamAccessFailureFallbackable(class) || class == "upstream_auth_failed" {
+		return fmt.Sprintf("upstream status %d upstream provider access, authorization, or entitlement failed", status)
 	}
 	msg := fmt.Sprintf("upstream status %d", status)
 	snippet := strings.TrimSpace(string(raw))
@@ -1902,6 +1927,98 @@ func upstreamBodyIndicatesQuotaExhausted(status int, raw []byte) bool {
 		}
 	}
 	return false
+}
+
+func upstreamBodyIndicatesAuthFailure(status int, raw []byte) bool {
+	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return false
+	}
+	normalized := normalizedUpstreamErrorText(raw)
+	if normalized == "" {
+		return false
+	}
+	markers := []string{
+		"invalid_api_key",
+		"invalid_key",
+		"api_key_invalid",
+		"authentication_failed",
+		"invalid_auth",
+		"invalid_token",
+		"missing_api_key",
+		"unauthorized_api_key",
+	}
+	for _, marker := range markers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func upstreamBodyIndicatesEntitlementFailure(status int, raw []byte) bool {
+	if status != http.StatusForbidden {
+		return false
+	}
+	normalized := normalizedUpstreamErrorText(raw)
+	if normalized == "" {
+		return false
+	}
+	markers := []string{
+		"entitlement",
+		"not_entitled",
+		"insufficient_permission",
+		"permission_denied",
+		"permission_required",
+		"account_not_authorized",
+		"not_enabled",
+		"requires_approval",
+		"project_restricted",
+		"region_restricted",
+		"privacy",
+		"policy_block",
+		"access_denied",
+	}
+	for _, marker := range markers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func upstreamBodyIndicatesModelAccessDenied(status int, raw []byte) bool {
+	if status != http.StatusForbidden && status != http.StatusNotFound {
+		return false
+	}
+	normalized := normalizedUpstreamErrorText(raw)
+	if normalized == "" {
+		return status == http.StatusNotFound
+	}
+	markers := []string{
+		"model_not_found",
+		"model_not_available",
+		"model_unavailable",
+		"model_access",
+		"model_access_denied",
+		"model_not_enabled",
+		"served_model_not_found",
+		"not_found_for_model",
+		"unknown_model",
+	}
+	for _, marker := range markers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return status == http.StatusNotFound
+}
+
+func normalizedUpstreamErrorText(raw []byte) string {
+	text := strings.ToLower(strings.TrimSpace(string(raw)))
+	if text == "" {
+		return ""
+	}
+	return strings.NewReplacer("-", "_", " ", "_").Replace(text)
 }
 
 func classifyContextError(err error) upstreamError {
@@ -2808,9 +2925,23 @@ func upstreamFailureResponse(err upstreamError, rc *requestContext) (string, int
 		return "upstream-quota-exhausted", http.StatusServiceUnavailable
 	case attemptsAllClassOrLast(rc, err, "upstream_rate_limited"):
 		return "upstream-rate-limited", http.StatusServiceUnavailable
+	case attemptsAllAccessFailureOrLast(rc, err):
+		return "upstream-access-denied", http.StatusServiceUnavailable
 	default:
 		return "upstream-failed", http.StatusBadGateway
 	}
+}
+
+func attemptsAllAccessFailureOrLast(rc *requestContext, err upstreamError) bool {
+	if rc == nil || len(rc.rec.AttemptsDetail) == 0 {
+		return upstreamAccessFailureFallbackable(err.Class) || err.Class == "upstream_auth_failed"
+	}
+	for _, attempt := range rc.rec.AttemptsDetail {
+		if !upstreamAccessFailureFallbackable(attempt.ErrorClass) && attempt.ErrorClass != "upstream_auth_failed" {
+			return false
+		}
+	}
+	return true
 }
 
 func attemptsAllClassOrLast(rc *requestContext, err upstreamError, class string) bool {
@@ -2840,6 +2971,8 @@ func callerUpstreamFailureMessage(code, model string, attempts int) string {
 		return fmt.Sprintf("upstream providers were rate limited for model %q after %d attempt(s); retry later or contact the router operator with the request_id", model, attempts)
 	case "upstream-timeout":
 		return fmt.Sprintf("upstream providers timed out for model %q after %d attempt(s); retry with a smaller request or contact the router operator with the request_id", model, attempts)
+	case "upstream-access-denied":
+		return fmt.Sprintf("upstream provider access or entitlement failed for model %q after %d attempt(s); contact the router operator with the request_id", model, attempts)
 	default:
 		return fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", model, attempts)
 	}

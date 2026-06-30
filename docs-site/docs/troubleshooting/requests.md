@@ -82,6 +82,7 @@ Examples:
 - User sees errors but all shaping buckets were admitted or absent: treat `route_around_incompatible_target` as a request-shape/provider compatibility issue. Inspect upstream failures and request-shape failures instead of increasing burst or queue depth.
 - User is being queued and cancellations increased: treat `disable_queue_for_latency_sensitive_client` as a signal to lower queue wait or fail fast for that client.
 - Provider 429s affect multiple users: treat `investigate_provider_429_capacity` as shared capacity or entitlement work. Tune provider/model shaping, adaptive backoff, route weights, or upstream account limits before increasing one caller's burst.
+- Provider 401/403/404 access failures are different from caller-token errors. Invalid provider credentials are terminal for the request; target-specific entitlement, region/project, policy, or model-access failures may route around to another eligible target. If all attempts fail this way, callers receive `503 upstream-access-denied` with a request ID.
 - Large Cursor, Codex, Claude Code, or opencode payloads fail on selected upstreams: compare request-shape failure buckets, output-cap buckets, tool/modality metadata, and provider/model/dialect rows, then route around targets that cannot handle that shape.
 
 ## 5. Check Upstream Attempts
