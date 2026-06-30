@@ -9,7 +9,7 @@ Model groups are the caller-facing quality and cost contracts in GenAI Smart Rou
 
 This is the key product principle: not every task needs the most expensive model. Expensive targets should be reserved for workloads that require them. Simpler text, extraction, summarization, and routine coding work can often be served by lower-cost routes when validation shows the group still meets its objective.
 
-For strategy selection, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the full customer-controlled routing contract, ownership controls, and proof workflow, see [Customer-Controlled Routing](../routing/customer-controlled-routing). For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality).
+For strategy selection, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the full customer-controlled routing contract, ownership controls, and proof workflow, see [Customer-Controlled Routing](../routing/customer-controlled-routing). For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality). For one coding-agent evidence pattern, see the [Harbor Case Study](./harbor-case-study).
 
 ## Group Contract Fields
 
@@ -48,7 +48,7 @@ For the reasoning metadata, caller examples, and negative test behind a reasonin
 
 ## Agentic Quality Validation
 
-Harbor-style validation is useful because it tests the whole agent loop, not only a single completion. For a coding-agent group, run tasks that require the agent to inspect files, call tools, edit artifacts, and pass an external verifier.
+Harbor-style validation is useful because it tests the whole agent loop, not only a single completion. For a coding-agent group, run tasks that require the agent to inspect files, call tools, edit artifacts, and pass an external verifier. Harbor is optional; a deployment can use unit tests, product acceptance tests, browser-control checks, OCR goldens, tool-call assertions, or another workload-specific verifier when those better represent the group contract.
 
 Track:
 

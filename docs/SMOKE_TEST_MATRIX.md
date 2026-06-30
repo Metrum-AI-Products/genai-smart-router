@@ -6,6 +6,8 @@ For new provider, model, endpoint, or API-skin onboarding, follow the canonical 
 
 For quality complaints or router-versus-fixed-model decisions, do not treat a smoke test as a full evaluation. A smoke proves that one request shape works. Use [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md) when the decision depends on workload outcomes, repeated runs, cost, latency, fallbacks, and a fixed-model or previous-policy control.
 
+Harbor or another outcome harness is required when a change promotes, demotes, or broadly reweights a model group based on task quality. Lighter compatibility smokes are enough for narrow checks such as "does this API skin authenticate," "is `max_tokens: 1` forwarded," or "does the client reach a tool-capable target," as long as no broader quality claim is being made.
+
 ## Core API Smokes
 
 | Change type | Required smoke |
@@ -199,6 +201,8 @@ Production-safe robustness smoke:
 ## Outcome Workload Gates
 
 Smoke tests prove transport compatibility; outcome gates prove the model group still completes the workload. Before promotion, document the run matrix, reward/verifier, client/API matrix, fixed-model or previous-policy control when practical, pass/fail thresholds, cost and latency ceilings, and rollback criteria.
+
+Use Harbor for coding-agent outcome gates when it matches the workload and agent surface. Use unit tests, OCR checks, extraction goldens, browser-control tasks, tool-call correctness checks, or product acceptance tests when those are the better verifier. A single Harbor task can catch regressions, but promotion evidence should use repeated runs and a control whenever practical.
 
 Local/mock CI command:
 

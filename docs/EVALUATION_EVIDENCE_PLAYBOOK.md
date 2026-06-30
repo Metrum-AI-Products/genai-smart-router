@@ -50,6 +50,14 @@ Record these fields before the run:
 | Comparison method | Distribution, confidence interval, paired comparison, bootstrap, or other justified method. |
 | Decision rule | Promote, hold, split, rollback, or gather more evidence. |
 
+## Harbor As One Agent-Eval Harness
+
+Harbor is an open-source, sandboxed agent-evaluation framework that can run coding agents against reproducible tasks and score the produced artifact with a verifier. Use it when the workload depends on the whole agent loop: repository navigation, tool use, file edits, terminal commands, and final artifact quality. Public Terminal-Bench tasks are one useful benchmark family that uses the Harbor task format/harness, but they do not replace customer-specific acceptance tests.
+
+For router-versus-fixed comparisons, hold the task, agent, agent version, tools, seed policy, token caps, timeouts, and verifier constant. Change only the model endpoint/group, then compare outcome, cost, latency, selected upstream provider/model, fallback behavior, cache behavior, and token usage. The public source-dated example is `docs-site/docs/evaluation/harbor-case-study.mdx`; keep `docs/harbor-case-study.md` aligned when updating it.
+
+Claim boundary: a Harbor result proves only the specific task set, agent/client version, router build, model group, run window, and scoring method tested. It is not a universal model ranking, and it should be interpreted with repeated runs and confidence intervals when the sample design supports them.
+
 ## Joining Router Reports With External Evaluations
 
 Use safe scalar dimensions to join router data with Harbor or other harness output:

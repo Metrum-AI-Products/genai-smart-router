@@ -64,6 +64,7 @@ Specific high-risk changes require extra coverage:
 
 - Model/provider routing changes: document model-group intent, API shapes, modalities, tool dialects, validation evidence, price metadata, promotion criteria, and rollback criteria.
 - Evaluation or benchmark changes: explain the product decision context, success criteria, verifier used, workload limits, cost/latency evidence, and date of data collection.
+- Harbor case-study changes: keep `docs-site/docs/evaluation/harbor-case-study.mdx` and `docs/harbor-case-study.md` aligned; source-date Harbor, Terminal-Bench, and supported-agent claims; use primary Harbor/Terminal-Bench links first; describe Harbor as one optional verifier; include router-versus-fixed-model controls and claim boundaries; avoid private hostnames, raw tokens, token-file paths, or universal model-ranking language.
 - Security or auth changes: document caller-visible errors, admin/operator controls, least-privilege policy, redaction boundaries, smoke tests, and audit/report fields.
 - Usage/telemetry changes: document database/report fields as scalar queryable data, saved request-time cost inputs, latency/performance dimensions, retention impact, and customer-safe examples.
 - TypeScript or external policy routing changes: document trusted input shape, safe context fields, egress boundaries, fail-closed behavior, caller-visible errors, and at least one tested runnable example.

@@ -21,6 +21,8 @@ Successful smokes should prove task outcome, not just HTTP status. For repositor
 
 Different clients can see different effective target pools inside the same model group because they use different API surfaces. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and many IDE clients use OpenAI Chat. A target validated for Chat tools is not automatically eligible for Responses function tools or Anthropic client tools. If one client receives `no-eligible-target` or appears to route to fewer upstreams than another client, ask the deployment admin to inspect effective provider-skin eligibility for that group.
 
+For rollout decisions, keep client setup distinct from outcome evaluation. A setup smoke proves that a client can reach a compatible router path; a workload verifier such as Harbor, unit tests, browser-control checks, OCR goldens, or product acceptance tests proves whether the model group completes the job. See [Prove Router Quality](../evaluation/prove-router-quality) and the [Harbor Case Study](../evaluation/harbor-case-study) for evaluation patterns.
+
 ## Codex CLI
 
 Codex CLI uses the OpenAI Responses-compatible router path. Set a router token in `METRUM_ROUTER_KEY` and configure `wire_api="responses"`.

@@ -7,13 +7,30 @@ import HarborCharts from "@site/src/components/HarborCharts";
 
 # Harbor Agentic Coding Case Study
 
-This case study shows how a platform team can use outcome-based evaluation before changing routing weights. Harbor is one example of an agent evaluation harness: it runs a real coding task, lets an agent edit files, and scores the resulting artifact with an independent verifier.
+This case study shows how a platform team can use outcome-based evaluation before changing routing weights. A routing decision is an operational claim: the deployed model group should complete the workload at the expected quality, cost, latency, and reliability envelope. Harbor is one way to test that claim with repeatable agent tasks instead of anecdotal "felt better" or "felt worse" reports.
 
 The model group names shown here are deployment examples from the Metrum engineering environment. GenAI Smart Router does not require names such as `big-coder`, and customer deployments can expose different model groups, providers, and policies.
 
 <div class="contactBanner">
   <p>For a benchmark tailored to your workloads, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
+
+## What Harbor Is
+
+[Harbor](https://harborframework.com/) is an open-source framework for evaluating AI agents in sandboxed, reproducible environments. Its [documentation](https://harbor-framework-harbor.mintlify.app/introduction) and [GitHub repository](https://github.com/harbor-framework/harbor) describe running agents against tasks and benchmarks, capturing trajectories and artifacts, and scoring results with verifiers.
+
+Harbor is relevant to Smart Router because it can hold the task, agent, agent version, prompts, tools, seeds, and scoring constant while changing only the model endpoint or router model group. That lets a team compare:
+
+- final task outcome, such as reward or pass/fail;
+- cost, token usage, cache behavior, and latency;
+- selected upstream provider/model families, retries, and fallbacks;
+- client compatibility for agent traffic such as OpenAI Responses, Anthropic Messages, or OpenAI Chat.
+
+Harbor's public docs describe support for multiple coding-agent clients, including Codex CLI, Claude Code, Aider, OpenCode, Cursor CLI, OpenHands, Goose, Gemini CLI, Cline, and Mini SWE Agent. That public list was checked on **June 30, 2026**. It is agent-context only: it does not mean every listed client has been validated against a particular Smart Router deployment.
+
+## Terminal-Bench Connection
+
+[Terminal-Bench](https://www.tbench.ai/) is a public benchmark collection for terminal and coding-agent tasks. The [Terminal-Bench paper](https://arxiv.org/html/2601.11868v1) describes a benchmark built around realistic terminal tasks and reproducible evaluation; Terminal-Bench tasks use the Harbor task format and harness. Terminal-Bench is useful public evaluation material, but it is not a universal proxy for customer success. A customer support workflow, browser-control task, OCR pipeline, or repository-specific coding job still needs its own workload-appropriate verifier.
 
 ## Current Production Run
 
@@ -35,6 +52,8 @@ The task asks the agent to implement `two_bucket.py` so the verifier accepts buc
 
 The table below is a production smoke/evaluation snapshot, not a statistically significant benchmark. A single deterministic Harbor task is useful for catching regressions and proving whether a route can complete a specific workload, but promotion decisions should use repeated runs, fixed-model controls, and workload-specific pass-rate thresholds.
 
+This result proves only the specific task, agent versions, router build, model group, and run window shown here. It does not establish a universal model ranking, and it should not be read as evidence that Harbor, Terminal-Bench, or one fixed task predicts every customer workload. Where the run count supports it, interpret results with repeated attempts and confidence intervals.
+
 ## Results
 
 | Agent | Group | Status | Reward | Errors | Elapsed | Harbor input | Harbor cache | Harbor output | Interpretation |
@@ -52,6 +71,7 @@ The Codex path passed the task. The Claude Code path did not pass task quality e
 - Codex CLI completed the Harbor task through the router on the deployed build.
 - Claude Code reached the router and upstream path, but the selected model behavior did not complete this workload.
 - The route should not be promoted as fully validated for Claude Code on this task until a follow-up run passes with reward `1`.
+- The evidence is about task outcome plus operational behavior, not cost alone.
 
 ## Upstream Reporting
 
@@ -64,12 +84,51 @@ Public case studies should avoid exposing private routing internals as if they a
 
 Customer deployments can choose different provider families, hosted models, private upstreams, and weights. The stable product contract is the model group plus validation evidence, not a fixed upstream model name.
 
-## How To Reproduce This Evaluation
+## Router-Versus-Fixed Pattern
 
-1. Choose a model group and define the workload success criteria.
-2. Run Harbor or another workload-specific verifier with a reusable evaluation caller token.
-3. Record router build, config checksum, task ID, client versions, model group, run timestamps, and request IDs.
-4. Compare reward, errors, elapsed time, token demand, fallback behavior, selected route families, and task artifacts.
-5. Promote or reweight only if the target pass-rate and operational criteria are met.
+Use the same dataset/task, agent, agent version, seed policy, token caps, timeouts, and verifier for both arms. Change only the model endpoint or model value.
 
-For a general router-versus-fixed-model evidence template, including non-Harbor workloads and rollout decisions, see [Prove Router Quality](./prove-router-quality).
+```bash
+# Install Harbor in an isolated tool environment.
+uv tool install harbor
+
+# A: routed model group through GenAI Smart Router.
+export ROUTER_BASE_URL="https://router.example.com/v1"
+export ROUTER_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+
+# Dataset run, for example terminal-bench@2.0.
+harbor run -d <dataset-id> \
+  --agent <agent> \
+  --model <router-model-group>
+
+# Single-task run, for example aider/polyglot_python_two-bucket.
+harbor run -t <task-id> \
+  --agent <agent> \
+  --model <router-model-group>
+
+# B: fixed-model control with the same dataset/task, agent, versions, and seed policy.
+harbor run -d <dataset-id> \
+  --agent <agent> \
+  --model <fixed-model-id>
+
+harbor run -t <task-id> \
+  --agent <agent> \
+  --model <fixed-model-id>
+```
+
+The exact environment variables, model string, concurrency, attempt count, and seed controls depend on the agent adapter, Harbor version, and dataset. Use the same Harbor-supported seed and attempt policy in both arms. Use placeholder router endpoints and tokens in shared examples, and use `/v1/models` with the evaluation caller token to discover allowed router model groups.
+
+Record router build, safe config summary or checksum, task ID, agent/client versions, run timestamps, request IDs when available, reward/pass-fail result, errors, elapsed time, token demand, cache usage, selected route families, fallback behavior, and task artifacts. Promote or reweight only if the target pass-rate and operational criteria are met.
+
+## Bring Your Own Verifier
+
+Harbor is one evaluation option, not a product dependency or the only accepted proof method. Teams can also use unit tests, OCR target checks, extraction goldens, product acceptance tests, browser-control tasks, tool-call correctness checks, human-reviewed rubrics, or any workload-specific verifier that produces repeatable evidence. The important rule is model-group sufficiency: prove that the cheaper or more flexible route still completes the customer's workload before making it the default.
+
+For practical context beyond the primary Harbor and Terminal-Bench sources, see Tessl's Harbor introduction and LangChain's Terminal-Bench/Harbor harness engineering example:
+
+- [How to Evaluate AI Agents: An Introduction to Harbor](https://tessl.io/blog/how-to-evaluate-ai-agents-an-introduction-to-harbor/)
+- [Improving deep agents with harness engineering](https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering)
+
+## Related Smart Router Docs
+
+For a general router-versus-fixed-model evidence template, including non-Harbor workloads and rollout decisions, see [Prove Router Quality](./prove-router-quality). For model-group contracts and promotion criteria, see [Model Group Quality Criteria](./model-group-quality). For coding-agent setup and compatibility checks, see [Coding-Agent Client Matrix](../getting-started/coding-agent-clients). For report evidence, see [Usage Reporting](../operations/usage-reporting) and [Admin Browser Reports](../operations/admin-browser-reports).

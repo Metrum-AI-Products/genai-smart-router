@@ -36,6 +36,8 @@ The env file may contain `ROUTER_BASE_URL` and a client-specific router token va
 
 If a client is not installed in the runner, live mode records `client-not-installed` and the manual smoke path remains the acceptance path.
 
+This matrix proves coding-agent compatibility: the client can authenticate, send the intended API shape, exercise tools or files, and receive a router response that passes the fixture verifier. It is not a full outcome benchmark for a customer workload. For promotion decisions, pair these smokes with Harbor or another workload-specific verifier and follow [Evaluation Evidence Playbook](EVALUATION_EVIDENCE_PLAYBOOK.md). Keep the public Harbor case study aligned with `docs/harbor-case-study.md` when publishing agent-eval evidence.
+
 ## Workload Matrix
 
 Run each workload in an isolated temp checkout, never in the main router repository:

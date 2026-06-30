@@ -54,27 +54,26 @@ Where statistics are used, keep the claim precise. Confidence intervals and p-va
 
 ## Harbor Coding-Agent Example
 
-Harbor is one useful coding-agent evaluation harness because it runs the agent loop and checks the produced artifact with a verifier. It is not required. Any objective verifier that matches the workload can be used.
+Harbor is one useful coding-agent evaluation harness because it runs the agent loop and checks the produced artifact with a verifier. It is not required. Any objective verifier that matches the workload can be used. See the [Harbor Case Study](./harbor-case-study) for source-dated Harbor and Terminal-Bench context plus a worked production snapshot.
 
 The model IDs below are placeholders. Replace them with model groups and fixed-model IDs validated for your deployment. The intended difference between A and B is only `--model` or route selection.
 
 ```bash
+# Install Harbor in an isolated tool environment.
+uv tool install harbor
+
 # A: routed group
-harbor run -d terminal-bench@2.0 \
-  --agent terminus-2 \
-  --model metrum-router/auto \
-  --n-attempts 5 --seeds 0-4
+harbor run -d <dataset-or-task> \
+  --agent <agent> \
+  --model <router-model-group>
 
 # B: fixed model control
-harbor run -d terminal-bench@2.0 \
-  --agent terminus-2 \
-  --model openai/gpt-5.2 \
-  --n-attempts 5 --seeds 0-4
+harbor run -d <dataset-or-task> \
+  --agent <agent> \
+  --model <fixed-model-id>
 ```
 
-Report the task-level reward or pass/fail result, agent errors, elapsed time, selected provider/model, retries, fallbacks, token counts, request-time cost, and throughput for both arms. Join the Harbor run window to router usage reports by timestamp, caller/project, client, model group, request ID, or run label.
-
-See the [Harbor Case Study](./harbor-case-study) for one historical example of this decision loop.
+Use the same Harbor-supported attempt and seed policy for both arms. Report the task-level reward or pass/fail result, agent errors, elapsed time, selected provider/model, retries, fallbacks, token counts, request-time cost, and throughput for both arms. Join the Harbor run window to router usage reports by timestamp, caller/project, client, model group, request ID, or run label.
 
 ## Outcome Gate Artifact
 
