@@ -62,7 +62,7 @@ codex \
 
 Agentic tool calls should be tested with real file and shell activity inside a disposable container or equivalent isolated workspace. Pass only the router base URL and a scoped router token into the sandbox, and mount only the scratch directory where the smoke file should be written. Tool-bearing requests bypass response caching because the filesystem and shell state are part of the result.
 
-Codex sends OpenAI Responses traffic. A model group may contain native Responses targets and validated Chat-only targets exposed through the router's stateless Responses-to-Chat bridge. The bridge is deployment-controlled and request-shape gated; text and basic function tools can use a bridged Chat target when the target has `responses_to_chat` metadata. Stateful `previous_response_id`, provider-hosted tools, images, reasoning, structured output, and streaming need separately validated targets.
+Codex sends OpenAI Responses traffic. A model group may contain native Responses targets and validated Chat-only targets exposed through the router's stateless Responses-to-Chat bridge. The bridge is deployment-controlled and request-shape gated; text and basic function tools can use a bridged Chat target when the target has `responses_to_chat` metadata. Responses reasoning can use a bridged Chat target only when `responses_to_chat.reasoning` and compatible target `reasoning` metadata were validated for that exact upstream. Stateful `previous_response_id`, provider-hosted tools, images, structured output, and streaming need separately validated targets.
 
 <RouterCodeBlock>
 {`

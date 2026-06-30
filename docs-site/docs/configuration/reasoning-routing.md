@@ -59,6 +59,12 @@ reasoning:
   supports_summaries: true
 ```
 
+## Bridge Reasoning
+
+Reasoning can cross an explicit bridge only when both the bridge flag and target reasoning metadata say the exact shape was validated. For Chat-to-Responses targets, set `bridges.chat_to_responses.reasoning: true` only after a router smoke proves Chat `reasoning_effort` reaches the upstream as Responses `reasoning.effort`. For Responses-to-Chat targets, set `responses_to_chat.reasoning: true` only after a router smoke proves Responses `reasoning.effort` reaches the upstream as Chat `reasoning_effort`.
+
+If a reasoning request reaches a bridge target without the matching flag, the target is skipped before upstream. Use a dedicated smoke group rather than a broad production group while validating this behavior, and grant only scoped validation callers access to that group for the test window.
+
 ## Weighted Group Pattern
 
 A mixed weighted group can prioritize validated reasoning targets only when the caller asks for reasoning. This keeps ordinary traffic on the configured weighted mix while preventing explicit reasoning controls from being dropped or sent to incompatible targets.
@@ -221,6 +227,8 @@ Source config is not enough. After deployment, administrators should prove the r
 3. Run one OpenAI Responses request with `reasoning.effort`.
 4. Run one Anthropic Messages request with `thinking` when that surface is enabled.
 5. Join usage telemetry by `X-Request-Id` and confirm the selected provider/model/dialect and translated reasoning control.
+
+For bridge smokes, also confirm `request_translation_shapes.bridge_direction` is `chat_to_responses` or `responses_to_chat`. Chat-to-Responses reasoning smokes should show `translated_reasoning_control = reasoning`; Responses-to-Chat reasoning smokes should show `translated_reasoning_control = reasoning_effort`.
 
 The operator smoke script `scripts/reasoning_smoke.py` automates this for staging and production deployments. It prints only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
 

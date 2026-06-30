@@ -8,6 +8,7 @@ import (
 )
 
 const bridgeChatToResponses = "chat-to-responses"
+const chatToResponsesBridgeDirection = "chat_to_responses"
 
 func isChatToResponsesBridge(callerDialect, outDialect string, target Target) bool {
 	return normalizeDialect(callerDialect) == "openai-chat" &&

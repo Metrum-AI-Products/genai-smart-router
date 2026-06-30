@@ -46,6 +46,39 @@ func TestEncodeChatToResponsesBridgeMapsTextAndControls(t *testing.T) {
 	}
 }
 
+func TestEncodeChatToResponsesBridgeMapsReasoning(t *testing.T) {
+	req, err := decodeRequest("openai-chat", []byte(`{
+		"model":"bridge",
+		"messages":[{"role":"user","content":"reason"}],
+		"reasoning_effort":"high",
+		"max_tokens":64
+	}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := Target{
+		Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum},
+		Bridges:   BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Reasoning: true}},
+	}
+	raw, err := encodeChatToResponsesBridge("responses-reasoning", req, target, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	reasoning := body["reasoning"].(map[string]any)
+	if reasoning["effort"] != "high" || body["max_output_tokens"] != float64(64) {
+		t.Fatalf("reasoning bridge body=%#v", body)
+	}
+
+	target.Bridges.ChatToResponses.Reasoning = false
+	if _, err := encodeChatToResponsesBridge("responses-reasoning", req, target, ""); err == nil || !strings.Contains(err.Error(), "chat-to-responses-reasoning-unsupported") {
+		t.Fatalf("disabled reasoning bridge err=%v", err)
+	}
+}
+
 func TestEncodeChatToResponsesBridgeMapsFunctionToolsAndToolResults(t *testing.T) {
 	req, err := decodeRequest("openai-chat", []byte(`{
 		"model":"bridge",

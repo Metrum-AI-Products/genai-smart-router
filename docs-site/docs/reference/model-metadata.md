@@ -158,7 +158,7 @@ bridges:
 
 `chat_to_responses.enabled: true` allows OpenAI Chat Completions callers to consider an `openai-responses` target after normal request-shape filtering. The default bridge is stateless: it translates the full Chat request into one Responses request.
 
-`stateful_sessions.enabled: true` adds an opt-in in-memory session map for callers that send the configured header. After a successful upstream Responses call, the router stores the upstream response `id` under a hashed caller/group/target/session scope and injects it as `previous_response_id` on the next request in that same scope. Requests without the header remain stateless. Stateful bridge requests bypass response caching because the session header is part of conversation state.
+`stateful_sessions.enabled: true` adds an opt-in in-memory session map for callers that send the configured header. After a successful upstream Responses call, the router stores the upstream response `id` under a hashed caller/group/target/session scope and injects it as `previous_response_id` on the next request in that same scope. If the upstream reports that the injected continuation is stale, expired, invalid, or missing, the router purges that hashed mapping and retries once stateless for the same selected target. Requests without the header remain stateless. Stateful bridge requests bypass response caching because the session header is part of conversation state.
 
 Enable only the shapes that passed direct upstream and router-level bridge smokes:
 
@@ -177,6 +177,8 @@ Enable only the shapes that passed direct upstream and router-level bridge smoke
 | `stateful_sessions.session_header` | Caller-supplied HTTP header used as the opaque session key. Raw values are not persisted. |
 | `stateful_sessions.ttl_seconds` | In-memory session expiry. |
 | `stateful_sessions.max_entries` | Maximum in-memory session entries before oldest entries are pruned. |
+
+Successful Chat-to-Responses bridge attempts write `request_translation_shapes.bridge_direction = chat_to_responses`; Responses-to-Chat attempts write `responses_to_chat`. Reasoning bridge attempts use safe scalar `translated_reasoning_control` values such as `reasoning` or `reasoning_effort`. Stale-session recovery emits trace events named `bridge_session_previous_response_stale_purged` and `bridge_session_stateless_retry`; these events do not include raw prompts, raw session headers, provider keys, or raw upstream error bodies.
 
 The `responses_to_chat` block is the inverse opt-in bridge for Responses callers using validated Chat-only targets. Configure it separately from `chat_to_responses`; each direction has its own supported request shapes, validation evidence, and failure modes.
 

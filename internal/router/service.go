@@ -1557,15 +1557,19 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	endpoint := upstreamEndpoint(provider.BaseURL, outDialect, target)
 	s.recordTranslationShapeTelemetry(rc, req, target, provider, outDialect, endpoint, attemptIndex, upReqBody)
+	retriedStateless := false
+sendUpstream:
 	attemptCtx := ctx
 	var cancel context.CancelFunc
 	if attempt.AttemptTimeoutMS > 0 {
 		attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(attempt.AttemptTimeoutMS)*time.Millisecond)
-		defer cancel()
 	}
 	start := time.Now()
 	httpReq, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, endpoint, bytes.NewReader(upReqBody))
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ErrorClass = "request_build_error"
 		attempt.ErrorMessage = err.Error()
@@ -1592,6 +1596,9 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	httpResp, err := s.httpClient.Do(httpReq)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		attempt.DurationMS = durationMillis(time.Since(start))
 		upErr := classifyContextOrNetworkError(ctx, attemptCtx, err)
 		attempt.ErrorClass = upErr.Class
@@ -1601,10 +1608,13 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		attempt.ClientCanceled = upErr.Canceled
 		return nil, attempt, upErr
 	}
-	defer httpResp.Body.Close()
 	attempt.StatusCode = httpResp.StatusCode
 	if httpResp.StatusCode == http.StatusTooManyRequests || httpResp.StatusCode >= 500 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		_ = httpResp.Body.Close()
+		if cancel != nil {
+			cancel()
+		}
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
 		upErr.Details = s.extractUpstreamErrorDetails(raw, httpResp.StatusCode, upErr.Class, attemptIndex, attempt.TS)
@@ -1620,6 +1630,25 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(httpResp.Body, int64(s.diagnosticMaxErrorBytes())))
+		_ = httpResp.Body.Close()
+		if cancel != nil {
+			cancel()
+		}
+		if chatResponsesBridgeStaleStateRetryAllowed(chatResponsesBridge, chatResponsesSession, httpResp.StatusCode, raw, retriedStateless) {
+			s.bridgeSessions.Delete(chatResponsesSession.Key)
+			rc.trace("bridge_session_previous_response_stale_purged", "chat-to-responses previous_response_id purged after stale upstream state", target, attemptIndex, httpResp.StatusCode, "bridge_session_stale_state", false, durationMillis(time.Since(start)))
+			upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target, "")
+			attempt.RequestBytes = int64(len(upReqBody))
+			if err != nil {
+				attempt.ErrorClass = "encode_error"
+				attempt.ErrorMessage = err.Error()
+				return nil, attempt, upstreamError{Class: "encode_error", Message: err.Error(), Err: err}
+			}
+			retriedStateless = true
+			s.recordTranslationShapeTelemetry(rc, req, target, provider, outDialect, endpoint, attemptIndex, upReqBody)
+			rc.trace("bridge_session_stateless_retry", "chat-to-responses retry without previous_response_id", target, attemptIndex, 0, "", false, 0)
+			goto sendUpstream
+		}
 		upErr := classifyUpstreamStatus(httpResp.StatusCode, raw)
 		upErr.RetryAfter = parseRetryAfterHeader(httpResp.Header.Get("Retry-After"), time.Now().UTC())
 		upErr.Details = s.extractUpstreamErrorDetails(raw, httpResp.StatusCode, upErr.Class, attemptIndex, attempt.TS)
@@ -1634,6 +1663,10 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		return nil, attempt, upErr
 	}
 	raw, oversized, err := s.readUpstreamSuccessBody(httpResp.Body)
+	_ = httpResp.Body.Close()
+	if cancel != nil {
+		cancel()
+	}
 	if err != nil {
 		attempt.DurationMS = durationMillis(time.Since(start))
 		attempt.ErrorClass = "read_error"

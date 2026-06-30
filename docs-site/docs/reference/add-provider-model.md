@@ -272,7 +272,7 @@ models:
         model_ref: chat-model
 ```
 
-Run `/v1/responses` text and function-tool smokes through the smoke group. Verify the upstream path is `/chat/completions`, the caller receives a Responses-shaped object, usage shows inbound `openai-responses` and target `openai-chat`, and diagnostics record `bridge_direction = responses_to_chat`. Keep stateful `previous_response_id`, hosted tools, images, reasoning, structured output, and streaming disabled until separately implemented and validated.
+Run `/v1/responses` text and function-tool smokes through the smoke group. Verify the upstream path is `/chat/completions`, the caller receives a Responses-shaped object, usage shows inbound `openai-responses` and target `openai-chat`, and diagnostics record `bridge_direction = responses_to_chat`. Enable `responses_to_chat.reasoning` only after a separate smoke proves Responses `reasoning.effort` reaches Chat `reasoning_effort` for the exact target. Keep stateful `previous_response_id`, hosted tools, images, structured output, and streaming disabled until separately implemented and validated.
 
 ### Optional Chat To Responses Bridge Smoke
 

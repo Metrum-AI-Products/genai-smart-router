@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -49,6 +50,38 @@ func TestResponsesToChatBridgeEncodesTextAndFunctionTools(t *testing.T) {
 	}
 	if body["parallel_tool_calls"] != false {
 		t.Fatalf("parallel_tool_calls=%#v, want false", body["parallel_tool_calls"])
+	}
+}
+
+func TestResponsesToChatBridgeEncodesReasoning(t *testing.T) {
+	req, err := decodeRequest("openai-responses", []byte(`{
+		"model":"bridge",
+		"input":"reason",
+		"reasoning":{"effort":"low"},
+		"max_output_tokens":32
+	}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := Target{
+		ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true, Reasoning: true},
+		Reasoning:       ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum},
+	}
+	raw, err := encodeResponsesToChatBridge("chat-reasoning", req, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["reasoning_effort"] != "low" || body["max_tokens"] != float64(32) {
+		t.Fatalf("reasoning bridge body=%#v", body)
+	}
+
+	target.ResponsesToChat.Reasoning = false
+	if _, err := encodeResponsesToChatBridge("chat-reasoning", req, target); err == nil || !strings.Contains(err.Error(), "responses-to-chat-reasoning") {
+		t.Fatalf("disabled reasoning bridge err=%v", err)
 	}
 }
 

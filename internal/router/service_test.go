@@ -8725,6 +8725,160 @@ func TestChatInboundResponsesBridgeStatefulSessionInjectsPreviousResponseID(t *t
 	}
 }
 
+func TestChatInboundResponsesBridgeReasoningTelemetry(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_bridge_reasoning",
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "reasoning ok",
+			"usage":       map[string]any{"input_tokens": 4, "output_tokens": 2, "total_tokens": 6},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge-reasoning"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:  "responses",
+		Model:     "responses-reasoning-model",
+		Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum},
+		Bridges:   BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Reasoning: true}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-reasoning")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-reasoning","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}],"max_tokens":64}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	reasoning := upstreamBody["reasoning"].(map[string]any)
+	if reasoning["effort"] != "high" || upstreamBody["max_output_tokens"] != float64(64) {
+		t.Fatalf("upstream body=%#v", upstreamBody)
+	}
+	var translated requestTranslationShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).First(&translated).Error; err != nil {
+		t.Fatal(err)
+	}
+	if translated.BridgeDirection != chatToResponsesBridgeDirection || translated.TranslatedReasoningControl != "reasoning" {
+		t.Fatalf("translation proof=%#v", translated)
+	}
+}
+
+func TestChatInboundResponsesBridgeStatefulSessionStaleRetryPurgesMapping(t *testing.T) {
+	var upstreamBodies []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var upstreamBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		upstreamBodies = append(upstreamBodies, upstreamBody)
+		if upstreamBody["previous_response_id"] == "resp_stale" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": map[string]any{
+					"type":    "invalid_request_error",
+					"message": "previous_response_id was not found",
+				},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          fmt.Sprintf("resp_recovered_%d", len(upstreamBodies)),
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "recovered",
+			"usage":       map[string]any{"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	target := Target{
+		Provider: "responses",
+		Model:    "responses-text-model",
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true,
+			StatefulSessions: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				SessionHeader: "X-Router-Session",
+				TTLSeconds:    60,
+				MaxEntries:    10,
+			},
+		}},
+	}
+	cfg.Models["bridge-stateful"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-stateful")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	rc := &requestContext{rec: logRecord{TokenID: cfg.Callers[0].TokenID}, caller: svc.quota.callers["alice"]}
+	key := bridgeSessionKey(rc, "bridge-stateful", target, "session-alpha")
+	svc.bridgeSessions.Set(key, "resp_stale", time.Minute, 10)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-stateful","messages":[{"role":"user","content":"retry without stale state"}],"max_tokens":16}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Router-Session", "session-alpha")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(upstreamBodies) != 2 {
+		t.Fatalf("upstream calls=%d bodies=%#v", len(upstreamBodies), upstreamBodies)
+	}
+	if upstreamBodies[0]["previous_response_id"] != "resp_stale" {
+		t.Fatalf("first upstream body=%#v", upstreamBodies[0])
+	}
+	if _, ok := upstreamBodies[1]["previous_response_id"]; ok {
+		t.Fatalf("stateless retry still had previous_response_id: %#v", upstreamBodies[1])
+	}
+	if entry, ok := svc.bridgeSessions.Get(key); !ok || entry.PreviousResponseID == "resp_stale" {
+		t.Fatalf("session was not refreshed after stale purge: entry=%#v ok=%v", entry, ok)
+	}
+	var traces []requestTraceEventRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).Order("seq ASC").Find(&traces).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !traceEventsContain(traces, "bridge_session_previous_response_stale_purged") || !traceEventsContain(traces, "bridge_session_stateless_retry") {
+		t.Fatalf("missing stale retry trace events: %#v", traces)
+	}
+	var translations []requestTranslationShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).Order("ts ASC, attempt_index ASC").Find(&translations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(translations) != 1 || translations[0].BridgeDirection != chatToResponsesBridgeDirection {
+		t.Fatalf("translation rows=%d %#v", len(translations), translations)
+	}
+	var events []requestTranslationFieldEventRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).Find(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedShapeRowsDoNotContain(t, requestShapeRecord{}, translations[0], events, "retry without stale state", "session-alpha", "provider-key", testToken)
+}
+
 func TestChatInboundResponsesBridgeToolsEndToEnd(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -11601,6 +11755,15 @@ func assertPersistedShapeRowsDoNotContain(t *testing.T, shape requestShapeRecord
 			t.Fatalf("persisted shape telemetry leaked %q: %s", value, string(raw))
 		}
 	}
+}
+
+func traceEventsContain(events []requestTraceEventRecord, name string) bool {
+	for _, event := range events {
+		if event.Event == name {
+			return true
+		}
+	}
+	return false
 }
 
 const testToken = "rtr_test_token"

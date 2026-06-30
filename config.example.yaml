@@ -817,14 +817,16 @@ providers:
         # Chat Completions upstream. Enable only after direct Chat smokes and a
         # router-level Responses-to-Chat smoke pass for the exact target and
         # request shapes. The first supported production slice is text and basic
-        # function tools; stateful previous_response_id, hosted tools, images,
-        # reasoning, structured outputs, and streaming require separate flags and
-        # validation before use.
+        # function tools. Enable reasoning only after Responses reasoning.effort
+        # maps to Chat reasoning_effort in a router-level smoke. Stateful
+        # previous_response_id, hosted tools, images, structured outputs, and
+        # streaming require separate flags and validation before use.
         # responses_to_chat:
         #   enabled: true
         #   text: true
         #   function_tools: true
         #   tool_choice: true
+        #   reasoning: false
         #   validation_status: passed
         #   validation_notes: Router-level Responses text and function-tool bridge smokes passed for this target.
         input_price_per_million_usd: 0.09

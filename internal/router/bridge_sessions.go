@@ -74,6 +74,26 @@ func (s *bridgeSessionStore) Set(key, previousResponseID string, ttl time.Durati
 	s.pruneLocked(now, maxEntries)
 }
 
+func (s *bridgeSessionStore) Delete(key string) {
+	if s == nil || strings.TrimSpace(key) == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.entries, key)
+}
+
+func (s *bridgeSessionStore) Len() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	s.pruneLocked(now, 0)
+	return len(s.entries)
+}
+
 func (s *bridgeSessionStore) pruneLocked(now time.Time, maxEntries int) {
 	for key, entry := range s.entries {
 		if !entry.ExpiresAt.IsZero() && !entry.ExpiresAt.After(now) {
@@ -207,6 +227,42 @@ func bridgeSessionKey(rc *requestContext, groupName string, target Target, sessi
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+func chatResponsesBridgeStaleStateRetryAllowed(bridge bool, lookup bridgeSessionLookup, status int, raw []byte, alreadyRetried bool) bool {
+	if !bridge || alreadyRetried || !lookup.Requested || strings.TrimSpace(lookup.PreviousResponseID) == "" || strings.TrimSpace(lookup.Key) == "" {
+		return false
+	}
+	switch status {
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity:
+	default:
+		return false
+	}
+	text := strings.ToLower(string(raw))
+	if text == "" {
+		return false
+	}
+	for _, needle := range []string{
+		"previous_response_id",
+		"previous response",
+		"previous responses",
+		"prior response",
+		"response id is stale",
+		"response id has expired",
+		"response id not found",
+		"conversation expired",
+		"conversation not found",
+		"conversation state",
+		"conversation is stale",
+		"stale conversation",
+		"expired conversation",
+		"stale state",
+	} {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func validHTTPHeaderName(name string) bool {
