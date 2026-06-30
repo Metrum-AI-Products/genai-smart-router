@@ -8660,6 +8660,70 @@ func TestChatInboundResponsesBridgeRequiresOptIn(t *testing.T) {
 	assertDecisionFilterReason(t, svc, "chat-to-responses-bridge-disabled")
 }
 
+func TestChatInboundResponsesBridgeStatefulSessionInjectsPreviousResponseID(t *testing.T) {
+	var upstreamBodies []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var upstreamBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		upstreamBodies = append(upstreamBodies, upstreamBody)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          fmt.Sprintf("resp_bridge_stateful_%d", len(upstreamBodies)),
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "stateful ok",
+			"usage":       map[string]any{"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge-stateful"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-text-model",
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true,
+			StatefulSessions: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				SessionHeader: "X-Router-Session",
+				TTLSeconds:    60,
+				MaxEntries:    10,
+			},
+		}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-stateful")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for _, content := range []string{"first", "second"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf(`{"model":"bridge-stateful","messages":[{"role":"user","content":%q}],"max_tokens":16}`, content)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("X-Router-Session", "session-alpha")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+	if len(upstreamBodies) != 2 {
+		t.Fatalf("upstream calls=%d", len(upstreamBodies))
+	}
+	if _, ok := upstreamBodies[0]["previous_response_id"]; ok {
+		t.Fatalf("first request had previous_response_id: %#v", upstreamBodies[0])
+	}
+	if got := upstreamBodies[1]["previous_response_id"]; got != "resp_bridge_stateful_1" {
+		t.Fatalf("second previous_response_id=%#v body=%#v", got, upstreamBodies[1])
+	}
+}
+
 func TestChatInboundResponsesBridgeToolsEndToEnd(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

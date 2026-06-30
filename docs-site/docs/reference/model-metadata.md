@@ -119,9 +119,17 @@ bridges:
     images: false
     reasoning: false
     streaming: false
+    stateful_sessions:
+      enabled: false
+      backend: memory
+      session_header: X-Router-Session
+      ttl_seconds: 3600
+      max_entries: 10000
 ```
 
-`chat_to_responses.enabled: true` allows OpenAI Chat Completions callers to consider an `openai-responses` target after normal request-shape filtering. The current bridge is stateless: it translates the full Chat request into one Responses request and never creates or consumes `previous_response_id`.
+`chat_to_responses.enabled: true` allows OpenAI Chat Completions callers to consider an `openai-responses` target after normal request-shape filtering. The default bridge is stateless: it translates the full Chat request into one Responses request.
+
+`stateful_sessions.enabled: true` adds an opt-in in-memory session map for callers that send the configured header. After a successful upstream Responses call, the router stores the upstream response `id` under a hashed caller/group/target/session scope and injects it as `previous_response_id` on the next request in that same scope. Requests without the header remain stateless. Stateful bridge requests bypass response caching because the session header is part of conversation state.
 
 Enable only the shapes that passed direct upstream and router-level bridge smokes:
 
@@ -135,8 +143,13 @@ Enable only the shapes that passed direct upstream and router-level bridge smoke
 | `images` | Chat image content blocks can translate to Responses image input and passed direct plus router image smokes. |
 | `reasoning` | Chat reasoning controls can translate to Responses reasoning controls for this target. |
 | `streaming` | Reserved for a future streaming bridge. Current bridge streaming is skipped before upstream even if this field is set. |
+| `stateful_sessions.enabled` | Enables header-driven `previous_response_id` mapping for this target. Use only after direct and router-level session smokes pass. |
+| `stateful_sessions.backend` | Currently `memory` only. Use single-process deployment or sticky routing. |
+| `stateful_sessions.session_header` | Caller-supplied HTTP header used as the opaque session key. Raw values are not persisted. |
+| `stateful_sessions.ttl_seconds` | In-memory session expiry. |
+| `stateful_sessions.max_entries` | Maximum in-memory session entries before oldest entries are pruned. |
 
-The generic `responses_to_chat` block is reserved so a future inverse bridge can coexist with `chat_to_responses`. Do not set it for caller traffic unless a separate implementation and validation path exists.
+The `responses_to_chat` block is the inverse opt-in bridge for Responses callers using validated Chat-only targets. Configure it separately from `chat_to_responses`; each direction has its own supported request shapes, validation evidence, and failure modes.
 
 ## Request-Shape Support
 

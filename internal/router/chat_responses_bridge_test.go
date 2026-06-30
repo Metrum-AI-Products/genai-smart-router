@@ -21,7 +21,7 @@ func TestEncodeChatToResponsesBridgeMapsTextAndControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := encodeChatToResponsesBridge("upstream-resp", req, Target{Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}}})
+	raw, err := encodeChatToResponsesBridge("upstream-resp", req, Target{Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestEncodeChatToResponsesBridgeMapsFunctionToolsAndToolResults(t *testing.T
 		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
 		Bridges:     BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Tools: true, ToolChoice: true, ParallelToolCalls: true}},
 	}
-	raw, err := encodeChatToResponsesBridge("responses-tools", req, target)
+	raw, err := encodeChatToResponsesBridge("responses-tools", req, target, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestEncodeChatToResponsesBridgePreservesJSONSchemaFormatType(t *testing.T) 
 		ToolSupport: ToolSupport{OpenAIResponses: []string{"structured_outputs"}},
 		Bridges:     BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, StructuredOutputs: true}},
 	}
-	raw, err := encodeChatToResponsesBridge("responses-json", req, target)
+	raw, err := encodeChatToResponsesBridge("responses-json", req, target, "resp_prior")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +126,9 @@ func TestEncodeChatToResponsesBridgePreservesJSONSchemaFormatType(t *testing.T) 
 	if _, ok := format["schema"].(map[string]any); !ok {
 		t.Fatalf("format schema missing: %#v", format)
 	}
+	if body["previous_response_id"] != "resp_prior" {
+		t.Fatalf("previous_response_id not injected: %#v", body)
+	}
 }
 
 func TestChatToResponsesBridgeRejectsUnsupportedShapes(t *testing.T) {
@@ -133,7 +136,7 @@ func TestChatToResponsesBridgeRejectsUnsupportedShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = encodeChatToResponsesBridge("responses", req, Target{Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}}})
+	_, err = encodeChatToResponsesBridge("responses", req, Target{Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}}}, "")
 	if err == nil || !strings.Contains(err.Error(), "chat-to-responses-streaming-unsupported") {
 		t.Fatalf("err=%v", err)
 	}

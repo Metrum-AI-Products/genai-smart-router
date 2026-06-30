@@ -2046,12 +2046,25 @@ models:
     targets:
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
-      # Opt-in stateless bridge for validating Chat Completions callers against
-      # a Responses-only target. Keep this in smoke groups until text, tool,
-      # diagnostics, and caller compatibility smokes pass for the exact target.
+      # Opt-in bridge for validating Chat Completions callers against a
+      # Responses-only target. Keep this in smoke groups until text, tool,
+      # diagnostics, optional session behavior, and caller compatibility smokes
+      # pass for the exact target.
       bridges:
         chat_to_responses:
           enabled: true
+          # Optional stateful session bridge. When enabled and callers send the
+          # configured header, the router stores the last upstream Responses id
+          # in memory and injects it as previous_response_id on the next Chat
+          # request in the same caller/group/target/session scope.
+          # This is single-process state; leave disabled for multi-replica
+          # deployments until a shared backend is configured in that deployment.
+          stateful_sessions:
+            enabled: false
+            backend: memory
+            session_header: X-Router-Session
+            ttl_seconds: 3600
+            max_entries: 10000
   fireworks-responses-tool-smoke:
     strategy: static
     targets:

@@ -63,7 +63,7 @@ func chatToResponsesBridgeFilterReason(target Target, req *IRRequest, callerDial
 	return ""
 }
 
-func encodeChatToResponsesBridge(model string, req *IRRequest, target Target) ([]byte, error) {
+func encodeChatToResponsesBridge(model string, req *IRRequest, target Target, previousResponseID string) ([]byte, error) {
 	if reason := chatToResponsesBridgeFilterReason(target, req, "openai-chat", "openai-responses"); reason != "" {
 		return nil, errors.New(reason)
 	}
@@ -103,6 +103,9 @@ func encodeChatToResponsesBridge(model string, req *IRRequest, target Target) ([
 	}
 	if target.ForceStoreFalse {
 		body["store"] = false
+	}
+	if previousResponseID != "" {
+		body["previous_response_id"] = previousResponseID
 	}
 	if err := applyReasoningToOpenAIResponses(body, req, target); err != nil {
 		return nil, err

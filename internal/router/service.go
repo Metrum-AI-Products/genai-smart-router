@@ -29,25 +29,26 @@ import (
 )
 
 type Service struct {
-	cfg          *Config
-	mux          *http.ServeMux
-	httpClient   *http.Client
-	callersBySum map[string]*callerRuntime
-	adminBasic   map[string]adminBasicRuntime
-	adminOIDC    *adminOIDCRuntime
-	adminSession *adminSessionStore
-	authorizer   *authorizer
-	quota        *quotaStore
-	cache        *responseCache
-	logger       *requestLogger
-	usage        *usageStore
-	metrics      *metricsStore
-	trafficShape *trafficShapeManager
-	license      *licenseManager
-	scripts      map[string]*scriptStrategy
-	observations *dynamicObservationStore
-	shaping      *upstreamShapeManager
-	reportCursor [32]byte
+	cfg            *Config
+	mux            *http.ServeMux
+	httpClient     *http.Client
+	callersBySum   map[string]*callerRuntime
+	adminBasic     map[string]adminBasicRuntime
+	adminOIDC      *adminOIDCRuntime
+	adminSession   *adminSessionStore
+	authorizer     *authorizer
+	quota          *quotaStore
+	cache          *responseCache
+	logger         *requestLogger
+	usage          *usageStore
+	metrics        *metricsStore
+	trafficShape   *trafficShapeManager
+	license        *licenseManager
+	bridgeSessions *bridgeSessionStore
+	scripts        map[string]*scriptStrategy
+	observations   *dynamicObservationStore
+	shaping        *upstreamShapeManager
+	reportCursor   [32]byte
 }
 
 type adminBasicRuntime struct {
@@ -93,6 +94,7 @@ type requestContext struct {
 	method               string
 	pathTemplate         string
 	rec                  logRecord
+	bridgeSessionHeaders map[string]string
 	securityRecorded     bool
 	traceSeq             int
 	sanitizeTraceMessage func(string, string) string
@@ -146,21 +148,22 @@ func New(cfg *Config) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{
-		cfg:          cfg,
-		mux:          http.NewServeMux(),
-		httpClient:   newUpstreamHTTPClient(cfg.Server.Upstream),
-		callersBySum: map[string]*callerRuntime{},
-		adminBasic:   map[string]adminBasicRuntime{},
-		adminSession: newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
-		quota:        quota,
-		cache:        newCache(cfg.Server.Cache),
-		logger:       logger,
-		usage:        usage,
-		metrics:      newMetricsStore(),
-		trafficShape: newTrafficShapeManager(),
-		scripts:      map[string]*scriptStrategy{},
-		observations: newDynamicObservationStore(),
-		shaping:      newUpstreamShapeManager(),
+		cfg:            cfg,
+		mux:            http.NewServeMux(),
+		httpClient:     newUpstreamHTTPClient(cfg.Server.Upstream),
+		callersBySum:   map[string]*callerRuntime{},
+		adminBasic:     map[string]adminBasicRuntime{},
+		adminSession:   newAdminSessionStore(cfg.Server.AdminAuth.Sessions),
+		quota:          quota,
+		cache:          newCache(cfg.Server.Cache),
+		logger:         logger,
+		usage:          usage,
+		metrics:        newMetricsStore(),
+		trafficShape:   newTrafficShapeManager(),
+		bridgeSessions: newBridgeSessionStore(),
+		scripts:        map[string]*scriptStrategy{},
+		observations:   newDynamicObservationStore(),
+		shaping:        newUpstreamShapeManager(),
 	}
 	if _, err := rand.Read(s.reportCursor[:]); err != nil {
 		_ = quota.Close()
@@ -742,6 +745,12 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	rc.rec.PricingUpdatedAt = dec.Target.PricingUpdatedAt
 	if dec.DecisionTrace != "" {
 		rc.trace("routing_decision", dec.DecisionTrace, dec.Target, 0, 0, "", false, 0)
+	}
+	sessionTargets := append([]Target{dec.Target}, dec.Fallbacks...)
+	rc.bridgeSessionHeaders = collectBridgeSessionHeaders(r.Header, sessionTargets)
+	if rc.bridgeSessionHeaders != nil {
+		req.NoCache = true
+		rc.trace("bridge_session_requested", "chat-to-responses stateful session header present", dec.Target, 0, 0, "", false, 0)
 	}
 
 	key := cacheKey(req, dec.Target)
@@ -1515,6 +1524,8 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	passthrough := requestShapePassthrough(callerDialect, outDialect, req)
 	bridge := isResponsesToChatBridge(callerDialect, outDialect, target)
+	chatResponsesBridge := isChatToResponsesBridge(callerDialect, outDialect, target)
+	chatResponsesSession := bridgeSessionLookup{}
 	var upReqBody []byte
 	var err error
 	if err := s.validateImageURLsForUpstream(ctx, req); err != nil {
@@ -1526,8 +1537,12 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		upReqBody, err = encodeResponsesToChatBridge(target.Model, req, target)
 	} else if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
-	} else if isChatToResponsesBridge(callerDialect, outDialect, target) {
-		upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target)
+	} else if chatResponsesBridge {
+		chatResponsesSession = s.chatToResponsesBridgeSession(rc, groupName, target)
+		if chatResponsesSession.PreviousResponseID != "" {
+			rc.trace("bridge_session_previous_response_applied", "chat-to-responses previous_response_id applied", target, attemptIndex, 0, "", false, 0)
+		}
+		upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target, chatResponsesSession.PreviousResponseID)
 	} else {
 		upReqBody, err = encodeUpstreamForTarget(outDialect, target.Model, req, target)
 	}
@@ -1653,13 +1668,16 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		}
 		return resp, attempt, nil
 	}
-	if isChatToResponsesBridge(callerDialect, outDialect, target) {
+	if chatResponsesBridge {
 		resp, err := decodeChatToResponsesBridgeResponse(raw, target.Model)
 		if err != nil {
 			attempt.ErrorClass = "decode_error"
 			attempt.ErrorMessage = err.Error()
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
+		}
+		if chatResponsesSession.Requested && resp.ID != "" {
+			s.bridgeSessions.Set(chatResponsesSession.Key, resp.ID, chatResponsesSession.TTL, chatResponsesSession.MaxEntries)
 		}
 		return resp, attempt, nil
 	}

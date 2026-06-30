@@ -128,6 +128,47 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 	}
 }
 
+func TestChatToResponsesBridgeStatefulSessionConfigValidation(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: "https://responses.example.test/v1", Dialect: "openai-responses"}
+	cfg.Models["stateful"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-model",
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true,
+			StatefulSessions: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				Backend:       "memory",
+				SessionHeader: "X-Router-Session",
+				TTLSeconds:    600,
+				MaxEntries:    100,
+			},
+		}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "stateful")
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg = minimalConfig(t)
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: "https://responses.example.test/v1", Dialect: "openai-responses"}
+	cfg.Models["bad"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-model",
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true,
+			StatefulSessions: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				SessionHeader: "Bad Header",
+			},
+		}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bad")
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "session_header") {
+		t.Fatalf("expected invalid session_header error, got %v", err)
+	}
+}
+
 func TestModelGroupContractValidation(t *testing.T) {
 	score := 0.9
 	passRate := 0.95

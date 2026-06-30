@@ -581,15 +581,24 @@ type BridgeSupport struct {
 }
 
 type DialectBridgeSupport struct {
-	Enabled           bool  `yaml:"enabled" json:"enabled,omitempty"`
-	Text              *bool `yaml:"text" json:"text,omitempty"`
-	Tools             bool  `yaml:"tools" json:"tools,omitempty"`
-	ToolChoice        bool  `yaml:"tool_choice" json:"toolChoice,omitempty"`
-	ParallelToolCalls bool  `yaml:"parallel_tool_calls" json:"parallelToolCalls,omitempty"`
-	StructuredOutputs bool  `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
-	Images            bool  `yaml:"images" json:"images,omitempty"`
-	Reasoning         bool  `yaml:"reasoning" json:"reasoning,omitempty"`
-	Streaming         bool  `yaml:"streaming" json:"streaming,omitempty"`
+	Enabled           bool                         `yaml:"enabled" json:"enabled,omitempty"`
+	Text              *bool                        `yaml:"text" json:"text,omitempty"`
+	Tools             bool                         `yaml:"tools" json:"tools,omitempty"`
+	ToolChoice        bool                         `yaml:"tool_choice" json:"toolChoice,omitempty"`
+	ParallelToolCalls bool                         `yaml:"parallel_tool_calls" json:"parallelToolCalls,omitempty"`
+	StructuredOutputs bool                         `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
+	Images            bool                         `yaml:"images" json:"images,omitempty"`
+	Reasoning         bool                         `yaml:"reasoning" json:"reasoning,omitempty"`
+	Streaming         bool                         `yaml:"streaming" json:"streaming,omitempty"`
+	StatefulSessions  BridgeStatefulSessionsConfig `yaml:"stateful_sessions" json:"statefulSessions,omitempty"`
+}
+
+type BridgeStatefulSessionsConfig struct {
+	Enabled       bool   `yaml:"enabled" json:"enabled,omitempty"`
+	Backend       string `yaml:"backend" json:"backend,omitempty"`
+	SessionHeader string `yaml:"session_header" json:"sessionHeader,omitempty"`
+	TTLSeconds    int    `yaml:"ttl_seconds" json:"ttlSeconds,omitempty"`
+	MaxEntries    int    `yaml:"max_entries" json:"maxEntries,omitempty"`
 }
 
 type TrafficShapeConfig struct {
@@ -1040,6 +1049,9 @@ func (c *Config) Validate() error {
 			if err := validateRequestShapeSupport(fmt.Sprintf("provider %s model %s", name, ref), model.RequestShapeSupport); err != nil {
 				return err
 			}
+			if err := validateBridgeSupport(fmt.Sprintf("provider %s model %s", name, ref), model.Bridges); err != nil {
+				return err
+			}
 			if err := validateResponsesToChatBridge(fmt.Sprintf("provider %s model %s", name, ref), model.ResponsesToChat); err != nil {
 				return err
 			}
@@ -1187,6 +1199,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("model group %s target %s has invalid output_token_field: %w", name, resolved.Model, err)
 			}
 			if err := validateRequestShapeSupport(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.RequestShapeSupport); err != nil {
+				return err
+			}
+			if err := validateBridgeSupport(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.Bridges); err != nil {
 				return err
 			}
 			if err := validateResponsesToChatBridge(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.ResponsesToChat); err != nil {
@@ -2285,6 +2300,27 @@ func mergeDialectBridgeSupport(base, override DialectBridgeSupport) DialectBridg
 	if override.Streaming {
 		out.Streaming = true
 	}
+	out.StatefulSessions = mergeBridgeStatefulSessions(base.StatefulSessions, override.StatefulSessions)
+	return out
+}
+
+func mergeBridgeStatefulSessions(base, override BridgeStatefulSessionsConfig) BridgeStatefulSessionsConfig {
+	out := base
+	if override.Enabled {
+		out.Enabled = true
+	}
+	if strings.TrimSpace(override.Backend) != "" {
+		out.Backend = override.Backend
+	}
+	if strings.TrimSpace(override.SessionHeader) != "" {
+		out.SessionHeader = override.SessionHeader
+	}
+	if override.TTLSeconds != 0 {
+		out.TTLSeconds = override.TTLSeconds
+	}
+	if override.MaxEntries != 0 {
+		out.MaxEntries = override.MaxEntries
+	}
 	return out
 }
 
@@ -2382,6 +2418,50 @@ func validateResponsesToChatBridge(prefix string, bridge ResponsesToChatBridge) 
 	}
 	if bridge.ToolChoice && !bridge.FunctionTools {
 		return fmt.Errorf("%s responses_to_chat.tool_choice requires function_tools", prefix)
+	}
+	return nil
+}
+
+func validateBridgeSupport(prefix string, bridges BridgeSupport) error {
+	if err := validateDialectBridgeSupport(prefix+" bridges.chat_to_responses", bridges.ChatToResponses, true); err != nil {
+		return err
+	}
+	if err := validateDialectBridgeSupport(prefix+" bridges.responses_to_chat", bridges.ResponsesToChat, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDialectBridgeSupport(prefix string, bridge DialectBridgeSupport, allowStatefulSessions bool) error {
+	cfg := bridge.StatefulSessions
+	if !cfg.Enabled && strings.TrimSpace(cfg.Backend) == "" && strings.TrimSpace(cfg.SessionHeader) == "" && cfg.TTLSeconds == 0 && cfg.MaxEntries == 0 {
+		return nil
+	}
+	if !bridge.Enabled {
+		return fmt.Errorf("%s stateful_sessions requires enabled bridge", prefix)
+	}
+	if cfg.Enabled && !allowStatefulSessions {
+		return fmt.Errorf("%s stateful_sessions is only supported for chat_to_responses", prefix)
+	}
+	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
+	if backend == "" {
+		backend = "memory"
+	}
+	if backend != "memory" {
+		return fmt.Errorf("%s stateful_sessions backend must be memory", prefix)
+	}
+	header := bridgeStatefulSessionHeader(cfg)
+	if header == "" {
+		return fmt.Errorf("%s stateful_sessions session_header cannot be empty", prefix)
+	}
+	if !validHTTPHeaderName(header) {
+		return fmt.Errorf("%s stateful_sessions session_header %q is invalid", prefix, cfg.SessionHeader)
+	}
+	if cfg.TTLSeconds < 0 {
+		return fmt.Errorf("%s stateful_sessions ttl_seconds cannot be negative", prefix)
+	}
+	if cfg.MaxEntries < 0 {
+		return fmt.Errorf("%s stateful_sessions max_entries cannot be negative", prefix)
 	}
 	return nil
 }

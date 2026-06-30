@@ -303,9 +303,15 @@ models:
             enabled: true
             tools: true
             tool_choice: true
+            stateful_sessions:
+              enabled: false
+              backend: memory
+              session_header: X-Router-Session
+              ttl_seconds: 3600
+              max_entries: 10000
 ```
 
-Run router-level `POST /v1/chat/completions` smokes for non-streaming text, function-tool calls, and a negative unsupported shape such as `stream:true` or image input when those modes are not enabled. Verify usage and diagnostic rows show inbound Chat, target Responses, `/v1/responses` endpoint path, safe translation-shape buckets, and no raw prompt/tool-schema persistence. Do not enable bridge streaming, images, structured outputs, reasoning, or parallel tool calls until those exact bridge shapes pass.
+Run router-level `POST /v1/chat/completions` smokes for non-streaming text, function-tool calls, and a negative unsupported shape such as `stream:true` or image input when those modes are not enabled. If `stateful_sessions.enabled` will be turned on, run a two-request same-session smoke and verify the second upstream Responses request includes the first upstream response `id` as `previous_response_id`; also verify a different caller or session header value does not reuse it. Verify usage and diagnostic rows show inbound Chat, target Responses, `/v1/responses` endpoint path, safe translation-shape buckets, and no raw prompt/tool-schema/session-header persistence. Do not enable bridge streaming, images, structured outputs, reasoning, or parallel tool calls until those exact bridge shapes pass.
 
 ## 6. Add Production Weight Conservatively
 
