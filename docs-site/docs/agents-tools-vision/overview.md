@@ -37,6 +37,8 @@ Before adding or increasing an agent-capable target:
 
 For coding-agent clients, validate the client workflow as well as the raw API shape. A passing client smoke should prove text, repository edits, tools, model-group selection, and image attachments where the client supports them. See [Coding-Agent Client Matrix](../getting-started/coding-agent-clients).
 
+OpenAI Chat clients that send tools and images in the same request need one eligible target that supports both capabilities on the OpenAI Chat skin. Do not treat a Responses image target or an Anthropic tool target as a substitute for that OpenAI Chat request. A safe failure returns `502 no-eligible-target` before upstream and records only scalar request-shape and target-filter diagnostics.
+
 ## Related Pages
 
 - [Codex CLI](../getting-started/codex-cli)

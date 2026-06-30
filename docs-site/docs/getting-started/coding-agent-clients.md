@@ -97,6 +97,7 @@ For Cursor, Continue.dev, Cline, Roo Code, SDK-based agents, LiteLLM adapters, a
 - confirm the client uses the router base URL and a router token;
 - request a model group returned by `/v1/models`;
 - perform a text request and one repository edit or tool task;
+- when the client can attach images, run a mixed OpenAI Chat tools-plus-image smoke against the intended model group and require a target that supports tools and image input on the same OpenAI Chat skin;
 - record client version, request time, request ID if shown, model group, and expected output;
 - verify usage reports show the selected upstream provider/model/dialect, token totals, status, and no unexpected fallback.
 

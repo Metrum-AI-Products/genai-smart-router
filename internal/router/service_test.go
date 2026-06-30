@@ -3009,6 +3009,186 @@ func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T
 	}
 }
 
+func TestCursorOpenAIChatToolsAndImageRequiresSingleCombinedTarget(t *testing.T) {
+	var calls atomic.Int64
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_cursor_mixed",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   "chat-tools-image",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 24000, "completion_tokens": 1, "total_tokens": 24001},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := cursorMixedToolsImageConfig(t, upstream.URL, dir, true)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(cursorMixedToolsImagePayload(t, "cursor-coding")))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "Cursor/1.0")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls=%d, want 1", calls.Load())
+	}
+	if upstreamBody["model"] != "chat-tools-image" {
+		t.Fatalf("upstream model=%#v body=%#v", upstreamBody["model"], upstreamBody)
+	}
+	if upstreamBody["stream"] != false {
+		t.Fatalf("upstream stream=%#v, want synthesized unary upstream", upstreamBody["stream"])
+	}
+	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 19 {
+		t.Fatalf("tools not preserved upstream: %#v", upstreamBody["tools"])
+	}
+	messages, ok := upstreamBody["messages"].([]any)
+	if !ok || len(messages) != 3 {
+		t.Fatalf("messages not preserved upstream: %#v", upstreamBody["messages"])
+	}
+	userMessage := messages[2].(map[string]any)
+	parts := userMessage["content"].([]any)
+	if len(parts) != 2 || parts[1].(map[string]any)["type"] != "image_url" {
+		t.Fatalf("image part not preserved upstream: %#v", parts)
+	}
+
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !shape.Stream || shape.MessageCount != 3 || shape.ToolCount != 19 || shape.ImageCount != 1 || shape.RequestedOutputCapBucket != "omitted" {
+		t.Fatalf("unexpected request shape: %#v", shape)
+	}
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Order("candidate_index ASC").Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 4 {
+		t.Fatalf("candidate count=%d: %#v", len(candidates), candidates)
+	}
+	if candidates[3].Model != "chat-tools-image" || !candidates[3].Eligible || !candidates[3].Selected || !candidates[3].InputImage || !candidates[3].ToolSupport {
+		t.Fatalf("combined target was not the only selected eligible target: %#v", candidates[3])
+	}
+	for i, candidate := range candidates[:3] {
+		if candidate.Selected {
+			t.Fatalf("incomplete candidate %d was selected: %#v", i, candidate)
+		}
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"input-modality-image", "dialect-tool-passthrough"} {
+		if !filterReasonsContain(reasons, "request_shape", want) {
+			t.Fatalf("missing filter reason %q: %#v", want, reasons)
+		}
+	}
+	assertCursorMixedTelemetryDoesNotContain(t, svc, usage.RequestID, "RAW_CURSOR_IMAGE", "cursor-private-secret", "provider-key", testToken)
+}
+
+func TestCursorOpenAIChatToolsAndImageNoEligiblePersistsDiagnostics(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := cursorMixedToolsImageConfig(t, upstream.URL, dir, false)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(cursorMixedToolsImagePayload(t, "cursor-no-eligible-secret")))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", "Cursor/1.0")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls=%d, want 0", calls.Load())
+	}
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.Attempts != 0 || usage.Error != "no-eligible-target" {
+		t.Fatalf("usage row=%#v", usage)
+	}
+	var requestError requestErrorRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&requestError).Error; err != nil {
+		t.Fatal(err)
+	}
+	if requestError.ErrorClass != "no-eligible-target" || requestError.Attempts != 0 {
+		t.Fatalf("request error=%#v", requestError)
+	}
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !shape.Stream || shape.MessageCount != 3 || shape.ToolCount != 19 || shape.ImageCount != 1 {
+		t.Fatalf("unexpected request shape: %#v", shape)
+	}
+	var features int64
+	if err := svc.usage.db.Model(&decisionShapeFeatureRecord{}).Where("request_id = ?", usage.RequestID).Count(&features).Error; err != nil {
+		t.Fatal(err)
+	}
+	if features == 0 {
+		t.Fatal("decision shape features were not persisted")
+	}
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Order("candidate_index ASC").Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 3 {
+		t.Fatalf("candidate count=%d: %#v", len(candidates), candidates)
+	}
+	for _, candidate := range candidates {
+		if candidate.Eligible || candidate.Selected {
+			t.Fatalf("ineligible request had eligible/selected candidate: %#v", candidate)
+		}
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"input-modality-image", "dialect-tool-passthrough"} {
+		if !filterReasonsContain(reasons, "request_shape", want) {
+			t.Fatalf("missing filter reason %q: %#v", want, reasons)
+		}
+	}
+	assertCursorMixedTelemetryDoesNotContain(t, svc, usage.RequestID, "RAW_CURSOR_IMAGE", "cursor-no-eligible-secret", "provider-key", testToken)
+}
+
 func TestOpenAIChatToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.Provider["mock"] = ProviderConfig{BaseURL: "http://127.0.0.1:1/v1", Dialect: "openai-chat", APIKey: "provider-key"}
@@ -10501,6 +10681,141 @@ func assertDecisionFilterReason(t *testing.T, svc *Service, want string) {
 	}
 	if count != 1 {
 		t.Fatalf("filter reason %q count=%d, want 1", want, count)
+	}
+}
+
+func cursorMixedToolsImageConfig(t *testing.T, upstreamURL, dir string, includeCombined bool) *Config {
+	t.Helper()
+	cfg := testConfig(t, upstreamURL, "provider-key", dir)
+	cfg.Server.DefaultModelGroup = "big-coder-fixture"
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider = map[string]ProviderConfig{
+		"chat":      {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+		"responses": {BaseURL: upstreamURL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"},
+		"anthropic": {BaseURL: upstreamURL, Dialect: "anthropic", APIKey: "provider-key"},
+	}
+	targets := []Target{
+		{
+			Provider:        "chat",
+			Model:           "chat-tools-text-only",
+			Weight:          100,
+			ContextTokens:   200000,
+			InputModalities: []string{"text"},
+			ToolSupport:     ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+		},
+		{
+			Provider:        "responses",
+			Model:           "responses-tools-image",
+			Weight:          100,
+			ContextTokens:   200000,
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+		},
+		{
+			Provider:        "anthropic",
+			Model:           "anthropic-tools-image",
+			Weight:          100,
+			ContextTokens:   200000,
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{AnthropicMessages: []string{"client_tools"}},
+		},
+	}
+	if includeCombined {
+		targets = append(targets, Target{
+			Provider:        "chat",
+			Model:           "chat-tools-image",
+			Weight:          1,
+			ContextTokens:   200000,
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+		})
+	}
+	cfg.Models = map[string]ModelGroup{
+		"big-coder-fixture": {Strategy: "weighted", Targets: targets},
+	}
+	cfg.Callers[0].Allow = []string{"big-coder-fixture"}
+	cfg.Callers[0].Rate.TPM = 10000000
+	cfg.Callers[0].Quota.Day.Tokens = 10000000
+	cfg.Callers[0].Quota.Month.Tokens = 10000000
+	cfg.Callers[0].Key.LifetimeTokens = 10000000
+	return cfg
+}
+
+func cursorMixedToolsImagePayload(t *testing.T, marker string) string {
+	t.Helper()
+	tools := make([]map[string]any, 0, 19)
+	for i := 0; i < 19; i++ {
+		name := fmt.Sprintf("cursor_tool_%02d", i+1)
+		tools = append(tools, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        name,
+				"description": "Cursor regression fixture tool " + strings.Repeat("schema ", 180),
+				"parameters": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": map[string]any{
+							"type":        "string",
+							"description": "Repository relative path " + strings.Repeat("path ", 120),
+						},
+						"content": map[string]any{
+							"type":        "string",
+							"description": "Patch or file content " + strings.Repeat("content ", 120),
+						},
+					},
+				},
+			},
+		})
+	}
+	body := map[string]any{
+		"model":  "big-coder-fixture",
+		"stream": true,
+		"messages": []map[string]any{
+			{"role": "system", "content": "You are editing a repository."},
+			{"role": "assistant", "content": "I will inspect the code."},
+			{"role": "user", "content": []map[string]any{
+				{"type": "text", "text": marker + " cursor-private-secret " + strings.Repeat("large repository context ", 14000)},
+				{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64,RAW_CURSOR_IMAGE", "detail": "high"}},
+			}},
+		},
+		"tools":               tools,
+		"tool_choice":         "auto",
+		"parallel_tool_calls": true,
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func assertCursorMixedTelemetryDoesNotContain(t *testing.T, svc *Service, requestID string, forbidden ...string) {
+	t.Helper()
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	var features []decisionShapeFeatureRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).Find(&features).Error; err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal([]any{shape, candidates, reasons, features})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range forbidden {
+		if strings.Contains(string(raw), value) {
+			t.Fatalf("telemetry leaked %q in %s", value, raw)
+		}
 	}
 }
 

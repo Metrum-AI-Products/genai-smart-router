@@ -118,6 +118,12 @@ rtk python3 scripts/opencode_api_matrix.py \
 Use failed rows as capability evidence, not as a harness failure. A model that passes text/tools but rejects images must remain text-only in routing metadata until direct and router-level image smokes pass for that exact skin.
 The command exits zero after writing evidence by default, even when a capability row fails. Add `--strict-exit` only for CI gates that should fail on any non-passing row. Text rows require the expected text, default `OK`; image rows require the expected receipt text, default `Rite Aid`, before they are marked as capability passes.
 
+### Cursor And OpenAI Chat IDE Clients
+
+- Validate an OpenAI Chat request shape with `stream:true`, multiple messages, many function tools, one image part, and no explicit output cap when the client can send image-bearing repository context.
+- The requested model group needs at least one target that supports OpenAI Chat tools and image input on the same target. Do not count an OpenAI Responses image target or an Anthropic Messages tool target as compatible for this OpenAI Chat request shape.
+- A passing smoke should show the combined target selected, usage/request-shape telemetry persisted, and safe candidate/filter reasons for the skipped targets. If no combined target exists, expect `502 no-eligible-target`, zero upstream attempts, and no raw prompt, image data, tool schema, bearer token, token hash, or provider key in diagnostics.
+
 ### aider
 
 - Use an ignored `.aider.conf.yml` or env vars for the router base URL, router token, and model group.

@@ -350,6 +350,7 @@ Run these smokes when adding or changing `request_shape_support`, `context_token
 |---|---|
 | Small text request | Send a short text-only request with no tools and a modest output cap. Expect the normal target pool to remain eligible. |
 | Large coding-agent payload | Send a synthetic large request with safe filler text, many messages or tool-output-shaped items, and representative tool schemas. Targets whose context/request/tool limits cannot fit the estimate must be skipped before upstream. |
+| Mixed OpenAI Chat tools plus image | Send a Cursor-style `/v1/chat/completions` request with `stream:true`, multiple messages, many function tools, one image part, and no output cap. At least one target in the requested group must support OpenAI Chat tool passthrough and image input on the same target; text-only tool targets, Responses-only targets, and Anthropic-only targets must not be selected for that OpenAI Chat request. |
 | Explicit output reserve | Repeat a request with low and high `max_tokens`, `max_completion_tokens`, or `max_output_tokens`. The high cap should skip targets where estimated input plus reserve exceeds context. |
 | Unknown limits | Include one target without `context_tokens` or request-size metadata. By default it remains eligible and records `limit_unknown`; use this as an inventory gap, not proof of support. |
 | All targets too small | Configure a test group where every target is too small. Expect `502 no-eligible-target`, a request ID, safe requirement/reason details, and no upstream attempt. |

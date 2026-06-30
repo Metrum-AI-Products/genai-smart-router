@@ -83,6 +83,8 @@ Run router-level smokes through the same API shapes that passed directly upstrea
 
 For each route, verify selected provider/model, usage, request-time cost, latency, attempts, fallback status, and safe diagnostics. Include max-token cap checks, no-eligible-target checks for unsupported shapes, and negative media URL safety checks for image-capable targets. For tool or agent routes, run the actual client smoke in a disposable sandbox when client compatibility is part of the claim.
 
+For OpenAI Chat coding-agent routes that claim both tools and image input, include a combined request with multiple messages, representative function-tool schemas, one image part, `stream:true`, and no caller output cap. The same configured target must satisfy the OpenAI Chat dialect, tool support, and image modality together. Record a negative no-eligible smoke for a group that lacks such a combined target and verify zero upstream attempts plus safe candidate/filter diagnostics.
+
 ## 8. Promote Conservatively With Rollback
 
 Move the candidate into active routing only after direct and router smokes, workload acceptance gates, and docs/config review pass. Start with low weight or a narrow group, then monitor status, latency, usage, costs, fallback, provider errors, and caller complaints.

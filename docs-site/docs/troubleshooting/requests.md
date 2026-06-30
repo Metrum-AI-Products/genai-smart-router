@@ -115,6 +115,8 @@ Model-group contracts and provider catalog metadata should describe validated mo
 
 For “small requests work but large Cursor/Codex/Claude Code requests fail,” inspect the request drilldown or usage DB rows for `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`. Safe fields to compare are estimated total input tokens, requested output cap, total reserved tokens, request bytes, target `context_tokens`, context headroom, `request_bytes_fit`, `tool_schema_fit`, and bounded reasons such as `request-shape-context-exceeded`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`. These diagnostics intentionally do not contain raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config.
 
+For Cursor-style OpenAI Chat requests with tools and an image, check whether any target in the requested group supports both OpenAI Chat tools and image input. If not, the router should return `502 no-eligible-target` with zero upstream attempts. Candidate/filter rows should show safe reasons such as `input-modality-image` or `dialect-tool-passthrough`.
+
 If every target is skipped, callers receive `502 no-eligible-target` before upstream with a request ID. Recovery is usually a config change: add accurate `context_tokens` or `request_shape_support`, remove a too-small target from the affected group, or keep the target in a smoke group until a large-payload validation passes.
 
 ## 7. Verify Recovery
