@@ -1383,6 +1383,57 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 }
 
+func TestExampleConfigOpenAINanoResponsesReasoningMetadata(t *testing.T) {
+	raw, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
+	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
+	metricsAdminSum := sha256.Sum256([]byte("rtr_example_metrics_admin_test"))
+	contentAdminSum := sha256.Sum256([]byte("rtr_example_content_admin_test"))
+	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", hex.EncodeToString(metricsAdminSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN", hex.EncodeToString(contentAdminSum[:]))
+	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := cfg.Provider["openai"].Models["gpt-5.4-nano"]
+	if !model.Reasoning.Supported || model.Reasoning.Mode != reasoningModeOptIn || model.Reasoning.Control != reasoningControlEffortEnum {
+		t.Fatalf("openai gpt-5.4-nano reasoning metadata=%#v, want opt-in effort enum support", model.Reasoning)
+	}
+	if model.Reasoning.DefaultOn || model.Reasoning.SupportsSummaries || model.Reasoning.StreamBlock != "none" {
+		t.Fatalf("openai gpt-5.4-nano reasoning details=%#v, want opt-in no summaries stream_block none", model.Reasoning)
+	}
+	if model.RequestShapeSupport.MinRequestedOutputTokens != 16 {
+		t.Fatalf("openai gpt-5.4-nano min output cap=%d, want 16", model.RequestShapeSupport.MinRequestedOutputTokens)
+	}
+	found := false
+	for _, target := range cfg.Models["big-coder"].Targets {
+		if target.Provider == "openai" && target.Model == "gpt-5.4-nano" {
+			found = true
+			if !target.Reasoning.Supported || target.Reasoning.Control != reasoningControlEffortEnum {
+				t.Fatalf("big-coder openai target reasoning=%#v, want resolved catalog metadata", target.Reasoning)
+			}
+			if target.RequestShapeSupport.MinRequestedOutputTokens != 16 {
+				t.Fatalf("big-coder openai target min output cap=%d, want resolved catalog minimum 16", target.RequestShapeSupport.MinRequestedOutputTokens)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("big-coder missing openai gpt-5.4-nano target")
+	}
+}
+
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{
@@ -1473,14 +1524,14 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	t.Helper()
 	wantNormal := map[string]int{
 		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 40,
-		"minimax:MiniMax-M3": 20,
+		"minimax:MiniMax-M3":  20,
 		"kimi:kimi-k2.7-code": 15,
 		"crusoe:zai/GLM-5.2":  15,
 		"openai:gpt-5.4-nano": 10,
 	}
 	wantToolOnly := map[string]int{
 		"fireworks_responses:accounts/fireworks/models/kimi-k2p7-code": 33,
-		"minimax_anthropic:MiniMax-M3":                                34,
+		"minimax_anthropic:MiniMax-M3":                                 34,
 		"kimi_anthropic:kimi-k2.7-code":                                33,
 	}
 	normalTotal := 0

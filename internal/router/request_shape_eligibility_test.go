@@ -62,6 +62,36 @@ func TestRequestShapeFitExplicitOutputCapAffectsContext(t *testing.T) {
 	}
 }
 
+func TestRequestShapeFitSkipsExplicitOutputCapsBelowTargetMinimum(t *testing.T) {
+	cfg := minimalConfig(t)
+	target := cfg.Models["default"].Targets[0]
+	target.RequestShapeSupport.MinRequestedOutputTokens = 16
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{cfg: cfg}
+	req := &IRRequest{
+		Model:          "default",
+		Messages:       []IRMessage{{Role: "user", Content: "hello"}},
+		MaxTokens:      1,
+		MaxTokensField: "max_output_tokens",
+		Raw:            map[string]any{"max_output_tokens": float64(1)},
+	}
+	estimate := requestTokenEstimateFromIR(req, "openai-responses", 96)
+	fit := svc.targetRequestShapeFit(cfg.Models["default"].Targets[0], req, "openai-responses", "openai-responses", estimate)
+	if fit.FilterReason != "request-shape-min-output-tokens" || fit.MinRequestedOutputTokens != 16 {
+		t.Fatalf("fit=%#v", fit)
+	}
+	req.MaxTokens = 16
+	req.Raw["max_output_tokens"] = float64(16)
+	estimate = requestTokenEstimateFromIR(req, "openai-responses", 96)
+	fit = svc.targetRequestShapeFit(cfg.Models["default"].Targets[0], req, "openai-responses", "openai-responses", estimate)
+	if fit.FilterReason != "" {
+		t.Fatalf("fit with accepted cap=%#v", fit)
+	}
+}
+
 func TestRequestShapeFitUsesTargetDialectDefaultOutputReservation(t *testing.T) {
 	cfg := minimalConfig(t)
 	target := cfg.Models["default"].Targets[0]

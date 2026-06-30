@@ -584,6 +584,7 @@ type TrafficBackoffConfig struct {
 type RequestShapeSupport struct {
 	MaxRequestBytes                  int      `yaml:"max_request_bytes" json:"maxRequestBytes,omitempty"`
 	MaxEstimatedInputTokens          int      `yaml:"max_estimated_input_tokens" json:"maxEstimatedInputTokens,omitempty"`
+	MinRequestedOutputTokens         int      `yaml:"min_requested_output_tokens" json:"minRequestedOutputTokens,omitempty"`
 	MaxRequestedOutputTokens         int      `yaml:"max_requested_output_tokens" json:"maxRequestedOutputTokens,omitempty"`
 	MaxToolSchemaBytes               int      `yaml:"max_tool_schema_bytes" json:"maxToolSchemaBytes,omitempty"`
 	SupportsLargeCodingAgentPayloads *bool    `yaml:"supports_large_coding_agent_payloads" json:"supportsLargeCodingAgentPayloads,omitempty"`
@@ -2223,6 +2224,9 @@ func mergeRequestShapeSupport(base, override RequestShapeSupport) RequestShapeSu
 	if override.MaxEstimatedInputTokens != 0 {
 		out.MaxEstimatedInputTokens = override.MaxEstimatedInputTokens
 	}
+	if override.MinRequestedOutputTokens != 0 {
+		out.MinRequestedOutputTokens = override.MinRequestedOutputTokens
+	}
 	if override.MaxRequestedOutputTokens != 0 {
 		out.MaxRequestedOutputTokens = override.MaxRequestedOutputTokens
 	}
@@ -2254,8 +2258,14 @@ func validateRequestShapeSupport(prefix string, support RequestShapeSupport) err
 	if support.MaxEstimatedInputTokens < 0 {
 		return fmt.Errorf("%s request_shape_support.max_estimated_input_tokens cannot be negative", prefix)
 	}
+	if support.MinRequestedOutputTokens < 0 {
+		return fmt.Errorf("%s request_shape_support.min_requested_output_tokens cannot be negative", prefix)
+	}
 	if support.MaxRequestedOutputTokens < 0 {
 		return fmt.Errorf("%s request_shape_support.max_requested_output_tokens cannot be negative", prefix)
+	}
+	if support.MinRequestedOutputTokens > 0 && support.MaxRequestedOutputTokens > 0 && support.MinRequestedOutputTokens > support.MaxRequestedOutputTokens {
+		return fmt.Errorf("%s request_shape_support.min_requested_output_tokens cannot exceed max_requested_output_tokens", prefix)
 	}
 	if support.MaxToolSchemaBytes < 0 {
 		return fmt.Errorf("%s request_shape_support.max_tool_schema_bytes cannot be negative", prefix)

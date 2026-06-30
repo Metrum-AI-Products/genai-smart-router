@@ -154,6 +154,8 @@ Reasoning-capable groups expose safe Codex metadata such as supported levels and
 
 The returned `id` values are deployment-defined router model groups, not provider model IDs and not a full upstream inventory.
 
+For OpenAI Responses targets, publish these fields only after direct and router-level smokes pass for the exact model and endpoint. For example, a validated Responses target may advertise `low`, `medium`, and `high` after those `reasoning.effort` values return useful output and tool behavior is verified. Provider minimum output budgets still apply; if an upstream rejects tiny `max_output_tokens` values, keep that caveat in model metadata and use realistic acceptance budgets for coding-agent traffic.
+
 ## Negative Eligibility Test
 
 Run a reasoning request against a test group that has no reasoning-compatible target. The router should fail before upstream:

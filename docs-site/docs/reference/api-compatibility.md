@@ -151,6 +151,8 @@ Reasoning is handled inside the requested model group. The router does not switc
 
 For compatible targets, the router translates safe controls where configured. For example, an Anthropic budget can map to an OpenAI effort level, and an OpenAI effort can map to an Anthropic token budget. Targets that reject `max_tokens` for reasoning traffic can be configured so the router sends `max_completion_tokens` instead.
 
+For `/v1/models`, reasoning metadata is effective group metadata, not a catalog dump. The router should expose `supported_reasoning_levels` only when at least one active target in the requested group can actually serve that reasoning shape for the caller's API surface. Some upstreams also enforce minimum output budgets for reasoning requests; a tiny cap failure does not invalidate the reasoning capability, but it must be documented and tested with realistic budgets.
+
 For OpenAI Chat, OpenAI Responses, and Anthropic Messages reasoning examples, see [Reasoning Routing](../configuration/reasoning-routing).
 
 ## Structured Outputs

@@ -403,6 +403,8 @@ Reasoning and thinking controls are dialect-specific. Declare `reasoning` metada
 | Negative eligibility | Router request against a group with no compatible target; expect `502 no-eligible-target` and no upstream attempt |
 | Low output cap | Verify any required `max_tokens` to `max_completion_tokens` translation and budget/max-token constraints for the exact upstream |
 
+OpenAI Responses `gpt-5.4-nano` direct smokes passed on 2026-06-30 for no reasoning and `reasoning.effort` values `low`, `medium`, and `high`; each returned completed visible `OK` output. A direct medium-reasoning function-tool smoke returned a `function_call`. A direct `max_output_tokens: 1` probe was rejected with a documented minimum of 16, so this target should use realistic output budgets for acceptance and coding-agent traffic and should not be treated as a tiny-cap target.
+
 Add metadata only after validation:
 
 ```yaml

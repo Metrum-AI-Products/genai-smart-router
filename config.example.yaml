@@ -910,10 +910,30 @@ providers:
         output_modalities:
         - text
         pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
-        pricing_updated_at: '2026-06-17'
+        pricing_updated_at: '2026-06-30'
+        pricing_notes: Direct OpenAI Responses smokes for gpt-5.4-nano passed on
+          2026-06-30 with no reasoning and with reasoning effort low, medium,
+          and high. A direct reasoning plus function-tool smoke returned a
+          function_call. Direct max_output_tokens=1 was rejected with minimum
+          value 16, so use realistic output caps for acceptance smokes and
+          coding-agent traffic.
         tool_support:
           openai_responses:
           - function
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
+          default_on: false
+          stream_block: none
+          supports_summaries: false
+        request_shape_support:
+          min_requested_output_tokens: 16
+          validation_status: passed
+          validation_notes: Direct OpenAI Responses max_output_tokens=1 smoke failed
+            with provider minimum 16 on 2026-06-30; router skips this target for
+            smaller explicit caller caps so another compatible target can serve
+            or the caller receives no-eligible-target before upstream.
         force_store_false: true
         output_token_field: max_completion_tokens
       gpt-5.5:

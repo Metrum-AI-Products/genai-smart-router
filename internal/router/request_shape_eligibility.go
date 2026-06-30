@@ -13,6 +13,7 @@ const (
 type targetRequestShapeFit struct {
 	Estimate                    requestTokenEstimateLogRecord
 	MaxEstimatedInputTokens     int
+	MinRequestedOutputTokens    int
 	MaxRequestedOutputTokens    int
 	MaxRequestBytes             int
 	MaxToolSchemaBytes          int
@@ -115,6 +116,7 @@ func (s *Service) targetRequestShapeFit(target Target, req *IRRequest, callerDia
 	fit := targetRequestShapeFit{
 		Estimate:                    estimate,
 		MaxEstimatedInputTokens:     target.RequestShapeSupport.MaxEstimatedInputTokens,
+		MinRequestedOutputTokens:    target.RequestShapeSupport.MinRequestedOutputTokens,
 		MaxRequestedOutputTokens:    target.RequestShapeSupport.MaxRequestedOutputTokens,
 		MaxRequestBytes:             target.RequestShapeSupport.MaxRequestBytes,
 		MaxToolSchemaBytes:          target.RequestShapeSupport.MaxToolSchemaBytes,
@@ -167,6 +169,9 @@ func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outD
 	}
 	if fit.MaxEstimatedInputTokens > 0 && estimate.EstimatedTotalInputTokens > fit.MaxEstimatedInputTokens {
 		return "request-shape-max-input-tokens"
+	}
+	if fit.MinRequestedOutputTokens > 0 && req != nil && req.MaxTokens > 0 && estimate.RequestedOutputCapTokens < fit.MinRequestedOutputTokens {
+		return "request-shape-min-output-tokens"
 	}
 	if fit.MaxRequestedOutputTokens > 0 && estimate.RequestedOutputCapTokens > fit.MaxRequestedOutputTokens {
 		return "request-shape-max-output-tokens"

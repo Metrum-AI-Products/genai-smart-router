@@ -89,6 +89,7 @@ The router forwards schema payloads to the selected upstream. It does not valida
 request_shape_support:
   max_request_bytes: 300000
   max_estimated_input_tokens: 90000
+  min_requested_output_tokens: 16
   max_requested_output_tokens: 8192
   max_tool_schema_bytes: 100000
   supports_large_coding_agent_payloads: false
@@ -100,7 +101,7 @@ request_shape_support:
   validation_notes: Large coding-agent payload validation has not passed yet.
 ```
 
-Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
+Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
 
 Set `supports_large_coding_agent_payloads: true` only after a direct upstream smoke and a router-level smoke pass for the exact provider, model ID, dialect, account, and request shape. The validation note should include the date, approximate request bytes, tool count, serialized tool-schema size, output cap, and prompt-token scale. If that evidence is missing, leave the value unset or set it to `false` with a reason and keep the target in a restricted smoke group.
 
@@ -144,7 +145,7 @@ reasoning:
   supports_summaries: true
 ```
 
-Declare reasoning support only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, and API skin. OpenAI Chat, OpenAI Responses, and Anthropic Messages reasoning controls are separate validation surfaces.
+Declare reasoning support only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, and API skin. OpenAI Chat, OpenAI Responses, and Anthropic Messages reasoning controls are separate validation surfaces. For OpenAI Responses effort metadata, validate each advertised effort level with a useful response and document provider output-cap minimums such as rejected tiny `max_output_tokens` values.
 
 When a caller explicitly requests reasoning, the router filters the requested model group's targets to reasoning-capable targets before routing policy selection. If none remain, the caller receives `502 no-eligible-target` with `reasoning` in the requirements. Ordinary non-reasoning requests are not forced to reasoning targets unless the deployment configured those targets as part of the group policy.
 
