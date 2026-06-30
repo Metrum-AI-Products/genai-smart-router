@@ -52,6 +52,14 @@ go test ./internal/router -run 'TestAPIDialectConformanceMatrix|TestOpenAIChatCo
 
 This suite uses mock upstreams and does not prove a real provider/model is entitled, fast, accurate, or compatible with every workload. Activating an upstream still requires direct provider smokes and router-level smokes for the exact provider, model, dialect, tools, images, structured-output, reasoning, and max-token behavior being advertised.
 
+Agent compatibility should also be validated with realistic synthetic request shapes. The production-derived smoke matrix exercises Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run it against a dedicated smoke group, for example `reasoning-bridge-smoke`, with a caller token that is explicitly allowed to that group:
+
+```bash
+python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
+```
+
+The smoke emits safe scalar proof only: request IDs, API surface, status, selected provider/model/dialect, bridge direction when recorded, translated reasoning control when recorded, and request-shape buckets.
+
 ## Compatibility Matrix
 
 | Capability | Chat Completions | Responses | Messages |

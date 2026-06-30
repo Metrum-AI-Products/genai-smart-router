@@ -30,9 +30,20 @@ def load_token(args: argparse.Namespace) -> str:
     return token
 
 
-def load_fixture(args: argparse.Namespace) -> dict[str, Any]:
-    path = Path(args.fixtures_dir) / args.fixture
+def load_fixture(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def fixture_paths(args: argparse.Namespace) -> list[Path]:
+    root = Path(args.fixtures_dir)
+    if args.fixture == "all":
+        paths: list[Path] = []
+        for path in sorted(root.glob("*.json")):
+            fixture = load_fixture(path)
+            if fixture.get("replayable", True):
+                paths.append(path)
+        return paths
+    return [root / args.fixture]
 
 
 def make_tool(index: int) -> dict[str, Any]:
@@ -57,9 +68,15 @@ def make_tool(index: int) -> dict[str, Any]:
     }
 
 
-def make_payload(fixture: dict[str, Any], model_group: str) -> dict[str, Any]:
-    message_count = int(fixture["message_count"])
-    tool_count = int(fixture["tool_count"])
+def fixture_value(fixture: dict[str, Any], scenario: dict[str, Any], key: str, default: Any = None) -> Any:
+    if key in scenario:
+        return scenario[key]
+    return fixture.get(key, default)
+
+
+def make_chat_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_group: str) -> dict[str, Any]:
+    message_count = int(fixture_value(fixture, scenario, "message_count", 1))
+    tool_count = int(fixture_value(fixture, scenario, "tool_count", 0))
     filler = "production-derived-safe-filler " * 62
     messages: list[dict[str, str]] = [
         {
@@ -70,14 +87,65 @@ def make_payload(fixture: dict[str, Any], model_group: str) -> dict[str, Any]:
     for i in range(1, message_count):
         role = "assistant" if i % 2 == 0 else "user"
         messages.append({"role": role, "content": f"{filler} turn {i}"})
-    return {
+    payload: dict[str, Any] = {
         "model": model_group,
-        "stream": bool(fixture["stream"]),
+        "stream": bool(fixture_value(fixture, scenario, "stream", False)),
         "messages": messages,
-        "tools": [make_tool(i) for i in range(tool_count)],
-        "tool_choice": "auto",
-        "metadata": {"fixture": fixture["name"]},
+        "metadata": {"fixture": fixture["name"], "scenario": scenario.get("name", fixture["name"])},
     }
+    if tool_count:
+        payload["tools"] = [make_tool(i) for i in range(tool_count)]
+        payload["tool_choice"] = fixture_value(fixture, scenario, "tool_choice_mode", "auto")
+    if scenario.get("reasoning_control") == "reasoning_effort":
+        payload["reasoning_effort"] = scenario.get("reasoning_effort", "low")
+    if scenario.get("structured_output"):
+        payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "fixture", "schema": {"type": "object"}}}
+    return payload
+
+
+def make_responses_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_group: str) -> dict[str, Any]:
+    tool_count = int(fixture_value(fixture, scenario, "tool_count", 0))
+    payload: dict[str, Any] = {
+        "model": model_group,
+        "stream": bool(fixture_value(fixture, scenario, "stream", False)),
+        "input": "Synthetic production-derived Responses fixture. Reply OK only.",
+        "metadata": {"fixture": fixture["name"], "scenario": scenario.get("name", fixture["name"])},
+    }
+    if tool_count:
+        payload["tools"] = [
+            {"type": "function", "name": f"fixture_tool_{i:02d}", "description": "safe tool", "parameters": {"type": "object"}}
+            for i in range(tool_count)
+        ]
+    if scenario.get("reasoning_control") == "reasoning":
+        payload["reasoning"] = {"effort": scenario.get("reasoning_effort", "low")}
+    if scenario.get("previous_response_id_present"):
+        payload["previous_response_id"] = "resp_synthetic_previous"
+    return payload
+
+
+def make_anthropic_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_group: str) -> dict[str, Any]:
+    tool_count = int(fixture_value(fixture, scenario, "tool_count", 0))
+    payload: dict[str, Any] = {
+        "model": model_group,
+        "stream": bool(fixture_value(fixture, scenario, "stream", False)),
+        "max_tokens": int(scenario.get("max_tokens", 512)),
+        "messages": [{"role": "user", "content": "Synthetic production-derived Messages fixture. Reply OK only."}],
+        "metadata": {"fixture": fixture["name"], "scenario": scenario.get("name", fixture["name"])},
+    }
+    if tool_count:
+        payload["tools"] = [{"name": f"fixture_tool_{i:02d}", "description": "safe tool", "input_schema": {"type": "object"}} for i in range(tool_count)]
+    if scenario.get("reasoning_control") == "thinking":
+        payload["thinking"] = {"type": "enabled", "budget_tokens": int(scenario.get("thinking_budget_tokens", 256))}
+    return payload
+
+
+def make_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_group: str) -> tuple[str, dict[str, Any]]:
+    surface = str(fixture_value(fixture, scenario, "surface", "openai_chat"))
+    if surface == "openai_responses":
+        return "/v1/responses", make_responses_payload(fixture, scenario, model_group)
+    if surface == "anthropic_messages":
+        return "/v1/messages", make_anthropic_payload(fixture, scenario, model_group)
+    return "/v1/chat/completions", make_chat_payload(fixture, scenario, model_group)
 
 
 def http_json(url: str, token: str, payload: dict[str, Any], timeout: float) -> tuple[int, dict[str, str], str]:
@@ -185,8 +253,65 @@ def normalize_bool(value: Any) -> bool:
     return str(value).lower() in {"1", "t", "true", "yes"}
 
 
-def main() -> int:
+def scenario_list(fixture: dict[str, Any]) -> list[dict[str, Any]]:
+    scenarios = fixture.get("scenarios")
+    if isinstance(scenarios, list):
+        return [s for s in scenarios if isinstance(s, dict) and s.get("production_smoke_safe_payload_template", True)]
+    return [{}]
+
+
+def check_result(
+    fixture: dict[str, Any],
+    scenario: dict[str, Any],
+    status: int,
+    request_id: str,
+    row: dict[str, Any] | None,
+) -> int:
+    expected_status = scenario.get("expected_caller_status")
+    expected_error_class = scenario.get("expected_error_class")
+    if expected_status is not None:
+        if status != int(expected_status):
+            print(f"status {status} did not match expected {expected_status}", file=sys.stderr)
+            return 1
+    elif expected_error_class and status < 400:
+        print(f"expected error class {expected_error_class} but API returned status {status}", file=sys.stderr)
+        return 1
+    elif status >= 400 and not expected_error_class:
+        print(f"unexpected HTTP status {status}", file=sys.stderr)
+        return 1
+    if not request_id:
+        print("missing X-Request-Id", file=sys.stderr)
+        return 1
+    if expected_error_class and not row:
+        print("missing telemetry row for expected error scenario", file=sys.stderr)
+        return 1
+    if row:
+        for denied in fixture.get("must_not_select", []) + scenario.get("must_not_select", []):
+            if (
+                row.get("provider") == denied.get("provider")
+                and row.get("model") == denied.get("model")
+                and row.get("dialect") == denied.get("dialect")
+                and normalize_bool(row.get("selected"))
+            ):
+                print("fixture selected a must-not-select target", file=sys.stderr)
+                return 1
+        if expected_error_class and row.get("error_class") != expected_error_class:
+            print("telemetry error class mismatch", file=sys.stderr)
+            return 1
+        request_bytes_bucket = fixture_value(fixture, scenario, "request_bytes_bucket")
+        if request_bytes_bucket and str(row.get("total_request_bytes_bucket")) not in {"", "None", request_bytes_bucket}:
+            print("request byte bucket mismatch", file=sys.stderr)
+            return 1
+        tool_schema_bucket = fixture_value(fixture, scenario, "tool_schema_bytes_bucket")
+        if tool_schema_bucket and str(row.get("tool_schema_bytes_bucket")) not in {"", "None", tool_schema_bucket}:
+            print("tool schema byte bucket mismatch", file=sys.stderr)
+            return 1
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=["local", "prod"], default="prod")
     parser.add_argument("--base-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model-group", default="")
     parser.add_argument("--fixture", default=DEFAULT_FIXTURE)
@@ -197,54 +322,42 @@ def main() -> int:
     parser.add_argument("--postgres-dsn", default="")
     parser.add_argument("--psql-bin", default="psql")
     parser.add_argument("--timeout", type=float, default=180)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    fixture = load_fixture(args)
-    model_group = args.model_group or str(fixture["model_group"])
-    payload = make_payload(fixture, model_group)
-    request_bytes = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-    status, headers, body = http_json(
-        args.base_url.rstrip("/") + "/v1/chat/completions",
-        load_token(args),
-        payload,
-        args.timeout,
-    )
-    request_id = request_id_from(headers, body)
-    row = query_telemetry(args, request_id) if request_id else None
-
-    result = {
-        "fixture": fixture["name"],
-        "status": status,
-        "requestId": request_id,
-        "requestBytes": request_bytes,
-        "messageCount": fixture["message_count"],
-        "toolCount": fixture["tool_count"],
-        "telemetry": row or {},
-    }
-    print(json.dumps(result, indent=2, sort_keys=True))
-
-    if status >= 400:
-        return 1
-    if not request_id:
-        print("missing X-Request-Id", file=sys.stderr)
-        return 1
-    if row:
-        for denied in fixture.get("must_not_select", []):
-            if (
-                row.get("provider") == denied.get("provider")
-                and row.get("model") == denied.get("model")
-                and row.get("dialect") == denied.get("dialect")
-                and normalize_bool(row.get("selected"))
-            ):
-                print("fixture selected a must-not-select target", file=sys.stderr)
-                return 1
-        if str(row.get("total_request_bytes_bucket")) != fixture["request_bytes_bucket"]:
-            print("request byte bucket mismatch", file=sys.stderr)
-            return 1
-        if str(row.get("tool_schema_bytes_bucket")) != fixture["tool_schema_bytes_bucket"]:
-            print("tool schema byte bucket mismatch", file=sys.stderr)
-            return 1
-    return 0
+    token = load_token(args)
+    failures = 0
+    results: list[dict[str, Any]] = []
+    for path in fixture_paths(args):
+        fixture = load_fixture(path)
+        for scenario in scenario_list(fixture):
+            model_group = args.model_group or str(fixture_value(fixture, scenario, "model_group"))
+            endpoint, payload = make_payload(fixture, scenario, model_group)
+            request_bytes = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+            status, headers, body = http_json(
+                args.base_url.rstrip("/") + endpoint,
+                token,
+                payload,
+                args.timeout,
+            )
+            request_id = request_id_from(headers, body)
+            row = query_telemetry(args, request_id) if request_id else None
+            failures += check_result(fixture, scenario, status, request_id, row)
+            results.append(
+                {
+                    "fixture": fixture["name"],
+                    "scenario": scenario.get("name", fixture["name"]),
+                    "mode": args.mode,
+                    "surface": fixture_value(fixture, scenario, "surface", "openai_chat"),
+                    "status": status,
+                    "requestId": request_id,
+                    "requestBytes": request_bytes,
+                    "messageCount": fixture_value(fixture, scenario, "message_count", 0),
+                    "toolCount": fixture_value(fixture, scenario, "tool_count", 0),
+                    "telemetry": row or {},
+                }
+            )
+    print(json.dumps({"results": results}, indent=2, sort_keys=True))
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

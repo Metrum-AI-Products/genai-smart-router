@@ -50,6 +50,133 @@ type productionDerivedErrorFixture struct {
 	} `json:"scenarios"`
 }
 
+type productionDerivedAgentCompatibilityFixture struct {
+	Name                 string `json:"name"`
+	SourceIncidentIssue  string `json:"source_incident_issue"`
+	ModelGroup           string `json:"model_group"`
+	ProductionAccessNote string `json:"production_access_note"`
+	Scenarios            []struct {
+		Name                        string   `json:"name"`
+		SourceIncidentIssue         string   `json:"source_incident_issue"`
+		ClientName                  string   `json:"client_name"`
+		Surface                     string   `json:"surface"`
+		ModelGroup                  string   `json:"model_group"`
+		Stream                      bool     `json:"stream"`
+		MessageCount                int      `json:"message_count"`
+		ToolCount                   int      `json:"tool_count"`
+		ImageCount                  int      `json:"image_count"`
+		ReasoningControl            string   `json:"reasoning_control"`
+		OutputCapPresent            bool     `json:"output_cap_present"`
+		EstimatedInputTokensBucket  string   `json:"estimated_input_tokens_bucket"`
+		RequestBytesBucket          string   `json:"request_bytes_bucket"`
+		ToolSchemaBytesBucket       string   `json:"tool_schema_bytes_bucket"`
+		RequiredCapabilities        []string `json:"required_capabilities"`
+		ExpectedBridgeDirection     string   `json:"expected_bridge_direction"`
+		ExpectedTranslatedReasoning string   `json:"expected_translated_reasoning_control"`
+		ExpectedErrorClass          string   `json:"expected_error_class"`
+		ExpectedRejectionReason     string   `json:"expected_rejection_reason"`
+		ProductionSafePayload       string   `json:"production_smoke_safe_payload_template"`
+		PreviousResponseIDPresent   bool     `json:"previous_response_id_present"`
+		DetectedPayloadDialect      string   `json:"detected_payload_dialect"`
+		StructuredOutput            bool     `json:"structured_output"`
+	} `json:"scenarios"`
+}
+
+func TestProductionDerivedAgentCompatibilityFixtureCoversRequiredScenarios(t *testing.T) {
+	fixture := loadProductionDerivedAgentCompatibilityFixture(t, "agent-reasoning-bridge-compatibility.json")
+	if fixture.ModelGroup != "reasoning-bridge-smoke" {
+		t.Fatalf("fixture model_group=%q, want reasoning-bridge-smoke", fixture.ModelGroup)
+	}
+	if !strings.Contains(fixture.ProductionAccessNote, "Harbor/Chetan") || strings.Contains(fixture.ProductionAccessNote, "change production big-coder") {
+		t.Fatalf("production access note must mention Harbor/Chetan access without directing big-coder edits: %q", fixture.ProductionAccessNote)
+	}
+	requiredIssues := []string{"#319", "#320", "#321", "#330", "#333", "#335", "#344", "#350", "#352", "#357", "#358", "#359"}
+	requiredClients := []string{"Codex CLI", "Cursor/1.0", "Claude Code", "opencode", "aider", "Generic SDK"}
+	requiredScenarios := []string{
+		"codex-responses-reasoning-tools",
+		"cursor-chat-reasoning-tools-chat-to-responses",
+		"claude-code-messages-thinking-tools",
+		"responses-to-chat-function-tool",
+		"cursor-mixed-responses-body-chat-endpoint",
+		"previous-response-id-stateless-bridge-negative",
+		"chat-to-responses-streaming-negative",
+		"reasoning-no-compatible-target-negative",
+		"reasoning-models-metadata-advertisement",
+		"anthropic-thinking-budget-output-cap-negative",
+		"cursor-image-tools-no-eligible",
+		"no-eligible-target-diagnostics-proof",
+		"upstream-entitlement-401-fallback-proof",
+		"provider-skin-mismatch-negative",
+		"opencode-chat-large-tool-schema",
+		"aider-chat-output-cap-structured-output",
+	}
+	issues := map[string]bool{}
+	clients := map[string]bool{}
+	scenarios := map[string]bool{}
+	surfaces := map[string]bool{}
+	for _, scenario := range fixture.Scenarios {
+		if scenario.Name == "" || scenario.SourceIncidentIssue == "" || scenario.ClientName == "" || scenario.Surface == "" || scenario.ModelGroup == "" || scenario.ProductionSafePayload == "" {
+			t.Fatalf("scenario missing required safe metadata: %#v", scenario)
+		}
+		if scenario.ModelGroup == "big-coder" {
+			t.Fatalf("agent compatibility fixture must use a dedicated smoke group, got big-coder in %#v", scenario)
+		}
+		if scenario.RequestBytesBucket == "" || scenario.ToolSchemaBytesBucket == "" || scenario.EstimatedInputTokensBucket == "" {
+			t.Fatalf("scenario missing shape buckets: %#v", scenario)
+		}
+		issues[scenario.SourceIncidentIssue] = true
+		clients[scenario.ClientName] = true
+		scenarios[scenario.Name] = true
+		surfaces[scenario.Surface] = true
+	}
+	for _, issue := range requiredIssues {
+		if !issues[issue] {
+			t.Fatalf("fixture missing source issue %s", issue)
+		}
+	}
+	for _, client := range requiredClients {
+		if !clients[client] {
+			t.Fatalf("fixture missing client %s", client)
+		}
+	}
+	for _, name := range requiredScenarios {
+		if !scenarios[name] {
+			t.Fatalf("fixture missing scenario %s", name)
+		}
+	}
+	for _, surface := range []string{"openai_chat", "openai_responses", "anthropic_messages"} {
+		if !surfaces[surface] {
+			t.Fatalf("fixture missing surface %s", surface)
+		}
+	}
+}
+
+func TestProductionDerivedAgentCompatibilityNegativeBridgeReasonsMatchRouter(t *testing.T) {
+	fixture := loadProductionDerivedAgentCompatibilityFixture(t, "agent-reasoning-bridge-compatibility.json")
+	byName := map[string]string{}
+	for _, scenario := range fixture.Scenarios {
+		byName[scenario.Name] = scenario.ExpectedRejectionReason
+	}
+
+	req, err := decodeRequest("openai-responses", []byte(`{"model":"reasoning-bridge-smoke","input":"hi","previous_response_id":"resp_fixture"}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responsesTarget := Target{ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true}}
+	if got := responsesToChatBridgeFilterReason(responsesTarget, req, "openai-responses", "openai-chat"); got != byName["previous-response-id-stateless-bridge-negative"] {
+		t.Fatalf("previous_response_id filter=%q, want fixture reason %q", got, byName["previous-response-id-stateless-bridge-negative"])
+	}
+
+	req, err = decodeRequest("openai-chat", []byte(`{"model":"reasoning-bridge-smoke","stream":true,"messages":[{"role":"user","content":"hi"}]}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatTarget := Target{Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}}}
+	if got := chatToResponsesBridgeFilterReason(chatTarget, req, "openai-chat", "openai-responses"); got != byName["chat-to-responses-streaming-negative"] {
+		t.Fatalf("streaming bridge filter=%q, want fixture reason %q", got, byName["chat-to-responses-streaming-negative"])
+	}
+}
+
 func TestProductionDerivedLargeOpenAIChatToolPayloadSkipsShapeLimitedTarget(t *testing.T) {
 	fixture := loadProductionDerivedLargePayloadFixture(t, "large-openai-chat-tools.json")
 	body := syntheticProductionDerivedOpenAIChatPayload(t, fixture)
@@ -384,6 +511,19 @@ func loadProductionDerivedErrorFixture(t *testing.T, name string) productionDeri
 		t.Fatal(err)
 	}
 	var fixture productionDerivedErrorFixture
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	return fixture
+}
+
+func loadProductionDerivedAgentCompatibilityFixture(t *testing.T, name string) productionDerivedAgentCompatibilityFixture {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture productionDerivedAgentCompatibilityFixture
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}

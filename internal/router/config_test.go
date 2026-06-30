@@ -1398,6 +1398,21 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "reasoning-bridge-smoke" {
+			if group.Strategy != "failover" || len(group.Targets) != 3 {
+				t.Fatalf("example config reasoning-bridge-smoke=%#v, want deterministic multi-skin failover smoke group", group)
+			}
+			if group.Targets[0].Provider != "minimax_responses" || !group.Targets[0].Bridges.ChatToResponses.Enabled {
+				t.Fatalf("reasoning-bridge-smoke first target=%#v, want Chat-to-Responses bridge target first", group.Targets[0])
+			}
+			continue
+		}
+		if name == "responses-to-chat-bridge-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax" || !group.Targets[0].ResponsesToChat.Enabled {
+				t.Fatalf("example config responses-to-chat-bridge-smoke=%#v, want isolated Responses-to-Chat bridge target", group)
+			}
+			continue
+		}
 		if name == "vision" {
 			if group.Strategy != "weighted" || len(group.Targets) < 2 {
 				t.Fatalf("example config vision=%#v, want weighted multi-target vision group", group)
@@ -1448,7 +1463,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "large-openai-chat-tools-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "reasoning-smoke", "temp-coder"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "large-openai-chat-tools-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "reasoning-smoke", "reasoning-bridge-smoke", "responses-to-chat-bridge-smoke", "temp-coder"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}

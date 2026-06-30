@@ -50,6 +50,25 @@ Deployment evidence still required after rollout:
 - usage DB telemetry rows showing `reasoning_effort`, `reasoning`, and `thinking`;
 - rollback result or backup reference.
 
+## 2026-06-30 Production-Derived Agent Regression Workflow Addition
+
+This branch adds a repeatable local/staging/production regression workflow for production-derived coding-agent and bridge request shapes. It does not apply or touch production config, and it does not change production `big-coder`.
+
+Reference config and workflow changes:
+
+- Added example `reasoning-bridge-smoke` group for synthetic agent/reasoning bridge fixtures and `responses-to-chat-bridge-smoke` for inverse bridge proof that must not be satisfied by a native Responses target.
+- Added `testdata/smokes/production-derived/agent-reasoning-bridge-compatibility.json` for Codex Responses, Cursor Chat, Claude Code Messages, opencode, aider, provider-skin mismatch, no-eligible diagnostics, upstream entitlement/fallback, and bridge negative cases.
+- Extended `scripts/prod_smoke_regressions.py` so `--fixture all` can replay Chat, Responses, and Messages fixtures against local, staging, or production routers while printing only safe scalar evidence.
+
+Deployment evidence required after routing, provider-skin, bridge, reasoning, quota/traffic-shaping, or diagnostics changes:
+
+- local `rtk go test ./internal/router -run 'ProductionDerived'` and `rtk python3 scripts/prod_smoke_regressions_test.py` results;
+- staging or production smoke output from `scripts/prod_smoke_regressions.py --fixture all`;
+- request IDs and selected provider/model/dialect for each fixture scenario;
+- usage/report rows showing request-shape buckets, bridge direction, translated reasoning control, attempts, fallback, and sanitized error class;
+- confirmation that Harbor/Chetan or another scoped smoke caller was granted access to the deployment-defined smoke groups such as `reasoning-bridge-smoke` and `responses-to-chat-bridge-smoke`;
+- any blocker, such as missing smoke caller access or report DB access, recorded without copying tokens, token hashes, provider keys, raw prompts, raw tool schemas, raw provider responses, or full config.
+
 Future reasoning bridge deployments must record the router version, deployment config fingerprint, request IDs, selected upstream provider/model/dialect, `/v1/models` metadata evidence for the exact caller token, bridge direction, translated reasoning control, fallback state, and request-shape/candidate filter evidence. Chat-to-Responses reasoning requires both `bridges.chat_to_responses.reasoning: true` and compatible target reasoning metadata. Responses-to-Chat reasoning remains unsupported unless a target explicitly opts into `responses_to_chat.reasoning` after exact tests. Keep bridge state evidence separate from reasoning evidence: stateless bridges do not prove `previous_response_id` continuity.
 
 ## 2026-06-30 Model List Compatibility And Harbor Validation Refresh

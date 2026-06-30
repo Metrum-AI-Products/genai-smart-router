@@ -87,6 +87,8 @@ In this example, `coding` is only a sample group name. Ordinary compatible reque
 
 If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request. The response requirements include `reasoning`.
 
+Reasoning changes for coding-agent groups should be validated with the production-derived agent smoke matrix as well as tiny direct provider probes. The matrix includes OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, Anthropic Messages `thinking`, bridge positive cases, and negative cases such as previous-response state on stateless bridges, unsupported streaming bridge requests, image+tools+reasoning without a compatible target, and thinking budget/output-cap conflicts. Run it against a dedicated smoke group, for example `reasoning-bridge-smoke`, with a caller token explicitly allowed to that group.
+
 ## Caller Examples
 
 Use the base URL and model groups issued by the deployment administrator. Public examples should use placeholder hosts and placeholder router tokens only.

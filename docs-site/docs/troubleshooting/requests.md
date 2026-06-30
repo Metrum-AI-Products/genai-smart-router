@@ -118,6 +118,17 @@ For missing reasoning controls, first call `/v1/models` with the same caller tok
 
 For “small requests work but large Cursor/Codex/Claude Code requests fail,” inspect the request drilldown or usage DB rows for `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`. Safe fields to compare are estimated total input tokens, requested output cap, total reserved tokens, request bytes, target `context_tokens`, context headroom, `request_bytes_fit`, `tool_schema_fit`, and bounded reasons such as `request-shape-context-exceeded`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`. Operators can replay a sanitized production-derived shape with `scripts/prod_smoke_regressions.py` when the deployment has a safe smoke caller and report DB access. The reference config uses `large-openai-chat-tools-smoke` for this validation path; grant authorized validation callers access to that smoke group for production or staging reruns instead of changing a broad production coding group. These diagnostics intentionally do not contain raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config.
 
+For agent compatibility regressions, run the production-derived fixture matrix against a dedicated smoke group that the smoke caller is allowed to use:
+
+```bash
+python3 scripts/prod_smoke_regressions.py \
+  --mode prod \
+  --fixture all \
+  --model-group reasoning-bridge-smoke
+```
+
+The fixture matrix covers Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, upstream entitlement/fallback, and upstream error classification. Use the emitted request IDs to compare selected target, bridge direction, translated reasoning control, attempts, fallback, and sanitized error class in reports. If the deployment lacks a smoke group, caller access, or report DB access, record that as the blocker rather than changing an active production group solely for the test.
+
 For Cursor-style OpenAI Chat requests with tools and an image, check whether any target in the requested group supports both OpenAI Chat tools and image input. If not, the router should return `502 no-eligible-target` with zero upstream attempts. Candidate/filter rows should show safe reasons such as `input-modality-image` or `dialect-tool-passthrough`.
 
 For OpenAI Chat requests that are intended to use a Responses-only target, confirm the selected group has a target with `dialect: openai-responses` and `bridges.chat_to_responses.enabled: true`. Text requests need only the bridge opt-in. Tool requests also need bridge `tools: true` plus target `tool_support.openai_responses`; `tool_choice`, parallel tool calls, structured output, images, reasoning, and streaming each need matching bridge metadata. If stateful sessions are enabled, the caller must send the configured session header and the deployment should be single-process or sticky-routed because the current backend is in-memory. Common filter reasons include `chat-to-responses-bridge-disabled`, `chat-to-responses-streaming-unsupported`, `chat-to-responses-tools-unsupported`, `chat-to-responses-tool-choice-unsupported`, and `chat-to-responses-image-unsupported`.

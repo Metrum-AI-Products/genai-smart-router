@@ -1428,6 +1428,41 @@ models:
       default_thinking:
         type: enabled
         budget_tokens: 1024
+  reasoning-bridge-smoke:
+    strategy: failover
+    # Dedicated safe group for production-derived agent/reasoning bridge fixtures.
+    # Grant Harbor/Chetan or another scoped smoke caller access in deployment config
+    # before staging or production validation. Do not use production big-coder for
+    # experimental bridge fixture activation.
+    targets:
+    - provider: minimax_responses
+      model_ref: m3
+      tool_only: true
+      bridges:
+        chat_to_responses:
+          enabled: true
+          tools: true
+          tool_choice: true
+    - provider: fireworks
+      model_ref: gpt-oss-20b
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      tool_only: true
+      default_thinking:
+        type: enabled
+        budget_tokens: 1024
+  responses-to-chat-bridge-smoke:
+    strategy: static
+    # Isolated inverse bridge smoke target so Responses-to-Chat fixtures cannot
+    # be satisfied by a native Responses target before exercising the bridge.
+    targets:
+    - provider: minimax
+      model_ref: m3
+      responses_to_chat:
+        enabled: true
+        text: true
+        function_tools: true
+        tool_choice: true
   temp-coder:
     strategy: weighted
     targets:
@@ -2273,6 +2308,8 @@ callers:
   - crusoe-nemotron-omni-smoke
   - openai-gpt54-vision-smoke
   - reasoning-smoke
+  - reasoning-bridge-smoke
+  - responses-to-chat-bridge-smoke
   - temp-coder
   rate:
     rpm: 120

@@ -1,6 +1,8 @@
 {
   "name": "upstream-error-classification",
   "source_incident_issue": "#353",
+  "replayable": false,
+  "replay_notes": "Synthetic diagnostics contract only. Select this fixture explicitly with a mocked/staging error upstream; do not include it in --fixture all against ordinary production model groups.",
   "surface": "openai_chat",
   "model_group": "error-diagnostics-smoke",
   "scenarios": [

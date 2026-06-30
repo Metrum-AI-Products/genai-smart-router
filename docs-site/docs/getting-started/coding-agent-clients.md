@@ -21,6 +21,19 @@ Successful smokes should prove task outcome, not just HTTP status. For repositor
 
 Different clients can see different effective target pools inside the same model group because they use different API surfaces. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and many IDE clients use OpenAI Chat. A target validated for Chat tools is not automatically eligible for Responses function tools or Anthropic client tools. If one client receives `no-eligible-target` or appears to route to fewer upstreams than another client, ask the deployment admin to inspect effective provider-skin eligibility for that group.
 
+Admins can validate production-safe coding-agent request shapes with sanitized smoke fixtures instead of captured customer prompts. The reference package includes production-derived fixtures for Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run them against a dedicated smoke model group, not an active production group, and grant the test caller explicit access to that group in deployment config.
+
+```bash
+python3 scripts/prod_smoke_regressions.py \
+  --mode prod \
+  --base-url "$ROUTER_BASE_URL" \
+  --token-env ROUTER_SMOKE_TOKEN \
+  --fixture all \
+  --model-group reasoning-bridge-smoke
+```
+
+The smoke prints only safe scalar evidence such as request ID, status, selected provider/model/dialect, API surface, and request-shape buckets. It must not include raw prompts, tool schemas, images, router tokens, provider keys, token hashes, or full configs.
+
 Reasoning controls follow the same rule. Codex normally sends OpenAI Responses-shaped traffic, so explicit reasoning appears as a `reasoning` object and needs a Responses-native or explicitly bridged target. Claude Code uses Anthropic Messages and may send `thinking` or rely on deployment-configured default thinking behavior. Cursor, opencode, aider, LiteLLM adapters, and custom OpenAI-compatible clients can send OpenAI Chat, Anthropic-compatible, or mixed legacy request shapes depending on version and configuration; some custom-provider flows may not expose reasoning settings directly to the user. Call `/v1/models` with the same router token, use one of the returned deployment-defined groups, and treat the request ID plus usage diagnostics as the source of truth for the actual inbound dialect and selected provider skin.
 
 For rollout decisions, keep client setup distinct from outcome evaluation. A setup smoke proves that a client can reach a compatible router path; a workload verifier such as Harbor, unit tests, browser-control checks, OCR goldens, or product acceptance tests proves whether the model group completes the job. See [Prove Router Quality](../evaluation/prove-router-quality) and the [Harbor Case Study](../evaluation/harbor-case-study) for evaluation patterns.

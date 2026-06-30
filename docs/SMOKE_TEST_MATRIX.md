@@ -110,19 +110,36 @@ Local regression gate:
 
 ```bash
 rtk go test ./internal/router -run 'ProductionDerived'
+rtk python3 scripts/prod_smoke_regressions_test.py
 ```
 
-Deployment smoke for the sanitized large OpenAI Chat coding-agent fixture:
+Deployment smoke for all sanitized production-derived fixtures:
 
 ```bash
 rtk python3 scripts/prod_smoke_regressions.py \
+  --mode prod \
   --base-url "$ROUTER_BASE_URL" \
   --token-file "$ROUTER_TOKEN_FILE" \
-  --model-group '<deployment-coding-group>' \
+  --fixture all \
+  --model-group '<deployment-smoke-group>' \
   --postgres-dsn "$ROUTER_USAGE_DB_DSN"
 ```
 
-For local SQLite-backed router runs, replace `--postgres-dsn` with `--sqlite-db <usage-db-path>`. The script prints request ID, status, message/tool counts, selected provider/model/dialect, and request-shape buckets only. It exits nonzero if the request fails, the fixture's must-not-select target is selected, or persisted shape buckets do not match the fixture.
+The checked-in reference config includes `reasoning-bridge-smoke` for agent/reasoning bridge fixtures and `responses-to-chat-bridge-smoke` for the inverse bridge fixture that must not be satisfied by a native Responses target. Hosted deployments must grant Harbor/Chetan or another scoped smoke caller access to the deployment-defined smoke groups before staging or production runs. Do not edit or repurpose production `big-coder` just to run bridge fixtures; use a dedicated smoke group or document the missing caller/group access as a blocker.
+
+For local SQLite-backed router runs, use `--mode local` and replace `--postgres-dsn` with `--sqlite-db <usage-db-path>`. The script prints request ID, status, surface, message/tool counts, selected provider/model/dialect, and request-shape buckets only. It exits nonzero if an unexpected request fails, a fixture's must-not-select target is selected, an expected error/status is not observed, or persisted shape buckets do not match the fixture. `--fixture all` skips fixtures marked `replayable: false`, such as diagnostics-only upstream error classification contracts that require a mocked or staging error upstream; select those fixtures explicitly when that environment is configured.
+
+The shared fixture set covers:
+
+| Source | Fixture coverage |
+|---|---|
+| #319/#320 | Cursor image+tools no-eligible diagnostics with request ID and safe candidate/filter evidence |
+| #321 | Upstream auth/entitlement classification and fallback proof |
+| #330 | Provider-skin mismatch across Chat, Responses, and Messages |
+| #333/#335 | Chat-to-Responses and Responses-to-Chat bridge fixtures |
+| #344/#350 | Reasoning metadata, OpenAI Chat `reasoning_effort`, Responses `reasoning`, and Anthropic `thinking` |
+| #352/#353 | Large Cursor/OpenAI Chat tool payloads and upstream/router error classification |
+| #357/#358/#359 | Agent-specific bridge negatives, previous-response handling, streaming bridge rejection, thinking budget/cap edge cases, and Codex/Cursor/Claude Code/opencode/aider surfaces |
 
 ## opencode API Capability Matrix
 

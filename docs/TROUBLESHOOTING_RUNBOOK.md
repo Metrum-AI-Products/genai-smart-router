@@ -151,6 +151,15 @@ For OpenAI Chat callers that are expected to use a Responses-only upstream, insp
 
 For successful bridged requests, usage and evidence should show inbound dialect `openai-chat`, target/attempt dialect `openai-responses`, endpoint path `/v1/responses`, and translation-shape buckets for output cap, tool count, stripped/rewritten fields, and request bytes. Stateful session proof should use safe trace event names and direct mock/live upstream request bodies during validation; do not collect raw session header values in logs. Do not collect raw prompts, raw tool schemas, tool outputs, images, bearer tokens, token hashes, provider keys, or full config while triaging bridge behavior.
 
+When the request ID matches a production-derived class such as large Cursor/OpenAI Chat tool payloads, Codex Responses reasoning/tools, Claude Code thinking/tools, provider-skin mismatch, no-eligible diagnostics, or upstream error classification, replay the sanitized fixture matrix before closeout:
+
+```bash
+rtk go test ./internal/router -run 'ProductionDerived'
+rtk python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
+```
+
+Use a deployment-defined smoke group and a scoped smoke caller with access granted in config, for example Harbor/Chetan access in the managed deployment. Do not change production `big-coder` just to run these fixtures; missing smoke group, caller access, or report DB access should be recorded as the blocker.
+
 When the workload is trusted and production-critical, raising TPM for that key can be the right fix. For routine or exploratory work, prefer reducing client context, lowering output caps, splitting requests, or moving the key to a cheaper/smaller model group only after that group passes the workload verifier. Distinguish router-side `429` policy failures from upstream provider `429` attempts and user/client cancellations before changing quotas.
 
 ### Traffic Shaping
