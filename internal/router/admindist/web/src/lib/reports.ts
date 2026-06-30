@@ -300,6 +300,25 @@ const savingsColumns: ReportColumn[] = [
   { key: "savings_pct", label: "Savings rate", unit: "%" },
 ];
 
+function savingsBreakdownColumns(primaryLabel: string, secondaryLabel?: string): ReportColumn[] {
+  const dimensionColumns: ReportColumn[] = [{ key: "key", label: primaryLabel }];
+  if (secondaryLabel) {
+    dimensionColumns.push({ key: "secondaryKey", label: secondaryLabel });
+  }
+  return [
+    ...dimensionColumns,
+    { key: "requests", label: "Requests" },
+    { key: "inputTokens", label: "Input tokens" },
+    { key: "outputTokens", label: "Output tokens" },
+    { key: "totalTokens", label: "Total tokens" },
+    { key: "totalCostUsd", label: "Actual cost", unit: "USD" },
+    { key: "baselineCostUsd", label: "Baseline cost", unit: "USD" },
+    { key: "savingsUsd", label: "Savings", unit: "USD" },
+    { key: "savingsPct", label: "Savings rate", unit: "%" },
+    { key: "avgCostUsd", label: "Avg cost/request", unit: "USD" },
+  ];
+}
+
 const requestColumns: ReportColumn[] = [
   { key: "timeUtc", label: "Time" },
   { key: "requestId", label: "Request ID" },
@@ -518,7 +537,10 @@ export const reportMetadataById = {
     commonFilters: savingsHelpFilters,
     keyColumns: [
       { key: "key", description: "Caller owner user bucket." },
-      { key: "savingsUsd", description: "Estimated savings for that user." },
+      { key: "requests", description: "Requests attributed to the user." },
+      { key: "totalCostUsd", description: "Stored actual cost for that user." },
+      { key: "baselineCostUsd", description: "Hypothetical baseline cost for that user." },
+      { key: "savingsUsd", description: "Baseline cost minus actual cost." },
       { key: "savingsPct", description: "Savings as a percentage of baseline cost." },
     ],
     caveats: "Rows depend on configured caller ownership metadata.",
@@ -532,8 +554,11 @@ export const reportMetadataById = {
     commonFilters: savingsHelpFilters,
     keyColumns: [
       { key: "key", description: "Public token ID or safe key label." },
+      { key: "requests", description: "Requests attributed to the key." },
+      { key: "totalCostUsd", description: "Stored actual cost for the key." },
       { key: "baselineCostUsd", description: "Hypothetical baseline cost for the key." },
       { key: "savingsUsd", description: "Baseline minus actual cost for the key." },
+      { key: "savingsPct", description: "Savings as a percentage of baseline cost." },
     ],
     caveats: "Raw router tokens and token hashes are never exposed.",
     relatedReports: ["tokens", "usage-by-key", "requests"],
@@ -546,7 +571,10 @@ export const reportMetadataById = {
     commonFilters: savingsHelpFilters,
     keyColumns: [
       { key: "key", description: "Resolved model group bucket." },
-      { key: "actualCostUsd", description: "Stored actual cost for that group." },
+      { key: "requests", description: "Requests served by the group." },
+      { key: "totalCostUsd", description: "Stored actual cost for that group." },
+      { key: "baselineCostUsd", description: "Hypothetical baseline cost for the group." },
+      { key: "savingsUsd", description: "Baseline minus actual cost for the group." },
       { key: "savingsPct", description: "Savings rate versus baseline." },
     ],
     caveats: "Group savings should be reviewed with quality or contract validation evidence before promotion decisions.",
@@ -560,8 +588,12 @@ export const reportMetadataById = {
     commonFilters: savingsHelpFilters,
     keyColumns: [
       { key: "key", description: "Project bucket." },
+      { key: "secondaryKey", description: "Environment bucket when present." },
       { key: "requests", description: "Requests attributed to the project." },
+      { key: "totalCostUsd", description: "Stored actual cost for the project." },
+      { key: "baselineCostUsd", description: "Hypothetical baseline cost for the project." },
       { key: "savingsUsd", description: "Estimated project savings." },
+      { key: "savingsPct", description: "Savings as a percentage of baseline cost." },
     ],
     caveats: "Project attribution depends on configured caller/project membership metadata.",
     relatedReports: ["project-chargeback", "savings-by-user", "expensive-requests"],
@@ -574,8 +606,12 @@ export const reportMetadataById = {
     commonFilters: savingsHelpFilters,
     keyColumns: [
       { key: "key", description: "Provider/model bucket." },
-      { key: "actualCostUsd", description: "Stored actual cost for that upstream bucket." },
+      { key: "secondaryKey", description: "API dialect bucket when present." },
+      { key: "requests", description: "Requests served by the provider/model bucket." },
+      { key: "totalCostUsd", description: "Stored actual cost for that upstream bucket." },
+      { key: "baselineCostUsd", description: "Hypothetical baseline cost for that upstream bucket." },
       { key: "savingsUsd", description: "Estimated savings versus baseline." },
+      { key: "savingsPct", description: "Savings as a percentage of baseline cost." },
     ],
     caveats: "Savings alone does not prove workload quality; pair with validation and request outcomes.",
     relatedReports: ["provider-model-mix", "target-validation", "requests"],
@@ -1167,11 +1203,11 @@ export const tabSpecs: TabSpec[] = [
   { id: "providers", label: "Providers", endpoint: "summary", metadata: reportMeta("providers"), columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "tokens", label: "Keys", endpoint: "summary", metadata: reportMeta("tokens"), columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "savings", label: "Savings", endpoint: "savings", metadata: reportMeta("savings"), columns: savingsColumns, savings: true, filters: savingsFilters },
-  { id: "savings-by-user", label: "Savings by user", endpoint: "savings-by-user", metadata: reportMeta("savings-by-user"), columns: defaultScalarColumns, savings: true, filters: savingsFilters },
-  { id: "savings-by-key", label: "Savings by key", endpoint: "savings-by-key", metadata: reportMeta("savings-by-key"), columns: defaultScalarColumns, savings: true, filters: savingsFilters },
-  { id: "savings-by-group", label: "Savings by group", endpoint: "savings-by-group", metadata: reportMeta("savings-by-group"), columns: defaultScalarColumns, savings: true, filters: savingsFilters },
-  { id: "savings-by-project", label: "Savings by project", endpoint: "savings-by-project", metadata: reportMeta("savings-by-project"), columns: defaultScalarColumns, savings: true, filters: savingsFilters },
-  { id: "savings-by-provider-model", label: "Savings by provider", endpoint: "savings-by-provider-model", metadata: reportMeta("savings-by-provider-model"), columns: defaultScalarColumns, savings: true, filters: savingsFilters },
+  { id: "savings-by-user", label: "Savings by user", endpoint: "savings-by-user", metadata: reportMeta("savings-by-user"), columns: savingsBreakdownColumns("User"), savings: true, filters: savingsFilters },
+  { id: "savings-by-key", label: "Savings by key", endpoint: "savings-by-key", metadata: reportMeta("savings-by-key"), columns: savingsBreakdownColumns("Key"), savings: true, filters: savingsFilters },
+  { id: "savings-by-group", label: "Savings by group", endpoint: "savings-by-group", metadata: reportMeta("savings-by-group"), columns: savingsBreakdownColumns("Model group"), savings: true, filters: savingsFilters },
+  { id: "savings-by-project", label: "Savings by project", endpoint: "savings-by-project", metadata: reportMeta("savings-by-project"), columns: savingsBreakdownColumns("Project", "Environment"), savings: true, filters: savingsFilters },
+  { id: "savings-by-provider-model", label: "Savings by provider", endpoint: "savings-by-provider-model", metadata: reportMeta("savings-by-provider-model"), columns: savingsBreakdownColumns("Provider/model", "Dialect"), savings: true, filters: savingsFilters },
   { id: "model-groups-by-user", label: "User groups", endpoint: "model-groups-by-user", metadata: reportMeta("model-groups-by-user"), columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "usage-by-key", label: "Key usage", endpoint: "usage-by-key", metadata: reportMeta("usage-by-key"), columns: defaultScalarColumns, filters: statusCacheFilters },
   { id: "usage-by-caller", label: "Caller usage", endpoint: "usage-by-caller", metadata: reportMeta("usage-by-caller"), columns: defaultScalarColumns, filters: statusCacheFilters },

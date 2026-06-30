@@ -295,6 +295,8 @@ Browser admin reports expose the same rule through `/admin/reports/api/savings`.
 
 Savings breakdown browser tabs should expose four charts when rows and a baseline are present: request count, actual vs baseline cost, savings USD, and savings rate. Check the chart descriptors with a safe admin API smoke such as `jq '.charts[] | {id: .chart_id, title, series: [.series[].name]}'`. Negative savings is valid evidence that the selected baseline would have been cheaper for that bucket; use the table and related usage/latency reports to decide whether the model group, target weights, baseline, or workload quality gate needs review.
 
+The visible savings breakdown table should stay savings-first: dimension, optional secondary dimension, requests, input/output/total tokens, actual cost, baseline cost, savings, savings rate, and average cost per request. CSV export follows this visible order. If the investigation needs latency, throughput, cache, fallback, or detailed provider mix, switch to the related usage, performance, errors/fallbacks, or request drilldown tab instead of widening the savings table back into a generic scalar report.
+
 ## Image Cost Reporting
 
 For VLM requests, normal input-token pricing is the fallback. `image_input_price_per_million_tokens_usd` applies when upstream reports image tokens. `image_input_price_per_image_usd` applies for per-image billing or internal chargeback. Upstream-reported billed cost should be stored separately when the provider returns it.

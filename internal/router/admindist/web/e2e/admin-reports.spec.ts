@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { navGroups, validateNavGroups } from "../src/lib/navGroups";
 import { globalFilterFields, tabFilterFields, tabSpecs, validateFilterModel, type ReportChart, type ReportRow } from "../src/lib/reports";
 
@@ -356,12 +357,24 @@ test("deep-linked savings URLs preserve baseline and sorting params", async ({ p
   await expect(page.locator('[data-tab-filter="baseline"]')).toHaveValue("gpt-5.5");
   await expect(page.locator('[data-tab-filter="sort"]')).toHaveValue("savingsUsd");
   await expect(page.locator('[data-tab-filter="direction"]')).toHaveValue("desc");
+  await expect(page.getByRole("columnheader", { name: "Key" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Actual cost(USD)" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Baseline cost(USD)" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Savings(USD)" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Savings rate(%)" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Avg upstream(ms)" })).toHaveCount(0);
   await expect(page.locator("tbody tr").first()).toContainText("rtr_mock_public");
   await expect(page.getByRole("heading", { name: "Actual vs baseline cost" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Savings", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Savings rate" })).toBeVisible();
   await expect(page.locator("main canvas")).toHaveCount(4);
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "CSV top-N rows" }).click();
+  const path = await (await download).path();
+  expect(path).toBeTruthy();
+  const csv = readFileSync(path!, "utf8");
+  expect(csv.split("\n")[0]).toContain('"Key","Requests","Input tokens","Output tokens","Total tokens","Actual cost","Baseline cost","Savings","Savings rate"');
 
   const savingsRequest = apiRequests.find((url) => url.includes("/api/savings-by-key?"));
   expect(savingsRequest).toContain("baseline=gpt-5.5");
