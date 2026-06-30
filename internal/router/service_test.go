@@ -5459,7 +5459,7 @@ func TestResponsesMaxOutputTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
 	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
 	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "ignored_caps", Model: "cap-unsafe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &ignoresMaxTokens},
-		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens},
+		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens, RequestShapeSupport: RequestShapeSupport{SupportedInboundDialects: []string{"openai-responses"}}},
 	}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
 	svc, err := New(cfg)
@@ -8029,7 +8029,7 @@ func TestAnthropicToolPassthroughAppliesDefaultThinking(t *testing.T) {
 	}
 }
 
-func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
+func TestResponsesToolPassthroughUsesMiniMaxResponsesProviderSkin(t *testing.T) {
 	var gotPath, gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -8051,7 +8051,8 @@ func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
 
 	cfg := testConfig(t, upstream.URL, "unused", t.TempDir())
 	cfg.Provider["minimax"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "minimax-key"}
-	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "minimax", Model: "MiniMax-M3", Dialect: "openai-responses", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
+	cfg.Provider["minimax_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "minimax-key"}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "minimax_responses", Model: "MiniMax-M3", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}}}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "agent-tools-smoke")
 	svc, err := New(cfg)
 	if err != nil {
@@ -8069,6 +8070,51 @@ func TestResponsesToolPassthroughCanUseMiniMaxTarget(t *testing.T) {
 	}
 	if gotPath != "/v1/responses" || gotModel != "MiniMax-M3" {
 		t.Fatalf("path/model=%s/%s, want /v1/responses MiniMax-M3", gotPath, gotModel)
+	}
+}
+
+func TestResponsesToolPassthroughSkipsMiniMaxForcedToolChoice(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "unused", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Provider["minimax_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "minimax-key"}
+	cfg.Models["agent-tools-smoke"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "minimax_responses",
+		Model:    "MiniMax-M3",
+		ToolSupport: ToolSupport{
+			OpenAIResponses: []string{"function"},
+		},
+		RequestShapeSupport: RequestShapeSupport{
+			UnsupportedRequestFeatures: []string{"forced_tool_choice"},
+		},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "agent-tools-smoke")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"agent-tools-smoke","input":"hi","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}],"tool_choice":{"type":"function","name":"echo"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("upstream called for MiniMax forced tool_choice despite unsupported request-shape metadata")
+	}
+	if !strings.Contains(rr.Body.String(), "no-eligible-target") {
+		t.Fatalf("body=%s, want no-eligible-target", rr.Body.String())
 	}
 }
 

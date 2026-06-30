@@ -133,6 +133,8 @@ Tool requests only route to upstream targets that explicitly advertise support f
 | OpenAI Responses function tools | `tool_support.openai_responses` |
 | Anthropic Messages client tools | `tool_support.anthropic_messages` |
 
+Provider skins are part of this contract. A target configured through an OpenAI Chat provider is not a Responses target unless the resolved provider or target dialect is `openai-responses`. For deployments that validate the same upstream model through multiple APIs, use separate provider skins such as `minimax`, `minimax_responses`, and `minimax_anthropic` rather than relying on the upstream model name alone.
+
 Tool-bearing requests bypass response caching because tool results depend on external shell, filesystem, browser, or client tool state.
 
 OpenAI Responses provider-hosted tools such as Fireworks-documented `mcp` and `sse` tools are not the same as client-executed function or namespace tools. By default, the router rejects caller-supplied remote provider-hosted entries such as `mcp`, `sse`, file-search, code-interpreter, and computer-use tools with `400 provider-hosted-tools-forbidden` before any upstream call. Generic hosted search or image-generation descriptors from compatible clients are stripped unless the deployment explicitly exposes those hosted services. Deployments should expose provider-hosted tools only after a separate security design covers allowlisted hosts, timeouts, network egress, and data-retention expectations.

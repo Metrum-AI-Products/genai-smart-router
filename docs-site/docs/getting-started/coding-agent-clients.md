@@ -41,6 +41,8 @@ codex exec --ignore-user-config --ephemeral \
 
 For image-bearing validation, attach an image with `--image` and use the same allowed coding group if that group includes validated multimodal Responses targets.
 
+Codex requests use the Responses API shape. If a model group contains many OpenAI Chat targets but only a smaller set of Responses-compatible targets, Codex will route within that Responses subset. For example, a deployment may validate MiniMax `MiniMax-M3` as separate Chat, Responses, and Anthropic Messages provider skins; Codex can use only the Responses skin in that group.
+
 ## Claude Code CLI
 
 Claude Code uses the Anthropic Messages-compatible router path. Use `ANTHROPIC_AUTH_TOKEN` for the router token and unset `ANTHROPIC_API_KEY` for router traffic.

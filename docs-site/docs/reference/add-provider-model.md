@@ -118,6 +118,43 @@ Map probe results to catalog metadata mechanically:
 
 Every API skin needs independent evidence. OpenAI Chat tool support does not prove OpenAI Responses function tools or Anthropic Messages client tools.
 
+One upstream model can have multiple provider skins. Keep each skin as its own provider entry when the upstream exposes distinct endpoints or request contracts:
+
+```yaml
+providers:
+  minimax:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-chat
+    api_key_env: MINIMAX_API_KEY
+    models:
+      m3:
+        model: MiniMax-M3
+        tool_support:
+          openai_chat: [tools, tool_choice]
+  minimax_responses:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-responses
+    api_key_env: MINIMAX_API_KEY
+    models:
+      m3:
+        model: MiniMax-M3
+        input_modalities: [text]
+        tool_support:
+          openai_responses: [function]
+        force_store_false: true
+  minimax_anthropic:
+    base_url: https://api.minimax.io/anthropic
+    dialect: anthropic
+    api_key_env: MINIMAX_API_KEY
+    models:
+      m3:
+        model: MiniMax-M3
+        tool_support:
+          anthropic_messages: [client_tools]
+```
+
+This keeps Chat, Responses, and Messages routing eligibility independent. A Codex `/v1/responses` request will not select the Chat-only `minimax` target just because it has the same upstream model name.
+
 ## 4. Add Catalog Metadata
 
 Add provider catalog metadata with pricing, modality, tool, and cap fields. Keep routing weights out of provider catalogs.

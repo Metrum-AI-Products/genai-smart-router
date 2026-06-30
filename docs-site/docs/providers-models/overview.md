@@ -90,6 +90,8 @@ Validate each skin independently. A model that passes one request surface is not
 
 Do not claim tool support, image support, reasoning support, structured outputs, or max-token cap behavior from marketing copy alone. Use provider docs as discovery input, then promote only after direct upstream and router-level evidence passes for the exact provider, model ID, account, dialect, and skin.
 
+Some upstream models expose more than one compatible API skin. Configure those as separate provider entries when the deployment validates them separately. For example, a deployment can expose MiniMax `MiniMax-M3` as an OpenAI Chat skin for Cursor-style traffic, a MiniMax OpenAI Responses skin for Codex-style traffic, and a MiniMax Anthropic Messages skin for Claude-compatible traffic. Each skin keeps its own dialect, tool metadata, reasoning notes, smoke group, and rollback path.
+
 ## Upstream Payload Controls
 
 The router owns provider-side persistence policy for OpenAI-compatible passthrough. Caller-supplied provider `metadata` is stripped, and OpenAI Chat/Responses passthrough sends `store: false` upstream only when the resolved target sets `force_store_false: true`. OpenAI Chat passthrough also uses target metadata such as `output_token_field` to choose `max_tokens` or `max_completion_tokens`. Tool schemas and structured-output schemas still pass through to compatible targets, but their serialized size contributes to token-budget admission.

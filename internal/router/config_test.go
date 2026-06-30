@@ -1137,6 +1137,14 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	assertOpenAIChatProvider(t, cfg.Provider["crusoe"], "llama-3-3-70b-instruct", "meta-llama/Llama-3.3-70B-Instruct")
 	assertResponsesCompatibleProvider(t, cfg.Provider["fireworks_responses"], "kimi-k2p7-code", "accounts/fireworks/models/kimi-k2p7-code")
+	assertOpenAIChatProvider(t, cfg.Provider["minimax"], "m3", "MiniMax-M3")
+	assertResponsesCompatibleProvider(t, cfg.Provider["minimax_responses"], "m3", "MiniMax-M3")
+	if got := cfg.Provider["minimax"].Models["m3"]; len(got.ToolSupport.OpenAIResponses) != 0 {
+		t.Fatalf("example config MiniMax Chat skin should not claim Responses support: %#v", got.ToolSupport)
+	}
+	if got := cfg.Provider["minimax_responses"].Models["m3"]; !stringSliceContains(got.ToolSupport.OpenAIResponses, "function") || !got.ForceStoreFalse || !got.Reasoning.Supported || !stringSliceContains(got.RequestShapeSupport.UnsupportedRequestFeatures, "forced_tool_choice") {
+		t.Fatalf("example config MiniMax Responses catalog entry=%#v", got)
+	}
 	if got := cfg.Provider["fireworks_responses"].Models["kimi-k2p7-code"]; got.InputPricePerMillionUSD != 0.95 || got.OutputPricePerMillionUSD != 4.00 ||
 		!stringSliceContains(got.ToolSupport.OpenAIResponses, "function") || !got.ForceStoreFalse {
 		t.Fatalf("example config Fireworks Responses Kimi catalog entry=%#v", got)
@@ -1162,8 +1170,26 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	for name, group := range cfg.Models {
 		if name == "agent-tools-smoke" {
-			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax" || group.Targets[0].Model != "MiniMax-M3" || group.Targets[0].Dialect != "openai-responses" {
-				t.Fatalf("example config agent-tools-smoke=%#v, want static minimax MiniMax-M3 responses", group)
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax_responses" || group.Targets[0].Model != "MiniMax-M3" || targetDialect(cfg.Provider[group.Targets[0].Provider], group.Targets[0]) != "openai-responses" {
+				t.Fatalf("example config agent-tools-smoke=%#v, want static MiniMax Responses target", group)
+			}
+			continue
+		}
+		if name == "minimax-responses-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax_responses" || group.Targets[0].Model != "MiniMax-M3" || group.Targets[0].ToolOnly {
+				t.Fatalf("example config minimax-responses-smoke=%#v, want static text-capable MiniMax Responses target", group)
+			}
+			if !group.Targets[0].ForceStoreFalse || !stringSliceContains(group.Targets[0].ToolSupport.OpenAIResponses, "function") || !group.Targets[0].Reasoning.Supported {
+				t.Fatalf("example config minimax-responses-smoke missing force_store_false/function/reasoning metadata: %#v", group.Targets[0])
+			}
+			continue
+		}
+		if name == "minimax-responses-tool-smoke" {
+			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax_responses" || group.Targets[0].Model != "MiniMax-M3" || !group.Targets[0].ToolOnly {
+				t.Fatalf("example config minimax-responses-tool-smoke=%#v, want static tool-only MiniMax Responses target", group)
+			}
+			if !group.Targets[0].ForceStoreFalse || !stringSliceContains(group.Targets[0].ToolSupport.OpenAIResponses, "function") {
+				t.Fatalf("example config minimax-responses-tool-smoke missing force_store_false/function metadata: %#v", group.Targets[0])
 			}
 			continue
 		}
@@ -1352,7 +1378,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "temp-coder"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "temp-coder"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -1524,10 +1550,11 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	t.Helper()
 	wantNormal := map[string]int{
 		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 40,
-		"minimax:MiniMax-M3":  20,
-		"kimi:kimi-k2.7-code": 15,
-		"crusoe:zai/GLM-5.2":  15,
-		"openai:gpt-5.4-nano": 10,
+		"minimax:MiniMax-M3":           15,
+		"kimi:kimi-k2.7-code":          15,
+		"crusoe:zai/GLM-5.2":           15,
+		"openai:gpt-5.4-nano":          10,
+		"minimax_responses:MiniMax-M3": 5,
 	}
 	wantToolOnly := map[string]int{
 		"fireworks_responses:accounts/fireworks/models/kimi-k2p7-code": 33,
@@ -1538,6 +1565,7 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	gotNormal := map[string]int{}
 	gotToolOnly := map[string]int{}
 	chatToolCapable := map[string]bool{}
+	responsesEligible := map[string]bool{}
 	for _, target := range group.Targets {
 		key := target.Provider + ":" + target.Model
 		if target.ToolOnly {
@@ -1551,6 +1579,9 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 				if supportsAnyCapability(model.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice") {
 					chatToolCapable[key] = true
 				}
+			}
+			if targetDialect(provider, target) == "openai-responses" {
+				responsesEligible[key] = true
 			}
 		}
 		if target.Provider == "kimi_anthropic" {
@@ -1575,6 +1606,9 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	}
 	if !chatToolCapable["fireworks:accounts/fireworks/models/deepseek-v4-flash"] || !chatToolCapable["minimax:MiniMax-M3"] || !chatToolCapable["kimi:kimi-k2.7-code"] {
 		t.Fatalf("big-coder Chat tool targets=%#v, want Fireworks DeepSeek, MiniMax M3, and Kimi K2.7 Code", chatToolCapable)
+	}
+	if len(responsesEligible) < 2 || !responsesEligible["openai:gpt-5.4-nano"] || !responsesEligible["minimax_responses:MiniMax-M3"] {
+		t.Fatalf("big-coder Responses-eligible normal targets=%#v, want OpenAI fallback plus MiniMax Responses", responsesEligible)
 	}
 	if len(gotToolOnly) != len(wantToolOnly) {
 		t.Fatalf("big-coder tool-only weights=%#v, want %#v", gotToolOnly, wantToolOnly)
@@ -1632,7 +1666,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 			t.Fatalf("example config group %s has routing-policy violation %#v", name, target)
 		}
 		if target.ToolOnly {
-			if target.Provider == "minimax" && target.Model == "MiniMax-M3" && target.Dialect == "openai-responses" {
+			if target.Provider == "minimax_responses" && target.Model == "MiniMax-M3" {
 				codexToolTarget = true
 			}
 			if target.Provider == "openrouter_responses" && target.Model == "minimax/minimax-m3" {

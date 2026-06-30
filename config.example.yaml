@@ -720,6 +720,7 @@ providers:
   minimax:
     base_url: https://api.minimax.io/v1
     dialect: openai-chat
+    auth_scheme: bearer
     api_key: ${MINIMAX_API_KEY}
     api_key_env: MINIMAX_API_KEY
     key_id: minimax-default
@@ -741,8 +742,52 @@ providers:
           openai_chat:
           - tools
           - tool_choice
+  minimax_responses:
+    base_url: https://api.minimax.io/v1
+    dialect: openai-responses
+    auth_scheme: bearer
+    api_key: ${MINIMAX_API_KEY}
+    api_key_env: MINIMAX_API_KEY
+    key_id: minimax-responses-default
+    headers:
+      User-Agent: smart-llmrouter
+    models:
+      m3:
+        model: MiniMax-M3
+        tier: heavy
+        input_price_per_million_usd: 0.3
+        output_price_per_million_usd: 1.2
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://platform.minimax.io/docs/pricing/overview
+        pricing_updated_at: '2026-06-30'
+        pricing_notes: Direct MiniMax OpenAI Responses smokes passed on 2026-06-30
+          for text with store=false, SSE streaming, max_output_tokens=1 cap behavior,
+          auto function calls, and reasoning effort values none, minimal, low, medium,
+          and high. MiniMax documentation says non-none reasoning effort values enable
+          Adaptive Thinking for compatibility but do not tune MiniMax-M3's reasoning
+          depth. Direct forced/object tool_choice support has not passed for this
+          Responses skin, so routing skips the target for forced tool-choice requests.
+          This Responses skin is text-only until direct and router-level image
+          smokes pass for this exact endpoint and model.
+        tool_support:
           openai_responses:
           - function
+        request_shape_support:
+          unsupported_request_features:
+          - forced_tool_choice
+          validation_status: limited
+          validation_notes: Direct MiniMax Responses smokes passed for auto tool
+            calls on 2026-06-30; forced/object tool_choice is skipped until an exact
+            direct and router-level smoke passes for this endpoint and model.
+        force_store_false: true
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
+          default_on: false
   openrouter:
     base_url: https://openrouter.ai/api/v1
     dialect: openai-chat
@@ -1535,10 +1580,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
       weight: 5
-      dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1629,10 +1673,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
       weight: 5
-      dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1704,10 +1747,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
       weight: 5
-      dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1780,10 +1822,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
       weight: 5
-      dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1855,10 +1896,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
       weight: 5
-      dialect: openai-responses
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
@@ -1912,7 +1952,7 @@ models:
       weight: 40
     - provider: minimax
       model_ref: m3
-      weight: 20
+      weight: 15
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 15
@@ -1922,6 +1962,9 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 10
+    - provider: minimax_responses
+      model_ref: m3
+      weight: 5
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
       weight: 33
@@ -1940,9 +1983,19 @@ models:
   agent-tools-smoke:
     strategy: static
     targets:
-    - provider: minimax
+    - provider: minimax_responses
       model_ref: m3
-      dialect: openai-responses
+  minimax-responses-smoke:
+    strategy: static
+    targets:
+    - provider: minimax_responses
+      model_ref: m3
+  minimax-responses-tool-smoke:
+    strategy: static
+    targets:
+    - provider: minimax_responses
+      model_ref: m3
+      tool_only: true
   claude-tools-smoke:
     strategy: static
     targets:
@@ -2136,6 +2189,8 @@ callers:
   - fireworks-gpt-oss-20b-smoke
   - fireworks-responses-smoke
   - fireworks-responses-tool-smoke
+  - minimax-responses-smoke
+  - minimax-responses-tool-smoke
   - baseten-gpt-oss-120b-claude-smoke
   - crusoe-smoke
   - crusoe-gemma-smoke

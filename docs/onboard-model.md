@@ -42,6 +42,8 @@ Run direct provider smokes before involving the router. Test every API skin and 
 
 Use the placeholder curl templates in [smoke-commands-reference.md](smoke-commands-reference.md). A pass on one skin does not imply a pass on another skin. If the upstream returns `401`, `403`, model-not-found, empty content, malformed tools, or non-grounded image answers, keep the candidate out of active routing until the exact failure is understood. For `403` or `404`, distinguish invalid provider credentials from account entitlement, region/project restriction, policy/privacy block, and model-access denial; only the exact provider key, model ID, dialect, and request shape that passed the smoke should be promoted.
 
+When one upstream model exposes multiple API skins, create separate provider entries for each validated skin instead of overriding target dialects on an unrelated provider. For example, MiniMax `MiniMax-M3` uses separate reference providers for OpenAI Chat (`minimax`), OpenAI Responses (`minimax_responses`), and Anthropic Messages (`minimax_anthropic`) so Codex/Responses, Cursor/OpenAI Chat, and Claude Code/Messages eligibility can be validated and rolled back independently.
+
 ## 4. Capture Capability Probe Results
 
 Record public-safe evidence for each probe:

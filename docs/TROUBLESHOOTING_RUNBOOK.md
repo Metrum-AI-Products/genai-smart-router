@@ -168,6 +168,8 @@ Validate the exact client dialect:
 - Codex CLI uses `/v1/responses`.
 - Claude Code uses `/v1/messages`.
 
+Codex/OpenAI Responses traffic is eligible only for targets whose resolved provider dialect is `openai-responses` and whose tool metadata includes `tool_support.openai_responses` when tools are present. A group can have many MiniMax, Fireworks, Kimi, or other OpenAI Chat targets and still route Codex to a smaller Responses subset. For MiniMax `MiniMax-M3`, use the dedicated `minimax_responses` provider skin; the `minimax` Chat skin and `minimax_anthropic` Messages skin are separate validation surfaces.
+
 Run the appropriate real tool smoke and assert file contents, not only assistant text.
 
 ### One Upstream Takes All Traffic
