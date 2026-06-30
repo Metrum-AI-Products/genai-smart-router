@@ -16,8 +16,8 @@ Last deployed: 2026-06-30
 
 ## Deployed Version
 
-- Router package/image version: `636ddaf-linux-amd64`
-- Source commit: `636ddaf`
+- Router package/image version: `7cfca1e-linux-amd64`
+- Source commit: `7cfca1e`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,27 @@ Last deployed: 2026-06-30
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-30 Responses Bridge And Provider-Skin Routing Refresh
+
+Deployed package/image `smart-llmrouter:7cfca1e-linux-amd64` from source commit `7cfca1e`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.deploy-7cfca1e-20260630T150056Z
+```
+
+Validation:
+
+- PRs #336, #338, #339, #340, #341, #342, and #343 were squash-merged; merged local worktrees and local/remote branches were cleaned up.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 from clean commit `7cfca1e`.
+- Local Harbor smoke `case-20260630T145305Z-local-final`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 92s.
+- Production `/readyz`: 200, version `7cfca1e`, build date `2026-06-30T14:56:24Z`.
+- Production `/version`: version `7cfca1e`, Go `1.26.4`, linux/amd64, license compile mode `required`.
+- Hosted docs `/docs/`: 200.
+- Authenticated `/v1/models`: 200 with `big-coder` available to the reusable Harbor caller.
+- Production Harbor smoke `case-20260630T150133Z-prod-final`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 64s.
 
 ## 2026-06-30 Admin Reports, Routing Diagnostics, And Opencode Matrix Refresh
 
