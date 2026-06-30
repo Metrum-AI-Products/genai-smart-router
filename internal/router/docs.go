@@ -52,13 +52,30 @@ func docsHandler() http.Handler {
 			if serveEmbeddedDocStatus(w, r, sub, "404.html", http.StatusNotFound) {
 				return
 			}
-			if name == "index.html" || !strings.Contains(path.Base(name), ".") {
+			if name == "index.html" {
 				writeFallbackDocs(w)
+				return
+			}
+			if docsFallbackRouteAllowed(name) {
+				writeFallbackDocs(w)
+				return
+			}
+			if !strings.Contains(path.Base(name), ".") {
+				writeFallbackDocsStatus(w, http.StatusNotFound)
 				return
 			}
 		}
 		http.NotFound(w, r)
 	})
+}
+
+func docsFallbackRouteAllowed(name string) bool {
+	switch strings.Trim(strings.TrimSuffix(name, "/"), "/") {
+	case "solution-brief":
+		return true
+	default:
+		return false
+	}
 }
 
 func isReservedRouterPath(p string) bool {
@@ -108,9 +125,13 @@ func serveEmbeddedDocStatus(w http.ResponseWriter, r *http.Request, root fs.FS, 
 }
 
 func writeFallbackDocs(w http.ResponseWriter) {
+	writeFallbackDocsStatus(w, http.StatusOK)
+}
+
+func writeFallbackDocsStatus(w http.ResponseWriter, status int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	setDocsVersionHeaders(w)
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	_, _ = w.Write([]byte(`<!doctype html>
 <html lang="en">
 <head>

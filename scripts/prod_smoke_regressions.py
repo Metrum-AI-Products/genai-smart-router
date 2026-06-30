@@ -17,7 +17,7 @@ from typing import Any
 
 
 DEFAULT_FIXTURES_DIR = Path("testdata/smokes/production-derived")
-DEFAULT_FIXTURE = "cursor-large-tools-openai-chat.json"
+DEFAULT_FIXTURE = "large-openai-chat-tools.json"
 
 
 def load_token(args: argparse.Namespace) -> str:

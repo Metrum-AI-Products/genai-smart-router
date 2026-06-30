@@ -50,8 +50,8 @@ type productionDerivedErrorFixture struct {
 	} `json:"scenarios"`
 }
 
-func TestProductionDerivedLargeCursorPayloadSkipsUnsafeFireworksTarget(t *testing.T) {
-	fixture := loadProductionDerivedLargePayloadFixture(t, "cursor-large-tools-openai-chat.json")
+func TestProductionDerivedLargeOpenAIChatToolPayloadSkipsShapeLimitedTarget(t *testing.T) {
+	fixture := loadProductionDerivedLargePayloadFixture(t, "large-openai-chat-tools.json")
 	body := syntheticProductionDerivedOpenAIChatPayload(t, fixture)
 
 	var selectedModel string
@@ -267,30 +267,30 @@ func productionDerivedRegressionConfig(t *testing.T, dir, upstreamURL string) *C
 	return &Config{
 		Server: ServerConfig{
 			Listen:            ":0",
-			DefaultModelGroup: "big-coder",
+			DefaultModelGroup: "large-openai-chat-tools-smoke",
 			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
 			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
 			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
 		},
 		StatePath: filepath.Join(dir, "state.json"),
 		Provider: map[string]ProviderConfig{
-			"fireworks": {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
-			"minimax":   {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+			"limited-large-payload":   {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+			"validated-large-payload": {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
 		},
 		Models: map[string]ModelGroup{
-			"big-coder": {
+			"large-openai-chat-tools-smoke": {
 				Strategy: "static",
 				Targets: []Target{
 					{
-						Provider:            "fireworks",
-						Model:               "accounts/fireworks/models/gpt-oss-20b",
+						Provider:            "limited-large-payload",
+						Model:               "limited-tool-model",
 						ContextTokens:       200000,
 						ToolSupport:         ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
 						RequestShapeSupport: RequestShapeSupport{MaxRequestBytes: 196608},
 					},
 					{
-						Provider:      "minimax",
-						Model:         "MiniMax-M3",
+						Provider:      "validated-large-payload",
+						Model:         "validated-tool-model",
 						ContextTokens: 200000,
 						ToolSupport:   ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
 					},
@@ -304,7 +304,7 @@ func productionDerivedRegressionConfig(t *testing.T, dir, upstreamURL string) *C
 			Environment: "test",
 			TokenSHA256: hex.EncodeToString(sum[:]),
 			TokenID:     "rtr_alice_test",
-			Allow:       []string{"big-coder"},
+			Allow:       []string{"large-openai-chat-tools-smoke"},
 			Rate:        RateConfig{RPM: 100, TPM: 1000000, Concurrent: 4},
 			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 1000000}, Month: BudgetConfig{Tokens: 1000000}},
 			Key:         KeyConfig{LifetimeTokens: 1000000},

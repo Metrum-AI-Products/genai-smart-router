@@ -17,8 +17,8 @@ Router caller tokens authenticate applications, users, or evaluation jobs to Gen
 
 ```bash
 router-token-gen generate \
-  --owner-user chetan \
-  --project metrum-insights \
+  --owner-user example-user \
+  --project example-project \
   --env prod \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```

@@ -1984,13 +1984,6 @@ models:
     - provider: fireworks
       model_ref: gpt-oss-20b
       weight: 25
-      request_shape_support:
-        max_request_bytes: 196608
-        validation_status: passed
-        validation_notes: The dedicated Fireworks smoke group keeps broader large-payload
-          validation evidence, but broad big-coder routing caps this target below the
-          2026-06-30 production-derived Cursor OpenAI Chat tool payload class so request-shape
-          filtering can select an alternate validated tool-capable target.
     - provider: minimax_responses
       model_ref: m3
       weight: 40
@@ -2122,6 +2115,20 @@ models:
     targets:
     - provider: fireworks
       model_ref: gpt-oss-20b
+  large-openai-chat-tools-smoke:
+    strategy: failover
+    targets:
+    - provider: fireworks
+      model_ref: gpt-oss-20b
+      request_shape_support:
+        max_request_bytes: 196608
+        validation_status: passed
+        validation_notes: Dedicated validation route for production-derived large
+          OpenAI Chat tool payloads. The broad production coding group is not
+          changed by this example; grant Harbor and Chetan validation callers
+          access to this smoke group when rerunning the synthetic fixture.
+    - provider: minimax
+      model_ref: m3
   baseten-gpt-oss-120b-claude-smoke:
     strategy: static
     targets:
@@ -2255,6 +2262,7 @@ callers:
   - baseten-glm52-smoke
   - baseten-gpt-oss-120b-smoke
   - fireworks-gpt-oss-20b-smoke
+  - large-openai-chat-tools-smoke
   - fireworks-responses-smoke
   - fireworks-responses-tool-smoke
   - minimax-responses-smoke

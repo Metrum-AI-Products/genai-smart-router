@@ -1308,6 +1308,17 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "large-openai-chat-tools-smoke" {
+			if group.Strategy != "failover" || len(group.Targets) != 2 ||
+				group.Targets[0].Provider != "fireworks" ||
+				group.Targets[0].Model != "accounts/fireworks/models/gpt-oss-20b" ||
+				group.Targets[0].RequestShapeSupport.MaxRequestBytes != 196608 ||
+				group.Targets[1].Provider != "minimax" ||
+				group.Targets[1].Model != "MiniMax-M3" {
+				t.Fatalf("example config large-openai-chat-tools-smoke=%#v, want failover with capped Fireworks target and MiniMax fallback", group)
+			}
+			continue
+		}
 		if name == "reasoning-smoke" {
 			if group.Strategy != "failover" || len(group.Targets) != 3 {
 				t.Fatalf("example config reasoning-smoke=%#v, want failover with Chat, Responses, and Anthropic targets", group)
@@ -1437,7 +1448,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "reasoning-smoke", "temp-coder"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "large-openai-chat-tools-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "reasoning-smoke", "temp-coder"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}
@@ -1519,7 +1530,7 @@ func TestExampleConfigOpenAINanoResponsesReasoningMetadata(t *testing.T) {
 	}
 }
 
-func TestExampleConfigBigCoderCapsFireworksGPTOSSProductionDerivedShape(t *testing.T) {
+func TestExampleConfigLargeOpenAIChatToolsSmokeHasShapeGate(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -1543,18 +1554,37 @@ func TestExampleConfigBigCoderCapsFireworksGPTOSSProductionDerivedShape(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range cfg.Models["big-coder"].Targets {
+	group := cfg.Models["large-openai-chat-tools-smoke"]
+	if group.Strategy != "failover" || len(group.Targets) != 2 {
+		t.Fatalf("large-openai-chat-tools-smoke=%#v, want failover with limited target plus fallback", group)
+	}
+	foundSmokeTarget := false
+	for _, target := range group.Targets {
 		if target.Provider == "fireworks" && target.Model == "accounts/fireworks/models/gpt-oss-20b" {
+			foundSmokeTarget = true
 			if target.RequestShapeSupport.MaxRequestBytes != 196608 {
-				t.Fatalf("big-coder Fireworks GPT OSS max_request_bytes=%d, want 196608", target.RequestShapeSupport.MaxRequestBytes)
+				t.Fatalf("large-openai-chat-tools-smoke Fireworks GPT OSS max_request_bytes=%d, want 196608", target.RequestShapeSupport.MaxRequestBytes)
 			}
-			if target.RequestShapeSupport.ValidationStatus != "passed" || !strings.Contains(target.RequestShapeSupport.ValidationNotes, "production-derived Cursor") {
-				t.Fatalf("big-coder Fireworks GPT OSS validation notes=%#v", target.RequestShapeSupport)
+			notes := target.RequestShapeSupport.ValidationNotes
+			if target.RequestShapeSupport.ValidationStatus != "passed" ||
+				!strings.Contains(notes, "production-derived large") ||
+				!strings.Contains(notes, "broad production coding group is not changed") ||
+				!strings.Contains(notes, "Harbor and Chetan validation callers") {
+				t.Fatalf("large-openai-chat-tools-smoke validation notes=%#v", target.RequestShapeSupport)
 			}
-			return
+			if group.Targets[1].Provider != "minimax" || group.Targets[1].Model != "MiniMax-M3" {
+				t.Fatalf("large-openai-chat-tools-smoke fallback target=%#v, want MiniMax M3", group.Targets[1])
+			}
 		}
 	}
-	t.Fatalf("big-coder missing Fireworks GPT OSS target")
+	if !foundSmokeTarget {
+		t.Fatalf("large-openai-chat-tools-smoke missing Fireworks GPT OSS target")
+	}
+	for _, target := range cfg.Models["big-coder"].Targets {
+		if target.Provider == "fireworks" && target.Model == "accounts/fireworks/models/gpt-oss-20b" && target.RequestShapeSupport.MaxRequestBytes != 0 {
+			t.Fatalf("big-coder Fireworks GPT OSS target should not carry the smoke-group request-shape cap: %#v", target.RequestShapeSupport)
+		}
+	}
 }
 
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {

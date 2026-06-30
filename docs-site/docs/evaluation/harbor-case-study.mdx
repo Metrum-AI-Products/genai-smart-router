@@ -44,7 +44,7 @@ The current published run was captured from the production engineering endpoint 
 | Harbor CLI | `0.13.2` |
 | Codex CLI | `0.142.0` |
 | Claude Code CLI | `2.1.186` |
-| Caller token model | reusable production Harbor caller |
+| Caller token model | authorized evaluation caller |
 
 The task asks the agent to implement `two_bucket.py` so the verifier accepts bucket-measuring behavior and required `ValueError` handling.
 
@@ -67,7 +67,7 @@ The Codex path passed the task. The Claude Code path did not pass task quality e
 
 ## What This Proves
 
-- The `big-coder` route was reachable from the reusable production Harbor caller.
+- The `big-coder` route was reachable from an authorized evaluation caller.
 - Codex CLI completed the Harbor task through the router on the deployed build.
 - Claude Code reached the router and upstream path, but the selected model behavior did not complete this workload.
 - The route should not be promoted as fully validated for Claude Code on this task until a follow-up run passes with reward `1`.
