@@ -88,6 +88,22 @@ Provider-hosted tool types such as OpenAI Responses `mcp` or `sse` execute serve
 
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
 
+## Reasoning Metadata
+
+Reasoning metadata is active-target eligibility metadata. A provider catalog entry may document a model's reasoning support, but callers see reasoning choices in `/v1/models` only when at least one compatible reasoning target is active in the requested model group and allowed for that caller token.
+
+```yaml
+reasoning:
+  supported: true
+  mode: opt_in
+  control: effort_enum
+  supports_summaries: true
+```
+
+Use `control: effort_enum` for OpenAI-style values such as `low`, `medium`, and `high`. Use `control: token_budget` for Anthropic-style thinking budgets. Target-level overrides may add minimum/maximum budgets or provider quirks such as rejecting max-token, temperature, or top-p fields during reasoning.
+
+Effective reasoning is skin-specific. OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, and Anthropic Messages `thinking` each need a target that can preserve that exact shape through the resolved provider dialect or an explicitly validated bridge. A `tool_only` target does not advertise general model-list reasoning metadata unless the tested path is specifically tool-only. If no compatible target remains, the router returns `502 no-eligible-target` before upstream.
+
 ## Dialect Bridges
 
 `bridges` declares validated cross-dialect compatibility for a provider catalog model or a model-group target. Bridge metadata is opt-in and target-specific. Same-dialect routing does not require it.

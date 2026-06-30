@@ -21,6 +21,8 @@ Use one of the model group IDs returned by `/v1/models` for `model`. See [Availa
 
 Record the Codex CLI version used for deployment validation with `codex --version`; CLI flags can change over time.
 
+If Codex should show reasoning choices for a group, `/v1/models` is the caller-facing source of truth. The group entry should include `supported_reasoning_levels` and `default_reasoning_level` for the same router token that Codex uses. If those fields are absent, the running deployment is not advertising active reasoning support for that token and group, even if source config or provider catalogs mention reasoning.
+
 <RouterCodeBlock>
 {`
 export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"

@@ -52,6 +52,31 @@ ORDER BY requests DESC;
 
 For Chat-to-Responses bridge requests, `request_usage.inbound_dialect` remains `openai-chat` while `target_dialect` and `request_attempts.dialect` are `openai-responses`. Join `request_translation_shapes` on request ID and attempt index to confirm the translated endpoint path, output-cap field, tool count, safe stripped/rewritten field counts, and request-size bucket without inspecting raw payloads.
 
+For reasoning proof, use request IDs from the smoke output and require one selected attempt plus matching translation telemetry:
+
+```sql
+SELECT
+  u.request_id,
+  u.resolved_group,
+  u.status_code,
+  u.fallback_used,
+  a.provider,
+  a.model,
+  a.dialect,
+  ts.translated_reasoning_control
+FROM request_usage u
+JOIN request_attempts a
+  ON a.request_id = u.request_id
+ AND a.selected = TRUE
+JOIN request_translation_shapes ts
+  ON ts.request_id = u.request_id
+ AND ts.attempt_index = a.attempt_index
+WHERE u.request_id IN (:chat_request_id, :responses_request_id, :anthropic_request_id)
+ORDER BY u.request_id;
+```
+
+Expected `translated_reasoning_control` values are `reasoning_effort` for OpenAI Chat, `reasoning` for OpenAI Responses, and `thinking` for Anthropic Messages. The selected provider/model/dialect should match the deployment's reasoning smoke target set, and `fallback_used` should be false unless the run is explicitly testing fallback behavior.
+
 ## Common Reports
 
 Daily usage:

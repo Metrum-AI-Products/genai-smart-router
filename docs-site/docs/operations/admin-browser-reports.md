@@ -71,6 +71,8 @@ The browser UI displays requests, errors, input tokens, output tokens, total tok
 
 Admin report APIs accept safe request-shape filters such as inbound dialect, stream flag, tool-choice mode, tool-count bucket, request-bytes bucket, estimated-input-token bucket, output-cap bucket, reasoning presence, multimodal presence, request-shape fingerprint, and tool-schema fingerprint. These filters help compare successful and failed requests to the same provider/model/dialect when a small smoke test passes but a real agent request receives an upstream rejection.
 
+Reasoning proof uses the same reports and drilldowns. For each smoke request ID, request evidence should show the selected provider/model/dialect, `fallback_used` false unless fallback was under test, and a translation-shape `translated_reasoning_control` of `reasoning_effort`, `reasoning`, or `thinking` for Chat, Responses, or Anthropic Messages respectively.
+
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
 
 ## Buyer And Operator Questions

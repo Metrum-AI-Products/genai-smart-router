@@ -1267,6 +1267,24 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			}
 			continue
 		}
+		if name == "reasoning-smoke" {
+			if group.Strategy != "failover" || len(group.Targets) != 3 {
+				t.Fatalf("example config reasoning-smoke=%#v, want failover with Chat, Responses, and Anthropic targets", group)
+			}
+			chat := group.Targets[0]
+			if chat.Provider != "fireworks" || chat.Model != "accounts/fireworks/models/gpt-oss-20b" || targetDialect(cfg.Provider[chat.Provider], chat) != "openai-chat" || !chat.Reasoning.Supported || chat.Reasoning.Control != "effort_enum" {
+				t.Fatalf("example config reasoning-smoke Chat target=%#v", chat)
+			}
+			responses := group.Targets[1]
+			if responses.Provider != "minimax_responses" || responses.Model != "MiniMax-M3" || targetDialect(cfg.Provider[responses.Provider], responses) != "openai-responses" || !responses.Reasoning.Supported || responses.Reasoning.Control != "effort_enum" {
+				t.Fatalf("example config reasoning-smoke Responses target=%#v", responses)
+			}
+			anthropic := group.Targets[2]
+			if anthropic.Provider != "kimi_anthropic" || anthropic.Model != "kimi-k2.7-code" || targetDialect(cfg.Provider[anthropic.Provider], anthropic) != "anthropic" || anthropic.ToolOnly || len(anthropic.DefaultThinking) == 0 {
+				t.Fatalf("example config reasoning-smoke Anthropic target=%#v", anthropic)
+			}
+			continue
+		}
 		if name == "baseten-gpt-oss-120b-claude-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "baseten_anthropic" || group.Targets[0].Model != "openai/gpt-oss-120b" {
 				t.Fatalf("example config baseten-gpt-oss-120b-claude-smoke=%#v, want static Baseten Anthropic GPT OSS 120B target", group)
@@ -1378,7 +1396,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	}
 	wantAllows := map[string][]string{
 		"standard-dev":      {"default", "fast", "small", "vision", "external-policy-demo"},
-		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "temp-coder"},
+		"coding-dev":        {"default", "fast", "big-coder", "small", "medium", "high", "vision", "agent-tools-smoke", "claude-tools-smoke", "agent-tools-smoke-openrouter", "claude-tools-smoke-openrouter", "claude-tools-smoke-openrouter-gemma", "baseten-nemotron-smoke", "warp-agent-smoke", "baseten-glm52-smoke", "baseten-gpt-oss-120b-smoke", "fireworks-gpt-oss-20b-smoke", "fireworks-responses-smoke", "fireworks-responses-tool-smoke", "minimax-responses-smoke", "minimax-responses-tool-smoke", "baseten-gpt-oss-120b-claude-smoke", "crusoe-smoke", "crusoe-gemma-smoke", "crusoe-nemotron-omni-smoke", "openai-gpt54-vision-smoke", "reasoning-smoke", "temp-coder"},
 		"metrics-admin-dev": {},
 		"content-admin-dev": {},
 	}

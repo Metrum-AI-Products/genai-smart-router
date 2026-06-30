@@ -32,6 +32,24 @@ Last deployed: 2026-06-30
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-06-30 Reasoning Proof Workflow Addition
+
+This branch adds a repeatable staging/production reasoning proof workflow. It does not apply or touch production config.
+
+Reference config and workflow changes:
+
+- Added example `reasoning-smoke` group with active targets for OpenAI Chat reasoning, OpenAI Responses reasoning, and Anthropic Messages thinking.
+- Added `scripts/prod_reasoning_smoke.py` to prove `/v1/models` reasoning metadata, per-surface smokes, selected upstream target, no fallback, and `request_translation_shapes.translated_reasoning_control` telemetry for each request ID.
+
+Deployment evidence still required after rollout:
+
+- deployed version/config timestamp and backup path;
+- `/v1/models` reasoning metadata result for the deployed smoke group and any production group intended to expose reasoning;
+- Chat, Responses, and Anthropic request IDs;
+- selected provider/model/dialect for each request;
+- usage DB telemetry rows showing `reasoning_effort`, `reasoning`, and `thinking`;
+- rollback result or backup reference.
+
 ## 2026-06-30 Responses Bridge And Provider-Skin Routing Refresh
 
 Deployed package/image `smart-llmrouter:7cfca1e-linux-amd64` from source commit `7cfca1e`.

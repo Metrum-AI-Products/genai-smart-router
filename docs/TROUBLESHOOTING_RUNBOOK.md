@@ -91,6 +91,28 @@ If the requirements include `contract-*`, inspect only the requested group. Cont
 
 If the requirements include `reasoning`, inspect only targets in the requested group. Confirm the request shape is OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`, then check whether any target has validated compatible `reasoning` metadata for that exact dialect and skin. A mixed weighted group may intentionally keep non-reasoning targets for ordinary traffic, but explicit reasoning requests need at least one compatible target. Fixes are usually to add or restore validated metadata, add a validated reasoning target, remove an overly broad `required_capabilities.reasoning` contract, or disable a dynamic-score reasoning hard filter that is stricter than the target set.
 
+### Codex Does Not Show Reasoning Controls
+
+Use the exact caller token that Codex uses and call `/v1/models`. If the requested model group is missing `supported_reasoning_levels` and `default_reasoning_level`, the running deployment is not advertising active reasoning metadata to that caller. Check these in order:
+
+1. The caller allow list includes the intended group.
+2. The reasoning target is active under `models.<group>.targets[]`, not catalog-only.
+3. The active target is not `tool_only` unless the tested request shape is specifically a tool-only path.
+4. The resolved target skin matches the client surface: OpenAI Chat for `reasoning_effort`, OpenAI Responses for `reasoning`, and Anthropic Messages for `thinking`.
+5. The running production config and package are the deployed ones, not only updated source files.
+
+Then run the repeatable proof:
+
+```bash
+rtk python3 scripts/prod_reasoning_smoke.py \
+  --base-url https://llm-api-engg.metrum.ai \
+  --token-file <router-token-file> \
+  --model <group> \
+  --postgres-dsn "$ROUTER_USAGE_DB_DSN"
+```
+
+The failure tells you which layer is stale: `/v1/models` metadata, an API surface smoke, missing usage DB rows, wrong `translated_reasoning_control`, unexpected selected target, or fallback to a non-proof target. Roll back or restore the previous reasoning-capable target set if production source and runtime config disagree.
+
 For `/v1/responses` requests that should be able to use a Chat-only target, inspect target candidates and filter reasons for `responses-to-chat-*`. A Chat target is eligible only when its resolved target metadata has `responses_to_chat.enabled: true` and flags for the requested shape. Common bridge reasons are `responses-to-chat-bridge-disabled`, `responses-to-chat-previous-response-id`, `responses-to-chat-hosted-tools`, `responses-to-chat-tool-choice`, `responses-to-chat-image`, `responses-to-chat-reasoning`, `responses-to-chat-structured-output`, and `responses-to-chat-streaming`. These failures should have zero upstream attempts. If the bridge succeeds, `request_usage.inbound_dialect` remains `openai-responses`, `request_usage.target_dialect` is `openai-chat`, and `request_translation_shapes.bridge_direction` is `responses_to_chat`.
 
 ### Empty Final Content From Reasoning Requests

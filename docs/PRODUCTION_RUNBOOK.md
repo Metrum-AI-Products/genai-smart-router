@@ -82,6 +82,20 @@ Run real CLI smokes for production-affecting routing or API changes:
 - image smoke when modality metadata changes;
 - OpenAI Chat tools smoke for Warp-style clients when tool routing changes.
 
+For reasoning-routing, provider-skin, or Codex-visible model metadata changes, run the repeatable reasoning proof before declaring the deployment healthy:
+
+```bash
+rtk python3 scripts/prod_reasoning_smoke.py \
+  --base-url https://llm-api-engg.metrum.ai \
+  --token-file <router-token-file> \
+  --model reasoning-smoke \
+  --postgres-dsn "$ROUTER_USAGE_DB_DSN"
+```
+
+Add `--expect surface:provider:model:dialect` for every enabled surface in the deployed smoke group. The proof must show `/v1/models` reasoning metadata for the caller token, successful Chat/Responses/Anthropic smokes for enabled surfaces, usage DB rows for every request ID, `translated_reasoning_control` values of `reasoning_effort`, `reasoning`, and `thinking` respectively, selected reasoning-capable targets, and `fallbackUsed: false`. If an intended production group such as `big-coder` should expose reasoning choices, rerun the same command with `--model big-coder`.
+
+Record in `deployment.md`: deployed version or config timestamp, config backup path, smoke group target summary, `/v1/models` reasoning level count, smoke request IDs, selected provider/model/dialect for each surface, telemetry proof count, and rollback note. Do not paste router tokens, token hashes, provider keys, raw prompts, raw tool schemas, or full config.
+
 For coding-agent route changes, run the deterministic matrix before live smokes:
 
 ```bash

@@ -156,6 +156,18 @@ The returned `id` values are deployment-defined router model groups, not provide
 
 For OpenAI Responses targets, publish these fields only after direct and router-level smokes pass for the exact model and endpoint. For example, a validated Responses target may advertise `low`, `medium`, and `high` after those `reasoning.effort` values return useful output and tool behavior is verified. Provider minimum output budgets still apply; if an upstream rejects tiny `max_output_tokens` values, keep that caveat in model metadata and use realistic acceptance budgets for coding-agent traffic.
 
+## Prove The Running Deployment
+
+Source config is not enough. After deployment, administrators should prove the running router with the same caller token and model group that clients use:
+
+1. Call `/v1/models` and confirm the group advertises `supported_reasoning_levels` and `default_reasoning_level`.
+2. Run one OpenAI Chat request with `reasoning_effort`.
+3. Run one OpenAI Responses request with `reasoning.effort`.
+4. Run one Anthropic Messages request with `thinking` when that surface is enabled.
+5. Join usage telemetry by `X-Request-Id` and confirm the selected provider/model/dialect and translated reasoning control.
+
+The operator smoke script `scripts/prod_reasoning_smoke.py` automates this for staging and production deployments. It prints only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
+
 ## Negative Eligibility Test
 
 Run a reasoning request against a test group that has no reasoning-compatible target. The router should fail before upstream:

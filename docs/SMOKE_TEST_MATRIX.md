@@ -20,6 +20,7 @@ Harbor or another outcome harness is required when a change promotes, demotes, o
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
 | OpenAI-compatible encoding | prove `force_store_false` and `output_token_field` produce the upstream payload the exact provider accepts |
+| Reasoning production proof | restricted `reasoning-smoke` or deployment-selected group; `/v1/models` reasoning metadata, OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning.effort`, Anthropic Messages `thinking`, and usage DB `request_translation_shapes.translated_reasoning_control` for every request ID |
 | Chat-to-Responses bridge | restricted smoke group with `bridges.chat_to_responses.enabled: true`; Chat non-streaming text request, Chat function-tool request when `tools: true`, negative unsupported shape such as `stream:true`, usage rows with inbound Chat and target Responses, and safe translation-shape diagnostics |
 | Usage/cost fields | query usage DB/report after a request |
 | Request evidence bundle | produce one success or error request, query `/admin/reports/api/request-evidence?request_id=<request_id>` with a drilldown-authorized admin, verify section completeness, attempts when applicable, stored request-time costs, `Cache-Control: no-store`, ordinary caller `403 reports-forbidden`, and no raw prompts/images/tool schemas/tool outputs/tokens/token hashes/provider keys/upstream bodies |
@@ -55,6 +56,25 @@ Supported dialects are `openai-chat`, `openai-responses`, and `anthropic`. The p
 The output is direct-provider evidence only. Before adding active route weight, repeat every declared capability through a router smoke group, verify usage/cost/latency rows, and confirm requests that require omitted capabilities return safe `no-eligible-target` behavior without upstream attempts. Do not copy failed, skipped, or informational probe rows into `tool_support`, `input_modalities`, `reasoning`, or max-token metadata.
 
 The full onboarding procedure is tracked in `docs/onboard-model.md` when present; the probe automates the direct-smoke step but does not replace pricing source validation, catalog review, smoke group setup, router-level smokes, production rollout, or rollback documentation.
+
+## Reasoning Production Proof
+
+Use this proof after any deployment or config change that affects reasoning metadata, model groups used by Codex/agent clients, provider skins, or usage diagnostics. The reference config includes `reasoning-smoke` as an example restricted group with one validated target for each enabled surface. Hosted deployments may instead pass a deployment-defined group such as a staging group or `big-coder` when that group is intended to advertise reasoning.
+
+```bash
+rtk python3 scripts/prod_reasoning_smoke.py \
+  --base-url "$ROUTER_BASE_URL" \
+  --token-file "$ROUTER_TOKEN_FILE" \
+  --model reasoning-smoke \
+  --postgres-dsn "$ROUTER_USAGE_DB_DSN" \
+  --expect 'chat:fireworks:accounts/fireworks/models/gpt-oss-20b:openai-chat' \
+  --expect 'responses:minimax_responses:MiniMax-M3:openai-responses' \
+  --expect 'anthropic:kimi_anthropic:kimi-k2.7-code:anthropic'
+```
+
+The script prints only safe JSON evidence: model group, reasoning level count, request IDs, selected provider/model/dialect, translated reasoning control, and fallback flag. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config. It exits nonzero when `/v1/models` does not advertise reasoning levels, any surface fails, a request ID is missing from usage DB telemetry, the translated control is not `reasoning_effort`, `reasoning`, or `thinking` for the matching surface, the selected target differs from the expected set, or fallback was used.
+
+For SQLite-backed local/staging checks, replace `--postgres-dsn` with `--sqlite-db <usage-db-path>`. For a deployment that intentionally has no Anthropic reasoning target, run `--surfaces chat,responses` and document the Anthropic blocker instead of claiming full three-surface coverage.
 
 ## opencode API Capability Matrix
 

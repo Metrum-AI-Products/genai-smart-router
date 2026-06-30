@@ -36,6 +36,8 @@ Chat-to-Responses bridge traffic uses the existing dialect and translation-shape
 
 These tables are keyed by `request_id`. They must not store raw prompts, image payloads, image URLs, raw tool schemas, raw tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, raw Retry-After headers, or unsanitized provider response bodies.
 
+Reasoning production proof uses the same relational rows. Join `request_usage`, selected `request_attempts`, and `request_translation_shapes` by `request_id` and `attempt_index`; assert terminal 2xx status, `fallback_used = false` unless fallback is deliberately under test, the expected provider/model/dialect, and the expected `translated_reasoning_control` value. OpenAI Chat `reasoning_effort` records `reasoning_effort`, OpenAI Responses `reasoning.effort` records `reasoning`, and Anthropic Messages `thinking` records `thinking`.
+
 Usage rollups are generated from stored `request_usage` rows and also follow the scalar relational rule:
 
 - `usage_rollup_runs`: one row per generated hourly, daily, or monthly rollup window, with draft/finalized status, UTC source window, source table name, source request count, source min/max request timestamp, deterministic source checksum, aggregate row counts, decision-bucket row count, router version/commit, safe error text, and generation/finalization timestamps.

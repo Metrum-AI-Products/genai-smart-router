@@ -1416,6 +1416,18 @@ models:
     targets:
     - provider: openai
       model_ref: gpt-5.4
+  reasoning-smoke:
+    strategy: failover
+    targets:
+    - provider: fireworks
+      model_ref: gpt-oss-20b
+    - provider: minimax_responses
+      model_ref: m3
+    - provider: kimi_anthropic
+      model_ref: kimi-k2.7-code
+      default_thinking:
+        type: enabled
+        budget_tokens: 1024
   temp-coder:
     strategy: weighted
     targets:
@@ -2229,6 +2241,7 @@ callers:
   - crusoe-gemma-smoke
   - crusoe-nemotron-omni-smoke
   - openai-gpt54-vision-smoke
+  - reasoning-smoke
   - temp-coder
   rate:
     rpm: 120
