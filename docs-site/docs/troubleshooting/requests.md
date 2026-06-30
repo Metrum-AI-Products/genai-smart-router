@@ -128,6 +128,14 @@ If every target is skipped, callers receive `502 no-eligible-target` before upst
 
 For `/v1/responses` requests that should be able to use Chat-only upstreams, check whether the target has explicit `responses_to_chat` metadata for the requested shape. Chat-bridged targets skip unsupported fields before upstream. Common safe filter reasons include `responses-to-chat-bridge-disabled`, `responses-to-chat-previous-response-id`, `responses-to-chat-hosted-tools`, `responses-to-chat-tool-choice`, `responses-to-chat-image`, `responses-to-chat-reasoning`, `responses-to-chat-structured-output`, and `responses-to-chat-streaming`. A successful bridge keeps the caller-facing response in Responses format while usage shows inbound `openai-responses`, target `openai-chat`, and bridge direction `responses_to_chat`.
 
+For reasoning bridge failures, use the request ID to compare four safe fields: inbound dialect, selected or skipped target dialect, `bridge_direction`, and `translated_reasoning_control`. A native Chat reasoning pass should show `reasoning_effort`; native Responses should show `reasoning`; native Messages should show `thinking`. Chat-to-Responses reasoning should additionally show `bridge_direction = chat_to_responses` and requires `bridges.chat_to_responses.reasoning: true`. Responses-to-Chat reasoning should fail with `responses-to-chat-reasoning` unless the target explicitly validates `responses_to_chat.reasoning`.
+
+Examples of request-shape confusion:
+
+- Codex usually sends `/v1/responses`; a group with only Chat targets needs a validated Responses-to-Chat bridge, and `previous_response_id` is not supported by the stateless bridge.
+- Claude Code sends `/v1/messages`; a Chat or Responses reasoning target does not satisfy Anthropic `thinking` unless an Anthropic-compatible target is active.
+- Cursor, opencode, and aider may use OpenAI Chat or Anthropic-compatible shapes depending on client configuration. If a client sends a Responses-style `reasoning` object to `/v1/chat/completions`, troubleshoot the stored Chat shape and bridge metadata rather than assuming a Responses target was used.
+
 ## 7. Verify Recovery
 
 After a config, credential, quota, or upstream fix:

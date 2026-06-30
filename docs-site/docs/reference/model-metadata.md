@@ -36,6 +36,11 @@ providers:
             enabled: true
             tools: true
             tool_choice: true
+            reasoning: true
+        responses_to_chat:
+          enabled: true
+          text: true
+          function_tools: true
         reasoning:
           supported: true
           mode: opt_in
@@ -104,6 +109,30 @@ Use `control: effort_enum` for OpenAI-style values such as `low`, `medium`, and 
 
 Effective reasoning is skin-specific. OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, and Anthropic Messages `thinking` each need a target that can preserve that exact shape through the resolved provider dialect or an explicitly validated bridge. A `tool_only` target does not advertise general model-list reasoning metadata unless the tested path is specifically tool-only. If no compatible target remains, the router returns `502 no-eligible-target` before upstream.
 
+Example target-level reasoning and bridge metadata:
+
+```yaml
+models:
+  reasoning-bridge-smoke:
+    strategy: static
+    targets:
+      - provider: responses_provider
+        model_ref: responses-reasoning-model
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
+          supports_summaries: true
+        bridges:
+          chat_to_responses:
+            enabled: true
+            reasoning: true
+            validation_status: passed
+            validation_notes: Router-level Chat reasoning bridge smoke passed for this smoke group.
+```
+
+In this example, `reasoning-bridge-smoke` is a placeholder smoke group. It means a Chat request with `reasoning_effort` can consider the Responses target through the bridge. It does not imply that Responses callers can use a Chat target for reasoning.
+
 ## Dialect Bridges
 
 `bridges` declares validated cross-dialect compatibility for a provider catalog model or a model-group target. Bridge metadata is opt-in and target-specific. Same-dialect routing does not require it.
@@ -150,6 +179,8 @@ Enable only the shapes that passed direct upstream and router-level bridge smoke
 | `stateful_sessions.max_entries` | Maximum in-memory session entries before oldest entries are pruned. |
 
 The `responses_to_chat` block is the inverse opt-in bridge for Responses callers using validated Chat-only targets. Configure it separately from `chat_to_responses`; each direction has its own supported request shapes, validation evidence, and failure modes.
+
+Reasoning is not implied by either bridge. `bridges.chat_to_responses.reasoning: true` means Chat `reasoning_effort` was proven to translate to Responses `reasoning.effort` for that target. `responses_to_chat.reasoning` is reserved for exact Responses-to-Chat reasoning validation; leave it unset unless the router and target have passed that bridge path. Without the flag, Responses `reasoning` produces a bounded filter reason before upstream.
 
 ## Request-Shape Support
 
@@ -215,6 +246,8 @@ models:
 `output_token_field` controls which output-token cap field the router sends to OpenAI Chat-compatible upstreams after normalizing caller caps. Allowed values are `max_tokens` and `max_completion_tokens`; omitting the field defaults to `max_tokens`.
 
 Use `output_token_field: max_completion_tokens` for models that reject Chat Completions `max_tokens`, including tool-bearing requests. This is independent of reasoning metadata: if reasoning compatibility also rewrites `max_tokens`, both rules converge on `max_completion_tokens` and the router avoids sending both cap fields.
+
+Responses targets use `max_output_tokens`; Anthropic Messages targets use `max_tokens`. Store output-cap quirks as target metadata, for example `min_requested_output_tokens`, `honors_max_tokens: false`, or `output_token_field: max_completion_tokens`, so tiny caller caps can be forwarded, translated, or filtered consistently. A model that supports reasoning with realistic budgets may still reject or exhaust tiny caps; document that as a cap behavior caveat rather than as broad reasoning failure.
 
 ## Reasoning And Thinking
 

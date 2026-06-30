@@ -9,6 +9,21 @@ Reasoning routing lets callers request explicit reasoning or thinking controls w
 
 Use this when a group should handle both ordinary requests and explicit reasoning requests. Ordinary requests can continue using the full ordinary eligible target mix. Requests with OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking` use only compatible reasoning targets inside the same requested group.
 
+## Reasoning Across API Surfaces
+
+Reasoning is normalized for routing, but support remains API-surface specific. The router preserves explicit reasoning controls only through validated same-dialect targets or explicitly enabled bridge paths.
+
+| Caller request | Upstream target | Current support |
+|---|---|---|
+| OpenAI Chat `reasoning_effort` | OpenAI Chat target | Supported when the active target has compatible `reasoning` metadata. The translated upstream field is `reasoning_effort`, or the target's configured OpenAI Chat encoding variant. |
+| OpenAI Chat `reasoning_effort` | OpenAI Responses target through `chat_to_responses` | Supported only when `bridges.chat_to_responses.enabled: true`, `bridges.chat_to_responses.reasoning: true`, and compatible target `reasoning` metadata are all present. The translated upstream field is Responses `reasoning.effort`; summaries are sent only when the target supports them. |
+| OpenAI Responses `reasoning` | OpenAI Responses target | Supported when the active target has compatible `reasoning` metadata. `reasoning.summary` is preserved only for targets that advertise summary support. |
+| OpenAI Responses `reasoning` | OpenAI Chat target through `responses_to_chat` | Unsupported by default. A target must explicitly opt into `responses_to_chat.reasoning` after exact validation; otherwise the target is skipped with a bounded bridge filter reason such as `responses-to-chat-reasoning`. |
+| Anthropic Messages `thinking` | Anthropic Messages target | Supported when the active target has compatible token-budget or default-thinking metadata. Budget and `max_tokens` rules are provider-specific and must be documented on the target. |
+| Cross-provider effort-to-budget translation | Different reasoning-control family | Conservative and target-specific. Do not assume that an effort level maps to a durable token budget, or that a token budget maps to a provider's quality tier, unless the exact target metadata and smokes prove it. |
+
+Unsupported today unless a target explicitly documents otherwise: broad automatic Chat/Responses reasoning bridges, `previous_response_id` continuity on stateless bridges, provider-hosted tools through a bridge, and preserving reasoning controls through unvalidated streaming, image, structured-output, or forced-tool bridge shapes. OpenAI's [reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) checked on 2026-06-30 recommends the Responses API and `previous_response_id` or replayed prior output items for preserving reasoning context across turns. Anthropic [extended-thinking docs](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking) checked on 2026-06-30 document Messages-specific thinking constraints, and MiniMax M3 [tool-use docs](https://platform.minimax.io/docs/guides/text-m3-function-call) checked on 2026-06-30 require preserving full response objects, including thinking/reasoning fields, in tool loops. Treat those as upstream integration requirements, not as router support unless the deployment has validated the corresponding target path.
+
 ## Configure Metadata
 
 Reasoning metadata is eligibility metadata. Add it only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, and API skin. A model name or provider marketing page is not enough.
@@ -121,6 +136,45 @@ curl https://your-router.example.com/v1/messages \
   }'
 ```
 
+Anthropic thinking budgets interact with the caller output cap. Some upstreams require `budget_tokens` to be less than `max_tokens`, while interleaved-thinking modes can define a larger total thinking budget across tool loops. Keep this as target metadata and validate the exact Messages skin before exposing it.
+
+OpenAI Chat reasoning bridged to a Responses target uses the same caller shape as native Chat. The difference is target metadata, not a new caller field:
+
+```yaml
+models:
+  bridge-smoke:
+    strategy: static
+    targets:
+      - provider: responses_provider
+        model_ref: responses-reasoning-model
+        bridges:
+          chat_to_responses:
+            enabled: true
+            reasoning: true
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
+```
+
+Run the Chat request with `model: "bridge-smoke"` and verify telemetry shows inbound Chat, target Responses, `bridge_direction = chat_to_responses`, and `translated_reasoning_control = reasoning`.
+
+Responses-to-Chat reasoning is rejected unless the target explicitly validates it. A shape example:
+
+```bash
+curl -i "$ROUTER_BASE_URL/v1/responses" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "chat-bridge-smoke",
+    "input": "Reason briefly and answer OK.",
+    "reasoning": {"effort": "low"},
+    "max_output_tokens": 256
+  }'
+```
+
+For a Chat bridge target without `responses_to_chat.reasoning`, expect `502 no-eligible-target` or a bounded bridge filter reason such as `responses-to-chat-reasoning` before upstream. A `previous_response_id` on the same stateless bridge should be filtered separately because stateless Chat targets cannot preserve Responses conversation state.
+
 ## Verify Model Metadata
 
 Call `/v1/models` with the same router token the client will use. The response is filtered to that token's allow list.
@@ -177,6 +231,26 @@ rtk python3 scripts/reasoning_smoke.py \
 ```
 
 Use `--sqlite-db <usage-db-path>` for a local or staging SQLite-backed deployment. The older `scripts/prod_reasoning_smoke.py` entrypoint is a compatibility wrapper; new automation should call `scripts/reasoning_smoke.py`.
+
+For manual SQL verification, join by request ID and attempt index. This shape shows only safe scalar fields:
+
+```sql
+SELECT
+  ru.request_id,
+  ru.inbound_dialect,
+  ra.provider,
+  ra.model,
+  ra.dialect AS target_dialect,
+  rts.bridge_direction,
+  rts.translated_reasoning_control
+FROM request_usage ru
+JOIN request_attempts ra
+  ON ra.request_id = ru.request_id
+JOIN request_translation_shapes rts
+  ON rts.request_id = ra.request_id
+ AND rts.attempt_index = ra.attempt_index
+WHERE ru.request_id = '<request-id>';
+```
 
 ## Negative Eligibility Test
 

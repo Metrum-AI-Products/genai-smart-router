@@ -73,6 +73,8 @@ Admin report APIs accept safe request-shape filters such as inbound dialect, str
 
 Reasoning proof uses the same reports and drilldowns. For each smoke request ID, request evidence should show the selected provider/model/dialect, `fallback_used` false unless fallback was under test, and a translation-shape `translated_reasoning_control` of `reasoning_effort`, `reasoning`, or `thinking` for Chat, Responses, or Anthropic Messages respectively.
 
+Bridge proof should also include `bridge_direction`. Chat-to-Responses reasoning evidence should show inbound Chat, target Responses, `bridge_direction = chat_to_responses`, and `translated_reasoning_control = reasoning`. Responses-to-Chat reasoning should show a bounded filter reason such as `responses-to-chat-reasoning` unless that exact target has validated `responses_to_chat.reasoning`; do not infer bridge reasoning support from same-dialect reasoning metadata alone.
+
 Responses do not include raw router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, full config values, or unsanitized upstream bodies.
 
 ## Buyer And Operator Questions

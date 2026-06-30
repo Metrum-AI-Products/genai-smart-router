@@ -50,6 +50,8 @@ Deployment evidence still required after rollout:
 - usage DB telemetry rows showing `reasoning_effort`, `reasoning`, and `thinking`;
 - rollback result or backup reference.
 
+Future reasoning bridge deployments must record the router version, deployment config fingerprint, request IDs, selected upstream provider/model/dialect, `/v1/models` metadata evidence for the exact caller token, bridge direction, translated reasoning control, fallback state, and request-shape/candidate filter evidence. Chat-to-Responses reasoning requires both `bridges.chat_to_responses.reasoning: true` and compatible target reasoning metadata. Responses-to-Chat reasoning remains unsupported unless a target explicitly opts into `responses_to_chat.reasoning` after exact tests. Keep bridge state evidence separate from reasoning evidence: stateless bridges do not prove `previous_response_id` continuity.
+
 ## 2026-06-30 Model List Compatibility And Harbor Validation Refresh
 
 Deployed package/image `smart-llmrouter:0ea98f7-linux-amd64` from source commit `0ea98f7`.

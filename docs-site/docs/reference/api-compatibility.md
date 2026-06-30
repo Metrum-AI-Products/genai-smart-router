@@ -94,6 +94,18 @@ Streaming bridge requests are rejected before upstream unless the target explici
 
 Common safe filter reasons include `chat-to-responses-bridge-disabled`, `chat-to-responses-streaming-unsupported`, `chat-to-responses-tools-unsupported`, `chat-to-responses-tool-choice-unsupported`, `chat-to-responses-structured-output-unsupported`, and `chat-to-responses-image-unsupported`.
 
+## Reasoning And Bridge Compatibility
+
+| Caller endpoint | Native reasoning field | Same-dialect target | Bridge target |
+|---|---|---|---|
+| `/v1/chat/completions` | `reasoning_effort` | Requires active OpenAI Chat target reasoning metadata. | Chat-to-Responses reasoning requires `bridges.chat_to_responses.reasoning: true` plus Responses target reasoning metadata. |
+| `/v1/responses` | `reasoning` | Requires active OpenAI Responses target reasoning metadata. | Responses-to-Chat reasoning is unsupported unless `responses_to_chat.reasoning` is explicitly validated for the target. |
+| `/v1/messages` | `thinking` | Requires active Anthropic Messages target reasoning/default-thinking metadata. | No general Messages bridge is implied by Chat or Responses bridge metadata. |
+
+Tools and reasoning are filtered together. A request with tools and reasoning needs a target that supports both the caller's tool dialect and the requested reasoning control, or an explicitly validated bridge for both features. If no candidate remains, the router returns `502 no-eligible-target`; candidate/filter diagnostics should show bounded reasons such as `reasoning`, `chat-to-responses-reasoning-unsupported`, or `responses-to-chat-reasoning` rather than an upstream attempt with the reasoning field stripped.
+
+Bridge requests remain stateless unless a Chat-to-Responses target enables stateful sessions. A stateless bridge does not synthesize `previous_response_id` continuity for reasoning workflows. OpenAI Responses callers that send `previous_response_id` to a Chat-bridged target should expect a bridge filter reason unless that exact stateful behavior is documented for the target.
+
 ## Quotas And Output Caps
 
 Before an upstream call, the router reserves the estimated input tokens plus the requested output budget for token-based admission. Chat Completions requests use `max_tokens` or `max_completion_tokens`, Responses requests use `max_output_tokens`, and Messages requests use `max_tokens`. Messages requests without a caller cap reserve the router default output cap when the router injects one.

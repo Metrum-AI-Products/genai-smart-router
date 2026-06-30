@@ -91,6 +91,20 @@ If the requirements include `contract-*`, inspect only the requested group. Cont
 
 If the requirements include `reasoning`, inspect only targets in the requested group. Confirm the request shape is OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`, then check whether any target has validated compatible `reasoning` metadata for that exact dialect and skin. A mixed weighted group may intentionally keep non-reasoning targets for ordinary traffic, but explicit reasoning requests need at least one compatible target. Fixes are usually to add or restore validated metadata, add a validated reasoning target, remove an overly broad `required_capabilities.reasoning` contract, or disable a dynamic-score reasoning hard filter that is stricter than the target set.
 
+### Reasoning And Bridge Decision Tree
+
+When a caller reports missing reasoning or an unexpected bridge failure, prove each layer with safe metadata rather than copying payloads:
+
+1. Identify the endpoint and shape: `/v1/chat/completions` with `reasoning_effort`, `/v1/responses` with `reasoning`, or `/v1/messages` with `thinking`. Some IDE and custom-provider clients can send OpenAI Responses-looking fields to a Chat endpoint; classify by actual router path and stored `request_shapes.inbound_dialect`.
+2. Call `/v1/models` with the same caller token and confirm the requested deployment-defined group is allowed and advertises reasoning metadata only when expected.
+3. Inspect target candidates for the requested group. A catalog entry is not enough; check active target dialect, `tool_only`, `effectiveReasoning`, bridge metadata, and safe filter reasons.
+4. For same-dialect routing, confirm the selected upstream dialect matches the caller surface and `request_translation_shapes.translated_reasoning_control` is `reasoning_effort`, `reasoning`, or `thinking` as appropriate.
+5. For Chat-to-Responses, confirm `bridges.chat_to_responses.enabled: true`; for reasoning, also require `bridges.chat_to_responses.reasoning: true` and compatible target `reasoning` metadata. Evidence should show inbound `openai-chat`, target `openai-responses`, `bridge_direction = chat_to_responses`, and a translated Responses reasoning control.
+6. For Responses-to-Chat, assume reasoning is unsupported unless the target has explicit `responses_to_chat.reasoning` validation. A `reasoning` object, `previous_response_id`, hosted tools, images, structured outputs, or streaming should produce a bounded filter reason unless the exact flag is enabled.
+7. If the request failed, prove no silent drop occurred: the terminal error should be `no-eligible-target` or a bounded bridge error, the selected target should be absent, and there should be zero upstream attempts for pre-selection failures.
+
+Common client expectations: Codex normally uses OpenAI Responses and may need Responses-native or explicitly bridged targets. Claude Code uses Anthropic Messages and may include `thinking` or tool-related thinking constraints. Cursor, opencode, aider, and SDK-based IDE clients can use OpenAI Chat, Anthropic-compatible, or mixed legacy OpenAI-compatible shapes depending on version and configuration; always use the stored inbound dialect, request ID, and selected provider skin as evidence.
+
 ### Codex Does Not Show Reasoning Controls
 
 Use the exact caller token that Codex uses and call `/v1/models`. If the requested model group is missing `supported_reasoning_levels` and `default_reasoning_level`, the running deployment is not advertising active reasoning metadata to that caller. Check these in order:
