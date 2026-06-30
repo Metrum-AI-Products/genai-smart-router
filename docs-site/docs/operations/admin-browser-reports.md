@@ -263,6 +263,10 @@ Built-in baselines are configured under `server.admin_reports.baselines` with so
 
 Administrators can also enter a custom baseline for the current browser session. Custom values are validated as finite nonnegative USD-per-million-token rates and are not persisted by the router.
 
+Savings charts mirror the table semantics. The top-level Savings tab charts actual vs baseline cost over time, savings USD over time, and savings rate over time. The savings breakdown tabs for user, key, model group, project, and provider/model show the same cost comparison, savings USD, and savings-rate charts bucketed by the selected dimension, plus the standard request-count chart. Use the charts to identify the largest savings or negative-savings buckets first, then sort the table by `Savings` or export the matching CSV for exact review.
+
+Negative savings means the selected baseline would have been cheaper than the routed provider/model mix for that bucket. Treat it as a routing, quality, entitlement, or baseline-selection investigation signal; do not infer provider failure from negative savings alone.
+
 Actual router cost is summed from stored request-time input, output, image, calculated, and upstream-reported billed cost fields. Reports must not reprice historical actuals from current config. Older rows that predate a cost field can still be counted for usage, latency, or token volume, but savings and chargeback views should label the missing cost coverage instead of treating it as zero spend.
 
 ## Version Status

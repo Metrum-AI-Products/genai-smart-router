@@ -4004,6 +4004,20 @@ func scalarSavingsValue(row adminScalarReportRow) float64 {
 	return *row.SavingsUSD
 }
 
+func scalarBaselineCostValue(row adminScalarReportRow) float64 {
+	if row.BaselineCostUSD == nil {
+		return 0
+	}
+	return *row.BaselineCostUSD
+}
+
+func scalarSavingsPctValue(row adminScalarReportRow) float64 {
+	if row.SavingsPct == nil {
+		return 0
+	}
+	return *row.SavingsPct
+}
+
 func adminScalarCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminScalarReportRow) []adminReportChart {
 	if len(rows) == 0 {
 		return nil
@@ -4014,7 +4028,26 @@ func adminScalarCharts(filters adminReportFilters, generatedAt string, spec admi
 		}),
 	}
 	switch spec.Sort {
-	case "cost", "savings":
+	case "cost":
+		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_cost", spec.Report+" cost", "Key", "USD", "usd", []adminReportChartSeries{
+			adminChartSeriesFromScalarRows("Cost", "usd", "red", rows, func(row adminScalarReportRow) float64 { return row.CostUSD }),
+		}))
+	case "savings":
+		if spec.WithBaseline && scalarRowsHaveBaseline(rows) {
+			charts = append(charts,
+				adminCategoryChart(filters, generatedAt, spec.Report+"_cost", "Actual vs baseline cost", "Key", "USD", "usd", []adminReportChartSeries{
+					adminChartSeriesFromScalarRows("Actual cost", "usd", "red", rows, func(row adminScalarReportRow) float64 { return row.CostUSD }),
+					adminChartSeriesFromScalarRows("Baseline cost", "usd", "blue", rows, scalarBaselineCostValue),
+				}),
+				adminCategoryChart(filters, generatedAt, spec.Report+"_savings", "Savings", "Key", "USD", "usd", []adminReportChartSeries{
+					adminChartSeriesFromScalarRows("Savings", "usd", "magenta", rows, scalarSavingsValue),
+				}),
+				adminCategoryChart(filters, generatedAt, spec.Report+"_savings_pct", "Savings rate", "Key", "Percent", "percent", []adminReportChartSeries{
+					adminChartSeriesFromScalarRows("Savings rate", "percent", "purple", rows, scalarSavingsPctValue),
+				}),
+			)
+			break
+		}
 		charts = append(charts, adminCategoryChart(filters, generatedAt, spec.Report+"_cost", spec.Report+" cost", "Key", "USD", "usd", []adminReportChartSeries{
 			adminChartSeriesFromScalarRows("Cost", "usd", "red", rows, func(row adminScalarReportRow) float64 { return row.CostUSD }),
 		}))
@@ -4036,6 +4069,15 @@ func adminScalarCharts(filters adminReportFilters, generatedAt string, spec admi
 		}))
 	}
 	return charts
+}
+
+func scalarRowsHaveBaseline(rows []adminScalarReportRow) bool {
+	for _, row := range rows {
+		if row.BaselineCostUSD != nil || row.SavingsUSD != nil || row.SavingsPct != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func adminRequestCharts(filters adminReportFilters, generatedAt string, spec adminScalarEndpointSpec, rows []adminReportRequest) []adminReportChart {

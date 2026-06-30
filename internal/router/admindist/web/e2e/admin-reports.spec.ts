@@ -358,7 +358,10 @@ test("deep-linked savings URLs preserve baseline and sorting params", async ({ p
   await expect(page.locator('[data-tab-filter="direction"]')).toHaveValue("desc");
   await expect(page.getByRole("columnheader", { name: "Savings(USD)" })).toBeVisible();
   await expect(page.locator("tbody tr").first()).toContainText("rtr_mock_public");
-  await expect(page.locator("main canvas").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Actual vs baseline cost" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Savings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Savings rate" })).toBeVisible();
+  await expect(page.locator("main canvas")).toHaveCount(4);
 
   const savingsRequest = apiRequests.find((url) => url.includes("/api/savings-by-key?"));
   expect(savingsRequest).toContain("baseline=gpt-5.5");
@@ -528,6 +531,7 @@ function responseForRoute(route: Route) {
         baseline_id: "gpt-5.5",
         baseline_name: "GPT-5.5",
       },
+      charts: savingsBreakdownCharts(endpoint),
       rows: [
         {
           ...row("rtr_mock_public"),
@@ -672,8 +676,8 @@ function requestRow(requestId = "req_e2e_123", cost = 123): ReportRow {
 }
 
 function chart(id: string): ReportChart {
-  return {
-    chart_id: `${id}-requests`,
+	return {
+		chart_id: `${id}-requests`,
     title: `${id} requests`,
     x_axis: { label: "Time", type: "time" },
     y_axis: { label: "Requests", unit: "requests" },
@@ -687,6 +691,36 @@ function chart(id: string): ReportChart {
           { x: generatedUtc, y: 2 },
         ],
       },
-    ],
-  };
+		],
+	};
+}
+
+function savingsBreakdownCharts(id: string): ReportChart[] {
+	return [
+		chart(id),
+		{
+			chart_id: `${id}_cost`,
+			title: "Actual vs baseline cost",
+			x_axis: { label: "Key", type: "category" },
+			y_axis: { label: "USD", unit: "usd" },
+			series: [
+				{ name: "Actual cost", unit: "usd", color_key: "red", points: [{ x: "rtr_mock_public", y: 0.05 }] },
+				{ name: "Baseline cost", unit: "usd", color_key: "blue", points: [{ x: "rtr_mock_public", y: 0.25 }] },
+			],
+		},
+		{
+			chart_id: `${id}_savings`,
+			title: "Savings",
+			x_axis: { label: "Key", type: "category" },
+			y_axis: { label: "USD", unit: "usd" },
+			series: [{ name: "Savings", unit: "usd", color_key: "magenta", points: [{ x: "rtr_mock_public", y: 0.2 }] }],
+		},
+		{
+			chart_id: `${id}_savings_pct`,
+			title: "Savings rate",
+			x_axis: { label: "Key", type: "category" },
+			y_axis: { label: "Percent", unit: "percent" },
+			series: [{ name: "Savings rate", unit: "percent", color_key: "purple", points: [{ x: "rtr_mock_public", y: 80 }] }],
+		},
+	];
 }

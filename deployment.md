@@ -415,7 +415,7 @@ production /readyz after deploy: 200, version a3bbc54, build_date 2026-06-28T22:
 production /version after deploy: a3bbc54, build_date 2026-06-28T22:20:40Z, go1.26.4 linux/amd64, license compile mode required
 hosted docs /docs/ returned 200
 production authenticated /v1/chat/completions smoke against high returned 200 with MiniMax-M3 selected
-production browser check for savings-by-key returned 20 table rows and 2 charts with baseline deep link preserved
+production browser check for savings-by-key should return table rows and 4 charts with baseline deep link preserved after the savings breakdown chart fix
 production cleanup: removed uploaded package from /tmp and ran docker system prune
 ```
 
@@ -455,7 +455,7 @@ production admin reports API savings returned summary, byTime 145, byGroup 37 fo
 production admin reports API savings-by-key returned 20 rows for the reported 6d deep link
 production browser check for tokens returned 20 table rows and 6 charts with baseline deep link preserved
 production browser check for savings returned 50 table rows and 3 charts with baseline deep link preserved
-production browser check for savings-by-key returned 20 table rows and 2 charts with baseline deep link preserved
+production browser check for savings-by-key should return table rows and 4 charts with baseline deep link preserved after the savings breakdown chart fix
 production cleanup: removed uploaded package from /tmp and ran docker system prune
 ```
 
