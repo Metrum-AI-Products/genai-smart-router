@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-29
+Last deployed: 2026-06-30
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-29
 
 ## Deployed Version
 
-- Router package/image version: `762592b-linux-amd64`
-- Source commit: `762592b`
+- Router package/image version: `636ddaf-linux-amd64`
+- Source commit: `636ddaf`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,34 @@ Last deployed: 2026-06-29
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-06-30 Admin Reports, Routing Diagnostics, And Opencode Matrix Refresh
+
+Deployed package/image `smart-llmrouter:636ddaf-linux-amd64` from source commit `636ddaf`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.deploy-636ddaf-20260630T134404Z
+```
+
+Validation:
+
+- PRs #318, #325, #326, #327, and #328 were squash-merged; merged remote branches and local worktrees were cleaned up.
+- Review comments were checked before merge. #325's model-access-denial classifier comment was addressed with an additional commit and focused classifier/fallback tests.
+- `python3 scripts/opencode_api_matrix_test.py`: passed, 5 tests.
+- `npm run build --prefix internal/router/admindist/web`: passed; Vite emitted the existing large chunk and font URL warnings.
+- `npm run e2e --prefix internal/router/admindist/web`: passed, 26 tests.
+- `make docs-build`: passed; Docusaurus npm audit still reports one existing moderate dependency advisory.
+- `go test ./cmd/... ./internal/...`: passed, 529 tests on the final stacked admin-report branch before merge; #318 conflict-resolution branch passed 516 tests.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 from clean commit `636ddaf`.
+- Local Harbor smoke `case-20260630T133347Z-local-final-bridge`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 60s. The local Harbor run must use the host bridge URL instead of `127.0.0.1` because the agent environment cannot reach host loopback.
+- Production `/readyz`: 200, version `636ddaf`, build date `2026-06-30T13:39:38Z`.
+- Hosted docs `/docs/`: 200 with `x-smart-llmrouter-version: 636ddaf`.
+- Authenticated `/v1/models`: 200 with `big-coder` available.
+- Authenticated `/v1/responses` smoke against `big-coder`: 200 and selected Fireworks DeepSeek-V4-Flash.
+- Production Harbor smoke `case-20260630T134443Z-prod-final`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 61s.
+- Production cleanup performed: removed the uploaded package and ran `sudo docker system prune -f`.
 
 ## 2026-06-29 Responses Tool Filtering And OpenAI-Compatible Chat Refresh
 
