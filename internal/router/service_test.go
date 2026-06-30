@@ -2543,7 +2543,7 @@ func TestModelsEndpointIncludesCompatibilityModelsField(t *testing.T) {
 	}
 	if models, ok := body["models"].([]any); !ok || len(models) == 0 {
 		t.Fatalf("missing compatibility models field: %#v", body)
-	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["supported_reasoning_levels"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
+	} else if first, ok := models[0].(map[string]any); !ok || first["slug"] == "" || first["display_name"] == "" || first["base_instructions"] == "" || first["context_window"] == nil || first["max_context_window"] == nil || first["shell_type"] == "" || first["supported_in_api"] != true {
 		t.Fatalf("missing model compatibility fields: %#v", body)
 	}
 }

@@ -130,7 +130,7 @@ curl "$ROUTER_BASE_URL/v1/models" \
   -H "Authorization: Bearer $ROUTER_TOKEN"
 ```
 
-Reasoning-capable groups can expose safe metadata such as supported levels and summary support:
+Reasoning-capable groups expose safe Codex metadata such as supported levels and summary support. Groups without validated reasoning targets omit these reasoning fields instead of returning empty or false placeholders.
 
 ```json
 {
@@ -140,7 +140,12 @@ Reasoning-capable groups can expose safe metadata such as supported levels and s
       "id": "coding",
       "object": "model",
       "owned_by": "smart-llmrouter",
-      "supported_reasoning_levels": ["low", "medium", "high"],
+      "default_reasoning_summary": "none",
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses with lighter reasoning"},
+        {"effort": "medium", "description": "Balances speed and reasoning depth for everyday tasks"},
+        {"effort": "high", "description": "Greater reasoning depth for complex problems"}
+      ],
       "supports_reasoning_summaries": true
     }
   ]

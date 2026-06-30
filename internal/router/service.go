@@ -323,10 +323,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"context_window":                   131072,
 			"max_context_window":               131072,
 			"effective_context_window_percent": 95,
-			"default_reasoning_summary":        "none",
 			"default_verbosity":                "low",
-			"supported_reasoning_levels":       reasoningLevelPresets(reasoningLevels),
-			"supports_reasoning_summaries":     reasoningSummaries,
 			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
 			"supports_search_tool":             false,
 			"supports_image_detail_original":   hasImage,
@@ -348,6 +345,11 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"object":                           "model",
 			"created":                          0,
 			"owned_by":                         "smart-llmrouter",
+		}
+		if len(reasoningLevels) > 0 {
+			model["default_reasoning_summary"] = "none"
+			model["supported_reasoning_levels"] = reasoningLevelPresets(reasoningLevels)
+			model["supports_reasoning_summaries"] = reasoningSummaries
 		}
 		if defaultReasoningLevel != "" && defaultReasoningLevel != "none" {
 			model["default_reasoning_level"] = defaultReasoningLevel

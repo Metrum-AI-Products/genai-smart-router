@@ -185,15 +185,16 @@ func TestReasoningNoEligibleTargetAndModelListMetadata(t *testing.T) {
 	for _, item := range body["data"].([]any) {
 		model := item.(map[string]any)
 		if model["id"] == "default" {
-			if _, ok := model["default_reasoning_level"]; ok {
-				t.Fatalf("non-reasoning model advertised default reasoning level: %#v", model)
-			}
+			assertNoCodexReasoningModelMetadata(t, model)
 		}
 		if model["id"] == "reasoning" {
 			foundReasoning = true
 			levels := model["supported_reasoning_levels"].([]any)
 			if len(levels) != 3 || model["supports_reasoning_summaries"] != true {
 				t.Fatalf("reasoning model metadata=%#v", model)
+			}
+			if model["default_reasoning_summary"] != "none" {
+				t.Fatalf("reasoning model default summary=%#v in %#v", model["default_reasoning_summary"], model)
 			}
 			for _, level := range levels {
 				preset, ok := level.(map[string]any)
@@ -223,5 +224,39 @@ func TestReasoningModelListDoesNotAdvertiseToolOnlyThinking(t *testing.T) {
 	levels, summaries, defaultLevel := svc.reasoningMetadataForGroup("default")
 	if len(levels) != 0 || summaries || defaultLevel != "none" {
 		t.Fatalf("default reasoning metadata levels=%#v summaries=%v default=%q", levels, summaries, defaultLevel)
+	}
+
+	modelReq := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	modelReq.Header.Set("Authorization", "Bearer "+testToken)
+	modelRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(modelRR, modelReq)
+	if modelRR.Code != http.StatusOK {
+		t.Fatalf("models status=%d body=%s", modelRR.Code, modelRR.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(modelRR.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range body["data"].([]any) {
+		model := item.(map[string]any)
+		if model["id"] == "default" {
+			assertNoCodexReasoningModelMetadata(t, model)
+			return
+		}
+	}
+	t.Fatalf("default group missing from /v1/models: %#v", body)
+}
+
+func assertNoCodexReasoningModelMetadata(t *testing.T, model map[string]any) {
+	t.Helper()
+	for _, key := range []string{
+		"default_reasoning_level",
+		"default_reasoning_summary",
+		"supported_reasoning_levels",
+		"supports_reasoning_summaries",
+	} {
+		if _, ok := model[key]; ok {
+			t.Fatalf("non-reasoning model advertised %s: %#v", key, model)
+		}
 	}
 }
