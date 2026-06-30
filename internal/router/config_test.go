@@ -1472,12 +1472,15 @@ func assertTempCoderGroup(t *testing.T, group ModelGroup) {
 func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	t.Helper()
 	wantNormal := map[string]int{
-		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 50,
-		"crusoe:zai/GLM-5.2":  25,
-		"openai:gpt-5.4-nano": 25,
+		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 40,
+		"minimax:MiniMax-M3": 20,
+		"kimi:kimi-k2.7-code": 15,
+		"crusoe:zai/GLM-5.2":  15,
+		"openai:gpt-5.4-nano": 10,
 	}
 	wantToolOnly := map[string]int{
 		"fireworks_responses:accounts/fireworks/models/kimi-k2p7-code": 33,
+		"minimax_anthropic:MiniMax-M3":                                34,
 		"kimi_anthropic:kimi-k2.7-code":                                33,
 	}
 	normalTotal := 0
@@ -1516,11 +1519,11 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 			t.Fatalf("big-coder normal target %s weight=%d, want %d; all weights=%#v", key, gotNormal[key], weight, gotNormal)
 		}
 	}
-	if len(chatToolCapable) < 2 {
-		t.Fatalf("big-coder OpenAI Chat tool-capable normal targets=%#v, want at least two independent targets", chatToolCapable)
+	if len(chatToolCapable) < 3 {
+		t.Fatalf("big-coder OpenAI Chat tool-capable normal targets=%#v, want at least three independent targets", chatToolCapable)
 	}
-	if !chatToolCapable["fireworks:accounts/fireworks/models/deepseek-v4-flash"] || !chatToolCapable["crusoe:zai/GLM-5.2"] {
-		t.Fatalf("big-coder Chat tool targets=%#v, want Fireworks DeepSeek and Crusoe GLM", chatToolCapable)
+	if !chatToolCapable["fireworks:accounts/fireworks/models/deepseek-v4-flash"] || !chatToolCapable["minimax:MiniMax-M3"] || !chatToolCapable["kimi:kimi-k2.7-code"] {
+		t.Fatalf("big-coder Chat tool targets=%#v, want Fireworks DeepSeek, MiniMax M3, and Kimi K2.7 Code", chatToolCapable)
 	}
 	if len(gotToolOnly) != len(wantToolOnly) {
 		t.Fatalf("big-coder tool-only weights=%#v, want %#v", gotToolOnly, wantToolOnly)
@@ -1663,7 +1666,7 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 8},
 		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 8},
 		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 8},
-		"big-coder": {3, 45, 0, 17, 1, 3, 8, 0, 0, 11, 2, 1, 2, 5, 2, 12},
+		"big-coder": {0, 20, 0, 15, 10, 0, 0, 0, 15, 0, 0, 0, 0, 40, 0, 5},
 	}
 	expect, ok := want[name]
 	if !ok {

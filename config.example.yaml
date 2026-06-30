@@ -984,6 +984,14 @@ providers:
         - text
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: '2026-06-17'
+        pricing_notes: MiniMax Anthropic-compatible docs checked on 2026-06-30 list
+          POST https://api.minimax.io/anthropic/v1/messages. The router appends
+          /v1/messages for anthropic dialect providers, so configure base_url as
+          https://api.minimax.io/anthropic. Direct Anthropic text and forced
+          client-tool smokes passed for MiniMax-M3 on 2026-06-30; auto tool
+          selection returned ordinary text, so use as a Claude-compatible tool
+          target only for clients that send explicit tool choices or after a
+          router/client smoke proves the intended workflow.
         tool_support:
           anthropic_messages:
           - client_tools
@@ -1874,16 +1882,26 @@ models:
     targets:
     - provider: fireworks
       model_ref: deepseek-v4-flash
-      weight: 50
+      weight: 40
+    - provider: minimax
+      model_ref: m3
+      weight: 20
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 15
     - provider: crusoe
       model_ref: glm-5-2
-      weight: 25
+      weight: 15
     - provider: openai
       model_ref: gpt-5.4-nano
-      weight: 25
+      weight: 10
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
       weight: 33
+      tool_only: true
+    - provider: minimax_anthropic
+      model_ref: m3
+      weight: 34
       tool_only: true
     - provider: kimi_anthropic
       model_ref: kimi-k2.7-code
