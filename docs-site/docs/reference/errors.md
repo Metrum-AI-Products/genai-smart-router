@@ -98,6 +98,17 @@ Safe example:
 
 Clients should honor `Retry-After`, apply backoff, reduce concurrent bursts, reduce context size, or lower very large output caps. When queueing is enabled, a `traffic-shaped` response can mean the request waited up to the deployment's bounded `max_wait_ms` and still could not be admitted, or that the per-caller queue was already at `max_depth`. Administrators should inspect `request_usage.traffic_shape_applied`, `traffic_shape_decision`, `traffic_shape_scope`, `traffic_shape_bucket`, `traffic_shape_retry_after_ms`, `traffic_shape_queue_wait_ms`, `traffic_shape_estimated_input_tokens`, `traffic_shape_reserved_output_tokens`, `traffic_shape_total_reserved_tokens`, and child rows in `request_traffic_shape_events`.
 
+## Upstream Failure Diagnostics
+
+Terminal upstream failures include safe fields that help clients and operators distinguish provider responses from router-side admission errors:
+
+- `X-Router-Error-Class`: sanitized upstream class such as `upstream_bad_request`, `upstream_rate_limited`, or `upstream_quota_exhausted`;
+- `X-Upstream-Status`: upstream HTTP status when one was returned;
+- `error.details.error_class` and `error.details.upstream_status`: JSON equivalents for clients that do not expose response headers;
+- `error.details.router_quota_state` and `error.details.router_key_state`: safe caller admission state at the time of the request.
+
+An upstream `400` normally remains a `502 upstream-failed` terminal router response because the proxy could not satisfy the caller request, but its `error_class` is `upstream_bad_request` and `retryable` is false in diagnostics. A router-side `429` such as `traffic-shaped`, `tpm-exceeded`, or `rpm-exceeded` happens before upstream attempts and does not include `X-Upstream-Status`.
+
 ## Cursor And Large-Context TPM Troubleshooting
 
 Router caller limits can include:

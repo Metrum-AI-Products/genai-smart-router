@@ -1,0 +1,39 @@
+{
+  "name": "cursor-large-tools-openai-chat",
+  "source_incident_issue": "#352",
+  "client_name": "Cursor/1.0",
+  "surface": "openai_chat",
+  "model_group": "big-coder",
+  "stream": true,
+  "message_count": 105,
+  "tool_count": 19,
+  "image_count": 0,
+  "output_cap_present": false,
+  "estimated_input_tokens_bucket": "huge",
+  "request_bytes_bucket": "64kb-256kb",
+  "tool_schema_bytes_bucket": "16kb-64kb",
+  "required_capabilities": [
+    "tools"
+  ],
+  "must_not_select": [
+    {
+      "provider": "fireworks",
+      "model": "accounts/fireworks/models/gpt-oss-20b",
+      "dialect": "openai-chat"
+    }
+  ],
+  "allowed_selected_targets": [
+    {
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "dialect": "openai-chat"
+    }
+  ],
+  "telemetry_assertions": [
+    "request_shapes",
+    "request_translation_shapes",
+    "request_target_candidates",
+    "request_target_filter_reasons"
+  ],
+  "production_smoke_safe_payload_template": "synthetic-large-openai-chat-tools-v1"
+}

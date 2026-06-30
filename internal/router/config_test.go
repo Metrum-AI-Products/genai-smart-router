@@ -1519,6 +1519,44 @@ func TestExampleConfigOpenAINanoResponsesReasoningMetadata(t *testing.T) {
 	}
 }
 
+func TestExampleConfigBigCoderCapsFireworksGPTOSSProductionDerivedShape(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
+	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
+	metricsAdminSum := sha256.Sum256([]byte("rtr_example_metrics_admin_test"))
+	contentAdminSum := sha256.Sum256([]byte("rtr_example_content_admin_test"))
+	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", hex.EncodeToString(metricsAdminSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN", hex.EncodeToString(contentAdminSum[:]))
+	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range cfg.Models["big-coder"].Targets {
+		if target.Provider == "fireworks" && target.Model == "accounts/fireworks/models/gpt-oss-20b" {
+			if target.RequestShapeSupport.MaxRequestBytes != 196608 {
+				t.Fatalf("big-coder Fireworks GPT OSS max_request_bytes=%d, want 196608", target.RequestShapeSupport.MaxRequestBytes)
+			}
+			if target.RequestShapeSupport.ValidationStatus != "passed" || !strings.Contains(target.RequestShapeSupport.ValidationNotes, "production-derived Cursor") {
+				t.Fatalf("big-coder Fireworks GPT OSS validation notes=%#v", target.RequestShapeSupport)
+			}
+			return
+		}
+	}
+	t.Fatalf("big-coder missing Fireworks GPT OSS target")
+}
+
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {
 	t.Helper()
 	want := map[string]string{

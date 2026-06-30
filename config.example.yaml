@@ -1984,6 +1984,13 @@ models:
     - provider: fireworks
       model_ref: gpt-oss-20b
       weight: 25
+      request_shape_support:
+        max_request_bytes: 196608
+        validation_status: passed
+        validation_notes: The dedicated Fireworks smoke group keeps broader large-payload
+          validation evidence, but broad big-coder routing caps this target below the
+          2026-06-30 production-derived Cursor OpenAI Chat tool payload class so request-shape
+          filtering can select an alternate validated tool-capable target.
     - provider: minimax_responses
       model_ref: m3
       weight: 40

@@ -2086,6 +2086,15 @@ func errorRecordFromLog(rec logRecord) *requestErrorRecord {
 	if rec.Error != nil {
 		errType = *rec.Error
 	}
+	retryable := errorTypeRetryable(errType)
+	if rec.ErrorClass != "" {
+		for i := len(rec.AttemptsDetail) - 1; i >= 0; i-- {
+			if rec.AttemptsDetail[i].ErrorClass == rec.ErrorClass {
+				retryable = rec.AttemptsDetail[i].Retryable
+				break
+			}
+		}
+	}
 	return &requestErrorRecord{
 		RequestID:    rec.RequestID,
 		TS:           rec.TS,
@@ -2093,7 +2102,7 @@ func errorRecordFromLog(rec logRecord) *requestErrorRecord {
 		ErrorType:    errType,
 		ErrorClass:   rec.ErrorClass,
 		ErrorMessage: sanitizePersistedDiagnosticText(rec.ErrorMessage),
-		Retryable:    errorTypeRetryable(errType),
+		Retryable:    retryable,
 		Attempts:     rec.Attempts,
 		Provider:     rec.TargetProvider,
 		Model:        rec.TargetModel,

@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2944,20 +2945,41 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 		})
 	}
 	message := callerUpstreamFailureMessage(code, req.Model, attempts)
+	if classified.Class != "" {
+		w.Header().Set("X-Router-Error-Class", classified.Class)
+	}
+	if classified.StatusCode > 0 {
+		w.Header().Set("X-Upstream-Status", strconv.Itoa(classified.StatusCode))
+	}
+	details := map[string]any{
+		"model":        req.Model,
+		"dialect":      rc.dialect,
+		"attempts":     attempts,
+		"targets":      attempted,
+		"last_error":   s.sanitizeDiagnosticError(classified.Message),
+		"retryable":    classified.Retryable,
+		"request_id":   rc.id,
+		"fallbackUsed": attempts > 1,
+	}
+	if classified.Class != "" {
+		details["error_class"] = classified.Class
+	}
+	if classified.StatusCode > 0 {
+		details["upstream_status"] = classified.StatusCode
+	}
+	if rc != nil {
+		if rc.rec.QuotaState != "" {
+			details["router_quota_state"] = rc.rec.QuotaState
+		}
+		if rc.rec.KeyState != "" {
+			details["router_key_state"] = rc.rec.KeyState
+		}
+	}
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"type":    code,
 			"message": message,
-			"details": map[string]any{
-				"model":        req.Model,
-				"dialect":      rc.dialect,
-				"attempts":     attempts,
-				"targets":      attempted,
-				"last_error":   s.sanitizeDiagnosticError(classified.Message),
-				"retryable":    classified.Retryable,
-				"request_id":   rc.id,
-				"fallbackUsed": attempts > 1,
-			},
+			"details": details,
 		},
 	})
 }

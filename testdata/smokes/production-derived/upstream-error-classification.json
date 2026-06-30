@@ -1,0 +1,45 @@
+{
+  "name": "upstream-error-classification",
+  "source_incident_issue": "#353",
+  "surface": "openai_chat",
+  "model_group": "error-diagnostics-smoke",
+  "scenarios": [
+    {
+      "name": "upstream_400_bad_request",
+      "upstream_status": 400,
+      "expected_caller_status": 502,
+      "expected_error_type": "upstream-failed",
+      "expected_error_class": "upstream_bad_request",
+      "expected_retryable": false,
+      "required_safe_fields": [
+        "request_id",
+        "error_class",
+        "upstream_status",
+        "router_quota_state",
+        "router_key_state"
+      ]
+    },
+    {
+      "name": "upstream_429_rate_limited",
+      "upstream_status": 429,
+      "expected_caller_status": 503,
+      "expected_error_type": "upstream-rate-limited",
+      "expected_error_class": "upstream_rate_limited",
+      "expected_retryable": true,
+      "required_safe_fields": [
+        "request_id",
+        "error_class",
+        "upstream_status",
+        "router_quota_state",
+        "router_key_state"
+      ]
+    },
+    {
+      "name": "router_429_traffic_shaped",
+      "expected_caller_status": 429,
+      "expected_error_type": "traffic-shaped",
+      "expected_error_class": "traffic-shaped",
+      "expected_upstream_attempts": 0
+    }
+  ]
+}
