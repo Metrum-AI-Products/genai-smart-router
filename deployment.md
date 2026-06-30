@@ -16,8 +16,8 @@ Last deployed: 2026-06-30
 
 ## Deployed Version
 
-- Router package/image version: `7cfca1e-linux-amd64`
-- Source commit: `7cfca1e`
+- Router package/image version: `0ea98f7-linux-amd64`
+- Source commit: `0ea98f7`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -49,6 +49,30 @@ Deployment evidence still required after rollout:
 - selected provider/model/dialect for each request;
 - usage DB telemetry rows showing `reasoning_effort`, `reasoning`, and `thinking`;
 - rollback result or backup reference.
+
+## 2026-06-30 Model List Compatibility And Harbor Validation Refresh
+
+Deployed package/image `smart-llmrouter:0ea98f7-linux-amd64` from source commit `0ea98f7`.
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.deploy-0ea98f7-20260630T163442Z
+```
+
+Validation:
+
+- PRs #345, #346, #347, and #348 were squash-merged; merged local worktrees and local/remote branches were cleaned up.
+- `go test ./internal/router -run 'TestReasoningNoEligibleTargetAndModelListMetadata|TestReasoningModelListDoesNotAdvertiseToolOnlyThinking|TestModelsEndpointIncludesCompatibilityModelsField'`: passed.
+- `make package-docker`: passed for linux/amd64 and linux/arm64 from clean commit `0ea98f7`.
+- Local `/v1/models` check: all model entries included `supported_reasoning_levels` and `supports_reasoning_summaries`; `big-coder` was available to the reusable Harbor caller.
+- Local Harbor smoke `case-20260630T162538Z-local-models-compat`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 57s.
+- Production `/readyz`: 200, version `0ea98f7`, build date `2026-06-30T16:30:03Z`.
+- Production `/version`: version `0ea98f7`, Go `1.26.4`, linux/amd64, license compile mode `required`.
+- Hosted docs `/docs/`: 200 with `x-smart-llmrouter-version: 0ea98f7`.
+- Authenticated production `/v1/models`: 200 with `big-coder` available and stable reasoning metadata fields present on every model entry.
+- Production Harbor smoke `case-20260630T163514Z-prod-models-compat`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 59s.
+- Production cleanup performed: removed the uploaded package and staging directory, then ran `sudo docker system prune -f` with `0B` reclaimed.
 
 ## 2026-06-30 Responses Bridge And Provider-Skin Routing Refresh
 
