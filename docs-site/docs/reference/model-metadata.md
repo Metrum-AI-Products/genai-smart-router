@@ -53,6 +53,8 @@ Mark a modality active after validating the exact account, endpoint, model ID, r
 
 Tool support is API-shape-specific. A model that handles OpenAI Chat tools may not handle Responses function tools or Anthropic Messages tools through the same provider endpoint. Structured-output support is tracked in the same metadata object because it is also a dialect-specific request-shape eligibility requirement.
 
+Catalog metadata is broader than active routing eligibility. The router evaluates capabilities against the resolved provider or target dialect in the requested model group. A catalog entry may list `openai_responses` metadata for an upstream model, but an active target that uses an `openai-chat` provider skin is still only eligible for Chat requests unless a separate Responses skin or explicitly validated bridge target is configured. Admin catalog status separates these cases with `effectiveToolSupport` for the active skin and `inactiveToolSupport` for metadata that is not active for that target.
+
 Declare only what has passed direct upstream and router-level smokes:
 
 ```yaml

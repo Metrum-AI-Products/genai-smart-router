@@ -19,6 +19,8 @@ GenAI Smart Router can serve coding-agent clients through deployment-defined mod
 
 Successful smokes should prove task outcome, not just HTTP status. For repository edit tasks, run a unit test or check an exact file diff. For image tasks, verify the answer against an expected result. For disallowed model groups, expect a safe router error and no upstream provider call.
 
+Different clients can see different effective target pools inside the same model group because they use different API surfaces. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and many IDE clients use OpenAI Chat. A target validated for Chat tools is not automatically eligible for Responses function tools or Anthropic client tools. If one client receives `no-eligible-target` or appears to route to fewer upstreams than another client, ask the deployment admin to inspect effective provider-skin eligibility for that group.
+
 ## Codex CLI
 
 Codex CLI uses the OpenAI Responses-compatible router path. Set a router token in `METRUM_ROUTER_KEY` and configure `wire_api="responses"`.
@@ -107,6 +109,7 @@ For Cursor, Continue.dev, Cline, Roo Code, SDK-based agents, LiteLLM adapters, a
 |---|---|---|
 | `403` or model access failure | The token is not allowed to use that model group | Call `/v1/models` with the same token |
 | `502 no-eligible-target` | The group has no target for the request's dialect, tools, modality, structured output, or cap requirement | Use a compatible group or ask the deployment admin to validate and enable a target |
+| One client routes to fewer upstreams than another | The clients use different API surfaces and the group has different active targets per skin | Ask the admin to check provider catalog status for effective eligibility by skin |
 | Claude Code calls Anthropic directly | Environment still has direct Anthropic settings | Unset `ANTHROPIC_API_KEY` and check `ANTHROPIC_BASE_URL` |
 | Image request rejected before upstream | URL safety rejected the image URL, or no image-capable target is eligible | Use a public HTTPS image URL or an inline image, and check group modality support |
 | Client output is wrong but transport succeeded | The selected model group did not meet the workload quality bar | Treat this as model-group evaluation evidence, not a client setup pass |

@@ -67,6 +67,8 @@ Add or update `providers.<provider>.models.<model_ref>` with structured metadata
 
 Keep routing weights only under `models.<group>.targets[]`. Keep unavailable or unentitled models catalog-only.
 
+Catalog metadata is not active routing eligibility by itself. If one upstream model is exposed through multiple provider skins, add and validate each skin as a separate provider or target dialect before expecting callers to use it. For example, `tool_support.openai_responses` on a catalog entry inherited by an `openai-chat` target documents metadata for that model, but Responses clients will not select that target unless an `openai-responses` skin or an explicitly validated bridge target is active in the requested group. Before promotion, check `/admin/reports/api/provider-catalog-status` and confirm each intended group shows the right `activeEligibilitySkin`, nonempty `effectiveToolSupport`, and no surprising `inactiveToolSupport` for the caller surface being validated.
+
 ## 6. Add A Restricted Smoke Group
 
 Create a deployment-defined smoke group with the candidate as the only target, or as the only target for the specific request shape being validated. Restrict caller access to test tokens or internal operators. Validate sample and local production snapshots with structured YAML parsing before starting the router.
@@ -82,6 +84,8 @@ Run router-level smokes through the same API shapes that passed directly upstrea
 - `/v1/messages` for Anthropic-compatible clients and Claude Code-style tool flows.
 
 For each route, verify selected provider/model, usage, request-time cost, latency, attempts, fallback status, and safe diagnostics. Include max-token cap checks, no-eligible-target checks for unsupported shapes, and negative media URL safety checks for image-capable targets. For tool or agent routes, run the actual client smoke in a disposable sandbox when client compatibility is part of the claim.
+
+When a group is intended to serve several client surfaces, run the same smoke matrix against the same model group for each surface and compare selected provider/model/dialect distribution. If all traffic for one surface unexpectedly goes to a single fallback, inspect provider catalog status first: the group may have multiple active targets overall but only one effective target for that surface's native skin.
 
 For OpenAI Chat coding-agent routes that claim both tools and image input, include a combined request with multiple messages, representative function-tool schemas, one image part, `stream:true`, and no caller output cap. The same configured target must satisfy the OpenAI Chat dialect, tool support, and image modality together. Record a negative no-eligible smoke for a group that lacks such a combined target and verify zero upstream attempts plus safe candidate/filter diagnostics.
 

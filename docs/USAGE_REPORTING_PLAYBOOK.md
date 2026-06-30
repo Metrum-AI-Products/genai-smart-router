@@ -97,6 +97,8 @@ Security access reports can be enabled with `server.admin_reports.security.enabl
 
 Use it when an operator needs quick usage, cost, latency, cache, fallback, provider/model, and request-drilldown views without shell access. The page uses a dark operational theme aligned with embedded Metrum assets and grouped left-sidebar navigation on desktop. On narrow screens, the same report groups open from the header `Sections` drawer. Collapsed sidebar groups persist in browser `localStorage`; this is local presentation state only and does not change report APIs, URL filters, Markdown/CSV export, or Casbin authorization. Keep `router-usage-report` for automation, exports, incident response, and headless/server environments.
 
+For target-distribution incidents, pair historical request reports with the current provider catalog status report. Provider/model mix and request rows show what actually served a time window by inbound dialect, requested group, provider, model, and status. `/admin/reports/api/provider-catalog-status` explains the current effective pool: `groupSummary` counts eligible active targets by native skin, and each active target row separates `effectiveToolSupport` from `inactiveToolSupport`. If Codex/Responses traffic all lands on one upstream while Chat traffic is balanced, the usual first check is whether the group has more than one `openaiResponsesToolTargets` entry rather than whether catalog metadata mentions Responses somewhere.
+
 Request evidence bundles are the request-level diagnostic contract for incident response. Use:
 
 ```bash

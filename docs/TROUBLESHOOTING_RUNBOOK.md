@@ -85,6 +85,8 @@ In the browser admin UI, use `/admin/reports/?tab=requests&since=24h&limit=50&so
 
 Check the requirements in the error body. The fix is normally a configuration change: enable or add a target in the requested model group that supports the requested dialect, tools, structured outputs, modalities, and max-token cap behavior.
 
+If a model catalog appears to advertise the missing capability, verify whether that metadata is effective for the active provider skin. Open `/admin/reports/api/provider-catalog-status` or the Provider catalog tab and filter to the requested group/provider/model. Active target rows show `activeEligibilitySkin`, `effectiveToolSupport`, `inactiveToolSupport`, `effectiveStructuredOutputs`, `effectiveReasoning`, and `effectiveImageInput`. A Chat target with Responses metadata in `inactiveToolSupport` is not eligible for `/v1/responses`; add a validated Responses skin or explicitly documented bridge target instead of assuming catalog metadata activates the route.
+
 If the requirements include `contract-*`, inspect only the requested group. Contract enforcement is group-local and runs after caller authorization and normal request eligibility. Common fixes are to add a validated target, refresh stale target validation metadata, relax `quality_floor.max_eval_age_days`, lower an operational threshold, or roll back by removing the optional `contract` block. Do not route the caller to another group unless the caller is explicitly allowed to use that deployment-defined group.
 
 If the requirements include `reasoning`, inspect only targets in the requested group. Confirm the request shape is OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`, then check whether any target has validated compatible `reasoning` metadata for that exact dialect and skin. A mixed weighted group may intentionally keep non-reasoning targets for ordinary traffic, but explicit reasoning requests need at least one compatible target. Fixes are usually to add or restore validated metadata, add a validated reasoning target, remove an overly broad `required_capabilities.reasoning` contract, or disable a dynamic-score reasoning hard filter that is stricter than the target set.
@@ -167,6 +169,17 @@ Validate the exact client dialect:
 - Claude Code uses `/v1/messages`.
 
 Run the appropriate real tool smoke and assert file contents, not only assistant text.
+
+### One Upstream Takes All Traffic
+
+When a weighted group appears to send all requests for one client to one upstream, first separate configured weight from effective eligibility. Use request rows or provider/model mix to identify the inbound endpoint and selected upstream dialect, then inspect Provider catalog status:
+
+1. Check `groupSummary` counts for the requested group and client surface, such as `openaiResponsesToolTargets` for Codex or `anthropicMessagesToolTargets` for Claude Code.
+2. Inspect each active target row's `activeEligibilitySkin`. Native Chat, Responses, and Anthropic skins are separate pools unless a bridge target is explicitly reported.
+3. Treat `inactiveToolSupport` as metadata-only. It explains why a catalog row can mention a capability while the active target cannot serve that caller shape.
+4. Run a negative smoke for the missing surface and expect `502 no-eligible-target` with zero upstream attempts, or add a restricted smoke group with a validated skin and confirm distribution changes.
+
+Do not raise weights or quotas to fix a one-upstream symptom until the effective target count for the inbound dialect is understood.
 
 ### Request-Shape-Specific Upstream 400s
 

@@ -122,6 +122,49 @@ Every API skin needs independent evidence. OpenAI Chat tool support does not pro
 
 Add provider catalog metadata with pricing, modality, tool, and cap fields. Keep routing weights out of provider catalogs.
 
+When one upstream model is available through multiple API skins, model each active skin explicitly. This keeps eligibility understandable for callers and reports:
+
+```yaml
+providers:
+  provider_chat:
+    base_url: https://provider.example.com/v1
+    dialect: openai-chat
+    api_key_env: PROVIDER_API_KEY
+    models:
+      shared-model:
+        model: provider/shared-model
+        tool_support:
+          openai_chat: [tools, tool_choice]
+  provider_responses:
+    base_url: https://provider.example.com/v1
+    dialect: openai-responses
+    api_key_env: PROVIDER_API_KEY
+    models:
+      shared-model:
+        model: provider/shared-model
+        tool_support:
+          openai_responses: [function]
+  provider_messages:
+    base_url: https://provider.example.com
+    dialect: anthropic
+    api_key_env: PROVIDER_API_KEY
+    models:
+      shared-model:
+        model: provider/shared-model
+        tool_support:
+          anthropic_messages: [client_tools]
+
+models:
+  agent-coding:
+    strategy: weighted
+    targets:
+      - { provider: provider_chat, model_ref: shared-model, weight: 50 }
+      - { provider: provider_responses, model_ref: shared-model, weight: 25, tool_only: true }
+      - { provider: provider_messages, model_ref: shared-model, weight: 25, tool_only: true }
+```
+
+After adding the smoke group, check provider catalog status. The Chat target should show `activeEligibilitySkin: native:openai-chat`; the Responses target should show `native:openai-responses`; and the Messages target should show `native:anthropic`. If a row lists a capability under `inactiveToolSupport`, that capability is metadata-only for that active target and will not make the target eligible for that caller surface.
+
 ## 5. Add A Smoke Group First
 
 Create a deployment-defined smoke group with one target and no broad caller access. Run router-level smokes against the same API shapes tested directly.

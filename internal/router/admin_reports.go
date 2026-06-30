@@ -138,6 +138,7 @@ type adminRollupStatusRow struct {
 type adminCatalogStatusResponse struct {
 	GeneratedUTC string                  `json:"generatedUtc"`
 	Summary      adminCatalogSummary     `json:"summary"`
+	GroupSummary []adminGroupEligibility `json:"groupSummary,omitempty"`
 	Rows         []adminCatalogStatusRow `json:"rows"`
 	Charts       []adminReportChart      `json:"charts,omitempty"`
 }
@@ -203,12 +204,37 @@ type adminSecurityPage struct {
 }
 
 type adminCatalogSummary struct {
-	Providers        int `json:"providers"`
-	CatalogModels    int `json:"catalogModels"`
-	ActiveTargets    int `json:"activeTargets"`
-	ValidatedTargets int `json:"validatedTargets"`
-	PassedTargets    int `json:"passedTargets"`
-	MissingPricing   int `json:"missingPricing"`
+	Providers                 int `json:"providers"`
+	CatalogModels             int `json:"catalogModels"`
+	ActiveTargets             int `json:"activeTargets"`
+	ValidatedTargets          int `json:"validatedTargets"`
+	PassedTargets             int `json:"passedTargets"`
+	MissingPricing            int `json:"missingPricing"`
+	InactiveMetadataSurfaces  int `json:"inactiveMetadataSurfaces"`
+	TargetsWithInactiveSkins  int `json:"targetsWithInactiveSkins"`
+	GroupsWithSingleSkinTools int `json:"groupsWithSingleSkinTools"`
+}
+
+type adminGroupEligibility struct {
+	Group                              string `json:"group"`
+	OpenAIChatTargets                  int    `json:"openaiChatTargets"`
+	OpenAIChatToolTargets              int    `json:"openaiChatToolTargets"`
+	OpenAIChatStructuredOutputTargets  int    `json:"openaiChatStructuredOutputTargets"`
+	OpenAIChatImageTargets             int    `json:"openaiChatImageTargets"`
+	OpenAIChatImageToolTargets         int    `json:"openaiChatImageToolTargets"`
+	OpenAIChatReasoningTargets         int    `json:"openaiChatReasoningTargets"`
+	OpenAIResponsesTargets             int    `json:"openaiResponsesTargets"`
+	OpenAIResponsesToolTargets         int    `json:"openaiResponsesToolTargets"`
+	OpenAIResponsesStructuredTargets   int    `json:"openaiResponsesStructuredOutputTargets"`
+	OpenAIResponsesImageTargets        int    `json:"openaiResponsesImageTargets"`
+	OpenAIResponsesImageToolTargets    int    `json:"openaiResponsesImageToolTargets"`
+	OpenAIResponsesReasoningTargets    int    `json:"openaiResponsesReasoningTargets"`
+	AnthropicMessagesTargets           int    `json:"anthropicMessagesTargets"`
+	AnthropicMessagesToolTargets       int    `json:"anthropicMessagesToolTargets"`
+	AnthropicMessagesStructuredTargets int    `json:"anthropicMessagesStructuredOutputTargets"`
+	AnthropicMessagesImageTargets      int    `json:"anthropicMessagesImageTargets"`
+	AnthropicMessagesImageToolTargets  int    `json:"anthropicMessagesImageToolTargets"`
+	AnthropicMessagesReasoningTargets  int    `json:"anthropicMessagesReasoningTargets"`
 }
 
 type adminCatalogStatusRow struct {
@@ -232,6 +258,13 @@ type adminCatalogStatusRow struct {
 	InputModalities          []string `json:"inputModalities,omitempty"`
 	OutputModalities         []string `json:"outputModalities,omitempty"`
 	ToolSupport              []string `json:"toolSupport,omitempty"`
+	ActiveEligibilitySkin    string   `json:"activeEligibilitySkin,omitempty"`
+	EffectiveToolSupport     []string `json:"effectiveToolSupport,omitempty"`
+	InactiveToolSupport      []string `json:"inactiveToolSupport,omitempty"`
+	EffectiveStructured      bool     `json:"effectiveStructuredOutputs,omitempty"`
+	EffectiveReasoning       bool     `json:"effectiveReasoning,omitempty"`
+	EffectiveImageInput      bool     `json:"effectiveImageInput,omitempty"`
+	EligibilityWarning       string   `json:"eligibilityWarning,omitempty"`
 	InputPricePerMillionUSD  float64  `json:"inputPricePerMillionUsd,omitempty"`
 	OutputPricePerMillionUSD float64  `json:"outputPricePerMillionUsd,omitempty"`
 	PricingSource            string   `json:"pricingSource,omitempty"`
@@ -2269,6 +2302,7 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 	generatedAt := formatUsageTime(time.Now().UTC())
 	rows := []adminCatalogStatusRow{}
 	summary := adminCatalogSummary{Providers: len(cfg.Provider)}
+	groupSummaries := map[string]*adminGroupEligibility{}
 	for providerName, provider := range cfg.Provider {
 		for modelRef, model := range provider.Models {
 			row := adminCatalogRowFromProviderModel(providerName, modelRef, provider, model)
@@ -2286,6 +2320,18 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 			row.ActiveGroups = []string{groupName}
 			row.ActiveTargetCount = 1
 			row.GroupTargetIndex = targetIndex
+			eligibilityDialect := targetDialect(provider, resolved)
+			row.ActiveEligibilitySkin = nativeEligibilitySkin(eligibilityDialect)
+			effective, inactive := toolSupportByActiveDialect(resolved.ToolSupport, eligibilityDialect)
+			row.EffectiveToolSupport = effective
+			row.InactiveToolSupport = inactive
+			row.EffectiveStructured = targetSupportsCapability(resolved, eligibilityDialect, "structured_outputs", "json_schema")
+			row.EffectiveReasoning = targetSupportsReasoningForDialect(resolved, eligibilityDialect)
+			row.EffectiveImageInput = stringSliceContains(defaultModalities(resolved.InputModalities), "image")
+			if len(row.InactiveToolSupport) > 0 {
+				row.EligibilityWarning = "metadata-for-inactive-provider-skin"
+			}
+			addGroupEligibility(groupSummaries, groupName, resolved, eligibilityDialect)
 			if resolved.Validation != nil {
 				row.ValidationStatus = defaultString(strings.ToLower(strings.TrimSpace(resolved.Validation.Status)), "missing")
 				row.ValidationWorkload = resolved.Validation.Workload
@@ -2304,6 +2350,8 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 		row.InputModalities = dedupeSortedStrings(row.InputModalities)
 		row.OutputModalities = dedupeSortedStrings(row.OutputModalities)
 		row.ToolSupport = dedupeSortedStrings(row.ToolSupport)
+		row.EffectiveToolSupport = dedupeSortedStrings(row.EffectiveToolSupport)
+		row.InactiveToolSupport = dedupeSortedStrings(row.InactiveToolSupport)
 		if row.ValidationStatus == "" {
 			row.ValidationStatus = "missing"
 		}
@@ -2323,7 +2371,29 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 		if row.Source == "active_target" && row.PricingMissing {
 			summary.MissingPricing++
 		}
+		if row.Source == "active_target" && len(row.InactiveToolSupport) > 0 {
+			summary.InactiveMetadataSurfaces += len(inactiveToolSurfaces(row.InactiveToolSupport))
+			summary.TargetsWithInactiveSkins++
+		}
 	}
+	groupSummary := make([]adminGroupEligibility, 0, len(groupSummaries))
+	for _, group := range groupSummaries {
+		if group.OpenAIChatToolTargets+group.OpenAIResponsesToolTargets+group.AnthropicMessagesToolTargets > 0 {
+			activeToolSkins := 0
+			for _, count := range []int{group.OpenAIChatToolTargets, group.OpenAIResponsesToolTargets, group.AnthropicMessagesToolTargets} {
+				if count > 0 {
+					activeToolSkins++
+				}
+			}
+			if activeToolSkins == 1 {
+				summary.GroupsWithSingleSkinTools++
+			}
+		}
+		groupSummary = append(groupSummary, *group)
+	}
+	sort.Slice(groupSummary, func(i, j int) bool {
+		return groupSummary[i].Group < groupSummary[j].Group
+	})
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Provider == rows[j].Provider {
 			if rows[i].ModelRef == rows[j].ModelRef {
@@ -2342,7 +2412,7 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 		}
 		return rows[i].Provider < rows[j].Provider
 	})
-	return adminCatalogStatusResponse{GeneratedUTC: generatedAt, Summary: summary, Rows: rows, Charts: adminCatalogStatusCharts(generatedAt, rows)}
+	return adminCatalogStatusResponse{GeneratedUTC: generatedAt, Summary: summary, GroupSummary: groupSummary, Rows: rows, Charts: adminCatalogStatusCharts(generatedAt, rows)}
 }
 
 func adminCatalogRowFromProviderModel(providerName, modelRef string, provider ProviderConfig, model ProviderModel) adminCatalogStatusRow {
@@ -2408,6 +2478,141 @@ func flattenToolSupport(ts ToolSupport) []string {
 		out = append(out, "provider_hosted:"+value)
 	}
 	return out
+}
+
+func nativeEligibilitySkin(dialect string) string {
+	if normalized := normalizeDialect(dialect); normalized != "" {
+		return "native:" + normalized
+	}
+	return ""
+}
+
+func toolSupportByActiveDialect(ts ToolSupport, dialect string) ([]string, []string) {
+	activeSurface := toolSurfaceForDialect(dialect)
+	effective := []string{}
+	inactive := []string{}
+	for _, entry := range flattenToolSupport(ts) {
+		surface, _, ok := strings.Cut(entry, ":")
+		if !ok {
+			continue
+		}
+		if surface == activeSurface || surface == "provider_hosted" {
+			effective = append(effective, entry)
+			continue
+		}
+		inactive = append(inactive, entry)
+	}
+	return effective, inactive
+}
+
+func toolSurfaceForDialect(dialect string) string {
+	switch normalizeDialect(dialect) {
+	case "openai-chat":
+		return "openai_chat"
+	case "openai-responses":
+		return "openai_responses"
+	case "anthropic":
+		return "anthropic_messages"
+	default:
+		return ""
+	}
+}
+
+func inactiveToolSurfaces(entries []string) []string {
+	surfaces := []string{}
+	for _, entry := range entries {
+		surface, _, ok := strings.Cut(entry, ":")
+		if ok {
+			surfaces = append(surfaces, surface)
+		}
+	}
+	return dedupeSortedStrings(surfaces)
+}
+
+func targetSupportsReasoningForDialect(target Target, dialect string) bool {
+	if !targetSupportsReasoning(target) {
+		return false
+	}
+	control := strings.ToLower(strings.TrimSpace(target.Reasoning.Control))
+	switch normalizeDialect(dialect) {
+	case "anthropic":
+		return control == reasoningControlTokenBudget || len(target.DefaultThinking) > 0
+	case "openai-chat", "openai-responses":
+		return control == reasoningControlEffortEnum || control == reasoningControlTokenBudget
+	default:
+		return false
+	}
+}
+
+func addGroupEligibility(groups map[string]*adminGroupEligibility, groupName string, target Target, dialect string) {
+	summary := groups[groupName]
+	if summary == nil {
+		summary = &adminGroupEligibility{Group: groupName}
+		groups[groupName] = summary
+	}
+	tools := targetSupportsTools(target, dialect)
+	structured := targetSupportsCapability(target, dialect, "structured_outputs", "json_schema")
+	image := stringSliceContains(defaultModalities(target.InputModalities), "image")
+	reasoning := targetSupportsReasoningForDialect(target, dialect)
+	switch normalizeDialect(dialect) {
+	case "openai-chat":
+		if !target.ToolOnly {
+			summary.OpenAIChatTargets++
+		}
+		if tools {
+			summary.OpenAIChatToolTargets++
+		}
+		if structured {
+			summary.OpenAIChatStructuredOutputTargets++
+		}
+		if image {
+			summary.OpenAIChatImageTargets++
+		}
+		if image && tools {
+			summary.OpenAIChatImageToolTargets++
+		}
+		if reasoning {
+			summary.OpenAIChatReasoningTargets++
+		}
+	case "openai-responses":
+		if !target.ToolOnly {
+			summary.OpenAIResponsesTargets++
+		}
+		if tools {
+			summary.OpenAIResponsesToolTargets++
+		}
+		if structured {
+			summary.OpenAIResponsesStructuredTargets++
+		}
+		if image {
+			summary.OpenAIResponsesImageTargets++
+		}
+		if image && tools {
+			summary.OpenAIResponsesImageToolTargets++
+		}
+		if reasoning {
+			summary.OpenAIResponsesReasoningTargets++
+		}
+	case "anthropic":
+		if !target.ToolOnly {
+			summary.AnthropicMessagesTargets++
+		}
+		if tools {
+			summary.AnthropicMessagesToolTargets++
+		}
+		if structured {
+			summary.AnthropicMessagesStructuredTargets++
+		}
+		if image {
+			summary.AnthropicMessagesImageTargets++
+		}
+		if image && tools {
+			summary.AnthropicMessagesImageToolTargets++
+		}
+		if reasoning {
+			summary.AnthropicMessagesReasoningTargets++
+		}
+	}
 }
 
 func dedupeSortedStrings(values []string) []string {

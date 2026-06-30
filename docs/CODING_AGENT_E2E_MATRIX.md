@@ -68,6 +68,8 @@ For production route changes, record client version, model group, request ID, se
 
 Use reusable non-secret caller token files on the host. Do not create throwaway production caller tokens for routine matrix runs unless an isolated investigation requires it; remove any temporary token and quota state immediately after the run.
 
+The same model group can have different effective upstream pools for different clients. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and Cursor/opencode/aider commonly use OpenAI Chat. Before declaring a group ready for a client, confirm the active target rows for that group expose the matching native `activeEligibilitySkin` and capability in provider catalog status. Catalog metadata for another skin is shown as `inactiveToolSupport` and does not make that target eligible for the client's request shape unless an explicitly validated bridge target is present.
+
 ## Client Setup Notes
 
 ### Codex CLI
@@ -138,6 +140,7 @@ The opencode API matrix is direct capability evidence, not large-payload closeou
 |---|---|---|
 | `403` or model access error | Caller token is not allowed to use the requested model group | Call `/v1/models` with the same token |
 | `502 no-eligible-target` | Group lacks a target for the requested tools, modality, dialect, structured output, or cap behavior | Inspect target `tool_support`, `input_modalities`, dialect, and `honors_max_tokens` metadata |
+| One upstream takes all traffic for one client | The group may have only one effective target for that client's API skin | Inspect Provider catalog status `groupSummary`, `activeEligibilitySkin`, and `inactiveToolSupport`, then smoke the missing skin |
 | Claude Code authenticates against Anthropic instead of the router | `ANTHROPIC_API_KEY` is still set or base URL is wrong | Unset `ANTHROPIC_API_KEY`; verify `ANTHROPIC_BASE_URL` |
 | Codex uses Chat instead of Responses | Provider config is missing `wire_api="responses"` | Inspect the Codex provider config |
 | Image task reaches no upstream | URL safety rejected the image or no image-capable target is eligible | Check caller error, usage row, and target `input_modalities` |

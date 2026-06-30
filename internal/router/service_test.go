@@ -1530,6 +1530,100 @@ func TestAdminCatalogStatusSeparatesCatalogAndActiveTargetMetadata(t *testing.T)
 	}
 }
 
+func TestAdminCatalogStatusReportsEffectiveProviderSkinEligibility(t *testing.T) {
+	cfg := Config{
+		Provider: map[string]ProviderConfig{
+			"chat_skin": {
+				Dialect: "chat",
+				Models: map[string]ProviderModel{
+					"shared": {
+						Model:           "shared-upstream-model",
+						InputModalities: []string{"text", "image"},
+						ToolSupport: ToolSupport{
+							OpenAIChat:        []string{"tools", "structured_outputs"},
+							OpenAIResponses:   []string{"function"},
+							AnthropicMessages: []string{"client_tools"},
+						},
+						Reasoning: ReasoningSupport{Supported: true, Control: reasoningControlEffortEnum},
+					},
+				},
+			},
+			"responses_skin": {
+				Dialect: "responses",
+				Models: map[string]ProviderModel{
+					"shared": {
+						Model: "shared-upstream-model",
+						ToolSupport: ToolSupport{
+							OpenAIResponses: []string{"function", "structured_outputs"},
+						},
+					},
+				},
+			},
+		},
+		Models: map[string]ModelGroup{
+			"agent-group": {
+				Strategy: "weighted",
+				Targets: []Target{
+					{Provider: "chat_skin", ModelRef: "shared", Weight: 1},
+					{Provider: "responses_skin", ModelRef: "shared", Weight: 1, ToolOnly: true},
+				},
+			},
+		},
+	}
+
+	resp := buildAdminCatalogStatusResponse(cfg)
+	if resp.Summary.ActiveTargets != 2 || resp.Summary.TargetsWithInactiveSkins != 1 || resp.Summary.InactiveMetadataSurfaces != 2 {
+		t.Fatalf("unexpected effective eligibility summary: %#v", resp.Summary)
+	}
+	if len(resp.GroupSummary) != 1 {
+		t.Fatalf("expected one group summary: %#v", resp.GroupSummary)
+	}
+	group := resp.GroupSummary[0]
+	if group.Group != "agent-group" ||
+		group.OpenAIChatTargets != 1 ||
+		group.OpenAIChatToolTargets != 1 ||
+		group.OpenAIChatStructuredOutputTargets != 1 ||
+		group.OpenAIChatImageTargets != 1 ||
+		group.OpenAIChatReasoningTargets != 1 ||
+		group.OpenAIResponsesTargets != 0 ||
+		group.OpenAIResponsesToolTargets != 1 ||
+		group.OpenAIResponsesStructuredTargets != 1 {
+		t.Fatalf("unexpected group effective eligibility: %#v", group)
+	}
+
+	var chatTarget, responsesTarget *adminCatalogStatusRow
+	for i := range resp.Rows {
+		row := &resp.Rows[i]
+		if row.Source != "active_target" {
+			continue
+		}
+		switch row.Provider {
+		case "chat_skin":
+			chatTarget = row
+		case "responses_skin":
+			responsesTarget = row
+		}
+	}
+	if chatTarget == nil || responsesTarget == nil {
+		t.Fatalf("missing active target rows: %#v", resp.Rows)
+	}
+	if chatTarget.ActiveEligibilitySkin != "native:openai-chat" ||
+		!stringSliceEqual(chatTarget.EffectiveToolSupport, []string{"openai_chat:structured_outputs", "openai_chat:tools"}) ||
+		!stringSliceEqual(chatTarget.InactiveToolSupport, []string{"anthropic_messages:client_tools", "openai_responses:function"}) ||
+		chatTarget.EligibilityWarning != "metadata-for-inactive-provider-skin" ||
+		!chatTarget.EffectiveStructured ||
+		!chatTarget.EffectiveReasoning ||
+		!chatTarget.EffectiveImageInput {
+		t.Fatalf("chat target should expose active and inactive skin metadata separately: %#v", chatTarget)
+	}
+	if responsesTarget.ActiveEligibilitySkin != "native:openai-responses" ||
+		!stringSliceEqual(responsesTarget.EffectiveToolSupport, []string{"openai_responses:function", "openai_responses:structured_outputs"}) ||
+		len(responsesTarget.InactiveToolSupport) != 0 ||
+		!responsesTarget.EffectiveStructured {
+		t.Fatalf("responses target should expose only native responses metadata as effective: %#v", responsesTarget)
+	}
+}
+
 func stringSliceEqual(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
@@ -7728,6 +7822,83 @@ func TestToolRequestsRequireMatchingToolSupportMetadata(t *testing.T) {
 	defer svc.Close()
 	if got := svc.supportedToolsForGroup("default"); len(got) == 0 {
 		t.Fatal("expected tools for matching responses metadata")
+	}
+}
+
+func TestResponsesTrafficIgnoresChatSkinEvenWithResponsesCatalogMetadata(t *testing.T) {
+	var upstreamCalls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		if r.URL.Path != "/v1/responses" {
+			t.Errorf("unexpected upstream path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","model":"shared-upstream-model","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider = map[string]ProviderConfig{
+		"chat_skin": {
+			BaseURL: upstream.URL + "/v1",
+			Dialect: "openai-chat",
+			APIKey:  "provider-key",
+			Models: map[string]ProviderModel{
+				"shared": {
+					Model: "shared-upstream-model",
+					ToolSupport: ToolSupport{
+						OpenAIChat:      []string{"tools"},
+						OpenAIResponses: []string{"function"},
+					},
+				},
+			},
+		},
+	}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "chat_skin", ModelRef: "shared"}}}
+	delete(cfg.Models, "other")
+	cfg.Callers[0].Allow = []string{"default"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"default","input":"hi","tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	svc.Close()
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("status=%d body=%s, want no eligible target", rr.Code, rr.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("chat skin should not be selected for responses tools, upstreamCalls=%d", upstreamCalls)
+	}
+
+	cfg.Provider["responses_skin"] = ProviderConfig{
+		BaseURL: upstream.URL + "/v1",
+		Dialect: "openai-responses",
+		APIKey:  "provider-key",
+		Models: map[string]ProviderModel{
+			"shared": {
+				Model:       "shared-upstream-model",
+				ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+			},
+		},
+	}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "chat_skin", ModelRef: "shared"}, {Provider: "responses_skin", ModelRef: "shared", ToolOnly: true}}}
+	svc, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	req = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"default","input":"hi","tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr = httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s, want responses skin selected", rr.Code, rr.Body.String())
+	}
+	if upstreamCalls != 1 {
+		t.Fatalf("expected one responses-skin upstream call, got %d", upstreamCalls)
 	}
 }
 
