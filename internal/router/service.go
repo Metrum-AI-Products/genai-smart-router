@@ -1523,6 +1523,8 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
+	} else if isChatToResponsesBridge(callerDialect, outDialect, target) {
+		upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target)
 	} else {
 		upReqBody, err = encodeUpstreamForTarget(outDialect, target.Model, req, target)
 	}
@@ -1630,6 +1632,16 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	attempt.ResponseBytes = int64(len(raw))
 	if passthrough {
 		resp, err := decodeToolPassthrough(outDialect, raw, target.Model)
+		if err != nil {
+			attempt.ErrorClass = "decode_error"
+			attempt.ErrorMessage = err.Error()
+			attempt.Retryable = true
+			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
+		}
+		return resp, attempt, nil
+	}
+	if isChatToResponsesBridge(callerDialect, outDialect, target) {
+		resp, err := decodeChatToResponsesBridgeResponse(raw, target.Model)
 		if err != nil {
 			attempt.ErrorClass = "decode_error"
 			attempt.ErrorMessage = err.Error()
@@ -2093,7 +2105,10 @@ func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *I
 			provider := s.cfg.Provider[target.Provider]
 			outDialect := targetDialect(provider, target)
 			fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
+			bridge := isChatToResponsesBridge(callerDialect, outDialect, target)
+			crossDialectAllowed := callerDialect == outDialect || bridge || !isChatToResponsesDialectPair(callerDialect, outDialect)
 			if !target.ToolOnly &&
+				crossDialectAllowed &&
 				targetSupportsInputModalities(target, requiredModalities) &&
 				targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 				targetCanSatisfyReasoning(target, outDialect, req) &&
@@ -2109,7 +2124,8 @@ func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *I
 		provider := s.cfg.Provider[target.Provider]
 		outDialect := targetDialect(provider, target)
 		fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
-		if toolPassthrough(callerDialect, outDialect, req) &&
+		bridge := isChatToResponsesBridge(callerDialect, outDialect, target)
+		if (toolPassthrough(callerDialect, outDialect, req) || bridge) &&
 			targetSupportsTools(target, outDialect) &&
 			targetSupportsInputModalities(target, requiredModalities) &&
 			targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
@@ -2120,6 +2136,10 @@ func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *I
 		}
 	}
 	return out
+}
+
+func isChatToResponsesDialectPair(callerDialect, outDialect string) bool {
+	return normalizeDialect(callerDialect) == "openai-chat" && normalizeDialect(outDialect) == "openai-responses"
 }
 
 func routingRequirements(req *IRRequest, callerDialect string) []string {
@@ -2227,6 +2247,9 @@ func supportsAnyCapability(values []string, capabilities ...string) bool {
 func targetSupportsStructuredOutput(target Target, callerDialect, outDialect string, required bool) bool {
 	if !required {
 		return true
+	}
+	if isChatToResponsesBridge(callerDialect, outDialect, target) {
+		return target.Bridges.ChatToResponses.StructuredOutputs && targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
 	}
 	if callerDialect != outDialect {
 		return false

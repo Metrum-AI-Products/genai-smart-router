@@ -72,6 +72,16 @@ For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_toke
 
 The same model group can therefore expose different effective upstream pools to different API surfaces. A Chat client can use only active Chat-compatible targets, a Responses client can use only active Responses-compatible targets, and a Messages client can use only active Anthropic-compatible targets unless the deployment has configured and documented an explicit bridge. Provider catalog metadata for another skin is not enough by itself; the active target's resolved skin controls eligibility.
 
+## Chat To Responses Bridge
+
+Deployments can opt a target into a stateless OpenAI Chat Completions to OpenAI Responses bridge. This lets a caller keep using `POST /v1/chat/completions` while the router calls a selected `openai-responses` upstream target. The bridge is config-driven and target-specific; Chat requests never route to Responses targets unless `bridges.chat_to_responses.enabled: true` is present on the resolved target metadata.
+
+The first supported bridge slice covers non-streaming text and basic function-tool requests. The router maps Chat messages into Responses `input`, system/developer messages into `instructions`, Chat function tools into Responses function tools, `max_tokens` or `max_completion_tokens` into `max_output_tokens`, and Responses text/function-call output back into Chat completion shape. Usage rows keep `inbound_dialect = openai-chat` and `target_dialect = openai-responses`.
+
+Streaming bridge requests are rejected before upstream unless the target explicitly validates and enables bridge streaming. Images, structured outputs, reasoning controls, forced or parallel tool modes, and other advanced fields require matching bridge metadata and target capability metadata. The bridge does not create `previous_response_id`, cache conversation state, or implement the inverse Responses-to-Chat path.
+
+Common safe filter reasons include `chat-to-responses-bridge-disabled`, `chat-to-responses-streaming-unsupported`, `chat-to-responses-tools-unsupported`, `chat-to-responses-tool-choice-unsupported`, `chat-to-responses-structured-output-unsupported`, and `chat-to-responses-image-unsupported`.
+
 ## Quotas And Output Caps
 
 Before an upstream call, the router reserves the estimated input tokens plus the requested output budget for token-based admission. Chat Completions requests use `max_tokens` or `max_completion_tokens`, Responses requests use `max_output_tokens`, and Messages requests use `max_tokens`. Messages requests without a caller cap reserve the router default output cap when the router injects one.

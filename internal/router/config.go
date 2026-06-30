@@ -286,6 +286,7 @@ type ProviderModel struct {
 	OutputTokenField                   string              `yaml:"output_token_field" json:"outputTokenField,omitempty"`
 	TrafficShape                       TrafficShapeConfig  `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	RequestShapeSupport                RequestShapeSupport `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
+	Bridges                            BridgeSupport       `yaml:"bridges" json:"bridges,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -556,6 +557,24 @@ type Target struct {
 	Validation                         *TargetValidation   `yaml:"validation" json:"validation,omitempty"`
 	TrafficShape                       TrafficShapeConfig  `yaml:"traffic_shape" json:"trafficShape,omitempty"`
 	RequestShapeSupport                RequestShapeSupport `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
+	Bridges                            BridgeSupport       `yaml:"bridges" json:"bridges,omitempty"`
+}
+
+type BridgeSupport struct {
+	ChatToResponses DialectBridgeSupport `yaml:"chat_to_responses" json:"chatToResponses,omitempty"`
+	ResponsesToChat DialectBridgeSupport `yaml:"responses_to_chat" json:"responsesToChat,omitempty"`
+}
+
+type DialectBridgeSupport struct {
+	Enabled           bool  `yaml:"enabled" json:"enabled,omitempty"`
+	Text              *bool `yaml:"text" json:"text,omitempty"`
+	Tools             bool  `yaml:"tools" json:"tools,omitempty"`
+	ToolChoice        bool  `yaml:"tool_choice" json:"toolChoice,omitempty"`
+	ParallelToolCalls bool  `yaml:"parallel_tool_calls" json:"parallelToolCalls,omitempty"`
+	StructuredOutputs bool  `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
+	Images            bool  `yaml:"images" json:"images,omitempty"`
+	Reasoning         bool  `yaml:"reasoning" json:"reasoning,omitempty"`
+	Streaming         bool  `yaml:"streaming" json:"streaming,omitempty"`
 }
 
 type TrafficShapeConfig struct {
@@ -2200,11 +2219,51 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	if target.OutputTokenField == "" {
 		target.OutputTokenField = catalog.OutputTokenField
 	}
+	target.Bridges = mergeBridgeSupport(catalog.Bridges, target.Bridges)
 	target.RequestShapeSupport = mergeRequestShapeSupport(catalog.RequestShapeSupport, target.RequestShapeSupport)
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)
 	}
 	return target, nil
+}
+
+func mergeBridgeSupport(base, override BridgeSupport) BridgeSupport {
+	return BridgeSupport{
+		ChatToResponses: mergeDialectBridgeSupport(base.ChatToResponses, override.ChatToResponses),
+		ResponsesToChat: mergeDialectBridgeSupport(base.ResponsesToChat, override.ResponsesToChat),
+	}
+}
+
+func mergeDialectBridgeSupport(base, override DialectBridgeSupport) DialectBridgeSupport {
+	out := base
+	if override.Enabled {
+		out.Enabled = true
+	}
+	if override.Text != nil {
+		out.Text = override.Text
+	}
+	if override.Tools {
+		out.Tools = true
+	}
+	if override.ToolChoice {
+		out.ToolChoice = true
+	}
+	if override.ParallelToolCalls {
+		out.ParallelToolCalls = true
+	}
+	if override.StructuredOutputs {
+		out.StructuredOutputs = true
+	}
+	if override.Images {
+		out.Images = true
+	}
+	if override.Reasoning {
+		out.Reasoning = true
+	}
+	if override.Streaming {
+		out.Streaming = true
+	}
+	return out
 }
 
 func validateOutputTokenField(value string) error {

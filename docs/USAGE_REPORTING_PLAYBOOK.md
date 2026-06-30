@@ -27,6 +27,8 @@ Request-shape and provider-translation triage uses normalized diagnostics tables
 
 These tables are for answering “what changed between successful and failed requests to the same provider/model/dialect?” They must never contain raw prompts, raw images, image URLs, tool schema text, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, or full config.
 
+For Chat-to-Responses bridge requests, `request_usage.inbound_dialect` remains `openai-chat` while `target_dialect` and `request_attempts.dialect` are `openai-responses`. Join `request_translation_shapes` on request ID and attempt index to confirm the translated endpoint path, output-cap field, tool count, safe stripped/rewritten field counts, and request-size bucket without inspecting raw payloads.
+
 ## Common Reports
 
 Daily usage:

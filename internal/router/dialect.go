@@ -975,6 +975,13 @@ func valueAsSlice(v any) []any {
 	if arr, ok := v.([]any); ok {
 		return arr
 	}
+	if maps, ok := v.([]map[string]any); ok {
+		out := make([]any, 0, len(maps))
+		for _, item := range maps {
+			out = append(out, item)
+		}
+		return out
+	}
 	return nil
 }
 

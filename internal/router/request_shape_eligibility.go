@@ -155,6 +155,9 @@ func (s *Service) targetRequestShapeFit(target Target, req *IRRequest, callerDia
 
 func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outDialect string, estimate requestTokenEstimateLogRecord, fit targetRequestShapeFit) string {
 	support := target.RequestShapeSupport
+	if reason := chatToResponsesBridgeFilterReason(target, req, callerDialect, outDialect); reason != "" {
+		return reason
+	}
 	if len(support.SupportedInboundDialects) > 0 && !stringSliceContainsNormalizedDialect(support.SupportedInboundDialects, callerDialect) {
 		return "request-shape-dialect-unsupported"
 	}

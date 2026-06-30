@@ -29,6 +29,8 @@ Diagnostic child tables are part of the usage DB and follow the same rule:
 - `request_shapes`: one scalar row per routed request, including inbound dialect, requested/resolved group, client, stream flag, input item/message/role counts, tool result/function output counts, tool count, tool-choice mode, safe field-presence booleans, multimodal counts/flags, input-text/tool-schema/request-size buckets, estimated-input-token bucket, requested output-cap field/bucket, and HMAC request/tool-schema fingerprints.
 - `request_translation_shapes`: one scalar row per upstream attempt, including provider/model/dialect/path, translated stream/tool/tool-choice/output-cap/reasoning controls, translated request-size bucket, strip/rewrite/unsupported/warning counts, and request/tool-schema fingerprints.
 - `request_translation_field_events`: bounded scalar child rows keyed by request ID, attempt index, and sequence for allowlisted field names or `other`, with action and reason buckets.
+
+Chat-to-Responses bridge traffic uses the existing dialect and translation-shape columns rather than a separate bridge table. The parent usage row records inbound `openai-chat`; attempts and translation-shape rows record target `openai-responses` plus the translated `/v1/responses` path and safe scalar shape buckets.
 - `request_upstream_error_details`: scalar allowlisted provider 4xx/5xx error fields keyed by request and attempt, including status, class, field name, sanitized field value, source path, and truncation flag.
 - `request_errors`: one scalar terminal error row per failed request for fast incident queries.
 

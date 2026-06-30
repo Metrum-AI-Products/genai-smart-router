@@ -2012,12 +2012,23 @@ models:
     targets:
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
+      # Opt-in stateless bridge for validating Chat Completions callers against
+      # a Responses-only target. Keep this in smoke groups until text, tool,
+      # diagnostics, and caller compatibility smokes pass for the exact target.
+      bridges:
+        chat_to_responses:
+          enabled: true
   fireworks-responses-tool-smoke:
     strategy: static
     targets:
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
       tool_only: true
+      bridges:
+        chat_to_responses:
+          enabled: true
+          tools: true
+          tool_choice: true
   claude-tools-smoke-openrouter:
     strategy: static
     targets:

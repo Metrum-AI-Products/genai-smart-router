@@ -239,6 +239,39 @@ models:
 
 Do not declare `tool_support`, `structured_outputs`, `reasoning`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
 
+### Optional Chat To Responses Bridge Smoke
+
+If a deployment needs OpenAI Chat Completions callers to use a Responses-only upstream, add a restricted smoke target with explicit bridge metadata after the Responses target has passed direct text and function-tool smokes:
+
+```yaml
+providers:
+  responses_provider:
+    base_url: https://provider.example.com/v1
+    dialect: openai-responses
+    api_key_env: PROVIDER_API_KEY
+    models:
+      responses-model:
+        model: provider/responses-model
+        input_modalities: [text]
+        output_modalities: [text]
+        tool_support:
+          openai_responses: [function]
+
+models:
+  chat-to-responses-smoke:
+    strategy: static
+    targets:
+      - provider: responses_provider
+        model_ref: responses-model
+        bridges:
+          chat_to_responses:
+            enabled: true
+            tools: true
+            tool_choice: true
+```
+
+Run router-level `POST /v1/chat/completions` smokes for non-streaming text, function-tool calls, and a negative unsupported shape such as `stream:true` or image input when those modes are not enabled. Verify usage and diagnostic rows show inbound Chat, target Responses, `/v1/responses` endpoint path, safe translation-shape buckets, and no raw prompt/tool-schema persistence. Do not enable bridge streaming, images, structured outputs, reasoning, or parallel tool calls until those exact bridge shapes pass.
+
 ## 6. Add Production Weight Conservatively
 
 Start with a low weight in active groups. Increase only after:

@@ -72,6 +72,27 @@ func TestAnthropicIngressUnaryHappyPath(t *testing.T) {
 	}
 }
 
+func TestDecisionFilterReasonsDoNotMarkExistingTextTranslationsDialectUnsupported(t *testing.T) {
+	svc := &Service{}
+	req := &IRRequest{
+		Model:    "translated",
+		Messages: []IRMessage{{Role: "user", Content: "hello"}},
+		Raw:      map[string]any{},
+	}
+	target := Target{
+		Model:            "chat-target",
+		InputModalities:  []string{"text"},
+		OutputModalities: []string{"text"},
+	}
+	estimate := requestTokenEstimateFromIR(req, "openai-responses", 64)
+	reasons := svc.requestFilterReasons(target, req, "openai-responses", "openai-chat", estimate)
+	for _, reason := range reasons {
+		if reason == "dialect-unsupported" {
+			t.Fatalf("reasons=%#v should not mark existing Responses-to-Chat text translation as unsupported", reasons)
+		}
+	}
+}
+
 func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -8351,6 +8372,209 @@ func TestOpenAIResponsesForceStoreFalseAppliesToTranslatedText(t *testing.T) {
 	if gotStore != false {
 		t.Fatalf("upstream store=%#v, want false", gotStore)
 	}
+}
+
+func TestChatInboundCanUseOptInResponsesBridgeText(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_bridge_text",
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "bridge ok",
+			"usage":       map[string]any{"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-text-model",
+		Bridges:  BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"bridge","messages":[{"role":"system","content":"private system"},{"role":"user","content":"hello bridge"}],"max_tokens":16}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamBody["model"] != "responses-text-model" || upstreamBody["instructions"] != "private system" || upstreamBody["max_output_tokens"].(float64) != 16 {
+		t.Fatalf("upstream body=%#v", upstreamBody)
+	}
+	if _, ok := upstreamBody["messages"]; ok {
+		t.Fatalf("bridge sent chat messages upstream: %#v", upstreamBody)
+	}
+	var chat map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &chat); err != nil {
+		t.Fatal(err)
+	}
+	if chat["object"] != "chat.completion" || !strings.Contains(rr.Body.String(), "bridge ok") {
+		t.Fatalf("chat response=%s", rr.Body.String())
+	}
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.InboundDialect != "openai-chat" || usage.TargetDialect != "openai-responses" || usage.InputTokens != 7 || usage.OutputTokens != 3 {
+		t.Fatalf("usage=%#v", usage)
+	}
+	var translated requestTranslationShapeRecord
+	if err := svc.usage.db.Where("request_id = ? AND attempt_index = ?", usage.RequestID, 1).First(&translated).Error; err != nil {
+		t.Fatal(err)
+	}
+	if translated.Dialect != "openai-responses" || translated.EndpointPath != "/v1/responses" || translated.TranslatedOutputCapField != "max_output_tokens" {
+		t.Fatalf("translated=%#v", translated)
+	}
+	var events []requestTranslationFieldEventRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedShapeRowsDoNotContain(t, requestShapeRecord{}, translated, events, "private system", "hello bridge", "provider-key", testToken)
+}
+
+func TestChatInboundResponsesBridgeRequiresOptIn(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge-disabled"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "responses", Model: "responses-text-model"}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-disabled")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-disabled","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("upstream called without bridge opt-in")
+	}
+	assertDecisionFilterReason(t, svc, "chat-to-responses-bridge-disabled")
+}
+
+func TestChatInboundResponsesBridgeToolsEndToEnd(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_bridge_tool",
+			"object": "response",
+			"status": "completed",
+			"model":  stringValue(upstreamBody["model"]),
+			"output": []map[string]any{{
+				"type":      "function_call",
+				"call_id":   "call_echo",
+				"name":      "echo",
+				"arguments": `{"text":"hi"}`,
+			}},
+			"usage": map[string]any{"input_tokens": 11, "output_tokens": 2, "total_tokens": 13},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "responses",
+		Model:       "responses-tool-model",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+		Bridges:     BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Tools: true, ToolChoice: true}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"bridge-tools","messages":[{"role":"user","content":"call echo"}],"tools":[{"type":"function","function":{"name":"echo","parameters":{"type":"object"}}}],"tool_choice":"auto"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(valueAsSlice(upstreamBody["tools"])) != 1 || upstreamBody["tool_choice"] != "auto" {
+		t.Fatalf("upstream body=%#v", upstreamBody)
+	}
+	if !strings.Contains(rr.Body.String(), `"tool_calls"`) || !strings.Contains(rr.Body.String(), `"finish_reason":"tool_calls"`) {
+		t.Fatalf("response=%s", rr.Body.String())
+	}
+}
+
+func TestChatInboundResponsesBridgeRejectsStreamingBeforeUpstream(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-text-model",
+		Bridges:  BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("upstream called for unsupported bridge streaming")
+	}
+	assertDecisionFilterReason(t, svc, "chat-to-responses-streaming-unsupported")
 }
 
 func TestOpenAIChatPassthroughStripsRetentionFields(t *testing.T) {

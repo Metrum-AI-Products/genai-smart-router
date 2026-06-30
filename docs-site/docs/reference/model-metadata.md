@@ -31,6 +31,11 @@ providers:
         tool_support:
           openai_chat: [tools, tool_choice, structured_outputs]
           openai_responses: [function, structured_outputs]
+        bridges:
+          chat_to_responses:
+            enabled: true
+            tools: true
+            tool_choice: true
         reasoning:
           supported: true
           mode: opt_in
@@ -82,6 +87,40 @@ Tool support and structured-output support are independent. A target may support
 Provider-hosted tool types such as OpenAI Responses `mcp` or `sse` execute server-side at the upstream provider. The router rejects remote provider-hosted entries such as `mcp`, `sse`, file-search, code-interpreter, and computer-use tools by default before upstream. Generic hosted search or image-generation descriptors from compatible clients are stripped unless the deployment explicitly implements and validates those services. Do not use the reserved `provider_hosted` metadata label for caller traffic unless the deployment has an explicit allowlist and security review for provider-executed tool URLs.
 
 The router forwards schema payloads to the selected upstream. It does not validate arbitrary JSON Schema subsets, enforce provider-specific schema limits, or repair nonconforming model output unless a separate implementation adds that behavior. Unsupported schemas may therefore return upstream/provider errors even when the target is correctly marked as structured-output capable.
+
+## Dialect Bridges
+
+`bridges` declares validated cross-dialect compatibility for a provider catalog model or a model-group target. Bridge metadata is opt-in and target-specific. Same-dialect routing does not require it.
+
+```yaml
+bridges:
+  chat_to_responses:
+    enabled: true
+    tools: true
+    tool_choice: true
+    parallel_tool_calls: false
+    structured_outputs: false
+    images: false
+    reasoning: false
+    streaming: false
+```
+
+`chat_to_responses.enabled: true` allows OpenAI Chat Completions callers to consider an `openai-responses` target after normal request-shape filtering. The current bridge is stateless: it translates the full Chat request into one Responses request and never creates or consumes `previous_response_id`.
+
+Enable only the shapes that passed direct upstream and router-level bridge smokes:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | Non-streaming text bridge is eligible for this target. |
+| `tools` | Chat function tools can translate to Responses function tools. The target must also declare `tool_support.openai_responses`. |
+| `tool_choice` | Chat `tool_choice` modes used by callers can translate safely. |
+| `parallel_tool_calls` | Caller `parallel_tool_calls` can be forwarded safely. |
+| `structured_outputs` | Chat `response_format` can translate to Responses `text.format`; the target must also declare Responses structured-output support. |
+| `images` | Chat image content blocks can translate to Responses image input and passed direct plus router image smokes. |
+| `reasoning` | Chat reasoning controls can translate to Responses reasoning controls for this target. |
+| `streaming` | Reserved for a future streaming bridge. Current bridge streaming is skipped before upstream even if this field is set. |
+
+The generic `responses_to_chat` block is reserved so a future inverse bridge can coexist with `chat_to_responses`. Do not set it for caller traffic unless a separate implementation and validation path exists.
 
 ## Request-Shape Support
 
