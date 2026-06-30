@@ -1982,22 +1982,25 @@ models:
     attempt_timeout_ms: 180000
     targets:
     - provider: fireworks
-      model_ref: deepseek-v4-flash
-      weight: 40
-    - provider: minimax
-      model_ref: m3
-      weight: 15
-    - provider: kimi
-      model_ref: kimi-k2.7-code
-      weight: 15
-    - provider: crusoe
-      model_ref: glm-5-2
-      weight: 15
-    - provider: openai
-      model_ref: gpt-5.4-nano
-      weight: 10
+      model_ref: gpt-oss-20b
+      weight: 25
     - provider: minimax_responses
       model_ref: m3
+      weight: 40
+    - provider: fireworks
+      model_ref: deepseek-v4-flash
+      weight: 15
+    - provider: minimax
+      model_ref: m3
+      weight: 5
+    - provider: kimi
+      model_ref: kimi-k2.7-code
+      weight: 5
+    - provider: crusoe
+      model_ref: glm-5-2
+      weight: 5
+    - provider: openai
+      model_ref: gpt-5.4-nano
       weight: 5
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code

@@ -1608,12 +1608,13 @@ func assertTempCoderGroup(t *testing.T, group ModelGroup) {
 func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	t.Helper()
 	wantNormal := map[string]int{
-		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 40,
-		"minimax:MiniMax-M3":           15,
-		"kimi:kimi-k2.7-code":          15,
-		"crusoe:zai/GLM-5.2":           15,
-		"openai:gpt-5.4-nano":          10,
-		"minimax_responses:MiniMax-M3": 5,
+		"fireworks:accounts/fireworks/models/gpt-oss-20b":       25,
+		"minimax_responses:MiniMax-M3":                          40,
+		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 15,
+		"minimax:MiniMax-M3":                                    5,
+		"kimi:kimi-k2.7-code":                                   5,
+		"crusoe:zai/GLM-5.2":                                    5,
+		"openai:gpt-5.4-nano":                                   5,
 	}
 	wantToolOnly := map[string]int{
 		"fireworks_responses:accounts/fireworks/models/kimi-k2p7-code": 33,
@@ -1624,6 +1625,8 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	gotNormal := map[string]int{}
 	gotToolOnly := map[string]int{}
 	chatToolCapable := map[string]bool{}
+	chatReasoningCapable := map[string]bool{}
+	responsesReasoningCapable := map[string]bool{}
 	responsesEligible := map[string]bool{}
 	for _, target := range group.Targets {
 		key := target.Provider + ":" + target.Model
@@ -1638,9 +1641,15 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 				if supportsAnyCapability(model.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice") {
 					chatToolCapable[key] = true
 				}
+				if model.Reasoning.Supported {
+					chatReasoningCapable[key] = true
+				}
 			}
 			if targetDialect(provider, target) == "openai-responses" {
 				responsesEligible[key] = true
+				if model.Reasoning.Supported {
+					responsesReasoningCapable[key] = true
+				}
 			}
 		}
 		if target.Provider == "kimi_anthropic" {
@@ -1668,6 +1677,12 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	}
 	if len(responsesEligible) < 2 || !responsesEligible["openai:gpt-5.4-nano"] || !responsesEligible["minimax_responses:MiniMax-M3"] {
 		t.Fatalf("big-coder Responses-eligible normal targets=%#v, want OpenAI fallback plus MiniMax Responses", responsesEligible)
+	}
+	if !chatReasoningCapable["fireworks:accounts/fireworks/models/gpt-oss-20b"] {
+		t.Fatalf("big-coder Chat reasoning targets=%#v, want Fireworks GPT OSS 20B", chatReasoningCapable)
+	}
+	if !responsesReasoningCapable["minimax_responses:MiniMax-M3"] {
+		t.Fatalf("big-coder Responses reasoning targets=%#v, want MiniMax Responses M3", responsesReasoningCapable)
 	}
 	if len(gotToolOnly) != len(wantToolOnly) {
 		t.Fatalf("big-coder tool-only weights=%#v, want %#v", gotToolOnly, wantToolOnly)

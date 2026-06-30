@@ -74,6 +74,37 @@ Validation:
 - Production Harbor smoke `case-20260630T163514Z-prod-models-compat`: `codex` + `big-coder`, exit 0, reward 1, errors 0, elapsed 59s.
 - Production cleanup performed: removed the uploaded package and staging directory, then ran `sudo docker system prune -f` with `0B` reclaimed.
 
+## 2026-06-30 big-coder Reasoning Routing Config Update
+
+Production image remains `smart-llmrouter:0ea98f7-linux-amd64`. Updated production config only so `big-coder` advertises and accepts explicit reasoning requests:
+
+```text
+Fireworks GPT OSS 20B: 25
+MiniMax M3 Responses: 40
+Fireworks DeepSeek-V4-Flash: 15
+MiniMax M3 Chat: 5
+Kimi K2.7 Code: 5
+Crusoe GLM 5.2: 5
+OpenAI GPT-5.4 Nano: 5
+```
+
+Production config backup:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.big-coder-reasoning-20260630T171754Z
+```
+
+Validation:
+
+- Local `big-coder` `/v1/models`: advertised three reasoning levels, low/medium/high.
+- Local `big-coder` reasoning curl smokes: Chat, Responses, and Anthropic Messages returned 200 with visible `OK`; telemetry showed `translated_reasoning_control` values `reasoning_effort`, `reasoning`, and `reasoning_effort`.
+- Production `/readyz`: 200, version `0ea98f7`.
+- Production `big-coder` `/v1/models`: advertised three reasoning levels, low/medium/high.
+- Production OpenAI Chat reasoning smoke `req_1d5ca386949211fe72e5cb61b62b7647`: 200, selected `fireworks/accounts/fireworks/models/gpt-oss-20b`, `translated_reasoning_control=reasoning_effort`.
+- Production OpenAI Responses reasoning smoke `req_0d315944ad0da69baa376076127d0f66`: 200, selected `minimax_responses/MiniMax-M3`, `translated_reasoning_control=reasoning`.
+- Production Anthropic Messages thinking smoke `req_2e8c0a9d098944e055aa07571b6421b6`: 200, selected `minimax_responses/MiniMax-M3`, `translated_reasoning_control=reasoning`.
+- Initial restart failed because `config/config.yaml` was copied as root-only `0640`; fixed by restoring container-readable ownership `65532:65532` and restarting the router.
+
 ## 2026-06-30 Responses Bridge And Provider-Skin Routing Refresh
 
 Deployed package/image `smart-llmrouter:7cfca1e-linux-amd64` from source commit `7cfca1e`.
