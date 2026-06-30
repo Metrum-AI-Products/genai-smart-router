@@ -90,6 +90,33 @@ Use reusable non-secret caller token files on the host. Do not create throwaway 
 - Prefer a config that points the OpenAI-compatible provider base URL at the router `/v1` endpoint and uses a router token.
 - If using an Anthropic-compatible opencode provider, use the router origin plus Anthropic Messages authentication variables.
 - Verify both a text task and a fixture edit task; add image coverage only when the installed opencode workflow supports attachments.
+- Use the opencode API capability matrix before declaring provider/model support for opencode-style requests. It sends synthetic text, client-tool, and image requests through OpenAI Chat and Anthropic Messages shapes, records sanitized pass/fail evidence, and writes JSON plus Markdown artifacts under `tmp/`:
+
+```bash
+rtk python3 scripts/opencode_api_matrix.py \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialects openai-chat,anthropic \
+  --tasks text,tools,image \
+  --output-dir tmp/opencode-api-matrix
+```
+
+For direct Fireworks validation, use the Fireworks base URL and a protected `FIREWORKS_API_KEY` from the environment or ignored `env.json`:
+
+```bash
+rtk python3 scripts/opencode_api_matrix.py \
+  --base-url https://api.fireworks.ai/inference/v1 \
+  --model accounts/fireworks/models/deepseek-v4-flash \
+  --api-key-env FIREWORKS_API_KEY \
+  --env-json env.json \
+  --dialects openai-chat,anthropic \
+  --tasks text,tools,image \
+  --output-dir tmp/opencode-fireworks-deepseek
+```
+
+Use failed rows as capability evidence, not as a harness failure. A model that passes text/tools but rejects images must remain text-only in routing metadata until direct and router-level image smokes pass for that exact skin.
+The command exits zero after writing evidence by default, even when a capability row fails. Add `--strict-exit` only for CI gates that should fail on any non-passing row. Text rows require the expected text, default `OK`; image rows require the expected receipt text, default `Rite Aid`, before they are marked as capability passes.
 
 ### aider
 

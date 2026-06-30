@@ -66,6 +66,21 @@ rtk python3 scripts/large_payload_chat_smoke.py \
 
 Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, and prompt-token scale in `validation_notes`.
 
+For opencode-style coding-agent traffic, run the API capability matrix before declaring support for an endpoint. The matrix sends synthetic OpenAI Chat and Anthropic Messages text, client-tool, and image requests and records sanitized pass/fail evidence:
+
+```bash
+rtk python3 scripts/opencode_api_matrix.py \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialects openai-chat,anthropic \
+  --tasks text,tools,image \
+  --output-dir tmp/opencode-api-matrix
+```
+
+A partial pass is still useful evidence. For example, a model that passes OpenAI Chat tools and Anthropic Messages tools but rejects image payloads can be routed for text/tool workloads only; do not add `image` metadata or mixed image-bearing agent routing until the exact provider, model, account, and router skin pass image smokes.
+The command exits zero after writing the evidence files by default, even when individual capability rows fail. Add `--strict-exit` only when a CI job should fail on any non-passing row. Text rows require the expected text, default `OK`; image rows require the expected receipt text, default `Rite Aid`, before they are marked as passes.
+
 OpenRouter Nitro variants may not appear as separate model IDs in `/models`; validate the exact `:nitro` suffix with a real completion call.
 
 Reasoning-heavy models can return HTTP 200 with empty final content when the output budget is too small. Test both a tiny cap and a realistic budget before activating them.

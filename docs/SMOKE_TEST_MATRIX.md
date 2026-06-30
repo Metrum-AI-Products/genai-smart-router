@@ -28,7 +28,7 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 | Request-shape context fit | send small text, large coding-agent, explicit output-cap, and all-target-too-small requests; verify target candidates show estimates, context headroom, safe skip reasons, and no raw prompt/tool/image data |
 | Decision telemetry | with `server.decision_telemetry.enabled: true`, run success, no-eligible-target, policy fail-closed, policy fallback, upstream-fallback-success, and cache-bypass requests; query `request_policy_executions`, `request_fallback_transitions`, score/ranking rows, safe fingerprints, and `router-usage-report` summary buckets |
 | Multimodal/VLM routing | direct upstream image smoke for the exact provider/model/dialect, router-level image smoke through the intended model group, URL safety negative smoke, tiny-cap smoke, usage row image/cost fields, and no raw image persistence |
-| Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
+| Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, opencode API capability matrix with `rtk python3 scripts/opencode_api_matrix.py` for provider/model skin support, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
 ## Automated Capability Probe
@@ -49,6 +49,37 @@ Supported dialects are `openai-chat`, `openai-responses`, and `anthropic`. The p
 The output is direct-provider evidence only. Before adding active route weight, repeat every declared capability through a router smoke group, verify usage/cost/latency rows, and confirm requests that require omitted capabilities return safe `no-eligible-target` behavior without upstream attempts. Do not copy failed, skipped, or informational probe rows into `tool_support`, `input_modalities`, `reasoning`, or max-token metadata.
 
 The full onboarding procedure is tracked in `docs/onboard-model.md` when present; the probe automates the direct-smoke step but does not replace pricing source validation, catalog review, smoke group setup, router-level smokes, production rollout, or rollback documentation.
+
+## opencode API Capability Matrix
+
+Use the opencode matrix when a model or endpoint is expected to serve opencode-style coding-agent traffic. It checks OpenAI Chat and Anthropic Messages request shapes with synthetic text, client-tool, and image payloads, then writes sanitized JSON and Markdown evidence without printing API keys, raw prompts, raw images, tool outputs, or provider bodies.
+
+```bash
+rtk python3 scripts/opencode_api_matrix.py \
+  --base-url https://api.provider.example/v1 \
+  --model provider-model-id \
+  --api-key-env PROVIDER_API_KEY \
+  --dialects openai-chat,anthropic \
+  --tasks text,tools,image \
+  --output-dir tmp/opencode-api-matrix
+```
+
+For Fireworks direct validation:
+
+```bash
+rtk python3 scripts/opencode_api_matrix.py \
+  --base-url https://api.fireworks.ai/inference/v1 \
+  --model accounts/fireworks/models/deepseek-v4-flash \
+  --api-key-env FIREWORKS_API_KEY \
+  --env-json env.json \
+  --dialects openai-chat,anthropic \
+  --tasks text,tools,image \
+  --output-dir tmp/opencode-fireworks-deepseek
+```
+
+The matrix exits zero after writing evidence by default, even when a capability row fails. Use `--strict-exit` for CI gates that should fail on any non-passing row. Text rows are marked pass only when the response contains the expected text, default `OK`; image rows are marked pass only when the response contains the expected receipt text, default `Rite Aid`.
+
+On 2026-06-30, direct Fireworks `accounts/fireworks/models/deepseek-v4-flash` passed OpenAI Chat text/tools and Anthropic Messages text/tools in this matrix. The same direct matrix returned sanitized HTTP 400 rows for OpenAI Chat image and Anthropic Messages image, so keep that model text-only until image support passes for the exact endpoint and router skin.
 
 ## Release Validation Matrix
 
@@ -212,7 +243,7 @@ Run OpenAI Chat tool, forced `tool_choice`, and `response_format` structured-out
 
 For direct MiniMax and Kimi coding-agent routes, the 2026-06-30 opencode API capability matrix passed OpenAI Chat text/tools for MiniMax `MiniMax-M3` at `https://api.minimax.io/v1` and Kimi `kimi-k2.7-code` at `https://api.moonshot.ai/v1`. MiniMax Anthropic-compatible text and forced client-tool smokes passed at `https://api.minimax.io/anthropic/v1/messages`; auto tool selection returned ordinary text in the direct probe, so validate the exact Claude-compatible client workflow before relying on auto tool calls. These routes may be added to `big-coder` as additional direct provider options, but large Cursor/OpenCode payloads still require the large-payload smoke before increasing weight further.
 
-For Fireworks, public docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing for active reference candidates. Use `FIREWORKS_API_KEY` only from a protected environment or ignored `env.json`; never print it. Direct validation showed completions may require an explicit `User-Agent` from this environment. Configure one under provider `headers`. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, OpenAI Chat `reasoning_effort` low/medium/high, auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes on 2026-06-27. Fireworks `accounts/fireworks/models/glm-5p2`, `accounts/fireworks/models/kimi-k2p7-code`, `accounts/fireworks/models/deepseek-v4-flash`, and `accounts/fireworks/models/qwen3p6-plus` passed direct OpenAI Chat text and auto-tool smokes on 2026-06-28, then production router-level text smokes through `big-coder`. Fireworks DeepSeek-V4-Flash passed direct and local router-level synthetic 524 KB OpenAI Chat coding-agent payload smokes on 2026-06-29 with 24 tools, about 50 KB of serialized tool schemas, `max_tokens:32`, and about 91K prompt tokens. The production dedicated Fireworks GPT OSS 20B smoke group passed the same request shape on 2026-06-29 with about 90K prompt tokens. Keep this evidence source-dated and revalidate larger requests, image-bearing requests, or materially different tool-schema shapes before increasing broad routing weight. Keep Fireworks image-capable targets text-only until direct image and router-level image smokes pass for the exact endpoint.
+For Fireworks, public docs checked on 2026-06-28 list `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint and Serverless pricing for active reference candidates. Use `FIREWORKS_API_KEY` only from a protected environment or ignored `env.json`; never print it. Direct validation showed completions may require an explicit `User-Agent` from this environment. Configure one under provider `headers`. Fireworks `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, OpenAI Chat `reasoning_effort` low/medium/high, auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes on 2026-06-27. Fireworks `accounts/fireworks/models/glm-5p2`, `accounts/fireworks/models/kimi-k2p7-code`, `accounts/fireworks/models/deepseek-v4-flash`, and `accounts/fireworks/models/qwen3p6-plus` passed direct OpenAI Chat text and auto-tool smokes on 2026-06-28, then production router-level text smokes through `big-coder`. Fireworks DeepSeek-V4-Flash passed direct and local router-level synthetic 524 KB OpenAI Chat coding-agent payload smokes on 2026-06-29 with 24 tools, about 50 KB of serialized tool schemas, `max_tokens:32`, and about 91K prompt tokens. The production dedicated Fireworks GPT OSS 20B smoke group passed the same request shape on 2026-06-29 with about 90K prompt tokens. The opencode API capability matrix showed direct Fireworks DeepSeek-V4-Flash OpenAI Chat text/tools and Anthropic Messages text/tools passing on 2026-06-30, while both image request shapes returned sanitized HTTP 400 rows. Keep this evidence source-dated and revalidate larger requests, image-bearing requests, untested Anthropic Messages models, or materially different tool-schema shapes before increasing broad routing weight. Keep Fireworks image-capable targets text-only until direct image and router-level image smokes pass for the exact endpoint.
 
 Direct Fireworks checks before any active route:
 
@@ -243,7 +274,7 @@ rtk python3 scripts/large_payload_chat_smoke.py \
   --max-tokens 32
 ```
 
-Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks Anthropic Messages and image/audio/video routes disabled until those exact direct and router-level skins pass.
+Fireworks GPT OSS 20B returns `reasoning_content` alongside visible content. Declare `reasoning` metadata only after a router-level `reasoning_effort` smoke confirms the selected target preserves the caller request shape and usage/cost telemetry remains populated. Keep Fireworks image/audio/video routes and untested Fireworks Anthropic Messages models disabled until those exact direct and router-level skins pass.
 
 Fireworks Responses validation on 2026-06-28 used the official Responses API docs and Serverless pricing docs. The docs list `/inference/v1/responses`, client-executed function tools, provider-executed MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`; they also note the Responses API has different retention behavior from Chat Completions. The router config uses a separate `fireworks_responses` provider, sets `force_store_false: true` on the validated target, rejects caller-supplied remote provider-hosted `mcp`/`sse` tools before upstream, and strips generic hosted search/image tool descriptors when the router is not exposing those services.
 
