@@ -148,6 +148,24 @@ Set `supports_large_coding_agent_payloads: true` only after a direct upstream sm
 
 Estimate and context-fit telemetry is diagnostic, not billed usage. The router stores scalar estimates, caps, request bytes, target context, headroom, fit booleans, and bounded reason labels in relational rows. It does not store raw prompts, raw tool schemas, tool outputs, images, router tokens, token hashes, provider keys, or full config.
 
+## Responses-to-Chat Bridge
+
+`responses_to_chat` is opt-in metadata for allowing `/v1/responses` callers to use a target whose upstream dialect is `openai-chat`. It can be declared on a provider catalog model and overridden on a model-group target.
+
+```yaml
+responses_to_chat:
+  enabled: true
+  text: true
+  function_tools: true
+  tool_choice: true
+  validation_status: passed
+  validation_notes: Router-level Responses text and function-tool bridge smokes passed for this target.
+```
+
+Enable only the flags that passed direct Chat and router-level Responses-to-Chat bridge smokes. The initial bridge supports stateless non-streaming text and basic function tools. Leave `streaming`, `images`, `reasoning`, and `structured_outputs` unset unless those exact bridge paths are implemented and validated for the target.
+
+Unsupported Responses fields are skipped before selection for Chat-bridged targets with bounded filter reasons such as `responses-to-chat-previous-response-id`, `responses-to-chat-hosted-tools`, `responses-to-chat-image`, `responses-to-chat-reasoning`, and `responses-to-chat-structured-output`. Usage rows preserve both sides of the request: inbound `openai-responses`, target `openai-chat`, and translation `bridge_direction: responses_to_chat`.
+
 ## Responses Retention Controls
 
 The router controls provider-side retention fields through target metadata. Same-dialect OpenAI Chat and Responses passthrough strips caller-supplied provider `metadata`; it sends `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated OpenAI Responses calls use the same flag. Validate that text, tools, continuation shape, streaming behavior, and usage accounting still pass with `store:false` before setting the flag, because some OpenAI-compatible upstreams reject the `store` field.

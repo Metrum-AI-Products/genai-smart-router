@@ -154,7 +154,7 @@ func (s *Service) requestFilterReasons(target Target, req *IRRequest, callerDial
 	requiredModalities := requestInputModalities(req)
 	requiresStructuredOutput := requestHasStructuredOutput(req)
 	var reasons []string
-	bridge := isChatToResponsesBridge(callerDialect, outDialect, target)
+	bridge := isChatToResponsesBridge(callerDialect, outDialect, target) || isResponsesToChatBridge(callerDialect, outDialect, target)
 	if len(req.Tools) == 0 {
 		if target.ToolOnly {
 			reasons = append(reasons, "tool-only-target")
@@ -163,11 +163,11 @@ func (s *Service) requestFilterReasons(target Target, req *IRRequest, callerDial
 		if !toolPassthrough(callerDialect, outDialect, req) && !bridge {
 			reasons = append(reasons, "dialect-tool-passthrough")
 		}
-		if !targetSupportsTools(target, outDialect) {
+		if !targetSupportsToolsForCallerDialect(target, callerDialect, outDialect) {
 			reasons = append(reasons, "tool-support")
 		}
 	}
-	if len(req.Tools) == 0 && callerDialect != outDialect && !bridge && isChatToResponsesDialectPair(callerDialect, outDialect) {
+	if len(req.Tools) == 0 && callerDialect != outDialect && !bridge {
 		reasons = append(reasons, "dialect-unsupported")
 	}
 	for _, modality := range requiredModalities {

@@ -22,10 +22,33 @@ Traffic-shaping triage uses safe scalar fields on `request_usage`: `traffic_shap
 Request-shape and provider-translation triage uses normalized diagnostics tables that are written independently of optional decision telemetry:
 
 - `request_shapes`: one row per routed request with inbound dialect, requested/resolved group, client, stream flag, input item/message/role counts, tool result/function output counts, tool count, tool-choice mode, field-presence booleans, image/audio/video presence, input-text/tool-schema/request-size buckets, estimated-input-token bucket, requested output-cap field/bucket, and HMAC request/tool-schema fingerprints.
-- `request_translation_shapes`: one row per upstream attempt with provider/model/dialect/path, translated stream/tool/tool-choice/output-cap/reasoning controls, translated request-size bucket, strip/rewrite/unsupported/warning counts, and the same fingerprints for joining.
+- `request_translation_shapes`: one row per upstream attempt with provider/model/dialect/path, optional `bridge_direction`, translated stream/tool/tool-choice/output-cap/reasoning controls, translated request-size bucket, strip/rewrite/unsupported/warning counts, and the same fingerprints for joining.
 - `request_translation_field_events`: bounded child rows keyed by request ID and attempt index for safe field actions. Field names are allowlisted; unsafe or unexpected names are stored as `other`.
 
 These tables are for answering “what changed between successful and failed requests to the same provider/model/dialect?” They must never contain raw prompts, raw images, image URLs, tool schema text, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, or full config.
+
+For Responses-to-Chat bridge analysis, group `request_usage` by `inbound_dialect`, `target_dialect`, provider, model, and `request_translation_shapes.bridge_direction`. Native Responses attempts have inbound and target dialect `openai-responses`; bridged attempts have inbound `openai-responses`, target `openai-chat`, and bridge direction `responses_to_chat`. When a bridged request is rejected before upstream, decision telemetry filter reasons use bounded labels beginning with `responses-to-chat-`.
+
+```sql
+SELECT
+  u.inbound_dialect,
+  u.target_dialect,
+  u.target_provider,
+  u.target_model,
+  COALESCE(ts.bridge_direction, '') AS bridge_direction,
+  COUNT(*) AS requests,
+  SUM(u.input_tokens) AS input_tokens,
+  SUM(u.output_tokens) AS output_tokens,
+  AVG(u.latency_ms) AS avg_latency_ms
+FROM request_usage u
+LEFT JOIN request_translation_shapes ts
+  ON ts.request_id = u.request_id
+WHERE u.ts >= :from
+  AND u.ts < :to
+  AND u.inbound_dialect = 'openai-responses'
+GROUP BY 1,2,3,4,5
+ORDER BY requests DESC;
+```
 
 For Chat-to-Responses bridge requests, `request_usage.inbound_dialect` remains `openai-chat` while `target_dialect` and `request_attempts.dialect` are `openai-responses`. Join `request_translation_shapes` on request ID and attempt index to confirm the translated endpoint path, output-cap field, tool count, safe stripped/rewritten field counts, and request-size bucket without inspecting raw payloads.
 

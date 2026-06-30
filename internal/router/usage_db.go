@@ -1027,6 +1027,7 @@ type requestTranslationShapeRecord struct {
 	Provider                     string `gorm:"column:provider;type:text;not null;index:idx_request_translation_shape_provider_model,priority:1"`
 	Model                        string `gorm:"column:model;type:text;not null;index:idx_request_translation_shape_provider_model,priority:2"`
 	Dialect                      string `gorm:"column:dialect;type:text;not null;index:idx_request_translation_shape_dialect"`
+	BridgeDirection              string `gorm:"column:bridge_direction;type:text;not null;default:'';index:idx_request_translation_shape_bridge"`
 	EndpointPath                 string `gorm:"column:endpoint_path;type:text;not null;default:''"`
 	TranslatedStream             bool   `gorm:"column:translated_stream;not null;default:false;index:idx_request_translation_shape_stream"`
 	TranslatedToolCount          int    `gorm:"column:translated_tool_count;not null;default:0;index:idx_request_translation_shape_tool_count"`
@@ -1845,6 +1846,7 @@ func requestTranslationShapeRecordFromLog(requestID string, rec translationShape
 		Provider:                     rec.Provider,
 		Model:                        rec.Model,
 		Dialect:                      rec.Dialect,
+		BridgeDirection:              safeOptionalReasonToken(rec.BridgeDirection),
 		EndpointPath:                 rec.EndpointPath,
 		TranslatedStream:             rec.TranslatedStream,
 		TranslatedToolCount:          rec.TranslatedToolCount,
@@ -4519,6 +4521,7 @@ func (s *usageStore) loadUsageReportBuckets(rows []usageRow) {
 			defaultString(shape.Provider, "unknown"),
 			defaultString(shape.Model, "unknown"),
 			defaultString(shape.Dialect, "unknown"),
+			defaultString(shape.BridgeDirection, "bridge:none"),
 			boolBucket("stream", shape.TranslatedStream),
 			toolCountReportBucket(shape.TranslatedToolCount),
 			defaultString(shape.TranslatedToolChoiceMode, "tool-choice:none"),

@@ -155,6 +155,9 @@ func (s *Service) targetRequestShapeFit(target Target, req *IRRequest, callerDia
 
 func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outDialect string, estimate requestTokenEstimateLogRecord, fit targetRequestShapeFit) string {
 	support := target.RequestShapeSupport
+	if reason := responsesToChatBridgeFilterReason(target, req, callerDialect, outDialect); reason != "" {
+		return reason
+	}
 	if reason := chatToResponsesBridgeFilterReason(target, req, callerDialect, outDialect); reason != "" {
 		return reason
 	}

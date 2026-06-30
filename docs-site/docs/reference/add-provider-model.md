@@ -239,6 +239,41 @@ models:
 
 Do not declare `tool_support`, `structured_outputs`, `reasoning`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
 
+### Expose A Chat-Only Upstream To Responses Callers
+
+If the upstream is validated only through OpenAI Chat Completions but a Responses client such as Codex should use it, add `responses_to_chat` only after a restricted bridge smoke passes. Keep the provider and target dialect as `openai-chat`; do not relabel the target as native Responses.
+
+```yaml
+providers:
+  hosted_chat:
+    base_url: https://provider.example.com/v1
+    dialect: openai-chat
+    api_key_env: PROVIDER_API_KEY
+    models:
+      chat-model:
+        model: provider/chat-model
+        input_modalities: [text]
+        output_modalities: [text]
+        tool_support:
+          openai_chat: [tools, tool_choice]
+        responses_to_chat:
+          enabled: true
+          text: true
+          function_tools: true
+          tool_choice: true
+          validation_status: passed
+          validation_notes: Direct Chat text/tool smokes and router Responses-to-Chat text/tool smokes passed.
+
+models:
+  responses-chat-bridge-smoke:
+    strategy: static
+    targets:
+      - provider: hosted_chat
+        model_ref: chat-model
+```
+
+Run `/v1/responses` text and function-tool smokes through the smoke group. Verify the upstream path is `/chat/completions`, the caller receives a Responses-shaped object, usage shows inbound `openai-responses` and target `openai-chat`, and diagnostics record `bridge_direction = responses_to_chat`. Keep stateful `previous_response_id`, hosted tools, images, reasoning, structured output, and streaming disabled until separately implemented and validated.
+
 ### Optional Chat To Responses Bridge Smoke
 
 If a deployment needs OpenAI Chat Completions callers to use a Responses-only upstream, add a restricted smoke target with explicit bridge metadata after the Responses target has passed direct text and function-tool smokes:

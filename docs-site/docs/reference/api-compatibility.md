@@ -68,6 +68,16 @@ This suite uses mock upstreams and does not prove a real provider/model is entit
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
+## API Bridges
+
+Deployments can expose a validated Chat Completions upstream to `/v1/responses` callers through an explicit stateless Responses-to-Chat bridge. This is useful for Codex or Responses-compatible clients when a model is only validated through OpenAI Chat Completions.
+
+The bridge is never automatic. A target must keep dialect `openai-chat` and opt in with `responses_to_chat` metadata. The first supported slice is non-streaming text and basic function tools. The router maps Responses `input` and `instructions` to Chat messages, function tools to Chat `tools`, `tool_choice` only when validated, and `max_output_tokens` to the Chat output cap field configured for the target. The Chat response is returned to the caller as a Responses-shaped object.
+
+Unsupported Responses features are rejected or skipped before upstream for Chat-bridged targets. Stateless bridge targets do not support `previous_response_id`; provider-hosted tools such as file search, code interpreter, computer use, MCP/SSE, hosted search, and image generation are not sent through the bridge. Images, reasoning, structured output, and streaming require separate bridge flags and validation before use.
+
+Usage and diagnostics show both sides: `inbound_dialect = openai-responses`, `target_dialect = openai-chat`, and `request_translation_shapes.bridge_direction = responses_to_chat`.
+
 For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_tokens` are treated as explicit output caps. If a Chat request sends both fields, `max_tokens` takes precedence for router eligibility and normalized upstream forwarding.
 
 The same model group can therefore expose different effective upstream pools to different API surfaces. A Chat client can use only active Chat-compatible targets, a Responses client can use only active Responses-compatible targets, and a Messages client can use only active Anthropic-compatible targets unless the deployment has configured and documented an explicit bridge. Provider catalog metadata for another skin is not enough by itself; the active target's resolved skin controls eligibility.

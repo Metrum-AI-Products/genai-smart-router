@@ -123,6 +123,8 @@ When the bridge is selected, request evidence should show `inbound_dialect` as `
 
 If every target is skipped, callers receive `502 no-eligible-target` before upstream with a request ID. Recovery is usually a config change: add accurate `context_tokens` or `request_shape_support`, remove a too-small target from the affected group, or keep the target in a smoke group until a large-payload validation passes.
 
+For `/v1/responses` requests that should be able to use Chat-only upstreams, check whether the target has explicit `responses_to_chat` metadata for the requested shape. Chat-bridged targets skip unsupported fields before upstream. Common safe filter reasons include `responses-to-chat-bridge-disabled`, `responses-to-chat-previous-response-id`, `responses-to-chat-hosted-tools`, `responses-to-chat-tool-choice`, `responses-to-chat-image`, `responses-to-chat-reasoning`, `responses-to-chat-structured-output`, and `responses-to-chat-streaming`. A successful bridge keeps the caller-facing response in Responses format while usage shows inbound `openai-responses`, target `openai-chat`, and bridge direction `responses_to_chat`.
+
 ## 7. Verify Recovery
 
 After a config, credential, quota, or upstream fix:

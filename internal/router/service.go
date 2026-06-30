@@ -1514,6 +1514,7 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		AttemptTimeoutMS: s.attemptTimeoutMS(groupName, target),
 	}
 	passthrough := requestShapePassthrough(callerDialect, outDialect, req)
+	bridge := isResponsesToChatBridge(callerDialect, outDialect, target)
 	var upReqBody []byte
 	var err error
 	if err := s.validateImageURLsForUpstream(ctx, req); err != nil {
@@ -1521,7 +1522,9 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 		attempt.ErrorMessage = err.Error()
 		return nil, attempt, upstreamError{Class: "image_url_forbidden", Message: err.Error(), Retryable: false, Err: err}
 	}
-	if passthrough {
+	if bridge {
+		upReqBody, err = encodeResponsesToChatBridge(target.Model, req, target)
+	} else if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
 	} else if isChatToResponsesBridge(callerDialect, outDialect, target) {
 		upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target)
@@ -1630,6 +1633,16 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	}
 	attempt.DurationMS = durationMillis(time.Since(start))
 	attempt.ResponseBytes = int64(len(raw))
+	if bridge {
+		resp, err := decodeResponsesToChatBridge(raw, target.Model)
+		if err != nil {
+			attempt.ErrorClass = "decode_error"
+			attempt.ErrorMessage = err.Error()
+			attempt.Retryable = true
+			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
+		}
+		return resp, attempt, nil
+	}
 	if passthrough {
 		resp, err := decodeToolPassthrough(outDialect, raw, target.Model)
 		if err != nil {
@@ -2105,10 +2118,8 @@ func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *I
 			provider := s.cfg.Provider[target.Provider]
 			outDialect := targetDialect(provider, target)
 			fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
-			bridge := isChatToResponsesBridge(callerDialect, outDialect, target)
-			crossDialectAllowed := callerDialect == outDialect || bridge || !isChatToResponsesDialectPair(callerDialect, outDialect)
 			if !target.ToolOnly &&
-				crossDialectAllowed &&
+				targetSupportsCallerDialect(target, req, callerDialect, outDialect) &&
 				targetSupportsInputModalities(target, requiredModalities) &&
 				targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 				targetCanSatisfyReasoning(target, outDialect, req) &&
@@ -2124,9 +2135,8 @@ func (s *Service) targetsForRequest(rc *requestContext, targets []Target, req *I
 		provider := s.cfg.Provider[target.Provider]
 		outDialect := targetDialect(provider, target)
 		fit := s.targetRequestShapeFit(target, req, callerDialect, outDialect, estimate)
-		bridge := isChatToResponsesBridge(callerDialect, outDialect, target)
-		if (toolPassthrough(callerDialect, outDialect, req) || bridge) &&
-			targetSupportsTools(target, outDialect) &&
+		if targetSupportsCallerDialect(target, req, callerDialect, outDialect) &&
+			targetSupportsToolsForCallerDialect(target, callerDialect, outDialect) &&
 			targetSupportsInputModalities(target, requiredModalities) &&
 			targetSupportsStructuredOutput(target, callerDialect, outDialect, requiresStructuredOutput) &&
 			targetCanSatisfyReasoning(target, outDialect, req) &&
@@ -2164,6 +2174,32 @@ func targetHonorsExplicitMaxTokens(target Target, req *IRRequest) bool {
 		return true
 	}
 	return *target.HonorsMaxTokens
+}
+
+func targetSupportsCallerDialect(target Target, req *IRRequest, callerDialect, outDialect string) bool {
+	if callerDialect == outDialect {
+		return true
+	}
+	if normalizeDialect(callerDialect) == "openai-chat" && normalizeDialect(outDialect) == "openai-responses" {
+		return chatToResponsesBridgeFilterReason(target, req, callerDialect, outDialect) == ""
+	}
+	if normalizeDialect(callerDialect) == "openai-responses" && normalizeDialect(outDialect) == "openai-chat" {
+		return responsesToChatBridgeFilterReason(target, req, callerDialect, outDialect) == ""
+	}
+	return true
+}
+
+func targetSupportsToolsForCallerDialect(target Target, callerDialect, outDialect string) bool {
+	if isChatToResponsesBridge(callerDialect, outDialect, target) {
+		return targetSupportsTools(target, "openai-responses")
+	}
+	if isResponsesToChatBridge(callerDialect, outDialect, target) {
+		return targetSupportsTools(target, "openai-chat")
+	}
+	if callerDialect != outDialect {
+		return false
+	}
+	return targetSupportsTools(target, outDialect)
 }
 
 func targetSupportsInputModalities(target Target, required []string) bool {
@@ -2247,6 +2283,9 @@ func supportsAnyCapability(values []string, capabilities ...string) bool {
 func targetSupportsStructuredOutput(target Target, callerDialect, outDialect string, required bool) bool {
 	if !required {
 		return true
+	}
+	if isResponsesToChatBridge(callerDialect, outDialect, target) && target.ResponsesToChat.StructuredOutputs {
+		return targetSupportsCapability(target, "openai-chat", "structured_outputs", "json_schema")
 	}
 	if isChatToResponsesBridge(callerDialect, outDialect, target) {
 		return target.Bridges.ChatToResponses.StructuredOutputs && targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")

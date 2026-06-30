@@ -77,8 +77,10 @@ The same model group can have different effective upstream pools for different c
 - Use OpenAI Responses wire API.
 - Set the router token in `METRUM_ROUTER_KEY`.
 - Use `codex exec` for non-interactive validation.
+- Codex/Responses traffic can use native `openai-responses` targets and Chat-only targets only when the target explicitly enables `responses_to_chat` and the requested shape matches the validated bridge flags.
 - For image validation, attach an image with `--image` and use a coding group that includes validated multimodal Responses targets.
 - Provider-hosted tool descriptors should be stripped or rejected according to router Responses policy before upstream calls.
+- Stateful `previous_response_id`, hosted tools, images, reasoning, structured-output, and streaming bridge behavior require separate validation; without it, expect a safe no-upstream eligibility failure for Chat-bridged targets.
 
 ### Claude Code CLI
 
@@ -143,5 +145,6 @@ The opencode API matrix is direct capability evidence, not large-payload closeou
 | One upstream takes all traffic for one client | The group may have only one effective target for that client's API skin | Inspect Provider catalog status `groupSummary`, `activeEligibilitySkin`, and `inactiveToolSupport`, then smoke the missing skin |
 | Claude Code authenticates against Anthropic instead of the router | `ANTHROPIC_API_KEY` is still set or base URL is wrong | Unset `ANTHROPIC_API_KEY`; verify `ANTHROPIC_BASE_URL` |
 | Codex uses Chat instead of Responses | Provider config is missing `wire_api="responses"` | Inspect the Codex provider config |
+| Codex `/v1/responses` cannot use a Chat-only target | The target lacks validated `responses_to_chat` metadata or the request shape is outside the bridge slice | Inspect request target filter reasons for `responses-to-chat-*` and run the restricted bridge smoke |
 | Image task reaches no upstream | URL safety rejected the image or no image-capable target is eligible | Check caller error, usage row, and target `input_modalities` |
 | Live client succeeds but verifier fails | Transport works but task quality is insufficient | Treat as model-group quality evidence, not a router compatibility pass |

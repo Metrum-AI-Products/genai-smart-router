@@ -266,27 +266,28 @@ type ProviderConfig struct {
 }
 
 type ProviderModel struct {
-	Model                              string              `yaml:"model" json:"model"`
-	Dialect                            string              `yaml:"dialect" json:"dialect,omitempty"`
-	DisplayName                        string              `yaml:"display_name" json:"displayName,omitempty"`
-	ContextTokens                      int                 `yaml:"context_tokens" json:"contextTokens,omitempty"`
-	InputPricePerMillionUSD            float64             `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64             `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64             `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64             `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string              `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string              `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string              `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport         `yaml:"tool_support" json:"toolSupport,omitempty"`
-	Reasoning                          ReasoningSupport    `yaml:"reasoning" json:"reasoning,omitempty"`
-	InputModalities                    []string            `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string            `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool               `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
-	ForceStoreFalse                    bool                `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
-	OutputTokenField                   string              `yaml:"output_token_field" json:"outputTokenField,omitempty"`
-	TrafficShape                       TrafficShapeConfig  `yaml:"traffic_shape" json:"trafficShape,omitempty"`
-	RequestShapeSupport                RequestShapeSupport `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
-	Bridges                            BridgeSupport       `yaml:"bridges" json:"bridges,omitempty"`
+	Model                              string                `yaml:"model" json:"model"`
+	Dialect                            string                `yaml:"dialect" json:"dialect,omitempty"`
+	DisplayName                        string                `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int                   `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	InputPricePerMillionUSD            float64               `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64               `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64               `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64               `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string                `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string                `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string                `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport           `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport      `yaml:"reasoning" json:"reasoning,omitempty"`
+	InputModalities                    []string              `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string              `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool                 `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse                    bool                  `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	OutputTokenField                   string                `yaml:"output_token_field" json:"outputTokenField,omitempty"`
+	TrafficShape                       TrafficShapeConfig    `yaml:"traffic_shape" json:"trafficShape,omitempty"`
+	RequestShapeSupport                RequestShapeSupport   `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
+	ResponsesToChat                    ResponsesToChatBridge `yaml:"responses_to_chat" json:"responsesToChat,omitempty"`
+	Bridges                            BridgeSupport         `yaml:"bridges" json:"bridges,omitempty"`
 	// Weight is accepted for legacy configs but intentionally ignored.
 	// Routing weights are group-local and belong on ModelGroup targets.
 	Weight int    `yaml:"weight" json:"weight,omitempty"`
@@ -526,38 +527,52 @@ type ExternalPolicyConfig struct {
 }
 
 type Target struct {
-	Provider                           string              `yaml:"provider" json:"provider"`
-	Model                              string              `yaml:"model" json:"model"`
-	ModelRef                           string              `yaml:"model_ref" json:"modelRef,omitempty"`
-	Dialect                            string              `yaml:"dialect" json:"dialect"`
-	DisplayName                        string              `yaml:"display_name" json:"displayName,omitempty"`
-	ContextTokens                      int                 `yaml:"context_tokens" json:"contextTokens,omitempty"`
-	ToolOnly                           bool                `yaml:"tool_only" json:"toolOnly,omitempty"`
-	TimeoutMS                          int                 `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
-	DefaultThinking                    map[string]any      `yaml:"default_thinking" json:"defaultThinking,omitempty"`
-	Tags                               []string            `yaml:"tags" json:"tags,omitempty"`
-	Weight                             int                 `yaml:"weight" json:"weight"`
-	RPM                                int                 `yaml:"rpm" json:"rpm"`
-	Tier                               string              `yaml:"tier" json:"tier"`
-	Cost                               int                 `yaml:"cost" json:"cost"`
-	InputPricePerMillionUSD            float64             `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
-	OutputPricePerMillionUSD           float64             `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
-	ImageInputPricePerMillionTokensUSD float64             `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
-	ImageInputPricePerImageUSD         float64             `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
-	PricingSource                      string              `yaml:"pricing_source" json:"pricingSource,omitempty"`
-	PricingUpdatedAt                   string              `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
-	PricingNotes                       string              `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
-	ToolSupport                        ToolSupport         `yaml:"tool_support" json:"toolSupport,omitempty"`
-	Reasoning                          ReasoningSupport    `yaml:"reasoning" json:"reasoning,omitempty"`
-	InputModalities                    []string            `yaml:"input_modalities" json:"inputModalities,omitempty"`
-	OutputModalities                   []string            `yaml:"output_modalities" json:"outputModalities,omitempty"`
-	HonorsMaxTokens                    *bool               `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
-	ForceStoreFalse                    bool                `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
-	OutputTokenField                   string              `yaml:"output_token_field" json:"outputTokenField,omitempty"`
-	Validation                         *TargetValidation   `yaml:"validation" json:"validation,omitempty"`
-	TrafficShape                       TrafficShapeConfig  `yaml:"traffic_shape" json:"trafficShape,omitempty"`
-	RequestShapeSupport                RequestShapeSupport `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
-	Bridges                            BridgeSupport       `yaml:"bridges" json:"bridges,omitempty"`
+	Provider                           string                `yaml:"provider" json:"provider"`
+	Model                              string                `yaml:"model" json:"model"`
+	ModelRef                           string                `yaml:"model_ref" json:"modelRef,omitempty"`
+	Dialect                            string                `yaml:"dialect" json:"dialect"`
+	DisplayName                        string                `yaml:"display_name" json:"displayName,omitempty"`
+	ContextTokens                      int                   `yaml:"context_tokens" json:"contextTokens,omitempty"`
+	ToolOnly                           bool                  `yaml:"tool_only" json:"toolOnly,omitempty"`
+	TimeoutMS                          int                   `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
+	DefaultThinking                    map[string]any        `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	Tags                               []string              `yaml:"tags" json:"tags,omitempty"`
+	Weight                             int                   `yaml:"weight" json:"weight"`
+	RPM                                int                   `yaml:"rpm" json:"rpm"`
+	Tier                               string                `yaml:"tier" json:"tier"`
+	Cost                               int                   `yaml:"cost" json:"cost"`
+	InputPricePerMillionUSD            float64               `yaml:"input_price_per_million_usd" json:"inputPricePerMillionUsd,omitempty"`
+	OutputPricePerMillionUSD           float64               `yaml:"output_price_per_million_usd" json:"outputPricePerMillionUsd,omitempty"`
+	ImageInputPricePerMillionTokensUSD float64               `yaml:"image_input_price_per_million_tokens_usd" json:"imageInputPricePerMillionTokensUsd,omitempty"`
+	ImageInputPricePerImageUSD         float64               `yaml:"image_input_price_per_image_usd" json:"imageInputPricePerImageUsd,omitempty"`
+	PricingSource                      string                `yaml:"pricing_source" json:"pricingSource,omitempty"`
+	PricingUpdatedAt                   string                `yaml:"pricing_updated_at" json:"pricingUpdatedAt,omitempty"`
+	PricingNotes                       string                `yaml:"pricing_notes" json:"pricingNotes,omitempty"`
+	ToolSupport                        ToolSupport           `yaml:"tool_support" json:"toolSupport,omitempty"`
+	Reasoning                          ReasoningSupport      `yaml:"reasoning" json:"reasoning,omitempty"`
+	InputModalities                    []string              `yaml:"input_modalities" json:"inputModalities,omitempty"`
+	OutputModalities                   []string              `yaml:"output_modalities" json:"outputModalities,omitempty"`
+	HonorsMaxTokens                    *bool                 `yaml:"honors_max_tokens" json:"honorsMaxTokens,omitempty"`
+	ForceStoreFalse                    bool                  `yaml:"force_store_false" json:"forceStoreFalse,omitempty"`
+	OutputTokenField                   string                `yaml:"output_token_field" json:"outputTokenField,omitempty"`
+	Validation                         *TargetValidation     `yaml:"validation" json:"validation,omitempty"`
+	TrafficShape                       TrafficShapeConfig    `yaml:"traffic_shape" json:"trafficShape,omitempty"`
+	RequestShapeSupport                RequestShapeSupport   `yaml:"request_shape_support" json:"requestShapeSupport,omitempty"`
+	ResponsesToChat                    ResponsesToChatBridge `yaml:"responses_to_chat" json:"responsesToChat,omitempty"`
+	Bridges                            BridgeSupport         `yaml:"bridges" json:"bridges,omitempty"`
+}
+
+type ResponsesToChatBridge struct {
+	Enabled           bool   `yaml:"enabled" json:"enabled,omitempty"`
+	Text              bool   `yaml:"text" json:"text,omitempty"`
+	FunctionTools     bool   `yaml:"function_tools" json:"functionTools,omitempty"`
+	ToolChoice        bool   `yaml:"tool_choice" json:"toolChoice,omitempty"`
+	StructuredOutputs bool   `yaml:"structured_outputs" json:"structuredOutputs,omitempty"`
+	Reasoning         bool   `yaml:"reasoning" json:"reasoning,omitempty"`
+	Images            bool   `yaml:"images" json:"images,omitempty"`
+	Streaming         bool   `yaml:"streaming" json:"streaming,omitempty"`
+	ValidationStatus  string `yaml:"validation_status" json:"validationStatus,omitempty"`
+	ValidationNotes   string `yaml:"validation_notes" json:"validationNotes,omitempty"`
 }
 
 type BridgeSupport struct {
@@ -1025,6 +1040,9 @@ func (c *Config) Validate() error {
 			if err := validateRequestShapeSupport(fmt.Sprintf("provider %s model %s", name, ref), model.RequestShapeSupport); err != nil {
 				return err
 			}
+			if err := validateResponsesToChatBridge(fmt.Sprintf("provider %s model %s", name, ref), model.ResponsesToChat); err != nil {
+				return err
+			}
 		}
 	}
 	if len(c.Models) == 0 {
@@ -1169,6 +1187,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("model group %s target %s has invalid output_token_field: %w", name, resolved.Model, err)
 			}
 			if err := validateRequestShapeSupport(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.RequestShapeSupport); err != nil {
+				return err
+			}
+			if err := validateResponsesToChatBridge(fmt.Sprintf("model group %s target %s", name, resolved.Model), resolved.ResponsesToChat); err != nil {
 				return err
 			}
 			resolved.InputModalities = defaultModalities(resolved.InputModalities)
@@ -2221,6 +2242,7 @@ func (c *Config) resolveTarget(group string, target Target) (Target, error) {
 	}
 	target.Bridges = mergeBridgeSupport(catalog.Bridges, target.Bridges)
 	target.RequestShapeSupport = mergeRequestShapeSupport(catalog.RequestShapeSupport, target.RequestShapeSupport)
+	target.ResponsesToChat = mergeResponsesToChatBridge(catalog.ResponsesToChat, target.ResponsesToChat)
 	if target.Model == "" {
 		return target, fmt.Errorf("model group %s target model_ref %s for provider %s resolved without model", group, target.ModelRef, target.Provider)
 	}
@@ -2308,6 +2330,60 @@ func mergeRequestShapeSupport(base, override RequestShapeSupport) RequestShapeSu
 		out.ValidationNotes = override.ValidationNotes
 	}
 	return out
+}
+
+func mergeResponsesToChatBridge(base, override ResponsesToChatBridge) ResponsesToChatBridge {
+	out := base
+	if override.Enabled {
+		out.Enabled = true
+	}
+	if override.Text {
+		out.Text = true
+	}
+	if override.FunctionTools {
+		out.FunctionTools = true
+	}
+	if override.ToolChoice {
+		out.ToolChoice = true
+	}
+	if override.StructuredOutputs {
+		out.StructuredOutputs = true
+	}
+	if override.Reasoning {
+		out.Reasoning = true
+	}
+	if override.Images {
+		out.Images = true
+	}
+	if override.Streaming {
+		out.Streaming = true
+	}
+	if override.ValidationStatus != "" {
+		out.ValidationStatus = override.ValidationStatus
+	}
+	if override.ValidationNotes != "" {
+		out.ValidationNotes = override.ValidationNotes
+	}
+	return out
+}
+
+func validateResponsesToChatBridge(prefix string, bridge ResponsesToChatBridge) error {
+	status := strings.ToLower(strings.TrimSpace(bridge.ValidationStatus))
+	switch status {
+	case "", "unknown", "limited", "passed", "failed":
+	default:
+		return fmt.Errorf("%s responses_to_chat.validation_status %q is unsupported", prefix, bridge.ValidationStatus)
+	}
+	if !bridge.Enabled {
+		return nil
+	}
+	if !bridge.Text && !bridge.FunctionTools && !bridge.ToolChoice && !bridge.StructuredOutputs && !bridge.Reasoning && !bridge.Images && !bridge.Streaming {
+		return fmt.Errorf("%s responses_to_chat.enabled requires at least one supported shape flag", prefix)
+	}
+	if bridge.ToolChoice && !bridge.FunctionTools {
+		return fmt.Errorf("%s responses_to_chat.tool_choice requires function_tools", prefix)
+	}
+	return nil
 }
 
 func validateRequestShapeSupport(prefix string, support RequestShapeSupport) error {

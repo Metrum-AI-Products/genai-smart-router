@@ -813,6 +813,20 @@ providers:
         #   - function_call_output
         #   validation_status: limited
         #   validation_notes: Synthetic large coding-agent payload validation has not passed.
+        # Optional stateless bridge for `/v1/responses` callers to use this
+        # Chat Completions upstream. Enable only after direct Chat smokes and a
+        # router-level Responses-to-Chat smoke pass for the exact target and
+        # request shapes. The first supported production slice is text and basic
+        # function tools; stateful previous_response_id, hosted tools, images,
+        # reasoning, structured outputs, and streaming require separate flags and
+        # validation before use.
+        # responses_to_chat:
+        #   enabled: true
+        #   text: true
+        #   function_tools: true
+        #   tool_choice: true
+        #   validation_status: passed
+        #   validation_notes: Router-level Responses text and function-tool bridge smokes passed for this target.
         input_price_per_million_usd: 0.09
         output_price_per_million_usd: 0.18
         pricing_source: https://openrouter.ai/api/v1/models
@@ -1379,6 +1393,14 @@ models:
       # request_shape_support:
       #   max_estimated_input_tokens: 120000
       #   max_requested_output_tokens: 8192
+      # A Chat target may opt into stateless `/v1/responses` bridge eligibility
+      # with responses_to_chat. Leave omitted unless that target passed a
+      # router-level Responses-to-Chat bridge smoke.
+      # responses_to_chat:
+      #   enabled: true
+      #   text: true
+      #   function_tools: true
+      #   tool_choice: true
   crusoe-gemma-smoke:
     strategy: static
     targets:

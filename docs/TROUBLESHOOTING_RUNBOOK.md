@@ -91,6 +91,8 @@ If the requirements include `contract-*`, inspect only the requested group. Cont
 
 If the requirements include `reasoning`, inspect only targets in the requested group. Confirm the request shape is OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`, then check whether any target has validated compatible `reasoning` metadata for that exact dialect and skin. A mixed weighted group may intentionally keep non-reasoning targets for ordinary traffic, but explicit reasoning requests need at least one compatible target. Fixes are usually to add or restore validated metadata, add a validated reasoning target, remove an overly broad `required_capabilities.reasoning` contract, or disable a dynamic-score reasoning hard filter that is stricter than the target set.
 
+For `/v1/responses` requests that should be able to use a Chat-only target, inspect target candidates and filter reasons for `responses-to-chat-*`. A Chat target is eligible only when its resolved target metadata has `responses_to_chat.enabled: true` and flags for the requested shape. Common bridge reasons are `responses-to-chat-bridge-disabled`, `responses-to-chat-previous-response-id`, `responses-to-chat-hosted-tools`, `responses-to-chat-tool-choice`, `responses-to-chat-image`, `responses-to-chat-reasoning`, `responses-to-chat-structured-output`, and `responses-to-chat-streaming`. These failures should have zero upstream attempts. If the bridge succeeds, `request_usage.inbound_dialect` remains `openai-responses`, `request_usage.target_dialect` is `openai-chat`, and `request_translation_shapes.bridge_direction` is `responses_to_chat`.
+
 ### Empty Final Content From Reasoning Requests
 
 Reasoning-heavy upstreams can spend a small caller output cap on internal reasoning and return little or no final assistant content. Reproduce with both the original cap and a realistic cap such as 512 or 1024 output tokens. Check target metadata for `min_budget_tokens`, `max_budget_tokens`, `budget_must_be_less_than_max_tokens`, `rejects_max_tokens`, `rejects_temperature`, and `rejects_top_p`. If the realistic-budget smoke passes but low-cap requests fail, configure the target so capped requests are translated or skipped safely, or remove the reasoning metadata until the exact behavior is understood.
@@ -211,6 +213,7 @@ SELECT
   rs.reasoning_present,
   rs.image_count,
   ts.endpoint_path,
+  ts.bridge_direction,
   ts.translated_output_cap_field,
   ts.translated_output_cap_bucket,
   ts.translated_reasoning_control,
@@ -228,7 +231,7 @@ WHERE u.ts >= :from
   AND a.provider = :provider
   AND a.model = :model
   AND a.dialect = :dialect
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
 ORDER BY requests DESC;
 ```
 

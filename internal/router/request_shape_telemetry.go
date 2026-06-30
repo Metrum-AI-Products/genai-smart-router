@@ -119,6 +119,9 @@ func (s *Service) recordTranslationShapeTelemetry(rc *requestContext, req *IRReq
 		endpointPath = parsed.Path
 	}
 	shape := translationShapeFromBody(req, target, provider, outDialect, endpointPath, attemptIndex, translated, len(body))
+	if isResponsesToChatBridge(rc.dialect, outDialect, target) {
+		shape.BridgeDirection = responsesToChatBridgeDirection
+	}
 	if rc.rec.RequestShape != nil {
 		shape.RequestShapeFingerprint = rc.rec.RequestShape.RequestShapeFingerprint
 		shape.ToolSchemaFingerprint = rc.rec.RequestShape.ToolSchemaFingerprint

@@ -276,6 +276,7 @@ type translationShapeLogRecord struct {
 	Provider                     string `json:"provider"`
 	Model                        string `json:"model"`
 	Dialect                      string `json:"dialect"`
+	BridgeDirection              string `json:"bridge_direction,omitempty"`
 	EndpointPath                 string `json:"endpoint_path,omitempty"`
 	TranslatedStream             bool   `json:"translated_stream"`
 	TranslatedToolCount          int    `json:"translated_tool_count,omitempty"`
