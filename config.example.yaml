@@ -641,9 +641,10 @@ providers:
           Chat text and auto-tool smokes passed on 2026-06-28 with an explicit User-Agent;
           tiny text budgets can be spent on reasoning before visible final content,
           so use realistic budgets for acceptance. Direct Fireworks Chat and local
-          router-level large coding-agent smokes passed on 2026-06-29 with a
-          synthetic 524 KB OpenAI Chat payload, 24 tools, about 50 KB of serialized
-          tool schemas, max_tokens=32, and about 91K prompt tokens. The 2026-06-30
+          router-level large coding-agent smokes passed on 2026-06-29 and were
+          rerun on 2026-06-30 with a synthetic 524 KB OpenAI Chat payload, 24
+          tools, about 50 KB of serialized tool schemas, max_tokens=32, and about
+          91K prompt tokens. The 2026-06-30
           opencode API capability matrix passed direct OpenAI Chat text/tools
           and direct Anthropic Messages text/tools; direct image probes returned
           sanitized HTTP 400 rows.
@@ -651,9 +652,10 @@ providers:
           supports_large_coding_agent_payloads: true
           validation_status: passed
           validation_notes: Direct Fireworks Chat and local router-level smokes
-            passed on 2026-06-29 with a synthetic 524 KB coding-agent payload.
-            This validates the active reference Chat route shape for ordinary
-            large OpenAI Chat agent requests. Direct Anthropic Messages text/tools
+            passed on 2026-06-29 and were rerun on 2026-06-30 with a synthetic
+            524 KB coding-agent payload. This validates the active reference Chat
+            route shape for ordinary large OpenAI Chat agent requests. Direct
+            Anthropic Messages text/tools
             passed on 2026-06-30, but revalidate through the router before enabling
             that skin in active routing. Revalidate before enabling image, Responses,
             or materially larger tool-schema shapes.
