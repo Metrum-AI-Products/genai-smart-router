@@ -185,7 +185,7 @@ func TestReasoningNoEligibleTargetAndModelListMetadata(t *testing.T) {
 	for _, item := range body["data"].([]any) {
 		model := item.(map[string]any)
 		if model["id"] == "default" {
-			assertNoCodexReasoningModelMetadata(t, model)
+			assertEmptyCodexReasoningModelMetadata(t, model)
 		}
 		if model["id"] == "reasoning" {
 			foundReasoning = true
@@ -240,23 +240,28 @@ func TestReasoningModelListDoesNotAdvertiseToolOnlyThinking(t *testing.T) {
 	for _, item := range body["data"].([]any) {
 		model := item.(map[string]any)
 		if model["id"] == "default" {
-			assertNoCodexReasoningModelMetadata(t, model)
+			assertEmptyCodexReasoningModelMetadata(t, model)
 			return
 		}
 	}
 	t.Fatalf("default group missing from /v1/models: %#v", body)
 }
 
-func assertNoCodexReasoningModelMetadata(t *testing.T, model map[string]any) {
+func assertEmptyCodexReasoningModelMetadata(t *testing.T, model map[string]any) {
 	t.Helper()
 	for _, key := range []string{
 		"default_reasoning_level",
 		"default_reasoning_summary",
-		"supported_reasoning_levels",
-		"supports_reasoning_summaries",
 	} {
 		if _, ok := model[key]; ok {
 			t.Fatalf("non-reasoning model advertised %s: %#v", key, model)
 		}
+	}
+	levels, ok := model["supported_reasoning_levels"].([]any)
+	if !ok || len(levels) != 0 {
+		t.Fatalf("non-reasoning model reasoning levels=%#v in %#v", model["supported_reasoning_levels"], model)
+	}
+	if model["supports_reasoning_summaries"] != false {
+		t.Fatalf("non-reasoning model summaries=%#v in %#v", model["supports_reasoning_summaries"], model)
 	}
 }

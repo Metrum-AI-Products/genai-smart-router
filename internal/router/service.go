@@ -342,6 +342,8 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"visibility":                       "list",
 			"minimal_client_version":           "0.0.0",
 			"supported_in_api":                 true,
+			"supported_reasoning_levels":       []map[string]string{},
+			"supports_reasoning_summaries":     false,
 			"availability_nux":                 nil,
 			"upgrade":                          nil,
 			"priority":                         1000,
