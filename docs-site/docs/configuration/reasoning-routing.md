@@ -166,7 +166,17 @@ Source config is not enough. After deployment, administrators should prove the r
 4. Run one Anthropic Messages request with `thinking` when that surface is enabled.
 5. Join usage telemetry by `X-Request-Id` and confirm the selected provider/model/dialect and translated reasoning control.
 
-The operator smoke script `scripts/prod_reasoning_smoke.py` automates this for staging and production deployments. It prints only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
+The operator smoke script `scripts/reasoning_smoke.py` automates this for staging and production deployments. It prints only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
+
+```bash
+rtk python3 scripts/reasoning_smoke.py \
+  --base-url "$ROUTER_BASE_URL" \
+  --token-file "$ROUTER_TOKEN_FILE" \
+  --model "$MODEL_GROUP" \
+  --postgres-dsn "$ROUTER_USAGE_DB_DSN"
+```
+
+Use `--sqlite-db <usage-db-path>` for a local or staging SQLite-backed deployment. The older `scripts/prod_reasoning_smoke.py` entrypoint is a compatibility wrapper; new automation should call `scripts/reasoning_smoke.py`.
 
 ## Negative Eligibility Test
 

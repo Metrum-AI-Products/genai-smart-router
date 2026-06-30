@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for prod_reasoning_smoke.py."""
+"""Tests for reasoning_smoke.py."""
 
 from __future__ import annotations
 
@@ -10,12 +10,14 @@ import sqlite3
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
-import prod_reasoning_smoke as smoke
+import prod_reasoning_smoke as wrapper
+import reasoning_smoke as smoke
 
 
 class MockRouterHandler(BaseHTTPRequestHandler):
@@ -102,7 +104,7 @@ class ProdReasoningSmokeTest(unittest.TestCase):
 CREATE TABLE request_usage (
   request_id TEXT PRIMARY KEY,
   resolved_group TEXT NOT NULL,
-  status_code INTEGER NOT NULL,
+  status INTEGER NOT NULL,
   fallback_used BOOLEAN NOT NULL
 );
 CREATE TABLE request_attempts (
@@ -209,6 +211,16 @@ CREATE TABLE request_translation_shapes (
     def test_fails_when_selected_target_is_unexpected(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "selected"):
             self.run_smoke("--surfaces", "chat", "--expect", "chat:wrong:model:openai-chat")
+
+    def test_compatibility_wrapper_preserves_json_runtime_errors(self) -> None:
+        stderr = io.StringIO()
+        with mock.patch.object(wrapper, "main", side_effect=RuntimeError("telemetry missing")):
+            with redirect_stderr(stderr):
+                code = wrapper.run([])
+        self.assertEqual(code, 1)
+        event = json.loads(stderr.getvalue())
+        self.assertEqual(event["event"], "reasoning_smoke_failed")
+        self.assertEqual(event["error"], "telemetry missing")
 
 
 if __name__ == "__main__":

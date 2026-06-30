@@ -104,7 +104,7 @@ Use the exact caller token that Codex uses and call `/v1/models`. If the request
 Then run the repeatable proof:
 
 ```bash
-rtk python3 scripts/prod_reasoning_smoke.py \
+rtk python3 scripts/reasoning_smoke.py \
   --base-url https://llm-api-engg.metrum.ai \
   --token-file <router-token-file> \
   --model <group> \

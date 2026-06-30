@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -150,6 +151,173 @@ func TestReasoningRequestFiltersTargetsAndTranslates(t *testing.T) {
 	}
 }
 
+func TestReasoningSurfaceMatrixPersistsTranslationProof(t *testing.T) {
+	type upstreamCall struct {
+		Path string
+		Body map[string]any
+	}
+	var calls []upstreamCall
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		calls = append(calls, upstreamCall{Path: r.URL.Path, Body: body})
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":      "chatcmpl_reasoning_matrix",
+				"object":  "chat.completion",
+				"created": 1710000000,
+				"model":   body["model"],
+				"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": "OK"}, "finish_reason": "stop"}},
+				"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+			})
+		case "/v1/responses":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":          "resp_reasoning_matrix",
+				"object":      "response",
+				"status":      "completed",
+				"model":       body["model"],
+				"output_text": "OK",
+				"output":      []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "OK"}}}},
+				"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+			})
+		case "/anthropic/v1/messages":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":          "msg_reasoning_matrix",
+				"type":        "message",
+				"role":        "assistant",
+				"model":       body["model"],
+				"content":     []map[string]any{{"type": "text", "text": "OK"}},
+				"stop_reason": "end_turn",
+				"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+			})
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["plain_chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["reasoning_chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["plain_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Provider["reasoning_responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Provider["plain_anthropic"] = ProviderConfig{BaseURL: upstream.URL + "/anthropic", Dialect: "anthropic", AuthScheme: "bearer", APIKey: "provider-key"}
+	cfg.Provider["reasoning_anthropic"] = ProviderConfig{BaseURL: upstream.URL + "/anthropic", Dialect: "anthropic", AuthScheme: "bearer", APIKey: "provider-key"}
+	cfg.Models["reasoning-chat"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "plain_chat", Model: "plain-chat"},
+		{Provider: "reasoning_chat", Model: "reasoning-chat", Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum, RejectsMaxTokens: true}},
+	}}
+	cfg.Models["reasoning-responses"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "plain_responses", Model: "plain-responses"},
+		{Provider: "reasoning_responses", Model: "reasoning-responses", Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum, SupportsSummaries: true}},
+	}}
+	cfg.Models["reasoning-anthropic"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "plain_anthropic", Model: "plain-anthropic"},
+		{Provider: "reasoning_anthropic", Model: "reasoning-anthropic", Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlTokenBudget, MinBudgetTokens: 128, BudgetMustBeLessThanMaxTokens: true}},
+	}}
+	cfg.Callers[0].Allow = []string{"reasoning-chat", "reasoning-responses", "reasoning-anthropic"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	cases := []struct {
+		name             string
+		path             string
+		body             string
+		wantPath         string
+		wantModel        string
+		wantProvider     string
+		wantDialect      string
+		wantReasoningKey string
+		assertBody       func(t *testing.T, body map[string]any)
+	}{
+		{
+			name:             "openai chat",
+			path:             "/v1/chat/completions",
+			body:             `{"model":"reasoning-chat","reasoning_effort":"high","max_tokens":32,"messages":[{"role":"user","content":"x"}]}`,
+			wantPath:         "/v1/chat/completions",
+			wantModel:        "reasoning-chat",
+			wantProvider:     "reasoning_chat",
+			wantDialect:      "openai-chat",
+			wantReasoningKey: "reasoning_effort",
+			assertBody: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				if body["reasoning_effort"] != "high" || body["max_completion_tokens"] != float64(32) {
+					t.Fatalf("chat reasoning body=%#v", body)
+				}
+				if _, ok := body["max_tokens"]; ok {
+					t.Fatalf("chat reasoning target should rewrite max_tokens: %#v", body)
+				}
+			},
+		},
+		{
+			name:             "openai responses",
+			path:             "/v1/responses",
+			body:             `{"model":"reasoning-responses","reasoning":{"effort":"low","summary":"auto"},"max_output_tokens":64,"input":"x"}`,
+			wantPath:         "/v1/responses",
+			wantModel:        "reasoning-responses",
+			wantProvider:     "reasoning_responses",
+			wantDialect:      "openai-responses",
+			wantReasoningKey: "reasoning",
+			assertBody: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				reasoning, ok := body["reasoning"].(map[string]any)
+				if !ok || reasoning["effort"] != "low" || reasoning["summary"] != "auto" {
+					t.Fatalf("responses reasoning body=%#v", body)
+				}
+			},
+		},
+		{
+			name:             "anthropic messages",
+			path:             "/v1/messages",
+			body:             `{"model":"reasoning-anthropic","max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":512},"messages":[{"role":"user","content":"x"}]}`,
+			wantPath:         "/anthropic/v1/messages",
+			wantModel:        "reasoning-anthropic",
+			wantProvider:     "reasoning_anthropic",
+			wantDialect:      "anthropic",
+			wantReasoningKey: "thinking",
+			assertBody: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				thinking, ok := body["thinking"].(map[string]any)
+				if !ok || thinking["type"] != "enabled" || thinking["budget_tokens"] != float64(512) {
+					t.Fatalf("anthropic thinking body=%#v", body)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			startCalls := len(calls)
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Anthropic-Version", "2023-06-01")
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if len(calls) != startCalls+1 {
+				t.Fatalf("upstream calls=%d, want %d", len(calls), startCalls+1)
+			}
+			call := calls[len(calls)-1]
+			if call.Path != tc.wantPath || call.Body["model"] != tc.wantModel {
+				t.Fatalf("upstream path/model=%s/%#v body=%#v", call.Path, call.Body["model"], call.Body)
+			}
+			tc.assertBody(t, call.Body)
+			assertReasoningTelemetryProof(t, svc, rr.Header().Get("X-Request-Id"), tc.wantProvider, tc.wantModel, tc.wantDialect, tc.wantReasoningKey)
+		})
+	}
+}
+
 func TestReasoningNoEligibleTargetAndModelListMetadata(t *testing.T) {
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "plain-chat"}}}
@@ -263,5 +431,53 @@ func assertEmptyCodexReasoningModelMetadata(t *testing.T, model map[string]any) 
 	}
 	if model["supports_reasoning_summaries"] != false {
 		t.Fatalf("non-reasoning model summaries=%#v in %#v", model["supports_reasoning_summaries"], model)
+	}
+}
+
+func assertReasoningTelemetryProof(t *testing.T, svc *Service, requestID, provider, model, dialect, reasoningControl string) {
+	t.Helper()
+	if requestID == "" {
+		t.Fatal("missing X-Request-Id")
+	}
+	var usage usageRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.Status != http.StatusOK || usage.Attempts != 1 || usage.FallbackUsed {
+		t.Fatalf("usage row=%#v", usage)
+	}
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !shape.ReasoningPresent {
+		t.Fatalf("request shape did not persist reasoning: %#v", shape)
+	}
+	var translated requestTranslationShapeRecord
+	if err := svc.usage.db.Where("request_id = ? AND attempt_index = ?", requestID, 1).First(&translated).Error; err != nil {
+		t.Fatal(err)
+	}
+	if translated.Provider != provider || translated.Model != model || translated.Dialect != dialect || translated.TranslatedReasoningControl != reasoningControl {
+		t.Fatalf("translation proof=%#v", translated)
+	}
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).Order("candidate_index ASC").Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("candidate count=%d rows=%#v", len(candidates), candidates)
+	}
+	if candidates[0].Eligible || candidates[0].Selected || candidates[0].ReasoningSupport {
+		t.Fatalf("plain candidate should be filtered for reasoning: %#v", candidates[0])
+	}
+	if !candidates[1].Eligible || !candidates[1].Selected || !candidates[1].ReasoningSupport {
+		t.Fatalf("reasoning candidate should be selected: %#v", candidates[1])
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", requestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !filterReasonsContain(reasons, "request_shape", "reasoning-support") {
+		t.Fatalf("missing reasoning-support filter reason: %#v", reasons)
 	}
 }

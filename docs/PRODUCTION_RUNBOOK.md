@@ -85,7 +85,7 @@ Run real CLI smokes for production-affecting routing or API changes:
 For reasoning-routing, provider-skin, or Codex-visible model metadata changes, run the repeatable reasoning proof before declaring the deployment healthy:
 
 ```bash
-rtk python3 scripts/prod_reasoning_smoke.py \
+rtk python3 scripts/reasoning_smoke.py \
   --base-url https://llm-api-engg.metrum.ai \
   --token-file <router-token-file> \
   --model reasoning-smoke \

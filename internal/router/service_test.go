@@ -83,6 +83,7 @@ func TestDecisionFilterReasonsDoNotMarkExistingTextTranslationsDialectUnsupporte
 		Model:            "chat-target",
 		InputModalities:  []string{"text"},
 		OutputModalities: []string{"text"},
+		ResponsesToChat:  ResponsesToChatBridge{Enabled: true, Text: true},
 	}
 	estimate := requestTokenEstimateFromIR(req, "openai-responses", 64)
 	reasons := svc.requestFilterReasons(target, req, "openai-responses", "openai-chat", estimate)
@@ -5481,7 +5482,7 @@ func TestResponsesMaxOutputTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
 	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
 	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "ignored_caps", Model: "cap-unsafe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &ignoresMaxTokens},
-		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens, RequestShapeSupport: RequestShapeSupport{SupportedInboundDialects: []string{"openai-responses"}}},
+		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens, RequestShapeSupport: RequestShapeSupport{SupportedInboundDialects: []string{"openai-responses"}}, ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true}},
 	}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
 	svc, err := New(cfg)

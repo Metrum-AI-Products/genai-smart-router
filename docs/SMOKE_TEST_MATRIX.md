@@ -62,7 +62,7 @@ The full onboarding procedure is tracked in `docs/onboard-model.md` when present
 Use this proof after any deployment or config change that affects reasoning metadata, model groups used by Codex/agent clients, provider skins, or usage diagnostics. The reference config includes `reasoning-smoke` as an example restricted group with one validated target for each enabled surface. Hosted deployments may instead pass a deployment-defined group such as a staging group or `big-coder` when that group is intended to advertise reasoning.
 
 ```bash
-rtk python3 scripts/prod_reasoning_smoke.py \
+rtk python3 scripts/reasoning_smoke.py \
   --base-url "$ROUTER_BASE_URL" \
   --token-file "$ROUTER_TOKEN_FILE" \
   --model reasoning-smoke \
@@ -75,6 +75,16 @@ rtk python3 scripts/prod_reasoning_smoke.py \
 The script prints only safe JSON evidence: model group, reasoning level count, request IDs, selected provider/model/dialect, translated reasoning control, and fallback flag. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config. It exits nonzero when `/v1/models` does not advertise reasoning levels, any surface fails, a request ID is missing from usage DB telemetry, the translated control is not `reasoning_effort`, `reasoning`, or `thinking` for the matching surface, the selected target differs from the expected set, or fallback was used.
 
 For SQLite-backed local/staging checks, replace `--postgres-dsn` with `--sqlite-db <usage-db-path>`. For a deployment that intentionally has no Anthropic reasoning target, run `--surfaces chat,responses` and document the Anthropic blocker instead of claiming full three-surface coverage.
+
+Local regression coverage must stay in the normal test suite so reasoning translation can be proven without a live provider. Run:
+
+```bash
+rtk go test ./internal/router -run TestReasoning
+rtk python3 scripts/prod_reasoning_smoke_test.py
+rtk python3 scripts/reasoning_smoke.py --help
+```
+
+The Go matrix verifies OpenAI Chat, OpenAI Responses, and Anthropic Messages requests filter out non-reasoning targets, translate the correct upstream control field, persist `request_shapes.reasoning_present`, select the reasoning-capable candidate, and record `request_translation_shapes.translated_reasoning_control`. The Python tests verify the standalone smoke's DB proof logic against the current relational schema. `scripts/prod_reasoning_smoke.py` is kept only as a compatibility wrapper.
 
 ## opencode API Capability Matrix
 
