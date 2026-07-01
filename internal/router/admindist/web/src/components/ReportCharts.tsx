@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Bar, Line } from "react-chartjs-2";
 import type { ChartData, ChartOptions } from "chart.js";
 import type { ReportChart, ReportChartAxis, ReportChartPoint, ReportChartSeries } from "@/lib/reports";
+import { buildShortLabelMap, type ShortLabelMap } from "@/lib/shortLabels";
 import { compactFmt, usdCompactFmt } from "@/lib/utils";
 
 type Props = {
@@ -41,6 +43,7 @@ export function ReportCharts({ charts }: Props) {
               <Bar data={chartData(chart) as ChartData<"bar">} options={chartOptions(chart) as ChartOptions<"bar">} />
             )}
           </div>
+          <ChartLegend entries={chart.legendEntries} />
         </div>
       ))}
     </section>
@@ -53,6 +56,9 @@ type NormalizedChart = {
   kind: "bar" | "line";
   xAxis: ReportChartAxis;
   yAxis: ReportChartAxis;
+  labels: string[];
+  displayLabels: string[];
+  legendEntries: ShortLabelMap[];
   series: Array<Required<Pick<ReportChartSeries, "name" | "points">> & { unit?: string; colorKey?: string }>;
 };
 
@@ -75,12 +81,19 @@ function normalizeChart(chart: ReportChart): NormalizedChart {
           points: legacyPoints(rawSeries as ReportChartPoint[], chart.points),
         },
       ];
+  const kind = xAxis.type === "time" ? "line" : "bar";
+  const labels = Array.from(new Set(series.flatMap((item) => item.points.map((point) => point.x || ""))));
+  const legendEntries = kind === "bar" ? buildShortLabelMap(labels) : [];
+  const fullToShort = new Map(legendEntries.map((entry) => [entry.full, entry.short]));
   return {
     id: chart.chart_id || chart.chartId || chart.id || chart.title || "chart",
     title: chart.title || "Report chart",
-    kind: xAxis.type === "time" ? "line" : "bar",
+    kind,
     xAxis,
     yAxis,
+    labels,
+    displayLabels: kind === "bar" ? labels.map((label) => fullToShort.get(label) || label) : labels,
+    legendEntries,
     series,
   };
 }
@@ -95,15 +108,14 @@ function legacyPoints(series?: ReportChartPoint[], points?: ReportChartPoint[]):
 }
 
 function chartData(chart: NormalizedChart): ChartData<"bar" | "line"> {
-  const labels = Array.from(new Set(chart.series.flatMap((series) => series.points.map((point) => point.x || ""))));
   return {
-    labels,
+    labels: chart.displayLabels,
     datasets: chart.series.map((series, index) => {
       const valuesByLabel = new Map(series.points.map((point) => [point.x || "", point.y || 0]));
       const color = palette[series.colorKey || ""] || Object.values(palette)[index % Object.keys(palette).length];
       return {
         label: series.name,
-        data: labels.map((label) => valuesByLabel.get(label) || 0),
+        data: chart.labels.map((label) => valuesByLabel.get(label) || 0),
         borderColor: color,
         backgroundColor: withAlpha(color, chart.kind === "line" ? 0.18 : 0.7),
         borderWidth: 2,
@@ -123,13 +135,21 @@ function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
       legend: { labels: { color: "rgba(255,255,255,0.72)", boxWidth: 12, boxHeight: 12 } },
       tooltip: {
         callbacks: {
+          title: (items) => chart.labels[items[0]?.dataIndex ?? -1] || items[0]?.label || "",
           label: (item) => `${item.dataset.label}: ${formatChartNumber(Number(item.raw || 0), chart.yAxis.unit)}`,
         },
       },
     },
     scales: {
       x: {
-        ticks: { color: "rgba(255,255,255,0.58)", maxRotation: 40, minRotation: 0 },
+        ticks: {
+          color: "rgba(255,255,255,0.58)",
+          maxRotation: chart.kind === "bar" ? 0 : 40,
+          minRotation: 0,
+          autoSkip: chart.kind === "bar",
+          autoSkipPadding: 12,
+          maxTicksLimit: chart.kind === "bar" ? 12 : undefined,
+        },
         grid: { color: "rgba(255,255,255,0.06)" },
       },
       y: {
@@ -142,6 +162,33 @@ function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
       },
     },
   };
+}
+
+function ChartLegend({ entries }: { entries: ShortLabelMap[] }) {
+  const [open, setOpen] = useState(entries.length <= 8);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-3 text-[0.7rem] text-white/62" data-chart-bucket-legend>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="mb-2 inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-white/70 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/30"
+        aria-expanded={open}
+      >
+        {open ? "Hide" : "Show"} bucket legend ({entries.length})
+      </button>
+      {open && (
+        <ul className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
+          {entries.map((entry) => (
+            <li key={entry.full} className="flex min-w-0 font-mono" title={entry.full}>
+              <span className="mr-2 inline-block min-w-[4ch] shrink-0 text-white/48">{entry.short}</span>
+              <span className="truncate align-bottom">{entry.full}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function formatChartNumber(value: number, unit?: string): string {

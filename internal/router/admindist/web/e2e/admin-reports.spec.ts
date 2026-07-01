@@ -78,6 +78,24 @@ test("admin reports shell renders every tab with mocked report APIs", async ({ p
   expect(consoleErrors).toEqual([]);
 });
 
+test("category charts use short axis labels with a collapsible bucket legend", async ({ page }) => {
+  await page.goto("/?tab=provider-model-mix&since=24h&limit=50");
+
+  await expect(page.getByRole("heading", { name: "Provider/model", exact: true })).toBeVisible();
+  const legend = page.locator("[data-chart-bucket-legend]").first();
+  await expect(legend.getByRole("button", { name: /Show bucket legend \(10\)/ })).toBeVisible();
+  await expect(legend.locator("li")).toHaveCount(0);
+
+  await legend.getByRole("button", { name: /Show bucket legend \(10\)/ }).click();
+  await expect(legend.getByRole("button", { name: /Hide bucket legend \(10\)/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(legend.locator("li")).toHaveCount(10);
+  await expect(legend.getByText("deepseek-v4-fla…")).toBeVisible();
+  await expect(legend.getByText("fireworks/accounts/fireworks/models/deepseek-v4-flash")).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(horizontalOverflow).toBe(false);
+});
+
 test("sidebar groups collapse and expand on click", async ({ page }) => {
   await page.goto("/");
 
@@ -504,6 +522,12 @@ function responseForRoute(route: Route) {
       requests: [requestRow()],
     });
   }
+  if (endpoint === "provider-model-mix") {
+    return commonResponse(endpoint, {
+      charts: [longProviderModelChart()],
+      rows: [row(endpoint)],
+    }, topNPagination(1, true));
+  }
   if (endpoint === "security/events") {
     if (url.searchParams.get("cursor") === "expired") return invalidCursorResponse();
     return commonResponse("security/events", {
@@ -566,6 +590,38 @@ function responseForRoute(route: Route) {
     }, cursorPagination(url, secondPage ? 1 : 2, 3, !secondPage));
   }
   return commonResponse(endpoint, { rows: [row(endpoint)] });
+}
+
+function longProviderModelLabels() {
+  return [
+    "fireworks/accounts/fireworks/models/deepseek-v4-flash",
+    "fireworks/accounts/fireworks/models/gpt-oss-20b",
+    "moonshotai/kimi-k2.7-code",
+    "minimax/minimax-m3",
+    "openrouter/anthropic/claude-sonnet-4.6",
+    "baseten/openai/gpt-oss-120b",
+    "crusoe/zai/GLM-5.2",
+    "openai/gpt-5.4-nano",
+    "fireworks/accounts/fireworks/models/kimi-k2p7-code",
+    "fireworks/accounts/fireworks/models/qwen3p6-plus",
+  ];
+}
+
+function longProviderModelChart(): ReportChart {
+  return {
+    chart_id: "provider-model-mix-requests",
+    title: "Provider/model mix requests",
+    x_axis: { label: "Provider/model", type: "category" },
+    y_axis: { label: "Requests", unit: "requests" },
+    series: [
+      {
+        name: "Requests",
+        unit: "requests",
+        color_key: "magenta",
+        points: longProviderModelLabels().map((label, index) => ({ x: label, y: 10 - index })),
+      },
+    ],
+  };
 }
 
 function commonResponse(report: string, extra: Record<string, unknown>, pagination = topNPagination(1, true)) {
