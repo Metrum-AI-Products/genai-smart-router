@@ -657,8 +657,9 @@ type adminReportChartSeries struct {
 }
 
 type adminReportChartPoint struct {
-	X string  `json:"x"`
-	Y float64 `json:"y"`
+	X       string  `json:"x"`
+	XUnixMs *int64  `json:"x_unix_ms,omitempty"`
+	Y       float64 `json:"y"`
 }
 
 type adminReportFilterDTO struct {
@@ -4419,7 +4420,7 @@ func adminTimeSavingsChart(filters adminReportFilters, generatedAt, id, title, y
 func adminSavingsChartSeries(name, unit, colorKey string, rows []adminSavingsRow, value func(adminSavingsRow) float64) adminReportChartSeries {
 	points := make([]adminReportChartPoint, 0, len(rows))
 	for _, row := range rows {
-		points = append(points, adminReportChartPoint{X: row.Key, Y: value(row)})
+		points = append(points, adminReportChartPoint{X: row.Key, XUnixMs: adminReportTimeUnixMs(row.Key), Y: value(row)})
 	}
 	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
 }
@@ -4566,9 +4567,18 @@ func adminCategoryChart(filters adminReportFilters, generatedAt, id, title, xLab
 func adminChartSeriesFromTimeRows(name, unit, colorKey string, rows []adminReportSeries, value func(adminReportSeries) float64) adminReportChartSeries {
 	points := make([]adminReportChartPoint, 0, len(rows))
 	for _, row := range rows {
-		points = append(points, adminReportChartPoint{X: row.TimeUTC, Y: value(row)})
+		points = append(points, adminReportChartPoint{X: row.TimeUTC, XUnixMs: adminReportTimeUnixMs(row.TimeUTC), Y: value(row)})
 	}
 	return adminReportChartSeries{Name: name, Unit: unit, ColorKey: colorKey, Points: points}
+}
+
+func adminReportTimeUnixMs(value string) *int64 {
+	t, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil
+	}
+	ms := t.UTC().UnixMilli()
+	return &ms
 }
 
 func adminChartSeriesFromTableRows(name, unit, colorKey string, rows []adminReportTableRow, value func(adminReportTableRow) float64) adminReportChartSeries {

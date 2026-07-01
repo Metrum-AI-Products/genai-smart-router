@@ -1,6 +1,9 @@
 package router
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestAdminSavingsBreakdownChartsExposeSavingsSeries(t *testing.T) {
 	baseline := 2.50
@@ -70,6 +73,79 @@ func TestAdminScalarChartsDoNotAddSavingsSeriesToCostReports(t *testing.T) {
 				t.Fatalf("non-savings report gained savings series: %#v", chart)
 			}
 		}
+	}
+}
+
+func TestAdminTimeSeriesChartPointsIncludeUnixMilliseconds(t *testing.T) {
+	ts := time.Date(2026, 7, 1, 8, 15, 30, 123456789, time.UTC)
+	rows := []adminReportSeries{{
+		TimeUTC:  formatUsageTime(ts),
+		Requests: 7,
+		CostUSD:  1.25,
+	}}
+
+	series := adminChartSeriesFromTimeRows("Requests", "count", "magenta", rows, func(row adminReportSeries) float64 {
+		return float64(row.Requests)
+	})
+	if len(series.Points) != 1 {
+		t.Fatalf("points=%d", len(series.Points))
+	}
+	point := series.Points[0]
+	if point.X != formatUsageTime(ts) {
+		t.Fatalf("x=%q want %q", point.X, formatUsageTime(ts))
+	}
+	if point.XUnixMs == nil {
+		t.Fatalf("time-series point missing x_unix_ms: %#v", point)
+	}
+	if got, want := *point.XUnixMs, ts.UnixMilli(); got != want {
+		t.Fatalf("x_unix_ms=%d want %d", got, want)
+	}
+}
+
+func TestAdminSavingsChartsIncludeUnixMilliseconds(t *testing.T) {
+	ts := time.Date(2026, 7, 1, 9, 0, 0, 987654321, time.UTC)
+	rows := []adminSavingsRow{{
+		Key:             formatUsageTime(ts),
+		Requests:        3,
+		ActualCostUSD:   1.50,
+		BaselineCostUSD: 2.00,
+		SavingsUSD:      0.50,
+		SavingsPct:      25.0,
+	}}
+
+	charts := adminSavingsCharts(adminReportFilters{}, "2026-07-01T10:00:00Z", rows)
+	if len(charts) != 3 {
+		t.Fatalf("charts=%d: %#v", len(charts), charts)
+	}
+	for _, chart := range charts {
+		for _, series := range chart.Series {
+			if len(series.Points) != 1 {
+				t.Fatalf("%s/%s points=%d", chart.ChartID, series.Name, len(series.Points))
+			}
+			point := series.Points[0]
+			if point.X != formatUsageTime(ts) {
+				t.Fatalf("%s/%s x=%q want %q", chart.ChartID, series.Name, point.X, formatUsageTime(ts))
+			}
+			if point.XUnixMs == nil {
+				t.Fatalf("%s/%s missing x_unix_ms: %#v", chart.ChartID, series.Name, point)
+			}
+			if got, want := *point.XUnixMs, ts.UnixMilli(); got != want {
+				t.Fatalf("%s/%s x_unix_ms=%d want %d", chart.ChartID, series.Name, got, want)
+			}
+		}
+	}
+}
+
+func TestAdminCategoryChartsOmitUnixMilliseconds(t *testing.T) {
+	rows := []adminScalarReportRow{{Key: "provider/model-with-long-name", Requests: 2, CostUSD: 0.25, TotalCostUSD: 0.25}}
+	series := adminChartSeriesFromScalarRows("Requests", "count", "magenta", rows, func(row adminScalarReportRow) float64 {
+		return float64(row.Requests)
+	})
+	if len(series.Points) != 1 {
+		t.Fatalf("points=%d", len(series.Points))
+	}
+	if series.Points[0].XUnixMs != nil {
+		t.Fatalf("category point unexpectedly set x_unix_ms: %#v", series.Points[0])
 	}
 }
 

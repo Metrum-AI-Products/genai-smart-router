@@ -28,6 +28,7 @@ export type ReportPageAction = "first" | "previous" | "next" | "last";
 
 export type ReportChartPoint = {
   x?: string;
+  x_unix_ms?: number;
   y?: number;
   label?: string;
   time?: string;

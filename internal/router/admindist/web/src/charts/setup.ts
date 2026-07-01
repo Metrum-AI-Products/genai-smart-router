@@ -10,5 +10,6 @@ import {
   TimeScale,
   Tooltip,
 } from "chart.js";
+import "@/charts/utcDateAdapter";
 
 ChartJS.register(CategoryScale, LinearScale, TimeScale, BarElement, LineElement, PointElement, Tooltip, Legend, Filler);

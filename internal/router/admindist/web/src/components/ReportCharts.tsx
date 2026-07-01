@@ -3,6 +3,7 @@ import { Bar, Line } from "react-chartjs-2";
 import type { ChartData, ChartOptions } from "chart.js";
 import type { ReportChart, ReportChartAxis, ReportChartPoint, ReportChartSeries } from "@/lib/reports";
 import { buildShortLabelMap, type ShortLabelMap } from "@/lib/shortLabels";
+import { formatUtcTimestamp, pickTimeUnit, timeRange, type TimeRange } from "@/lib/timeAxis";
 import { compactFmt, usdCompactFmt } from "@/lib/utils";
 
 type Props = {
@@ -59,6 +60,8 @@ type NormalizedChart = {
   labels: string[];
   displayLabels: string[];
   legendEntries: ShortLabelMap[];
+  hasNumericTimeAxis: boolean;
+  timeRange: TimeRange | null;
   series: Array<Required<Pick<ReportChartSeries, "name" | "points">> & { unit?: string; colorKey?: string }>;
 };
 
@@ -81,10 +84,12 @@ function normalizeChart(chart: ReportChart): NormalizedChart {
           points: legacyPoints(rawSeries as ReportChartPoint[], chart.points),
         },
       ];
-  const kind = xAxis.type === "time" ? "line" : "bar";
+  const kind = chart.kind === "line" || xAxis.type === "time" ? "line" : "bar";
+  const hasNumericTimeAxis = kind === "line" && series.every((item) => item.points.every((point) => typeof point.x_unix_ms === "number" && Number.isFinite(point.x_unix_ms)));
   const labels = Array.from(new Set(series.flatMap((item) => item.points.map((point) => point.x || ""))));
   const legendEntries = kind === "bar" ? buildShortLabelMap(labels) : [];
   const fullToShort = new Map(legendEntries.map((entry) => [entry.full, entry.short]));
+  const range = hasNumericTimeAxis ? timeRange(series.flatMap((item) => item.points.map((point) => point.x_unix_ms as number))) : null;
   return {
     id: chart.chart_id || chart.chartId || chart.id || chart.title || "chart",
     title: chart.title || "Report chart",
@@ -94,6 +99,8 @@ function normalizeChart(chart: ReportChart): NormalizedChart {
     labels,
     displayLabels: kind === "bar" ? labels.map((label) => fullToShort.get(label) || label) : labels,
     legendEntries,
+    hasNumericTimeAxis,
+    timeRange: range,
     series,
   };
 }
@@ -104,18 +111,21 @@ function isBackendSeries(value: ReportChartPoint | ReportChartSeries): value is 
 
 function legacyPoints(series?: ReportChartPoint[], points?: ReportChartPoint[]): ReportChartPoint[] {
   const input = points?.length ? points : series || [];
-  return input.map((point) => ({ x: point.x || point.time || point.label || "", y: point.y ?? point.value ?? 0 }));
+  return input.map((point) => ({ x: point.x || point.time || point.label || "", x_unix_ms: point.x_unix_ms, y: point.y ?? point.value ?? 0 }));
 }
 
 function chartData(chart: NormalizedChart): ChartData<"bar" | "line"> {
   return {
-    labels: chart.displayLabels,
+    labels: chart.hasNumericTimeAxis ? undefined : chart.displayLabels,
     datasets: chart.series.map((series, index) => {
-      const valuesByLabel = new Map(series.points.map((point) => [point.x || "", point.y || 0]));
       const color = palette[series.colorKey || ""] || Object.values(palette)[index % Object.keys(palette).length];
+      const valuesByLabel = new Map(series.points.map((point) => [point.x || "", point.y ?? point.value ?? 0]));
+      const data = chart.hasNumericTimeAxis
+        ? series.points.map((point) => ({ x: point.x_unix_ms as number, y: point.y ?? point.value ?? 0 })).sort((left, right) => left.x - right.x)
+        : chart.labels.map((label) => valuesByLabel.get(label) || 0);
       return {
         label: series.name,
-        data: chart.labels.map((label) => valuesByLabel.get(label) || 0),
+        data,
         borderColor: color,
         backgroundColor: withAlpha(color, chart.kind === "line" ? 0.18 : 0.7),
         borderWidth: 2,
@@ -135,21 +145,34 @@ function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
       legend: { labels: { color: "rgba(255,255,255,0.72)", boxWidth: 12, boxHeight: 12 } },
       tooltip: {
         callbacks: {
-          title: (items) => chart.labels[items[0]?.dataIndex ?? -1] || items[0]?.label || "",
-          label: (item) => `${item.dataset.label}: ${formatChartNumber(Number(item.raw || 0), chart.yAxis.unit)}`,
+          title: (items) => {
+            const item = items[0];
+            if (!item) return "";
+            if (chart.hasNumericTimeAxis) return formatUtcTimestamp(item.parsed.x ?? Number.NaN);
+            return chart.labels[item.dataIndex] || item.label || "";
+          },
+          label: (item) => `${item.dataset.label}: ${formatChartNumber(chart.hasNumericTimeAxis ? item.parsed.y ?? 0 : Number(item.raw || 0), chart.yAxis.unit)}`,
         },
       },
     },
     scales: {
       x: {
-        ticks: {
-          color: "rgba(255,255,255,0.58)",
-          maxRotation: chart.kind === "bar" ? 0 : 40,
-          minRotation: 0,
-          autoSkip: chart.kind === "bar",
-          autoSkipPadding: 12,
-          maxTicksLimit: chart.kind === "bar" ? 12 : undefined,
-        },
+        type: chart.hasNumericTimeAxis ? "time" : "category",
+					time: chart.hasNumericTimeAxis
+						? {
+								unit: pickTimeUnit(chart.timeRange),
+								displayFormats: { hour: "hour", day: "day", week: "week", month: "month", year: "year" },
+								tooltipFormat: "datetime",
+							}
+						: undefined,
+					ticks: {
+						color: "rgba(255,255,255,0.58)",
+						maxRotation: chart.kind === "bar" || chart.hasNumericTimeAxis ? 0 : 40,
+						minRotation: 0,
+						autoSkip: chart.kind === "bar" || chart.hasNumericTimeAxis,
+						autoSkipPadding: 12,
+						maxTicksLimit: chart.kind === "bar" ? 12 : chart.hasNumericTimeAxis ? 10 : undefined,
+					},
         grid: { color: "rgba(255,255,255,0.06)" },
       },
       y: {
