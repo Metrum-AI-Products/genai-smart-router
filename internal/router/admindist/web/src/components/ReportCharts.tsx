@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { Bar, Line } from "react-chartjs-2";
+import { Chart as ChartJS } from "chart.js";
 import type { ChartData, ChartOptions } from "chart.js";
 import type { ReportChart, ReportChartAxis, ReportChartPoint, ReportChartSeries } from "@/lib/reports";
 import { buildShortLabelMap, type ShortLabelMap } from "@/lib/shortLabels";
@@ -23,31 +25,79 @@ const palette: Record<string, string> = {
 };
 
 export function ReportCharts({ charts }: Props) {
-  const normalized = (charts || []).map(normalizeChart).filter((chart) => chart.series.some((series) => series.points.length > 0));
+  const normalized = useMemo(
+    () => (charts || []).map(normalizeChart).filter((chart) => chart.series.some((series) => series.points.length > 0)),
+    [charts],
+  );
   if (normalized.length === 0) {
     return <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">No chart data for the selected filters.</div>;
   }
   return (
     <section className="grid gap-4 xl:grid-cols-2">
       {normalized.map((chart) => (
-        <div key={chart.id} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-          <div className="mb-3">
-            <h3 className="font-display text-lg text-white">{chart.title}</h3>
-            <p className="text-xs text-white/48">
-              {chart.xAxis.label || "Bucket"} by {chart.yAxis.label || chart.yAxis.unit || "value"}
-            </p>
-          </div>
-          <div className="h-72">
-            {chart.kind === "line" ? (
-              <Line data={chartData(chart) as ChartData<"line">} options={chartOptions(chart) as ChartOptions<"line">} />
-            ) : (
-              <Bar data={chartData(chart) as ChartData<"bar">} options={chartOptions(chart) as ChartOptions<"bar">} />
-            )}
-          </div>
-          <ChartLegend entries={chart.legendEntries} />
-        </div>
+        <ChartCard key={chart.id} chart={chart} />
       ))}
     </section>
+  );
+}
+
+function ChartCard({ chart }: { chart: NormalizedChart }) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const data = useMemo(() => chartData(chart), [chart]);
+  const options = useMemo(() => chartOptions(chart), [chart]);
+
+  useEffect(() => {
+    const hide = () => {
+      hideChartTooltip();
+      const canvas = wrapperRef.current?.querySelector("canvas");
+      const chartInstance = canvas ? ChartJS.getChart(canvas) : undefined;
+      chartInstance?.tooltip?.setActiveElements([], { x: 0, y: 0 });
+      chartInstance?.update("none");
+    };
+    window.addEventListener("blur", hide);
+    window.addEventListener("resize", hide);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("pointerdown", hide);
+    window.addEventListener("visibilitychange", hide);
+    window.addEventListener("keydown", hideOnEscape);
+    return () => {
+      window.removeEventListener("blur", hide);
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("pointerdown", hide);
+      window.removeEventListener("visibilitychange", hide);
+      window.removeEventListener("keydown", hideOnEscape);
+      hideChartTooltip();
+    };
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="rounded-lg border border-white/10 bg-white/[0.035] p-4" data-chart-id={chart.id}>
+      <div className="mb-3">
+        <h3 className="font-display text-lg text-white">{chart.title}</h3>
+        <p className="text-xs text-white/48">
+          {chart.xAxis.label || "Bucket"} by {chart.yAxis.label || chart.yAxis.unit || "value"}
+        </p>
+      </div>
+      <div className="relative h-72" data-chart-canvas>
+        {chart.kind === "line" ? (
+          <Line data={data as ChartData<"line">} options={options as ChartOptions<"line">} />
+        ) : (
+          <Bar data={data as ChartData<"bar">} options={options as ChartOptions<"bar">} />
+        )}
+        <div
+          data-chart-hover-layer
+          className="absolute inset-0 z-10 bg-transparent pointer-events-auto"
+          onMouseEnter={(event) => renderPointerTooltip(event, chart, wrapperRef.current)}
+          onMouseMove={(event) => renderPointerTooltip(event, chart, wrapperRef.current)}
+          onPointerEnter={(event) => renderPointerTooltip(event, chart, wrapperRef.current)}
+          onPointerMove={(event) => renderPointerTooltip(event, chart, wrapperRef.current)}
+          onMouseLeave={hideChartTooltip}
+          onPointerLeave={hideChartTooltip}
+        />
+      </div>
+      <ChartLegend entries={chart.legendEntries} />
+    </div>
   );
 }
 
@@ -144,6 +194,7 @@ function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
     plugins: {
       legend: { labels: { color: "rgba(255,255,255,0.72)", boxWidth: 12, boxHeight: 12 } },
       tooltip: {
+        enabled: false,
         callbacks: {
           title: (items) => {
             const item = items[0];
@@ -185,6 +236,136 @@ function chartOptions(chart: NormalizedChart): ChartOptions<"bar" | "line"> {
       },
     },
   };
+}
+
+function hideOnEscape(event: KeyboardEvent) {
+  if (event.key === "Escape") hideChartTooltip();
+}
+
+function tooltipElement(): HTMLDivElement {
+  let tooltip = document.querySelector<HTMLDivElement>("[data-admin-chart-tooltip]");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.setAttribute("data-admin-chart-tooltip", "true");
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.className = "pointer-events-none fixed z-50 max-w-[min(32rem,calc(100vw-2rem))] rounded-md border border-white/20 bg-[#0f1117]/95 px-3 py-2 font-mono text-xs text-white shadow-2xl";
+  tooltip.style.display = "none";
+  tooltip.style.opacity = "0";
+  tooltip.style.transition = "opacity 90ms ease";
+  document.body.appendChild(tooltip);
+  return tooltip;
+}
+
+function hideChartTooltip() {
+  document.querySelectorAll<HTMLDivElement>("[data-admin-chart-tooltip]").forEach((tooltip) => {
+    tooltip.style.display = "none";
+    tooltip.style.opacity = "0";
+    tooltip.setAttribute("aria-hidden", "true");
+  });
+}
+
+function renderPointerTooltip(event: ReactMouseEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>, chart: NormalizedChart, wrapper: HTMLDivElement | null) {
+  const pointCount = chart.series[0]?.points.length || 0;
+  if (pointCount === 0) {
+    hideChartTooltip();
+    return;
+  }
+  const index = pointerChartIndex(event, chart, wrapper, pointCount);
+  if (index === null) {
+    hideChartTooltip();
+    return;
+  }
+  const title = pointerTooltipTitle(index, chart);
+  const rows = chart.series.map((series) => {
+    const point = series.points[index];
+    return `${series.name}: ${formatChartNumber(Number(point?.y ?? point?.value ?? 0), chart.yAxis.unit)}`;
+  });
+  showChartTooltip(title, rows, event.clientX + 12, event.clientY + 12);
+}
+
+function pointerChartIndex(
+  event: ReactMouseEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>,
+  chart: NormalizedChart,
+  wrapper: HTMLDivElement | null,
+  pointCount: number,
+): number | null {
+  const canvas = wrapper?.querySelector("canvas");
+  const chartInstance = canvas ? ChartJS.getChart(canvas) : undefined;
+  if (chartInstance && canvas) {
+    const canvasRect = canvas.getBoundingClientRect();
+    let pixelX = event.clientX - canvasRect.left;
+    const area = chartInstance.chartArea;
+    if (!area) return null;
+    pixelX = Math.min(area.right, Math.max(area.left, pixelX));
+
+    const active = chartInstance.getElementsAtEventForMode(event.nativeEvent, "index", { intersect: false }, false);
+    const activeIndex = active[0]?.index;
+    if (typeof activeIndex === "number") return clampIndex(activeIndex, pointCount);
+
+    const xScale = chartInstance.scales.x;
+    const value = xScale?.getValueForPixel(pixelX);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (chart.hasNumericTimeAxis) {
+        let nearestIndex = 0;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        chart.series[0]?.points.forEach((point, index) => {
+          const ms = typeof point.x_unix_ms === "number" ? point.x_unix_ms : Number.NaN;
+          const distance = Math.abs(ms - value);
+          if (Number.isFinite(distance) && distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = index;
+          }
+        });
+        return clampIndex(nearestIndex, pointCount);
+      }
+      return clampIndex(Math.round(value), pointCount);
+    }
+  }
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const ratio = Math.min(0.999999, Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)));
+  return clampIndex(Math.floor(ratio * pointCount), pointCount);
+}
+
+function clampIndex(index: number, pointCount: number): number {
+  return Math.min(pointCount - 1, Math.max(0, index));
+}
+
+function pointerTooltipTitle(index: number, chart: NormalizedChart): string {
+  if (chart.hasNumericTimeAxis) {
+    const ms = chart.series[0]?.points[index]?.x_unix_ms;
+    return formatUtcTimestamp(typeof ms === "number" ? ms : Number.NaN);
+  }
+  return chart.labels[index] || "";
+}
+
+function showChartTooltip(title: string, rows: string[], x: number, y: number) {
+  const element = tooltipElement();
+  element.replaceChildren();
+  const titleEl = document.createElement("div");
+  titleEl.className = "mb-1 break-words font-semibold text-white/92";
+  titleEl.textContent = title;
+  element.appendChild(titleEl);
+  for (const row of rows) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "text-white/78";
+    rowEl.textContent = row;
+    element.appendChild(rowEl);
+  }
+  element.style.left = "0px";
+  element.style.top = "0px";
+  element.style.display = "block";
+  element.style.opacity = "0";
+  const bounds = element.getBoundingClientRect();
+  const margin = 16;
+  const left = x + bounds.width + margin > window.innerWidth ? x - bounds.width - 24 : x;
+  const top = y + bounds.height + margin > window.innerHeight ? y - bounds.height - 24 : y;
+  const maxLeft = Math.max(margin, window.innerWidth - bounds.width - margin);
+  const maxTop = Math.max(margin, window.innerHeight - bounds.height - margin);
+  element.style.left = `${Math.min(maxLeft, Math.max(margin, left))}px`;
+  element.style.top = `${Math.min(maxTop, Math.max(margin, top))}px`;
+  element.style.opacity = "1";
+  element.removeAttribute("aria-hidden");
 }
 
 function ChartLegend({ entries }: { entries: ShortLabelMap[] }) {

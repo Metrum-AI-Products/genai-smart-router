@@ -96,6 +96,40 @@ test("category charts use short axis labels with a collapsible bucket legend", a
   expect(horizontalOverflow).toBe(false);
 });
 
+test("category chart hover shows full-label tooltip and dismisses", async ({ page }) => {
+  await page.goto("/?tab=provider-model-mix&since=24h&limit=50");
+
+  const chart = page.locator('[data-chart-id="provider-model-mix-requests"]').first();
+  const interactionLayer = chart.locator("[data-chart-hover-layer]").first();
+  const box = await boundingBox(interactionLayer);
+  expect(box.width).toBeGreaterThan(0);
+  expect(box.height).toBeGreaterThan(0);
+  await interactionLayer.hover({ position: { x: box.width * 0.12, y: box.height * 0.5 } });
+  await interactionLayer.dispatchEvent("mousemove", {
+    clientX: box.x + box.width * 0.12,
+    clientY: box.y + box.height * 0.5,
+  });
+
+  const tooltip = page.locator("[data-admin-chart-tooltip]");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText("fireworks/accounts/fireworks/models/");
+  await expect(tooltip).toContainText("Requests:");
+
+  await interactionLayer.dispatchEvent("mousemove", {
+    clientX: box.x + box.width * 0.96,
+    clientY: box.y + box.height * 0.5,
+  });
+  await expect(tooltip).toBeVisible();
+  const tooltipBox = await boundingBox(tooltip);
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  expect(tooltipBox.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(viewport!.width);
+
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toBeHidden();
+});
+
 test("sidebar groups collapse and expand on click", async ({ page }) => {
   await page.goto("/");
 
