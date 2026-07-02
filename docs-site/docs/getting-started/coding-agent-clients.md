@@ -64,14 +64,45 @@ Codex requests use the Responses API shape. If a model group contains many OpenA
 
 Claude Code uses the Anthropic Messages-compatible router path. Use `ANTHROPIC_AUTH_TOKEN` for the router token and unset `ANTHROPIC_API_KEY` for router traffic.
 
+Router tokens can only request model groups returned by `/v1/models` for that same token. Pin both the main Claude Code session and subagents to allowed router groups.
+
 ```bash
 unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL="https://<router-host>"
 export ANTHROPIC_AUTH_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+export ANTHROPIC_MODEL="<allowed-model-group>"
+export CLAUDE_CODE_SUBAGENT_MODEL="<allowed-model-group>"
 
 claude --bare --print --model "<allowed-model-group>" \
   "Reply with exactly: router claude ok"
 ```
+
+Repository-local settings can pin the same values for Claude Code without exposing private deployment values in shared docs:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://<router-host>",
+    "ANTHROPIC_AUTH_TOKEN": "rtr_metrum_<user>_<project>_<env>_<key>_<secret>",
+    "ANTHROPIC_MODEL": "<allowed-model-group>",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "<allowed-model-group>"
+  }
+}
+```
+
+Save that shape as `.claude/settings.local.json` for local use. For a specific subagent to use a different router group, first leave `CLAUDE_CODE_SUBAGENT_MODEL` unset or set it to inherit behavior for that run. Then set the router group in the subagent frontmatter and confirm the same router token returns that group from `/v1/models`:
+
+```md
+---
+name: router-docs-reviewer
+description: Review router documentation changes for customer-safe examples and link accuracy.
+model: <allowed-model-group>
+---
+
+Review the changed documentation and report any customer-facing inaccuracies.
+```
+
+A pinned `CLAUDE_CODE_SUBAGENT_MODEL` takes precedence over per-subagent frontmatter, so unset or inherit it before testing a different frontmatter model group.
 
 When a Messages request includes image content, the router filters the requested group to targets that advertise `image` in `input_modalities`.
 
