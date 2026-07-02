@@ -89,7 +89,25 @@ The same model group can have different effective upstream pools for different c
 - Set `ANTHROPIC_BASE_URL` to the router origin and `ANTHROPIC_AUTH_TOKEN` to the router token.
 - Unset `ANTHROPIC_API_KEY`.
 - Use a model group returned by `/v1/models` for the caller token.
+- Pin subagent model selection to the same allowed group with `ANTHROPIC_MODEL=<allowed-coding-group>` and `CLAUDE_CODE_SUBAGENT_MODEL=<allowed-coding-group>` when validating a restricted single-group token. The smoke is not valid if usage rows show blank `requested_model`, blank `resolved_group`, or `403 model-not-allowed`.
+- Use a restricted caller token whose `/v1/models` response contains only the intended group when proving access behavior. This catches accidental direct-provider fallback and subagent requests that omit the model group.
 - For Kimi-style Anthropic-compatible targets, include thinking/default-thinking smoke coverage when that behavior changes.
+- Do not infer Claude Code compatibility from OpenAI Chat or OpenAI Responses smokes. A target is eligible for Claude Code only when its active skin is Anthropic Messages or an explicitly documented bridge has passed Claude Code text, client-tool, subagent, output-cap, and large-context validation.
+
+Minimum Claude Code support matrix:
+
+| Smoke | Acceptance evidence |
+|---|---|
+| Plain text | CLI returns the expected sentinel; usage row has inbound `anthropic`, requested and resolved model group, selected provider/model/dialect, terminal status, tokens, and no fallback unless fallback is under test. |
+| Client tool or file edit | CLI creates or edits only the disposable fixture files; usage/report evidence shows `client_tools`-compatible target selection and safe tool-count telemetry. |
+| Subagent | A prompt that triggers a subagent completes with `CLAUDE_CODE_SUBAGENT_MODEL` set to the allowed group; no blank-model `403` rows appear for that caller. |
+| Long context and tool schema | A sanitized large fixture completes or fails with a classified router/provider error, bounded latency, request-shape buckets, attempts, and fallback evidence. It must not look like an unexplained client stop. |
+| Tiny output cap | Caller `max_tokens: 1` or the CLI equivalent is forwarded and either honored by the selected target or filtered out by `honors_max_tokens`/request-shape metadata before upstream. |
+| Target isolation | Each Anthropic Messages target or bridge candidate is tested through a dedicated smoke group before broad group eligibility changes. |
+
+Record only safe scalar evidence: request ID, client/version, model group, inbound dialect, selected provider/model/dialect, status/error class, fallback flag, attempt count, timeout/client-canceled markers, latency, token totals, request-shape buckets, tool-count bucket, and stop/finish reason when persisted. Do not store or paste prompts, tool schemas, tool outputs, images, bearer tokens, token hashes, provider keys, upstream response bodies, or full production config.
+
+Promotion rule: keep a target out of broad Claude Code routing when any required Claude Code smoke fails or has not been run for that exact provider/model/dialect/account. Use a dedicated deployment smoke group and grant the validation caller explicit access; do not change a broad production coding group just to run bridge or target-isolation fixtures.
 
 ### opencode
 
