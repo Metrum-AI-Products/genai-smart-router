@@ -77,19 +77,79 @@ When a Messages request includes image content, the router filters the requested
 
 ## opencode
 
-Configure opencode to use the router as the OpenAI-compatible or Anthropic-compatible provider that matches your deployment route. Use placeholder tokens in shared examples and keep real router tokens in local environment variables or ignored config files.
+Configure opencode to use the router through the OpenAI-compatible endpoint at `https://<router-host>/v1`. The configured model is a router model group returned by `/v1/models`, not a raw upstream provider model name. Hosted examples may use groups such as `big-coder`, but each deployment chooses its own group names and token allow lists.
 
-OpenAI-compatible shape:
+Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file out of source control.
 
 ```bash
-export OPENAI_API_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
-export OPENAI_BASE_URL="https://<router-host>/v1"
-
-opencode run --model "<allowed-model-group>" \
-  "In this fixture repo, create opencode_smoke.txt containing exactly opencode-ok."
+mkdir -p ~/.config/opencode
+umask 077
+printf %s "rtr_metrum_<user>_<project>_<env>_<key>_<secret>" > ~/.config/opencode/metrum-router.key
+chmod 600 ~/.config/opencode/metrum-router.key
 ```
 
-If your opencode setup uses an Anthropic-compatible provider, use the router origin and the Anthropic auth variables from the Claude Code section instead. A passing smoke should create or edit the expected fixture file and should be visible in usage reports with the selected upstream provider/model.
+Edit `~/.config/opencode/opencode.json` and add or merge a provider that uses `@ai-sdk/openai-compatible`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "metrum/<allowed-model-group>",
+  "provider": {
+    "metrum": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Metrum Router",
+      "options": {
+        "baseURL": "https://<router-host>/v1",
+        "apiKey": "{file:~/.config/opencode/metrum-router.key}"
+      },
+      "models": {
+        "<allowed-model-group>": {
+          "name": "<allowed-model-group>"
+        }
+      }
+    }
+  }
+}
+```
+
+If the file already has other settings, keep them and merge in the top-level `model` value and the `provider.metrum` block. The provider prefix in `metrum/<allowed-model-group>` must match the provider key in the JSON object.
+
+Verify model access with the same token file before running opencode:
+
+```bash
+curl -fsS "https://<router-host>/v1/models" \
+  -H "Authorization: Bearer $(cat ~/.config/opencode/metrum-router.key)"
+```
+
+The response should include the allowed router model group in `data[].id`:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "<allowed-model-group>"
+    }
+  ]
+}
+```
+
+If `/v1/models` does not show the desired group, the token is not allowed to request that group. Use one of the listed group IDs or ask the deployment admin to update the token allow list.
+
+Run a text smoke:
+
+```bash
+opencode run --pure --model metrum/<allowed-model-group> \
+  "Reply with exactly: opencode router ok"
+```
+
+Expected output:
+
+```text
+opencode router ok
+```
+
+For repository-edit validation, run opencode in a disposable fixture repository and require an exact file diff or passing test, not just a successful HTTP response. A passing smoke should be visible in usage reports with the selected upstream provider/model. If your opencode setup uses an Anthropic-compatible provider instead, use the router origin and the Anthropic auth variables from the Claude Code section.
 
 ## aider
 
