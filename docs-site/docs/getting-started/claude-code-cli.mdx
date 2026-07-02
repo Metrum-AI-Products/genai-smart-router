@@ -7,7 +7,7 @@ import { DeploymentSpecificNote, RouterCodeBlock } from "@site/src/components/Ro
 
 # Claude Code CLI
 
-Claude Code uses the Anthropic Messages API shape. For router traffic, use the router base URL and a router-issued bearer token.
+Claude Code uses the Anthropic Messages API shape. For router traffic, use the router Anthropic-compatible base URL and a router-issued bearer token.
 
 <DeploymentSpecificNote />
 
@@ -17,7 +17,7 @@ Claude Code uses the Anthropic Messages API shape. For router traffic, use the r
 
 ## Required Environment
 
-Use `ANTHROPIC_AUTH_TOKEN` for the router token. Keep `ANTHROPIC_API_KEY` reserved for direct Anthropic traffic; setting both for the router path can cause client warnings or incorrect authentication behavior.
+Use `ANTHROPIC_BASE_URL=https://<router-host>/anthropic` and `ANTHROPIC_AUTH_TOKEN` for router traffic. Keep `ANTHROPIC_API_KEY` reserved for direct Anthropic traffic; setting both for the router path can cause client warnings or incorrect authentication behavior.
 
 Router tokens can only request model groups returned by `/v1/models` for that same token. Set the main Claude Code model and the default subagent model to allowed router model groups; otherwise Claude Code may send some Anthropic Messages requests with a model value the router key cannot use.
 
@@ -26,7 +26,7 @@ Record the Claude Code version used for deployment validation with `claude --ver
 <RouterCodeBlock>
 {`
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="{{origin}}"
+export ANTHROPIC_BASE_URL="{{origin}}/anthropic"
 export ANTHROPIC_AUTH_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 export ANTHROPIC_MODEL="<allowed-model-group>"
 export CLAUDE_CODE_SUBAGENT_MODEL="<allowed-model-group>"
@@ -68,7 +68,7 @@ For a repository-local setup, put only placeholder values in shared docs and kee
 ```json title=".claude/settings.local.json"
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "https://<router-host>",
+    "ANTHROPIC_BASE_URL": "https://<router-host>/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "rtr_metrum_<user>_<project>_<env>_<key>_<secret>",
     "ANTHROPIC_MODEL": "<allowed-model-group>",
     "CLAUDE_CODE_SUBAGENT_MODEL": "<allowed-model-group>"
@@ -100,7 +100,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
   --mount type=bind,source="$PWD/claude-tool-smoke",target=/workspace \
-  -e "ANTHROPIC_BASE_URL={{origin}}" \
+  -e "ANTHROPIC_BASE_URL={{origin}}/anthropic" \
   -e "ANTHROPIC_AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN" \
   -w /workspace "$TOOL_SMOKE_IMAGE" \
   claude --bare --print --model "<allowed-model-group>" \
@@ -119,7 +119,7 @@ For non-interactive validation, use the same Anthropic-compatible payload shape 
 
 <RouterCodeBlock>
 {`
-curl "{{origin}}/v1/messages" \
+curl "{{origin}}/anthropic/v1/messages" \
   -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -135,6 +135,8 @@ curl "{{origin}}/v1/messages" \
   }'
 `}
 </RouterCodeBlock>
+
+The legacy `/v1/messages` and `/v1/messages/count_tokens` paths remain compatible for existing clients. New Claude Code and Anthropic-compatible client setup should use `/anthropic` as the base URL, which sends requests to `/anthropic/v1/messages` and keeps Anthropic-compatible traffic visually separate from OpenAI-compatible `/v1` traffic.
 
 Image-bearing Claude Code requests bypass router response caching. Usage records include image count and upstream cost fields when the upstream reports them.
 

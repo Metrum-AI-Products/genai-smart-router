@@ -132,7 +132,7 @@ curl https://your-router.example.com/v1/responses \
 Anthropic Messages with `thinking`:
 
 ```bash
-curl https://your-router.example.com/v1/messages \
+curl https://your-router.example.com/anthropic/v1/messages \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \

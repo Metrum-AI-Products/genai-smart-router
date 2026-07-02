@@ -85,7 +85,7 @@ Successful output includes text equivalent to `router ok`.
 
 <RouterCodeBlock>
 {`
-curl "$ROUTER_BASE_URL/v1/messages" \
+curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -154,7 +154,7 @@ Anthropic-compatible Messages:
 
 <RouterCodeBlock>
 {`
-curl "$ROUTER_BASE_URL/v1/messages" \
+curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

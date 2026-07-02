@@ -15,7 +15,7 @@ This matters because ordinary text, function tools, client tools, image input, s
 |---|---|---|
 | OpenAI-compatible chat tools | `/v1/chat/completions` with `tools` and `tool_choice` | `tool_support.openai_chat` for the exact provider/model/dialect. |
 | Codex and Responses tools | `/v1/responses` with function tools | `tool_support.openai_responses` for the exact Responses skin. |
-| Claude Code client tools | `/v1/messages` with Anthropic-style tools | `tool_support.anthropic_messages` for the exact Messages skin. |
+| Claude Code client tools | `/anthropic/v1/messages` with Anthropic-style tools | `tool_support.anthropic_messages` for the exact Messages skin. |
 | Image and VLM requests | OpenAI Chat, Responses, or Messages image payloads | Validated `image` input modality on the exact active target and API shape. |
 | Structured outputs | Chat `response_format` or Responses `text.format` | `structured_outputs` metadata for the same dialect and target. |
 
@@ -38,6 +38,8 @@ Before adding or increasing an agent-capable target:
 For coding-agent clients, validate the client workflow as well as the raw API shape. A passing client smoke should prove text, repository edits, tools, model-group selection, and image attachments where the client supports them. See [Coding-Agent Client Matrix](../getting-started/coding-agent-clients).
 
 OpenAI Chat clients that send tools and images in the same request need one eligible target that supports both capabilities on the OpenAI Chat skin. Do not treat a Responses image target or an Anthropic tool target as a substitute for that OpenAI Chat request. A safe failure returns `502 no-eligible-target` before upstream and records only scalar request-shape and target-filter diagnostics.
+
+Claude Code compatibility is validated on the Anthropic Messages skin, even when the same upstream model also has OpenAI Chat or Responses metadata. New Claude Code setup should use `https://<router-host>/anthropic`; legacy `/v1/messages` aliases remain for existing clients. A Chat or Responses tool smoke does not prove client-tool, subagent, thinking, max-token, or large-context behavior for Claude Code.
 
 ## Related Pages
 

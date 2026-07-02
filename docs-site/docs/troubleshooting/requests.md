@@ -17,6 +17,7 @@ Record these safe fields:
 - router error code, if present;
 - requested model group;
 - API shape, such as Chat Completions, Responses, or Anthropic Messages;
+- client base URL shape, such as `/v1` for OpenAI-compatible clients or `/anthropic` for Claude Code and Anthropic-compatible clients;
 - client name, such as Codex CLI, Claude Code, Cursor, or an internal service;
 - whether the request used streaming, tools, images, large input context, or a large output cap.
 
@@ -120,6 +121,8 @@ For “small requests work but large Cursor/Codex/Claude Code requests fail,” 
 
 For Claude Code sessions that appear to stop abruptly even when terminal request rows show HTTP 200, first prove model resolution with the same caller token. `/v1/models` should return the intended group, and Claude Code should set both its main model and subagent model to that group. In request evidence, blank `requested_model` or `resolved_group` values with `403 model-not-allowed` point to model selection rather than provider failure. If model resolution is correct, compare the selected Anthropic Messages target or explicitly validated bridge target, fallback flag, timeout/client-canceled markers, visible output size where available, finish/stop reason, and token totals. Very short visible output with large token totals can indicate a target-quality or reasoning-budget problem even when transport succeeded.
 
+For Claude Code setup, prefer `ANTHROPIC_BASE_URL=https://<router-host>/anthropic` with `ANTHROPIC_AUTH_TOKEN` and unset `ANTHROPIC_API_KEY`. If an older setup still uses the router origin and `/v1/messages`, it should remain compatible, but troubleshoot it as legacy configuration and migrate the base URL before comparing new behavior. Subagents can send a different model value than the main session; compare `ANTHROPIC_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`, and any subagent frontmatter `model` against `/v1/models` with the same token.
+
 For agent compatibility regressions, run the production-derived fixture matrix against a dedicated smoke group that the smoke caller is allowed to use:
 
 ```bash
@@ -146,7 +149,7 @@ For reasoning bridge failures, use the request ID to compare four safe fields: i
 Examples of request-shape confusion:
 
 - Codex usually sends `/v1/responses`; a group with only Chat targets needs a validated Responses-to-Chat bridge, and `previous_response_id` is not supported by the stateless bridge.
-- Claude Code sends `/v1/messages`; a Chat or Responses reasoning target does not satisfy Anthropic `thinking` unless an Anthropic-compatible target is active.
+- Claude Code sends Anthropic Messages requests, preferably through `/anthropic/v1/messages`; a Chat or Responses reasoning target does not satisfy Anthropic `thinking` unless an Anthropic-compatible target or explicitly validated Messages bridge is active.
 - Cursor, opencode, and aider may use OpenAI Chat or Anthropic-compatible shapes depending on client configuration. If a client sends a Responses-style `reasoning` object to `/v1/chat/completions`, troubleshoot the stored Chat shape and bridge metadata rather than assuming a Responses target was used.
 
 ## 7. Verify Recovery

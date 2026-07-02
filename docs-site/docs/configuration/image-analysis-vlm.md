@@ -143,7 +143,7 @@ curl "$ROUTER_BASE_URL/v1/responses" \
 ## Anthropic Messages Example
 
 ```bash
-curl "$ROUTER_BASE_URL/v1/messages" \
+curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -183,11 +183,11 @@ codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
 
 ## Claude Code Image Validation
 
-Claude Code uses the Anthropic Messages API shape. For non-interactive validation, send the same image content blocks to `/v1/messages` with `ANTHROPIC_AUTH_TOKEN` set to the router token.
+Claude Code uses the Anthropic Messages API shape. For non-interactive validation, send the same image content blocks to `/anthropic/v1/messages` with `ANTHROPIC_AUTH_TOKEN` set to the router token.
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 
 curl "$ANTHROPIC_BASE_URL/v1/messages" \

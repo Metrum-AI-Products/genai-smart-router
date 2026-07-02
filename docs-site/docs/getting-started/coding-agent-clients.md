@@ -9,13 +9,21 @@ GenAI Smart Router can serve coding-agent clients through deployment-defined mod
 
 ## Compatibility Matrix
 
-| Client | Router API shape | What to validate |
-|---|---|---|
-| Codex CLI | OpenAI Responses | Text, file edits, function tools, image attachments when supported, tiny output caps, and allowed model-group selection |
-| Claude Code CLI | Anthropic Messages | Text, client tools, default thinking behavior where configured, image-bearing Messages payloads, and Anthropic auth environment |
-| opencode | OpenAI-compatible Chat or Anthropic-compatible, depending on client config | Text, repository edit tasks, tools, and the configured provider shape |
-| aider | OpenAI-compatible Chat in common router setups | Repository edit task, unit-test verifier, and explicit model-group selection |
-| IDE/agent clients | Client-specific OpenAI or Anthropic adapter | Minimal manual smoke when headless validation is unavailable |
+| Client | Router API shape | Preferred base URL | Model value |
+|---|---|---|---|
+| Codex CLI | OpenAI Responses | `https://<router-host>/v1` | A group returned by `/v1/models` |
+| Claude Code CLI | Anthropic Messages | `https://<router-host>/anthropic` | A group returned by `/v1/models` |
+| opencode | OpenAI-compatible Chat in the recommended setup | `https://<router-host>/v1` | A group returned by `/v1/models` |
+| aider | OpenAI-compatible Chat in common router setups | `https://<router-host>/v1` | A group returned by `/v1/models` |
+| IDE/agent clients | Client-specific OpenAI or Anthropic adapter | `/v1` for OpenAI-compatible, `/anthropic` for Anthropic-compatible | A group returned by `/v1/models` |
+
+| Client | What to validate |
+|---|---|
+| Codex CLI | Text, file edits, function tools, image attachments when supported, tiny output caps, and allowed model-group selection |
+| Claude Code CLI | Text, client tools, subagent model selection, default thinking behavior where configured, image-bearing Messages payloads, and Anthropic auth environment |
+| opencode | Text, repository edit tasks, tools, and the configured OpenAI-compatible provider shape |
+| aider | Repository edit task, unit-test verifier, and explicit model-group selection |
+| IDE/agent clients | Minimal manual smoke when headless validation is unavailable |
 
 Successful smokes should prove task outcome, not just HTTP status. For repository edit tasks, run a unit test or check an exact file diff. For image tasks, verify the answer against an expected result. For disallowed model groups, expect a safe router error and no upstream provider call.
 
@@ -68,7 +76,7 @@ Router tokens can only request model groups returned by `/v1/models` for that sa
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="https://<router-host>"
+export ANTHROPIC_BASE_URL="https://<router-host>/anthropic"
 export ANTHROPIC_AUTH_TOKEN="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 export ANTHROPIC_MODEL="<allowed-model-group>"
 export CLAUDE_CODE_SUBAGENT_MODEL="<allowed-model-group>"
@@ -82,7 +90,7 @@ Repository-local settings can pin the same values for Claude Code without exposi
 ```json
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "https://<router-host>",
+    "ANTHROPIC_BASE_URL": "https://<router-host>/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "rtr_metrum_<user>_<project>_<env>_<key>_<secret>",
     "ANTHROPIC_MODEL": "<allowed-model-group>",
     "CLAUDE_CODE_SUBAGENT_MODEL": "<allowed-model-group>"

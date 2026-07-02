@@ -45,13 +45,15 @@ Example response:
 }
 ```
 
-Use one returned `id` as the `model` value in `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, Codex CLI, Claude Code CLI, or another compatible client.
+Use one returned `id` as the `model` value in `/v1/chat/completions`, `/v1/responses`, `/anthropic/v1/messages`, Codex CLI, Claude Code CLI, or another compatible client. Model discovery stays at `/v1/models` for both OpenAI-compatible and Anthropic-compatible setup flows.
 
 ## What The Names Mean
 
 The returned IDs are router model groups, not a full inventory of every upstream provider model. A deployment might expose groups such as `default`, `fast`, `coding`, `vision`, or different names chosen by the platform team. GenAI Smart Router does not require any specific group names.
 
 Each group is a policy contract. The platform team can change the upstream provider/model mix, weights, fallbacks, TypeScript policy, tool support, VLM support, cost controls, and validation criteria behind the group without changing the caller-facing name.
+
+The same group can expose different effective target pools by API surface. OpenAI Chat clients use OpenAI Chat-compatible targets, Codex uses Responses-compatible targets, and Claude Code uses Anthropic Messages-compatible targets. If a group is listed but a specific client receives `no-eligible-target`, the group is allowed for that token but lacks an eligible target for that request shape.
 
 ## Why A Group May Be Missing
 

@@ -95,7 +95,7 @@ If the requirements include `reasoning`, inspect only targets in the requested g
 
 When a caller reports missing reasoning or an unexpected bridge failure, prove each layer with safe metadata rather than copying payloads:
 
-1. Identify the endpoint and shape: `/v1/chat/completions` with `reasoning_effort`, `/v1/responses` with `reasoning`, or `/v1/messages` with `thinking`. Some IDE and custom-provider clients can send OpenAI Responses-looking fields to a Chat endpoint; classify by actual router path and stored `request_shapes.inbound_dialect`.
+1. Identify the endpoint and shape: `/v1/chat/completions` with `reasoning_effort`, `/v1/responses` with `reasoning`, or `/anthropic/v1/messages` with `thinking`. Legacy `/v1/messages` requests are still Anthropic Messages traffic. Some IDE and custom-provider clients can send OpenAI Responses-looking fields to a Chat endpoint; classify by actual router path and stored `request_shapes.inbound_dialect`.
 2. Call `/v1/models` with the same caller token and confirm the requested deployment-defined group is allowed and advertises reasoning metadata only when expected.
 3. Inspect target candidates for the requested group. A catalog entry is not enough; check active target dialect, `tool_only`, `effectiveReasoning`, bridge metadata, and safe filter reasons.
 4. For same-dialect routing, confirm the selected upstream dialect matches the caller surface and `request_translation_shapes.translated_reasoning_control` is `reasoning_effort`, `reasoning`, or `thinking` as appropriate.
@@ -217,7 +217,7 @@ Validate the exact client dialect:
 
 - Warp and many OpenAI-compatible agents use `/v1/chat/completions` tool passthrough.
 - Codex CLI uses `/v1/responses`.
-- Claude Code uses `/v1/messages`.
+- Claude Code uses Anthropic Messages, preferably through `/anthropic/v1/messages`; legacy `/v1/messages` remains a compatibility alias.
 
 Codex/OpenAI Responses traffic is eligible only for targets whose resolved provider dialect is `openai-responses` and whose tool metadata includes `tool_support.openai_responses` when tools are present. A group can have many MiniMax, Fireworks, Kimi, or other OpenAI Chat targets and still route Codex to a smaller Responses subset. For MiniMax `MiniMax-M3`, use the dedicated `minimax_responses` provider skin; the `minimax` Chat skin and `minimax_anthropic` Messages skin are separate validation surfaces.
 

@@ -30,7 +30,7 @@ The env file may contain `ROUTER_BASE_URL` and a client-specific router token va
 | Client | Router API shape | Automated status | Live validation path |
 |---|---|---|---|
 | Codex CLI | OpenAI Responses | Mock fixture verifier in `scripts/coding_agent_matrix.py` | `codex exec` against the router Responses provider config |
-| Claude Code CLI | Anthropic Messages | Mock fixture verifier in `scripts/coding_agent_matrix.py` | `claude --bare --print` with `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; unset `ANTHROPIC_API_KEY` |
+| Claude Code CLI | Anthropic Messages | Mock fixture verifier in `scripts/coding_agent_matrix.py` | `claude --bare --print` with `ANTHROPIC_BASE_URL=$ROUTER_BASE_URL/anthropic` and `ANTHROPIC_AUTH_TOKEN`; unset `ANTHROPIC_API_KEY` |
 | opencode | Usually OpenAI-compatible Chat or Anthropic-compatible, depending on local config | Mock fixture verifier in `scripts/coding_agent_matrix.py` | Configure the router as the OpenAI or Anthropic provider and run the fixture edit task |
 | aider | OpenAI-compatible Chat via LiteLLM-style model strings in common setups | Mock fixture verifier in `scripts/coding_agent_matrix.py` | Use `.aider.conf.yml` or env vars that point to the router base URL and a deployment-defined model group |
 
@@ -86,10 +86,11 @@ The same model group can have different effective upstream pools for different c
 
 ### Claude Code CLI
 
-- Set `ANTHROPIC_BASE_URL` to the router origin and `ANTHROPIC_AUTH_TOKEN` to the router token.
+- Set `ANTHROPIC_BASE_URL` to the router Anthropic-compatible namespace, for example `$ROUTER_BASE_URL/anthropic`, and `ANTHROPIC_AUTH_TOKEN` to the router token.
 - Unset `ANTHROPIC_API_KEY`.
 - Use a model group returned by `/v1/models` for the caller token.
 - Pin subagent model selection to the same allowed group with `ANTHROPIC_MODEL=<allowed-coding-group>` and `CLAUDE_CODE_SUBAGENT_MODEL=<allowed-coding-group>` when validating a restricted single-group token. The smoke is not valid if usage rows show blank `requested_model`, blank `resolved_group`, or `403 model-not-allowed`.
+- Legacy `$ROUTER_BASE_URL` setups that call `/v1/messages` should continue to work, but new validation should use `/anthropic` so OpenAI-compatible and Anthropic-compatible client failures can be separated cleanly.
 - Use a restricted caller token whose `/v1/models` response contains only the intended group when proving access behavior. This catches accidental direct-provider fallback and subagent requests that omit the model group.
 - For Kimi-style Anthropic-compatible targets, include thinking/default-thinking smoke coverage when that behavior changes.
 - Do not infer Claude Code compatibility from OpenAI Chat or OpenAI Responses smokes. A target is eligible for Claude Code only when its active skin is Anthropic Messages or an explicitly documented bridge has passed Claude Code text, client-tool, subagent, output-cap, and large-context validation.

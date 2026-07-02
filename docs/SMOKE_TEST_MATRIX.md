@@ -15,6 +15,7 @@ Harbor or another outcome harness is required when a change promotes, demotes, o
 | Config validation | YAML parse and `docker compose config` |
 | Health/deploy | `/readyz`, `/version`, router logs |
 | Auth/allow list | `/v1/models` with caller token |
+| Anthropic namespace | `/anthropic/v1/messages` and `/anthropic/v1/messages/count_tokens` with a Claude-compatible caller token; legacy `/v1/messages` paths only as compatibility checks |
 | Admin Basic Auth | `/admin/auth/check` with missing, bad, and valid Basic credentials when enabled |
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
 | Text routing | relevant dialect with realistic token budget |
@@ -750,7 +751,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
   --mount type=bind,source="$PWD/claude-tool-smoke",target=/workspace \
-  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL" \
+  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL/anthropic" \
   -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
   -w /workspace "$TOOL_SMOKE_IMAGE" \
   claude -p "Create claude_tool_smoke.txt containing exactly claude-tool-ok, run cat claude_tool_smoke.txt, then finish with claude-tool-ok." \

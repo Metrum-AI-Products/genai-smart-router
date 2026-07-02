@@ -1643,7 +1643,7 @@ Claude Code:
 
 ```bash
 unset ANTHROPIC_API_KEY
-ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai \
+ANTHROPIC_BASE_URL=https://llm-api-engg.metrum.ai/anthropic \
 ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN" \
 claude --bare --print --model big-coder "Reply with exactly: router prod claude ok"
 ```

@@ -1139,11 +1139,11 @@ The key used in `ROUTER_TOKEN` must allow the selected `ROUTER_MODEL`. The group
 
 ### Claude Code
 
-Claude Code uses Anthropic-style requests. For this router, set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` only. Do not set `ANTHROPIC_API_KEY` for router traffic; Claude Code uses that variable for direct Anthropic Console API keys via `X-Api-Key`, while this router expects a bearer token.
+Claude Code uses Anthropic-style requests. For this router, set `ANTHROPIC_BASE_URL` to the Anthropic-compatible namespace and set `ANTHROPIC_AUTH_TOKEN`. Do not set `ANTHROPIC_API_KEY` for router traffic; Claude Code uses that variable for direct Anthropic Console API keys via `X-Api-Key`, while this router expects a bearer token.
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="http://127.0.0.1:18081"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:18081/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 export ANTHROPIC_MODEL="$ROUTER_MODEL"
 
@@ -1168,7 +1168,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
   --mount type=bind,source="$WORK/claude-tool-work",target=/workspace \
-  -e "ANTHROPIC_BASE_URL=http://127.0.0.1:18081" \
+  -e "ANTHROPIC_BASE_URL=http://127.0.0.1:18081/anthropic" \
   -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
   -w /workspace "$TOOL_SMOKE_IMAGE" \
   claude --bare --print --model claude-tools-smoke \

@@ -485,7 +485,7 @@ One-shot check:
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 
 claude --bare --print --model "$ROUTER_MODEL" \
@@ -502,7 +502,7 @@ Interactive usage:
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 
 claude --model "$ROUTER_MODEL"
@@ -552,7 +552,7 @@ Agentic tool validation should include real file and shell activity, but tool-cl
 ```bash
 # Claude Code uses the Anthropic Messages API contract.
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 mkdir -p "$PWD/claude-tool-smoke"
 docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \

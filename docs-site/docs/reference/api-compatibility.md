@@ -11,13 +11,28 @@ The router endpoint is deployment-specific. Use the base URL and model groups is
 
 ## Supported Surfaces
 
+OpenAI-compatible clients use the `/v1` base URL:
+
 | Endpoint | Compatibility target | Typical clients |
 |---|---|---|
 | `/v1/chat/completions` | OpenAI Chat Completions-style requests | OpenAI SDK chat clients, Warp-style OpenAI-compatible agents |
 | `/v1/responses` | OpenAI Responses-style requests | Codex CLI, Responses-compatible agent frameworks |
-| `/v1/messages` | Anthropic Messages-style requests | Claude Code CLI, Anthropic-compatible clients |
 | `/v1/models` | OpenAI-style model discovery | Client setup and allow-list discovery |
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
+
+Anthropic-compatible clients use the `/anthropic` base URL:
+
+| Endpoint | Compatibility target | Typical clients |
+|---|---|---|
+| `/anthropic/v1/messages` | Anthropic Messages-style requests | Claude Code CLI, Anthropic-compatible clients |
+| `/anthropic/v1/messages/count_tokens` | Anthropic Messages token-count estimate | Claude Code CLI startup and compatibility checks |
+
+Legacy Anthropic aliases remain available for existing clients: `/v1/messages` and `/v1/messages/count_tokens`. New setup should prefer `/anthropic` so OpenAI-compatible and Anthropic-compatible client configuration stays visibly separate.
+
+Operational and administrative endpoints remain on the router origin:
+
+| Endpoint | Purpose | Typical clients |
+|---|---|---|
 | `/readyz`, `/healthz`, `/version` | Router operational endpoints | Load balancers and operators |
 | `/admin/auth/check` | Browser-admin Basic Auth validation stub | Operators enabling browser-admin surfaces |
 | `/admin/auth/login`, `/admin/auth/callback`, `/admin/auth/me`, `/admin/auth/logout` | Browser-admin OIDC session routes | Operators enabling OIDC browser admin surfaces |
@@ -108,7 +123,7 @@ Common safe filter reasons include `chat-to-responses-bridge-disabled`, `chat-to
 |---|---|---|---|
 | `/v1/chat/completions` | `reasoning_effort` | Requires active OpenAI Chat target reasoning metadata. | Chat-to-Responses reasoning requires `bridges.chat_to_responses.reasoning: true` plus Responses target reasoning metadata. |
 | `/v1/responses` | `reasoning` | Requires active OpenAI Responses target reasoning metadata. | Responses-to-Chat reasoning is unsupported unless `responses_to_chat.reasoning` is explicitly validated for the target. |
-| `/v1/messages` | `thinking` | Requires active Anthropic Messages target reasoning/default-thinking metadata. | No general Messages bridge is implied by Chat or Responses bridge metadata. |
+| `/anthropic/v1/messages` | `thinking` | Requires active Anthropic Messages target reasoning/default-thinking metadata. | No general Messages bridge is implied by Chat or Responses bridge metadata. |
 
 Tools and reasoning are filtered together. A request with tools and reasoning needs a target that supports both the caller's tool dialect and the requested reasoning control, or an explicitly validated bridge for both features. If no candidate remains, the router returns `502 no-eligible-target`; candidate/filter diagnostics should show bounded reasons such as `reasoning`, `chat-to-responses-reasoning-unsupported`, or `responses-to-chat-reasoning` rather than an upstream attempt with the reasoning field stripped.
 
@@ -159,7 +174,7 @@ Example response:
 }
 ```
 
-Use one of the returned `id` values as the `model` field in `/v1/chat/completions`, `/v1/responses`, or `/v1/messages`. If a group is not listed, that token is not allowed to use it. Requests for unlisted groups fail with `403 model-not-allowed` before any upstream provider is called.
+Use one of the returned `id` values as the `model` field in `/v1/chat/completions`, `/v1/responses`, or `/anthropic/v1/messages`. If a group is not listed, that token is not allowed to use it. Requests for unlisted groups fail with `403 model-not-allowed` before any upstream provider is called.
 
 The returned IDs are router model groups, not a full inventory of every upstream provider model. Platform teams can change the upstream provider/model mix behind a group without changing the caller-facing group name.
 

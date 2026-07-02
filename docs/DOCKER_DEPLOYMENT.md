@@ -335,7 +335,7 @@ Claude Code:
 
 ```bash
 unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL"
+export ANTHROPIC_BASE_URL="$ROUTER_BASE_URL/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$ROUTER_TOKEN"
 claude --bare --print --model "<allowed-model-group>" "Reply with exactly: router claude ok"
 ```
@@ -385,7 +385,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
   --mount type=bind,source=/tmp/router-claude-tool-smoke,target=/workspace \
-  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL" \
+  -e "ANTHROPIC_BASE_URL=$ROUTER_BASE_URL/anthropic" \
   -e "ANTHROPIC_AUTH_TOKEN=$ROUTER_TOKEN" \
   -w /workspace "$TOOL_SMOKE_IMAGE" \
   claude --bare --print --model claude-tools-smoke \

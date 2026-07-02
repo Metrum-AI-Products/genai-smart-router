@@ -114,7 +114,7 @@ curl "$ROUTER_BASE_URL/v1/responses" \
 Anthropic Messages:
 
 ```bash
-curl "$ROUTER_BASE_URL/v1/messages" \
+curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   -H "x-api-key: $ROUTER_TOKEN" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
