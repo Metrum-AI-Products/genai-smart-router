@@ -244,6 +244,12 @@ providers:
         output_price_per_million_usd: 3.5
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
         pricing_updated_at: '2026-06-17'
+        request_shape_support:
+          supported_inbound_dialects: [openai-chat, anthropic]
+          validation_status: passed
+          validation_notes: Router-level Anthropic Messages to OpenAI Chat text
+            translation is validated for broad coding groups; use the dedicated
+            Kimi Anthropic provider skin for Claude Code client tools.
         tool_support:
           openai_chat:
           - tools
@@ -369,6 +375,13 @@ providers:
           recommends OpenAI Chat for production workloads. Small max_tokens budgets can be
           consumed by reasoning before final content; use realistic budgets such as 512+ tokens
           for text acceptance smokes.
+        request_shape_support:
+          supported_inbound_dialects: [openai-chat, anthropic]
+          validation_status: passed
+          validation_notes: Direct Baseten Anthropic Messages text passed on
+            2026-06-22, and broad router groups may keep Anthropic text
+            eligibility through the OpenAI Chat skin while Claude Code tools use
+            a dedicated Anthropic provider skin.
         tool_support:
           openai_chat:
           - tools
@@ -569,14 +582,18 @@ providers:
           OpenAI Responses, Anthropic Messages, image, video, or audio support until those
           exact skins pass direct and router-level smokes.
         request_shape_support:
+          supported_inbound_dialects: [openai-chat, anthropic]
           supports_large_coding_agent_payloads: true
           validation_status: passed
           validation_notes: Production router-level Fireworks Chat smoke through the
             dedicated smoke group passed on 2026-06-29 with a synthetic 524 KB
             OpenAI Chat coding-agent payload, 24 tools, about 50 KB of serialized
-            tool schemas, max_tokens=32, and about 90K prompt tokens. Keep this
-            evidence source-dated; validate larger or different tool-schema shapes
-            before raising broad coding-agent weight.
+            tool schemas, max_tokens=32, and about 90K prompt tokens. Anthropic
+            text/thinking translation to this OpenAI Chat skin is explicitly
+            allowed for broad coding groups; Claude Code client tools still need
+            Anthropic Messages targets. Keep this evidence source-dated; validate
+            larger or different tool-schema shapes before raising broad coding-agent
+            weight.
         tool_support:
           openai_chat:
           - tools
@@ -738,6 +755,12 @@ providers:
         - text
         pricing_source: https://platform.minimax.io/docs/pricing/overview
         pricing_updated_at: '2026-06-17'
+        request_shape_support:
+          supported_inbound_dialects: [openai-chat, anthropic]
+          validation_status: passed
+          validation_notes: Router-level Anthropic Messages to OpenAI Chat text
+            translation is allowed for broad groups; use the dedicated MiniMax
+            Anthropic provider skin for Claude Code client tools.
         tool_support:
           openai_chat:
           - tools
@@ -989,12 +1012,15 @@ providers:
           stream_block: none
           supports_summaries: false
         request_shape_support:
+          supported_inbound_dialects: [openai-responses, anthropic]
           min_requested_output_tokens: 16
           validation_status: passed
           validation_notes: Direct OpenAI Responses max_output_tokens=1 smoke failed
             with provider minimum 16 on 2026-06-30; router skips this target for
             smaller explicit caller caps so another compatible target can serve
-            or the caller receives no-eligible-target before upstream.
+            or the caller receives no-eligible-target before upstream. Anthropic
+            Messages text translation to this Responses skin is allowed only for
+            non-tool requests; Claude Code tools require Anthropic Messages targets.
         force_store_false: true
         output_token_field: max_completion_tokens
       gpt-5.5:

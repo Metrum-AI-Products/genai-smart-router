@@ -2236,6 +2236,9 @@ func targetSupportsCallerDialect(target Target, req *IRRequest, callerDialect, o
 	if callerDialect == outDialect {
 		return true
 	}
+	if anthropicInboundDialectFilterReason(target, callerDialect, outDialect) != "" {
+		return false
+	}
 	if normalizeDialect(callerDialect) == "openai-chat" && normalizeDialect(outDialect) == "openai-responses" {
 		return chatToResponsesBridgeFilterReason(target, req, callerDialect, outDialect) == ""
 	}

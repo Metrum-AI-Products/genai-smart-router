@@ -157,6 +157,10 @@ func (s *Service) requestFilterReasons(target Target, req *IRRequest, callerDial
 	bridge := isChatToResponsesBridge(callerDialect, outDialect, target) || isResponsesToChatBridge(callerDialect, outDialect, target)
 	bridgeDialectPair := isChatToResponsesDialectPair(callerDialect, outDialect) ||
 		(normalizeDialect(callerDialect) == "openai-responses" && normalizeDialect(outDialect) == "openai-chat")
+	anthropicDialectReason := anthropicInboundDialectFilterReason(target, callerDialect, outDialect)
+	if anthropicDialectReason != "" {
+		reasons = append(reasons, anthropicDialectReason)
+	}
 	if len(req.Tools) == 0 {
 		if target.ToolOnly {
 			reasons = append(reasons, "tool-only-target")
@@ -169,7 +173,7 @@ func (s *Service) requestFilterReasons(target Target, req *IRRequest, callerDial
 			reasons = append(reasons, "tool-support")
 		}
 	}
-	if len(req.Tools) == 0 && callerDialect != outDialect && !bridge && !bridgeDialectPair {
+	if len(req.Tools) == 0 && callerDialect != outDialect && !bridge && !bridgeDialectPair && anthropicDialectReason == "" {
 		reasons = append(reasons, "dialect-unsupported")
 	}
 	for _, modality := range requiredModalities {

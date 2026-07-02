@@ -161,6 +161,9 @@ func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outD
 	if reason := chatToResponsesBridgeFilterReason(target, req, callerDialect, outDialect); reason != "" {
 		return reason
 	}
+	if reason := anthropicInboundDialectFilterReason(target, callerDialect, outDialect); reason != "" {
+		return reason
+	}
 	if len(support.SupportedInboundDialects) > 0 && !stringSliceContainsNormalizedDialect(support.SupportedInboundDialects, callerDialect) {
 		return "request-shape-dialect-unsupported"
 	}
@@ -189,6 +192,19 @@ func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outD
 		return "request-shape-context-exceeded"
 	}
 	_ = outDialect
+	return ""
+}
+
+func anthropicInboundDialectFilterReason(target Target, callerDialect, outDialect string) string {
+	if normalizeDialect(callerDialect) != "anthropic" || normalizeDialect(outDialect) == "anthropic" {
+		return ""
+	}
+	if !stringSliceContainsNormalizedDialect(target.RequestShapeSupport.SupportedInboundDialects, "anthropic") {
+		return "request-shape-dialect-unsupported"
+	}
+	if strings.ToLower(strings.TrimSpace(target.RequestShapeSupport.ValidationStatus)) != "passed" {
+		return "request-shape-validation-unpassed"
+	}
 	return ""
 }
 

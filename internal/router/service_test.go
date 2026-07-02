@@ -47,7 +47,19 @@ func TestAnthropicIngressUnaryHappyPath(t *testing.T) {
 			}))
 			defer upstream.Close()
 
-			svc := newTestService(t, upstream.URL, "secret-provider-key")
+			cfg := testConfig(t, upstream.URL, "secret-provider-key", t.TempDir())
+			cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
+				Provider: "mock",
+				Model:    "mock-model",
+				RequestShapeSupport: RequestShapeSupport{
+					SupportedInboundDialects: []string{"anthropic"},
+					ValidationStatus:         "passed",
+				},
+			}}}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer svc.Close()
 
 			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"default","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
@@ -182,7 +194,19 @@ func TestAuthAcceptsXAPIKeyForAnthropicStyleClients(t *testing.T) {
 		})
 	}))
 	defer upstream.Close()
-	svc := newTestService(t, upstream.URL, "provider-key")
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "mock",
+		Model:    "mock-model",
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"anthropic"},
+			ValidationStatus:         "passed",
+		},
+	}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer svc.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"hi"}]}`))
@@ -3345,6 +3369,170 @@ func TestAnthropicToolRequestsRequireExplicitToolSupport(t *testing.T) {
 	}
 }
 
+func TestAnthropicMessagesSkipsOpenAITargetsWithoutInboundValidation(t *testing.T) {
+	var upstreamCalls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		writeJSON(w, http.StatusOK, map[string]any{"id": "unexpected"})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["chat"] = ProviderConfig{
+		BaseURL: upstream.URL + "/v1",
+		Dialect: "openai-chat",
+		APIKey:  "provider-key",
+	}
+	cfg.Provider["responses"] = ProviderConfig{
+		BaseURL: upstream.URL + "/v1",
+		Dialect: "openai-responses",
+		APIKey:  "provider-key",
+	}
+	cfg.Models["anthropic-inbound"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "chat", Model: "chat-tools", ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}},
+		{Provider: "responses", Model: "responses-tools", ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}},
+	}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "anthropic-inbound")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"anthropic-inbound","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), `"type":"no-eligible-target"`) {
+		t.Fatalf("status=%d body=%s, want no eligible target", rr.Code, rr.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls=%d, want none", upstreamCalls)
+	}
+	var count int64
+	if err := svc.usage.db.Model(&decisionTargetFilterReasonRecord{}).Where("reason = ?", "request-shape-dialect-unsupported").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count < 2 {
+		t.Fatalf("dialect filter reason count=%d, want at least 2", count)
+	}
+}
+
+func TestAnthropicMessagesCanUseNativeAnthropicToolTarget(t *testing.T) {
+	var gotPath, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_native",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       gotModel,
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Provider["anthropic_native"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+	cfg.Models["anthropic-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:    "anthropic_native",
+		Model:       "native-messages",
+		ToolSupport: ToolSupport{AnthropicMessages: []string{"client_tools"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "anthropic-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"anthropic-tools","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"echo","input_schema":{"type":"object","properties":{}}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/v1/messages" || gotModel != "native-messages" {
+		t.Fatalf("path/model=%s/%s, want /v1/messages native-messages", gotPath, gotModel)
+	}
+}
+
+func TestAnthropicMessagesCanUseValidatedTranslatedOpenAITarget(t *testing.T) {
+	var gotPath, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotModel, _ = body["model"].(string)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_translated",
+			"object":  "chat.completion",
+			"created": 1710000000,
+			"model":   gotModel,
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "translated ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Provider["chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Models["anthropic-translated"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "chat",
+		Model:    "chat-translated",
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"anthropic"},
+			ValidationStatus:         "passed",
+		},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "anthropic-translated")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	body := `{"model":"anthropic-translated","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotPath != "/v1/chat/completions" || gotModel != "chat-translated" {
+		t.Fatalf("path/model=%s/%s, want /v1/chat/completions chat-translated", gotPath, gotModel)
+	}
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usage.InboundDialect != "anthropic" || usage.TargetDialect != "openai-chat" || usage.TargetModel != "chat-translated" {
+		t.Fatalf("usage selected target=%#v", usage)
+	}
+}
+
 func TestOpenAIChatStructuredOutputPassthrough(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -4316,7 +4504,14 @@ func TestCacheHitAcrossDialectsAndTargetIsolation(t *testing.T) {
 		})
 	}))
 	defer upstream.Close()
-	svc := newTestService(t, upstream.URL, "provider-key")
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	anthropicInbound := RequestShapeSupport{SupportedInboundDialects: []string{"openai-chat", "anthropic"}, ValidationStatus: "passed"}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "mock-model", RequestShapeSupport: anthropicInbound}}}
+	cfg.Models["other"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "other-model", RequestShapeSupport: anthropicInbound}}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer svc.Close()
 
 	post := func(path, body string) *httptest.ResponseRecorder {
@@ -5390,6 +5585,10 @@ func TestAnthropicMaxTokensForwardedToOpenAIChatVisionUpstream(t *testing.T) {
 		Model:            "chat-vision",
 		InputModalities:  []string{"text", "image"},
 		OutputModalities: []string{"text"},
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"anthropic"},
+			ValidationStatus:         "passed",
+		},
 	}}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
 	svc, err := New(cfg)
@@ -5438,7 +5637,7 @@ func TestExplicitMaxTokensSkipsTargetsThatDoNotHonorCaps(t *testing.T) {
 	cfg.Provider["safe_caps"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
 	cfg.Models["vision"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "ignored_caps", Model: "cap-unsafe-vision", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &ignoresMaxTokens},
-		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens},
+		{Provider: "safe_caps", Model: "cap-safe-vision", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, HonorsMaxTokens: &honorsMaxTokens, RequestShapeSupport: RequestShapeSupport{SupportedInboundDialects: []string{"anthropic"}, ValidationStatus: "passed"}},
 	}}
 	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "vision")
 	svc, err := New(cfg)
@@ -10064,6 +10263,15 @@ func TestUpstreamQuotaExhaustionReturnsSanitizedErrorAcrossSurfaces(t *testing.T
 			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 			if tc.name == "responses" {
 				cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+			} else if tc.name == "messages" {
+				cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{{
+					Provider: "mock",
+					Model:    "mock-model",
+					RequestShapeSupport: RequestShapeSupport{
+						SupportedInboundDialects: []string{"anthropic"},
+						ValidationStatus:         "passed",
+					},
+				}}}
 			}
 			svc, err := New(cfg)
 			if err != nil {

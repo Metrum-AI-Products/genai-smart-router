@@ -1545,6 +1545,53 @@ func TestExampleConfigOpenAINanoResponsesReasoningMetadata(t *testing.T) {
 	}
 }
 
+func TestExampleConfigPreservesAnthropicTextEligibilityInBroadGroups(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	standardSum := sha256.Sum256([]byte("rtr_example_standard_test"))
+	codingSum := sha256.Sum256([]byte("rtr_example_coding_test"))
+	metricsAdminSum := sha256.Sum256([]byte("rtr_example_metrics_admin_test"))
+	contentAdminSum := sha256.Sum256([]byte("rtr_example_content_admin_test"))
+	text := strings.ReplaceAll(string(raw), "REPLACE_WITH_SHA256_HEX_OF_STANDARD_ROUTER_TOKEN", hex.EncodeToString(standardSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CODING_ROUTER_TOKEN", hex.EncodeToString(codingSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_METRICS_ADMIN_ROUTER_TOKEN", hex.EncodeToString(metricsAdminSum[:]))
+	text = strings.ReplaceAll(text, "REPLACE_WITH_SHA256_HEX_OF_CONTENT_ADMIN_ROUTER_TOKEN", hex.EncodeToString(contentAdminSum[:]))
+	text = strings.ReplaceAll(text, "script: scripts/router.ts", "script: ../../scripts/router.ts")
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, groupName := range []string{"default", "fast", "small", "medium", "high", "big-coder", "temp-coder"} {
+		group := cfg.Models[groupName]
+		found := false
+		for _, target := range group.Targets {
+			if target.ToolOnly {
+				continue
+			}
+			provider := cfg.Provider[target.Provider]
+			outDialect := targetDialect(provider, target)
+			if normalizeDialect(outDialect) == "anthropic" {
+				continue
+			}
+			if anthropicInboundDialectFilterReason(target, "anthropic", outDialect) == "" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%s has no non-tool target eligible for Anthropic Messages text", groupName)
+		}
+	}
+}
+
 func TestExampleConfigLargeOpenAIChatToolsSmokeHasShapeGate(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
 	if err != nil {
