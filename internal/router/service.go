@@ -283,6 +283,8 @@ func (s *Service) routes() {
 	s.mux.HandleFunc("GET /admin/reports/", s.handleAdminReports)
 	s.mux.HandleFunc("DELETE /v1/content-captures/{request_id}", s.handleContentCaptureDelete)
 	s.mux.HandleFunc("POST /v1/content-captures/purge-expired", s.handleContentCapturePurgeExpired)
+	s.mux.HandleFunc("POST /anthropic/v1/messages/count_tokens", s.handleCountTokens)
+	s.mux.HandleFunc("POST /anthropic/v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
 	s.mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "anthropic") })
 	s.mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.handleLLM(w, r, "openai-chat") })

@@ -28,47 +28,51 @@ import (
 )
 
 func TestAnthropicIngressUnaryHappyPath(t *testing.T) {
-	var upstreamAuth string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstreamAuth = r.Header.Get("Authorization")
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Fatalf("unexpected upstream path %s", r.URL.Path)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id": "up_1",
-			"choices": []map[string]any{{
-				"message":       map[string]any{"role": "assistant", "content": "hello through router"},
-				"finish_reason": "stop",
-			}},
-			"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+	for _, path := range []string{"/v1/messages", "/anthropic/v1/messages"} {
+		t.Run(path, func(t *testing.T) {
+			var upstreamAuth string
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				upstreamAuth = r.Header.Get("Authorization")
+				if r.URL.Path != "/v1/chat/completions" {
+					t.Fatalf("unexpected upstream path %s", r.URL.Path)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id": "up_1",
+					"choices": []map[string]any{{
+						"message":       map[string]any{"role": "assistant", "content": "hello through router"},
+						"finish_reason": "stop",
+					}},
+					"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+				})
+			}))
+			defer upstream.Close()
+
+			svc := newTestService(t, upstream.URL, "secret-provider-key")
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"default","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			req.Header.Set("User-Agent", "claude-code-test")
+			rr := httptest.NewRecorder()
+
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if strings.Contains(rr.Body.String(), "secret-provider-key") {
+				t.Fatal("response leaked provider key")
+			}
+			if upstreamAuth != "Bearer secret-provider-key" {
+				t.Fatalf("upstream auth not injected, got %q", upstreamAuth)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["type"] != "message" {
+				t.Fatalf("not an anthropic message response: %#v", body)
+			}
 		})
-	}))
-	defer upstream.Close()
-
-	svc := newTestService(t, upstream.URL, "secret-provider-key")
-	defer svc.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"default","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	req.Header.Set("User-Agent", "claude-code-test")
-	rr := httptest.NewRecorder()
-
-	svc.Handler().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if strings.Contains(rr.Body.String(), "secret-provider-key") {
-		t.Fatal("response leaked provider key")
-	}
-	if upstreamAuth != "Bearer secret-provider-key" {
-		t.Fatalf("upstream auth not injected, got %q", upstreamAuth)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["type"] != "message" {
-		t.Fatalf("not an anthropic message response: %#v", body)
 	}
 }
 
@@ -4800,24 +4804,28 @@ func TestLifetimeKeyExhaustionReturns403AndPersists(t *testing.T) {
 }
 
 func TestCountTokensEndpoint(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
-	defer upstream.Close()
-	svc := newTestService(t, upstream.URL, "provider-key")
-	defer svc.Close()
+	for _, path := range []string{"/v1/messages/count_tokens", "/anthropic/v1/messages/count_tokens"} {
+		t.Run(path, func(t *testing.T) {
+			upstream := httptest.NewServer(http.NotFoundHandler())
+			defer upstream.Close()
+			svc := newTestService(t, upstream.URL, "provider-key")
+			defer svc.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"count these tokens"}]}`))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	rr := httptest.NewRecorder()
-	svc.Handler().ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	var body map[string]int
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["input_tokens"] <= 0 {
-		t.Fatalf("bad token estimate: %#v", body)
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"count these tokens"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			var body map[string]int
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["input_tokens"] <= 0 {
+				t.Fatalf("bad token estimate: %#v", body)
+			}
+		})
 	}
 }
 
