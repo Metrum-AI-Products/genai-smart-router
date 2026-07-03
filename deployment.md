@@ -4,7 +4,7 @@ Last deployed: 2026-06-30
 
 ## Live Environment
 
-- Public URL: `https://llm-api-engg.metrum.ai`
+- Public URLs: `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai`
 - Public IPv4: `100.30.225.66`
 - AWS account: `121701826775`
 - AWS region/AZ: `us-east-1` / `us-east-1b`
@@ -12,7 +12,7 @@ Last deployed: 2026-06-30
 - Security group: `sg-0876c70bac41d7d54` (`launch-wizard-9`)
 - SSH user: `ubuntu`
 - SSH key: `~/.ssh/chetan-jun-2026.pem`
-- DNS: DigitalOcean `A` record for `llm-api-engg.metrum.ai` points to `100.30.225.66`; no `AAAA` record is configured.
+- DNS: DigitalOcean `A` records for `llm-api-engg.metrum.ai` and `llm-api.metrum.ai` point to `100.30.225.66`; no `AAAA` record is configured.
 
 ## Deployed Version
 
@@ -31,6 +31,33 @@ Last deployed: 2026-06-30
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-03 Dual Production Hostname Caddy Update
+
+Production router software was not changed. Issue #395 was implemented as a Caddy-only production update so both production hostnames terminate TLS and reverse-proxy to the same router service:
+
+```text
+llm-api-engg.metrum.ai, llm-api.metrum.ai {
+  reverse_proxy router:8080
+}
+```
+
+Production Caddy backup:
+
+```text
+/opt/smart-llmrouter/compose/Caddyfile.compose.bak.issue-395-20260703T034308Z
+```
+
+Validation:
+
+- DNS: both `llm-api-engg.metrum.ai` and `llm-api.metrum.ai` resolved to `100.30.225.66`.
+- Caddy config validated and Caddy service was restarted; router and Postgres were not restarted for this change.
+- Caddy obtained a Let's Encrypt certificate for `llm-api.metrum.ai`; the existing `llm-api-engg.metrum.ai` certificate remained valid.
+- Both hostnames returned 200 for `/readyz`, `/version`, and `/docs/`.
+- Both hostnames returned 200 for authenticated `/v1/models`, with `big-coder` available to the reusable Harbor caller.
+- Both hostnames passed small authenticated `big-coder` smokes for `/v1/chat/completions`, `/v1/responses`, and `/v1/messages`.
+- Both hostnames returned 403 for `/admin/reports/api/version` when called with an ordinary router token, preserving admin-report isolation.
+- Rollback is to restore the Caddy backup above and restart only the Caddy service.
 
 ## 2026-06-30 Reasoning Proof Workflow Addition
 
