@@ -119,6 +119,7 @@ def entry(release: Release) -> str:
 def current_preamble() -> str:
     return """---
 title: Release Notes
+doc_type: reference
 ---
 
 # Release Notes
@@ -126,26 +127,8 @@ title: Release Notes
 Release notes help customer operators decide whether to deploy, how to validate the release, and how to roll back if needed. Each packaged router build also displays its router version and build timestamp on every docs page.
 
 For upgrade execution, see [Upgrade Guide](/docs/release-notes/upgrade-guide). For the docs package index, see [Releases](/docs/releases).
-"""
 
-
-def template_section() -> str:
-    return """
-## Release Note Fields
-
-| Field | Purpose |
-|---|---|
-| Release version | Identifies the package installed on the deployment. |
-| Build timestamp | Confirms the running binary matches the shipped artifact. |
-| Package architecture | Confirms `linux-amd64` or `linux-arm64` package selection. |
-| Config changes | Shows whether operators must update model groups, callers, admin policy, database settings, or license paths. |
-| Database changes | Identifies migration, backup, and rollback considerations. |
-| License changes | Identifies new feature gates, limits, or license replacement needs. |
-| Client-visible behavior | Explains API, error, model metadata, or routing changes. |
-| Validation | Lists readiness, model, report, metrics, and caller smokes. |
-| Rollback | Names the prior package and config artifact to restore. |
-
-Do not include private hostnames, SSH details, raw tokens, token hashes, provider API keys, full production config, private signing details, or customer-specific license payloads in public release notes.
+The entries below describe customer-visible package changes, compatibility impact, validation expectations, and rollback considerations for shipped router releases.
 """
 
 
@@ -157,7 +140,7 @@ def main() -> int:
 
     releases = releases_from_tags(tags)
     body = "\n\n".join(entry(release) for release in releases)
-    OUTPUT.write_text(f"{current_preamble()}\n\n{body}\n{template_section()}", encoding="utf-8")
+    OUTPUT.write_text(f"{current_preamble()}\n\n{body}\n", encoding="utf-8")
     print(f"Wrote {len(releases)} release note entries to {OUTPUT.relative_to(ROOT)}.")
     return 0
 

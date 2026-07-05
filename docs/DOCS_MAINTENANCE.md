@@ -50,6 +50,19 @@ Use this map when public Docusaurus content changes. Public pages should explain
 
 Before packaging a release, run `rtk make release-notes-from-git` to draft release-note entries from available router release tags. Review and hand-edit the draft before publishing so each entry is customer-safe and covers highlights, operator impact, caller impact, validation, and rollback.
 
+Keep public release notes focused on shipped release information. Do not leave release-note templates, authoring instructions, placeholder bullets, or maintainer checklists in `docs-site/docs/release-notes/**`.
+
+Each public release-note entry should include:
+
+- release version, release date, and build timestamp when available;
+- package architecture or artifact notes when operators must choose a package;
+- config, database, license, metrics, reporting, or deployment changes;
+- client-visible API, error, model metadata, routing, tool, VLM, or CLI compatibility changes;
+- validation evidence such as `/readyz`, `/version`, `/v1/models`, completion smokes, metrics, reports, license checks, package validation, and changed model-group/API-skin smokes;
+- rollback guidance naming the previous package/config/license/database action when relevant.
+
+Never include private hostnames, SSH details, raw router tokens, token hashes, provider API keys, full production config, private signing details, customer-specific license payloads, internal source-control workflow, or placeholder release-note template text in public release notes.
+
 Run `rtk make docs-qa` before `rtk make docs-build`. The docs QA checks that the hosted docs include a version banner component, per-page docs metadata, a releases index, at least one release-note entry, and no forbidden public release-note patterns. Public release notes should name shipped router versions and build timestamps, not internal source-control workflow details.
 
 ## Behavior-Change Documentation Requirements
