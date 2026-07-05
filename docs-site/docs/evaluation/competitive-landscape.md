@@ -17,19 +17,19 @@ GenAI Smart Router is built for platform teams that need fine-grained routing co
 
 Core strengths:
 
-- **High-performance gateway path:** the router is a compiled Go service with routing, eligibility filtering, quota checks, cache lookup, and provider dispatch in the request path. Teams can deploy it close to their applications or private GPU endpoints instead of sending every request through a distant shared control plane.
-- **Deployment-defined model groups:** callers request stable policy names chosen by the deployment, not hardcoded product-required names.
-- **Fine-grained caller keys:** router-issued keys can carry allowed model groups, user/project/environment metadata, rate limits, traffic shaping, token budgets, request budgets, concurrency limits, and metrics-admin privileges.
-- **Multi-dialect API compatibility:** OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages request shapes are supported.
-- **Agent client support:** Codex CLI, Claude Code CLI, and OpenAI Chat tool clients such as Warp-style agents can use the same router endpoint when the configured group has compatible targets.
-- **Tool-aware routing:** the router selects only upstream targets whose metadata explicitly supports the caller's tool dialect.
-- **VLM/image-aware routing:** image-bearing requests are filtered to targets with validated image input modality.
-- **Private upstream support:** enterprise-hosted vLLM, SGLang, Baseten-style, and other OpenAI-compatible services can participate in the same policy as hosted providers.
-- **Request-time cost accounting:** configured token prices, image cost fields, and upstream-reported billed costs are stored with usage rows when available.
-- **Budgets, quotas, and rate limits:** per-key RPM, TPM, concurrency, traffic shaping, daily, monthly, and lifetime limits are enforced before the provider call.
-- **Telemetry and operational visibility:** request logs, relational usage reporting, cache telemetry, throughput fields, diagnostics, optional governed content capture, and metrics-admin Prometheus telemetry are available.
-- **Programmable policy:** TypeScript routing scripts can implement deployment-owned routing logic and optional allowlisted external policy calls without changing application code.
-- **Outcome-driven optimization:** agentic validation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix using measured results.
+- High-performance gateway path: the router is a compiled Go service with routing, eligibility filtering, quota checks, cache lookup, and provider dispatch in the request path. Teams can deploy it close to their applications or private GPU endpoints instead of sending every request through a distant shared control plane.
+- Deployment-defined model groups: callers request stable policy names chosen by the deployment, not hardcoded product-required names.
+- Fine-grained caller keys: router-issued keys can carry allowed model groups, user/project/environment metadata, rate limits, traffic shaping, token budgets, request budgets, concurrency limits, and metrics-admin privileges.
+- Multi-dialect API compatibility: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages request shapes are supported.
+- Agent client support: Codex CLI, Claude Code CLI, and OpenAI Chat tool clients such as Warp-style agents can use the same router endpoint when the configured group has compatible targets.
+- Tool-aware routing: the router selects only upstream targets whose metadata explicitly supports the caller's tool dialect.
+- VLM/image-aware routing: image-bearing requests are filtered to targets with validated image input modality.
+- Private upstream support: enterprise-hosted vLLM, SGLang, Baseten-style, and other OpenAI-compatible services can participate in the same policy as hosted providers.
+- Request-time cost accounting: configured token prices, image cost fields, and upstream-reported billed costs are stored with usage rows when available.
+- Budgets, quotas, and rate limits: per-key RPM, TPM, concurrency, traffic shaping, daily, monthly, and lifetime limits are enforced before the provider call.
+- Telemetry and operational visibility: request logs, relational usage reporting, cache telemetry, throughput fields, diagnostics, optional governed content capture, and metrics-admin Prometheus telemetry are available.
+- Programmable policy: TypeScript routing scripts can implement deployment-owned routing logic and optional allowlisted external policy calls without changing application code.
+- Outcome-driven optimization: agentic validation harnesses such as Harbor can compare model groups by task outcome, token volume, latency, throughput, fallback behavior, cache behavior, and provider/model mix so deployments can tune the right quality/cost mix using measured results.
 
 ## Where GenAI Smart Router Is A Strong Fit
 
@@ -54,16 +54,16 @@ GenAI Smart Router is strongest when the organization wants more than a thin pro
 
 Examples:
 
-- **Developer access without model sprawl:** a developer can call one approved model group from Codex CLI, Claude Code CLI, an OpenAI-compatible SDK, or a Warp-style agent. The platform team can change the underlying OpenRouter, MiniMax, Kimi, Baseten, xAI, vLLM, or SGLang mix without changing every client.
-- **Mixed text and image agent tasks:** a coding agent can stay on the same deployment-defined group for normal code work and image-bearing tasks. The router filters image requests to VLM-capable targets instead of forcing users to switch manually between a language-only group and a vision-only group.
-- **Tool-call safety:** a request with OpenAI Chat tools, OpenAI Responses function tools, or Anthropic Messages tools is routed only to targets validated for that tool dialect. This avoids sending agent tool payloads to models or provider skins that cannot handle them correctly.
-- **Chargeback-grade usage records:** usage rows keep caller metadata, selected provider/model, model group, status, latency, token counts, image token fields, request-time prices, calculated costs, upstream-reported billed costs, and cache behavior. Reports can answer which user, project, key, provider, and model produced spend.
-- **Fine-grained quotas per key:** each caller token can have its own allowed groups, RPM/TPM limits, traffic shaping, concurrency caps, and daily/monthly/lifetime budgets. That allows evaluation keys, production service keys, admin metrics keys, and restricted project keys to coexist on the same deployment.
-- **Private model integration:** internally hosted vLLM or SGLang endpoints can sit behind the same public API contract as hosted providers. Teams can keep GPU endpoints private while exposing a governed router endpoint to applications and agents.
-- **Custom policy without client rewrites:** TypeScript policies can route by prompt size, caller key metadata, project, environment, requested API dialect, tool requirement, image presence, cache eligibility, model health, or external policy-service response. For example, a deployment can keep one caller-visible group while sending short prompts to a fast low-cost model, long prompts to a long-context model, tool requests to tool-validated targets, and image requests to VLM-validated targets.
-- **Outcome-oriented model mix:** the Harbor case study shows how the router can validate agentic coding runs by reward score, cost drivers, latency, fallback use, cache behavior, throughput, and selected provider/model. That feedback loop helps teams choose the lowest-cost mix that still preserves the desired task outcome for each model group.
-- **Fast operational rollout:** new upstreams can be added catalog-only, smoke-tested directly, tested through a private router group, then introduced at low weight in active groups. Rollback is usually a config weight change rather than a client migration.
-- **Actionable failures:** caller-facing errors include request IDs and structured reasons such as `no-eligible-target`, `upstream-timeout`, `upstream-rate-limited`, `upstream-quota-exhausted`, `upstream-capacity-throttled`, `rpm-exceeded`, `tpm-exceeded`, or `quota-exhausted`, giving operators a direct path to traces, provider attempts, and shared-capacity shaping events.
+- Developer access without model sprawl: a developer can call one approved model group from Codex CLI, Claude Code CLI, an OpenAI-compatible SDK, or a Warp-style agent. The platform team can change the underlying OpenRouter, MiniMax, Kimi, Baseten, xAI, vLLM, or SGLang mix without changing every client.
+- Mixed text and image agent tasks: a coding agent can stay on the same deployment-defined group for normal code work and image-bearing tasks. The router filters image requests to VLM-capable targets instead of forcing users to switch manually between a language-only group and a vision-only group.
+- Tool-call safety: a request with OpenAI Chat tools, OpenAI Responses function tools, or Anthropic Messages tools is routed only to targets validated for that tool dialect. This avoids sending agent tool payloads to models or provider skins that cannot handle them correctly.
+- Chargeback-grade usage records: usage rows keep caller metadata, selected provider/model, model group, status, latency, token counts, image token fields, request-time prices, calculated costs, upstream-reported billed costs, and cache behavior. Reports can answer which user, project, key, provider, and model produced spend.
+- Fine-grained quotas per key: each caller token can have its own allowed groups, RPM/TPM limits, traffic shaping, concurrency caps, and daily/monthly/lifetime budgets. That allows evaluation keys, production service keys, admin metrics keys, and restricted project keys to coexist on the same deployment.
+- Private model integration: internally hosted vLLM or SGLang endpoints can sit behind the same public API contract as hosted providers. Teams can keep GPU endpoints private while exposing a governed router endpoint to applications and agents.
+- Custom policy without client rewrites: TypeScript policies can route by prompt size, caller key metadata, project, environment, requested API dialect, tool requirement, image presence, cache eligibility, model health, or external policy-service response. For example, a deployment can keep one caller-visible group while sending short prompts to a fast low-cost model, long prompts to a long-context model, tool requests to tool-validated targets, and image requests to VLM-validated targets.
+- Outcome-oriented model mix: the Harbor case study shows how the router can validate agentic coding runs by reward score, cost drivers, latency, fallback use, cache behavior, throughput, and selected provider/model. That feedback loop helps teams choose the lowest-cost mix that still preserves the desired task outcome for each model group.
+- Fast operational rollout: new upstreams can be added catalog-only, smoke-tested directly, tested through a private router group, then introduced at low weight in active groups. Rollback is usually a config weight change rather than a client migration.
+- Actionable failures: caller-facing errors include request IDs and structured reasons such as `no-eligible-target`, `upstream-timeout`, `upstream-rate-limited`, `upstream-quota-exhausted`, `upstream-capacity-throttled`, `rpm-exceeded`, `tpm-exceeded`, or `quota-exhausted`, giving operators a direct path to traces, provider attempts, and shared-capacity shaping events.
 
 ## Deployment Fit
 

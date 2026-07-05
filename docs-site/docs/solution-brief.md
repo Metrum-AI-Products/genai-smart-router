@@ -36,16 +36,16 @@ flowchart LR
 
 ## Enterprise Value
 
-- **Provider optionality:** adopt new model providers centrally while applications keep stable model-group names.
-- **Multimodal readiness:** support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
-- **Enterprise model control:** include internally hosted vLLM or SGLang services in the same routing policy as external providers.
-- **Cost control:** steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
-- **Capacity pooling:** combine usable throughput from multiple separately rate-limited upstream providers, accounts, and private endpoints behind one caller-facing model group.
-- **Security:** keep provider keys server-side and issue revocable router tokens to callers.
-- **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
-- **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
-- **Outcome-oriented optimization:** use agentic validation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
-- **Operational visibility:** expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
+- Provider optionality: adopt new model providers centrally while applications keep stable model-group names.
+- Multimodal readiness: support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
+- Enterprise model control: include internally hosted vLLM or SGLang services in the same routing policy as external providers.
+- Cost control: steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
+- Capacity pooling: combine usable throughput from multiple separately rate-limited upstream providers, accounts, and private endpoints behind one caller-facing model group.
+- Security: keep provider keys server-side and issue revocable router tokens to callers.
+- Reliability: use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
+- Developer productivity: support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
+- Outcome-oriented optimization: use agentic validation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
+- Operational visibility: expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
 
 ## Production Pain Points
 

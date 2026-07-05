@@ -119,7 +119,7 @@ The browser report shell provides shared controls for every tab:
 - CSV export labeled as current page, top-N rows, or visible rows with spreadsheet formula-leading values neutralized;
 - consistent chart, table, loading, empty, and error states.
 
-Every report header includes a short purpose statement and an expandable **How to use this report** panel. The panel explains the page purpose, data semantics, caveats, common filters, key columns, and related reports. Desktop navigation exposes concise tab descriptions through hover/focus tooltips, while the mobile `Sections` drawer shows descriptions inline so the help is not hover-only.
+Every report header includes a short purpose statement and an expandable How to use this report panel. The panel explains the page purpose, data semantics, caveats, common filters, key columns, and related reports. Desktop navigation exposes concise tab descriptions through hover/focus tooltips, while the mobile `Sections` drawer shows descriptions inline so the help is not hover-only.
 
 These controls are presentation helpers over bounded authenticated APIs. They do not expose raw tokens, token hashes, provider keys, prompts, images, tool outputs, raw cookies, OIDC tokens, full config, raw spreadsheet formulas, or unsanitized upstream responses.
 
@@ -251,7 +251,7 @@ Report API responses include a `charts` array with stable chart IDs, titles, X/Y
 
 Every chart is backed by the same safe aggregate fields shown in tables and Markdown export. The catalog-status tab charts source, validation, and active-target provider counts. The retention-status tab charts retention eligibility/deletion counts and recent rollup status/type counts. Chart payloads contain scalar aggregate points only; they do not include prompts, image payloads, tool schemas or outputs, tokens, token hashes, provider keys, full config, or raw upstream bodies.
 
-Category charts shorten long bucket labels into compact axis labels and render a **Bucket legend** beneath the chart that maps each short label back to the full value. Hovering a bar shows the full original label and value in a dark-theme tooltip that dismisses on scroll, blur, resize, outside click, `Escape`, or page visibility changes. The table, CSV export, Markdown export, and JSON API response continue to carry the full labels. The legend is expanded for short bucket lists and collapsible for denser charts.
+Category charts shorten long bucket labels into compact axis labels and render a Bucket legend beneath the chart that maps each short label back to the full value. Hovering a bar shows the full original label and value in a dark-theme tooltip that dismisses on scroll, blur, resize, outside click, `Escape`, or page visibility changes. The table, CSV export, Markdown export, and JSON API response continue to carry the full labels. The legend is expanded for short bucket lists and collapsible for denser charts.
 
 The shared label encoder applies to every category chart, including Provider/model mix, Savings by user/key/group/project/provider, Caller usage, Requested models, Errors/fallbacks, Routing decisions, Validation, Capability usage, and similar aggregate tabs. Email labels use the local-part prefix, composite report buckets use the final bucket component, provider/model paths use the final path segment, long opaque labels are capped with an ellipsis, and collisions receive a numeric suffix.
 

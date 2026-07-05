@@ -54,15 +54,15 @@ Because each upstream provider, account, model, or private endpoint can have its
 
 ## Product Strengths
 
-- **Multi-dialect gateway:** OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages surfaces for ordinary apps, Codex CLI, Claude Code, and compatible agent frameworks.
-- **Model-group contracts:** deployment-defined names encode workload, cost, quality, API shape, modality, and validation expectations.
-- **Validated eligibility filtering:** text, image/VLM, tool-call, dialect, and max-token-cap metadata prevent unsafe target selection.
-- **Programmable policy:** static, weighted, failover, dynamic-score, TypeScript-scripted, and external-policy routing patterns.
-- **Capacity pooling:** aggregate usable throughput across separately rate-limited providers and private upstreams while keeping caller access and provider safeguards centralized.
-- **Cost governance:** per-key access and budgets plus request-time price/cost storage, including image cost fields and upstream-reported billed cost when available.
-- **Operational visibility:** request logs, relational usage data, diagnostics child tables, optional governed content-capture tables, report examples, downstream and upstream latency/throughput views, and Prometheus telemetry restricted to metrics-admin tokens.
-- **Private upstream control:** internally hosted OpenAI-compatible inference services can sit behind the same caller API as external providers.
-- **Outcome validation:** Harbor or any workload-appropriate verifier can compare success, cost, token volume, latency, fallbacks, and provider mix before promotion.
+- Multi-dialect gateway: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages surfaces for ordinary apps, Codex CLI, Claude Code, and compatible agent frameworks.
+- Model-group contracts: deployment-defined names encode workload, cost, quality, API shape, modality, and validation expectations.
+- Validated eligibility filtering: text, image/VLM, tool-call, dialect, and max-token-cap metadata prevent unsafe target selection.
+- Programmable policy: static, weighted, failover, dynamic-score, TypeScript-scripted, and external-policy routing patterns.
+- Capacity pooling: aggregate usable throughput across separately rate-limited providers and private upstreams while keeping caller access and provider safeguards centralized.
+- Cost governance: per-key access and budgets plus request-time price/cost storage, including image cost fields and upstream-reported billed cost when available.
+- Operational visibility: request logs, relational usage data, diagnostics child tables, optional governed content-capture tables, report examples, downstream and upstream latency/throughput views, and Prometheus telemetry restricted to metrics-admin tokens.
+- Private upstream control: internally hosted OpenAI-compatible inference services can sit behind the same caller API as external providers.
+- Outcome validation: Harbor or any workload-appropriate verifier can compare success, cost, token volume, latency, fallbacks, and provider mix before promotion.
 
 ## Production Problems It Solves
 

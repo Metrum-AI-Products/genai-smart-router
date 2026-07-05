@@ -97,10 +97,11 @@ body {
 .theme-doc-markdown h2,
 .theme-doc-markdown h3 {
   letter-spacing: 0;
+  font-weight: 400;
 }
 
 .theme-doc-markdown a[href^="mailto:"] {
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .theme-doc-markdown table {
@@ -111,6 +112,10 @@ body {
 .theme-doc-markdown th,
 .theme-doc-markdown td {
   border-color: var(--metrum-border);
+}
+
+.theme-doc-markdown th {
+  font-weight: 400;
 }
 
 .theme-doc-markdown code {
