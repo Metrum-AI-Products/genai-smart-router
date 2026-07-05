@@ -121,6 +121,11 @@ body {
   font-size: 0.78rem;
 }
 
+.menu__link {
+  font-size: 0.875rem;
+  line-height: 1.32;
+}
+
 .theme-doc-markdown h1,
 .theme-doc-markdown h2,
 .theme-doc-markdown h3 {

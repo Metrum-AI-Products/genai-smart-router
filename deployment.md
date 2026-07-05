@@ -16,8 +16,8 @@ Last deployed: 2026-07-05
 
 ## Deployed Version
 
-- Router package/image version: `883ed51-linux-amd64`
-- Source commit: `883ed51`
+- Router package/image version: `de2cf84-linux-amd64`
+- Source commit: `de2cf84`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,44 @@ Last deployed: 2026-07-05
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-05 Docs Sidebar And Admin Reports Font Production Refresh
+
+Package `smart-llmrouter:de2cf84-linux-amd64` was deployed to production after local and production browser validation showed the admin reports UI now uses regular base font files instead of mapping normal text to bold Poppins assets.
+
+Source commit: `de2cf84` (`admin: use regular report font faces`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-de2cf84-20260705T212127Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-de2cf84-20260705T212127Z`.
+
+Validation:
+
+- `npm run build --prefix internal/router/admindist/web`: passed.
+- `npm run e2e --prefix internal/router/admindist/web`: 28 passed.
+- Local admin preview browser test against `/admin/reports/?tab=savings-by-user&since=24h&limit=50` confirmed the report body, headings, buttons, table headers, and table cells computed to `font-weight: 400`; the loaded font faces were `MetrumDisplay` regular, `MetrumSans` regular, and `MetrumMono` regular/variable.
+- `make package-docker VERSION=de2cf84 COMMIT=de2cf84`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` returned 200 and `/version` returned `de2cf84`.
+- Production Playwright visual test against `https://llm-api-engg.metrum.ai/admin/reports/?tab=savings-by-user&since=24h&limit=50` with admin authentication confirmed the admin reports page rendered with the lighter regular font treatment.
+- Production computed-style probe confirmed `MetrumDisplay` and `MetrumSans` loaded as weight `400`, `MetrumMono` loaded as `400 700`, and representative body, H1, H2, paragraph, button, table header, and table-cell elements all computed to `font-weight: 400`.
+- Router log tail after deploy showed startup only and no immediate error lines.
+
+Earlier the same day, package `smart-llmrouter:fe70fe5-linux-amd64` was deployed for the docs sidebar navigation density change.
+
+Source commit: `fe70fe5` (`docs: reduce sidebar navigation density`)
+
+Docs sidebar validation:
+
+- `make docs-qa`: passed.
+- `make docs-build`: passed.
+- Local Docusaurus browser test against `http://127.0.0.1:18083/docs/overview` confirmed `.menu__link` computed to `MetrumMono`, `font-weight: 400`, `font-size: 14px`, and `line-height: 18.48px`; body text remained `MetrumSans`, `16px`, `400`.
+- `make package-docker VERSION=fe70fe5 COMMIT=fe70fe5`: passed for linux/amd64 and linux/arm64.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-fe70fe5-20260705T211147Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-fe70fe5-20260705T211147Z`.
+- Production `/version` returned `fe70fe5` before the later admin reports font refresh advanced production to `de2cf84`.
 
 ## 2026-07-05 Docs Font-Face Production Refresh
 
