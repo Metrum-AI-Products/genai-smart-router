@@ -16,8 +16,8 @@ Last deployed: 2026-07-05
 
 ## Deployed Version
 
-- Router package/image version: `de2cf84-linux-amd64`
-- Source commit: `de2cf84`
+- Router package/image version: `d01e252-linux-amd64`
+- Source commit: `d01e252`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,29 @@ Last deployed: 2026-07-05
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-05 Public Docs Cleanup Production Refresh
+
+Package `smart-llmrouter:d01e252-linux-amd64` was deployed to production after upstream public-doc cleanup PRs were merged.
+
+Source commit: `d01e252` (`Clean public docs internal wording (#423)`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-d01e252-20260705T225134Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-d01e252-20260705T225134Z`.
+- Docker load log: `/tmp/smart-llmrouter-docker-load-d01e252.log`.
+
+Validation:
+
+- `make package-docker VERSION=d01e252 COMMIT=d01e252`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` returned 200 with version `d01e252`.
+- Production `/version` returned `d01e252`, commit `d01e252`, Go `1.26.4`, linux/amd64, and license compile mode `required`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: d01e252`.
+- Authenticated production `big-coder` Responses smoke through `https://llm-api-engg.metrum.ai/v1/responses` returned 200 with output `OK`.
+- Router log tail after deploy showed startup only and no immediate error lines.
 
 ## 2026-07-05 Docs Sidebar And Admin Reports Font Production Refresh
 
