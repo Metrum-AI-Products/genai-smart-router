@@ -23,7 +23,7 @@ The product is strongest when platform teams need to move quickly across model p
 
 AI applications rarely standardize on one model forever. Model quality, latency, price, availability, context windows, tool behavior, image support, and account entitlements change over time. Hard-coding provider endpoints and provider keys into every client creates migration cost and weakens governance.
 
-GenAI Smart Router lets platform teams define deployment-owned model groups as quality and cost contracts. Each group has intended workloads, allowed clients, API shapes, modalities, success criteria, quotas, and an upstream provider/model mix that can evolve behind one stable caller-facing name.
+GenAI Smart Router lets platform teams define deployment-owned model groups as quality and cost contracts. Each group has intended workloads, allowed clients, API shapes, modalities, success criteria, quotas, and an upstream/provider model mix that can evolve behind one stable caller-facing name.
 
 | Outcome | What changes |
 |---|---|
@@ -73,7 +73,7 @@ Direct provider integrations work well for prototypes. Production systems accumu
 | One provider rate-limits the app | Use a validated model group that pools capacity across several upstream providers or private endpoints. |
 | One provider is down, slow, or out of quota | Route around retryable upstream failures when another eligible target can satisfy the same request. |
 | One team or agent loop consumes shared capacity | Enforce per-caller budgets and provider traffic shaping before upstream calls overload shared accounts. |
-| Cost suddenly spikes | Attribute spend by user, project, token, client, model group, provider/model, fallback, and request shape. |
+| Cost suddenly spikes | Attribute spend by user, project, public token ID, client, model group, provider/model, fallback, and request shape. |
 | Fallback silently changes quality or price | Keep fallback inside the requested model-group contract and record attempts, fallback reasons, selected target, latency, tokens, and cost. |
 | Provider keys are copied into apps and laptops | Keep upstream credentials server-side and issue revocable router tokens with scoped model-group access. |
 | Debugging requires pasting prompts or keys into tickets | Use request IDs, sanitized upstream errors, diagnostics, and evidence bundles. Keep credentials and customer content in approved private support channels. |

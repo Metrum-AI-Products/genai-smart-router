@@ -40,7 +40,7 @@ Define these fields for every model group in a deployment:
 | Coding-agent group | Codex CLI, Claude Code, multi-step tool tasks | Harbor reward score meets threshold, created files pass verifier, fallback and timeout rates stay within target |
 | VLM-capable group | OCR, screenshot reasoning, browser-control context | image smoke passes, OCR target accuracy meets threshold, image cost fields populate |
 | Reasoning-capable group | explicit OpenAI reasoning or Anthropic thinking requests | direct and router reasoning smokes pass, requested reasoning controls are forwarded or safely translated, no-compatible-target requests fail before upstream |
-| Private-model group | internal vLLM/SGLang or private GPU workloads | direct upstream and router smokes pass, private endpoint remains hidden from callers, chargeback values populate |
+| Private-model group | internal vLLM/SGLang or private GPU workloads | direct upstream and router smokes pass, private endpoint remains hidden from callers, cost-allocation values populate |
 
 These are examples only. The deployment chooses group names and contracts that match its teams, applications, and governance model.
 

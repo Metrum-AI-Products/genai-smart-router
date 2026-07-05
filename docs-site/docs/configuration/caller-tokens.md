@@ -5,7 +5,7 @@ doc_type: reference
 
 # Caller Tokens
 
-Caller token configuration binds bearer tokens to explicit users, projects, environments, allowed model groups, rate limits, quotas, and administrative roles. `/v1/models` is the caller-facing source of truth for the model groups allowed by the presented key.
+Caller token configuration binds router-issued bearer tokens to explicit users, projects, environments, allowed model groups, rate limits, quotas, and administrative roles. `/v1/models` is the caller-facing source of truth for the model groups allowed by the presented caller token.
 
 This example is a partial subset of `config.example.yaml`; the shipped sample config is the source of truth.
 
@@ -46,15 +46,15 @@ callers:
 
 ## Schema
 
-Users and projects are account records, not values inferred from API-key names. Project memberships bind active users to active projects. A caller key references an owner user, project, environment, token hash, public token ID, allow-list, and limit policy.
+Users and projects are account records, not values inferred from token names. Project memberships bind active users to active projects. A caller token config references an owner user, project, environment, token hash, public token ID, allow-list, and limit policy.
 
 User IDs, project IDs, membership pairs, caller IDs, token hashes, and non-empty `token_id` values must be unique after normalization. Legacy `callers[].user` is accepted as a deprecated alias for `owner_user` only when both normalize to the same ID. Duplicate-hash validation errors identify caller IDs without printing hash values.
 
-Disallowed model requests return `403 model-not-allowed`. Inactive keys return status-specific safe errors such as `key-disabled`, `key-suspended`, `key-expired`, or `key-rotated`. `/metrics` remains global operational telemetry and is restricted to metrics-authorized subjects.
+Disallowed model-group requests return `403 model-not-allowed`. Inactive caller tokens return status-specific safe errors such as `key-disabled`, `key-suspended`, `key-expired`, or `key-rotated`. `/metrics` remains global operational telemetry and is restricted to metrics-authorized subjects.
 
 ## Rollback
 
-Disable or rotate a key by changing caller `status`, removing the model group from `allow`, or replacing the token hash with a new generated token. Keep old public token IDs available in historical reports; never reuse a token hash or expose raw tokens in docs, tickets, or logs.
+Disable or rotate a caller token by changing caller `status`, removing the model group from `allow`, or replacing the token hash with a new generated router token. Keep old public token IDs available in historical reports; never reuse a token hash or expose raw router tokens in docs, tickets, or logs.
 
 ## Related
 

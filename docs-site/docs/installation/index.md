@@ -13,9 +13,9 @@ Release artifacts are validated before handoff. The package validator rejects pl
 
 ## Choose A Deployment Shape
 
-Read the matrix left to right as an ownership checklist. The deployment shape decides who terminates TLS, who operates Postgres, how upgrades roll out, where telemetry is handed off, and how tenants are isolated. If a row assigns a responsibility to the customer platform, make sure that owner is named in the rollout plan before package handoff.
+Read the matrix left to right as an ownership checklist. The deployment shape decides who terminates TLS, who operates Postgres, how upgrades roll out, where telemetry is handed off, and how customer or team environments are isolated. If a row assigns a responsibility to the customer platform, make sure that owner is named in the rollout plan before package handoff.
 
-| Deployment shape | TLS termination responsibilities | Database responsibilities | Upgrade flow | Operational telemetry handoff | Multi-tenant isolation model | Recommended use case | Known limitations |
+| Deployment shape | TLS termination responsibilities | Database responsibilities | Upgrade flow | Operational telemetry handoff | Isolation model | Recommended use case | Known limitations |
 |---|---|---|---|---|---|---|---|
 | Docker Compose | Deployment-owned reverse proxy or packaged Caddy example; production TLS policy remains customer-owned. | Compose can run router-managed Postgres for simple deployments; production teams may still point at customer-managed Postgres. | Load the packaged image tar, set `SMART_LLMROUTER_VERSION`, run `docker compose up -d`, then smoke. | Container logs, optional host Prometheus scrape, and usage DB reports; host log shipping is customer-owned. | One router config governs callers, projects, environments, model groups, and admin domains. | Fast customer-managed install on one host with packaged runtime and a bundled database option. | Single-host operating model unless the customer adds external Postgres, load balancing, and state planning. |
 | Linux binary | Customer-owned TLS proxy or service mesh in front of the binary. | Customer-managed Postgres DSN and filesystem state. | Replace binaries under the process supervisor, restore config inputs, restart, then smoke. | Process logs, host log collection, optional Prometheus, and usage DB reports. | One process/config boundary; use separate instances for hard environment or team isolation. | Environments with existing supervisors, hardened host images, database standards, and TLS infrastructure. | More customer-owned wiring for service files, logs, filesystem permissions, and rollback. |
@@ -30,7 +30,7 @@ Start here by shape:
 - [Deploy To Kubernetes](/docs/installation/kubernetes) for cluster-owned manifests and rollout.
 - [Package Validation And Security Checks](/docs/installation/package-validation) for handoff and audit checks.
 
-Both deployment shapes use the same runtime configuration model:
+All deployment shapes use the same runtime configuration model:
 
 - router YAML config for providers, model groups, callers, usage storage, limits, and admin surfaces;
 - environment-backed provider credentials;

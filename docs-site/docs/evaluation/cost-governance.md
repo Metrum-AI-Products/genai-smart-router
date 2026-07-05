@@ -14,7 +14,7 @@ Provider catalog metadata can include:
 - input-token price;
 - output-token price;
 - image-token price;
-- per-image chargeback price;
+- per-image cost-allocation price;
 - pricing source;
 - pricing update date;
 - pricing notes.
@@ -23,7 +23,7 @@ When a request finishes, the router stores the price values and calculated costs
 
 If an upstream returns billed-cost metadata, the router can store that separately from router-calculated cost.
 
-## Chargeback Dimensions
+## Cost-Allocation Dimensions
 
 Usage reports can group traffic by:
 
@@ -39,7 +39,7 @@ Usage reports can group traffic by:
 - input, output, and image tokens;
 - calculated and upstream-reported costs.
 
-These dimensions support cost allocation, quota review, provider evaluation, and savings analysis.
+These dimensions support project chargeback, cost allocation, quota review, provider evaluation, and savings analysis.
 
 ## Cost Controls
 
@@ -95,7 +95,7 @@ For VLM requests:
 
 - standard input-token pricing is the fallback;
 - `image_input_price_per_million_tokens_usd` applies when the upstream reports image tokens;
-- `image_input_price_per_image_usd` applies when the provider or enterprise chargeback model bills per image;
+- `image_input_price_per_image_usd` applies when the provider or enterprise cost-allocation model bills per image;
 - upstream-reported billed cost is stored separately when available.
 
 This makes image analysis, OCR, and browser-control workloads visible in the same reporting model as text traffic.

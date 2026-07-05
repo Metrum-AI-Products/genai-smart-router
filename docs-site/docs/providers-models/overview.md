@@ -116,7 +116,7 @@ Upstream HTTP redirects are not followed. A 301, 302, 303, 307, or 308 response 
 
 ## Hosted And Private Upstreams
 
-Hosted providers, OpenAI-compatible aggregators, private vLLM or SGLang services, and enterprise-hosted model gateways all use the same catalog and model-group concepts. The operational differences are mostly in endpoint ownership, network controls, pricing or chargeback source, and validation responsibility.
+Hosted providers, OpenAI-compatible aggregators, private vLLM or SGLang services, and enterprise-hosted model gateways all use the same catalog and model-group concepts. The operational differences are mostly in endpoint ownership, network controls, pricing or cost-allocation source, and validation responsibility.
 
 | Upstream Type | What To Verify |
 | --- | --- |

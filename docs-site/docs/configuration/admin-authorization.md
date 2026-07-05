@@ -93,7 +93,7 @@ Rollback reactivates the most recently retired valid policy set and writes an au
 
 `/metrics` checks object `metrics` with action `read`.
 
-Existing caller keys with `metrics_admin: true` remain compatible. The router synthesizes an equivalent Casbin grant at startup, so current metrics-admin callers still work while ordinary caller tokens receive `403 metrics-forbidden`.
+Existing caller tokens with `metrics_admin: true` remain compatible. The router synthesizes an equivalent Casbin grant at startup, so current metrics-admin callers still work while ordinary caller tokens receive `403 metrics-forbidden`.
 
 Deployments can also grant metrics access with explicit policy for a caller subject:
 
@@ -106,7 +106,7 @@ p, metrics_admin, example/prod, metrics, read
 
 Content-capture maintenance endpoints check object `content:capture`.
 
-`DELETE /v1/content-captures/<request_id>` checks action `delete` in the captured row's caller project/environment domain before removing rows. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing caller keys with `content_admin: true` remain compatible through synthesized Casbin grants for their own domain:
+`DELETE /v1/content-captures/<request_id>` checks action `delete` in the captured row's caller project/environment domain before removing rows. `POST /v1/content-captures/purge-expired` checks action `purge`. Existing caller tokens with `content_admin: true` remain compatible through synthesized Casbin grants for their own domain:
 
 ```text
 g, caller:content-admin-key, content_admin, example/prod

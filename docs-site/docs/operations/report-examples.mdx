@@ -59,7 +59,7 @@ This excerpt answers: which caller cohorts are driving spend, savings, token vol
 | Team E | Project E | Client E | 498 | 27 | 36,619,786 | 146,357 | $86.28 | $187.49 | $101.21 | 5,363 | 61,406 | 78,517.37 |
 | Team F | Project F | Client F | 784 | 64 | 32,061,835 | 330,830 | $5.30 | $170.23 | $164.93 | 14,971 | 295,382 | 460,312.09 |
 
-The caller view supports chargeback, quota reviews, and support triage. For example, a team with moderate cost but high average latency may need a different model-group policy, a higher timeout, or a provider mix with stronger streaming behavior.
+The caller view supports cost allocation, quota reviews, and support triage. For example, a team with moderate cost but high average latency may need a different model-group policy, a higher timeout, or a provider mix with stronger streaming behavior.
 
 ## Upstream Endpoint Performance
 
@@ -102,4 +102,4 @@ router-usage-report \
   --out usage-project.md
 ```
 
-Generated markdown reports include usage by caller token, caller, project, environment, caller IP, model group, provider/model, status, cache behavior, hour, day, downstream user performance, upstream endpoint performance, and per-request throughput. Savings tables are produced by comparing the generated report totals with a separately documented reference baseline.
+Generated markdown reports include usage by public token ID, caller, project, environment, caller IP, model group, provider/model, status, cache behavior, hour, day, downstream user performance, upstream endpoint performance, and per-request throughput. Savings tables are produced by comparing the generated report totals with a separately documented reference baseline.

@@ -16,7 +16,7 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | cache eligibility | The request and target conditions that decide whether a response may be served from or written to cache. | [Router Configuration](../configuration/router-config) |
 | cache key | A non-secret fingerprint used to identify reusable cached responses after configured redaction and eligibility checks. | [Router Configuration](../configuration/router-config) |
 | caller | The authenticated application, service, or user represented by a router token and metadata. | [Available Models And Access](../getting-started/available-models) |
-| caller token | A router-issued bearer token with allow lists, caller metadata, limits, and optional admin privileges. | [Available Models And Access](../getting-started/available-models) |
+| caller token | A router-issued bearer token with allow lists, caller metadata, limits, a public token ID for reporting, and optional admin privileges. | [Available Models And Access](../getting-started/available-models) |
 | content-admin | An operator subject authorized for governed content-capture maintenance actions such as delete or purge. | [Admin Authorization](../configuration/admin-authorization) |
 | contract | A model-group capability and quality promise enforced before target selection. | [Model Group Contracts](../configuration/model-group-contracts) |
 | decision telemetry | Safe scalar routing evidence recorded for policy, eligibility, fallback, score, and filter decisions. | [Usage Reporting](../operations/usage-reporting) |
@@ -27,16 +27,17 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | fingerprint | A safe identifier or hash used for diagnostics, cache decisions, or routing evidence without exposing raw content or tokens. | [Usage Reporting](../operations/usage-reporting) |
 | image input | Image-bearing request content sent through a supported VLM-capable API shape. | [Image Analysis And VLM Routing](../configuration/image-analysis-vlm) |
 | input modality | A target-supported input type such as text or image. | [Model Metadata](../reference/model-metadata) |
-| metrics-admin | An operator subject authorized to read global `/metrics`; ordinary caller keys receive `403 metrics-forbidden`. | [Observability](../operations/observability) |
+| metrics-admin | An operator subject authorized to read global `/metrics`; ordinary caller tokens receive `403 metrics-forbidden`. | [Observability](../operations/observability) |
 | model group | A caller-facing, deployment-defined policy name that owns a target list and routing strategy. | [Concepts](../concepts) |
 | output modality | A target-supported output type, normally text unless validated otherwise. | [Model Metadata](../reference/model-metadata) |
-| owner user | The configured owner identity for caller keys, reporting, access, and usage grouping. | [Router Configuration](../configuration/router-config) |
+| owner user | The configured owner identity for caller tokens, reporting, access, and usage grouping. | [Router Configuration](../configuration/router-config) |
 | policies | Authentication, authorization, routing, limits, contracts, traffic shaping, retention, and deployment rules that govern requests. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
 | policy service | A trusted deployment service called by `strategy: external` to choose from eligible targets. | [External Routing Policy Service](../configuration/external-routing-policy) |
 | project | A deployment-owned grouping for caller access, usage reports, and operational ownership. | [Router Configuration](../configuration/router-config) |
 | project_membership | The configured relationship that authorizes a user or service identity inside a project/environment domain. | [Router Configuration](../configuration/router-config) |
 | provider catalog | Metadata about upstream providers and models, including model IDs, pricing, modalities, tool support, and validation notes. | [Model Metadata](../reference/model-metadata) |
 | provider-route | A configured provider/model route exposed only through model-group targets, not directly to callers. | [Add A Provider Or Model](../reference/add-provider-model) |
+| public token ID | A non-secret token identifier stored in config as `token_id` and shown in reports so operators can correlate usage without exposing raw router tokens or token hashes. | [Caller Tokens](../configuration/caller-tokens) |
 | reasoning control | Request fields that ask for provider reasoning or thinking behavior and become target eligibility requirements. | [Reasoning Routing](../configuration/reasoning-routing) |
 | reasoning mode | A target's validated reasoning behavior, such as supported effort levels or thinking controls. | [Reasoning Routing](../configuration/reasoning-routing) |
 | request shape feature | A safe request property such as API skin, tools, image input, reasoning, output cap, prompt size, or structured-output request. | [Dynamic Score Routing](../configuration/dynamic-score-routing) |
@@ -45,7 +46,7 @@ Use this glossary for short canonical definitions. For the request flow and mode
 | router endpoint | The deployment URL callers use instead of direct provider endpoints. | [Hosted Quickstart](../getting-started/hosted-quickstart) |
 | routing policy | The deployment-owned rules and strategy that choose among eligible targets inside one requested model group. | [Customer-Controlled Routing](../routing/customer-controlled-routing) |
 | skin | A client compatibility surface, such as OpenAI Chat, OpenAI Responses, or Anthropic Messages. | [API Compatibility](../reference/api-compatibility) |
-| target | One configured provider/model entry inside a model group. | [Concepts](../concepts) |
+| target | One configured upstream/provider model entry inside a model group. | [Concepts](../concepts) |
 | target selection | The process of filtering eligible targets and choosing one according to the model group's strategy. | [Routing Strategy Decision Tree](../routing/strategy-decision-tree) |
 | target-level context eligibility | A target-specific check that skips targets unable to satisfy the request context, such as max-token or modality requirements. | [Router Configuration](../configuration/router-config) |
 | tier | Deployment-defined target metadata used by policy, reports, or scripts to group targets by role or cost class. | [TypeScript Routing Policy](../configuration/routing-typescript) |

@@ -51,7 +51,7 @@ These mechanisms can be combined carefully. For example, a group can use `dynami
 | PII filtering | `models.<group>.pii_filter` | Whether text is redacted, restored, or blocked before routing policy and upstream calls |
 | Cache behavior | Server cache config and request cache controls | Which responses may be reused and which requests bypass cache |
 | Retention policy | Usage DB, logs, rollups, retention settings | How long safe scalar telemetry and reports are kept |
-| Reports and evaluation labels | Usage reporting, decision telemetry, validation harness labels | Which evidence supports promotion, rollback, and chargeback |
+| Reports and evaluation labels | Usage reporting, decision telemetry, validation harness labels | Which evidence supports promotion, rollback, and cost allocation |
 | License and feature boundaries | Signed license plus runtime config | Which product capabilities the deployment may enable |
 
 ## Examples

@@ -5,7 +5,7 @@ doc_type: reference
 
 # Provider Traffic Shaping
 
-Provider traffic shaping protects shared upstream capacity across all caller keys. It complements caller rate and quota policy: caller limits run first, while provider shaping decides whether a selected upstream target can be used right now.
+Provider traffic shaping protects shared upstream capacity across all caller tokens. It complements caller rate and quota policy: caller limits run first, while provider shaping decides whether a selected upstream target can be used right now.
 
 This is also how deployments make capacity pooling safe. A model group can include multiple validated providers, each with its own upstream rate limit, quota, or private-serving capacity. The router can spread compatible traffic across that pool, while provider shaping prevents one hot caller, model group, or fallback storm from consuming the whole upstream account.
 

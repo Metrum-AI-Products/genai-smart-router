@@ -76,7 +76,7 @@ providers:
         output_price_per_million_usd: 0.00
         input_modalities: [text]
         output_modalities: [text]
-        pricing_notes: internal GPU allocation; set chargeback values if reports need allocated cost
+        pricing_notes: internal GPU allocation; set cost-allocation values if reports need allocated cost
         tool_support:
           openai_chat: [tools, tool_choice]
 
@@ -93,9 +93,9 @@ models:
         tool_only: true
 ```
 
-For self-hosted models, set `input_price_per_million_usd` and `output_price_per_million_usd` to the enterprise chargeback rate if one exists. Use `0.00` only when reports should show token volume without allocated GPU cost. Set `tool_support` only after the direct upstream and router-level tool smokes pass for that exact served model, chat template, parser, and client protocol.
+For self-hosted models, set `input_price_per_million_usd` and `output_price_per_million_usd` to the enterprise cost-allocation rate if one exists. Use `0.00` only when reports should show token volume without allocated GPU cost. Set `tool_support` only after the direct upstream and router-level tool smokes pass for that exact served model, chat template, parser, and client protocol.
 
-For self-hosted VLMs, also set `input_modalities` and `output_modalities` after direct image/video smokes pass. If image input has a separate chargeback rate, use `image_input_price_per_million_tokens_usd` for provider-reported image tokens or `image_input_price_per_image_usd` for fixed per-image accounting. The router logs image count, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when the upstream includes it.
+For self-hosted VLMs, also set `input_modalities` and `output_modalities` after direct image/video smokes pass. If image input has a separate cost-allocation rate, use `image_input_price_per_million_tokens_usd` for provider-reported image tokens or `image_input_price_per_image_usd` for fixed per-image accounting. The router logs image count, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when the upstream includes it.
 
 Example VLM catalog entry:
 
@@ -117,7 +117,7 @@ providers:
         image_input_price_per_image_usd: 0.0005
         input_modalities: [text, image]
         output_modalities: [text]
-        pricing_notes: internal GPU allocation plus per-image chargeback
+        pricing_notes: internal GPU allocation plus per-image cost allocation
 
 models:
   vision:

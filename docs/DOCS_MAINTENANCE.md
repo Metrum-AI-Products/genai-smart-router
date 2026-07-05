@@ -83,6 +83,30 @@ Specific high-risk changes require extra coverage:
 - TypeScript or external policy routing changes: document trusted input shape, safe context fields, egress boundaries, fail-closed behavior, caller-visible errors, and at least one tested runnable example.
 - PII/content-capture changes: distinguish routing demos from outbound redaction, keep raw matched values and placeholder maps out of persisted telemetry, and document governed capture separately.
 
+## Public Terminology And Tone Checklist
+
+Use this checklist for Tier 1 public docs and customer-facing package-safe Tier 2 docs. Keep exact config fields, API fields, error codes, report tab names, and diagnostic bucket values unchanged, then make the surrounding prose use customer-facing terms.
+
+| Concept | Preferred public wording | Avoid in prose unless quoting exact fields or errors |
+|---|---|---|
+| Client credential | caller token or router token | internal key, API key, bearer key |
+| Reportable token identifier | public token ID | token hash, raw token, token suffix |
+| Caller-facing route name | model group | model alias, route, deployment constant |
+| Selected backend | upstream model or provider model; provider/model when referring to report dimensions | raw model when the caller sees only a model group |
+| Troubleshooting artifacts | sanitized evidence, request evidence, diagnostics | raw prompts, raw traces, full request body |
+| Deployment paths | private managed, enterprise self-hosted, hosted evaluation | shared public multitenant inference service unless explicitly contrasting what the product is not |
+| Access or capability boundary | unavailable, not entitled, not validated, not configured, or not enabled for this deployment | unsupported as a broad product judgment |
+| Spend attribution | cost allocation, cost attribution, or project chargeback when customer-facing | internal chargeback, internal billing process |
+
+Style rules:
+
+- Lead with the customer action or capability boundary before explaining the implementation detail.
+- Prefer "the caller token is not allowed to use the model group" over "the key cannot access the model."
+- Prefer "the upstream/provider model is not entitled or not validated for this request shape" over broad "not supported" language.
+- Refer to `/v1/models` as the caller-facing source of truth for allowed model groups.
+- Refer to request drilldown output as request evidence or diagnostics, and explicitly say it is sanitized when discussing support packets.
+- Keep field names such as `token_id`, `token_sha256`, `model`, `provider`, `model-not-allowed`, `no-eligible-target`, and report column labels exact when documenting configuration, JSON, SQL, errors, or UI labels.
+
 ## Evaluation And Security Grouping
 
 Keep public evaluation pages grouped around buyer and operator proof points, not private operational history:

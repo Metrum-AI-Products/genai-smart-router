@@ -278,7 +278,7 @@ For end-to-end configuration, validation, and caller examples, see [Reasoning Ro
 
 ## Pricing And Cost Fields
 
-Set pricing metadata for every active target when a price or customer cost-allocation rate is known:
+Set pricing metadata for every active target when a provider price or customer cost-allocation rate is known:
 
 - `input_price_per_million_usd`
 - `output_price_per_million_usd`
@@ -290,7 +290,7 @@ Set pricing metadata for every active target when a price or customer cost-alloc
 
 The router stores the prices and calculated costs used at request time. Historical reports therefore keep the cost assumptions that were true when the request ran, even if provider pricing changes later.
 
-For self-hosted models, use the enterprise chargeback rate. Use `0.00` only when reports should show token volume without allocated GPU cost.
+For self-hosted models, use the enterprise cost-allocation rate. Use `0.00` only when reports should show token volume without allocated GPU cost.
 
 ## Active, Disabled, And Catalog-Only
 

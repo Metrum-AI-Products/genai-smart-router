@@ -94,7 +94,7 @@ GenAI Smart Router addresses the controllable layer:
 - Route workloads by cost, quality, latency, and tool compatibility.
 - Cache eligible deterministic responses.
 - Compare provider/model usage and stored request-time cost using durable reports.
-- Track usage by caller key, project, environment, model group, provider, model, hour, IP, and USD cost.
+- Track usage by public token ID, project, environment, model group, provider, model, hour, IP, and USD cost.
 - Evaluate model groups with agentic harnesses so cost savings are measured against task outcomes, not only token price.
 
 The Harbor case study in these docs shows the same principle numerically: successful agentic coding runs can differ substantially in token volume, latency, fallback use, and output throughput even when final reward score is identical. Those tokenomics are the operational signal that turns model routing from guesswork into policy.
@@ -148,7 +148,7 @@ The evaluation-to-purchase flow is request evaluation, receive endpoint/token or
 - Which model groups should be exposed, and what success criteria should each group satisfy?
 - Which provider models are approved and validated?
 - What token, quota, and budget rules are required?
-- Which reports and dashboards are needed for cost governance, security access review, chargeback, and support triage?
+- Which reports and dashboards are needed for cost governance, security access review, cost allocation, and support triage?
 - Which workloads are cache-eligible?
 - What deployment and TLS model is preferred?
 - Is the deployment hosted, private-cloud, or enterprise/on-prem with signed license enforcement?

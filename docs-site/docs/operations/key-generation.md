@@ -29,7 +29,7 @@ The tool prints:
 - A public `token_id` used in logs and reports.
 - A `callers:` YAML entry containing `owner_user`, `project`, and `token_sha256`.
 
-Before the key can authenticate, `owner_user` must exist in `users`, `project` must exist in `projects`, and `project_memberships` must contain an active membership for that user/project pair. Each configured user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization. Token hashes are checked case-insensitively, and duplicate-hash validation errors identify the caller IDs without printing hash values. User, project, and membership statuses support `active`, `disabled`, `suspended`, `removed`, and `archived`; caller key statuses also support `expired` and `rotated`. `--username` is an alias for `--owner-user`; `--user` remains a deprecated compatibility alias.
+Before the caller token can authenticate, `owner_user` must exist in `users`, `project` must exist in `projects`, and `project_memberships` must contain an active membership for that user/project pair. Each configured user id, project id, caller `id`, `token_sha256`, and non-empty `token_id` must be unique after normalization. Token hashes are checked case-insensitively, and duplicate-hash validation errors identify the caller IDs without printing hash values. User, project, and membership statuses support `active`, `disabled`, `suspended`, `removed`, and `archived`; caller token statuses also support `expired` and `rotated`. `--username` is an alias for `--owner-user`; `--user` remains a deprecated compatibility alias.
 
 ## Identity Model
 
@@ -38,9 +38,9 @@ The router uses explicit account records:
 - `users` identify people, services, administrators, or evaluation jobs.
 - `projects` identify business units, applications, cost centers, environments, or evaluation scopes.
 - `project_memberships` grant a user a project role such as developer, operator, owner, auditor, or another deployment-defined role.
-- `callers` are API keys that reference one owner user, one project, one environment, and one allow list.
+- `callers` are caller-token config entries that reference one owner user, one project, one environment, and one allow list.
 
-Do not infer ownership or authorization from the token prefix alone. The prefix and public `token_id` are traceability aids; authorization comes from the key's configured owner/project references, membership status, allow list, quotas, and Casbin admin policies where applicable. One user/project can have multiple keys for rotation, production versus staging, separate clients, higher-TPM coding-agent traffic, or short-lived evaluations.
+Do not infer ownership or authorization from the token prefix alone. The prefix and public `token_id` are traceability aids; authorization comes from the caller token's configured owner/project references, membership status, allow list, quotas, and Casbin admin policies where applicable. One user/project can have multiple caller tokens for rotation, production versus staging, separate clients, higher-TPM coding-agent traffic, or short-lived evaluations.
 
 ## Access Patterns
 
@@ -62,8 +62,8 @@ Callers see only allowed groups when they call `/v1/models`. See [Available Mode
 
 ## Rotation
 
-Generate a new token, add its hashed caller entry to config, reload or restart the router, then move clients to the new token and mark the old key `status: rotated` before deleting it from active config. Reports continue to use the public token IDs and caller IDs captured on historical rows.
+Generate a new router token, add its hashed caller entry to config, reload or restart the router, then move clients to the new token and mark the old caller token `status: rotated` before deleting it from active config. Reports continue to use the public token IDs and caller IDs captured on historical rows.
 
-To suspend access without deleting history, set the caller key `status: suspended`, `disabled`, `expired`, or `rotated` and restart or reload the deployment. Disabling a user, project, or project membership should be done by removing or correcting active key references first, because config validation requires active account references for all enabled keys.
+To suspend access without deleting history, set the caller token `status: suspended`, `disabled`, `expired`, or `rotated` and restart or reload the deployment. Disabling a user, project, or project membership should be done by removing or correcting active caller-token references first, because config validation requires active account references for all enabled caller tokens.
 
-After each issue, rotation, or disablement, ask the caller to run `/v1/models`. That response is the source of truth for the model groups the key can request.
+After each issue, rotation, or disablement, ask the caller to run `/v1/models`. That response is the source of truth for the model groups the caller token can request.

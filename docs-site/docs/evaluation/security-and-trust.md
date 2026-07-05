@@ -17,7 +17,7 @@ GenAI Smart Router is designed to keep provider credentials, private upstream en
 - Browser-admin password hashes and identity policy.
 - TypeScript routing script files and external policy service authentication.
 
-Callers receive a router endpoint, a router-issued token, and the model groups their token may request.
+Callers receive a router endpoint, a router-issued caller token, and the model groups that token may request.
 
 ## Caller Access Controls
 
@@ -42,7 +42,7 @@ Basic Auth establishes a subject such as `basic:admin`; it does not grant access
 
 Usage and diagnostics are designed for operational triage without storing sensitive request content by default.
 
-Expected diagnostic fields include request IDs, selected provider/model, model group, status, attempt summaries, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
+Expected diagnostic fields include request IDs, selected upstream/provider model, model group, status, attempt summaries, latency, sanitized errors, token counts, image counters, cost fields, cache behavior, and fallback events.
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
@@ -58,9 +58,9 @@ See [PII Filtering](../configuration/pii-filtering).
 
 ## Metrics Isolation
 
-`/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated Casbin grants. Normal application caller keys receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
+`/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated Casbin grants. Normal application caller tokens receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
 
-Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Delete-by-request is scoped to the captured row's caller project/environment domain. Existing `content_admin: true` caller config remains compatible through generated grants for its own domain. Do not grant it to application caller keys or assume metrics-admin access includes content access.
+Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Delete-by-request is scoped to the captured row's caller project/environment domain. Existing `content_admin: true` caller config remains compatible through generated grants for its own domain. Do not grant it to application caller tokens or assume metrics-admin access includes content access.
 
 ## Security Access Reporting
 
@@ -81,7 +81,7 @@ Before production rollout, ask for:
 - dependency and container scan summaries;
 - secret-scan results for release artifacts;
 - provider-key storage method;
-- caller-token policy summary;
+- caller-token and public token ID policy summary;
 - metrics-admin token owner;
 - private-upstream network policy;
 - diagnostics redaction verification;

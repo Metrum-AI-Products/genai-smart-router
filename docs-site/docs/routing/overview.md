@@ -64,7 +64,7 @@ Unknown limits are allowed by default for compatibility with existing deployment
 
 ## Shared Upstream Capacity
 
-Operators can configure provider, provider-model, and target `traffic_shape` buckets to protect shared upstream account capacity across all caller keys. This is different from caller RPM/TPM/concurrency policy: a caller can be within its own quota while a provider account or one upstream model is temporarily at capacity.
+Operators can configure provider, provider-model, and target `traffic_shape` buckets to protect shared upstream account capacity across all caller tokens. This is different from caller RPM/TPM/concurrency policy: a caller can be within its own quota while a provider account or one upstream model is temporarily at capacity.
 
 Shared shaping is enforced at upstream admission time. Cache hits are served before provider capacity is consumed, and a cacheable repeat request does not get rerouted or rejected only because the upstream bucket is currently empty. If the selected target is throttled before an upstream attempt starts, the router skips it and tries the next fallback target. When every otherwise eligible upstream attempt is throttled by provider-side shared capacity, callers receive `503 upstream-capacity-throttled` with a request ID and `Retry-After` when calculable.
 

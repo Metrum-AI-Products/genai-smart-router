@@ -38,7 +38,7 @@ Record:
 
 Keep unavailable or unvalidated provider models catalog-only. Move a model into active routing after the deployment has entitlement and validation evidence for the API shapes it will serve.
 
-Treat provider access failures as activation blockers. A direct smoke returning `401`, entitlement-shaped `403`, generic access `403`, or model-access `404` means the target should not receive ordinary traffic until the exact provider credential, account/project/region, model ID, dialect, and request shape are fixed and retested. Router-level smokes should show sanitized access-failure classes and never expose provider keys or raw upstream bodies.
+Treat provider access failures as activation prerequisites. A direct smoke returning `401`, entitlement-shaped `403`, generic access `403`, or model-access `404` means the target should not receive ordinary traffic until the exact provider credential, account/project/region, model ID, dialect, and request shape are fixed and retested. Router-level smokes should show sanitized access-failure classes and never expose provider keys or raw upstream bodies.
 
 ## 2. Run Direct Provider Smokes
 
@@ -78,7 +78,7 @@ rtk python3 scripts/large_payload_chat_smoke.py \
   --max-tokens 32
 ```
 
-Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, prompt-token scale, latency, status, and token usage in `validation_notes`. Production evidence should use a deployment-owned smoke group and a safe existing caller token; if that caller or report access is not available, record the blocker instead of copying token files or captured payloads.
+Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, prompt-token scale, latency, status, and token usage in `validation_notes`. Production evidence should use a deployment-owned smoke group and a safe existing caller token; if that caller or report access is not available, record the prerequisite gap instead of copying token files or captured payloads. When a production incident yields a reusable safe shape, add a fixture under `testdata/smokes/production-derived/` and validate it with `scripts/prod_smoke_regressions.py` rather than preserving customer content.
 
 For opencode-style coding-agent traffic, run the API capability matrix before declaring support for an endpoint. The matrix sends synthetic OpenAI Chat and Anthropic Messages text, client-tool, and image requests and records sanitized pass/fail evidence:
 
@@ -323,7 +323,7 @@ models:
               max_entries: 10000
 ```
 
-Run router-level `POST /v1/chat/completions` smokes for non-streaming text, function-tool calls, and a negative unsupported shape such as `stream:true` or image input when those modes are not enabled. If `stateful_sessions.enabled` will be turned on, run a two-request same-session smoke and verify the second upstream Responses request includes the first upstream response `id` as `previous_response_id`; also verify a different caller or session header value does not reuse it. Verify usage and diagnostic rows show inbound Chat, target Responses, `/v1/responses` endpoint path, safe translation-shape buckets, and no raw prompt/tool-schema/session-header persistence. Do not enable bridge streaming, images, structured outputs, reasoning, or parallel tool calls until those exact bridge shapes pass.
+Run router-level `POST /v1/chat/completions` smokes for non-streaming text, function-tool calls, and a negative not-enabled shape such as `stream:true` or image input when those modes are not enabled. If `stateful_sessions.enabled` will be turned on, run a two-request same-session smoke and verify the second upstream Responses request includes the first upstream response `id` as `previous_response_id`; also verify a different caller or session header value does not reuse it. Verify usage and diagnostic rows show inbound Chat, target Responses, `/v1/responses` endpoint path, safe translation-shape buckets, and no raw prompt/tool-schema/session-header persistence. Do not enable bridge streaming, images, structured outputs, reasoning, or parallel tool calls until those exact bridge shapes pass.
 
 ## 6. Add Production Weight Conservatively
 

@@ -112,7 +112,7 @@ router-usage-report \
   --rollup-type daily
 ```
 
-Use `--rollup-type hourly` for recent operational trend reporting, `daily` for customer/project/key/provider cost allocation, and `monthly` for customer cost allocation and optional enterprise contract true-up summaries. The command writes relational scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` for the selected UTC `[from,to)` window. Rollup runs preserve source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router package version and runtime build metadata, and generation/finalization timestamps.
+Use `--rollup-type hourly` for recent operational trend reporting, `daily` for customer/project/public-token/provider cost allocation, and `monthly` for customer cost allocation and optional enterprise contract true-up summaries. The command writes relational scalar rows to `usage_rollup_runs`, the selected aggregate table (`usage_rollup_hourly`, `usage_rollup_daily`, or `usage_rollup_monthly_billing`), `usage_rollup_decision_buckets`, and `usage_rollup_audit_events` for the selected UTC `[from,to)` window. Rollup runs preserve source row count, source min/max request timestamp, deterministic source checksum, aggregate row counts, router package version and runtime build metadata, and generation/finalization timestamps.
 
 These rollups support customer governance and optional commercial true-up reviews. Commercial billing is handled outside the router by the contracted commercial process; these tables are not a product billing ledger.
 
@@ -149,7 +149,7 @@ Use retention language carefully in commercial reviews:
 - archived exports are customer-controlled artifacts and are not created by the current dry-run foundation;
 - legal holds are scalar rows that block dry-run candidate counts by data class and timestamp range;
 - purge jobs are future execution workflows, not part of the current shipped foundation;
-- report and chargeback calculations should use stored request-time usage and cost fields, not current provider config repricing.
+- report and cost-allocation calculations should use stored request-time usage and cost fields, not current provider config repricing.
 
 The usage and reporting schema remains purely relational: scalar columns plus normalized child tables. Do not add JSON/JSONB, array columns, serialized blobs, or packed multi-value text fields for structured reporting data.
 
@@ -213,7 +213,7 @@ Savings breakdown browser tables intentionally emphasize attribution fields: dim
 
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Category charts shorten long bucket labels on the axis and show a collapsible bucket legend that maps each short label to its full value; tables, exports, and JSON responses keep the full label. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
 
-Request evidence bundles are assembled from normalized relational tables. They expose safe request ID, caller/project/environment/client labels, requested and resolved model group, selected provider/model/dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency/throughput, quota/key/cache state, traffic-shaping state, candidate/filter summaries, attempts, sanitized upstream error fields, and trace rows where available. Evidence APIs require `admin:reports` `drilldown`, use `Cache-Control: no-store`, and must not expose raw prompts, raw responses, raw image URLs or payloads, raw tool schemas, raw tool outputs, provider API keys, router tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
+Request evidence bundles are assembled from normalized relational tables. They expose safe request ID, caller/project/environment/client labels, public token ID, requested and resolved model group, selected upstream/provider model and dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency/throughput, quota/caller-token/cache state, traffic-shaping state, candidate/filter summaries, attempts, sanitized upstream error fields, and trace rows where available. Evidence APIs require `admin:reports` `drilldown`, use `Cache-Control: no-store`, and must not expose raw prompts, raw responses, raw image URLs or payloads, raw tool schemas, raw tool outputs, provider API keys, router tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
 
 Report APIs also return `pagination` metadata. Raw request and security-event endpoints use cursor pagination with `limit`, `cursor`, `sort`, and `direction`:
 
@@ -252,7 +252,7 @@ Reports include:
 - Request-time input/output token prices and calculated input/output/total USD cost.
 - Image/VLM fields including image presence, image count, upstream image-token counts when reported, calculated image input cost, and upstream-reported billed cost when available.
 - Usage by public router token ID, user, project, and environment.
-- Usage by API key label/public token ID across multiple keys for one user or project, including rotation and disabled-key review.
+- Usage by public token ID across multiple caller tokens for one user or project, including rotation and disabled-token review.
 - Usage by caller ID, requested model, target provider/model/dialect, status, cache state, and stored caller IP when enabled.
 - Usage by caller IP and hour.
 - Usage by router model group.
@@ -285,7 +285,7 @@ For “small prompts work but real coding-agent requests fail,” filter to the 
 
 For encoding-related upstream 400/403 triage, filter Upstream failures or raw Requests by `provider`, `target_model`, `dialect`, `status`, and large-payload buckets such as `request_bytes_bucket`. Compare the failed active target with `/admin/reports/api/provider-catalog-status`: `forceStoreFalse=true` explains intentional `store:false` injection, while `outputTokenField=max_completion_tokens` explains Chat Completions cap translation. A 403 on `store` or a 400 on `max_tokens` usually points to catalog metadata drift rather than a provider outage.
 
-For Fireworks-style large Chat payload investigations, use only safe scalar shape fields. A useful first report is provider/model/dialect plus byte bucket, tool-count bucket, request-shape fingerprint, tool-schema fingerprint, upstream status, terminal status, request count, and error rate. Reproduce the dominant failed shape with a sanitized fixture such as `scripts/large_payload_chat_smoke.py`, first against the direct upstream endpoint and then through a router smoke group pinned to the same target. Production reruns should use a deployment-owned smoke group and an existing safe caller token; if those prerequisites are unavailable, record that blocker and avoid copying token files into notes or logs. If direct and router both pass, treat older failures as stale evidence and update the issue/runbook with the passed request bytes and token scale. If the direct upstream passes but router fails, inspect translation rows and config metadata. If the direct upstream fails at the same shape, configure `request_shape_support` limits or keep the target out of broad coding-agent groups.
+For Fireworks-style large Chat payload investigations, use only safe scalar shape fields. A useful first report is provider/model/dialect plus byte bucket, tool-count bucket, request-shape fingerprint, tool-schema fingerprint, upstream status, terminal status, request count, and error rate. Reproduce the dominant failed shape with a sanitized fixture such as `scripts/large_payload_chat_smoke.py`, first against the direct upstream endpoint and then through a router smoke group pinned to the same target. Production reruns should use a deployment-owned smoke group and an existing safe caller token; if those prerequisites are unavailable, record the prerequisite gap and avoid copying token files into notes or logs. If direct and router both pass, treat older failures as stale evidence and update the issue/runbook with the passed request bytes and token scale. If the direct upstream passes but router fails, inspect translation rows and config metadata. If the direct upstream fails at the same shape, configure `request_shape_support` limits or keep the target out of broad coding-agent groups.
 
 ```sql
 SELECT
@@ -346,12 +346,12 @@ Decision telemetry is disabled unless the deployment sets `server.decision_telem
 
 Use the downstream user performance section to identify which users, projects, or clients are seeing slow responses. Use the upstream endpoint performance section to identify provider/model/dialect combinations with high upstream duration, low token throughput, elevated errors, or fallback pressure. The per-request throughput table remains available for request-level drilldown when a grouped row needs investigation.
 
-For Cursor, opencode, and other large-context developer tools, start with the troubleshooting buckets, max-token buckets, input-token buckets, and usage by client/project/key. Several 150K-token requests can exhaust TPM inside a rolling window even when daily or monthly budgets remain healthy. Distinguish router-side `429 tpm-exceeded`, `rpm-exceeded`, `concurrency-exceeded`, or `quota-exhausted` responses from upstream provider `429` attempts and from client cancellations by checking the terminal request status, attempt rows, and request trace events.
+For Cursor, opencode, and other large-context developer tools, start with the troubleshooting buckets, max-token buckets, input-token buckets, and usage by client/project/public token ID. Several 150K-token requests can exhaust TPM inside a rolling window even when daily or monthly budgets remain healthy. Distinguish router-side `429 tpm-exceeded`, `rpm-exceeded`, `concurrency-exceeded`, or `quota-exhausted` responses from upstream provider `429` attempts and from client cancellations by checking the terminal request status, attempt rows, and request trace events.
 
 Cost fields are captured when each request finishes. Reports do not look up current provider pricing, which means a June report keeps the June price even if an upstream vendor changes rates in July. Operators should update provider catalog metadata whenever prices, modality support, or tool-capability validation changes.
 
-For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image chargeback. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.
+For image requests, `input_price_per_million_usd` remains the fallback input-token rate. If a VLM has separate image pricing, configure `image_input_price_per_million_tokens_usd` for upstream-reported image tokens or `image_input_price_per_image_usd` for fixed per-image cost allocation. When an upstream returns billed cost, the router stores those values as upstream-reported cost fields in addition to router-calculated cost fields.
 
-For a buyer-facing explanation of cost policy and chargeback, see [Cost Governance](/docs/evaluation/cost-governance).
+For a buyer-facing explanation of cost policy and cost allocation, see [Cost Governance](/docs/evaluation/cost-governance).
 
 For anonymized graphical examples generated from production-style data, see [Report Examples](/docs/operations/report-examples).

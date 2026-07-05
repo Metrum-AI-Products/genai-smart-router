@@ -30,9 +30,10 @@ Record these safe fields:
 - API shape, such as Chat Completions, Responses, or Anthropic Messages;
 - client base URL shape, such as `/v1` for OpenAI-compatible clients or `/anthropic` for Claude Code and Anthropic-compatible clients;
 - client name, such as Codex CLI, Claude Code, Cursor, or an internal service;
+- public token ID when available from reports;
 - whether the request used streaming, tools, images, large input context, or a large output cap.
 
-Do not record raw prompts, image payloads, bearer tokens, provider keys, tool outputs, or full request bodies unless a governed content-capture process is explicitly enabled for the deployment.
+Do not record raw prompts, image payloads, bearer tokens, provider keys, tool outputs, or full request bodies unless a governed content-capture process is explicitly enabled for the deployment. Use the public token ID from diagnostics instead of raw router tokens or token hashes.
 
 ## 2. Check Caller Access
 
@@ -61,11 +62,11 @@ curl -u admin:<password> \
   "$ROUTER_BASE_URL/admin/reports/api/request-evidence?request_id=<request_id>"
 ```
 
-The bundle shows what the router safely knew and recorded: caller/project/client labels, requested model group, resolved group, selected target, stored request-time token and cost fields, latency/throughput, quota/key/cache state, traffic-shaping state, target candidate/filter summaries, attempts, sanitized upstream errors, and trace rows when those sections exist.
+The request evidence bundle shows what the router safely knew and recorded: caller/project/client labels, public token ID when configured, requested model group, resolved group, selected upstream/provider model target, stored request-time token and cost fields, latency/throughput, quota/caller-token/cache state, traffic-shaping state, target candidate/filter summaries, attempts, sanitized upstream errors, and trace rows when those sections exist.
 
 Use `diagnosticCompleteness` and `evidenceSections` to interpret gaps. `missing` on a failed request means a diagnostic section expected for that phase was not recorded; `not_applicable` means the request path did not reach that phase or the feature was disabled.
 
-Evidence bundles do not expose raw prompts, image URLs or payloads, tool schemas, tool outputs, provider API keys, router bearer tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
+Request evidence bundles do not expose raw prompts, image URLs or payloads, tool schemas, tool outputs, provider API keys, router bearer tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config.
 
 ## 4. Check Quota And Token Admission
 
@@ -121,7 +122,7 @@ Common request-shape causes:
 - image input is sent to a text-only target;
 - estimated input plus output cap exceeds target context limits;
 - request bytes or tool schema bytes exceed configured target request-shape limits;
-- a forced tool-choice shape is unsupported by the selected upstream;
+- a forced tool-choice shape is not validated for the selected upstream;
 - streaming behavior differs from the caller expectation.
 
 Model-group contracts and provider catalog metadata should describe validated modalities, tools, dialects, pricing, and max-token behavior.
@@ -149,7 +150,7 @@ python3 scripts/prod_smoke_regressions.py \
   --model-group reasoning-bridge-smoke
 ```
 
-The fixture matrix covers Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, upstream entitlement/fallback, and upstream error classification. Use the emitted request IDs to compare selected target, bridge direction, translated reasoning control, attempts, fallback, and sanitized error class in reports. If the deployment lacks a smoke group, caller access, or report DB access, record that as the blocker rather than changing an active production group solely for the test.
+The fixture matrix covers Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, upstream entitlement/fallback, and upstream error classification. Use the emitted request IDs to compare selected target, bridge direction, translated reasoning control, attempts, fallback, and sanitized error class in reports. If the deployment lacks a smoke group, caller access, or report DB access, record the prerequisite gap rather than changing an active production group solely for the test.
 
 ### Images, Tools, And Bridges
 

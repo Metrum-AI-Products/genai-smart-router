@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Enterprise Deployment Patterns
 
-GenAI Smart Router is deployment-owned infrastructure. It is not a one-size-fits-all shared public API: enterprises can run it as self-hosted infrastructure, a private managed dedicated deployment, or an evaluation-hosted endpoint while they prove client compatibility and model-group quality.
+GenAI Smart Router is deployment-owned infrastructure. Enterprises can run it as enterprise self-hosted infrastructure, a private managed dedicated deployment, or a hosted evaluation endpoint while they prove client compatibility and model-group quality.
 
 Model groups, provider credentials, private upstreams, caller access, telemetry retention, and routing strategy are deployment-defined. The product principle is that the customer or operating team owns its routing destiny. The router supplies the control surface, compatibility layer, evidence, and enforcement points so teams can evolve provider/model choices without rewriting every client.
 
@@ -24,7 +24,7 @@ Best fit:
 - spend, latency, provider/model mix, and fallback report evidence;
 - pilot handoff before a self-hosted or private managed production deployment.
 
-The evaluator receives a deployment-specific base URL, router token, and allowed model groups. Any example group names are hosted/reference examples only; `/v1/models` is the caller-facing source of truth for the groups allowed to that token.
+The evaluator receives a deployment-specific base URL, router token, and allowed model groups. Any example group names are hosted/reference examples only; `/v1/models` is the caller-facing source of truth for the groups allowed to that caller token.
 
 Acceptance evidence to request:
 
@@ -35,7 +35,7 @@ Acceptance evidence to request:
 - one report excerpt showing provider/model, latency, tokens, cost, status, attempts, and fallback behavior;
 - one security and retention summary covering provider-key handling, diagnostics redaction, metrics-admin isolation, and content-retention policy.
 
-This pattern is for evaluation or a contracted private managed service. It is not a public shared multitenant inference product.
+This pattern is for hosted evaluation or a contracted private managed service. Customer access, retention, provider custody, and report boundaries are defined by that deployment agreement.
 
 ## Pattern B: Enterprise Self-Hosted Central Gateway
 
@@ -53,7 +53,7 @@ flowchart TB
 
 Apps call the router instead of provider APIs. The central platform team owns provider credentials, caller tokens, model-group access, metrics-admin isolation, retention policy, and the license file. Teams request allowed groups, and the platform tunes targets, weights, fallbacks, and validation metadata behind those groups.
 
-This pattern works well when provider keys must stay server-side, private upstreams must remain on internal networks, and finance or platform operations need chargeback-style reports across teams.
+This pattern works well when provider keys must stay server-side, private upstreams must remain on internal networks, and finance or platform operations need cost-allocation reports across teams.
 
 ## Pattern C: Per-Environment Routers
 
@@ -81,7 +81,7 @@ Rollout and rollback flow:
 
 Use separate router instances for teams that need independent provider keys, cost centers, retention policy, private upstreams, release cadence, or regional controls.
 
-Caller users, projects, environments, and API keys map to reporting and access. A single team router can expose multiple model groups for that team's workloads, and reports can still separate usage by caller, project, client, model group, provider/model, latency, cost, and status.
+Caller users, projects, environments, and caller tokens map to reporting and access. A single team router can expose multiple model groups for that team's workloads, and reports can still separate usage by caller, project, client, model group, provider/model, latency, cost, and status.
 
 Model group names are deployment-defined. Do not bake example names such as `default`, `fast`, `high`, `big-coder`, or `vision` into application logic as product constants. Clients should discover allowed groups with [`/v1/models`](../getting-started/available-models) for their token.
 
