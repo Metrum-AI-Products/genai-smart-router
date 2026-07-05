@@ -76,7 +76,7 @@ Direct provider integrations work well for prototypes. Production systems accumu
 | Cost suddenly spikes | Attribute spend by user, project, token, client, model group, provider/model, fallback, and request shape. |
 | Fallback silently changes quality or price | Keep fallback inside the requested model-group contract and record attempts, fallback reasons, selected target, latency, tokens, and cost. |
 | Provider keys are copied into apps and laptops | Keep upstream credentials server-side and issue revocable router tokens with scoped model-group access. |
-| Debugging requires pasting prompts or keys into tickets | Use request IDs, sanitized upstream errors, scalar diagnostics, and evidence bundles without raw prompts, images, tool outputs, bearer tokens, token hashes, or provider keys by default. |
+| Debugging requires pasting prompts or keys into tickets | Use request IDs, sanitized upstream errors, diagnostics, and evidence bundles. Keep credentials and customer content in approved private support channels. |
 | Every client has a different API style | Serve OpenAI Chat, OpenAI Responses, Anthropic Messages, `/v1/models`, and caller `/v1/usage` through one governed endpoint. |
 | Teams want autonomy without losing governance | Use caller users/projects, model-group allow lists, contracts, per-team groups, or separate routers while centralizing provider custody and reporting where needed. |
 

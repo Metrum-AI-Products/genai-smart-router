@@ -121,7 +121,7 @@ For hierarchical production readiness, test authentication, model access, reques
 
 Use a private managed dedicated deployment when one customer wants a dedicated router instance operated for them instead of running the service themselves.
 
-One customer or contracted customer environment maps to one dedicated deployment. Provider-cost handling, BYOK scope, network isolation, reporting, retention, and acceptance tests are defined in the managed-service plan. Public docs intentionally keep private operational hostnames, SSH procedures, token files, and production-only runbooks out of this page.
+One customer or contracted customer environment maps to one dedicated deployment. Provider-cost handling, BYOK scope, network isolation, reporting, retention, and acceptance tests are defined in the managed-service plan. Store private operational hostnames, SSH procedures, token files, and production runbooks in the customer's approved private operations system.
 
 See [Choose a Deployment Path](../licensing/deployment-paths), [Enterprise Private Managed](../licensing/enterprise-private-managed), and [License-Protected Deployments](./license-protected-deployments).
 

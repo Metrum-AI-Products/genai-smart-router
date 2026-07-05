@@ -33,7 +33,7 @@ The plan should define:
 - operational acceptance tests and rollback criteria;
 - renewal, top-up, cancellation, and incident contacts.
 
-Procurement can use direct order, quote/invoice, or marketplace private offer when available. Public docs intentionally avoid private hostnames, SSH details, raw router tokens, provider keys, signing internals, and customer-specific license payloads.
+Procurement can use direct order, quote/invoice, or marketplace private offer when available. Share non-secret deployment details through approved private support and operations channels. Exchange credentials such as router tokens, provider keys, or license files only through the governed secret-manager or credential-handoff process defined for the deployment.
 
 ## Acceptance
 

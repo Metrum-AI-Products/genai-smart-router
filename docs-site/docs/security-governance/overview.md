@@ -22,7 +22,7 @@ GenAI Smart Router centralizes caller access, provider credentials, admin access
 
 ## Data Handling Boundaries
 
-Public and hosted docs should use placeholder tokens, placeholder hosts, and sample model group names only. Operational diagnostics and reports must not expose raw provider keys, raw router tokens, token hashes, raw prompts, raw images, raw tool outputs, full upstream headers, full config files, private signing keys, or full license payloads.
+Examples use placeholder tokens, placeholder hosts, and sample model group names. Operational diagnostics and reports expose request IDs, caller labels, selected provider/model, status, timing, token, cost, and sanitized error fields so administrators can investigate without sharing credentials or customer content.
 
 ## Related Pages
 

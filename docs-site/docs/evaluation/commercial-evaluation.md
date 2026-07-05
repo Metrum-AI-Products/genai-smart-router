@@ -19,7 +19,7 @@ GenAI Smart Router is evaluated as a governed enterprise gateway, not as a publi
 | Enterprise or on-prem deployment | Teams that need the router inside their own infrastructure | A licensed deployment package, signed JSON license file, sample config, operator docs, and support for connecting approved provider keys or private upstreams. |
 | Private customer-cloud deployment | Teams that want cloud isolation under their own account or network controls | A deployment package and implementation plan for customer-owned cloud infrastructure, private networking, identity policy, usage database, reporting, and provider onboarding. |
 
-Self-service portal checkout and license download are planned only for approved constrained evaluation, pilot, renewal, or top-up packages if the licensing portal and Stripe fulfillment work ships. They remain planned, not shipped router behavior, and they are not an arbitrary entitlement configurator or public API-credit wallet. Current evaluations should use the contact path above so Metrum and the customer can agree on the deployment shape, license template, provider access, data handling, workload proof points, and reporting package. Production enterprise access uses a signed license file with capability + time + volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path.
+Current evaluations use the contact path above so Metrum and the customer can agree on the deployment shape, license template, provider access, data handling, workload proof points, and reporting package. Production enterprise access uses a signed license file with capability, time, and volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path.
 
 ## Buyer Journey
 
@@ -55,8 +55,8 @@ The license controls product capabilities and deployment limits; provider keys, 
 - Retention posture: raw operational rows, daily rollups, dry-run retention status, legal holds, archived exports, and which purge workflows are implemented or future.
 - Provider onboarding: direct upstream smokes, router-level smokes, workload acceptance tests, source-dated pricing, tool/modality metadata, and rollback criteria.
 
-## What Not To Expect In Public Docs
+## Support Evidence
 
-Public docs intentionally avoid private deployment hostnames, SSH paths, router tokens, token hashes, provider keys, raw prompts, raw images, raw tool outputs, customer-specific license payloads, and internal production procedures. Evaluation artifacts should use request IDs, public token IDs, anonymized report excerpts, and safe scalar metadata.
+Evaluation artifacts should use request IDs, public token IDs, anonymized report excerpts, and sanitized metadata. Keep production credentials, customer content, and deployment-private details in approved support channels.
 
 For the technical checklist, continue with [Evaluate GenAI Smart Router](./evaluate-smart-router). For deployment proof, review [Deployment Readiness](./deployment-readiness), [Deployment Security Assessment](./deployment-security-assessment), and [Model Group Quality Criteria](./model-group-quality).

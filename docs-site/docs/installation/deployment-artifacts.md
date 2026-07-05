@@ -25,9 +25,9 @@ Authenticated admin report assets, when enabled, are embedded separately and ser
 
 ## Offline Package Docs
 
-Release tarballs include only a small package-safe Markdown bootstrap set under `docs/`. These files explain what is in the package, how to start it far enough to reach `/docs/`, validation commands, and support contact paths.
+Release tarballs include a small package-safe Markdown bootstrap set under `docs/`. These files explain what is in the package, how to start it far enough to reach `/docs/`, validation commands, and support contact paths.
 
-They intentionally do not include private production runbooks, source-maintenance notes, full source documentation, raw secrets, private host paths, SSH procedures, or full production configs.
+Use the embedded `/docs/` site for the full product guide after the router starts. Keep deployment-specific credentials, host paths, and operational notes in the customer's approved private systems.
 
 ## Package Selection Checklist
 
