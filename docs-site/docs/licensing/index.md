@@ -61,7 +61,7 @@ For the step-by-step replacement workflow, see [Renewal And Top-Up](/docs/licens
 
 Licenses can encode feature gates, time bounds, volume limits, concurrency or operational limits, and deployment scope. Common commercial shapes include short evaluations, paid pilots, annual enterprise self-hosted licenses, private managed deployments, marketplace/private-offer licenses, and prepaid volume top-ups.
 
-A planned portal may eventually provide download or re-download for approved evaluation, pilot, renewal, and top-up packages after payment confirmation. Until that portal is implemented and enabled, use the contact-led commercial and support path.
+Evaluation, pilot, renewal, replacement, and top-up licenses are delivered through the approved commercial and support path.
 
 ## Support Boundaries
 

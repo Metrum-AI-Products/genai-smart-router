@@ -34,7 +34,7 @@ Commercial evaluations can run on a Metrum-managed hosted service, an enterprise
 4. inspect savings, performance, quota, provider mix, security access, and retention/rollup evidence;
 5. choose enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or other contracted commercial access.
 
-Self-service portal checkout and automated license download are planned only for approved evaluation, pilot, renewal, or top-up packages and are not shipped until the licensing portal and Stripe fulfillment work is enabled. Public docs therefore use placeholders and contact links instead of publishing private hosted endpoints or internal deployment operations. Production enterprise access uses a signed license file with capability + time + volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path.
+Production enterprise access uses a signed license file with capability, time, and volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path. Use the contact path above for evaluation setup, license delivery, and deployment-specific access details.
 
 ## Thirty-Minute Evaluation Path
 

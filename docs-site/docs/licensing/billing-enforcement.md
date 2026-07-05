@@ -13,17 +13,11 @@ Enterprise self-hosted deployments can use an offline signed `license.json`. The
 
 If a license expires, exceeds a licensed volume/window/concurrency limit, or lacks a required feature, caller requests fail with structured `license-*` errors. See [Error Reference](../reference/errors).
 
-## Online Lease Mode
+## Commercial Control Plane
 
-Some planned commercial plans, especially monthly, card-paid, trial, usage-sensitive, or managed-service plans, may require periodic signed lease renewal. In that mode, the deployment receives a short-lived signed lease from Metrum infrastructure and the router enforces the lease status at runtime.
+Commercial systems such as orders, invoices, private offers, managed-service records, or customer portals can authorize license issuance or replacement. The router runtime receives only the signed license or deployment entitlement it must enforce; it does not process card details, invoice state, refunds, or disputes.
 
-Online lease mode is planned capability and should not be assumed for offline enterprise contracts. Where used, customer-facing behavior should be documented in the commercial plan: lease renewal interval, grace behavior, payment-required state, cancellation timing, support escalation, and whether traffic is blocked or degraded when renewal fails.
-
-## Stripe Billing Surfaces
-
-Where Stripe is used, Stripe-hosted checkout, invoice, quote, or customer-portal pages may handle payment method updates, invoice downloads, and payments. Stripe public documentation describes webhook-based fulfillment for Checkout, quote/invoice flows for sales-led B2B billing, and Stripe Tax support for Checkout. GenAI Smart Router uses those systems only as commercial control-plane inputs; the router runtime does not process card data.
-
-Portal download, re-download, renewal, or top-up flows are planned until the licensing portal and Stripe fulfillment work is implemented and enabled.
+When a commercial plan uses online lease renewal, the plan should state the renewal interval, grace behavior, payment-required state, cancellation timing, support escalation, and whether traffic is blocked or degraded when renewal fails. Offline enterprise contracts continue to use signed license files without a startup network dependency.
 
 ## Cancellation, Refunds, And Revocation
 
@@ -31,6 +25,6 @@ Cancellation or refund behavior depends on the commercial plan:
 
 - offline enterprise licenses usually continue according to the signed license until Metrum issues a replacement, revocation bundle, or corrected license under the contract;
 - online lease-required plans can reflect payment-required, canceled, or revoked status at the next lease renewal or grace boundary;
-- planned portal-issued evaluation, pilot, or top-up licenses can use portal re-download or replacement flows when available.
+- evaluation, pilot, or top-up packages use the replacement workflow defined by the commercial/support plan.
 
 For support, share request IDs and safe license status fields only. Do not send provider keys, router tokens, full config, private deployment details, signing material, raw prompts, raw images, raw tool outputs, or full customer-specific license payloads through ordinary support channels.

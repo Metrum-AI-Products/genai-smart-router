@@ -14,22 +14,14 @@ Evaluation and pilot access is contact-led today. Contact [contact@metrum.ai](ma
 3. The customer validates `/v1/models`, one or more client workflows, license status, usage reporting, and the agreed quality criteria.
 4. Production conversion uses an enterprise self-hosted, private managed, renewal, top-up, or marketplace/private-offer path.
 
-## Planned Portal Path
+## License Delivery
 
-A self-service licensing portal is planned but not part of the shipped router behavior until the portal and Stripe fulfillment work is implemented and enabled. When available, it is expected to support only approved constrained packages, not arbitrary feature or entitlement customization.
+Evaluation and pilot packages use the same runtime license model as production deployments. Metrum issues either a managed endpoint/caller token or a signed `license.json`; the customer installs the license, restarts or waits for license recheck, and runs the smoke tests in [Licensing](./).
 
-The planned flow is:
-
-1. Choose an approved evaluation, pilot, or top-up package.
-2. Complete Stripe-hosted checkout, quote approval, or invoice payment.
-3. Wait for webhook-confirmed fulfillment.
-4. Download or re-download the signed license from the portal.
-5. Install `license.json`, restart or wait for license recheck, and run the smoke tests in [Licensing](./).
-
-The router does not process card details and does not expose a public API-credit wallet. Stripe-hosted pages handle payment collection where the portal path is used, and the router enforces only the signed license or online lease associated with the commercial plan.
+The router enforces the issued license or managed-service entitlement. Payment collection, procurement records, and commercial approvals remain outside the router request path.
 
 ## Package Boundaries
 
 Evaluation and pilot licenses can include time, feature, volume, and operational limits. The exact model groups and upstream providers are deployment-defined, so callers should use [`/v1/models`](../getting-started/available-models) with their own token to discover allowed model groups.
 
-If a pilot requires custom private upstreams, air-gapped deployment, legal review, marketplace procurement, dedicated infrastructure, or non-standard entitlements, use the enterprise or private managed path instead of the planned self-service checkout path.
+If a pilot requires custom private upstreams, air-gapped deployment, legal review, marketplace procurement, dedicated infrastructure, or non-standard entitlements, use the enterprise or private managed path.

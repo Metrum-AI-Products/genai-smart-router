@@ -19,11 +19,11 @@ For how customers own model-group membership, routing strategy, provider keys, v
 |---|---|---|
 | Enterprise self-hosted | Customers operating the router in their own infrastructure, including regulated, private-cloud, on-prem, or air-gapped environments. | Metrum-issued signed `license.json`, customer-controlled provider keys or private upstreams, and annual or contracted procurement. |
 | Private managed deployment | Customers who want a dedicated router instance operated for one customer without running the service themselves. | Dedicated customer deployment with direct order, quote/invoice, or private marketplace offer when available. Operational details are handled through the managed-service plan. |
-| Evaluation or pilot | Teams proving workload quality, provider mix, cost controls, security posture, and reporting before production. | Contact-led evaluation today. A portal-issued constrained evaluation or pilot license is planned only if the licensing portal and Stripe fulfillment work ships. |
-| Renewal or top-up | Existing customers extending term, replacing an issued license, or adding a prepaid volume envelope. | Replacement `license.json` delivered through the approved commercial/support path today. Portal re-download or top-up purchase is planned where available. |
+| Evaluation or pilot | Teams proving workload quality, provider mix, cost controls, security posture, and reporting before production. | Contact-led evaluation with either a managed endpoint or a signed evaluation/pilot license. |
+| Renewal or top-up | Existing customers extending term, replacing an issued license, or adding a prepaid volume envelope. | Replacement `license.json` delivered through the approved commercial/support path. |
 | Marketplace or private offer | Enterprise procurement teams that prefer cloud marketplace contracting. | Private offer or marketplace-aligned signed license when commercially available; not a public shared multitenant API-credit product. |
 
-Self-service checkout is not a general entitlement configurator. If the planned portal ships, it will expose only approved packages such as evaluation, pilot, or volume top-up templates. Enterprise self-hosted and private managed deployments remain available through direct commercial engagement, quote/invoice, or private offer.
+Enterprise self-hosted and private managed deployments use direct commercial engagement, quote/invoice, or private offer. Evaluation, renewal, and top-up packages are issued from approved commercial terms rather than ad hoc runtime entitlement changes.
 
 ## Enterprise Self-Hosted
 
@@ -35,12 +35,12 @@ Runtime enforcement can include feature gates, time bounds, volume limits, deplo
 
 In a private managed deployment, Metrum operates a dedicated router deployment for one customer or one customer-specific high-availability environment. It is not described as a shared public multitenant API service. The customer receives deployment-specific endpoint and access details through the managed-service handoff, while public docs use generic hostnames and token placeholders.
 
-Procurement can be direct order, Stripe quote or invoice, or marketplace private offer when available. Provider-cost handling, BYOK scope, reporting, network isolation, and acceptance tests are defined in the customer plan.
+Procurement can be direct order, quote or invoice, or marketplace private offer when available. Provider-cost handling, BYOK scope, reporting, network isolation, and acceptance tests are defined in the customer plan.
 
 ## Evaluation, Pilot, Renewal, And Top-Up
 
 Current evaluation access is contact-led so the customer and Metrum can agree on deployment shape, provider access, security constraints, model-group quality criteria, and reporting evidence. See [Commercial Evaluation Path](../evaluation/commercial-evaluation).
 
-A planned licensing portal may add Stripe-hosted checkout, quote, invoice, and customer-portal flows for approved evaluation, pilot, renewal, or top-up packages. Those flows are not runtime router billing wallets: the router enforces the signed license or online lease it receives; payment collection, invoices, refunds, and disputes remain outside the router request path.
+Evaluation, pilot, renewal, and top-up packages follow the same runtime model: Metrum issues a signed license or managed-service entitlement, the router enforces it, and commercial payment or procurement records remain outside the router request path.
 
 For renewal and top-up installation, see [Renewal And Top-Up](./renewal).

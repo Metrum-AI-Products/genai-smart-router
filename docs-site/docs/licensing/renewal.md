@@ -18,7 +18,7 @@ Replace the runtime license when:
 - instance scope changes;
 - an issued license is corrected or reissued;
 - a verification-key rotation requires a new license or release package.
-- a portal-issued evaluation, pilot, or top-up package becomes available and Metrum issues a replacement license after confirmed fulfillment.
+- Metrum issues a replacement license after approved renewal, extension, or top-up fulfillment.
 
 ## Replacement Workflow
 
@@ -57,11 +57,9 @@ If a deployment enters grace, treat it as an operational incident:
 - install the corrected license if one was issued;
 - confirm `/readyz` returns success after replacement.
 
-## Portal Re-Download And Top-Up
+## Re-Download And Top-Up
 
-Portal license download, re-download, renewal, and top-up are planned flows, not a shipped public self-service surface until the licensing portal and Stripe fulfillment work is implemented and enabled. Where available, the portal should provide only approved package templates and should issue a signed replacement license after payment or quote/invoice confirmation.
-
-The runtime installation flow remains the same: replace `license.json`, restart or wait for recheck, and validate readiness plus one caller smoke. The router does not process card details and does not act as a public API-credit wallet.
+Renewal and top-up packages result in a newly issued signed license. The runtime installation flow remains the same: replace `license.json`, restart or wait for recheck, and validate readiness plus one caller smoke. Commercial payment and procurement records remain outside the router request path.
 
 ## Rollback
 
