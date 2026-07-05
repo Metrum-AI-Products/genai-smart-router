@@ -343,7 +343,7 @@ function showChartTooltip(title: string, rows: string[], x: number, y: number) {
   const element = tooltipElement();
   element.replaceChildren();
   const titleEl = document.createElement("div");
-  titleEl.className = "mb-1 break-words font-semibold text-white/92";
+  titleEl.className = "mb-1 break-words text-white/92";
   titleEl.textContent = title;
   element.appendChild(titleEl);
   for (const row of rows) {
