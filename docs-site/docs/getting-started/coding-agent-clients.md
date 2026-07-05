@@ -109,7 +109,7 @@ When a Messages request includes image content, the router filters the requested
 
 Configure opencode to use the router through the OpenAI-compatible endpoint at `https://<router-host>/v1`. The configured model is a router model group returned by `/v1/models`, not a raw upstream provider model name. Hosted examples may use groups such as `big-coder`, but each deployment chooses its own group names and token allow lists.
 
-Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file out of source control.
+Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file out of packages, tickets, and shared support bundles.
 
 ```bash
 mkdir -p ~/.config/opencode

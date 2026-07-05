@@ -33,7 +33,7 @@ docker compose ps
 Validate:
 
 ```bash
-export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"

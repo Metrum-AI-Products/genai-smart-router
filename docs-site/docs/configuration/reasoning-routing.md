@@ -97,12 +97,14 @@ Reasoning changes for coding-agent groups should be validated with the productio
 
 ## Caller Examples
 
-Use the base URL and model groups issued by the deployment administrator. Public examples should use placeholder hosts and placeholder router tokens only.
+Use the base URL and model groups issued by the deployment administrator. Public examples use `https://<router-host>` and placeholder router tokens only.
 
 OpenAI Chat Completions with `reasoning_effort`:
 
 ```bash
-curl https://your-router.example.com/v1/chat/completions \
+ROUTER_BASE_URL="https://<router-host>"
+
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -117,7 +119,9 @@ curl https://your-router.example.com/v1/chat/completions \
 OpenAI Responses with `reasoning`:
 
 ```bash
-curl https://your-router.example.com/v1/responses \
+ROUTER_BASE_URL="https://<router-host>"
+
+curl "$ROUTER_BASE_URL/v1/responses" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -132,7 +136,9 @@ curl https://your-router.example.com/v1/responses \
 Anthropic Messages with `thinking`:
 
 ```bash
-curl https://your-router.example.com/anthropic/v1/messages \
+ROUTER_BASE_URL="https://<router-host>"
+
+curl "$ROUTER_BASE_URL/anthropic/v1/messages" \
   -H "Authorization: Bearer $ROUTER_TOKEN" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \

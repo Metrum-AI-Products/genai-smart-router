@@ -10,7 +10,7 @@ License failures can block readiness or individual licensed features. Use safe s
 ## Checks
 
 ```bash
-export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 
 curl -i "$ROUTER_BASE_URL/readyz"
 

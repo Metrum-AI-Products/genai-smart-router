@@ -44,9 +44,9 @@ Before installation, collect the following deployment-owned values:
 
 | Input | Example placeholder | Notes |
 |---|---|---|
-| Router base URL | `https://llm-api.example.com` | Public or private endpoint exposed to clients. |
+| Router base URL | `https://<router-host>` | Public or private endpoint exposed to clients. |
 | Router config path | `/app/config/config.yaml` | Container path or host path, depending on package type. |
-| Provider key env file | `/app/config/env.json` | Stores provider credentials outside the public docs and outside source control. |
+| Provider key env file | `/app/config/env.json` | Stores provider credentials outside public docs, packages, tickets, and shared support bundles. |
 | License file | `/app/config/license.json` | Issued by Metrum; do not edit its contents. |
 | License state path | `/app/state/license-state.json` | Must survive restarts. |
 | Usage database DSN | `postgres://router:replace-with-password@db:5432/router?sslmode=disable` | Use a strong deployment-owned password. |
@@ -69,7 +69,7 @@ Do not place raw router tokens, provider API keys, token hashes, private signing
 Use placeholders in automation and support examples:
 
 ```bash
-export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 router_smoke() {

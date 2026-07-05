@@ -65,7 +65,7 @@ If any of those are present, stop the deployment and request a corrected package
 After startup:
 
 ```bash
-export ROUTER_BASE_URL="https://router.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"

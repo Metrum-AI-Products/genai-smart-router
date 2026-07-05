@@ -125,7 +125,7 @@ sequenceDiagram
 A customer can expose one endpoint to internal developers:
 
 ```bash
-https://llm-api.example.com/v1
+https://<router-host>/v1
 ```
 
 Developers use stable model groups defined by their deployment. Platform owners can change the underlying provider mix without client rewrites. Names such as `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision` are examples used by one reference or hosted deployment, not product-required names.

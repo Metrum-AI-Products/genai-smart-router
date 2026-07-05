@@ -186,7 +186,7 @@ Then test with a deployment-issued caller token:
 kubectl -n <namespace> rollout status deploy/<router-deployment>
 kubectl -n <namespace> get pods,svc,ingress
 
-export ROUTER_BASE_URL="https://router.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"

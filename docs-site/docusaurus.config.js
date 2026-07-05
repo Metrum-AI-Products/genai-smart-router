@@ -39,7 +39,7 @@ const config = {
   title: "Metrum GenAI Smart Router",
   tagline: "A governed, multi-provider gateway for LLMs, VLMs, and AI agents.",
   favicon: "img/favicon/favicon.ico",
-  url: process.env.DOCS_SITE_URL || "https://your-router.example.com",
+  url: process.env.DOCS_SITE_URL || "https://docs.metrum.ai",
   baseUrl: "/docs/",
   organizationName: "metrum-ai",
   projectName: "smart-llmrouter",

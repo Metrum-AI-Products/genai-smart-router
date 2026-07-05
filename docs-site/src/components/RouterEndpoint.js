@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "./RouterEndpoint.module.css";
 
-const FALLBACK_ORIGIN = "https://your-router.example.com";
+const FALLBACK_ORIGIN = "https://<router-host>";
 
 function useRouterOrigin() {
   const [origin, setOrigin] = useState(FALLBACK_ORIGIN);

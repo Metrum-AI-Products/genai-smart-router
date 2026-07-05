@@ -88,7 +88,7 @@ server:
       issuer_url: https://accounts.google.com
       client_id_env: GOOGLE_OIDC_CLIENT_ID
       client_secret_env: GOOGLE_OIDC_CLIENT_SECRET
-      redirect_url: https://router.example.com/admin/auth/callback
+      redirect_url: https://<router-host>/admin/auth/callback
       scopes:
         - email
         - profile
@@ -105,7 +105,7 @@ server:
       same_site: strict
 ```
 
-Register `https://router.example.com/admin/auth/callback` with the IdP. Keep `client_id_env` and `client_secret_env` as environment-variable names and store the actual values in deployment secrets.
+Register `https://<router-host>/admin/auth/callback` with the IdP. Keep `client_id_env` and `client_secret_env` as environment-variable names and store the actual values in deployment secrets.
 
 For Google Workspace, use issuer `https://accounts.google.com`, restrict `allowed_domains` to the approved Workspace domains, and grant authorization roles to stable subjects such as `user:alice@example.com`. Standard Google ID tokens do not always include group membership; use explicit policy unless a governed groups claim is configured and validated for the deployment.
 

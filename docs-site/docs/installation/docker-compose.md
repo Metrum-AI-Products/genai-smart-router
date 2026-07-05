@@ -84,7 +84,7 @@ state_path: /app/state/router-state.json
 
 ## Configure Secrets
 
-Place provider credentials in `config/env.json`. Keep this file outside source control and restrict filesystem permissions.
+Place provider credentials in `config/env.json`. Keep this file out of packages, tickets, and shared support bundles, and restrict filesystem permissions.
 
 ```json
 {
@@ -114,7 +114,7 @@ docker compose ps
 Then verify from a network location that represents the intended clients:
 
 ```bash
-export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"

@@ -77,7 +77,7 @@ Use the same Harbor-supported attempt and seed policy for both arms. Report the 
 
 ## Outcome Gate Artifact
 
-For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. In a source checkout, use the repository evaluator to summarize Harbor `results.tsv` files or JSON result rows and merge safe usage-report rows when available. Packaged deployments should run the same workflow from the deployment's approved validation environment; the router release binaries do not include a separate `workload-gate` executable.
+For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. Run the workload gate from the deployment's approved validation environment, using the packaged helper script or reviewed support bundle that matches the release. The router runtime binary does not expose a separate `workload-gate` command.
 
 ```bash
 python3 scripts/evaluate_workload_gate.py \

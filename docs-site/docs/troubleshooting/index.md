@@ -20,7 +20,7 @@ From Troubleshooting, you might be looking for the canonical error catalog: see 
 ## First Checks
 
 ```bash
-export ROUTER_BASE_URL="https://llm-api.example.com"
+export ROUTER_BASE_URL="https://<router-host>"
 export ROUTER_TOKEN="replace-with-router-token"
 
 curl -fsS "$ROUTER_BASE_URL/readyz"
