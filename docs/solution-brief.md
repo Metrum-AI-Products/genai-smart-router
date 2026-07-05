@@ -6,7 +6,7 @@ The result is a simpler operating model: applications integrate once, operators 
 
 ## Executive Summary
 
-Modern AI teams often need more than one model provider. Different models may be better for coding, summarization, data extraction, low-latency chat, or high-reasoning workflows. Provider availability, pricing, rate limits, and access permissions also change over time. Hard-coding provider-specific endpoints into each application creates operational risk and makes migration expensive.
+Modern AI teams often need more than one model provider. Different models may be better for coding, summarization, data extraction, low-latency chat, or high-reasoning workflows. Provider availability, pricing, rate limits, and access permissions also change over time. Hard-coding provider-specific endpoints into each application creates operational risk, pins throughput to one upstream limit, and makes migration expensive.
 
 Smart LLM Router centralizes that complexity behind one internal API surface. Clients can speak OpenAI-style or Anthropic-style APIs; the router authenticates the caller, selects an allowed model group, chooses an upstream target, injects the provider credential, normalizes responses, records usage, and returns the response in the caller's expected dialect.
 
@@ -34,6 +34,7 @@ Technical buyers typically evaluate it for:
 - **Provider optionality:** adopt new models or aggregators centrally while applications keep using stable internal model names.
 - **Enterprise model control:** route to internally hosted vLLM or SGLang services through OpenAI-compatible upstream APIs while callers keep using router model groups.
 - **Cost control:** steer routine traffic to lower-cost targets, reserve premium models for approved keys or workloads, and report usage by person, project, provider, and model.
+- **Capacity pooling:** distribute compatible traffic across separately rate-limited upstream providers, accounts, models, and private endpoints while preserving caller-side limits.
 - **Security:** keep upstream provider keys server-side, authenticate callers with revocable router tokens, and restrict each token to approved model groups.
 - **Reliability:** use weighted routing, ordered fallback, and provider abstraction to reduce blast radius from model outages or entitlement changes.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one managed endpoint.
@@ -47,7 +48,7 @@ Smart LLM Router addresses the controllable layer of that problem:
 
 - Route routine traffic toward lower-cost model groups while reserving premium routes for approved users, projects, or workloads.
 - Apply per-caller allow lists, rate limits, quotas, and lifetime token budgets before any upstream provider call is made.
-- Use weighted routing and fallback to balance cost, latency, quality, and provider availability without client changes.
+- Use weighted routing and fallback to balance cost, latency, quality, provider availability, and separately rate-limited upstream capacity without client changes.
 - Cache eligible deterministic responses so repeated requests do not create repeated provider charges.
 - Produce usage reports by internal key, user, project, caller IP, provider, model, hour, day, status, cache behavior, request-time USD cost, and token throughput.
 - Give platform and finance teams the evidence needed to compare spend against adoption, workload class, and business value.

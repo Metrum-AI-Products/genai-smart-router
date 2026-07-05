@@ -40,11 +40,27 @@ flowchart LR
 - **Multimodal readiness:** support text, image/VLM, OCR-style, browser-control, and tool-call requests through the same governed endpoint.
 - **Enterprise model control:** include internally hosted vLLM or SGLang services in the same routing policy as external providers.
 - **Cost control:** steer routine traffic to lower-cost routes, reserve heavier routes for approved keys, and report request-time cost by user, project, provider, model, and IP.
+- **Capacity pooling:** combine usable throughput from multiple separately rate-limited upstream providers, accounts, and private endpoints behind one caller-facing model group.
 - **Security:** keep provider keys server-side and issue revocable router tokens to callers.
 - **Reliability:** use weighted routing, fallback, and scripted policies to reduce provider-specific blast radius.
 - **Developer productivity:** support Codex CLI, Claude Code CLI, OpenAI-compatible clients, and Anthropic-compatible clients through one endpoint.
 - **Outcome-oriented optimization:** use agentic validation harnesses such as Harbor to tune model groups for successful task outcomes, latency, throughput, and cost.
 - **Operational visibility:** expose metrics-admin telemetry, request logs, cache behavior, latency, token throughput, and visible build version metadata.
+
+## Production Pain Points
+
+The strongest value appears when teams move beyond a single prototype integration.
+
+| Pain point | Why it matters | Router value |
+|---|---|---|
+| Provider rate limits | One upstream RPM/TPM ceiling can stop production traffic even when other providers could serve the same shape. | Pool compatible traffic across validated upstream providers and private endpoints, with caller limits and provider shaping as guardrails. |
+| Provider outage or degradation | A provider-specific incident can break apps, demos, agents, or batch jobs. | Keep fallback and route-around policy server-side, bounded to retryable failures and eligible targets. |
+| Noisy-neighbor workloads | One user, project, batch job, or coding agent can consume shared provider capacity. | Enforce per-key RPM, TPM, concurrency, daily/monthly quotas, lifetime budgets, and optional burst shaping before upstream calls. |
+| Surprise cost spikes | Agent loops, oversized context, or expensive fallback can turn into a finance problem quickly. | Store request-time token, image, provider/model, cost, fallback, cache, and client metadata for attribution and triage. |
+| SDK and provider drift | Teams do not want every app to chase provider-specific model IDs, auth styles, and SDK behavior. | Provide one governed OpenAI-compatible and Anthropic-compatible gateway while operators evolve provider mix centrally. |
+| Credential sprawl | Provider keys in apps, notebooks, CI, or developer machines increase security and rotation risk. | Keep provider credentials server-side; issue revocable router tokens scoped by user, project, environment, and allowed model groups. |
+| Unsafe debugging | Support tickets often need request evidence, but raw prompts, tool outputs, and secrets should not spread. | Use request IDs, sanitized upstream errors, safe diagnostics, and report drilldown without exposing raw content or credentials by default. |
+| Team autonomy vs platform control | Central rules can slow teams, while fully decentralized provider use loses governance. | Combine central access, quotas, reporting, and credential custody with deployment-defined team or workload model groups. |
 
 ## Model Group Quality Contracts
 
@@ -59,6 +75,14 @@ Each deployment should define success criteria for every exposed model group. Th
 | Private upstreams | keeps model endpoints private while meeting direct upstream and router-level smoke criteria |
 
 This lets platform teams reserve expensive targets for workloads that need them while using lower-cost routes for work that still meets its objective.
+
+## Capacity Pooling
+
+Provider rate limits are usually account-, model-, or endpoint-specific. A single hard-coded provider integration inherits that one upstream limit. GenAI Smart Router lets a deployment put several validated providers or private endpoints behind one model group, so compatible traffic can use the combined capacity of that upstream pool.
+
+That capacity is policy-controlled rather than unbounded. Caller RPM, TPM, concurrency, daily/monthly quota, and lifetime budgets still run before upstream selection. Request-shape eligibility ensures that only targets validated for the requested API surface, tools, modalities, context window, reasoning controls, and output-cap behavior are considered. Provider traffic shaping and adaptive backoff protect shared upstream accounts when one provider starts returning `429`, quota, timeout, or 5xx signals.
+
+For operators, the proof is visible in usage and admin reports: selected provider/model mix, upstream rate-limit attempts, fallback transitions, route-around success, latency, throughput, and user impact. The router can keep production traffic moving through other eligible targets while preserving evidence that a provider needs a quota increase, lower weight, stricter shaping, or removal from that group.
 
 ## Cost Governance
 

@@ -58,6 +58,21 @@ Token-budget admission uses a reservation estimate before upstream calls: estima
 
 Platform teams keep the cost policy explicit: choose which routes are available, set budgets and weights, decide when caching is appropriate, and measure the result with durable usage and cost reports.
 
+## Cost Spike Investigation
+
+Cost governance is also incident governance. Sudden spend increases often come from a small number of operational patterns:
+
+- an agent loop or subagent workflow keeps calling models;
+- a prompt template or client starts sending much larger context;
+- fallback routes from a cheap target to a more expensive target after rate limits or upstream errors;
+- provider rate limits cause retries and longer request chains;
+- one caller, project, or batch job consumes a disproportionate share of shared capacity;
+- image, tool, or structured-output requests select a more expensive compatible target.
+
+Router reports preserve the fields needed to separate those cases: selected provider/model, input/output/image tokens, request-time cost, cache state, attempts, fallback, latency, caller/project/client, request-shape buckets, and quota or shaping state. For capacity-pooling deployments, review both sides of the equation: the caller budget that limits user behavior and the provider-shaping data that protects shared upstream accounts.
+
+A lower-cost routed group should not silently trade reliability or quality for price. Prove the change with pass/fail outcomes, route-around behavior, fallback rate, latency, and cost per successful request.
+
 ## Savings Analysis
 
 For savings reports:

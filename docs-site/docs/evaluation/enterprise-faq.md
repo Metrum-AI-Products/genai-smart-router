@@ -37,6 +37,34 @@ For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smar
 
 **Links:** [Router Configuration](../configuration/router-config), [Routing Overview](../routing/overview), [Errors](../reference/errors), [Usage Reporting](../operations/usage-reporting).
 
+## Can we combine provider rate limits instead of being capped by one vendor?
+
+**Concern:** "If each provider has its own RPM, TPM, and quota, can we use the aggregate capacity safely?"
+
+**Short answer:** Yes, when the targets are validated for the same request shape and the deployment config intentionally puts them behind one model group. The router can distribute compatible traffic across providers, accounts, models, or private endpoints with separate upstream limits.
+
+**How GenAI Smart Router handles it:** Caller limits and quotas run first. Request-shape eligibility then filters to targets that can satisfy the incoming API surface, tools, images, reasoning, context, and output-cap behavior. Routing strategy chooses among the remaining targets, and provider traffic shaping/adaptive backoff protects shared upstream accounts.
+
+**What you own:** Provider account limits, target validation, group weights or policy, upstream traffic-shape settings, fallback policy, and the definition of equivalent-enough quality for the workload.
+
+**Proof to request or run:** Use a smoke group with at least two compatible providers, run parallel traffic, verify the provider/model mix in reports, then lower one provider's shaping limit and confirm compatible traffic shifts or falls back without crossing caller quotas.
+
+**Links:** [Model Groups](../configuration/model-groups), [Provider Traffic Shaping](../configuration/provider-traffic-shaping), [Usage Reporting](../operations/usage-reporting).
+
+## How do we prevent one app, user, or coding agent from hurting everyone else?
+
+**Concern:** "One aggressive batch job or agent loop can burn shared quota and make other teams fail."
+
+**Short answer:** Use caller tokens as the first fairness boundary, then provider shaping as the shared-capacity boundary. This separates user/team policy from upstream account protection.
+
+**How GenAI Smart Router handles it:** Per-caller RPM, TPM, concurrency, daily/monthly quotas, lifetime budgets, and optional caller traffic shaping run before upstream selection. Provider/model/target shaping and adaptive backoff protect shared provider accounts after a target is selected. Reports show which caller, client, group, provider, and shaping bucket was affected.
+
+**What you own:** Caller tiering, project budgets, developer-agent limits, provider account limits, and escalation rules for trusted production workloads.
+
+**Proof to request or run:** Run a controlled burst from one caller and a normal request from another caller. Verify the burst is queued/rejected or shaped without consuming every upstream target, then inspect Traffic Shaping, Quotas, User Impact, and Provider Capacity reports.
+
+**Links:** [Caller Traffic Shaping](../configuration/caller-traffic-shaping), [Provider Traffic Shaping](../configuration/provider-traffic-shaping), [Admin Browser Reports](../operations/admin-browser-reports).
+
 ## Can we force some workloads to a specific model?
 
 **Concern:** "Can one sensitive or quality-critical workload always use an approved model?"

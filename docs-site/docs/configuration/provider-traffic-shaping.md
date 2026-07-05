@@ -7,6 +7,8 @@ doc_type: reference
 
 Provider traffic shaping protects shared upstream capacity across all caller keys. It complements caller rate and quota policy: caller limits run first, while provider shaping decides whether a selected upstream target can be used right now.
 
+This is also how deployments make capacity pooling safe. A model group can include multiple validated providers, each with its own upstream rate limit, quota, or private-serving capacity. The router can spread compatible traffic across that pool, while provider shaping prevents one hot caller, model group, or fallback storm from consuming the whole upstream account.
+
 This example is a partial subset of `config.example.yaml`; the shipped sample config is the source of truth.
 
 ```yaml title="config.example.yaml"
@@ -41,6 +43,18 @@ providers:
 `request_start_per_sec` limits upstream request starts. `input_tokens_per_sec` uses the router's input-token estimate. `total_reserved_tokens_per_sec` uses estimated input plus caller output-cap reservation. Adaptive backoff starts when an upstream attempt is classified as rate-limited or quota-exhausted, with `Retry-After` honored only when configured and bounded.
 
 Shape decisions are stored as safe scalar telemetry without request bodies, upstream response bodies, provider keys, router tokens, or token hashes.
+
+## Capacity Pool Guardrails
+
+Use provider traffic shaping when a deployment relies on combined upstream capacity:
+
+- set request-start and token-reservation buckets near the provider's real sustained limits;
+- configure adaptive backoff for upstream `429` and provider quota/billing responses;
+- shape at the narrowest useful scope, such as provider-model or target, when one model is constrained more tightly than the whole provider account;
+- keep caller limits lower than provider-wide capacity when user fairness matters;
+- review admin reports for upstream shaping, fallback health, route-around success, and user impact before raising weights.
+
+The operational goal is not to hide a saturated provider forever. It is to keep compatible traffic moving through other validated targets while preserving evidence that a provider, model, account, or target needs capacity tuning.
 
 ## Rollback
 

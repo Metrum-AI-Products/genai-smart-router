@@ -28,6 +28,20 @@ Weights are local to each model group. A target with weight `60` in one group ha
 
 Groups can use `static`, `failover`, `weighted`, `dynamic_score`, `script`, or `external` strategies. Contracts, request-shape filters, modalities, tools, structured outputs, reasoning metadata, and max-token safety all filter the target list before strategy selection.
 
+## Capacity Pooling
+
+A model group can pool usable capacity across multiple upstream providers or private endpoints. Each provider account or model may have a different RPM, TPM, concurrency, quota, or billing envelope. When several targets are validated for the same request shape, the router can distribute traffic across those separately limited upstreams instead of forcing all callers through one provider bottleneck.
+
+Capacity pooling is bounded by the group contract:
+
+- caller-side RPM, TPM, concurrency, daily/monthly quota, and lifetime budgets still run before upstream selection;
+- only eligible targets count for a given request shape, including API dialect, tools, images, reasoning, context window, structured output, and output-cap behavior;
+- provider, provider-model, or target traffic shaping can intentionally slow or skip an upstream to protect shared capacity;
+- failover applies only to retryable upstream failures such as timeout, network error, rate limit, provider quota/billing exhaustion, or 5xx;
+- non-retryable malformed-request or policy 4xx responses stop fallback so the same bad payload is not replayed to another provider.
+
+Use usage and admin reports to verify the actual provider/model mix, upstream 429s, fallback success, latency, and throughput before increasing weights or promoting a larger traffic window.
+
 ## Rollback
 
 Roll back by restoring the prior target list, reducing or removing a bad target's weight, removing a failed capability override, or switching the caller back to a previous model group allow-list. Verify with `/v1/models`, a positive smoke for expected traffic, and a negative `no-eligible-target` smoke when capability filtering changed.

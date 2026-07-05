@@ -13,6 +13,7 @@ This page summarizes GenAI Smart Router capabilities for enterprise deployments.
 |---|---|
 | API compatibility | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, filtered `/v1/models`, caller `/v1/usage`, health/version endpoints |
 | Routing | Static, weighted, failover, dynamic-score, TypeScript-scripted, and external-policy model group routing |
+| Capacity pooling | Compatible requests can use several separately rate-limited upstream providers, accounts, models, or private endpoints behind one model group |
 | Caller governance | Router-issued caller tokens, per-key allow lists, rate limits, traffic shaping, token budgets, concurrency limits |
 | Provider control | Server-side provider keys, deployment-defined provider catalogs, active targets separate from catalog metadata |
 | Tools | Dialect-specific tool metadata and request filtering for OpenAI Chat, OpenAI Responses, and Anthropic Messages |
@@ -21,6 +22,9 @@ This page summarizes GenAI Smart Router capabilities for enterprise deployments.
 | Usage reporting | CLI Markdown reports and optional authenticated browser reports by caller, project, environment, token ID, provider, model, model group, client, status, cache, latency, and token counts |
 | Observability | JSONL logs, relational usage DB, diagnostics child tables, optional governed content-capture tables, metrics-admin Prometheus telemetry |
 | Caching | In-process LRU/TTL cache for eligible non-tool responses with cache snapshots in usage rows |
+| Safe troubleshooting | Request IDs, sanitized upstream error details, request-shape buckets, attempts, fallbacks, and evidence bundles without raw prompts, tool outputs, router tokens, token hashes, or provider keys by default |
+| Noisy-neighbor control | Caller limits, traffic shaping, provider shaping, adaptive backoff, and report views for user/client/provider impact |
+| Provider outage handling | Retryable upstream timeouts, 429s, quota/billing failures, network errors, and 5xx responses can fall back to other eligible targets |
 | Deployment | Linux binary and Docker Compose packages with embedded product documentation and optional embedded admin report assets |
 | Agent clients | Codex CLI and Claude Code CLI workflows validated through router-compatible API shapes |
 | Private upstreams | OpenAI-compatible vLLM, SGLang, Baseten-style, and other internal services can be configured as providers |
@@ -32,6 +36,10 @@ GenAI Smart Router is designed as the governed gateway layer for enterprise GenA
 - expose stable model-group names to developers and agents;
 - keep provider keys and private inference endpoints server-side;
 - route by API dialect, tool support, image modality, latency, cost, quota, and custom policy;
+- combine usable upstream capacity without giving callers direct provider credentials;
+- reduce provider-specific outage and rate-limit blast radius;
+- protect shared provider accounts from noisy-neighbor workloads;
+- explain cost spikes and fallback behavior with request-level evidence;
 - record request-time token, image, cost, cache, and provider selection details;
 - validate and roll out new upstream models without rewriting every client.
 
