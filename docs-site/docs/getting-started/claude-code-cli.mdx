@@ -63,7 +63,7 @@ Use the same deployment-defined coding group for mixed coding and image tasks. S
 
 Claude Code can resolve subagent models separately from the main session. For router keys that are limited to one or more model groups, pin both the main session and subagents to groups returned by `/v1/models`.
 
-For a repository-local setup, put only placeholder values in shared docs and keep real local settings out of version control:
+For local project settings, use placeholders in shared examples and keep real router tokens out of version control:
 
 ```json title=".claude/settings.local.json"
 {
@@ -78,14 +78,14 @@ For a repository-local setup, put only placeholder values in shared docs and kee
 
 If an individual subagent should use a different router group, first leave `CLAUDE_CODE_SUBAGENT_MODEL` unset or set it to inherit behavior for that run. Then set the different group in the subagent frontmatter and make sure the same router token can see it in `/v1/models`:
 
-```md title=".claude/agents/router-docs-reviewer.md"
+```md title=".claude/agents/router-subagent.md"
 ---
-name: router-docs-reviewer
-description: Review router documentation changes for customer-safe examples and link accuracy.
+name: router-subagent
+description: Work on the assigned task using the selected router model group.
 model: <allowed-model-group>
 ---
 
-Review the changed documentation and report any customer-facing inaccuracies.
+Complete the assigned task and report the result.
 ```
 
 If Claude Code still sends `403 model-not-allowed`, check the main model, `CLAUDE_CODE_SUBAGENT_MODEL`, and any subagent frontmatter `model` values against `/v1/models` using the same `ANTHROPIC_AUTH_TOKEN`. A pinned `CLAUDE_CODE_SUBAGENT_MODEL` takes precedence over per-subagent frontmatter, so unset or inherit it before testing a different frontmatter model group.

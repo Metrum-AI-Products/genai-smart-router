@@ -36,7 +36,7 @@ The `/v1/models` response is filtered by the caller token. Requests for unlisted
 
 Deployments can enable HTTP Basic authentication for `/admin/*` routes. It is disabled by default, uses bcrypt password hashes from deployment secrets or environment variables, and requires HTTPS unless explicitly allowed for local development. When TLS terminates at a reverse proxy, configure `trusted_proxy_cidrs` so forwarded HTTPS state is accepted only from that proxy path.
 
-Basic Auth establishes a subject such as `basic:admin`; it does not grant access by username alone. Metrics and admin-report permissions are handled by the deployment authorization policy, with Casbin as the policy layer.
+Basic Auth establishes a subject such as `basic:admin`; it does not grant access by username alone. Metrics and admin-report permissions are handled by the deployment authorization policy.
 
 ## Diagnostics And Data Handling
 
@@ -46,7 +46,7 @@ Expected diagnostic fields include request IDs, selected upstream/provider model
 
 Diagnostic rows exclude raw prompts, raw image payloads, raw router tokens, token hashes, provider API keys, raw tool outputs, full upstream headers, and unsanitized upstream response bodies.
 
-Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through Casbin-authorized `content:capture` delete/purge operations with audit rows. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports.
+Governed content capture is a separate opt-in deployment mode. When enabled, captured content is redacted before storage, stored in dedicated relational tables keyed by `request_id`, and maintained through authorized `content:capture` delete/purge operations with audit rows. Delete-by-request is scoped to the captured row's caller project/environment domain. It is disabled by default and is not part of ordinary diagnostics or usage reports.
 
 ## PII Filtering
 
@@ -58,7 +58,7 @@ See [PII Filtering](../configuration/pii-filtering).
 
 ## Metrics Isolation
 
-`/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated Casbin grants. Normal application caller tokens receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
+`/metrics` exposes global operational telemetry and must be restricted to caller subjects authorized for `metrics` `read`. Existing `metrics_admin: true` caller config remains compatible through generated authorization grants. Normal application caller tokens receive `403 metrics-forbidden` and should use `/v1/usage` or generated reports for their own usage visibility.
 
 Content-capture maintenance uses separate `content:capture` `delete`/`purge` authorization. Delete-by-request is scoped to the captured row's caller project/environment domain. Existing `content_admin: true` caller config remains compatible through generated grants for its own domain. Do not grant it to application caller tokens or assume metrics-admin access includes content access.
 

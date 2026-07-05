@@ -125,7 +125,7 @@ curl -fsS -H "Authorization: Bearer $ROUTER_TOKEN" \
 Expected results:
 
 - `/readyz` returns success only when required runtime checks pass, including license enforcement.
-- `/docs/` serves the embedded Docusaurus administrator docs from the running binary.
+- `/docs/` serves the embedded product documentation from the running binary.
 - `/version` returns safe release metadata.
 - `/v1/models` returns only model groups allowed for the caller token.
 

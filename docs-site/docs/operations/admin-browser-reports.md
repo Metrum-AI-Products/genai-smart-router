@@ -13,7 +13,7 @@ For health checks, metrics, log dimensions, and alerting, see [Observability](./
 
 ## Access Model
 
-Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is Casbin-backed under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail/evidence uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
+Browser identity can be HTTP Basic under `server.admin_auth.basic` or OIDC sessions under `server.admin_auth.oidc`. Authorization is configured under `server.admin_auth.authorization`; every `/admin/reports/*` page, API, export, and drilldown route requires an allow decision for object `admin:reports`. Aggregate pages/APIs use action `read`, Markdown export uses `export`, and request detail/evidence uses `drilldown`. Security access report APIs additionally require `admin:security_reports` so access metadata can be restricted more tightly than cost and performance reports.
 
 ```yaml
 server:
@@ -95,7 +95,7 @@ When `server.admin_reports.security.enabled: true`, the router persists safe sca
 
 Security reports use the same browser shell and chart contract as usage reports, but their API routes require `admin:security_reports` `read` or `export`. CSV export is available at `/admin/reports/security/export.csv` and includes only safe scalar fields with spreadsheet formula-leading values neutralized.
 
-Report APIs are scoped to the authenticated admin's Casbin domain by default. A subject authorized in `example/prod` sees usage rows, request lists, request detail, Markdown export, and security events for caller project `example` and environment `prod`; cross-domain request IDs return `404`. Deployment-wide report administrators require an explicit `*` policy domain.
+Report APIs are scoped to the authenticated admin's policy domain by default. A subject authorized in `example/prod` sees usage rows, request lists, request detail, Markdown export, and security events for caller project `example` and environment `prod`; cross-domain request IDs return `404`. Deployment-wide report administrators require an explicit `*` policy domain.
 
 Configure `server.client_ip.trusted_proxy_cidrs` before relying on IP-based security triage. The router ignores `X-Forwarded-For` and `X-Real-IP` unless the direct remote address is in a trusted proxy CIDR. If no trusted proxy matches, reports use the direct remote address. Set `store_ip: false` only when deployment policy forbids IP storage; the report will then omit IP addresses and keep source/classification metadata best-effort.
 
@@ -195,7 +195,7 @@ When a caller provides a request ID, use the request evidence API to open a safe
 /admin/reports/api/request-evidence?request_id=<request_id>
 ```
 
-The same bundle is available through path-style drilldown links at `/admin/reports/api/request/<request_id>`. Both endpoints require `admin:reports` `drilldown`, are scoped to the admin's Casbin domain, and use `Cache-Control: no-store`. Ordinary application caller tokens receive `403 reports-forbidden`.
+The same bundle is available through path-style drilldown links at `/admin/reports/api/request/<request_id>`. Both endpoints require `admin:reports` `drilldown`, are scoped to the admin's policy domain, and use `Cache-Control: no-store`. Ordinary application caller tokens receive `403 reports-forbidden`.
 
 The request evidence bundle is assembled from relational usage and diagnostic rows. It can include request ID, caller/project/environment/client labels, public token ID, requested model and resolved model group, selected upstream/provider model and dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency and throughput measurements, quota/caller-token/cache state, traffic-shaping state, target candidate and filter summaries, attempts, sanitized upstream error details, trace events, request-shape and translation-shape buckets, and decision telemetry.
 
@@ -209,7 +209,7 @@ Desktop report users navigate with a fixed left sidebar labeled `Report sections
 
 Each group header is keyboard-focusable and exposes expanded/collapsed state to assistive technology. Collapsed groups are remembered in browser `localStorage` under a versioned UI key so an administrator's browser keeps the same sidebar density after reloads. The preference is local presentation state only; it is not sent to report APIs, stored in the router, or included in shareable URLs.
 
-On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, and global or tab-specific filters continue to use one combined URL such as `/admin/reports/?tab=savings-by-key&since=6d&caller_user=alice&baseline=gpt-5.5`, so bookmarked links, filters, exports, and Casbin authorization behavior are unchanged.
+On narrow screens the sidebar is hidden by default and opens from the `Sections` button in the header. The drawer uses the same grouped navigation and preserves deep links such as `/admin/reports/?tab=requests&since=24h`. The URL `tab` parameter remains the source of truth for the active report, and global or tab-specific filters continue to use one combined URL such as `/admin/reports/?tab=savings-by-key&since=6d&caller_user=alice&baseline=gpt-5.5`, so bookmarked links, filters, exports, and policy-based authorization behavior are unchanged.
 
 Per-tab panels are mounted above the metrics, charts, and table. Savings tabs expose `Baseline`, `Sort`, and `Direction`; cache/error/performance tabs expose `Status`, `Cache`, `Sort`, and `Direction`; traffic-shaping tabs expose `Shape bucket`, `Shape scope`, `Sort`, and `Direction`; and diagnostic/status tabs expose sorting controls where a natural table sort applies. `Reset filters` clears only the active tab's local filters and never clears global investigation filters such as caller user or provider.
 
@@ -257,7 +257,7 @@ The shared label encoder applies to every category chart, including Provider/mod
 
 Time-series charts use UTC epoch milliseconds for Chart.js spacing while preserving the original RFC3339Nano timestamp in the API payload, table/export paths, and hover tooltip. Axis ticks adapt to the visible range so short windows use hourly `HH:mm` labels, multi-day windows use `MMM d`, multi-month windows use weekly `MMM d`, longer windows use `MMM yyyy`, and multi-year windows use `yyyy`. Hovering a point shows the full timestamp with an explicit `UTC` suffix, while CSV and Markdown export continue to emit the full timestamp.
 
-Docusaurus product docs may show anonymized Chart.js examples built from safe report fixtures. The `router-usage-report` CLI remains focused on stable Markdown tables, relational rollups, and machine-reviewable metrics unless a deployment explicitly adds a chart export workflow outside the router binary.
+Product docs may show anonymized Chart.js examples built from safe report fixtures. The `router-usage-report` CLI remains focused on stable Markdown tables, relational rollups, and machine-reviewable metrics unless a deployment explicitly adds a chart export workflow outside the router binary.
 
 ## Savings
 
@@ -283,7 +283,7 @@ Actual router cost is summed from stored request-time input, output, image, calc
 
 ## Version Status
 
-The browser shell calls `/admin/reports/api/version` after load and displays a compact version chip with the router version, build date, and license compile mode when available. The endpoint uses the same admin reports authentication, license, and Casbin `admin:reports` `read` authorization as aggregate report APIs. It does not require a usage database and does not expose raw router tokens, token hashes, provider keys, full config, prompts, images, tool outputs, cookies, or OIDC tokens.
+The browser shell calls `/admin/reports/api/version` after load and displays a compact version chip with the router version, build date, and license compile mode when available. The endpoint uses the same admin reports authentication, license, and `admin:reports` `read` authorization as aggregate report APIs. It does not require a usage database and does not expose raw router tokens, token hashes, provider keys, full config, prompts, images, tool outputs, cookies, or OIDC tokens.
 
 Use it as a quick operator check that the loaded browser bundle is talking to the expected router binary. The public `/version` endpoint remains available for deployment health checks; `/admin/reports/api/version` exists so authenticated report users can see build metadata without leaving the admin report surface.
 
@@ -322,7 +322,7 @@ For provider access failures, filter Upstream failures or request evidence by `u
 
 For large agent-payload triage, compare successful and failed rows for the same provider, model, dialect, client, and model group. Start with `request_bytes_bucket`, `input_tokens_bucket`, `output_cap_bucket`, `tool_count_bucket`, request-shape fingerprint, tool-schema fingerprint, and upstream status. A pattern where small smokes pass but large Cursor, Codex, Claude Code, opencode, or similar agent sessions fail should be reproduced with a sanitized synthetic fixture. The reference smoke route is `large-openai-chat-tools-smoke`; grant authorized validation callers access to that route before production or staging reruns. Production reproductions require a deployment-owned smoke route and safe caller access; missing caller or report access is a prerequisite gap to record. If the direct upstream passes and the router path fails, inspect translation fields and target metadata. If both direct and router paths fail at the same shape, set explicit request-shape limits or keep the target in a smoke group until the provider/account supports that workload.
 
-OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without Casbin policy receives `403 reports-forbidden`.
+OIDC deployments should first complete `/admin/auth/login`, then call the same report URL with the browser session cookie. A valid OIDC session without matching authorization policy receives `403 reports-forbidden`.
 
 Expected for an ordinary router token:
 

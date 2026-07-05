@@ -38,26 +38,22 @@ Operational and administrative endpoints remain on the router origin:
 | `/admin/auth/login`, `/admin/auth/callback`, `/admin/auth/me`, `/admin/auth/logout` | Browser-admin OIDC session routes | Operators enabling OIDC browser admin surfaces |
 | `/admin/reports/*` | Router-specific admin reports | Authorized administrators |
 
-`/metrics` is an operator telemetry API. It requires a caller token whose subject is authorized for `metrics` `read`; existing `metrics_admin: true` caller entries receive compatible Casbin grants at startup.
+`/metrics` is an operator telemetry API. It requires a caller token whose subject is authorized for `metrics` `read`; existing `metrics_admin: true` caller entries receive compatible authorization grants at startup.
 
 Caller tokens are checked by SHA-256 hash. Unknown or missing tokens return `401 unauthorized`. Configured inactive keys return safe status-specific `403` errors after token match, including `key-disabled`, `key-suspended`, `key-expired`, and `key-rotated`. Config validation requires every enabled key to reference an active `owner_user`, active project, and active project membership, so inactive users/projects/memberships are caught before startup.
 
-Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete` authorization in the captured row's caller project/environment domain; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants for their own domain. These endpoints never return captured content.
+Content-capture maintenance endpoints are administrative APIs, not model APIs. `DELETE /v1/content-captures/<request_id>` requires `content:capture` `delete` authorization in the captured row's caller project/environment domain; `POST /v1/content-captures/purge-expired` requires `content:capture` `purge`. Existing `content_admin: true` caller entries receive compatible authorization grants for their own domain. These endpoints never return captured content.
 
 `/admin/auth/check` is not a model API. It is available only when `server.admin_auth.basic.enabled: true`; missing or invalid HTTP Basic credentials return `401`, valid credentials without the route permission return `403 admin-forbidden`, and valid credentials with `admin:auth:read` return safe subject metadata.
 
 OIDC admin auth routes are not model APIs. They are available only when `server.admin_auth.oidc.enabled: true`. Login redirects to the IdP, callback creates a server-side session after OIDC verification, `/admin/auth/me` returns safe subject metadata, and logout invalidates the session. Excess pending login starts from one client return `429 oidc-login-rate-limited` responses.
 
-`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses Casbin policy decisions for read/export access. Report data is scoped to the admin's Casbin domain unless an explicit `*` policy domain grants deployment-wide access. Ordinary caller tokens receive `403 reports-forbidden`.
+`/admin/reports/*` is not a model API. It is disabled unless `server.admin_reports.enabled: true`, uses Basic Auth or OIDC sessions for browser-admin identity, and uses authorization policy decisions for read/export access. Report data is scoped to the admin's policy domain unless an explicit `*` policy domain grants deployment-wide access. Ordinary caller tokens receive `403 reports-forbidden`.
 
 
 ## Conformance Test Matrix
 
-Router API compatibility is protected by a deterministic conformance suite in addition to live provider smokes. Run the focused suite before changing request parsing, upstream encoding, tool routing, structured outputs, reasoning controls, streaming behavior, max-token handling, or provider-hosted tool policy:
-
-```bash
-go test ./internal/router -run 'TestAPIDialectConformanceMatrix|TestOpenAIChatConformance|TestResponsesConformance'
-```
+Router API compatibility is protected by deterministic release validation in addition to live provider smokes. Before changing request parsing, upstream encoding, tool routing, structured outputs, reasoning controls, streaming behavior, max-token handling, or provider-hosted tool policy, require release evidence for the affected API surfaces.
 
 | Surface | What the conformance suite proves |
 |---|---|
@@ -67,11 +63,7 @@ go test ./internal/router -run 'TestAPIDialectConformanceMatrix|TestOpenAIChatCo
 
 This suite uses mock upstreams and does not prove a real provider/model is entitled, fast, accurate, or compatible with every workload. Activating an upstream still requires direct provider smokes and router-level smokes for the exact provider, model, dialect, tools, images, structured-output, reasoning, and max-token behavior being advertised.
 
-Agent compatibility should also be validated with realistic synthetic request shapes. The production-derived smoke matrix exercises Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run it against a dedicated smoke group, for example `reasoning-bridge-smoke`, with a caller token that is explicitly allowed to that group:
-
-```bash
-python3 scripts/prod_smoke_regressions.py --mode prod --fixture all --model-group reasoning-bridge-smoke
-```
+Agent compatibility should also be validated with realistic synthetic request shapes. A complete smoke matrix should exercise Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run it against a dedicated smoke group, for example `reasoning-bridge-smoke`, with a caller token that is explicitly allowed to that group.
 
 The smoke emits safe scalar proof only: request IDs, API surface, status, selected provider/model/dialect, bridge direction when recorded, translated reasoning control when recorded, and request-shape buckets.
 

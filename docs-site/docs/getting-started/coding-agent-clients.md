@@ -29,16 +29,7 @@ Successful smokes should prove task outcome, not just HTTP status. For repositor
 
 Different clients can see different effective target pools inside the same model group because they use different API surfaces. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and many IDE clients use OpenAI Chat. A target validated for Chat tools is not automatically eligible for Responses function tools or Anthropic client tools. If one client receives `no-eligible-target` or appears to route to fewer upstreams than another client, ask the deployment admin to inspect effective provider-skin eligibility for that group.
 
-Admins can validate production-safe coding-agent request shapes with sanitized smoke fixtures instead of captured customer prompts. The reference package includes production-derived fixtures for Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run them against a dedicated smoke model group, not an active production group, and grant the test caller explicit access to that group in deployment config.
-
-```bash
-python3 scripts/prod_smoke_regressions.py \
-  --mode prod \
-  --base-url "$ROUTER_BASE_URL" \
-  --token-env ROUTER_SMOKE_TOKEN \
-  --fixture all \
-  --model-group reasoning-bridge-smoke
-```
+Admins can validate production-safe coding-agent request shapes with sanitized smoke fixtures instead of captured customer prompts. A complete fixture set should cover Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, and upstream error classification. Run the fixtures against a dedicated smoke model group, not an active production group, and grant the test caller explicit access to that group in deployment config.
 
 The smoke prints only safe scalar evidence such as request ID, status, selected provider/model/dialect, API surface, and request-shape buckets. It must not include raw prompts, tool schemas, images, router tokens, provider keys, token hashes, or full configs.
 
@@ -102,12 +93,12 @@ Save that shape as `.claude/settings.local.json` for local use. For a specific s
 
 ```md
 ---
-name: router-docs-reviewer
-description: Review router documentation changes for customer-safe examples and link accuracy.
+name: router-subagent
+description: Work on the assigned task using the selected router model group.
 model: <allowed-model-group>
 ---
 
-Review the changed documentation and report any customer-facing inaccuracies.
+Complete the assigned task and report the result.
 ```
 
 A pinned `CLAUDE_CODE_SUBAGENT_MODEL` takes precedence over per-subagent frontmatter, so unset or inherit it before testing a different frontmatter model group.

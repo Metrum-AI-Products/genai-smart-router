@@ -17,9 +17,9 @@ Confirm:
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;
 - metrics-admin access uses separate caller subjects authorized for `metrics` `read`, with existing `metrics_admin: true` callers converted to compatible grants;
-- content-capture maintenance access uses Casbin `content:capture` `delete`/`purge` policy, delete-by-request is scoped to the captured row's caller project/environment domain, and existing `content_admin: true` callers are converted to compatible grants for their own domain.
+- content-capture maintenance access uses authorization policy `content:capture` `delete`/`purge` policy, delete-by-request is scoped to the captured row's caller project/environment domain, and existing `content_admin: true` callers are converted to compatible grants for their own domain.
 - browser-admin Basic Auth, when enabled, uses bcrypt hashes from deployment secrets, requires HTTPS in production, trusts forwarded HTTPS state only from configured proxy CIDRs, and maps to stable subjects such as `basic:admin`; see [Admin Authentication](../configuration/admin-authentication).
-- browser admin reports, when enabled, require Casbin `admin:reports` policy in addition to browser-admin identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
+- browser admin reports, when enabled, require authorization policy `admin:reports` policy in addition to browser-admin identity, and reject ordinary router caller tokens with `403 reports-forbidden`.
 
 Acceptance checks:
 
@@ -74,7 +74,7 @@ Validate:
 - `/readyz` and `/version` expose build metadata without secrets;
 - `/v1/chat/completions`, `/v1/responses`, and `/v1/messages` enforce caller auth, allow lists, quotas, and target eligibility;
 - `/v1/usage` returns caller-appropriate usage visibility;
-- `/admin/reports/*`, when enabled, returns only safe scalar report data and local embedded assets after browser-admin identity plus Casbin authorization;
+- `/admin/reports/*`, when enabled, returns only safe scalar report data and local embedded assets after browser-admin identity plus policy-based authorization;
 - `/metrics` is restricted to metrics-admin tokens;
 - no private host paths, SSH details, provider keys, or raw tokens appear in hosted docs.
 
@@ -92,7 +92,7 @@ Each deployment should follow the organization's security process for:
 
 The Docker builder image is pinned to a patched Go toolchain tag so reachable Go standard-library advisories are controlled by the image patch version used for the release build.
 
-As of 2026-06-24, the docs build still reports moderate npm audit advisories through Docusaurus' `gray-matter` dependency on `js-yaml@3`. Docusaurus has no patched dependency path for that finding yet. The affected package is used during documentation build and content parsing, not in the router request path; deployment reviews should record the residual, keep authored docs inputs trusted, and re-run `npm audit --prefix docs-site --audit-level=moderate` when Docusaurus publishes a fix.
+Release reviews should include dependency and artifact scan evidence for the shipped package. If a release has a residual documentation-build or packaging advisory that does not affect the router request path, record the residual in the private release evidence and keep authored documentation inputs trusted until a patched dependency path is available.
 
 ## Security Sign-Off Record
 

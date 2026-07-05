@@ -158,11 +158,12 @@ Use placeholders such as `https://router.example.com`, `ROUTER_TOKEN`, `rtr_metr
 Run:
 
 ```bash
+rtk make docs-diag-schema
 rtk make docs-qa
 rtk make secret-check
 ```
 
-`docs-qa` checks public-facing docs for known private deployment markers and stale current-route claims. `secret-check` verifies environment examples, package-content validation tests, and license SKU checks. For public docs changes, run `rtk make docs-build` when feasible.
+Run `docs-diag-schema` whenever diagnostics, usage, reporting, retention, security-access, or governed content-capture schema structs change. `docs-qa` checks public-facing docs for known private deployment markers and stale current-route claims. `secret-check` verifies environment examples, package-content validation tests, and license SKU checks. For public docs changes, run `rtk make docs-build` when feasible.
 
 ## Packaging Boundaries
 

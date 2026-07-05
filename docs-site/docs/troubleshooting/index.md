@@ -42,7 +42,7 @@ If `/v1/models` does not include the expected model group, inspect caller access
 | Caller gets `401` or `403` | Missing caller token, disabled caller token, model-group access, metrics/report authorization, or admin policy | [Request Troubleshooting](/docs/troubleshooting/requests) |
 | Caller gets `429` | Router quota, traffic shaping, TPM/RPM, concurrency, license volume/window, or upstream provider limit | [Request Troubleshooting](/docs/troubleshooting/requests) |
 | `/metrics` returns forbidden | Caller is not authorized for metrics admin | [Observability](/docs/operations/observability) |
-| Admin reports unavailable | Admin authentication, Casbin policy, usage DB, or report feature license | [Admin Browser Reports](/docs/operations/admin-browser-reports) |
+| Admin reports unavailable | Admin authentication, authorization policy, usage DB, or report feature license | [Admin Browser Reports](/docs/operations/admin-browser-reports) |
 
 ## Safe Support Packet
 

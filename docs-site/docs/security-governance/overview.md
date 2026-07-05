@@ -15,7 +15,7 @@ GenAI Smart Router centralizes caller access, provider credentials, admin access
 | Model-group allow lists | Prevent callers from requesting groups outside their contract or project scope. |
 | Quotas and budgets | Enforce RPM, TPM, concurrency, traffic shaping, daily/monthly token limits, and spend controls before upstream calls. |
 | Admin authentication | Protect browser/admin endpoints with Basic Auth or OIDC when enabled by the deployment. |
-| Casbin authorization | Authorize admin/report/security/content actions by subject, object, and action. |
+| Policy-based authorization | Authorize admin/report/security/content actions by subject, object, and action. |
 | Metrics isolation | Keep `/metrics` restricted to metrics-admin callers. |
 | PII filtering | Redact configured text before target selection, cache-key generation, policy inputs, and upstream calls. |
 | License enforcement | Gate licensed capabilities with safe status surfaces and caller-visible `license-*` errors. |

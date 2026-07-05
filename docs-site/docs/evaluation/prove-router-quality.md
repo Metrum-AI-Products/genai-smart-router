@@ -77,7 +77,7 @@ Use the same Harbor-supported attempt and seed policy for both arms. Report the 
 
 ## Outcome Gate Artifact
 
-For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. In a source checkout, `scripts/evaluate_workload_gate.py` can summarize Harbor `results.tsv` files or JSON result rows and merge safe usage-report rows when available. Packaged deployments can use the same output shape from a deployment-approved evaluator:
+For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. In a source checkout, use the repository evaluator to summarize Harbor `results.tsv` files or JSON result rows and merge safe usage-report rows when available. Packaged deployments should run the same workflow from the deployment's approved validation environment; the router release binaries do not include a separate `workload-gate` executable.
 
 ```bash
 python3 scripts/evaluate_workload_gate.py \
@@ -88,11 +88,7 @@ python3 scripts/evaluate_workload_gate.py \
   --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
 ```
 
-The matrix should declare the task set, reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls, pass-rate and reward thresholds, p95 latency ceiling, cost-per-success ceiling, error and fallback ceilings, and rollback criteria. A mock fixture self-test is available for local or CI environments where live Harbor is not installed:
-
-```bash
-python3 scripts/evaluate_workload_gate_test.py
-```
+The matrix should declare the task set, reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls, pass-rate and reward thresholds, p95 latency ceiling, cost-per-success ceiling, error and fallback ceilings, and rollback criteria. For local or CI environments where live Harbor is not installed, use a mock fixture self-test in the deployment's approved validation workflow.
 
 The gate report is safe to share when populated from safe result and usage rows: it includes task/run counts, pass rate with confidence interval, reward, cost, latency, fallback/error rates, selected upstream distribution, and request IDs. It intentionally excludes raw router tokens, token hashes, provider keys, prompts, images, tool outputs, and full deployment config.
 

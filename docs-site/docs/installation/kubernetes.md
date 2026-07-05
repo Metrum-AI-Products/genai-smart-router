@@ -230,7 +230,7 @@ If a database migration or config change caused the failure, restore from the pr
 - `CrashLoopBackOff`: run `kubectl logs deploy/smart-llmrouter` and verify the mounted config parses.
 - `/v1/models` empty: confirm the caller token allow-list and model group config.
 - Provider errors: validate cluster egress, provider keys, and direct upstream smokes.
-- Admin reports unavailable: confirm `server.admin_reports.enabled`, browser-admin auth, Casbin grants, and usage DB connectivity.
+- Admin reports unavailable: confirm `server.admin_reports.enabled`, browser-admin auth, authorization grants, and usage DB connectivity.
 
 The router never needs raw provider keys or router tokens in support screenshots. Share request IDs, status codes, sanitized logs, and safe configuration summaries instead.
 

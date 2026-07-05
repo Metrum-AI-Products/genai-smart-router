@@ -5,7 +5,7 @@ doc_type: howto
 
 # Installation
 
-GenAI Smart Router is installed from a release package. The package contains the router runtime and embedded product documentation; it does not require the source repository on the target host.
+GenAI Smart Router is installed from a release package. The package contains the router runtime and embedded product documentation; it does not require build tooling on the target host.
 
 Use `installation/` for work before the first production request lands: artifact selection, package validation, license and config placement, security review, and first smoke tests. Use `operations/` for work after traffic lands: scaling, runtime tuning, observability, reporting, and recurring troubleshooting.
 

@@ -87,7 +87,7 @@ Use stored request-time values for actual historical router cost. They are the d
 
 For anonymized graphical examples that show daily savings, caller-cohort savings, and upstream performance triage, see [Report Examples](/docs/operations/report-examples).
 
-Deployments can also enable [Admin Browser Reports](/docs/operations/admin-browser-reports) for operator-only inspection of cost, token, cache, latency, fallback, provider/model, and request-drilldown data. That surface is disabled by default and requires browser-admin identity plus Casbin report authorization.
+Deployments can also enable [Admin Browser Reports](/docs/operations/admin-browser-reports) for operator-only inspection of cost, token, cache, latency, fallback, provider/model, and request-drilldown data. That surface is disabled by default and requires browser-admin identity plus authorization policy report authorization.
 
 ## Image And VLM Costs
 

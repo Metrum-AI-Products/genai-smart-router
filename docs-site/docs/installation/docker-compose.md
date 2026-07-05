@@ -5,7 +5,7 @@ doc_type: howto
 
 # Docker Compose Install
 
-The Docker Compose package is the usual customer-managed installation path. It includes a prebuilt router image tarball, Compose files, and example runtime configuration. The target host needs Docker Engine and Docker Compose, but it does not need Go, Node.js, Docusaurus, or the source repository.
+The Docker Compose package is the usual customer-managed installation path. It includes a prebuilt router image tarball, Compose files, and example runtime configuration. The target host needs Docker Engine and Docker Compose, but it does not need language runtimes, documentation tooling, or build scripts.
 
 For package selection and architecture guidance, start with [Deployment Artifacts](./deployment-artifacts). For package inspection and security checks, see [Package Validation And Security Checks](./package-validation).
 

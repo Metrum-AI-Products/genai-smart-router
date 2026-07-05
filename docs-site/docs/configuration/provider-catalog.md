@@ -50,16 +50,7 @@ Internal vLLM, SGLang, Baseten, Crusoe, Fireworks, OpenRouter, Anthropic, MiniMa
 
 Capability fields are eligibility controls, not marketing descriptions. If a capability is omitted, the router treats it as unavailable and skips the target for requests that require it.
 
-Use `scripts/probe-model-capabilities.sh` as the repeatable first pass for direct upstream evidence:
-
-```bash
-scripts/probe-model-capabilities.sh \
-  --base-url https://api.provider.example/v1 \
-  --model provider-model-id \
-  --api-key-env PROVIDER_API_KEY \
-  --dialect openai-chat \
-  --output yaml
-```
+Use a repeatable provider probe as the first pass for direct upstream evidence. The probe should exercise the exact upstream base URL, model ID, API dialect, tool mode, image mode, structured-output mode, and output-cap behavior that will be declared in metadata.
 
 Map the probe output mechanically:
 

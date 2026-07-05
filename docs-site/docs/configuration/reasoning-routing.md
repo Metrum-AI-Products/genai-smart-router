@@ -230,17 +230,9 @@ Source config is not enough. After deployment, administrators should prove the r
 
 For bridge smokes, also confirm `request_translation_shapes.bridge_direction` is `chat_to_responses` or `responses_to_chat`. Chat-to-Responses reasoning smokes should show `translated_reasoning_control = reasoning`; Responses-to-Chat reasoning smokes should show `translated_reasoning_control = reasoning_effort`.
 
-The operator smoke script `scripts/reasoning_smoke.py` automates this for staging and production deployments. It prints only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It does not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
+Use an operator-approved reasoning smoke workflow to automate this for staging and production deployments. The smoke output should contain only safe scalar evidence: request IDs, model group, selected provider/model/dialect, translated reasoning control, and fallback status. It must not print router tokens, provider keys, prompts, tool schemas, raw responses, or full config.
 
-```bash
-rtk python3 scripts/reasoning_smoke.py \
-  --base-url "$ROUTER_BASE_URL" \
-  --token-file "$ROUTER_TOKEN_FILE" \
-  --model "$MODEL_GROUP" \
-  --postgres-dsn "$ROUTER_USAGE_DB_DSN"
-```
-
-Use `--sqlite-db <usage-db-path>` for a local or staging SQLite-backed deployment. The older `scripts/prod_reasoning_smoke.py` entrypoint is a compatibility wrapper; new automation should call `scripts/reasoning_smoke.py`.
+For smaller deployments, the same proof can be collected manually with the request examples above plus read-only usage-report or diagnostics access.
 
 For manual SQL verification, join by request ID and attempt index. This shape shows only safe scalar fields:
 

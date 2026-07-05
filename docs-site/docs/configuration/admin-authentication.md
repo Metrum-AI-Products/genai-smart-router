@@ -11,7 +11,7 @@ GenAI Smart Router separates caller API authentication from browser-admin authen
 - Metrics-admin caller tokens read `/metrics`.
 - HTTP Basic can establish a simple browser-admin identity for `/admin/*` routes.
 - OIDC can establish browser-admin identity through an enterprise identity provider and a server-side session cookie.
-- Casbin authorization is the policy decision layer for metrics and admin-report permissions. See [Admin Authorization](./admin-authorization).
+- Policy-based authorization controls metrics and admin-report permissions. See [Admin Authorization](./admin-authorization).
 
 HTTP Basic and OIDC are disabled by default and can be enabled independently. Basic is useful for simple self-hosted deployments and bootstrap access. OIDC is intended for deployments that want browser administrators to authenticate through an identity provider such as Google Workspace.
 
@@ -107,7 +107,7 @@ server:
 
 Register `https://router.example.com/admin/auth/callback` with the IdP. Keep `client_id_env` and `client_secret_env` as environment-variable names and store the actual values in deployment secrets.
 
-For Google Workspace, use issuer `https://accounts.google.com`, restrict `allowed_domains` to the approved Workspace domains, and grant Casbin roles to stable subjects such as `user:alice@example.com`. Standard Google ID tokens do not always include group membership; use explicit policy unless a governed groups claim is configured and validated for the deployment.
+For Google Workspace, use issuer `https://accounts.google.com`, restrict `allowed_domains` to the approved Workspace domains, and grant authorization roles to stable subjects such as `user:alice@example.com`. Standard Google ID tokens do not always include group membership; use explicit policy unless a governed groups claim is configured and validated for the deployment.
 
 ## Runtime Behavior
 
@@ -131,7 +131,7 @@ OIDC browser routes:
 | `GET /admin/auth/me` | Returns safe metadata for the active Basic or OIDC admin identity. |
 | `POST /admin/auth/logout` | Deletes the server-side session and expires the admin cookie. |
 
-Invalid or missing sessions return `401`. Valid sessions without a matching Casbin policy receive endpoint-specific `403` responses such as `reports-forbidden`.
+Invalid or missing sessions return `401`. Valid sessions without a matching authorization policy receive endpoint-specific `403` responses such as `reports-forbidden`.
 
 ## Smoke Tests
 
@@ -183,9 +183,9 @@ If the password is valid but `admin:auth:read` is not granted, the endpoint retu
 }
 ```
 
-## Casbin Authorization For Admin Reports
+## Authorization Policy For Admin Reports
 
-Browser-admin Basic Auth and OIDC sessions establish identity only. Admin reports use Casbin policy under `server.admin_auth.authorization` for authorization decisions. The same authorization layer checks `/metrics` and content-capture maintenance for caller-token subjects.
+Browser-admin Basic Auth and OIDC sessions establish identity only. Admin reports use authorization policy under `server.admin_auth.authorization` for authorization decisions. The same authorization layer checks `/metrics` and content-capture maintenance for caller-token subjects.
 
 ```yaml
 server:
@@ -206,7 +206,7 @@ server:
 
 The report surface checks object `admin:reports` with action `read` for pages, aggregate JSON APIs, and static assets. Markdown export checks action `export`. Request detail under `/admin/reports/api/request/<request_id>` and request evidence under `/admin/reports/api/request-evidence?request_id=<request_id>` check action `drilldown`.
 
-Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete` in the captured row's caller project/environment domain, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible Casbin grants for their own domain at startup.
+Content-capture maintenance endpoints check object `content:capture`; delete-by-request uses action `delete` in the captured row's caller project/environment domain, and retention purge uses action `purge`. Existing `content_admin: true` caller entries receive compatible authorization grants for their own domain at startup.
 
 When reports are enabled under `server.admin_reports`, ordinary router caller tokens are rejected with `403 reports-forbidden` rather than being treated as browser-admin credentials.
 
@@ -217,7 +217,7 @@ curl "$ROUTER_BASE_URL/v1/models" \
   -H "Authorization: Bearer $ROUTER_TOKEN"
 ```
 
-Metrics continue to use caller tokens. Existing `metrics_admin: true` callers receive equivalent Casbin grants at startup:
+Metrics continue to use caller tokens. Existing `metrics_admin: true` callers receive equivalent authorization grants at startup:
 
 ```bash
 curl "$ROUTER_BASE_URL/metrics" \
@@ -246,9 +246,9 @@ Use `allow_insecure_http: true` only for local development and loopback smoke te
 
 ## Authorization Boundary
 
-Basic Auth establishes a subject such as `basic:admin`; OIDC with `subject_claim: email` establishes a subject such as `user:alice@example.com`. Neither decides what that subject may do. Current stub-route permissions are intentionally small. Metrics and admin report authorization are expressed through the deployment's Casbin policy.
+Basic Auth establishes a subject such as `basic:admin`; OIDC with `subject_claim: email` establishes a subject such as `user:alice@example.com`. Neither decides what that subject may do. Current stub-route permissions are intentionally small. Metrics and admin report authorization are expressed through the deployment's authorization policy.
 
-Equivalent policy expressed as separate Casbin permission lines:
+Equivalent policy expressed as separate authorization permission lines:
 
 ```text
 g, basic:admin, reports_admin, example/prod

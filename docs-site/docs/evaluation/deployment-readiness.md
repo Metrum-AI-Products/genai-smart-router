@@ -45,7 +45,7 @@ Acceptance checks:
 - Disallowed model groups return `403 model-not-allowed` before any provider call.
 - `/metrics` is available only to caller subjects authorized for `metrics` `read`.
 - `/v1/usage` or generated reports provide caller-specific usage visibility.
-- If browser admin reports are enabled, `/admin/reports/api/summary?since=24h` succeeds only for a Basic Auth or OIDC session subject allowed by Casbin policy, and an ordinary router caller token receives `403 reports-forbidden`.
+- If browser admin reports are enabled, `/admin/reports/api/summary?since=24h` succeeds only for a Basic Auth or OIDC session subject allowed by authorization policy, and an ordinary router caller token receives `403 reports-forbidden`.
 - If `server.admin_auth.authorization.source: db` is used, a single active validated policy set exists in the usage DB before rollout, malformed policy activation preserves the last known valid set, and rollback to the previous retired set is tested.
 
 ## Model-Group Quality Contracts
@@ -79,8 +79,8 @@ Minimum acceptance:
 - raw prompts, raw images, provider keys, router tokens, and token hashes are excluded from diagnostics as described in the [Diagnostics Schema](../reference/diagnostics-schema#fields-intentionally-not-persisted);
 - `/metrics` requires a caller subject authorized for `metrics` `read`;
 - release deployments have `server.license.enabled: true`, a mounted current license file, `/readyz` success, and a documented renewal/rollback procedure;
-- release handoff has run `make release-validation-matrix`, and built artifacts have been checked with `python3 scripts/validate_release_matrix.py --include-artifacts`;
-- browser admin reports, when enabled, require browser-admin identity plus Casbin `admin:reports` policy and remain separate from public `/docs/`;
+- release handoff includes the deployment's release-validation matrix and artifact inspection evidence;
+- browser admin reports, when enabled, require browser-admin identity plus authorization policy `admin:reports` policy and remain separate from public `/docs/`;
 - governed content capture is disabled unless required by policy, and any enabled deployment has `content:capture` delete/purge authorization, redaction rules, retention, purge, and backup handling reviewed;
 - private upstreams are reachable only through approved network paths;
 - image-fetching VLM services have media-domain restrictions where applicable;

@@ -42,16 +42,7 @@ Treat provider access failures as activation prerequisites. A direct smoke retur
 
 ## 2. Run Direct Provider Smokes
 
-For repeatable first-pass capability evidence, run the repository probe script from a protected shell that has only the relevant provider key in the named environment variable:
-
-```bash
-scripts/probe-model-capabilities.sh \
-  --base-url https://api.provider.example/v1 \
-  --model provider-model-id \
-  --api-key-env PROVIDER_API_KEY \
-  --dialect openai-chat \
-  --output yaml | tee probe-results.yaml
-```
+For repeatable first-pass capability evidence, run a provider probe from a protected shell that has only the relevant provider key in the named environment variable. The probe should call the exact base URL, model ID, and API dialect being considered, and it should save sanitized YAML or JSON evidence for review.
 
 The probe is not a replacement for operator review or workload validation. It produces a structured checklist of direct upstream smokes and a `recommended_config` block that should be copied only after you inspect the failed, skipped, and informational rows. Capabilities that were not tested stay omitted from provider metadata; omitted metadata makes the router skip that target for requests that require the capability.
 
@@ -66,31 +57,11 @@ Run direct upstream requests before involving the router:
 - usage and cost inspection when the upstream returns token or billed-cost fields;
 - client compatibility smoke for Codex, Claude Code, Cursor, Warp, or another client that depends on a specific skin.
 
-For coding-agent or retrieval-heavy groups, add a large OpenAI Chat payload smoke when the target will receive Chat Completions traffic from agents. Use a sanitized synthetic fixture rather than captured customer content. The example command below generates filler messages and representative function schemas, prints only scalar request-shape metrics, and can run against either a direct upstream endpoint or a router model group:
-
-```bash
-rtk python3 scripts/large_payload_chat_smoke.py \
-  --base-url https://api.provider.example/v1 \
-  --model provider-model-id \
-  --api-key-env PROVIDER_API_KEY \
-  --target-bytes 524288 \
-  --tool-count 24 \
-  --max-tokens 32
-```
+For coding-agent or retrieval-heavy groups, add a large OpenAI Chat payload smoke when the target will receive Chat Completions traffic from agents. Use a sanitized synthetic fixture rather than captured customer content. The smoke should generate filler messages and representative function schemas, print only scalar request-shape metrics, and run against either a direct upstream endpoint or a router model group.
 
 Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, prompt-token scale, latency, status, and token usage in `validation_notes`. Production evidence should use a deployment-owned smoke group and a safe existing caller token; if that caller or report access is not available, record the prerequisite gap instead of copying token files or captured payloads. When a production incident yields a reusable safe shape, add a fixture under `testdata/smokes/production-derived/` and validate it with `scripts/prod_smoke_regressions.py` rather than preserving customer content.
 
-For opencode-style coding-agent traffic, run the API capability matrix before declaring support for an endpoint. The matrix sends synthetic OpenAI Chat and Anthropic Messages text, client-tool, and image requests and records sanitized pass/fail evidence:
-
-```bash
-rtk python3 scripts/opencode_api_matrix.py \
-  --base-url https://api.provider.example/v1 \
-  --model provider-model-id \
-  --api-key-env PROVIDER_API_KEY \
-  --dialects openai-chat,anthropic \
-  --tasks text,tools,image \
-  --output-dir tmp/opencode-api-matrix
-```
+For opencode-style coding-agent traffic, run an API capability matrix before declaring support for an endpoint. The matrix should send synthetic OpenAI Chat and Anthropic Messages text, client-tool, and image requests and record sanitized pass/fail evidence.
 
 A partial pass is still useful evidence. For example, a model that passes OpenAI Chat tools and Anthropic Messages tools but rejects image payloads can be routed for text/tool workloads only; do not add `image` metadata or mixed image-bearing agent routing until the exact provider, model, account, and router skin pass image smokes.
 The command exits zero after writing the evidence files by default, even when individual capability rows fail. Add `--strict-exit` only when a CI job should fail on any non-passing row. Text rows require the expected text, default `OK`; image rows require the expected receipt text, default `Rite Aid`, before they are marked as passes.

@@ -40,7 +40,7 @@ The router uses explicit account records:
 - `project_memberships` grant a user a project role such as developer, operator, owner, auditor, or another deployment-defined role.
 - `callers` are caller-token config entries that reference one owner user, one project, one environment, and one allow list.
 
-Do not infer ownership or authorization from the token prefix alone. The prefix and public `token_id` are traceability aids; authorization comes from the caller token's configured owner/project references, membership status, allow list, quotas, and Casbin admin policies where applicable. One user/project can have multiple caller tokens for rotation, production versus staging, separate clients, higher-TPM coding-agent traffic, or short-lived evaluations.
+Do not infer ownership or authorization from the token prefix alone. The prefix and public `token_id` are traceability aids; authorization comes from the caller token's configured owner/project references, membership status, allow list, quotas, and admin authorization policies where applicable. One user/project can have multiple caller tokens for rotation, production versus staging, separate clients, higher-TPM coding-agent traffic, or short-lived evaluations.
 
 ## Access Patterns
 

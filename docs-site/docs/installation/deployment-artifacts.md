@@ -5,7 +5,7 @@ doc_type: howto
 
 # Deployment Artifacts
 
-GenAI Smart Router is delivered as release artifacts. Deployment hosts do not need the source checkout, Go, Node.js, Docusaurus, or build scripts.
+GenAI Smart Router is delivered as release artifacts. Deployment hosts do not need language runtimes, documentation tooling, or build scripts.
 
 ## Artifact Types
 
@@ -19,7 +19,7 @@ Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts, including 
 
 ## Embedded Docs And Admin Assets
 
-The router binary embeds this Docusaurus documentation site. After startup, browser requests to `/docs/` show the full external administrator docs, including installation, configuration, licensing, provider keys, caller tokens, reporting, troubleshooting, upgrade, rollback, and security guidance.
+The router binary embeds the product documentation site. After startup, browser requests to `/docs/` show the full external administrator docs, including installation, configuration, licensing, provider keys, caller tokens, reporting, troubleshooting, upgrade, rollback, and security guidance.
 
 Authenticated admin report assets, when enabled, are embedded separately and served under `/admin/reports/`. They are not part of public `/docs/` and require browser-admin authentication plus authorization.
 
