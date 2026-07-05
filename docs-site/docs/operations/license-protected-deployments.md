@@ -134,7 +134,7 @@ curl -i -H "Authorization: Bearer $ROUTER_TOKEN" \
   "$ROUTER_BASE_URL/v1/models"
 ```
 
-The source-tree `cmd/router-license` helper can inspect, safely summarize, or verify a license file or revocation bundle during release engineering or support validation when run from a checked-out source tree with an approved public key file. Metrum operators use separate internal issuance commands to generate, renew, top up, or revoke licenses from approved entitlement records. Those issuance commands and signing keys are not part of the packaged Docker/runtime image. Deployed routers do not need private signing keys or the license helper binary at runtime.
+License inspection and verification are support operations handled with approved Metrum tooling and public verification keys. Metrum operators use separate internal issuance systems to generate, renew, top up, or revoke licenses from approved entitlement records. Those issuance systems and signing keys are not part of the packaged Docker/runtime image. Deployed routers do not need private signing keys or a license-generation tool at runtime.
 
 ## Commercial Model
 

@@ -77,7 +77,7 @@ Use the same Harbor-supported attempt and seed policy for both arms. Report the 
 
 ## Outcome Gate Artifact
 
-For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. The repository includes a generic gate summarizer that can run against Harbor `results.tsv` files or JSON result rows, and can merge safe usage-report rows when available:
+For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. In a source checkout, `scripts/evaluate_workload_gate.py` can summarize Harbor `results.tsv` files or JSON result rows and merge safe usage-report rows when available. Packaged deployments can use the same output shape from a deployment-approved evaluator:
 
 ```bash
 python3 scripts/evaluate_workload_gate.py \

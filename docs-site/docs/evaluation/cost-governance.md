@@ -19,7 +19,7 @@ Provider catalog metadata can include:
 - pricing update date;
 - pricing notes.
 
-When a request finishes, the router stores the price values and calculated costs used for that request. This keeps historical reports stable even if provider prices or internal chargeback rates change later.
+When a request finishes, the router stores the price values and calculated costs used for that request. This keeps historical reports stable even if provider prices or customer cost-allocation rates change later.
 
 If an upstream returns billed-cost metadata, the router can store that separately from router-calculated cost.
 
@@ -39,7 +39,7 @@ Usage reports can group traffic by:
 - input, output, and image tokens;
 - calculated and upstream-reported costs.
 
-These dimensions support internal chargeback, quota review, provider evaluation, and savings analysis.
+These dimensions support cost allocation, quota review, provider evaluation, and savings analysis.
 
 ## Cost Controls
 

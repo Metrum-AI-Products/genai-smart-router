@@ -20,7 +20,7 @@ Record:
 - served model ID;
 - model modalities;
 - tool support by API shape;
-- pricing or internal chargeback rates;
+- pricing or customer cost-allocation rates;
 - pricing source and update date;
 - operating notes such as `honors_max_tokens: false`.
 
@@ -54,7 +54,7 @@ Run direct upstream requests before involving the router:
 - usage and cost inspection when the upstream returns token or billed-cost fields;
 - client compatibility smoke for Codex, Claude Code, Cursor, Warp, or another client that depends on a specific skin.
 
-For coding-agent or retrieval-heavy groups, add a large OpenAI Chat payload smoke when the target will receive Chat Completions traffic from agents. Use a sanitized synthetic fixture rather than captured customer content. The repository helper below generates filler messages and representative function schemas, prints only scalar request-shape metrics, and can run against either a direct upstream endpoint or a router model group:
+For coding-agent or retrieval-heavy groups, add a large OpenAI Chat payload smoke when the target will receive Chat Completions traffic from agents. Use a sanitized synthetic fixture rather than captured customer content. The example command below generates filler messages and representative function schemas, prints only scalar request-shape metrics, and can run against either a direct upstream endpoint or a router model group:
 
 ```bash
 rtk python3 scripts/large_payload_chat_smoke.py \

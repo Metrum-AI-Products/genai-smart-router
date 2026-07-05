@@ -278,7 +278,7 @@ For end-to-end configuration, validation, and caller examples, see [Reasoning Ro
 
 ## Pricing And Cost Fields
 
-Set pricing metadata for every active target when a price or internal chargeback rate is known:
+Set pricing metadata for every active target when a price or customer cost-allocation rate is known:
 
 - `input_price_per_million_usd`
 - `output_price_per_million_usd`

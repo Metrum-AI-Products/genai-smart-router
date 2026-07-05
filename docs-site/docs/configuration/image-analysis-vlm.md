@@ -86,7 +86,7 @@ models:
         weight: 8
 ```
 
-Use `image_input_price_per_million_tokens_usd` when the provider reports image tokens. Use `image_input_price_per_image_usd` for internal chargeback or providers that bill per image. If neither image-specific field is set, image tokens use the normal input-token price.
+Use `image_input_price_per_million_tokens_usd` when the provider reports image tokens. Use `image_input_price_per_image_usd` for customer cost allocation or providers that bill per image. If neither image-specific field is set, image tokens use the normal input-token price.
 
 Price alone is not sufficient for promotion. Validate the exact account, model ID, API dialect, image payload shape, and task quality before adding a target to broad `vision` traffic. A candidate that accepts images but misses the expected OCR answer, leaks reasoning into a strict extraction response, or supports only data-URL images while common clients send remote image URLs should remain catalog-only or in a dedicated smoke group.
 
