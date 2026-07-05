@@ -16,8 +16,8 @@ Last deployed: 2026-07-05
 
 ## Deployed Version
 
-- Router package/image version: `b5f9587-linux-amd64`
-- Source commit: `b5f9587`
+- Router package/image version: `883ed51-linux-amd64`
+- Source commit: `883ed51`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,56 @@ Last deployed: 2026-07-05
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-05 Docs Font-Face Production Refresh
+
+Package `smart-llmrouter:883ed51-linux-amd64` was deployed to production after local browser validation showed the docs font stack now uses regular base faces instead of mapping normal text to a bold font file.
+
+Source commit: `883ed51` (`docs: use regular font faces`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-883ed51-20260705T205411Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-883ed51-20260705T205411Z`.
+
+Validation:
+
+- `make docs-qa`: passed.
+- `make docs-build`: passed.
+- Local Docusaurus browser test against `http://127.0.0.1:18082/docs/overview`: body paragraphs, H1, H2, navbar title, and menu links computed to `font-weight: 400`; body/headings used `MetrumSans` regular and nav/menu used `MetrumMono` regular.
+- `make package-docker VERSION=883ed51 COMMIT=883ed51`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `883ed51` on both `llm-api-engg.metrum.ai` and `llm-api.metrum.ai`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: 883ed51` on both production hostnames.
+- Production Playwright font probe against `https://llm-api-engg.metrum.ai/docs/overview` confirmed body paragraphs, H1, H2, navbar title, and menu links computed to `font-weight: 400`; body/headings used `MetrumSans` regular and nav/menu used `MetrumMono` regular.
+- Authenticated `big-coder` Responses smoke against `llm-api-engg.metrum.ai` returned 200 with output `OK`.
+- Router log tail after deploy showed startup only and no immediate error lines.
+
+Pre-refresh Harbor note:
+
+- A production Harbor `big-coder` run against the preceding `60b85a3` image produced mixed workload quality results: Codex passed with reward 1 and zero errors; Claude Code completed without router errors but scored reward 0. This was before the font-only `883ed51` refresh and was not caused by the docs font change.
+
+## 2026-07-05 Post-Review Docs/Admin Production Refresh
+
+Package `smart-llmrouter:60b85a3-linux-amd64` was deployed to production to refresh hosted public docs, embedded docs, and admin-report typography from upstream PRs #411, #414, #417, and #418.
+
+Source commit: `60b85a3` (`docs: separate public docs from internal implementation terms (#414)`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-60b85a3-20260705T203143Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-60b85a3-20260705T203143Z`.
+
+Validation:
+
+- `make package-docker VERSION=60b85a3 COMMIT=60b85a3`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `60b85a3` on both `llm-api-engg.metrum.ai` and `llm-api.metrum.ai`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: 60b85a3` on both production hostnames.
+- Reusable Harbor caller authenticated `/v1/models` returned 200 with `big-coder` available.
+- Authenticated `big-coder` smokes against `llm-api-engg.metrum.ai` returned 200 for OpenAI Chat, OpenAI Responses, and tool-bearing Anthropic Messages.
 
 ## 2026-07-05 Docs Refresh Software Deployment
 

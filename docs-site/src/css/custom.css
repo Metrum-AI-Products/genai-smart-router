@@ -1,7 +1,31 @@
 @font-face {
-  font-family: "MetrumDisplay";
-  src: url("@site/static/fonts/797e433ab948586e-s.p.29207c2f.woff2") format("woff2");
-  font-weight: 400 800;
+  font-family: "MetrumSans";
+  src: url("@site/static/fonts/c875c6f5d3e977ac-s.p.80fc2c9e.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MetrumSans";
+  src: url("@site/static/fonts/a218039a3287bcfd-s.p.4a23d71b.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MetrumSans";
+  src: url("@site/static/fonts/8e6fa89aa22d24ec-s.p.3aec397d.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MetrumSans";
+  src: url("@site/static/fonts/e2334d715941921e-s.p.d82a9aff.woff2") format("woff2");
+  font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
@@ -9,14 +33,14 @@
 @font-face {
   font-family: "MetrumSans";
   src: url("@site/static/fonts/47fe1b7cd6e6ed85-s.p.855a563b.woff2") format("woff2");
-  font-weight: 400 800;
+  font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: "MetrumMono";
-  src: url("@site/static/fonts/e2334d715941921e-s.p.d82a9aff.woff2") format("woff2");
+  src: url("@site/static/fonts/797e433ab948586e-s.p.29207c2f.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
@@ -40,7 +64,7 @@
   --ifm-color-primary-lighter: #ee45cf;
   --ifm-color-primary-lightest: #ff64df;
   --ifm-font-family-base: "MetrumSans", Inter, system-ui, sans-serif;
-  --ifm-heading-font-family: "MetrumDisplay", "MetrumSans", Inter, system-ui, sans-serif;
+  --ifm-heading-font-family: "MetrumSans", Inter, system-ui, sans-serif;
   --ifm-font-weight-bold: 600;
   --ifm-heading-font-weight: var(--ifm-font-weight-normal);
   --ifm-table-head-font-weight: var(--ifm-font-weight-normal);
@@ -87,6 +111,7 @@ body {
 .menu__link,
 .footer__title {
   font-family: var(--ifm-font-family-monospace);
+  font-weight: 400;
   letter-spacing: 0;
 }
 
