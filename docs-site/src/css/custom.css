@@ -41,6 +41,9 @@
   --ifm-color-primary-lightest: #ff64df;
   --ifm-font-family-base: "MetrumSans", Inter, system-ui, sans-serif;
   --ifm-heading-font-family: "MetrumDisplay", "MetrumSans", Inter, system-ui, sans-serif;
+  --ifm-font-weight-bold: 600;
+  --ifm-heading-font-weight: var(--ifm-font-weight-normal);
+  --ifm-table-head-font-weight: var(--ifm-font-weight-normal);
   --ifm-font-family-monospace: "MetrumMono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ifm-global-radius: 0;
   --ifm-button-border-radius: 0;
@@ -97,7 +100,6 @@ body {
 .theme-doc-markdown h2,
 .theme-doc-markdown h3 {
   letter-spacing: 0;
-  font-weight: 400;
 }
 
 .theme-doc-markdown a[href^="mailto:"] {
@@ -112,10 +114,6 @@ body {
 .theme-doc-markdown th,
 .theme-doc-markdown td {
   border-color: var(--metrum-border);
-}
-
-.theme-doc-markdown th {
-  font-weight: 400;
 }
 
 .theme-doc-markdown code {
