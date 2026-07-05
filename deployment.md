@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-06-30
+Last deployed: 2026-07-05
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-06-30
 
 ## Deployed Version
 
-- Router package/image version: `0ea98f7-linux-amd64`
-- Source commit: `0ea98f7`
+- Router package/image version: `b5f9587-linux-amd64`
+- Source commit: `b5f9587`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,31 @@ Last deployed: 2026-06-30
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-05 Docs Refresh Software Deployment
+
+Package `smart-llmrouter:b5f9587-linux-amd64` was deployed to production to refresh the hosted Docusaurus docs and release-note tooling from upstream.
+
+Source commit: `b5f9587` (`Restructure public docs around task flows`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- No production router config, provider keys, caller tokens, Caddy config, or database settings were changed.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-b5f9587-20260705T174629Z`.
+
+Validation:
+
+- `make package-docker VERSION=b5f9587 COMMIT=b5f9587`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `b5f9587` on both `llm-api-engg.metrum.ai` and `llm-api.metrum.ai`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: b5f9587` on both production hostnames.
+- Reusable Harbor caller authenticated `/v1/models` returned 200 with `big-coder` available on both production hostnames.
+- Authenticated `big-coder` smokes returned 200 for OpenAI Chat, OpenAI Responses, and tool-bearing Anthropic Messages on both production hostnames.
+- Plain Anthropic Messages text-only `big-coder` smoke still returns `no-eligible-target` with the current production config; this was present on the prior image as well and was not introduced by this docs refresh.
+- Production Harbor e2e against `https://llm-api-engg.metrum.ai` with `big-coder` passed:
+  - `codex`: exit 0, reward 1, errors 0, elapsed 87s.
+  - `claude-code`: exit 0, reward 1, errors 0, elapsed 424s.
+- Uploaded package and staging directory were removed from `/tmp` after deployment.
 
 ## 2026-07-03 Dual Production Hostname Caddy Update
 
