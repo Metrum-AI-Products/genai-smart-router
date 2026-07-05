@@ -5,15 +5,32 @@ doc_type: explanation
 
 # Enterprise FAQ
 
-Use this guide when evaluating whether GenAI Smart Router can fit an enterprise deployment, team-owned model strategy, or production AI agent rollout. The short version is that the router is not a mysterious global model chooser. Each deployment owns its model groups, provider keys, private upstreams, routing policies, validation gates, caller access, retention, reports, and rollout or rollback plan.
+Use this guide to answer the first enterprise evaluation questions quickly. GenAI Smart Router helps platform teams expose approved model groups, keep provider keys server-side, route compatible requests across validated upstreams, enforce budgets and rate limits, and report what happened after each request.
+
+The main evaluation path is:
+
+1. Pick one real workload and one fixed-model baseline.
+2. Expose one caller-visible model group for that workload.
+3. Validate the exact client shape: Chat, Responses, Anthropic Messages, tools, images, reasoning, or large context.
+4. Compare outcome, cost, latency, fallback, and selected provider/model in reports.
+5. Promote, keep fixed, or roll back using the published decision rule.
 
 For a first proof plan, start with [Evaluate GenAI Smart Router](./evaluate-smart-router), [Prove Router Quality](./prove-router-quality), and [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
+## Quick Answers
+
+| Question | Short answer | Deeper page |
+|---|---|---|
+| Will routing make a working workload worse? | Keep a fixed-model group and promote a routed group only after the same workload passes outcome checks. | [Prove Router Quality](./prove-router-quality) |
+| Can one provider limit cap all traffic? | Compatible targets can share traffic across providers, accounts, models, or private endpoints while caller and upstream shaping enforce limits. | [Provider Traffic Shaping](../configuration/provider-traffic-shaping) |
+| Can teams keep different policies? | Yes. Use caller tokens, model-group allow lists, dedicated groups, separate routers, or hierarchical routers. | [Enterprise Deployment Patterns](../operations/deployment-patterns) |
+| Are provider keys exposed to clients? | No. Clients receive router tokens and model-group names; provider credentials stay server-side. | [Security And Trust](./security-and-trust) |
+| Does the router store prompts by default? | Ordinary usage and diagnostics are metadata-first. Governed content capture is separate and explicitly enabled. | [Usage Reporting](../operations/usage-reporting) |
+| What is the smallest useful proof? | Run `/v1/models`, one chat smoke, one agent/tool or image smoke, one report excerpt, and one rollback or `no-eligible-target` check. | [Evaluate GenAI Smart Router](./evaluate-smart-router) |
+
 ## What if the router makes my model worse?
 
-Concern: "What if routing changes a workload that already works on a fixed model?"
-
-Short answer: Treat each model group as a quality and cost contract, not as a promise that every workload improves automatically. A deployment can keep a fixed-model group, compare it against a routed group, and promote only when the routed group preserves the required outcome.
+Treat each model group as a quality and cost contract, not as a promise that every workload improves automatically. A deployment can keep a fixed-model group, compare it against a routed group, and promote only when the routed group preserves the required outcome.
 
 How GenAI Smart Router handles it: Model groups define intended workloads, API shapes, modalities, tools, cost targets, latency targets, validation harnesses, promotion criteria, and rollback criteria. Request-shape filtering prevents a text-only or non-tool target from serving a tool or image request. Fallback and usage telemetry show which provider/model served each request and whether another attempt was needed.
 
@@ -25,9 +42,7 @@ Links: [Prove Router Quality](./prove-router-quality), [Model Group Quality Crit
 
 ## What happens when an upstream provider rate-limits us?
 
-Concern: "Several teams share one provider account. What happens if they collectively exceed provider capacity?"
-
-Short answer: Caller limits protect individual keys, and provider/model/target traffic shaping can protect shared upstream capacity across all keys. When an upstream returns `429` or a quota/billing signal, adaptive backoff can temporarily remove that affected target from eligibility while other validated targets continue serving traffic.
+Caller limits protect individual keys, and provider/model/target traffic shaping can protect shared upstream capacity across all keys. When an upstream returns `429` or a quota/billing signal, adaptive backoff can temporarily remove that affected target from eligibility while other validated targets continue serving traffic.
 
 How GenAI Smart Router handles it: The router checks caller policy first, then request-shape eligibility, then shared upstream shaping. Weighted routing recalculates over targets that are not currently throttled. If every otherwise eligible target is locally throttled, callers receive `503 upstream-capacity-throttled` with a request ID and `Retry-After` when calculable. Provider quota or billing exhaustion remains a separate class from provider rate limiting.
 
@@ -39,9 +54,7 @@ Links: [Router Configuration](../configuration/router-config), [Routing Overview
 
 ## Can we combine provider rate limits instead of being capped by one vendor?
 
-Concern: "If each provider has its own RPM, TPM, and quota, can we use the aggregate capacity safely?"
-
-Short answer: Yes, when the targets are validated for the same request shape and the deployment config intentionally puts them behind one model group. The router can distribute compatible traffic across providers, accounts, models, or private endpoints with separate upstream limits.
+Yes, when the targets are validated for the same request shape and the deployment config intentionally puts them behind one model group. The router can distribute compatible traffic across providers, accounts, models, or private endpoints with separate upstream limits.
 
 How GenAI Smart Router handles it: Caller limits and quotas run first. Request-shape eligibility then filters to targets that can satisfy the incoming API surface, tools, images, reasoning, context, and output-cap behavior. Routing strategy chooses among the remaining targets, and provider traffic shaping/adaptive backoff protects shared upstream accounts.
 
@@ -53,9 +66,7 @@ Links: [Model Groups](../configuration/model-groups), [Provider Traffic Shaping]
 
 ## How do we prevent one app, user, or coding agent from hurting everyone else?
 
-Concern: "One aggressive batch job or agent loop can burn shared quota and make other teams fail."
-
-Short answer: Use caller tokens as the first fairness boundary, then provider shaping as the shared-capacity boundary. This separates user/team policy from upstream account protection.
+Use caller tokens as the first fairness boundary, then provider shaping as the shared-capacity boundary. This separates user/team policy from upstream account protection.
 
 How GenAI Smart Router handles it: Per-caller RPM, TPM, concurrency, daily/monthly quotas, lifetime budgets, and optional caller traffic shaping run before upstream selection. Provider/model/target shaping and adaptive backoff protect shared provider accounts after a target is selected. Reports show which caller, client, group, provider, and shaping bucket was affected.
 
@@ -67,9 +78,7 @@ Links: [Caller Traffic Shaping](../configuration/caller-traffic-shaping), [Provi
 
 ## Can we force some workloads to a specific model?
 
-Concern: "Can one sensitive or quality-critical workload always use an approved model?"
-
-Short answer: Yes. A deployment can expose a model group with one static target, a failover list, or a policy that selects only within the requested group. The router does not silently route a caller into a group the caller was not allowed to request.
+Yes. A deployment can expose a model group with one static target, a failover list, or a policy that selects only within the requested group. The router does not silently route a caller into a group the caller was not allowed to request.
 
 How GenAI Smart Router handles it: Static groups, failover groups, weighted groups, dynamic-score routing, TypeScript policy, and external policy all operate inside the caller-requested model group after token authorization. Eligibility filtering then removes targets that cannot satisfy the request shape.
 
@@ -81,9 +90,7 @@ Links: [Customer-Controlled Routing](../routing/customer-controlled-routing), [R
 
 ## Can different teams own different routing strategies?
 
-Concern: "Our platform team, data team, and application teams have different model and cost requirements."
-
-Short answer: Yes. Teams can use different caller tokens, users, projects, model-group allow lists, dedicated groups, separate router instances, or hierarchical routers. The right pattern depends on the governance boundary and whether teams need independent provider keys or databases.
+Yes. Teams can use different caller tokens, users, projects, model-group allow lists, dedicated groups, separate router instances, or hierarchical routers. The right pattern depends on the governance boundary and whether teams need independent provider keys or databases.
 
 How GenAI Smart Router handles it: Caller tokens identify users/projects and restrict visible model groups. Deployment patterns include central enterprise gateways, per-environment routers, per-team routers, hierarchical routers, and private managed routers.
 
@@ -95,9 +102,7 @@ Links: [Enterprise Deployment Patterns](../operations/deployment-patterns), [Ava
 
 ## Can central platform governance coexist with team autonomy?
 
-Concern: "Can central governance set safety and budget rules without blocking team-specific routing?"
-
-Short answer: Yes. Central governance can own provider credential custody, license enforcement, retention, metrics isolation, and report authorization while teams own model-group contracts and workload validation. Hierarchical deployments can separate central egress control from team-local strategy.
+Yes. Central governance can own provider credential custody, license enforcement, retention, metrics isolation, and report authorization while teams own model-group contracts and workload validation. Hierarchical deployments can separate central egress control from team-local strategy.
 
 How GenAI Smart Router handles it: A central router can enforce caller access, quotas, admin authorization, metrics restrictions, and provider-key isolation. Team-local routers can call an enterprise router or private upstreams when separate usage stores or policy release cycles are needed.
 
@@ -109,9 +114,7 @@ Links: [Enterprise Deployment Patterns](../operations/deployment-patterns), [Sec
 
 ## Can we keep our provider keys and private models?
 
-Concern: "We need BYOK and private GPU endpoints, not a shared public model account."
-
-Short answer: Yes. Provider keys are configured server-side, and clients receive only router tokens and model-group names. Private OpenAI-compatible services can be added as upstream providers when they pass direct and router-level smokes.
+Yes. Provider keys are configured server-side, and clients receive only router tokens and model-group names. Private OpenAI-compatible services can be added as upstream providers when they pass direct and router-level smokes.
 
 How GenAI Smart Router handles it: Providers are configured with server-side credentials, base URLs, dialects, model catalogs, pricing metadata, modalities, and tool-support metadata. Self-hosted vLLM, SGLang, Baseten-style, and other OpenAI-compatible endpoints can remain on private networks behind the router.
 
@@ -123,9 +126,7 @@ Links: [Self-Hosted Upstreams](../configuration/self-hosted-upstreams), [Provide
 
 ## Will this work with Codex, Claude Code, Cursor, Warp, or our OpenAI SDK?
 
-Concern: "Our developers already use different clients and agent tools."
-
-Short answer: The router supports OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and `/v1/models` discovery. Client compatibility still needs to be validated with the exact API shape, tool behavior, images, token caps, and model groups that the deployment exposes.
+The router supports OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and `/v1/models` discovery. Client compatibility still needs to be validated with the exact API shape, tool behavior, images, token caps, and model groups that the deployment exposes.
 
 How GenAI Smart Router handles it: The router preserves caller-facing API dialects while selecting an eligible upstream target. Codex-style Responses traffic, Claude Code-style Anthropic Messages traffic, OpenAI-compatible SDKs, tool calls, and image-bearing requests can be routed when the group contains validated compatible targets.
 
@@ -137,9 +138,7 @@ Links: [API Compatibility](../reference/api-compatibility), [Codex CLI](../getti
 
 ## What about tool calls, images, structured outputs, or reasoning/thinking?
 
-Concern: "Can the router avoid sending advanced requests to a target that cannot handle them?"
-
-Short answer: Yes, when target metadata and validation are maintained correctly. Requests that require tools, images, structured outputs, or reasoning/thinking controls should be filtered to compatible targets or fail before an unsafe upstream call.
+Yes, when target metadata and validation are maintained correctly. Requests that require tools, images, structured outputs, or reasoning/thinking controls are filtered to compatible targets or fail before an unsafe upstream call.
 
 How GenAI Smart Router handles it: Provider catalogs and target overrides record modalities, dialect support, tool support, structured-output behavior, reasoning controls, and max-token-cap behavior. Eligibility filtering runs before the routing policy selects a target.
 
@@ -151,9 +150,7 @@ Links: [Agents, Tools, And Vision](../agents-tools-vision/overview), [Structured
 
 ## What happens if a provider is slow, down, rate-limited, or removed?
 
-Concern: "How do we keep production traffic moving when one upstream has a bad day?"
-
-Short answer: Use failover, weighted routing, target removal, and rollback plans that are tied to the model-group contract. The router can try another eligible target when the failure class is retryable and another target exists.
+Use failover, weighted routing, target removal, and rollback plans that are tied to the model-group contract. The router can try another eligible target when the failure class is retryable and another target exists.
 
 How GenAI Smart Router handles it: Attempts, upstream errors, fallback use, latency, throughput, timeout, and terminal status are recorded for triage. Non-retryable malformed or policy errors stop fallback so the same bad request is not replayed unnecessarily.
 
@@ -165,9 +162,7 @@ Links: [Observability](../operations/observability), [Usage Reporting](../operat
 
 ## How do we control cost without degrading quality?
 
-Concern: "Can we save money without silently lowering user outcomes?"
-
-Short answer: Cost control should be tied to outcome validation. Use group contracts to define the required result, then tune provider mix, cache behavior, and access policies only when the workload still passes.
+Cost control should be tied to outcome validation. Use group contracts to define the required result, then tune provider mix, cache behavior, and access policies only when the workload still passes.
 
 How GenAI Smart Router handles it: The router records request-time cost inputs and selected provider/model, supports budget/rate-limit policies, can cache safe deterministic workloads, and can compare routed groups with fixed baselines using reports.
 
@@ -179,9 +174,7 @@ Links: [Cost Governance](./cost-governance), [Prove Router Quality](./prove-rout
 
 ## How do we prove savings are real?
 
-Concern: "Savings reports are easy to claim and hard to trust."
-
-Short answer: Savings should be calculated from stored request-time cost data, not recalculated later from whatever the config says today. Reports should show token counts, request-time prices, upstream-reported billed costs when available, and the chosen baseline.
+Savings should be calculated from stored request-time cost data, not recalculated later from whatever the config says today. Reports should show token counts, request-time prices, upstream-reported billed costs when available, and the chosen baseline.
 
 How GenAI Smart Router handles it: Usage rows store scalar cost fields, token counts, provider/model, request status, latency, cache state, and upstream-reported billed values when the upstream supplies them. Reports can group by caller, project, group, provider, model, status, and time window.
 
@@ -193,9 +186,7 @@ Links: [Usage Reporting](../operations/usage-reporting), [Usage, Cost, And Repor
 
 ## How do we handle rate limits and coding-agent bursts?
 
-Concern: "Agent clients can send large contexts, many tool calls, and retries in a short period."
-
-Short answer: Rate limits, budgets, and traffic shaping should be assigned to caller tokens and model groups based on expected workload. Large-context developer tools need TPM, RPM, concurrency, output-cap, and burst-smoothing policies that match their real request shape.
+Rate limits, budgets, and traffic shaping should be assigned to caller tokens and model groups based on expected workload. Large-context developer tools need TPM, RPM, concurrency, output-cap, and burst-smoothing policies that match their real request shape.
 
 How GenAI Smart Router handles it: Caller policies can enforce request, token, concurrency, daily, monthly, or lifetime limits before provider calls. Optional traffic shaping smooths request starts, estimated input-token throughput, output reservations, and total reserved-token throughput before upstream calls. Usage and attempt data help distinguish hard quota failures, `429 traffic-shaped` burst smoothing, and upstream provider quota or billing exhaustion.
 
@@ -207,9 +198,7 @@ Links: [Troubleshooting Requests](../troubleshooting/requests), [Usage Reporting
 
 ## Do you store prompts, responses, images, or tool outputs?
 
-Concern: "What application content does the router persist?"
-
-Short answer: The default operating model is metadata-first usage and diagnostics, not raw prompt or image capture. Governed content capture should be explicitly enabled, scoped, retained, and reviewed before production use.
+The default operating model is metadata-first usage and diagnostics, not raw prompt or image capture. Governed content capture should be explicitly enabled, scoped, retained, and reviewed before production use.
 
 How GenAI Smart Router handles it: Usage data records safe scalar metadata such as request IDs, caller/project fields, model group, provider/model, status, token counts, latency, cost, attempts, cache behavior, and sanitized errors. PII filtering can redact configured text before routing and upstream calls.
 
@@ -221,9 +210,7 @@ Links: [Security And Trust](./security-and-trust), [PII Filtering](../configurat
 
 ## Can we meet data residency, VPC, or on-prem requirements?
 
-Concern: "We need regional control, private networking, or customer-managed infrastructure."
-
-Short answer: GenAI Smart Router can be deployed as enterprise self-hosted, private managed, or private customer-cloud infrastructure. Provider choices, private upstreams, usage stores, retention, and network controls are deployment decisions.
+GenAI Smart Router can be deployed as enterprise self-hosted, private managed, or private customer-cloud infrastructure. Provider choices, private upstreams, usage stores, retention, and network controls are deployment decisions.
 
 How GenAI Smart Router handles it: Release packages can run in customer infrastructure with signed license enforcement. Private upstreams and regional routers can keep traffic inside approved network boundaries when the deployment is designed that way.
 
@@ -235,9 +222,7 @@ Links: [Installation](../installation/), [Enterprise Deployment Patterns](../ope
 
 ## How do we roll this out safely?
 
-Concern: "How do we move from evaluation to production without a risky cutover?"
-
-Short answer: Start with an evaluation endpoint or staging router, then use allow-list expansion, canary groups, monitoring, and explicit rollback criteria. Promote model groups by evidence, not by assumption.
+Start with an evaluation endpoint or staging router, then use allow-list expansion, canary groups, monitoring, and explicit rollback criteria. Promote model groups by evidence, not by assumption.
 
 How GenAI Smart Router handles it: The router exposes caller-token allow lists, group-specific routing policy, reports, attempts, fallback telemetry, health endpoints, license status, and version metadata. Deployments can keep fixed-model groups while routed candidates mature.
 
@@ -249,9 +234,7 @@ Links: [Evaluate GenAI Smart Router](./evaluate-smart-router), [Deployment Readi
 
 ## What if we need auditability?
 
-Concern: "Can we explain who used which model, what it cost, and what failed?"
-
-Short answer: Yes, within the metadata captured by the deployment. The router records request IDs, caller/project metadata, model group, selected target, attempts, errors, cost fields, latency, and throughput without requiring raw content capture.
+Yes, within the metadata captured by the deployment. The router records request IDs, caller/project metadata, model group, selected target, attempts, errors, cost fields, latency, and throughput without requiring raw content capture.
 
 How GenAI Smart Router handles it: The usage database and reports separate request-level rows, upstream attempts, errors, trace events, quotas, and report/admin access. Metrics remain restricted to authorized metrics-admin subjects.
 
@@ -263,9 +246,7 @@ Links: [Usage Reporting](../operations/usage-reporting), [Admin Browser Reports]
 
 ## Can we use multiple router instances?
 
-Concern: "One central gateway may not fit every team or region."
-
-Short answer: Yes. A single central router is simplest, but per-team, per-environment, regional, hierarchical, or private managed routers can be a better fit when ownership boundaries differ.
+Yes. A single central router is simplest, but per-team, per-environment, regional, hierarchical, or private managed routers can be a better fit when ownership boundaries differ.
 
 How GenAI Smart Router handles it: Each router instance can have its own config, license, provider credentials, usage database, model groups, caller tokens, and reports. A hierarchical design can place a team router in front of an enterprise egress router when that boundary is intentional.
 
@@ -277,9 +258,7 @@ Links: [Enterprise Deployment Patterns](../operations/deployment-patterns), [Cho
 
 ## What is the smallest proof we can run this week?
 
-Concern: "What is the shortest practical path to evidence?"
-
-Short answer: A useful proof can be small if it tests the real client shape and produces operator evidence. Do not stop at a single chat response if the production workload depends on tools, images, coding agents, cost reports, or rollback.
+A useful proof can be small if it tests the real client shape and produces operator evidence. Do not stop at a single chat response if the production workload depends on tools, images, coding agents, cost reports, or rollback.
 
 How GenAI Smart Router handles it: The router can expose an evaluation endpoint or customer deployment package, then capture caller-visible results and operator evidence for the same test window.
 

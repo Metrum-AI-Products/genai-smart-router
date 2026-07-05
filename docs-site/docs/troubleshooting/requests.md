@@ -7,6 +7,17 @@ doc_type: howto
 
 Every request returns an `X-Request-Id` header. Use that ID to join caller symptoms to logs, usage rows, upstream attempts, trace events, terminal errors, and browser report drilldown. The [Diagnostics Schema](../reference/diagnostics-schema) documents the safe columns available for request-level triage.
 
+The workflow is symptom -> evidence -> fix:
+
+| Caller symptom | Evidence to open | Common fix path |
+|---|---|---|
+| `401` or `403` | `/v1/models`, caller token state, admin/report/metrics policy. | Issue or rotate the token, grant the model group, or use the correct admin identity. |
+| `429` before any upstream attempt | Quota, traffic-shaping, TPM/RPM, concurrency, and license-volume rows. | Adjust caller policy, queueing, or workload shape. |
+| Upstream `429`, quota, or billing errors | Attempt rows, provider capacity shaping, adaptive backoff, fallback rows. | Tune provider shaping, route weights, fallback mix, or upstream account capacity. |
+| `502 no-eligible-target` | Candidate and filter rows, request-shape diagnostics, provider catalog status. | Add compatible targets or correct modality/tool/context metadata. |
+| Slow or timed-out request | Attempt duration, TTFB, fallback, client cancellation, downstream throughput. | Isolate the provider/model/client path before changing the whole group. |
+| Agent or large-context failure | Request bytes, tool-schema bytes, estimated-token buckets, output-cap buckets, dialect and bridge rows. | Route around incompatible targets or add validated `request_shape_support`. |
+
 ## 1. Capture The Caller View
 
 Record these safe fields:
@@ -79,7 +90,7 @@ router-usage-report \
   --caller-user <owner-user>
 ```
 
-Examples:
+Interpretation examples:
 
 - User sees errors but all shaping buckets were admitted or absent: treat `route_around_incompatible_target` as a request-shape/provider compatibility issue. Inspect upstream failures and request-shape failures instead of increasing burst or queue depth.
 - User is being queued and cancellations increased: treat `disable_queue_for_latency_sensitive_client` as a signal to lower queue wait or fail fast for that client.
@@ -115,9 +126,15 @@ Common request-shape causes:
 
 Model-group contracts and provider catalog metadata should describe validated modalities, tools, dialects, pricing, and max-token behavior.
 
+### Reasoning Controls
+
 For missing reasoning controls, first call `/v1/models` with the same caller token. A reasoning-enabled group advertises `supported_reasoning_levels` and `default_reasoning_level`. If those fields are absent, check whether the caller is allowed to the group, whether the reasoning target is active under `models.<group>.targets[]`, and whether the active target skin matches the client surface: OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, or Anthropic Messages `thinking`. Catalog-only metadata does not make a group reasoning-capable.
 
+### Large Agent Payloads
+
 For “small requests work but large Cursor/Codex/Claude Code requests fail,” inspect the request drilldown or usage DB rows for `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`. Safe fields to compare are estimated total input tokens, requested output cap, total reserved tokens, request bytes, target `context_tokens`, context headroom, `request_bytes_fit`, `tool_schema_fit`, and bounded reasons such as `request-shape-context-exceeded`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`. Operators can replay a sanitized production-derived shape with `scripts/prod_smoke_regressions.py` when the deployment has a safe smoke caller and report DB access. The reference config uses `large-openai-chat-tools-smoke` for this validation path; grant authorized validation callers access to that smoke group for production or staging reruns instead of changing a broad production coding group. These diagnostics intentionally do not contain raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config.
+
+### Claude Code Model Selection
 
 For Claude Code sessions that appear to stop abruptly even when terminal request rows show HTTP 200, first prove model resolution with the same caller token. `/v1/models` should return the intended group, and Claude Code should set both its main model and subagent model to that group. In request evidence, blank `requested_model` or `resolved_group` values with `403 model-not-allowed` point to model selection rather than provider failure. If model resolution is correct, compare the selected Anthropic Messages target or explicitly validated bridge target, fallback flag, timeout/client-canceled markers, visible output size where available, finish/stop reason, and token totals. Very short visible output with large token totals can indicate a target-quality or reasoning-budget problem even when transport succeeded.
 
@@ -133,6 +150,8 @@ python3 scripts/prod_smoke_regressions.py \
 ```
 
 The fixture matrix covers Codex Responses reasoning/tools, Cursor Chat tools and bridge shapes, Claude Code Messages thinking/tools, opencode/aider Chat flows, large tool schemas, provider-skin mismatch, no-eligible diagnostics, upstream entitlement/fallback, and upstream error classification. Use the emitted request IDs to compare selected target, bridge direction, translated reasoning control, attempts, fallback, and sanitized error class in reports. If the deployment lacks a smoke group, caller access, or report DB access, record that as the blocker rather than changing an active production group solely for the test.
+
+### Images, Tools, And Bridges
 
 For Cursor-style OpenAI Chat requests with tools and an image, check whether any target in the requested group supports both OpenAI Chat tools and image input. If not, the router should return `502 no-eligible-target` with zero upstream attempts. Candidate/filter rows should show safe reasons such as `input-modality-image` or `dialect-tool-passthrough`.
 

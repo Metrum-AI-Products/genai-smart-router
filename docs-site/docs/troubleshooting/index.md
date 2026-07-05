@@ -5,9 +5,17 @@ doc_type: howto
 
 # Troubleshooting
 
-Use this section to triage customer-visible failures without exposing secrets or private deployment details. Start with the request ID, the caller-visible error code, and the affected model group.
+Use this section to triage customer-visible failures without exposing secrets or private deployment details. Start from the caller symptom, collect safe evidence, then choose the fix path.
 
 From Troubleshooting, you might be looking for the canonical error catalog: see [Error Responses](/docs/reference/errors).
+
+## Triage Flow
+
+1. Capture the request ID, HTTP status, router error code, affected model group, client, and UTC time window.
+2. Confirm the router is healthy with `/readyz`, `/version`, and `/v1/models`.
+3. Use the symptom map below to choose the next page.
+4. Open request evidence or usage reports with an authorized admin identity.
+5. Apply the smallest fix: caller access, model-group config, quota, provider capacity, target eligibility, credential, or rollback.
 
 ## First Checks
 

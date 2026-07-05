@@ -5,11 +5,23 @@ doc_type: reference
 
 # Add A Provider Or Model
 
-Use this process before adding a new upstream model to active routing. It applies to external providers, OpenAI-compatible aggregators, Baseten-style endpoints, and self-hosted vLLM/SGLang deployments.
+Use this process to move a new upstream model from discovery to active routing without surprising callers. It applies to external providers, OpenAI-compatible aggregators, Baseten-style endpoints, and self-hosted vLLM/SGLang deployments.
 
-For hosted OpenAI-compatible services such as Crusoe Managed Inference or Fireworks AI, validate each API skin separately. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Fireworks public docs checked on 2026-06-28 show `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint, `FIREWORKS_API_KEY` authentication, account-qualified model IDs, Serverless per-token pricing, and a Responses API with function tools plus provider-hosted MCP/SSE tools. Treat public model lists and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests. Do not infer Fireworks Responses, Anthropic Messages, image, video, or audio support from Fireworks Chat validation.
+The happy path is:
+
+1. Capture provider, model, pricing, modality, and capability metadata.
+2. Run direct provider smokes for every API skin and capability you plan to expose.
+3. Record public-safe capability evidence and activation decisions.
+4. Add catalog metadata, then a restricted smoke group.
+5. Run router-level smokes through the smoke group.
+6. Add low production weight only after workload acceptance and report evidence pass.
+7. Keep rollback as a config change wherever possible.
+
+## Current Provider Examples
 
 Provider examples in these docs are validation patterns, not promises that a public provider, account, region, or model is active in every deployment. Revalidate provider docs, account entitlement, pricing, model IDs, tool behavior, modality support, streaming, usage reporting, and max-token cap behavior for the exact deployment before promotion.
+
+For hosted OpenAI-compatible services such as Crusoe Managed Inference or Fireworks AI, validate each API skin separately. Crusoe public docs checked on 2026-06-24 show `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible endpoint and API keys from the Crusoe Intelligence Foundry console. Fireworks public docs checked on 2026-06-28 show `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible endpoint, `FIREWORKS_API_KEY` authentication, account-qualified model IDs, Serverless per-token pricing, and a Responses API with function tools plus provider-hosted MCP/SSE tools. Treat public model lists and pricing as source-dated discovery input; keep models catalog-only until the deployment account and exact model IDs pass direct provider smokes, router-level smokes, and any workload acceptance tests. Do not infer Fireworks Responses, Anthropic Messages, image, video, or audio support from Fireworks Chat validation.
 
 ## 1. Capture Required Metadata
 
@@ -66,7 +78,7 @@ rtk python3 scripts/large_payload_chat_smoke.py \
   --max-tokens 32
 ```
 
-Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, prompt-token scale, latency, status, and token usage in `validation_notes`. Production evidence should use a deployment-owned smoke group and a safe existing caller token; if that caller or report access is not available, record the blocker instead of copying token files or captured payloads. When a production incident yields a reusable safe shape, add a fixture under `testdata/smokes/production-derived/` and validate it with `scripts/prod_smoke_regressions.py` rather than preserving customer content.
+Promote `supports_large_coding_agent_payloads: true` only after direct upstream and router-level smokes pass for the exact provider, model ID, dialect, account, and request shape. Record the date, request bytes, tool count, serialized tool-schema size, output cap, prompt-token scale, latency, status, and token usage in `validation_notes`. Production evidence should use a deployment-owned smoke group and a safe existing caller token; if that caller or report access is not available, record the blocker instead of copying token files or captured payloads.
 
 For opencode-style coding-agent traffic, run the API capability matrix before declaring support for an endpoint. The matrix sends synthetic OpenAI Chat and Anthropic Messages text, client-tool, and image requests and records sanitized pass/fail evidence:
 

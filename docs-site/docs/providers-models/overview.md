@@ -5,11 +5,15 @@ doc_type: explanation
 
 # Providers And Models
 
-Providers and model catalogs describe what upstream endpoints exist, how to authenticate to them, what model IDs they serve, which request shapes they have validated, and how usage should be priced. Catalog metadata does not send traffic by itself. Traffic starts only when a cataloged model is referenced under a caller-visible model group in `models.<group>.targets[]`.
+Providers and model catalogs are the inventory behind caller-visible model groups. Use them to describe upstream endpoints, credentials, model IDs, validated request shapes, and request-time pricing. Traffic starts only when a cataloged model is referenced under `models.<group>.targets[]`.
 
-Provider examples in public docs are validation patterns. A provider, account, region, or model may be unavailable in a particular deployment until entitlement, pricing, request shape, direct upstream behavior, and router-level behavior are validated.
+The customer-facing workflow is:
 
-Before active routing, validate entitlement for the exact provider key, account/project/region, model ID, dialect, and request shape. Provider `401`, `403`, and `404` responses can mean invalid credentials, missing entitlement, policy/privacy restriction, region/project restriction, or model access denial. Keep those targets catalog-only or in a restricted smoke group until the exact shape passes.
+1. Add the provider and model as catalog metadata.
+2. Validate the exact provider key, account or region, model ID, dialect, and request shape.
+3. Route only a restricted smoke group to the candidate target.
+4. Promote the target into a caller-visible model group after workload acceptance passes.
+5. Use reports to confirm usage, cost, latency, fallback, and selected provider/model.
 
 ## Catalog, Smoke Group, Active Target
 
@@ -33,6 +37,14 @@ Before active routing, validate entitlement for the exact provider key, account/
 9. Update public and operator docs when the new provider, capability, API behavior, or rollout process is user-visible.
 
 For the detailed reference process, see [Add A Provider Or Model](../reference/add-provider-model) and [Model Metadata](../reference/model-metadata).
+
+## Validation Guardrails
+
+Provider examples in public docs are validation patterns. A provider, account, region, or model may be unavailable in a particular deployment until entitlement, pricing, request shape, direct upstream behavior, and router-level behavior are validated.
+
+Before active routing, validate entitlement for the exact provider key, account/project/region, model ID, dialect, and request shape. Provider `401`, `403`, and `404` responses can mean invalid credentials, missing entitlement, policy/privacy restriction, region/project restriction, or model access denial. Keep those targets catalog-only or in a restricted smoke group until the exact shape passes.
+
+Do not claim tool support, image support, reasoning support, structured outputs, or max-token cap behavior from marketing copy alone. Use provider docs as discovery input, then promote only after direct upstream and router-level evidence passes for the exact provider, model ID, account, dialect, and skin.
 
 ## Provider Catalog Metadata
 
@@ -74,7 +86,7 @@ models:
         model_ref: balanced-text
 ```
 
-## Validation By API Skin
+## Validate By API Skin
 
 Validate each skin independently. A model that passes one request surface is not automatically compatible with another. Tool-bearing traffic requires explicit `tool_support` metadata for the exact skin, including Anthropic Messages `client_tools`.
 
@@ -87,8 +99,6 @@ Validate each skin independently. A model that passes one request surface is not
 | Reasoning or thinking | Direct and router-level requests for the exact reasoning field, budget or effort control, streaming behavior, and max-token interaction. |
 | Structured outputs | Direct and router-level schema requests for the exact dialect; run combined tool plus structured-output smokes when both are claimed. |
 | Max-token caps | Tiny cap requests such as `max_tokens: 1` where the caller contract depends on cap forwarding. |
-
-Do not claim tool support, image support, reasoning support, structured outputs, or max-token cap behavior from marketing copy alone. Use provider docs as discovery input, then promote only after direct upstream and router-level evidence passes for the exact provider, model ID, account, dialect, and skin.
 
 Some upstream models expose more than one compatible API skin. Configure those as separate provider entries when the deployment validates them separately. For example, a deployment can expose MiniMax `MiniMax-M3` as an OpenAI Chat skin for Cursor-style traffic, a MiniMax OpenAI Responses skin for Codex-style traffic, and a MiniMax Anthropic Messages skin for Claude-compatible traffic. Each skin keeps its own dialect, tool metadata, reasoning notes, smoke group, and rollback path.
 

@@ -5,7 +5,7 @@ doc_type: howto
 
 # Usage Reporting
 
-GenAI Smart Router records durable usage data for cost management, auditability, and model-group validation.
+GenAI Smart Router records durable usage data for cost management, auditability, request troubleshooting, and model-group validation.
 
 `router-usage-report` is an Enterprise Edition administrative CLI. It is intended for platform administrators and is run from a secure server console, deployment host shell, or controlled admin workstation with access to the usage database. Deployments may also enable the authenticated browser reporting surface at `/admin/reports/`; it is separate from public `/docs/` and requires browser-admin authentication plus Casbin authorization.
 
@@ -14,6 +14,17 @@ For the broader health, metrics, logs, and request-ID workflow, see [Observabili
 <div class="contactBanner">
   <p>For dashboards, reports, or validation design, contact <a href="mailto:contact@metrum.ai">contact@metrum.ai</a>.</p>
 </div>
+
+## Choose The Report Task
+
+| Task | Start here | Outcome |
+|---|---|---|
+| Daily operations review | Generate a 24-hour Markdown report or open `/admin/reports/`. | Usage, errors, latency, throughput, cost, fallback, cache, and provider/model mix. |
+| Cost or chargeback review | Use stored request-time cost fields and optional savings baselines. | User/project/key/provider spend without repricing historical requests from current config. |
+| Model-group validation | Filter by model group, caller, client, provider, and workload window. | Outcome evidence for promotion, rollback, or weight changes. |
+| One failed request | Use the request ID in request evidence or request drilldown. | Safe joined evidence across usage, attempts, traces, errors, shapes, and fallback. |
+| Quota or capacity incident | Use traffic-shaping sections and the traffic tuning advisor. | Separate caller burst limits from upstream provider capacity or incompatible targets. |
+| Retention and rollup review | Generate rollups, inspect finalized windows, then run retention status. | Aggregates remain available before raw detail rows become delete-eligible. |
 
 ## Generate A Markdown Report
 
@@ -27,9 +38,15 @@ router-usage-report \
 
 Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
 
+## Investigate Traffic Shaping
+
 Provider/model/target shared shaping writes safe scalar `request_upstream_shape_events` rows keyed by `request_id`. Use these rows with `request_usage`, `request_attempts`, and `request_trace_events` to explain why an otherwise eligible target was admitted, skipped, rejected, or placed into adaptive backoff after an upstream `429` or provider quota signal. The rows include scope, provider, model label, dialect, bucket, decision, bounded retry-after milliseconds, estimated input tokens, reserved output tokens, total reserved tokens, and safe backoff reason; they do not store prompts, images, raw upstream bodies, provider keys, router tokens, or token hashes.
 
-Request-shape diagnostics write one safe `request_shapes` row per routed request and one `request_translation_shapes` row per upstream attempt. These rows are independent of optional decision telemetry and are intended for upstream rejection triage. They capture scalar counts, booleans, buckets, and non-reversible HMAC fingerprints for fields such as inbound API shape, stream flag, input item and message counts, role counts, tool-result and function-call-output counts, tool count, tool-choice mode, structured-output presence, reasoning presence/control buckets, include/truncation/store/metadata/previous-response flags, image/audio/video presence, input-text bytes bucket, tool-schema bytes bucket, total request bytes bucket, estimated input token bucket, requested and translated output-cap fields/buckets, translated provider/model/dialect/path, translated tool count, translated reasoning control, field strip/rewrite counts, and translation warning counts. `request_translation_field_events` stores one bounded child row per safe field action using only allowlisted field names or `other`.
+## Investigate Request Shape
+
+Request-shape diagnostics write one safe `request_shapes` row per routed request and one `request_translation_shapes` row per upstream attempt. These rows are independent of optional decision telemetry and are intended for upstream rejection triage.
+
+Use these rows when a request works for one client or prompt size but fails for another. The safe evidence includes scalar counts, booleans, buckets, and non-reversible HMAC fingerprints for API shape, stream flag, message and tool counts, structured-output presence, reasoning controls, multimodal presence, request-size buckets, estimated input tokens, requested and translated output caps, translated provider/model/dialect/path, field strip or rewrite counts, and translation warnings. `request_translation_field_events` stores one bounded child row per safe field action using only allowlisted field names or `other`.
 
 Bucket definitions are intentionally coarse: byte buckets are `none`, `1b-1kb`, `1kb-16kb`, `16kb-64kb`, `64kb-256kb`, `256kb-1mb`, and `gt-1mb`; reasoning budget buckets are `none`, `tiny`, `small`, `medium`, `large`, and `xlarge`; max-token and estimated-input-token buckets reuse the router's existing reporting buckets. Fingerprints are for comparing repeated request shapes inside a deployment without storing prompts or tool schemas.
 
