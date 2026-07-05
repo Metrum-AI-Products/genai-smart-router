@@ -214,4 +214,4 @@ Keep catalog-only VLM candidates out of active traffic until the exact API shape
 
 Validate the exact provider, model ID, suffix, API dialect, account entitlement, and region you plan to route. Treat image processing and OCR accuracy as separate gates: a model may accept and analyze an image but still fail an exact-answer OCR test. That can be acceptable for a conservative general VLM group, but not for OCR-specific or browser-control routes unless the exact workload verifier passes consistently.
 
-Record dated provider-specific investigation results in internal deployment notes or a clearly labeled historical case study. Keep the public product docs focused on the validation method and customer-facing behavior, because provider catalogs, entitlements, and model quality change quickly.
+Record dated provider-specific investigation results in deployment-private notes or a clearly labeled historical case study. Keep the public product docs focused on the validation method and customer-facing behavior, because provider catalogs, entitlements, and model quality change quickly.

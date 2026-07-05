@@ -77,16 +77,7 @@ Use the same Harbor-supported attempt and seed policy for both arms. Report the 
 
 ## Outcome Gate Artifact
 
-For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. Run the workload gate from the deployment's approved validation environment, using the packaged helper script or reviewed support bundle that matches the release. The router runtime binary does not expose a separate `workload-gate` command.
-
-```bash
-python3 scripts/evaluate_workload_gate.py \
-  --matrix examples/harbor-algotune-pca/workload_gate_matrix.json \
-  --results examples/harbor-algotune-pca/runs/<CASE_ID>/results.tsv \
-  --usage-json examples/harbor-algotune-pca/reports/<CASE_ID>/usage-rows.json \
-  --out-json examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.json \
-  --out-md examples/harbor-algotune-pca/reports/<CASE_ID>/workload-gate.md
-```
+For production route changes, convert the run matrix and workload results into an explicit gate artifact before promotion. Use the deployment's approved validation workflow to summarize Harbor `results.tsv` files or equivalent JSON result rows and merge safe usage-report rows when available. Release binaries serve router traffic and reports; workload-gate generation belongs in the customer's validation environment or managed-service evidence process.
 
 The matrix should declare the task set, reward/verifier, clients, model groups, attempts/seeds, fixed-model or previous-policy controls, pass-rate and reward thresholds, p95 latency ceiling, cost-per-success ceiling, error and fallback ceilings, and rollback criteria. For local or CI environments where live Harbor is not installed, use a mock fixture self-test in the deployment's approved validation workflow.
 
@@ -151,4 +142,4 @@ The visual is maintainable Mermaid markup that ships with the page. The audit ru
 
 Share safe artifacts: task IDs, expected outcomes, scorer version, client/agent version, model group, fixed-model control, config version or safe routing/config summary, timestamps, request IDs, selected provider/model, token counts, cost, latency, fallback/error counts, and anonymized aggregate tables.
 
-Do not share provider keys, bearer tokens, token hashes, raw prompts, raw images, raw tool outputs, private repository contents, private hostnames, or full production config unless a governed support path explicitly permits it.
+Do not share provider keys, bearer tokens, token hashes, raw prompts, raw images, raw tool outputs, private application contents, private hostnames, or full production config unless a governed support path explicitly permits it.

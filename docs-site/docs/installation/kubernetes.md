@@ -7,7 +7,7 @@ doc_type: howto
 
 Use Kubernetes when GenAI Smart Router needs to run inside a customer-managed cluster with cluster-native ingress, Secrets, external Postgres, and operational controls. This is the canonical Kubernetes installation page; post-deployment topology guidance lives in [Enterprise Deployment Patterns](../operations/deployment-patterns).
 
-Metrum maintains raw Kustomize-friendly manifests under `deploy/kubernetes/` as a production-oriented starting point. The manifests are examples. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout. If you are installing from a package that does not include `deploy/kubernetes/`, obtain the matching Kubernetes manifest bundle from Metrum or from the reviewed source artifact for that release.
+Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. The manifests are examples. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout. If you are installing from a package that does not include Kubernetes manifests, obtain the matching manifest bundle from Metrum for that release.
 
 ## Prerequisites
 

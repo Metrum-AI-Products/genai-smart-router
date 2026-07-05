@@ -5,7 +5,7 @@ doc_type: howto
 
 # Docker Compose Install
 
-The Docker Compose package is the usual customer-managed installation path. It includes a prebuilt router image tarball, Compose files, and example runtime configuration. The target host needs Docker Engine and Docker Compose, but it does not need language runtimes, documentation tooling, or build scripts.
+The Docker Compose package is the usual customer-managed installation path. It includes a prebuilt router image tarball, Compose files, and example runtime configuration. The target host needs Docker Engine and Docker Compose, but it does not need language runtimes, documentation tooling, compilers, or package-build tooling.
 
 For package selection and architecture guidance, start with [Deployment Artifacts](./deployment-artifacts). For package inspection and security checks, see [Package Validation And Security Checks](./package-validation).
 
@@ -33,7 +33,7 @@ smart-llmrouter-<version>-docker-linux-<arch>/
 
 The shipped Compose file bind-mounts `./config`, `./state`, and `./logs` relative to the `compose/` directory. Prepare those runtime directories from the package templates before starting the service.
 
-Use `docker-linux-amd64` for x86_64 hosts and `docker-linux-arm64` for ARM64 hosts. Release validation checks that the package has exactly one image tar for the selected architecture, required compose/config/docs files, required router binaries in the saved image layers, and no AppleDouble metadata, internal runbooks, raw secrets, or local state files.
+Use `docker-linux-amd64` for x86_64 hosts and `docker-linux-arm64` for ARM64 hosts. Release validation checks that the package has exactly one image tar for the selected architecture, required compose/config/docs files, required router binaries in the saved image layers, and no AppleDouble metadata, deployment-private notes, raw secrets, or local state files.
 
 ```bash
 cd smart-llmrouter-<version>-docker-linux-<arch>
@@ -84,7 +84,7 @@ state_path: /app/state/router-state.json
 
 ## Configure Secrets
 
-Place provider credentials in `config/env.json`. Keep this file out of packages, tickets, and shared support bundles, and restrict filesystem permissions.
+Place provider credentials in `config/env.json`. Keep this file in deployment secret storage or protected host storage, outside packages, tickets, and shared support bundles, and restrict filesystem permissions.
 
 ```json
 {

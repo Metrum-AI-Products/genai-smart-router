@@ -5,7 +5,7 @@ doc_type: reference
 
 # Router Configuration
 
-The router is configured with YAML plus environment-loaded secrets. Keep provider credentials in the deployment environment, a secret manager, or a protected runtime `env.json`; the checked-in `env.example.json` is only a shape template.
+The router is configured with YAML plus environment-loaded secrets. Keep provider credentials in the deployment environment, a secret manager, or a protected runtime `env.json`; the shipped `env.example.json` is only a shape template.
 
 `config.example.yaml` is the shipped reference config and the source of truth for example field values. The examples in this section are partial subsets unless a code block is explicitly titled `config.example.yaml`.
 
@@ -53,4 +53,4 @@ Use these pages as the canonical homes for each configuration area:
 
 ## Operational Notes
 
-Change config with structured YAML tooling, validate the result, run the router test suite or the relevant smoke tests, and keep public docs plus operator runbooks in sync when behavior changes. For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+Change config with structured YAML tooling, validate the result, run the relevant smoke tests, and keep deployment-facing guidance current when behavior changes. For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).

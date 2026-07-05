@@ -27,7 +27,7 @@ smart-llmrouter-<version>-linux-<arch>/
   docs/
 ```
 
-Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, internal runbooks, raw secrets, local state, and macOS archive metadata.
+Use `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts. Release validation checks the package binaries against the selected architecture and rejects unexpected files, deployment-private notes, raw secrets, local state, and macOS archive metadata.
 
 Create a dedicated service account, then create deployment-owned directories:
 

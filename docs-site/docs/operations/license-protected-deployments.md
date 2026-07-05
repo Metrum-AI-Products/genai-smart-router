@@ -5,7 +5,7 @@ doc_type: explanation
 
 # License-Protected Deployments
 
-Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, packages, or shared support bundles.
+Licensed deployments can enforce a Metrum-issued signed JSON license offline. The deployed router verifies the license with embedded Ed25519 public verification keys; private signing keys and signing-service credentials are not required at runtime and must never be copied into config, logs, reports, browser docs, tickets, images, packages, versioned deployment files, or shared support bundles.
 
 For the customer installation and renewal path, see [Choose a Deployment Path](../licensing/deployment-paths), [How Licensing Works](../licensing/), and [Renewal And Top-Up](../licensing/renewal).
 

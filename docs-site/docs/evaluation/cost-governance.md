@@ -39,7 +39,7 @@ Usage reports can group traffic by:
 - input, output, and image tokens;
 - calculated and upstream-reported costs.
 
-These dimensions support project chargeback, cost allocation, quota review, provider evaluation, and savings analysis.
+These dimensions support project cost allocation, quota review, provider evaluation, and savings analysis.
 
 ## Cost Controls
 

@@ -43,19 +43,19 @@ Confirm the architecture suffix matches the host and, for Docker packages, that 
 
 ## Release Validation Matrix
 
-Run the release validation matrix before handing artifacts to another operator. The matrix should cover build metadata validation, package content validation, Docker build-context checks, Compose security checks, and Kubernetes overlay rendering when Kubernetes artifacts are part of the delivery.
+Run the release validation matrix before accepting or distributing artifacts. The matrix should cover package metadata validation, package content validation, Docker image checks, Compose security checks, and Kubernetes overlay rendering when Kubernetes artifacts are part of the delivery.
 
-After building packages, include artifact inspection against the package allowlist and denylist. Artifact inspection does not replace runtime smoke tests. For Docker Compose or Kubernetes deployments, still start the packaged router in the target environment and verify `/readyz`, `/docs/`, `/version`, `/v1/models`, one authenticated model request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens.
+During artifact intake, include inspection against the package allowlist and denylist. Artifact inspection does not replace runtime smoke tests. For Docker Compose or Kubernetes deployments, still start the packaged router in the target environment and verify `/readyz`, `/docs/`, `/version`, `/v1/models`, one authenticated model request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens.
 
 ## What Must Not Be Present
 
 Packages should not contain:
 
-- private operational runbooks or maintainer notes;
+- deployment-private operating notes;
 - private hostnames, IP addresses, SSH users, SSH key paths, or live production paths;
 - raw provider keys, raw router tokens, token hashes, GitHub tokens, signing keys, or signing-service credentials;
 - real `license.json`, license state files, local usage databases, logs, JSONL state, or router state files;
-- build-system directories, local working directories, or local build output;
+- compiler/toolchain directories, local working directories, or local temporary output;
 - full production configs or ignored local config snapshots.
 
 If any of those are present, stop the deployment and request a corrected package.

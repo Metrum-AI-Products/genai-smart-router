@@ -9,7 +9,7 @@ GenAI Smart Router is installed from a release package. The package contains the
 
 Use `installation/` for work before the first production request lands: artifact selection, package validation, license and config placement, security review, and first smoke tests. Use `operations/` for work after traffic lands: scaling, runtime tuning, observability, reporting, and recurring troubleshooting.
 
-Release artifacts are validated before handoff. The package validator rejects platform archive metadata, internal runbooks, unexpected files, local state, raw secrets, and architecture mismatches; Docker Compose packages also include a saved image tar for the selected architecture.
+Release artifacts are validated before handoff. The package validator rejects platform archive metadata, deployment-private notes, unexpected files, local state, raw secrets, and architecture mismatches; Docker Compose packages also include a saved image tar for the selected architecture.
 
 ## Choose A Deployment Shape
 
@@ -46,7 +46,7 @@ Before installation, collect the following deployment-owned values:
 |---|---|---|
 | Router base URL | `https://<router-host>` | Public or private endpoint exposed to clients. |
 | Router config path | `/app/config/config.yaml` | Container path or host path, depending on package type. |
-| Provider key env file | `/app/config/env.json` | Stores provider credentials outside public docs, packages, tickets, and shared support bundles. |
+| Provider key env file | `/app/config/env.json` | Stores provider credentials under deployment secret controls, outside public docs, packages, tickets, and shared support bundles. |
 | License file | `/app/config/license.json` | Issued by Metrum; do not edit its contents. |
 | License state path | `/app/state/license-state.json` | Must survive restarts. |
 | Usage database DSN | `postgres://router:replace-with-password@db:5432/router?sslmode=disable` | Use a strong deployment-owned password. |

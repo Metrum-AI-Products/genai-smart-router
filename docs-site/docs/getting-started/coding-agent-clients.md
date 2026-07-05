@@ -21,11 +21,11 @@ GenAI Smart Router can serve coding-agent clients through deployment-defined mod
 |---|---|
 | Codex CLI | Text, file edits, function tools, image attachments when supported, tiny output caps, and allowed model-group selection |
 | Claude Code CLI | Text, client tools, subagent model selection, default thinking behavior where configured, image-bearing Messages payloads, and Anthropic auth environment |
-| opencode | Text, repository edit tasks, tools, and the configured OpenAI-compatible provider shape |
-| aider | Repository edit task, unit-test verifier, and explicit model-group selection |
+| opencode | Text, workspace edit tasks, tools, and the configured OpenAI-compatible provider shape |
+| aider | Workspace edit task, unit-test verifier, and explicit model-group selection |
 | IDE/agent clients | Minimal manual smoke when headless validation is unavailable |
 
-Successful smokes should prove task outcome, not just HTTP status. For repository edit tasks, run a unit test or check an exact file diff. For image tasks, verify the answer against an expected result. For disallowed model groups, expect a safe router error and no upstream provider call.
+Successful smokes should prove task outcome, not just HTTP status. For workspace edit tasks, run a unit test or check an exact file diff. For image tasks, verify the answer against an expected result. For disallowed model groups, expect a safe router error and no upstream provider call.
 
 Different clients can see different effective target pools inside the same model group because they use different API surfaces. Codex uses OpenAI Responses, Claude Code uses Anthropic Messages, and many IDE clients use OpenAI Chat. A target validated for Chat tools is not automatically eligible for Responses function tools or Anthropic client tools. If one client receives `no-eligible-target` or appears to route to fewer upstreams than another client, ask the deployment admin to inspect effective provider-skin eligibility for that group.
 
@@ -76,7 +76,7 @@ claude --bare --print --model "<allowed-model-group>" \
   "Reply with exactly: router claude ok"
 ```
 
-Repository-local settings can pin the same values for Claude Code without exposing private deployment values in shared docs:
+Local Claude Code settings can pin the same values without exposing private deployment values in shared docs:
 
 ```json
 {
@@ -109,7 +109,7 @@ When a Messages request includes image content, the router filters the requested
 
 Configure opencode to use the router through the OpenAI-compatible endpoint at `https://<router-host>/v1`. The configured model is a router model group returned by `/v1/models`, not a raw upstream provider model name. Hosted examples may use groups such as `big-coder`, but each deployment chooses its own group names and token allow lists.
 
-Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file out of packages, tickets, and shared support bundles.
+Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file in local secret storage rather than packages, tickets, shared support bundles, or shared project files.
 
 ```bash
 mkdir -p ~/.config/opencode
@@ -179,7 +179,7 @@ Expected output:
 opencode router ok
 ```
 
-For repository-edit validation, run opencode in a disposable fixture repository and require an exact file diff or passing test, not just a successful HTTP response. A passing smoke should be visible in usage reports with the selected upstream provider/model. If your opencode setup uses an Anthropic-compatible provider instead, use the router origin and the Anthropic auth variables from the Claude Code section.
+For workspace-edit validation, run opencode in a disposable fixture project and require an exact file diff or passing test, not just a successful HTTP response. A passing smoke should be visible in usage reports with the selected upstream provider/model. If your opencode setup uses an Anthropic-compatible provider instead, use the router origin and the Anthropic auth variables from the Claude Code section.
 
 ## aider
 
@@ -194,7 +194,7 @@ openai-api-key: rtr_metrum_<user>_<project>_<env>_<key>_<secret>
 auto-commits: false
 ```
 
-Run aider in a disposable fixture repository and verify the edit with a unit test or exact diff:
+Run aider in a disposable fixture project and verify the edit with a unit test or exact diff:
 
 ```bash
 aider --config .aider.conf.yml app.py tests.py \
@@ -207,7 +207,7 @@ For Cursor, Continue.dev, Cline, Roo Code, SDK-based agents, LiteLLM adapters, a
 
 - confirm the client uses the router base URL and a router token;
 - request a model group returned by `/v1/models`;
-- perform a text request and one repository edit or tool task;
+- perform a text request and one workspace edit or tool task;
 - when the client can attach images, run a mixed OpenAI Chat tools-plus-image smoke against the intended model group and require a target that supports tools and image input on the same OpenAI Chat skin;
 - record client version, request time, request ID if shown, model group, and expected output;
 - verify usage reports show the selected upstream provider/model/dialect, token totals, status, and no unexpected fallback.

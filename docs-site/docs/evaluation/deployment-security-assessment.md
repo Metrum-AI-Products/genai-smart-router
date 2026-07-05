@@ -12,7 +12,7 @@ Use this checklist to assess a GenAI Smart Router deployment before production r
 Confirm:
 
 - provider API keys are loaded server-side from the deployment environment or protected config files;
-- licensed deployments mount only the issued runtime license file; private signing keys, signing-service credentials, full license payloads, and detached signatures are excluded from images, logs, reports, browser docs, tickets, and shared support bundles;
+- licensed deployments mount only the issued runtime license file; private signing keys, signing-service credentials, full license payloads, and detached signatures are excluded from images, logs, reports, browser docs, tickets, shared configuration systems, and shared support bundles;
 - caller tokens are distributed only to approved users, services, or validation jobs;
 - runtime config stores caller token hashes, not raw caller token secrets;
 - raw provider keys, raw router tokens, token hashes, and full production config are excluded from browser docs, logs, tickets, and announcements;

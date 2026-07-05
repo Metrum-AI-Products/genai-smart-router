@@ -53,7 +53,7 @@ flowchart TB
 
 Apps call the router instead of provider APIs. The central platform team owns provider credentials, caller tokens, model-group access, metrics-admin isolation, retention policy, and the license file. Teams request allowed groups, and the platform tunes targets, weights, fallbacks, and validation metadata behind those groups.
 
-This pattern works well when provider keys must stay server-side, private upstreams must remain on internal networks, and finance or platform operations need cost-allocation reports across teams.
+This pattern works well when provider keys must stay server-side, private upstreams must remain on protected networks, and FinOps or platform operations need cost-allocation reports across teams.
 
 ## Pattern C: Per-Environment Routers
 
@@ -74,7 +74,7 @@ Rollout and rollback flow:
 1. Update staging config and run `/readyz`, `/v1/models`, Chat, Responses, Messages, tool, image, report, and license smokes that match the change.
 2. Capture provider/model selection, status, latency, usage, and request IDs for the test window.
 3. Promote the reviewed config or package to production with a timestamped backup.
-4. Repeat the same production smokes.
+4. Repeat the same post-promotion smokes.
 5. Roll back by restoring the previous package/config/license input and rerunning the failed smoke.
 
 ## Pattern D: Per-Team Or Per-Business-Unit Routers
@@ -121,7 +121,7 @@ For hierarchical production readiness, test authentication, model access, reques
 
 Use a private managed dedicated deployment when one customer wants a dedicated router instance operated for them instead of running the service themselves.
 
-One customer or contracted customer environment maps to one dedicated deployment. Provider-cost handling, BYOK scope, network isolation, reporting, retention, and acceptance tests are defined in the managed-service plan. Store private operational hostnames, SSH procedures, token files, and production runbooks in the customer's approved private operations system.
+One customer or contracted customer environment maps to one dedicated deployment. Provider-cost handling, BYOK scope, network isolation, reporting, retention, and acceptance tests are defined in the managed-service plan. Store private operational hostnames, SSH procedures, token files, and operating procedures in the customer's approved private operations system.
 
 See [Choose a Deployment Path](../licensing/deployment-paths), [Enterprise Private Managed](../licensing/enterprise-private-managed), and [License-Protected Deployments](./license-protected-deployments).
 
