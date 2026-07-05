@@ -140,7 +140,7 @@ Metrum supports several buyer paths:
 - Renewal, replacement, and prepaid volume top-up for existing licensed deployments.
 - Marketplace or private-offer procurement where available.
 
-The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to an enterprise self-hosted, private managed, marketplace/private-offer, renewal, or volume-prepurchase path. A Stripe-enabled licensing portal for approved evaluation, pilot, renewal, or top-up packages is planned but not shipped until the portal and fulfillment work is implemented. See [Choose a Deployment Path](/docs/licensing/deployment-paths) and [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
+The evaluation-to-purchase flow is request evaluation, receive endpoint/token or deployment package, validate workloads, inspect savings/performance/security evidence, then convert to the contracted path that fits the deployment: enterprise self-hosted, private managed, marketplace/private-offer, renewal, or volume-prepurchase. See [Choose a Deployment Path](/docs/licensing/deployment-paths) and [Commercial Evaluation Path](/docs/evaluation/commercial-evaluation).
 
 ## Deployment Planning Checklist
 

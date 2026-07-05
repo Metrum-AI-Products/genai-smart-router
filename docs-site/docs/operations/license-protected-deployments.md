@@ -83,11 +83,11 @@ License validation is offline. The router does not need to call Metrum during st
 
 For support, share request IDs and safe status fields such as license ID, SKU, key ID, expiry, status, reason, and grace-active flag. Do not send provider keys, router tokens, raw prompts, raw images, full config files, private signing keys, or full license payloads through ordinary support channels.
 
-## Portal And Online Lease Status
+## Online Lease Status
 
-Offline signed-license validation is shipped. Portal-issued self-service evaluation, pilot, renewal, and top-up flows are planned only if the licensing portal and Stripe fulfillment work is implemented and enabled. Until then, customers should use the contact-led commercial/support path for issued licenses.
+Offline signed-license validation is the default fit for enterprise self-hosted, private-cloud, on-prem, and air-gapped deployments. Evaluation, pilot, renewal, and top-up access use the signed license or managed-service handoff described in [Licensing](/docs/licensing/).
 
-Some future monthly, card-paid, trial, usage-sensitive, or managed plans may require periodic signed online lease renewal. That mode is separate from offline enterprise licenses and should be documented in the customer plan when used. Do not assume that every self-hosted or air-gapped deployment requires online checks.
+Some customer plans may require periodic signed online lease renewal. That mode is separate from offline enterprise licenses and should be documented in the customer plan when used. Do not assume that every self-hosted or air-gapped deployment requires online checks.
 
 ## Admin Visibility
 

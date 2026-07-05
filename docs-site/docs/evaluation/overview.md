@@ -13,7 +13,7 @@ Evaluate GenAI Smart Router by proving that each model group completes the inten
 
 1. Define the workload and success criteria.
 2. Discover the caller-visible model groups available to the test token.
-3. Run the same client shape planned for production: chat, Responses, Anthropic Messages, tools, images, structured outputs, or reasoning controls.
+3. Run the same client shape expected in production: chat, Responses, Anthropic Messages, tools, images, structured outputs, or reasoning controls.
 4. Verify task outcome with a workload-appropriate checker such as unit tests, extraction accuracy checks, OCR targets, tool-call correctness, browser tasks, golden datasets, Harbor, or product acceptance tests.
 5. Compare cost, latency, throughput, attempts, fallbacks, and provider/model mix.
 6. Promote only groups and targets that meet the workload contract; roll back or isolate targets that fail.

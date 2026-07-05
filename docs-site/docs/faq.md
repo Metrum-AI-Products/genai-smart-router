@@ -29,6 +29,10 @@ Use the matrix in [Installation](./installation/) and the topology guidance in [
 
 Use [Package Validation And Security Checks](./installation/package-validation).
 
+### How do I request evaluation or deployment access?
+
+Contact [contact@metrum.ai](mailto:contact@metrum.ai). For the technical evaluation checklist, see [Evaluate GenAI Smart Router](./evaluation/evaluate-smart-router). For licensed and managed deployment options, see [Choose a Deployment Path](./licensing/deployment-paths).
+
 ## Authentication And Access
 
 ### What does `403 model-not-allowed` mean?

@@ -22,7 +22,7 @@ Commercial and technical planning usually covers:
 
 ## Private Managed Deployment
 
-In a private managed deployment, Metrum operates a dedicated deployment for one customer or a customer-specific high-availability environment. This is distinct from a shared public multitenant API-credit service.
+In a private managed deployment, Metrum operates a dedicated deployment for one customer or a customer-specific high-availability environment.
 
 The plan should define:
 

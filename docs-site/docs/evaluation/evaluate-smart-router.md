@@ -32,9 +32,9 @@ Commercial evaluations can run on a Metrum-managed hosted service, an enterprise
 2. receive a router endpoint and token, or a deployment package plus signed JSON license for customer-controlled infrastructure;
 3. validate production-like workloads and clients;
 4. inspect savings, performance, quota, provider mix, security access, and retention/rollup evidence;
-5. choose enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or other contracted commercial access.
+5. choose the commercial path that fits the deployment: enterprise self-hosted, private managed, marketplace/private-offer, renewal, top-up, or another contracted plan.
 
-Production enterprise access uses a signed license file with capability, time, and volume entitlements combined with an annual, private managed, marketplace/private-offer, or volume-prepurchase commercial path. Use the contact path above for evaluation setup, license delivery, and deployment-specific access details.
+Production access uses either a signed enterprise license for customer-operated deployments or a private managed plan for Metrum-operated customer deployments. Use the contact address above for evaluation setup, license delivery, and deployment-specific access details.
 
 ## Thirty-Minute Evaluation Path
 

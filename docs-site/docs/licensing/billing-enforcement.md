@@ -5,7 +5,7 @@ doc_type: explanation
 
 # Billing, Cancellation, and Runtime Enforcement
 
-GenAI Smart Router separates commercial billing systems from router request handling. The router enforces the active signed license or online lease mode configured for the deployment; it does not store card details or run a public in-router payment wallet.
+GenAI Smart Router separates commercial billing systems from router request handling. The router enforces the active signed license or online lease mode configured for the deployment. Commercial payment records stay in the approved procurement and support systems.
 
 ## Offline License Enforcement
 
@@ -15,7 +15,7 @@ If a license expires, exceeds a licensed volume/window/concurrency limit, or lac
 
 ## Commercial Control Plane
 
-Commercial systems such as orders, invoices, private offers, managed-service records, or customer portals can authorize license issuance or replacement. The router runtime receives only the signed license or deployment entitlement it must enforce; it does not process card details, invoice state, refunds, or disputes.
+Commercial systems such as orders, invoices, private offers, managed-service records, or customer account systems authorize license issuance or replacement. The router runtime receives only the signed license or deployment entitlement it must enforce. Payment status, refunds, and disputes are handled outside the request path.
 
 When a commercial plan uses online lease renewal, the plan should state the renewal interval, grace behavior, payment-required state, cancellation timing, support escalation, and whether traffic is blocked or degraded when renewal fails. Offline enterprise contracts continue to use signed license files without a startup network dependency.
 

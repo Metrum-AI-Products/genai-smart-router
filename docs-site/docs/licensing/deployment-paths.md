@@ -21,15 +21,15 @@ For how customers own model-group membership, routing strategy, provider keys, v
 | Private managed deployment | Customers who want a dedicated router instance operated for one customer without running the service themselves. | Dedicated customer deployment with direct order, quote/invoice, or private marketplace offer when available. Operational details are handled through the managed-service plan. |
 | Evaluation or pilot | Teams proving workload quality, provider mix, cost controls, security posture, and reporting before production. | Contact-led evaluation with either a managed endpoint or a signed evaluation/pilot license. |
 | Renewal or top-up | Existing customers extending term, replacing an issued license, or adding a prepaid volume envelope. | Replacement `license.json` delivered through the approved commercial/support path. |
-| Marketplace or private offer | Enterprise procurement teams that prefer cloud marketplace contracting. | Private offer or marketplace-aligned signed license when commercially available; not a public shared multitenant API-credit product. |
+| Marketplace or private offer | Enterprise procurement teams that prefer cloud marketplace contracting. | Private offer or marketplace-aligned signed license when available for the customer agreement. |
 
-Enterprise self-hosted and private managed deployments use direct commercial engagement, quote/invoice, or private offer. Evaluation, renewal, and top-up packages are issued from approved commercial terms rather than ad hoc runtime entitlement changes.
+Enterprise self-hosted and private managed deployments use direct commercial engagement, quote/invoice, or private offer. Evaluation, renewal, and top-up packages are issued from approved commercial terms and delivered through the same runtime license or managed-service handoff.
 
 ## Enterprise Self-Hosted
 
 In self-hosted deployments, the customer runs the router package and installs a signed `license.json`. The router verifies the license locally with embedded public verification keys. This path supports BYOK provider keys, private upstreams, customer network controls, and offline or air-gapped operation when the commercial plan allows it.
 
-Runtime enforcement can include feature gates, time bounds, volume limits, deployment scope, and operational limits. Optional future enforcement modes can add deployment binding, revocation bundles, or online leases for plans that require them, while preserving offline signed-license operation for contracted air-gapped buyers.
+Runtime enforcement can include feature gates, time bounds, volume limits, deployment scope, deployment binding, revocation bundles, online leases, and operational limits when those controls are part of the customer plan. Offline signed-license operation remains available for contracted air-gapped buyers.
 
 ## Private Managed Deployment
 
