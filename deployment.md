@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-05
+Last deployed: 2026-07-06
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-07-05
 
 ## Deployed Version
 
-- Router package/image version: `d01e252-linux-amd64`
-- Source commit: `d01e252`
+- Router package/image version: `777d2ed-linux-amd64`
+- Source commit: `777d2ed`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,30 @@ Last deployed: 2026-07-05
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-06 Admin Reports Long-Window OOM Fix
+
+Package `smart-llmrouter:777d2ed-linux-amd64` was deployed to production to fix 15-day `savings-by-key` admin reports returning HTTP 502 after the router was OOM-killed while materializing long-window request rows.
+
+Source commit: `777d2ed` (`fix: aggregate token admin reports in SQL`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-777d2ed-20260706T133019Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-777d2ed-20260706T133019Z`.
+- Docker load log: `/tmp/smart-llmrouter-docker-load-777d2ed.log`.
+
+Validation:
+
+- `go test ./internal/router -run 'TestAdminReportsRequireBasicAndCasbinAuthorization|TestAdminReport'`: passed.
+- `go test ./...`: passed.
+- `make package-docker VERSION=777d2ed COMMIT=777d2ed`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `777d2ed`.
+- Exact failing API shape `savings-by-key?since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc` returned 200 in about 1 second.
+- Four concurrent requests for the same long-window report all returned 200; router `RestartCount` stayed 0, `OOMKilled` stayed false, and memory stayed around 32 MiB.
+- Browser-facing admin reports URL for the same tab/filter returned 200.
 
 ## 2026-07-05 Public Docs Cleanup Production Refresh
 
