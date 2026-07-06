@@ -4168,6 +4168,14 @@ func (s *usageStore) decisionTelemetrySummary(rows []usageRow) decisionTelemetry
 }
 
 func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
+	return s.rowsWithBuckets(opts, true)
+}
+
+func (s *usageStore) rowsWithoutBuckets(opts UsageReportOptions) ([]usageRow, error) {
+	return s.rowsWithBuckets(opts, false)
+}
+
+func (s *usageStore) rowsWithBuckets(opts UsageReportOptions, includeBuckets bool) ([]usageRow, error) {
 	var records []usageRecord
 	q := s.usageRowsQuery(opts)
 	if err := q.Order("ts ASC, request_id ASC").Find(&records).Error; err != nil {
@@ -4177,7 +4185,9 @@ func (s *usageStore) rows(opts UsageReportOptions) ([]usageRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.loadUsageReportBuckets(out)
+	if includeBuckets {
+		s.loadUsageReportBuckets(out)
+	}
 	return out, nil
 }
 

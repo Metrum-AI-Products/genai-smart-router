@@ -1107,7 +1107,7 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "savings")
-	rows, err := s.usage.rows(filters.UsageReportOptions)
+	rows, err := s.usage.rowsWithoutBuckets(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
@@ -1128,7 +1128,7 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	rows, err := s.usage.rows(filters.UsageReportOptions)
+	rows, err := s.usage.rowsWithoutBuckets(filters.UsageReportOptions)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
@@ -1186,7 +1186,7 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	rows, err := s.usage.rows(filters.UsageReportOptions)
+	rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
@@ -1225,6 +1225,25 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	}
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
+}
+
+func (s *Service) adminScalarReportRows(opts UsageReportOptions, spec adminScalarEndpointSpec) ([]usageRow, error) {
+	if adminScalarSpecNeedsUsageBuckets(spec) {
+		return s.usage.rows(opts)
+	}
+	return s.usage.rowsWithoutBuckets(opts)
+}
+
+func adminScalarSpecNeedsUsageBuckets(spec adminScalarEndpointSpec) bool {
+	switch spec.Dimension {
+	case "dynamic_signal", "dynamic_score_bucket", "dynamic_threshold", "max_token_bucket", "input_token_bucket", "admission_reason", "contract_bucket", "contract_workload", "target_validation":
+		return true
+	}
+	switch spec.Secondary {
+	case "dynamic_signal", "dynamic_score_bucket", "dynamic_threshold", "max_token_bucket", "input_token_bucket", "admission_reason", "contract_bucket", "contract_workload", "target_validation":
+		return true
+	}
+	return false
 }
 
 func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {

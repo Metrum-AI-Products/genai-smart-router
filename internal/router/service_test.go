@@ -1032,6 +1032,7 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 		"/admin/reports/api/overview?since=24h",
 		"/admin/reports/api/savings-by-user?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/savings-by-key?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
+		"/admin/reports/api/savings-by-key?since=24h&baseline=gpt-5.5&sort=savingsUsd&direction=desc",
 		"/admin/reports/api/savings-by-group?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/savings-by-project?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
 		"/admin/reports/api/savings-by-provider-model?since=24h&baseline=custom&baseline_input_price_per_million_usd=4&baseline_output_price_per_million_usd=8",
