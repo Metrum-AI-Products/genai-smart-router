@@ -4191,6 +4191,181 @@ func (s *usageStore) rowsWithBuckets(opts UsageReportOptions, includeBuckets boo
 	return out, nil
 }
 
+type tokenScalarAggRecord struct {
+	Key                      string
+	Calls                    int64
+	Errors                   int64
+	Streams                  int64
+	CacheHits                int64
+	CacheMisses              int64
+	CacheBypass              int64
+	Fallbacks                int64
+	Attempts                 int64
+	InputTokens              int64
+	OutputTokens             int64
+	TotalTokens              int64
+	InputImageCount          int64
+	InputImageTokens         int64
+	PIIFilteredRequests      int64
+	PIIFilterReplacements    int64
+	InputCostUSD             float64
+	ImageCostUSD             float64
+	OutputCostUSD            float64
+	TotalCostUSD             float64
+	UpstreamReportedCostUSD  float64
+	LatencyMS                int64
+	MaxLatencyMS             int64
+	TTFBMS                   int64
+	TTFBCount                int64
+	MaxTTFBMS                int64
+	UpstreamMS               int64
+	UpstreamMSCount          int64
+	MaxUpstreamMS            int64
+	DownstreamMS             int64
+	DownstreamMSCount        int64
+	MaxDownstreamMS          int64
+	UpstreamOutputTPS        float64
+	UpstreamOutputTPSCount   int64
+	UpstreamTotalTPS         float64
+	UpstreamTotalTPSCount    int64
+	DownstreamOutputTPS      float64
+	DownstreamOutputTPSCount int64
+	DownstreamTotalTPS       float64
+	DownstreamTotalTPSCount  int64
+	CacheItemsMax            int64
+	CacheBytesMax            int64
+	CacheMaxBytesLatest      int64
+	CacheOccupancyMax        float64
+	CacheBytesSum            int64
+	CacheOccupancySum        float64
+	CacheSnapshotCount       int64
+}
+
+func (s *usageStore) adminTokenScalarAggs(opts UsageReportOptions, baseline adminSavingsBaselineDTO) (map[string]*adminScalarAgg, *agg, error) {
+	keyExpr := "COALESCE(NULLIF(token_id, ''), 'unknown')"
+	selectExpr := keyExpr + ` AS key,
+		COUNT(*) AS calls,
+		SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
+		SUM(CASE WHEN stream THEN 1 ELSE 0 END) AS streams,
+		SUM(CASE WHEN cache = 'hit' THEN 1 ELSE 0 END) AS cache_hits,
+		SUM(CASE WHEN cache = 'miss' THEN 1 ELSE 0 END) AS cache_misses,
+		SUM(CASE WHEN cache != 'hit' AND cache != 'miss' THEN 1 ELSE 0 END) AS cache_bypass,
+		SUM(CASE WHEN fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(attempts) AS attempts,
+		SUM(input_tokens) AS input_tokens,
+		SUM(output_tokens) AS output_tokens,
+		SUM(CASE WHEN total_tokens = 0 THEN input_tokens + output_tokens ELSE total_tokens END) AS total_tokens,
+		SUM(input_image_count) AS input_image_count,
+		SUM(input_image_tokens) AS input_image_tokens,
+		SUM(CASE WHEN pii_filter_applied THEN 1 ELSE 0 END) AS pii_filtered_requests,
+		SUM(pii_filter_replacements) AS pii_filter_replacements,
+		SUM(input_cost_usd) AS input_cost_usd,
+		SUM(image_cost_usd) AS image_cost_usd,
+		SUM(output_cost_usd) AS output_cost_usd,
+		SUM(total_cost_usd) AS total_cost_usd,
+		SUM(upstream_reported_total_cost_usd) AS upstream_reported_cost_usd,
+		SUM(latency_ms) AS latency_ms,
+		MAX(latency_ms) AS max_latency_ms,
+		SUM(COALESCE(ttfb_ms, 0)) AS ttfb_ms,
+		COUNT(ttfb_ms) AS ttfb_count,
+		MAX(COALESCE(ttfb_ms, 0)) AS max_ttfb_ms,
+		SUM(COALESCE(upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(upstream_duration_ms) AS upstream_ms_count,
+		MAX(COALESCE(upstream_duration_ms, 0)) AS max_upstream_ms,
+		SUM(COALESCE(downstream_duration_ms, 0)) AS downstream_ms,
+		COUNT(downstream_duration_ms) AS downstream_ms_count,
+		MAX(COALESCE(downstream_duration_ms, 0)) AS max_downstream_ms,
+		SUM(COALESCE(upstream_output_tokens_per_sec, 0)) AS upstream_output_tps,
+		COUNT(upstream_output_tokens_per_sec) AS upstream_output_tps_count,
+		SUM(COALESCE(upstream_total_tokens_per_sec, 0)) AS upstream_total_tps,
+		COUNT(upstream_total_tokens_per_sec) AS upstream_total_tps_count,
+		SUM(COALESCE(downstream_output_tokens_per_sec, 0)) AS downstream_output_tps,
+		COUNT(downstream_output_tokens_per_sec) AS downstream_output_tps_count,
+		SUM(COALESCE(downstream_total_tokens_per_sec, 0)) AS downstream_total_tps,
+		COUNT(downstream_total_tokens_per_sec) AS downstream_total_tps_count,
+		MAX(cache_items) AS cache_items_max,
+		MAX(cache_bytes) AS cache_bytes_max,
+		MAX(cache_max_bytes) AS cache_max_bytes_latest,
+		MAX(cache_occupancy_pct) AS cache_occupancy_max,
+		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN cache_bytes ELSE 0 END) AS cache_bytes_sum,
+		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN cache_occupancy_pct ELSE 0 END) AS cache_occupancy_sum,
+		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN 1 ELSE 0 END) AS cache_snapshot_count`
+	var records []tokenScalarAggRecord
+	if err := s.usageRowsQuery(opts).Select(selectExpr).Group(keyExpr).Scan(&records).Error; err != nil {
+		return nil, nil, err
+	}
+	table := make(map[string]*adminScalarAgg, len(records))
+	total := &agg{}
+	for _, rec := range records {
+		a := aggFromTokenScalarAggRecord(rec)
+		total.addAgg(a)
+		scalar := &adminScalarAgg{
+			Key:                     rec.Key,
+			Agg:                     a,
+			InputImageCount:         rec.InputImageCount,
+			InputImageTokens:        rec.InputImageTokens,
+			PIIFilteredRequests:     rec.PIIFilteredRequests,
+			PIIFilterReplacements:   rec.PIIFilterReplacements,
+			UpstreamReportedCostUSD: rec.UpstreamReportedCostUSD,
+		}
+		if baseline.BaselineID != "" {
+			scalar.HasBaseline = true
+			scalar.BaselineCostUSD = (float64(rec.InputTokens)/1_000_000)*baseline.BaselineInputPricePerMillionUSD + (float64(rec.OutputTokens)/1_000_000)*baseline.BaselineOutputPricePerMillionUSD
+		}
+		table[rec.Key] = scalar
+	}
+	return table, total, nil
+}
+
+func aggFromTokenScalarAggRecord(rec tokenScalarAggRecord) agg {
+	return agg{
+		Calls:                    rec.Calls,
+		Errors:                   rec.Errors,
+		Streams:                  rec.Streams,
+		CacheHits:                rec.CacheHits,
+		CacheMisses:              rec.CacheMisses,
+		CacheBypass:              rec.CacheBypass,
+		Fallbacks:                rec.Fallbacks,
+		Attempts:                 rec.Attempts,
+		InputTokens:              rec.InputTokens,
+		OutputTokens:             rec.OutputTokens,
+		TotalTokens:              rec.TotalTokens,
+		InputCostUSD:             rec.InputCostUSD,
+		ImageCostUSD:             rec.ImageCostUSD,
+		OutputCostUSD:            rec.OutputCostUSD,
+		TotalCostUSD:             rec.TotalCostUSD,
+		LatencyMS:                rec.LatencyMS,
+		MaxLatencyMS:             rec.MaxLatencyMS,
+		TTFBMS:                   rec.TTFBMS,
+		TTFBCount:                rec.TTFBCount,
+		MaxTTFBMS:                rec.MaxTTFBMS,
+		UpstreamMS:               rec.UpstreamMS,
+		UpstreamMSCount:          rec.UpstreamMSCount,
+		MaxUpstreamMS:            rec.MaxUpstreamMS,
+		DownstreamMS:             rec.DownstreamMS,
+		DownstreamMSCount:        rec.DownstreamMSCount,
+		MaxDownstreamMS:          rec.MaxDownstreamMS,
+		UpstreamOutputTPS:        rec.UpstreamOutputTPS,
+		UpstreamOutputTPSCount:   rec.UpstreamOutputTPSCount,
+		UpstreamTotalTPS:         rec.UpstreamTotalTPS,
+		UpstreamTotalTPSCount:    rec.UpstreamTotalTPSCount,
+		DownstreamOutputTPS:      rec.DownstreamOutputTPS,
+		DownstreamOutputTPSCount: rec.DownstreamOutputTPSCount,
+		DownstreamTotalTPS:       rec.DownstreamTotalTPS,
+		DownstreamTotalTPSCount:  rec.DownstreamTotalTPSCount,
+		CacheItemsLatest:         rec.CacheItemsMax,
+		CacheBytesLatest:         rec.CacheBytesMax,
+		CacheMaxBytesLatest:      rec.CacheMaxBytesLatest,
+		CacheOccupancyLatest:     rec.CacheOccupancyMax,
+		CacheItemsMax:            rec.CacheItemsMax,
+		CacheBytesMax:            rec.CacheBytesMax,
+		CacheOccupancyMax:        rec.CacheOccupancyMax,
+		CacheBytesSum:            rec.CacheBytesSum,
+		CacheOccupancySum:        rec.CacheOccupancySum,
+		CacheSnapshotCount:       rec.CacheSnapshotCount,
+	}
+}
+
 func (s *usageStore) adminUsageRowsPage(opts adminUsagePageOptions) (adminUsagePage, error) {
 	base := s.usageRowsQuery(opts.UsageReportOptions)
 	var total int64
@@ -5033,6 +5208,61 @@ func (a *agg) add(row usageRow) {
 			a.CacheOccupancyMax = row.CacheOccupancyPct
 		}
 	}
+}
+
+func (a *agg) addAgg(other agg) {
+	a.Calls += other.Calls
+	a.Errors += other.Errors
+	a.Streams += other.Streams
+	a.CacheHits += other.CacheHits
+	a.CacheMisses += other.CacheMisses
+	a.CacheBypass += other.CacheBypass
+	a.Fallbacks += other.Fallbacks
+	a.Attempts += other.Attempts
+	a.InputTokens += other.InputTokens
+	a.OutputTokens += other.OutputTokens
+	a.TotalTokens += other.TotalTokens
+	a.InputCostUSD += other.InputCostUSD
+	a.ImageCostUSD += other.ImageCostUSD
+	a.OutputCostUSD += other.OutputCostUSD
+	a.TotalCostUSD += other.TotalCostUSD
+	a.LatencyMS += other.LatencyMS
+	if other.MaxLatencyMS > a.MaxLatencyMS {
+		a.MaxLatencyMS = other.MaxLatencyMS
+	}
+	a.TTFBMS += other.TTFBMS
+	a.TTFBCount += other.TTFBCount
+	if other.MaxTTFBMS > a.MaxTTFBMS {
+		a.MaxTTFBMS = other.MaxTTFBMS
+	}
+	a.UpstreamMS += other.UpstreamMS
+	a.UpstreamMSCount += other.UpstreamMSCount
+	if other.MaxUpstreamMS > a.MaxUpstreamMS {
+		a.MaxUpstreamMS = other.MaxUpstreamMS
+	}
+	a.DownstreamMS += other.DownstreamMS
+	a.DownstreamMSCount += other.DownstreamMSCount
+	if other.MaxDownstreamMS > a.MaxDownstreamMS {
+		a.MaxDownstreamMS = other.MaxDownstreamMS
+	}
+	a.UpstreamOutputTPS += other.UpstreamOutputTPS
+	a.UpstreamOutputTPSCount += other.UpstreamOutputTPSCount
+	a.UpstreamTotalTPS += other.UpstreamTotalTPS
+	a.UpstreamTotalTPSCount += other.UpstreamTotalTPSCount
+	a.DownstreamOutputTPS += other.DownstreamOutputTPS
+	a.DownstreamOutputTPSCount += other.DownstreamOutputTPSCount
+	a.DownstreamTotalTPS += other.DownstreamTotalTPS
+	a.DownstreamTotalTPSCount += other.DownstreamTotalTPSCount
+	a.CacheItemsLatest = max(a.CacheItemsLatest, other.CacheItemsLatest)
+	a.CacheBytesLatest = max(a.CacheBytesLatest, other.CacheBytesLatest)
+	a.CacheMaxBytesLatest = max(a.CacheMaxBytesLatest, other.CacheMaxBytesLatest)
+	a.CacheOccupancyLatest = max(a.CacheOccupancyLatest, other.CacheOccupancyLatest)
+	a.CacheItemsMax = max(a.CacheItemsMax, other.CacheItemsMax)
+	a.CacheBytesMax = max(a.CacheBytesMax, other.CacheBytesMax)
+	a.CacheOccupancyMax = max(a.CacheOccupancyMax, other.CacheOccupancyMax)
+	a.CacheBytesSum += other.CacheBytesSum
+	a.CacheOccupancySum += other.CacheOccupancySum
+	a.CacheSnapshotCount += other.CacheSnapshotCount
 }
 
 func writeTokenTable(b *strings.Builder, title string, data map[string]*agg, meta map[string]usageRow) {

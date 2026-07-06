@@ -1186,12 +1186,12 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
-		return
-	}
 	if spec.Report == "traffic-tuning-advisor" {
+		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
 		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
@@ -1206,6 +1206,11 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if spec.ShapeReport != "" {
+		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
 		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
@@ -1224,6 +1229,20 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
+	if adminScalarSpecCanUseSQLAgg(spec) {
+		resp, err := s.buildAdminScalarReportResponseSQL(filters, spec, baseline)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		return
+	}
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
 }
 
@@ -1244,6 +1263,18 @@ func adminScalarSpecNeedsUsageBuckets(spec adminScalarEndpointSpec) bool {
 		return true
 	}
 	return false
+}
+
+func adminScalarSpecCanUseSQLAgg(spec adminScalarEndpointSpec) bool {
+	return spec.Dimension == "token_id" && spec.Secondary == "" && !spec.Requests && !spec.Anomalies && spec.Diagnostic == "" && spec.ShapeReport == ""
+}
+
+func (s *Service) buildAdminScalarReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {
+	table, total, err := s.usage.adminTokenScalarAggs(filters.UsageReportOptions, baseline)
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	return buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline), nil
 }
 
 func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -2917,6 +2948,20 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 			}
 			table[mapKey].add(row, baseline)
 		}
+	}
+	return buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline)
+}
+
+func buildAdminScalarReportResponseFromAgg(filters adminReportFilters, table map[string]*adminScalarAgg, total *agg, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) adminScalarReportResponse {
+	generatedAt := formatUsageTime(time.Now().UTC())
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		GeneratedUTC: generatedAt,
+	}
+	if baseline.BaselineID != "" {
+		resp.Baseline = &baseline
 	}
 	sortKey := defaultString(filters.Sort, spec.Sort)
 	filters.Sort = sortKey
