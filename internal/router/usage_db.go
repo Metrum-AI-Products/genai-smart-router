@@ -4338,7 +4338,10 @@ func (s *usageStore) adminScalarAggsSQL(opts UsageReportOptions, spec adminScala
 		limitN = 50
 	}
 	var records []tokenScalarAggRecord
-	grouped := s.usageRowsQuery(opts).Select(groupSelect).Group(keyExpr + ", " + secondaryExpr).Order(adminScalarAggSQLOrder(sortKey, baseline)).Limit(limitN + 1)
+	grouped := s.usageRowsQuery(opts).Select(groupSelect).Order(adminScalarAggSQLOrder(sortKey, baseline)).Limit(limitN + 1)
+	if groupBy := adminScalarAggSQLGroupBy(spec, keyExpr, secondaryExpr); groupBy != "" {
+		grouped = grouped.Group(groupBy)
+	}
 	if err := grouped.Scan(&records).Error; err != nil {
 		return nil, nil, 0, false, err
 	}
@@ -4358,6 +4361,17 @@ func (s *usageStore) adminScalarAggsSQL(opts UsageReportOptions, spec adminScala
 	}
 	total := aggFromTokenScalarAggRecord(totalRec)
 	return table, &total, totalRec.BaselineCostUSD, hasMore, nil
+}
+
+func adminScalarAggSQLGroupBy(spec adminScalarEndpointSpec, keyExpr, secondaryExpr string) string {
+	parts := make([]string, 0, 2)
+	if spec.Dimension != "" {
+		parts = append(parts, keyExpr)
+	}
+	if spec.Secondary != "" {
+		parts = append(parts, secondaryExpr)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func adminScalarAggSQLSelectExpr(baseline adminSavingsBaselineDTO) string {

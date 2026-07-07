@@ -2243,6 +2243,25 @@ func TestAdminSavingsAggregateSQLTopNUsesFullWindowSummary(t *testing.T) {
 	}
 }
 
+func TestAdminScalarSQLGroupByOmitsEmptySecondaryDimension(t *testing.T) {
+	groupBy := adminScalarAggSQLGroupBy(adminScalarEndpointSpec{
+		Report:    "usage-by-key",
+		Dimension: "token_id",
+	}, "COALESCE(NULLIF(token_id, ''), 'unknown')", "''")
+	if groupBy != "COALESCE(NULLIF(token_id, ''), 'unknown')" {
+		t.Fatalf("group by=%q, want only primary dimension", groupBy)
+	}
+
+	groupBy = adminScalarAggSQLGroupBy(adminScalarEndpointSpec{
+		Report:    "usage-by-provider-model",
+		Dimension: "provider_model",
+		Secondary: "dialect",
+	}, "target_provider || '/' || target_model", "target_dialect")
+	if groupBy != "target_provider || '/' || target_model, target_dialect" {
+		t.Fatalf("group by with secondary=%q", groupBy)
+	}
+}
+
 func assertCloseFloat(t *testing.T, name string, got, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 0.000001 {
