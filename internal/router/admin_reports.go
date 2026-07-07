@@ -360,6 +360,7 @@ type adminScalarReportRow struct {
 	PIIFilteredRequests                  int64    `json:"piiFilteredRequests"`
 	PIIFilterReplacements                int64    `json:"piiFilterReplacements"`
 	CostUSD                              float64  `json:"costUsd"`
+	ActualCostUSD                        *float64 `json:"actualCostUsd,omitempty"`
 	InputCostUSD                         float64  `json:"inputCostUsd"`
 	ImageCostUSD                         float64  `json:"imageCostUsd"`
 	OutputCostUSD                        float64  `json:"outputCostUsd"`
@@ -581,29 +582,33 @@ type adminReportPeriod struct {
 }
 
 type adminReportSummary struct {
-	Requests                    int64   `json:"requests"`
-	Errors                      int64   `json:"errors"`
-	Tokens                      int64   `json:"tokens"`
-	TotalTokens                 int64   `json:"totalTokens"`
-	InputTokens                 int64   `json:"inputTokens"`
-	OutputTokens                int64   `json:"outputTokens"`
-	CostUSD                     float64 `json:"costUsd"`
-	InputCostUSD                float64 `json:"inputCostUsd"`
-	ImageCostUSD                float64 `json:"imageCostUsd"`
-	OutputCostUSD               float64 `json:"outputCostUsd"`
-	TotalCostUSD                float64 `json:"totalCostUsd"`
-	Attempts                    int64   `json:"attempts"`
-	Fallbacks                   int64   `json:"fallbacks"`
-	Streams                     int64   `json:"streams"`
-	AvgLatencyMS                int64   `json:"avgLatencyMs"`
-	MaxLatencyMS                int64   `json:"maxLatencyMs"`
-	AvgTTFBMS                   int64   `json:"avgTtfbMs"`
-	AvgUpstreamTPS              float64 `json:"avgUpstreamTokensPerSec"`
-	AvgUpstreamOutputTPS        float64 `json:"avgUpstreamOutputTokensPerSec"`
-	AvgUpstreamTotalTPS         float64 `json:"avgUpstreamTotalTokensPerSec"`
-	AvgDownstreamTPS            float64 `json:"avgDownstreamTokensPerSec"`
-	AvgDownstreamWriteOutputTPS float64 `json:"avgDownstreamWriteOutputTokensPerSec"`
-	AvgDownstreamWriteTotalTPS  float64 `json:"avgDownstreamWriteTotalTokensPerSec"`
+	Requests                    int64    `json:"requests"`
+	Errors                      int64    `json:"errors"`
+	Tokens                      int64    `json:"tokens"`
+	TotalTokens                 int64    `json:"totalTokens"`
+	InputTokens                 int64    `json:"inputTokens"`
+	OutputTokens                int64    `json:"outputTokens"`
+	CostUSD                     float64  `json:"costUsd"`
+	ActualCostUSD               *float64 `json:"actualCostUsd,omitempty"`
+	InputCostUSD                float64  `json:"inputCostUsd"`
+	ImageCostUSD                float64  `json:"imageCostUsd"`
+	OutputCostUSD               float64  `json:"outputCostUsd"`
+	TotalCostUSD                float64  `json:"totalCostUsd"`
+	BaselineCostUSD             *float64 `json:"baselineCostUsd,omitempty"`
+	SavingsUSD                  *float64 `json:"savingsUsd,omitempty"`
+	SavingsPct                  *float64 `json:"savingsPct,omitempty"`
+	Attempts                    int64    `json:"attempts"`
+	Fallbacks                   int64    `json:"fallbacks"`
+	Streams                     int64    `json:"streams"`
+	AvgLatencyMS                int64    `json:"avgLatencyMs"`
+	MaxLatencyMS                int64    `json:"maxLatencyMs"`
+	AvgTTFBMS                   int64    `json:"avgTtfbMs"`
+	AvgUpstreamTPS              float64  `json:"avgUpstreamTokensPerSec"`
+	AvgUpstreamOutputTPS        float64  `json:"avgUpstreamOutputTokensPerSec"`
+	AvgUpstreamTotalTPS         float64  `json:"avgUpstreamTotalTokensPerSec"`
+	AvgDownstreamTPS            float64  `json:"avgDownstreamTokensPerSec"`
+	AvgDownstreamWriteOutputTPS float64  `json:"avgDownstreamWriteOutputTokensPerSec"`
+	AvgDownstreamWriteTotalTPS  float64  `json:"avgDownstreamWriteTotalTokensPerSec"`
 }
 
 type adminReportCache struct {
@@ -2952,6 +2957,23 @@ func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow,
 	return buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline)
 }
 
+func adminSummaryWithSavings(summary adminReportSummary, table map[string]*adminScalarAgg) adminReportSummary {
+	actualCost := summary.TotalCostUSD
+	baselineCost := 0.0
+	for _, row := range table {
+		if row != nil && row.HasBaseline {
+			baselineCost += row.BaselineCostUSD
+		}
+	}
+	savings := baselineCost - actualCost
+	savingsPct := ratioPctFloat(savings, baselineCost)
+	summary.ActualCostUSD = &actualCost
+	summary.BaselineCostUSD = &baselineCost
+	summary.SavingsUSD = &savings
+	summary.SavingsPct = &savingsPct
+	return summary
+}
+
 func buildAdminScalarReportResponseFromAgg(filters adminReportFilters, table map[string]*adminScalarAgg, total *agg, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) adminScalarReportResponse {
 	generatedAt := formatUsageTime(time.Now().UTC())
 	resp := adminScalarReportResponse{
@@ -2962,6 +2984,7 @@ func buildAdminScalarReportResponseFromAgg(filters adminReportFilters, table map
 	}
 	if baseline.BaselineID != "" {
 		resp.Baseline = &baseline
+		resp.Summary = adminSummaryWithSavings(resp.Summary, table)
 	}
 	sortKey := defaultString(filters.Sort, spec.Sort)
 	filters.Sort = sortKey
@@ -3933,7 +3956,9 @@ func (a *adminScalarAgg) row() adminScalarReportRow {
 		LatestCacheOccupancyPct:              a.Agg.CacheOccupancyLatest,
 	}
 	if a.HasBaseline {
+		actualCost := a.Agg.TotalCostUSD
 		savingsPct := ratioPctFloat(savings, a.BaselineCostUSD)
+		row.ActualCostUSD = &actualCost
 		row.BaselineCostUSD = &a.BaselineCostUSD
 		row.SavingsUSD = &savings
 		row.SavingsPct = &savingsPct

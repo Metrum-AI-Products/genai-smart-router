@@ -1097,6 +1097,20 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 			if strings.Contains(path, "savings-by") && row["savingsUsd"] == nil {
 				t.Fatalf("%s missing savings scalar fields: %#v", path, row)
 			}
+			if strings.Contains(path, "savings-by") {
+				summary := body["summary"].(map[string]any)
+				for _, key := range []string{"actualCostUsd", "baselineCostUsd", "savingsUsd", "savingsPct"} {
+					if _, ok := summary[key]; !ok {
+						t.Fatalf("%s missing savings summary field %q: %#v", path, key, summary)
+					}
+					if _, ok := row[key]; !ok {
+						t.Fatalf("%s missing savings row field %q: %#v", path, key, row)
+					}
+				}
+				if row["costUsd"] != row["totalCostUsd"] || row["actualCostUsd"] != row["totalCostUsd"] {
+					t.Fatalf("%s actual cost aliases disagree: %#v", path, row)
+				}
+			}
 			if strings.Contains(path, "provider-model-mix") {
 				for _, key := range []string{"inputTokens", "outputTokens", "totalTokens", "inputCostUsd", "imageCostUsd", "outputCostUsd", "totalCostUsd"} {
 					if _, ok := row[key]; !ok {
