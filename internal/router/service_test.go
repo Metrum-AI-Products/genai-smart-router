@@ -2128,6 +2128,76 @@ func TestAdminReportExpensiveRequestsAndTopNMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminSavingsAggregateSQLTopNUsesFullWindowSummary(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	for i, rec := range []struct {
+		user string
+		cost float64
+	}{
+		{user: "alice@example.com", cost: 1},
+		{user: "bob@example.com", cost: 2},
+		{user: "carol@example.com", cost: 3},
+	} {
+		svc.usage.Emit(logRecord{
+			TS:                base.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
+			RequestID:         fmt.Sprintf("savings-sql-%d", i),
+			CallerID:          rec.user,
+			CallerUser:        rec.user,
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           fmt.Sprintf("rtr_savings_sql_%d", i),
+			RequestedModel:    "big-coder",
+			ResolvedGroup:     "big-coder",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-model",
+			TargetDialect:     "openai-chat",
+			Cache:             "miss",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         int64(100 + i),
+			Usage:             Usage{InputTokens: 1_000_000, OutputTokens: 0, TotalTokens: 1_000_000},
+			InputCostUSD:      rec.cost,
+			TotalCostUSD:      rec.cost,
+			QuotaState:        "ok",
+			KeyState:          "ok",
+		})
+	}
+
+	report := adminReportJSON(t, svc, "/admin/reports/api/savings-by-user?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=1&baseline=custom&baseline_input_price_per_million_usd=10&baseline_output_price_per_million_usd=0&sort=savings")
+	rows := report["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows len=%d, want exactly top row: %#v", len(rows), rows)
+	}
+	row := rows[0].(map[string]any)
+	if row["key"] != "alice@example.com" {
+		t.Fatalf("top savings row=%#v, want alice", row)
+	}
+	assertCloseFloat(t, "row actual cost", row["actualCostUsd"].(float64), 1)
+	assertCloseFloat(t, "row baseline cost", row["baselineCostUsd"].(float64), 10)
+	assertCloseFloat(t, "row savings", row["savingsUsd"].(float64), 9)
+
+	summary := report["summary"].(map[string]any)
+	assertCloseFloat(t, "summary actual cost", summary["actualCostUsd"].(float64), 6)
+	assertCloseFloat(t, "summary baseline cost", summary["baselineCostUsd"].(float64), 30)
+	assertCloseFloat(t, "summary savings", summary["savingsUsd"].(float64), 24)
+	if summary["requests"].(float64) != 3 {
+		t.Fatalf("summary requests=%#v, want full-window count 3", summary["requests"])
+	}
+	page := report["pagination"].(map[string]any)
+	if page["mode"] != "top_n" || page["returned"].(float64) != 1 || page["has_more"] != true {
+		t.Fatalf("pagination=%#v, want bounded top-N with has_more", page)
+	}
+}
+
+func assertCloseFloat(t *testing.T, name string, got, want float64) {
+	t.Helper()
+	if math.Abs(got-want) > 0.000001 {
+		t.Fatalf("%s=%g, want %g", name, got, want)
+	}
+}
+
 func TestAdminTroubleshootingReportsUseSafeDiagnosticTelemetry(t *testing.T) {
 	svc := newAdminReportPaginationTestService(t, false)
 	defer svc.Close()

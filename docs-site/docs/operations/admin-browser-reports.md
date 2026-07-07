@@ -181,7 +181,7 @@ Aggregate tabs such as usage by key, provider/model mix, savings by user, traffi
 }
 ```
 
-For those aggregate reports, browser search and table sorting operate over the returned top-N rows. Use the aggregate tabs to identify a dimension, then drill into `/admin/reports/api/requests` or `/admin/reports/api/security/events` with matching filters when you need stable page-by-page review.
+Savings and direct scalar aggregate tabs compute their grouped rows, ranking, and full-window summary totals in the usage database, then return a bounded top-N response to the browser. For those aggregate reports, browser search and table sorting operate over the returned top-N rows. Use the aggregate tabs to identify a dimension, then drill into `/admin/reports/api/requests` or `/admin/reports/api/security/events` with matching filters when you need stable page-by-page review.
 
 CSV export from the browser exports the currently returned table scope: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for legacy unpaged responses. Markdown export is labeled as a full current-filter report and omits page cursors; it remains an operational report export, not an unbounded full-history job.
 

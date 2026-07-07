@@ -1133,12 +1133,12 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	rows, err := s.usage.rowsWithoutBuckets(filters.UsageReportOptions)
+	resp, err := s.buildAdminSavingsResponseSQL(filters, baseline)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
-	writeJSON(w, http.StatusOK, buildAdminSavingsResponse(filters, rows, baseline, s.adminSavingsBaselines()))
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Request, spec adminScalarEndpointSpec, subject adminAuthSubject, global bool) {
@@ -1271,15 +1271,37 @@ func adminScalarSpecNeedsUsageBuckets(spec adminScalarEndpointSpec) bool {
 }
 
 func adminScalarSpecCanUseSQLAgg(spec adminScalarEndpointSpec) bool {
-	return spec.Dimension == "token_id" && spec.Secondary == "" && !spec.Requests && !spec.Anomalies && spec.Diagnostic == "" && spec.ShapeReport == ""
+	if spec.Requests || spec.Anomalies || spec.Diagnostic != "" || spec.ShapeReport != "" {
+		return false
+	}
+	if spec.Report == "cache" {
+		return false
+	}
+	_, ok := adminScalarDimensionSQLExpr(spec.Dimension)
+	if !ok {
+		return false
+	}
+	_, ok = adminScalarDimensionSQLExpr(spec.Secondary)
+	return ok
 }
 
 func (s *Service) buildAdminScalarReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {
-	table, total, err := s.usage.adminTokenScalarAggs(filters.UsageReportOptions, baseline)
+	table, total, totalBaselineCost, hasMore, err := s.usage.adminScalarAggsSQL(filters.UsageReportOptions, spec, baseline, defaultString(filters.Sort, spec.Sort), filters.Limit)
 	if err != nil {
 		return adminScalarReportResponse{}, err
 	}
-	return buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline), nil
+	resp := buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline)
+	if baseline.BaselineID != "" {
+		actualCost := resp.Summary.TotalCostUSD
+		savings := totalBaselineCost - actualCost
+		savingsPct := ratioPctFloat(savings, totalBaselineCost)
+		resp.Summary.ActualCostUSD = &actualCost
+		resp.Summary.BaselineCostUSD = &totalBaselineCost
+		resp.Summary.SavingsUSD = &savings
+		resp.Summary.SavingsPct = &savingsPct
+	}
+	resp.Pagination = adminTopNPagination(filters, len(resp.Rows), hasMore, "Aggregate rows are top-N for the selected filters.")
+	return resp, nil
 }
 
 func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -2911,6 +2933,33 @@ func buildAdminSavingsResponse(filters adminReportFilters, rows []usageRow, base
 		Pagination:   adminTopNPagination(filters, len(byGroup), byGroupHasMore, "Savings aggregate rows are top-N by savings for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
+}
+
+func (s *Service) buildAdminSavingsResponseSQL(filters adminReportFilters, baseline adminSavingsBaselineDTO) (adminSavingsResponse, error) {
+	total, byTime, byGroup, hasMore, missingTokens, missingActualCost, err := s.usage.adminSavingsAggsSQL(filters.UsageReportOptions, baseline, filters.Limit)
+	if err != nil {
+		return adminSavingsResponse{}, err
+	}
+	generatedAt := formatUsageTime(time.Now().UTC())
+	warnings := []string{}
+	if missingTokens > 0 {
+		warnings = append(warnings, strconv.FormatInt(missingTokens, 10)+" row(s) had no stored input/output token usage")
+	}
+	if missingActualCost > 0 {
+		warnings = append(warnings, strconv.FormatInt(missingActualCost, 10)+" row(s) had token usage but zero stored actual cost")
+	}
+	return adminSavingsResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Baseline:     baseline,
+		Baselines:    s.adminSavingsBaselines(),
+		Summary:      total,
+		ByTime:       byTime,
+		ByGroup:      byGroup,
+		Charts:       adminSavingsCharts(filters, generatedAt, byTime),
+		Warnings:     warnings,
+		Pagination:   adminTopNPagination(filters, len(byGroup), hasMore, "Savings aggregate rows are top-N by savings for the selected filters."),
+		GeneratedUTC: generatedAt,
+	}, nil
 }
 
 func buildAdminScalarReportResponse(filters adminReportFilters, rows []usageRow, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) adminScalarReportResponse {

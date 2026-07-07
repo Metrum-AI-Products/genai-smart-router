@@ -4193,6 +4193,7 @@ func (s *usageStore) rowsWithBuckets(opts UsageReportOptions, includeBuckets boo
 
 type tokenScalarAggRecord struct {
 	Key                      string
+	SecondaryKey             string
 	Calls                    int64
 	Errors                   int64
 	Streams                  int64
@@ -4213,6 +4214,7 @@ type tokenScalarAggRecord struct {
 	OutputCostUSD            float64
 	TotalCostUSD             float64
 	UpstreamReportedCostUSD  float64
+	BaselineCostUSD          float64
 	LatencyMS                int64
 	MaxLatencyMS             int64
 	TTFBMS                   int64
@@ -4241,9 +4243,125 @@ type tokenScalarAggRecord struct {
 	CacheSnapshotCount       int64
 }
 
-func (s *usageStore) adminTokenScalarAggs(opts UsageReportOptions, baseline adminSavingsBaselineDTO) (map[string]*adminScalarAgg, *agg, error) {
-	keyExpr := "COALESCE(NULLIF(token_id, ''), 'unknown')"
-	selectExpr := keyExpr + ` AS key,
+type savingsAggRecord struct {
+	Key               string
+	Requests          int64
+	InputTokens       int64
+	OutputTokens      int64
+	TotalTokens       int64
+	ActualCostUSD     float64
+	BaselineCostUSD   float64
+	MissingTokens     int64
+	MissingActualCost int64
+}
+
+func (s *usageStore) adminSavingsAggsSQL(opts UsageReportOptions, baseline adminSavingsBaselineDTO, limit int) (adminSavingsRow, []adminSavingsRow, []adminSavingsRow, bool, int64, int64, error) {
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	selectExpr := adminSavingsAggSQLSelectExpr(baseline)
+	var totalRec savingsAggRecord
+	if err := s.usageRowsQuery(opts).Select(selectExpr).Scan(&totalRec).Error; err != nil {
+		return adminSavingsRow{}, nil, nil, false, 0, 0, err
+	}
+	hourExpr := "substr(ts, 1, 13) || ':00:00Z'"
+	var timeRecords []savingsAggRecord
+	if err := s.usageRowsQuery(opts).Select(hourExpr + " AS key, " + selectExpr).Group(hourExpr).Order("key ASC").Scan(&timeRecords).Error; err != nil {
+		return adminSavingsRow{}, nil, nil, false, 0, 0, err
+	}
+	groupExpr := "COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')"
+	savingsOrderExpr := "(" + adminBaselineCostSQLExpr(baseline) + " - SUM(total_cost_usd)) DESC, key ASC"
+	var groupRecords []savingsAggRecord
+	if err := s.usageRowsQuery(opts).Select(groupExpr + " AS key, " + selectExpr).Group(groupExpr).Order(savingsOrderExpr).Limit(limitN + 1).Scan(&groupRecords).Error; err != nil {
+		return adminSavingsRow{}, nil, nil, false, 0, 0, err
+	}
+	hasMore := len(groupRecords) > limitN
+	if hasMore {
+		groupRecords = groupRecords[:limitN]
+	}
+	return savingsRowFromSQLRecord("total", totalRec), savingsRowsFromSQLRecords(timeRecords), savingsRowsFromSQLRecords(groupRecords), hasMore, totalRec.MissingTokens, totalRec.MissingActualCost, nil
+}
+
+func adminSavingsAggSQLSelectExpr(baseline adminSavingsBaselineDTO) string {
+	return `COUNT(*) AS requests,
+		SUM(input_tokens) AS input_tokens,
+		SUM(output_tokens) AS output_tokens,
+		SUM(CASE WHEN total_tokens = 0 THEN input_tokens + output_tokens ELSE total_tokens END) AS total_tokens,
+		SUM(total_cost_usd) AS actual_cost_usd,
+		` + adminBaselineCostSQLExpr(baseline) + ` AS baseline_cost_usd,
+		SUM(CASE WHEN input_tokens = 0 AND output_tokens = 0 AND total_tokens = 0 THEN 1 ELSE 0 END) AS missing_tokens,
+		SUM(CASE WHEN total_cost_usd = 0 AND (input_tokens > 0 OR output_tokens > 0 OR total_tokens > 0) THEN 1 ELSE 0 END) AS missing_actual_cost`
+}
+
+func savingsRowsFromSQLRecords(records []savingsAggRecord) []adminSavingsRow {
+	rows := make([]adminSavingsRow, 0, len(records))
+	for _, rec := range records {
+		rows = append(rows, savingsRowFromSQLRecord(rec.Key, rec))
+	}
+	return rows
+}
+
+func savingsRowFromSQLRecord(key string, rec savingsAggRecord) adminSavingsRow {
+	if key == "" {
+		key = defaultString(rec.Key, "unknown")
+	}
+	savings := rec.BaselineCostUSD - rec.ActualCostUSD
+	return adminSavingsRow{
+		Key:             key,
+		Requests:        rec.Requests,
+		InputTokens:     rec.InputTokens,
+		OutputTokens:    rec.OutputTokens,
+		TotalTokens:     rec.TotalTokens,
+		ActualCostUSD:   rec.ActualCostUSD,
+		BaselineCostUSD: rec.BaselineCostUSD,
+		SavingsUSD:      savings,
+		SavingsPct:      ratioPctFloat(savings, rec.BaselineCostUSD),
+	}
+}
+
+func (s *usageStore) adminScalarAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO, sortKey string, limit int) (map[string]*adminScalarAgg, *agg, float64, bool, error) {
+	keyExpr, ok := adminScalarDimensionSQLExpr(spec.Dimension)
+	if !ok {
+		return nil, nil, 0, false, fmt.Errorf("unsupported SQL scalar dimension %q", spec.Dimension)
+	}
+	secondaryExpr, ok := adminScalarDimensionSQLExpr(spec.Secondary)
+	if !ok {
+		return nil, nil, 0, false, fmt.Errorf("unsupported SQL scalar secondary dimension %q", spec.Secondary)
+	}
+	aggExpr := adminScalarAggSQLSelectExpr(baseline)
+	groupSelect := keyExpr + ` AS key,
+		` + secondaryExpr + ` AS secondary_key,
+		` + aggExpr
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	var records []tokenScalarAggRecord
+	grouped := s.usageRowsQuery(opts).Select(groupSelect).Group(keyExpr + ", " + secondaryExpr).Order(adminScalarAggSQLOrder(sortKey, baseline)).Limit(limitN + 1)
+	if err := grouped.Scan(&records).Error; err != nil {
+		return nil, nil, 0, false, err
+	}
+	hasMore := len(records) > limitN
+	if hasMore {
+		records = records[:limitN]
+	}
+	var totalRec tokenScalarAggRecord
+	if err := s.usageRowsQuery(opts).Select(aggExpr).Scan(&totalRec).Error; err != nil {
+		return nil, nil, 0, false, err
+	}
+	table := make(map[string]*adminScalarAgg, len(records))
+	for _, rec := range records {
+		scalar := adminScalarAggFromSQLRecord(rec, baseline)
+		mapKey := joinKey(scalar.Key, scalar.SecondaryKey)
+		table[mapKey] = scalar
+	}
+	total := aggFromTokenScalarAggRecord(totalRec)
+	return table, &total, totalRec.BaselineCostUSD, hasMore, nil
+}
+
+func adminScalarAggSQLSelectExpr(baseline adminSavingsBaselineDTO) string {
+	return `
 		COUNT(*) AS calls,
 		SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
 		SUM(CASE WHEN stream THEN 1 ELSE 0 END) AS streams,
@@ -4264,6 +4382,7 @@ func (s *usageStore) adminTokenScalarAggs(opts UsageReportOptions, baseline admi
 		SUM(output_cost_usd) AS output_cost_usd,
 		SUM(total_cost_usd) AS total_cost_usd,
 		SUM(upstream_reported_total_cost_usd) AS upstream_reported_cost_usd,
+		` + adminBaselineCostSQLExpr(baseline) + ` AS baseline_cost_usd,
 		SUM(latency_ms) AS latency_ms,
 		MAX(latency_ms) AS max_latency_ms,
 		SUM(COALESCE(ttfb_ms, 0)) AS ttfb_ms,
@@ -4290,31 +4409,107 @@ func (s *usageStore) adminTokenScalarAggs(opts UsageReportOptions, baseline admi
 		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN cache_bytes ELSE 0 END) AS cache_bytes_sum,
 		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN cache_occupancy_pct ELSE 0 END) AS cache_occupancy_sum,
 		SUM(CASE WHEN cache_enabled OR cache_max_bytes > 0 THEN 1 ELSE 0 END) AS cache_snapshot_count`
-	var records []tokenScalarAggRecord
-	if err := s.usageRowsQuery(opts).Select(selectExpr).Group(keyExpr).Scan(&records).Error; err != nil {
-		return nil, nil, err
+}
+
+func adminBaselineCostSQLExpr(baseline adminSavingsBaselineDTO) string {
+	if baseline.BaselineID == "" {
+		return "0"
 	}
-	table := make(map[string]*adminScalarAgg, len(records))
-	total := &agg{}
-	for _, rec := range records {
-		a := aggFromTokenScalarAggRecord(rec)
-		total.addAgg(a)
-		scalar := &adminScalarAgg{
-			Key:                     rec.Key,
-			Agg:                     a,
-			InputImageCount:         rec.InputImageCount,
-			InputImageTokens:        rec.InputImageTokens,
-			PIIFilteredRequests:     rec.PIIFilteredRequests,
-			PIIFilterReplacements:   rec.PIIFilterReplacements,
-			UpstreamReportedCostUSD: rec.UpstreamReportedCostUSD,
-		}
+	return fmt.Sprintf("((SUM(input_tokens) / 1000000.0) * %.12g) + ((SUM(output_tokens) / 1000000.0) * %.12g)", baseline.BaselineInputPricePerMillionUSD, baseline.BaselineOutputPricePerMillionUSD)
+}
+
+func adminScalarAggSQLOrder(sortKey string, baseline adminSavingsBaselineDTO) string {
+	tie := "key ASC, secondary_key ASC"
+	switch sortKey {
+	case "savings":
 		if baseline.BaselineID != "" {
-			scalar.HasBaseline = true
-			scalar.BaselineCostUSD = (float64(rec.InputTokens)/1_000_000)*baseline.BaselineInputPricePerMillionUSD + (float64(rec.OutputTokens)/1_000_000)*baseline.BaselineOutputPricePerMillionUSD
+			return "(" + adminBaselineCostSQLExpr(baseline) + " - SUM(total_cost_usd)) DESC, " + tie
 		}
-		table[rec.Key] = scalar
+		return "SUM(total_cost_usd) DESC, " + tie
+	case "cost":
+		return "SUM(total_cost_usd) DESC, " + tie
+	case "tokens":
+		return "SUM(CASE WHEN total_tokens = 0 THEN input_tokens + output_tokens ELSE total_tokens END) DESC, " + tie
+	case "latency":
+		return "CASE WHEN COUNT(*) = 0 THEN 0 ELSE SUM(latency_ms) * 1.0 / COUNT(*) END DESC, " + tie
+	case "errors":
+		return "SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) DESC, " + tie
+	case "fallbacks":
+		return "SUM(CASE WHEN fallback_used THEN 1 ELSE 0 END) DESC, " + tie
+	case "image":
+		return "SUM(input_image_count) DESC, " + tie
+	case "key":
+		return tie
+	default:
+		return "COUNT(*) DESC, " + tie
 	}
-	return table, total, nil
+}
+
+func adminScalarAggFromSQLRecord(rec tokenScalarAggRecord, baseline adminSavingsBaselineDTO) *adminScalarAgg {
+	scalar := &adminScalarAgg{
+		Key:                     defaultString(rec.Key, "unknown"),
+		SecondaryKey:            rec.SecondaryKey,
+		Agg:                     aggFromTokenScalarAggRecord(rec),
+		InputImageCount:         rec.InputImageCount,
+		InputImageTokens:        rec.InputImageTokens,
+		PIIFilteredRequests:     rec.PIIFilteredRequests,
+		PIIFilterReplacements:   rec.PIIFilterReplacements,
+		UpstreamReportedCostUSD: rec.UpstreamReportedCostUSD,
+	}
+	if baseline.BaselineID != "" {
+		scalar.HasBaseline = true
+		scalar.BaselineCostUSD = rec.BaselineCostUSD
+	}
+	return scalar
+}
+
+func adminScalarDimensionSQLExpr(dimension string) (string, bool) {
+	switch dimension {
+	case "":
+		return "''", true
+	case "caller_id":
+		return adminSQLDefault("caller_id", "unknown"), true
+	case "caller_user":
+		return adminSQLDefault("caller_user", "unknown"), true
+	case "token_id":
+		return adminSQLDefault("token_id", "unknown"), true
+	case "requested_model":
+		return adminSQLDefault("requested_model", "unknown"), true
+	case "model_group":
+		return "COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')", true
+	case "provider_model":
+		return adminSQLDefault("target_provider", "unknown") + " || '/' || " + adminSQLDefault("target_model", "unknown"), true
+	case "dialect":
+		return adminSQLDefault("target_dialect", "unknown"), true
+	case "client":
+		return adminSQLDefault("client", "unknown"), true
+	case "inbound_dialect":
+		return adminSQLDefault("inbound_dialect", "unknown"), true
+	case "status_error":
+		return "CAST(status AS TEXT) || '/' || CASE WHEN status >= 400 THEN " + adminSQLDefault("error", "error") + " ELSE 'ok' END", true
+	case "cache":
+		return adminSQLDefault("cache", "bypass"), true
+	case "quota_key_state":
+		return adminSQLDefault("quota_state", "unknown") + " || '/' || " + adminSQLDefault("key_state", "unknown"), true
+	case "routing_decision":
+		return adminSQLDefault("strategy", "unknown") + " || '/' || COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')", true
+	case "contract_bucket":
+		return "CASE WHEN contract_present THEN " + adminSQLDefault("contract_bucket", "unknown") + " ELSE 'none' END", true
+	case "contract_workload":
+		return "CASE WHEN contract_present THEN " + adminSQLDefault("contract_workload", "unspecified") + " ELSE 'none' END", true
+	case "target_validation":
+		return adminSQLDefault("target_validation_status", "missing") + " || '/' || " + adminSQLDefault("target_validation_age_bucket", "missing"), true
+	case "project":
+		return adminSQLDefault("caller_project", "unknown"), true
+	case "environment":
+		return adminSQLDefault("caller_environment", "unknown"), true
+	default:
+		return "", false
+	}
+}
+
+func adminSQLDefault(column, fallback string) string {
+	return "COALESCE(NULLIF(" + column + ", ''), '" + fallback + "')"
 }
 
 func aggFromTokenScalarAggRecord(rec tokenScalarAggRecord) agg {
