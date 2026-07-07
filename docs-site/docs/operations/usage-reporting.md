@@ -89,7 +89,7 @@ router-usage-report \
   --caller-user <owner-user>
 ```
 
-The advisor reads existing usage, caller shaping, provider shaping, adaptive backoff, and upstream attempt rows. It emits recommendation classes, safe evidence counts, queue wait and retry-after percentiles, upstream 400/429/5xx/timeout counts, fallback rate, affected user/client counts, triggering threshold, and config fields to inspect. It does not change config automatically.
+The advisor reads existing usage, caller shaping, provider shaping, adaptive backoff, and upstream attempt data as grouped SQL feature rows. It emits recommendation classes, safe evidence counts, queue wait and retry-after percentiles, upstream 400/429/5xx/timeout counts, fallback rate, affected user/client counts, triggering threshold, and config fields to inspect. It does not change config automatically or materialize raw request rows in the report process.
 
 Interpretation examples:
 

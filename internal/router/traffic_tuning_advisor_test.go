@@ -1,8 +1,10 @@
 package router
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTrafficTuningAdvisorRoutesAroundUpstream400WhenShapingAdmitted(t *testing.T) {
@@ -118,6 +120,112 @@ func TestTrafficTuningAdvisorNoSignificantErrors(t *testing.T) {
 	}
 }
 
+func TestTrafficTuningAdvisorSQLRoutesAroundUpstream400(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	for i, spec := range []struct {
+		requestID string
+		status    int
+		attempt   int
+	}{
+		{"req_sql_1", 502, 400},
+		{"req_sql_2", 502, 400},
+		{"req_sql_3", 200, 200},
+	} {
+		if err := store.db.Create(advisorUsageRecord(spec.requestID, spec.status, from.Add(time.Duration(i)*time.Minute))).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := store.db.Create(&requestAttemptRecord{
+			RequestID:    spec.requestID,
+			AttemptIndex: 1,
+			TS:           formatUsageTime(from.Add(time.Duration(i) * time.Minute)),
+			Provider:     "mock",
+			Model:        "mock-model",
+			Dialect:      "openai-chat",
+			StatusCode:   spec.attempt,
+			Selected:     true,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, total, hasMore, err := store.trafficTuningAdvisorRowsSQL(UsageReportOptions{From: from, To: from.Add(time.Hour)}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("hasMore=true, want false")
+	}
+	if total == nil || total.Calls != 3 {
+		t.Fatalf("total=%#v, want 3 calls", total)
+	}
+	if len(rows) == 0 || rows[0].Recommendation != "route_around_incompatible_target" {
+		t.Fatalf("top SQL recommendation=%#v, want route_around_incompatible_target", rows)
+	}
+	if rows[0].Upstream400 != 2 || rows[0].Rejected != 0 || rows[0].Queued != 0 {
+		t.Fatalf("unexpected SQL evidence: %#v", rows[0])
+	}
+}
+
+func TestTrafficTuningAdvisorSQLProvider429AcrossUsersAndLimit(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	for i, user := range []string{"alice", "bob"} {
+		requestID := "req_provider_429_" + user
+		record := advisorUsageRecord(requestID, 502, from.Add(time.Duration(i)*time.Minute))
+		record.CallerUser = user
+		if err := store.db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := store.db.Create(&requestAttemptRecord{
+			RequestID:    requestID,
+			AttemptIndex: 1,
+			TS:           formatUsageTime(from.Add(time.Duration(i) * time.Minute)),
+			Provider:     "mock",
+			Model:        "mock-model",
+			Dialect:      "openai-chat",
+			StatusCode:   429,
+			Selected:     true,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := store.db.Create(&requestUpstreamShapeEventRecord{
+			RequestID:     requestID,
+			Seq:           1,
+			TS:            formatUsageTime(from.Add(time.Duration(i) * time.Minute)),
+			Scope:         "provider",
+			Provider:      "mock",
+			Model:         "mock-model",
+			Dialect:       "openai-chat",
+			Bucket:        shapeBucketBackoff,
+			Decision:      shapeDecisionCooldownStarted,
+			BackoffReason: "adaptive-backoff-provider-429",
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, _, hasMore, err := store.trafficTuningAdvisorRowsSQL(UsageReportOptions{From: from, To: from.Add(time.Hour)}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore {
+		t.Fatal("hasMore=false, want true for limit 1")
+	}
+	if len(rows) != 1 || rows[0].Recommendation != "investigate_provider_429_capacity" {
+		t.Fatalf("limited SQL recommendation=%#v, want provider capacity", rows)
+	}
+	if rows[0].AffectedUsers != 2 {
+		t.Fatalf("affected_users=%d, want 2: %#v", rows[0].AffectedUsers, rows[0])
+	}
+}
+
 func advisorUsageRow(requestID string, status int) usageRow {
 	return usageRow{
 		RequestID:          requestID,
@@ -134,5 +242,36 @@ func advisorUsageRow(requestID string, status int) usageRow {
 		Status:             status,
 		LatencyMS:          100,
 		TrafficShapeBucket: "caller.request_start_per_sec",
+	}
+}
+
+func advisorUsageRecord(requestID string, status int, ts time.Time) *usageRecord {
+	row := advisorUsageRow(requestID, status)
+	return &usageRecord{
+		RequestID:               row.RequestID,
+		TS:                      formatUsageTime(ts),
+		CallerID:                row.CallerID,
+		CallerUser:              row.CallerUser,
+		CallerProject:           row.CallerProject,
+		CallerEnvironment:       row.CallerEnvironment,
+		TokenID:                 "tok_test",
+		Client:                  row.Client,
+		InboundDialect:          "openai-chat",
+		RequestedModel:          row.RequestedModel,
+		ResolvedGroup:           row.ResolvedGroup,
+		Strategy:                "weighted",
+		TargetProvider:          row.TargetProvider,
+		TargetModel:             row.TargetModel,
+		TargetDialect:           row.TargetDialect,
+		Status:                  status,
+		Attempts:                1,
+		FallbackUsed:            status >= 500,
+		LatencyMS:               100,
+		QuotaState:              "ok",
+		KeyState:                "active",
+		TrafficShapeBucket:      row.TrafficShapeBucket,
+		TrafficShapeDecision:    row.TrafficShapeDecision,
+		TrafficShapeApplied:     row.TrafficShapeApplied,
+		TrafficShapeQueueWaitMS: row.TrafficShapeQueueWaitMS,
 	}
 }

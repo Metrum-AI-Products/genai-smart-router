@@ -1302,22 +1302,12 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if spec.Report == "traffic-tuning-advisor" {
-		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
+		advisorRows, total, hasMore, err := s.usage.trafficTuningAdvisorRowsSQL(filters.UsageReportOptions, filters.Limit)
 		if err != nil {
 			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
-		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
-		if err != nil {
-			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
-			return
-		}
-		attempts, err := s.usage.trafficTuningAttemptsForRows(rows, filters.UsageReportOptions)
-		if err != nil {
-			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, buildAdminTrafficTuningAdvisorResponse(filters, rows, events, attempts, spec))
+		writeJSON(w, http.StatusOK, buildAdminTrafficTuningAdvisorResponse(filters, advisorRows, total, hasMore))
 		return
 	}
 	if spec.ShapeReport != "" {
@@ -3567,16 +3557,10 @@ func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, 
 	return resp
 }
 
-func buildAdminTrafficTuningAdvisorResponse(filters adminReportFilters, rows []usageRow, upstreamEvents []upstreamShapeJoinedEvent, attempts []trafficTuningAttempt, spec adminScalarEndpointSpec) adminScalarReportResponse {
+func buildAdminTrafficTuningAdvisorResponse(filters adminReportFilters, advisorRows []TrafficTuningAdvisorRow, total *agg, hasMore bool) adminScalarReportResponse {
 	generatedAt := formatUsageTime(time.Now().UTC())
-	total := &agg{}
-	for _, row := range rows {
-		total.add(row)
-	}
-	advisorRows := BuildTrafficTuningAdvisor(rows, upstreamEvents, attempts)
-	totalAdvisorRows := len(advisorRows)
-	if filters.Limit > 0 && len(advisorRows) > filters.Limit {
-		advisorRows = advisorRows[:filters.Limit]
+	if total == nil {
+		total = &agg{}
 	}
 	respRows := make([]adminScalarReportRow, 0, len(advisorRows))
 	for _, row := range advisorRows {
@@ -3622,10 +3606,10 @@ func buildAdminTrafficTuningAdvisorResponse(filters adminReportFilters, rows []u
 	}
 	return adminScalarReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
-		Report:       spec.Report,
+		Report:       "traffic-tuning-advisor",
 		Summary:      adminSummaryFromAgg(total),
 		Rows:         respRows,
-		Pagination:   adminTopNPagination(filters, len(respRows), filters.Limit > 0 && totalAdvisorRows > filters.Limit, "Traffic tuning advisor rows are top-N by severity and request count."),
+		Pagination:   adminTopNPagination(filters, len(respRows), hasMore, "Traffic tuning advisor rows are grouped SQL feature rows ranked by severity and request count; raw request rows are not materialized."),
 		GeneratedUTC: generatedAt,
 	}
 }
