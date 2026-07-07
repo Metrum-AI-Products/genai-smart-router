@@ -983,6 +983,252 @@ func TestAdminScalarAggsSQLUsesLatestCacheSnapshot(t *testing.T) {
 	}
 }
 
+func TestAdminShapeAggsSQLAggregatesCallerShapingWithLimit(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	rows := []usageRow{
+		{
+			TS:                               from.Add(time.Hour),
+			RequestID:                        "req_alice_1",
+			CallerUser:                       "alice",
+			CallerProject:                    "analytics",
+			TokenID:                          "rtr_alice",
+			Client:                           "codex",
+			RequestedModel:                   "default",
+			ResolvedGroup:                    "default",
+			Status:                           429,
+			Attempts:                         0,
+			LatencyMS:                        20,
+			TrafficShapeApplied:              true,
+			TrafficShapeDecision:             trafficShapeDecisionQueued,
+			TrafficShapeScope:                "caller",
+			TrafficShapeBucket:               "caller.total_reserved_tokens_per_sec",
+			TrafficShapeRetryAfterMS:         750,
+			TrafficShapeQueueWaitMS:          100,
+			TrafficShapeEstimatedInputTokens: 10,
+			TrafficShapeReservedOutputTokens: 90,
+			TrafficShapeTotalReservedTokens:  100,
+		},
+		{
+			TS:                               from.Add(2 * time.Hour),
+			RequestID:                        "req_alice_2",
+			CallerUser:                       "alice",
+			CallerProject:                    "analytics",
+			TokenID:                          "rtr_alice",
+			Client:                           "codex",
+			RequestedModel:                   "default",
+			ResolvedGroup:                    "default",
+			Status:                           200,
+			Attempts:                         1,
+			LatencyMS:                        50,
+			TrafficShapeApplied:              true,
+			TrafficShapeDecision:             trafficShapeDecisionQueued,
+			TrafficShapeScope:                "caller",
+			TrafficShapeBucket:               "caller.total_reserved_tokens_per_sec",
+			TrafficShapeRetryAfterMS:         250,
+			TrafficShapeQueueWaitMS:          300,
+			TrafficShapeEstimatedInputTokens: 20,
+			TrafficShapeReservedOutputTokens: 80,
+			TrafficShapeTotalReservedTokens:  100,
+		},
+		{
+			TS:                               from.Add(3 * time.Hour),
+			RequestID:                        "req_bob",
+			CallerUser:                       "bob",
+			CallerProject:                    "analytics",
+			TokenID:                          "rtr_bob",
+			Client:                           "claude-code",
+			RequestedModel:                   "default",
+			ResolvedGroup:                    "default",
+			Status:                           429,
+			Attempts:                         0,
+			LatencyMS:                        25,
+			TrafficShapeApplied:              true,
+			TrafficShapeDecision:             trafficShapeDecisionRejected,
+			TrafficShapeScope:                "caller",
+			TrafficShapeBucket:               "caller.request_start_per_sec",
+			TrafficShapeRetryAfterMS:         100,
+			TrafficShapeEstimatedInputTokens: 1,
+			TrafficShapeReservedOutputTokens: 1,
+			TrafficShapeTotalReservedTokens:  2,
+		},
+		{
+			TS:             from.Add(4 * time.Hour),
+			RequestID:      "req_unshaped",
+			CallerUser:     "carol",
+			CallerProject:  "analytics",
+			TokenID:        "rtr_carol",
+			Client:         "codex",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			Status:         200,
+			Attempts:       1,
+			LatencyMS:      10,
+		},
+	}
+	for _, row := range rows {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	table, total, hasMore, err := store.adminShapeAggsSQL(
+		UsageReportOptions{From: from, To: to, CallerProject: "analytics"},
+		adminScalarEndpointSpec{Report: "traffic-shaping-by-user", Dimension: "caller_user", Secondary: "shape_bucket", ShapeReport: "caller", Sort: "requests"},
+		"requests",
+		1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore {
+		t.Fatal("expected top-N overflow")
+	}
+	if total.Calls != 4 {
+		t.Fatalf("summary calls=%d, want all filtered usage rows", total.Calls)
+	}
+	if len(table) != 1 {
+		t.Fatalf("table len=%d: %#v", len(table), table)
+	}
+	agg := table[joinKey("alice", "caller|caller.total_reserved_tokens_per_sec|"+trafficShapeDecisionQueued)]
+	if agg == nil {
+		t.Fatalf("missing alice aggregate: %#v", table)
+	}
+	got := agg.row()
+	if got.Key != "alice" || got.Requests != 2 || got.Rejections != 0 || got.Queued != 2 || got.EstimatedInputTokens != 30 || got.TotalReservedTokens != 200 {
+		t.Fatalf("caller aggregate mismatch: %#v", got)
+	}
+	if got.AvgRetryAfterMS != 500 || got.MaxRetryAfterMS != 750 || got.P50QueueWaitMS != 100 || got.P95QueueWaitMS != 300 {
+		t.Fatalf("caller retry/queue aggregate mismatch: %#v", got)
+	}
+}
+
+func TestAdminShapeAggsSQLAggregatesProviderAndAdaptiveBackoff(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	for _, row := range []usageRow{
+		{
+			TS:             from.Add(time.Hour),
+			RequestID:      "req_route_around",
+			CallerProject:  "analytics",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			TargetProvider: "mock",
+			TargetModel:    "mock-model",
+			TargetDialect:  "openai-chat",
+			Status:         200,
+			Attempts:       2,
+			FallbackUsed:   true,
+			LatencyMS:      100,
+		},
+		{
+			TS:             from.Add(2 * time.Hour),
+			RequestID:      "req_cooldown",
+			CallerProject:  "analytics",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			TargetProvider: "mock",
+			TargetModel:    "mock-model",
+			TargetDialect:  "openai-chat",
+			Status:         503,
+			Attempts:       1,
+			LatencyMS:      80,
+		},
+	} {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	events := []requestUpstreamShapeEventRecord{
+		{
+			RequestID:            "req_route_around",
+			Seq:                  1,
+			TS:                   formatUsageTime(from.Add(time.Hour)),
+			Scope:                "provider",
+			Provider:             "mock",
+			Model:                "mock-model",
+			Dialect:              "openai-chat",
+			Bucket:               shapeBucketRequestStart,
+			Decision:             shapeDecisionSkipped,
+			RetryAfterMS:         100,
+			EstimatedInputTokens: 10,
+			ReservedOutputTokens: 20,
+			TotalReservedTokens:  30,
+			BackoffReason:        "provider-shape-throttled",
+		},
+		{
+			RequestID:            "req_cooldown",
+			Seq:                  1,
+			TS:                   formatUsageTime(from.Add(2 * time.Hour)),
+			Scope:                "provider",
+			Provider:             "mock",
+			Model:                "mock-model",
+			Dialect:              "openai-chat",
+			Bucket:               shapeBucketBackoff,
+			Decision:             shapeDecisionCooldownStarted,
+			RetryAfterMS:         1000,
+			QueueWaitMS:          250,
+			EstimatedInputTokens: 5,
+			ReservedOutputTokens: 15,
+			TotalReservedTokens:  20,
+			BackoffReason:        "adaptive-backoff-provider-429",
+		},
+	}
+	for _, event := range events {
+		if err := store.db.Create(&event).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	table, total, hasMore, err := store.adminShapeAggsSQL(
+		UsageReportOptions{From: from, To: to, CallerProject: "analytics"},
+		adminScalarEndpointSpec{Report: "provider-capacity-shaping", Dimension: "provider_model", Secondary: "shape_bucket", ShapeReport: "upstream", Sort: "requests"},
+		"requests",
+		10,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("unexpected pagination overflow")
+	}
+	if total.Calls != 2 {
+		t.Fatalf("summary calls=%d, want 2", total.Calls)
+	}
+	if got := table[joinKey("mock/mock-model", "provider|"+shapeBucketRequestStart+"|"+shapeDecisionSkipped)].row(); got.Requests != 1 || got.SkippedTargets != 1 || got.RouteAroundSuccesses != 1 || got.Fallbacks != 1 {
+		t.Fatalf("provider skip aggregate mismatch: %#v", got)
+	}
+	if got := table[joinKey("mock/mock-model", "provider|"+shapeBucketBackoff+"|"+shapeDecisionCooldownStarted)].row(); got.Requests != 1 || got.CooldownsStarted != 1 || got.Upstream429Attempts != 1 || got.P50QueueWaitMS != 250 {
+		t.Fatalf("provider cooldown aggregate mismatch: %#v", got)
+	}
+	adaptive, _, adaptiveMore, err := store.adminShapeAggsSQL(
+		UsageReportOptions{From: from, To: to, CallerProject: "analytics"},
+		adminScalarEndpointSpec{Report: "adaptive-upstream-backoff", Dimension: "backoff_reason", Secondary: "provider_model", ShapeReport: "adaptive", Sort: "requests"},
+		"requests",
+		10,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adaptiveMore {
+		t.Fatal("unexpected adaptive pagination overflow")
+	}
+	if len(adaptive) != 1 {
+		t.Fatalf("adaptive rows=%d: %#v", len(adaptive), adaptive)
+	}
+	if got := adaptive[joinKey("adaptive-backoff-provider-429", "mock|mock-model")].row(); got.Requests != 1 || got.SkippedTargets != 0 || got.CooldownsStarted != 1 {
+		t.Fatalf("adaptive aggregate mismatch: %#v", got)
+	}
+}
+
 func TestUsageRollupHourlyAndMonthlyWithBaseline(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

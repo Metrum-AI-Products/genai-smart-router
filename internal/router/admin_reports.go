@@ -1321,18 +1321,13 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if spec.ShapeReport != "" {
-		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
+		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, spec.Sort)
+		resp, err := s.buildAdminShapeReportResponseSQL(filters, spec)
 		if err != nil {
 			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
-		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
-		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
-		if err != nil {
-			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, buildAdminShapeReportResponse(filters, rows, events, spec))
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 	var baseline adminSavingsBaselineDTO
@@ -1457,6 +1452,25 @@ func (s *Service) buildAdminDiagnosticReportResponseSQL(filters adminReportFilte
 		Rows:         reportRows,
 		Charts:       adminDiagnosticCharts(filters, generatedAt, spec, reportRows),
 		Pagination:   adminTopNPagination(filters, len(reportRows), hasMore, "Diagnostic aggregate rows are top-N for the selected filters."),
+		GeneratedUTC: generatedAt,
+	}
+	return resp, nil
+}
+
+func (s *Service) buildAdminShapeReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec) (adminScalarReportResponse, error) {
+	table, total, hasMore, err := s.usage.adminShapeAggsSQL(filters.UsageReportOptions, spec, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	generatedAt := formatUsageTime(time.Now().UTC())
+	reportRows := adminShapeRowsFromAgg(table, filters.Limit)
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		Rows:         reportRows,
+		Charts:       adminShapeCharts(filters, generatedAt, spec, reportRows),
+		Pagination:   adminTopNPagination(filters, len(reportRows), hasMore, "Traffic shaping aggregate rows are top-N for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
 	return resp, nil

@@ -4297,6 +4297,31 @@ type diagnosticAggSQLRecord struct {
 	MaxUpstreamMS           int64
 }
 
+type shapeAggSQLRecord struct {
+	Key                string
+	SecondaryKey       string
+	Requests           int64
+	Rejected           int64
+	Queued             int64
+	SkippedTargets     int64
+	CooldownsStarted   int64
+	RetryAfterMS       int64
+	RetryAfterCount    int64
+	MaxRetryAfterMS    int64
+	QueueWaitMS        int64
+	QueueWaitCount     int64
+	MaxQueueWaitMS     int64
+	EstimatedInput     int64
+	ReservedOutput     int64
+	TotalReserved      int64
+	Upstream429        int64
+	UpstreamQuota      int64
+	Fallbacks          int64
+	RouteAroundSuccess int64
+	P50QueueWaitMS     int64
+	P95QueueWaitMS     int64
+}
+
 type savingsAggRecord struct {
 	Key               string
 	Requests          int64
@@ -4848,6 +4873,335 @@ func adminScalarAggFromSQLRecord(rec tokenScalarAggRecord, baseline adminSavings
 		scalar.BaselineCostUSD = rec.BaselineCostUSD
 	}
 	return scalar
+}
+
+func (s *usageStore) adminShapeAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) (map[string]*adminShapeAgg, *agg, bool, error) {
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	var totalRec tokenScalarAggRecord
+	if err := s.usageRowsQuery(opts).Select(adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})).Scan(&totalRec).Error; err != nil {
+		return nil, nil, false, err
+	}
+	table := map[string]*adminShapeAgg{}
+	var hasMore bool
+	includeCaller := spec.ShapeReport == "overview" || spec.ShapeReport == "caller"
+	includeUpstream := spec.ShapeReport == "overview" || spec.ShapeReport == "upstream" || spec.ShapeReport == "adaptive"
+	if includeCaller {
+		records, more, err := s.adminCallerShapeAggsSQL(opts, spec, sortKey, limitN)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, rec := range records {
+			adminMergeShapeSQLRecord(table, rec)
+		}
+	}
+	if includeUpstream {
+		records, more, err := s.adminUpstreamShapeAggsSQL(opts, spec, sortKey, limitN)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, rec := range records {
+			adminMergeShapeSQLRecord(table, rec)
+		}
+	}
+	if len(table) > limitN {
+		hasMore = true
+		trimmed := adminShapeRowsFromAgg(table, limitN)
+		keep := map[string]bool{}
+		for _, row := range trimmed {
+			keep[joinKey(row.Key, row.SecondaryKey)] = true
+		}
+		for key := range table {
+			if !keep[key] {
+				delete(table, key)
+			}
+		}
+	}
+	total := aggFromTokenScalarAggRecord(totalRec)
+	return table, &total, hasMore, nil
+}
+
+func (s *usageStore) adminCallerShapeAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) ([]shapeAggSQLRecord, bool, error) {
+	keyExpr, secondaryExpr, err := adminCallerShapeSQLKeyExpr(spec)
+	if err != nil {
+		return nil, false, err
+	}
+	selectExpr := keyExpr + ` AS key,
+		` + secondaryExpr + ` AS secondary_key,
+		COUNT(*) AS requests,
+		SUM(CASE WHEN traffic_shape_decision = '` + trafficShapeDecisionRejected + `' THEN 1 ELSE 0 END) AS rejected,
+		SUM(CASE WHEN traffic_shape_decision = '` + trafficShapeDecisionQueued + `' THEN 1 ELSE 0 END) AS queued,
+		SUM(CASE WHEN traffic_shape_retry_after_ms > 0 THEN traffic_shape_retry_after_ms ELSE 0 END) AS retry_after_ms,
+		SUM(CASE WHEN traffic_shape_retry_after_ms > 0 THEN 1 ELSE 0 END) AS retry_after_count,
+		MAX(CASE WHEN traffic_shape_retry_after_ms > 0 THEN traffic_shape_retry_after_ms ELSE 0 END) AS max_retry_after_ms,
+		SUM(CASE WHEN traffic_shape_queue_wait_ms > 0 THEN traffic_shape_queue_wait_ms ELSE 0 END) AS queue_wait_ms,
+		SUM(CASE WHEN traffic_shape_queue_wait_ms > 0 THEN 1 ELSE 0 END) AS queue_wait_count,
+		MAX(CASE WHEN traffic_shape_queue_wait_ms > 0 THEN traffic_shape_queue_wait_ms ELSE 0 END) AS max_queue_wait_ms,
+		SUM(traffic_shape_estimated_input_tokens) AS estimated_input,
+		SUM(traffic_shape_reserved_output_tokens) AS reserved_output,
+		SUM(traffic_shape_total_reserved_tokens) AS total_reserved`
+	var records []shapeAggSQLRecord
+	q := s.usageRowsQuery(opts).Where("traffic_shape_applied = ?", true).
+		Select(selectExpr).
+		Group(keyExpr + ", " + secondaryExpr).
+		Order(adminShapeAggSQLOrder(sortKey)).
+		Limit(limit + 1)
+	if err := q.Scan(&records).Error; err != nil {
+		return nil, false, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	for i := range records {
+		if err := s.applyCallerShapeQueuePercentiles(opts, keyExpr, secondaryExpr, &records[i]); err != nil {
+			return nil, false, err
+		}
+	}
+	return records, hasMore, nil
+}
+
+func (s *usageStore) adminUpstreamShapeAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) ([]shapeAggSQLRecord, bool, error) {
+	keyExpr, secondaryExpr, err := adminUpstreamShapeSQLKeyExpr(spec)
+	if err != nil {
+		return nil, false, err
+	}
+	parent := s.usageRowsQuery(opts)
+	q := s.db.Table("request_upstream_shape_events AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", parent)
+	if opts.TrafficShapeScope != "" {
+		q = q.Where("child.scope = ?", opts.TrafficShapeScope)
+	}
+	if opts.TrafficShapeBucket != "" {
+		q = q.Where("child.bucket = ?", opts.TrafficShapeBucket)
+	}
+	if opts.TargetProvider != "" {
+		q = q.Where("child.provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("child.model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("child.dialect = ?", opts.TargetDialect)
+	}
+	if spec.ShapeReport == "adaptive" {
+		q = q.Where("child.bucket = ?", shapeBucketBackoff)
+	}
+	selectExpr := keyExpr + ` AS key,
+		` + secondaryExpr + ` AS secondary_key,
+		COUNT(*) AS requests,
+		SUM(CASE WHEN child.decision = '` + shapeDecisionRejected + `' THEN 1 ELSE 0 END) AS rejected,
+		SUM(CASE WHEN child.decision = '` + shapeDecisionSkipped + `' THEN 1 ELSE 0 END) AS skipped_targets,
+		SUM(CASE WHEN child.decision = '` + shapeDecisionCooldownStarted + `' THEN 1 ELSE 0 END) AS cooldowns_started,
+		SUM(CASE WHEN child.retry_after_ms > 0 THEN child.retry_after_ms ELSE 0 END) AS retry_after_ms,
+		SUM(CASE WHEN child.retry_after_ms > 0 THEN 1 ELSE 0 END) AS retry_after_count,
+		MAX(CASE WHEN child.retry_after_ms > 0 THEN child.retry_after_ms ELSE 0 END) AS max_retry_after_ms,
+		SUM(CASE WHEN child.queue_wait_ms > 0 THEN child.queue_wait_ms ELSE 0 END) AS queue_wait_ms,
+		SUM(CASE WHEN child.queue_wait_ms > 0 THEN 1 ELSE 0 END) AS queue_wait_count,
+		MAX(CASE WHEN child.queue_wait_ms > 0 THEN child.queue_wait_ms ELSE 0 END) AS max_queue_wait_ms,
+		SUM(child.estimated_input_tokens) AS estimated_input,
+		SUM(child.reserved_output_tokens) AS reserved_output,
+		SUM(child.total_reserved_tokens) AS total_reserved,
+		SUM(CASE WHEN child.backoff_reason = 'adaptive-backoff-provider-429' THEN 1 ELSE 0 END) AS upstream429,
+		SUM(CASE WHEN child.backoff_reason = 'adaptive-backoff-provider-quota' THEN 1 ELSE 0 END) AS upstream_quota,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(CASE WHEN child.decision = '` + shapeDecisionSkipped + `' AND u.status < 400 THEN 1 ELSE 0 END) AS route_around_success`
+	var records []shapeAggSQLRecord
+	q = q.Select(selectExpr).
+		Group(keyExpr + ", " + secondaryExpr).
+		Order(adminUpstreamShapeAggSQLOrder(sortKey)).
+		Limit(limit + 1)
+	if err := q.Scan(&records).Error; err != nil {
+		return nil, false, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	for i := range records {
+		if err := s.applyUpstreamShapeQueuePercentiles(opts, spec, keyExpr, secondaryExpr, &records[i]); err != nil {
+			return nil, false, err
+		}
+	}
+	return records, hasMore, nil
+}
+
+func adminCallerShapeSQLKeyExpr(spec adminScalarEndpointSpec) (string, string, error) {
+	keyExpr := "'caller'"
+	if spec.Dimension != "shape_surface" {
+		var ok bool
+		keyExpr, ok = adminScalarDimensionSQLExpr(spec.Dimension)
+		if !ok {
+			return "", "", fmt.Errorf("unsupported SQL caller shape dimension %q", spec.Dimension)
+		}
+	}
+	secondaryExpr := adminSQLDefault("traffic_shape_scope", "unknown") + " || '|' || " + adminSQLDefault("traffic_shape_bucket", "unknown") + " || '|' || " + adminSQLDefault("traffic_shape_decision", "unknown")
+	if spec.Secondary != "shape_bucket" {
+		var ok bool
+		secondaryExpr, ok = adminScalarDimensionSQLExpr(spec.Secondary)
+		if !ok {
+			return "", "", fmt.Errorf("unsupported SQL caller shape secondary dimension %q", spec.Secondary)
+		}
+	}
+	return keyExpr, secondaryExpr, nil
+}
+
+func adminUpstreamShapeSQLKeyExpr(spec adminScalarEndpointSpec) (string, string, error) {
+	bucketExpr := adminSQLDefault("child.scope", "unknown") + " || '|' || " + adminSQLDefault("child.bucket", "unknown") + " || '|' || " + adminSQLDefault("child.decision", "unknown")
+	switch spec.Dimension {
+	case "shape_surface":
+		return "'provider/model'", bucketExpr, nil
+	case "provider_model":
+		return adminSQLDefault("child.provider", "unknown") + " || '/' || " + adminSQLDefault("child.model", "unknown"), bucketExpr, nil
+	case "backoff_reason":
+		return adminSQLDefault("child.backoff_reason", "adaptive-backoff"), adminSQLDefault("child.provider", "unknown") + " || '|' || " + adminSQLDefault("child.model", "unknown"), nil
+	default:
+		keyExpr, ok := adminScalarDimensionSQLExprForAlias(spec.Dimension, "u")
+		if !ok {
+			return "", "", fmt.Errorf("unsupported SQL upstream shape dimension %q", spec.Dimension)
+		}
+		return keyExpr, bucketExpr, nil
+	}
+}
+
+func adminShapeAggSQLOrder(sortKey string) string {
+	tie := "key ASC, secondary_key ASC"
+	switch sortKey {
+	case "errors":
+		return "SUM(CASE WHEN traffic_shape_decision = '" + trafficShapeDecisionRejected + "' THEN 1 ELSE 0 END) DESC, " + tie
+	case "key":
+		return tie
+	default:
+		return "COUNT(*) DESC, " + tie
+	}
+}
+
+func adminUpstreamShapeAggSQLOrder(sortKey string) string {
+	tie := "key ASC, secondary_key ASC"
+	switch sortKey {
+	case "errors":
+		return "SUM(CASE WHEN child.decision = '" + shapeDecisionRejected + "' THEN 1 ELSE 0 END) DESC, " + tie
+	case "key":
+		return tie
+	default:
+		return "COUNT(*) DESC, " + tie
+	}
+}
+
+func (s *usageStore) applyCallerShapeQueuePercentiles(opts UsageReportOptions, keyExpr, secondaryExpr string, rec *shapeAggSQLRecord) error {
+	q := s.usageRowsQuery(opts).Where("traffic_shape_applied = ? AND traffic_shape_queue_wait_ms > 0", true).
+		Where(keyExpr+" = ? AND "+secondaryExpr+" = ?", rec.Key, rec.SecondaryKey)
+	p50, p95, err := s.shapeQueuePercentiles(q, "traffic_shape_queue_wait_ms")
+	if err != nil {
+		return err
+	}
+	rec.P50QueueWaitMS = p50
+	rec.P95QueueWaitMS = p95
+	return nil
+}
+
+func (s *usageStore) applyUpstreamShapeQueuePercentiles(opts UsageReportOptions, spec adminScalarEndpointSpec, keyExpr, secondaryExpr string, rec *shapeAggSQLRecord) error {
+	parent := s.usageRowsQuery(opts)
+	q := s.db.Table("request_upstream_shape_events AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", parent).
+		Where("child.queue_wait_ms > 0").
+		Where(keyExpr+" = ? AND "+secondaryExpr+" = ?", rec.Key, rec.SecondaryKey)
+	if opts.TrafficShapeScope != "" {
+		q = q.Where("child.scope = ?", opts.TrafficShapeScope)
+	}
+	if opts.TrafficShapeBucket != "" {
+		q = q.Where("child.bucket = ?", opts.TrafficShapeBucket)
+	}
+	if opts.TargetProvider != "" {
+		q = q.Where("child.provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("child.model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("child.dialect = ?", opts.TargetDialect)
+	}
+	if spec.ShapeReport == "adaptive" {
+		q = q.Where("child.bucket = ?", shapeBucketBackoff)
+	}
+	p50, p95, err := s.shapeQueuePercentiles(q, "child.queue_wait_ms")
+	if err != nil {
+		return err
+	}
+	rec.P50QueueWaitMS = p50
+	rec.P95QueueWaitMS = p95
+	return nil
+}
+
+func (s *usageStore) shapeQueuePercentiles(q *gorm.DB, column string) (int64, int64, error) {
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return 0, 0, err
+	}
+	if count == 0 {
+		return 0, 0, nil
+	}
+	percentileOffset := func(percentile int) int {
+		rank := int(math.Ceil(float64(percentile)/100*float64(count))) - 1
+		if rank < 0 {
+			return 0
+		}
+		if int64(rank) >= count {
+			return int(count - 1)
+		}
+		return rank
+	}
+	valueAt := func(offset int) (int64, error) {
+		var value int64
+		err := q.Session(&gorm.Session{}).Select(column).Order(column + " ASC").Limit(1).Offset(offset).Scan(&value).Error
+		return value, err
+	}
+	p50, err := valueAt(percentileOffset(50))
+	if err != nil {
+		return 0, 0, err
+	}
+	p95, err := valueAt(percentileOffset(95))
+	if err != nil {
+		return 0, 0, err
+	}
+	return p50, p95, nil
+}
+
+func adminMergeShapeSQLRecord(table map[string]*adminShapeAgg, rec shapeAggSQLRecord) {
+	row := adminShapeAggFor(table, rec.Key, rec.SecondaryKey)
+	row.Agg.Requests += rec.Requests
+	row.Agg.Rejected += rec.Rejected
+	row.Agg.Queued += rec.Queued
+	row.Agg.SkippedTargets += rec.SkippedTargets
+	row.Agg.CooldownsStarted += rec.CooldownsStarted
+	row.Agg.RetryAfterMS += rec.RetryAfterMS
+	row.Agg.RetryAfterCount += rec.RetryAfterCount
+	row.Agg.MaxRetryAfterMS = adminMaxInt64(row.Agg.MaxRetryAfterMS, rec.MaxRetryAfterMS)
+	row.Agg.QueueWaitMS += rec.QueueWaitMS
+	row.Agg.QueueWaitCount += rec.QueueWaitCount
+	row.Agg.MaxQueueWaitMS = adminMaxInt64(row.Agg.MaxQueueWaitMS, rec.MaxQueueWaitMS)
+	row.Agg.QueueWaitSamples = mergeShapePercentileSamples(row.Agg.QueueWaitSamples, rec.P50QueueWaitMS, rec.P95QueueWaitMS)
+	row.Agg.EstimatedInput += rec.EstimatedInput
+	row.Agg.ReservedOutput += rec.ReservedOutput
+	row.Agg.TotalReserved += rec.TotalReserved
+	row.Agg.Upstream429 += rec.Upstream429
+	row.Agg.UpstreamQuota += rec.UpstreamQuota
+	row.Agg.Fallbacks += rec.Fallbacks
+	row.Agg.RouteAroundSuccess += rec.RouteAroundSuccess
+}
+
+func mergeShapePercentileSamples(existing []int64, p50, p95 int64) []int64 {
+	if p50 > 0 {
+		existing = append(existing, p50)
+	}
+	if p95 > 0 && p95 != p50 {
+		existing = append(existing, p95)
+	}
+	return existing
 }
 
 func adminScalarDimensionSQLExpr(dimension string) (string, bool) {
