@@ -4747,6 +4747,124 @@ func (s *usageStore) adminScalarMultiBucketAggsSQL(opts UsageReportOptions, spec
 	return table, &total, hasMore, nil
 }
 
+func (s *usageStore) adminScalarDerivedBucketAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) (map[string]*adminScalarAgg, *agg, bool, error) {
+	secondaryExpr, ok := adminScalarDimensionSQLExprForAlias(spec.Secondary, "u")
+	if !ok {
+		return nil, nil, false, fmt.Errorf("unsupported SQL scalar secondary dimension %q", spec.Secondary)
+	}
+	selectors, err := adminScalarDerivedBucketSQLSelectors(spec, secondaryExpr)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	parent := s.usageRowsQuery(opts)
+	var bucketed *gorm.DB
+	for _, selector := range selectors {
+		q := s.db.Table("(?) AS u", parent).
+			Select("u.*, "+selector.KeyExpr+" AS key, "+secondaryExpr+" AS secondary_key").
+			Where(selector.WhereExpr, selector.Args...)
+		if bucketed == nil {
+			bucketed = q
+			continue
+		}
+		bucketed = s.db.Raw("? UNION ALL ?", bucketed, q)
+	}
+	if bucketed == nil {
+		return map[string]*adminScalarAgg{}, &agg{}, false, nil
+	}
+	records, hasMore, err := s.adminScalarBucketedAggsSQL(bucketed, sortKey, limitN)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	table := make(map[string]*adminScalarAgg, len(records))
+	for _, rec := range records {
+		scalar := adminScalarAggFromSQLRecord(rec, adminSavingsBaselineDTO{})
+		table[joinKey(scalar.Key, scalar.SecondaryKey)] = scalar
+	}
+	var totalRec tokenScalarAggRecord
+	if err := parent.Select(adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})).Scan(&totalRec).Error; err != nil {
+		return nil, nil, false, err
+	}
+	total := aggFromTokenScalarAggRecord(totalRec)
+	if err := s.applyLatestCacheSnapshotsSQL(opts, spec, table, &total); err != nil {
+		return nil, nil, false, err
+	}
+	return table, &total, hasMore, nil
+}
+
+type adminScalarDerivedBucketSQLSelector struct {
+	KeyExpr   string
+	WhereExpr string
+	Args      []any
+}
+
+func adminScalarDerivedBucketSQLSelectors(spec adminScalarEndpointSpec, secondaryExpr string) ([]adminScalarDerivedBucketSQLSelector, error) {
+	switch {
+	case spec.Anomalies && spec.Dimension == "anomaly":
+		return adminAnomalySQLSelectors(), nil
+	case spec.Dimension == "troubleshooting_bucket":
+		return adminTroubleshootingBucketSQLSelectors(), nil
+	case spec.Dimension == "capability":
+		return adminCapabilitySQLSelectors(), nil
+	default:
+		return nil, fmt.Errorf("unsupported SQL derived bucket dimension %q", spec.Dimension)
+	}
+}
+
+func adminTroubleshootingBucketSQLSelectors() []adminScalarDerivedBucketSQLSelector {
+	lowerError := "LOWER(COALESCE(u.error, ''))"
+	return []adminScalarDerivedBucketSQLSelector{
+		{KeyExpr: "CASE WHEN COALESCE(NULLIF(u.quota_state, ''), 'ok') <> 'ok' THEN 'quota:' || u.quota_state ELSE 'quota:error' END", WhereExpr: "(COALESCE(NULLIF(u.quota_state, ''), 'ok') <> ? OR " + lowerError + " LIKE ?)", Args: []any{"ok", "%quota%"}},
+		{KeyExpr: "'tpm'", WhereExpr: "(" + lowerError + " LIKE ? OR " + lowerError + " LIKE ?)", Args: []any{"%tpm%", "%token rate%"}},
+		{KeyExpr: "'rpm-rate-limit'", WhereExpr: "(" + lowerError + " LIKE ? OR " + lowerError + " LIKE ? OR u.status = ?)", Args: []any{"%rpm%", "%rate limit%", http.StatusTooManyRequests}},
+		{KeyExpr: "'concurrency'", WhereExpr: "(" + lowerError + " LIKE ? OR " + lowerError + " LIKE ?)", Args: []any{"%concurrency%", "%in-flight%"}},
+		{KeyExpr: "'max-token-or-context'", WhereExpr: "(" + lowerError + " LIKE ? OR " + lowerError + " LIKE ? OR " + lowerError + " LIKE ? OR " + lowerError + " LIKE ?)", Args: []any{"%max token%", "%max_tokens%", "%max_output_tokens%", "%context length%"}},
+		{KeyExpr: "'upstream-quota-billing'", WhereExpr: "(" + lowerError + " LIKE ? OR " + lowerError + " LIKE ? OR " + lowerError + " LIKE ?)", Args: []any{"%upstream-quota%", "%billing%", "%credits%"}},
+		{KeyExpr: "'key:' || u.key_state", WhereExpr: "COALESCE(NULLIF(u.key_state, ''), 'ok') NOT IN (?, ?)", Args: []any{"ok", "active"}},
+		{KeyExpr: "'cache-hit'", WhereExpr: "u.cache = ?", Args: []any{"hit"}},
+		{KeyExpr: "'cache-bypass'", WhereExpr: "u.cache = ?", Args: []any{"bypass"}},
+		{KeyExpr: "'fallback'", WhereExpr: "u.fallback_used = ?", Args: []any{true}},
+		{KeyExpr: "'multi-attempt'", WhereExpr: "u.attempts > ?", Args: []any{1}},
+		{KeyExpr: "'server-error'", WhereExpr: "u.status >= ?", Args: []any{500}},
+		{KeyExpr: "'client-error'", WhereExpr: "u.status >= ? AND u.status < ?", Args: []any{400, 500}},
+		{KeyExpr: "'ok'", WhereExpr: adminTroubleshootingOKSQLWhere(), Args: []any{false, 2, 400, "hit", "bypass", "ok", "active", "ok", "%quota%", "%tpm%", "%token rate%", "%rpm%", "%rate limit%", http.StatusTooManyRequests, "%concurrency%", "%in-flight%", "%max token%", "%max_tokens%", "%max_output_tokens%", "%context length%", "%upstream-quota%", "%billing%", "%credits%"}},
+	}
+}
+
+func adminTroubleshootingOKSQLWhere() string {
+	lowerError := "LOWER(COALESCE(u.error, ''))"
+	return `u.fallback_used = ? AND u.attempts < ? AND u.status < ? AND u.cache NOT IN (?, ?) AND COALESCE(NULLIF(u.key_state, ''), 'ok') IN (?, ?) AND COALESCE(NULLIF(u.quota_state, ''), 'ok') = ? AND ` +
+		lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND u.status <> ? AND ` +
+		lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` +
+		lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ? AND ` + lowerError + ` NOT LIKE ?`
+}
+
+func adminCapabilitySQLSelectors() []adminScalarDerivedBucketSQLSelector {
+	return []adminScalarDerivedBucketSQLSelector{
+		{KeyExpr: "'image-input'", WhereExpr: "(u.input_has_image = ? OR u.input_image_count > ? OR u.input_image_tokens > ?)", Args: []any{true, 0, 0}},
+		{KeyExpr: "'streaming'", WhereExpr: "u.stream = ?", Args: []any{true}},
+		{KeyExpr: "'pii-filtered'", WhereExpr: "u.pii_filter_applied = ?", Args: []any{true}},
+		{KeyExpr: "'cacheable'", WhereExpr: "u.cache IN (?, ?)", Args: []any{"hit", "miss"}},
+		{KeyExpr: "'dialect:' || u.target_dialect", WhereExpr: "COALESCE(NULLIF(u.target_dialect, ''), '') <> ''"},
+		{KeyExpr: "'text'", WhereExpr: "u.input_has_image = ? AND u.input_image_count = ? AND u.input_image_tokens = ? AND u.stream = ? AND u.pii_filter_applied = ? AND u.cache NOT IN (?, ?) AND COALESCE(NULLIF(u.target_dialect, ''), '') = ''", Args: []any{false, 0, 0, false, false, "hit", "miss"}},
+	}
+}
+
+func adminAnomalySQLSelectors() []adminScalarDerivedBucketSQLSelector {
+	return []adminScalarDerivedBucketSQLSelector{
+		{KeyExpr: "'error'", WhereExpr: "u.status >= ?", Args: []any{400}},
+		{KeyExpr: "'fallback'", WhereExpr: "u.fallback_used = ?", Args: []any{true}},
+		{KeyExpr: "'multi-attempt'", WhereExpr: "u.attempts > ?", Args: []any{1}},
+		{KeyExpr: "'slow-request'", WhereExpr: "u.latency_ms >= ?", Args: []any{30000}},
+		{KeyExpr: "'expensive-request'", WhereExpr: "u.total_cost_usd >= ?", Args: []any{1}},
+		{KeyExpr: "'quota-' || u.quota_state", WhereExpr: "COALESCE(NULLIF(u.quota_state, ''), 'ok') <> ?", Args: []any{"ok"}},
+		{KeyExpr: "'key-' || u.key_state", WhereExpr: "COALESCE(NULLIF(u.key_state, ''), 'ok') NOT IN (?, ?)", Args: []any{"ok", "active"}},
+	}
+}
+
 func (s *usageStore) adminScalarBucketedAggsSQL(bucketed *gorm.DB, sortKey string, limitN int) ([]tokenScalarAggRecord, bool, error) {
 	var records []tokenScalarAggRecord
 	selectExpr := "key, secondary_key, " + adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})

@@ -2177,6 +2177,135 @@ func TestAdminAnomalyKeysTreatActiveKeyStateAsNormal(t *testing.T) {
 	}
 }
 
+func TestAdminDerivedBucketReportsUseSQLAggregates(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	rateLimitErr := "rate limit max_tokens quota"
+	for _, rec := range []logRecord{
+		{
+			TS:                base.Format(time.RFC3339),
+			RequestID:         "derived-a",
+			CallerID:          "alice",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           "rtr_derived_a",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-a",
+			TargetDialect:     "openai-chat",
+			Stream:            true,
+			Cache:             "hit",
+			Status:            http.StatusTooManyRequests,
+			Attempts:          2,
+			FallbackUsed:      true,
+			LatencyMS:         35000,
+			Usage:             Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15},
+			InputHasImage:     true,
+			InputImageCount:   1,
+			InputImageTokens:  20,
+			TotalCostUSD:      2,
+			QuotaState:        "exhausted",
+			KeyState:          "active",
+			Error:             &rateLimitErr,
+		},
+		{
+			TS:                base.Add(time.Minute).Format(time.RFC3339),
+			RequestID:         "derived-b",
+			CallerID:          "alice",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           "rtr_derived_b",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-b",
+			Cache:             "bypass",
+			Status:            http.StatusOK,
+			Attempts:          1,
+			LatencyMS:         120,
+			Usage:             Usage{InputTokens: 4, OutputTokens: 1, TotalTokens: 5},
+			PIIFilterApplied:  true,
+			QuotaState:        "ok",
+			KeyState:          "disabled",
+		},
+		{
+			TS:                base.Add(2 * time.Minute).Format(time.RFC3339),
+			RequestID:         "derived-c",
+			CallerID:          "alice",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           "rtr_derived_c",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-c",
+			Cache:             "none",
+			Status:            http.StatusOK,
+			Attempts:          1,
+			LatencyMS:         90,
+			Usage:             Usage{InputTokens: 3, OutputTokens: 1, TotalTokens: 4},
+			QuotaState:        "ok",
+			KeyState:          "ok",
+		},
+	} {
+		svc.usage.Emit(rec)
+	}
+
+	for _, tc := range []struct {
+		path    string
+		want    []string
+		notWant []string
+	}{
+		{
+			path:    "/admin/reports/api/troubleshooting-buckets?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=50",
+			want:    []string{"quota:exhausted", "rpm-rate-limit", "max-token-or-context", "cache-hit", "cache-bypass", "fallback", "multi-attempt", "client-error", "key:disabled", "ok"},
+			notWant: []string{"key:active"},
+		},
+		{
+			path:    "/admin/reports/api/capability-usage?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=50",
+			want:    []string{"image-input", "streaming", "cacheable", "dialect:openai-chat", "pii-filtered", "text"},
+			notWant: []string{"dialect:unknown"},
+		},
+		{
+			path:    "/admin/reports/api/anomalies?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=50",
+			want:    []string{"error", "fallback", "multi-attempt", "slow-request", "expensive-request", "quota-exhausted", "key-disabled"},
+			notWant: []string{"key-active"},
+		},
+	} {
+		report := adminReportJSON(t, svc, tc.path)
+		summary := report["summary"].(map[string]any)
+		if summary["requests"].(float64) != 3 {
+			t.Fatalf("%s summary counted bucketed rows instead of requests: %#v", tc.path, summary)
+		}
+		keys := adminReportRowKeys(report["rows"].([]any))
+		for _, want := range tc.want {
+			if !keys[want] {
+				t.Fatalf("%s missing key %q in %#v", tc.path, want, keys)
+			}
+		}
+		for _, notWant := range tc.notWant {
+			if keys[notWant] {
+				t.Fatalf("%s unexpected key %q in %#v", tc.path, notWant, keys)
+			}
+		}
+		page := report["pagination"].(map[string]any)
+		if page["mode"] != "top_n" || page["has_more"] != false {
+			t.Fatalf("%s unexpected pagination metadata: %#v", tc.path, page)
+		}
+	}
+}
+
+func adminReportRowKeys(rows []any) map[string]bool {
+	keys := make(map[string]bool, len(rows))
+	for _, raw := range rows {
+		row := raw.(map[string]any)
+		keys[fmt.Sprint(row["key"])] = true
+	}
+	return keys
+}
+
 func TestAdminReportRequestCursorPagination(t *testing.T) {
 	svc := newAdminReportPaginationTestService(t, false)
 	defer svc.Close()

@@ -1348,6 +1348,15 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
+	if adminScalarSpecCanUseSQLDerivedBucketAgg(spec) {
+		resp, err := s.buildAdminScalarDerivedBucketReportResponseSQL(filters, spec, baseline)
+		if err != nil {
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	if adminScalarSpecCanUseSQLAgg(spec) {
 		resp, err := s.buildAdminScalarReportResponseSQL(filters, spec, baseline)
 		if err != nil {
@@ -1409,8 +1418,34 @@ func adminScalarSpecCanUseSQLMultiAgg(spec adminScalarEndpointSpec) bool {
 	return ok
 }
 
+func adminScalarSpecCanUseSQLDerivedBucketAgg(spec adminScalarEndpointSpec) bool {
+	if spec.Requests || spec.Diagnostic != "" || spec.ShapeReport != "" || spec.WithBaseline {
+		return false
+	}
+	switch {
+	case spec.Anomalies:
+		return spec.Report == "anomalies" && spec.Dimension == "anomaly"
+	case spec.Dimension == "troubleshooting_bucket":
+		return spec.Report == "troubleshooting-buckets"
+	case spec.Dimension == "capability":
+		return spec.Report == "capability-usage"
+	default:
+		return false
+	}
+}
+
 func (s *Service) buildAdminScalarMultiReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {
 	table, total, hasMore, err := s.usage.adminScalarMultiBucketAggsSQL(filters.UsageReportOptions, spec, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	resp := buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline)
+	resp.Pagination = adminTopNPagination(filters, len(resp.Rows), hasMore, "Aggregate rows are top-N for the selected filters.")
+	return resp, nil
+}
+
+func (s *Service) buildAdminScalarDerivedBucketReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {
+	table, total, hasMore, err := s.usage.adminScalarDerivedBucketAggsSQL(filters.UsageReportOptions, spec, defaultString(filters.Sort, spec.Sort), filters.Limit)
 	if err != nil {
 		return adminScalarReportResponse{}, err
 	}
