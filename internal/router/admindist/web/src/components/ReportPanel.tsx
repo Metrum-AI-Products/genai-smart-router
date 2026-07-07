@@ -122,18 +122,23 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
   );
 }
 
-function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): MetricGridConfig | undefined {
-  if (tab.id !== "savings") return undefined;
-  const hasActualCost = typeof report?.summary?.actualCostUsd === "number";
+export function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): MetricGridConfig | undefined {
+  if (!tab.savings) return undefined;
+  const hasActualCost = typeof report?.summary?.actualCostUsd === "number" || typeof report?.summary?.actual_cost_usd === "number";
   return {
     priority: [
       "savingsUsd",
+      "savings_usd",
       "savingsPct",
+      "savings_pct",
       "actualCostUsd",
+      "actual_cost_usd",
       "totalCostUsd",
       "baselineCostUsd",
+      "baseline_cost_usd",
       "requests",
       "totalTokens",
+      "total_tokens",
       "tokens",
       "avgCostUsd",
       "errors",
@@ -141,10 +146,14 @@ function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): MetricGr
     ],
     labels: {
       savingsUsd: "Total savings",
+      savings_usd: "Total savings",
       savingsPct: "Savings rate",
+      savings_pct: "Savings rate",
       actualCostUsd: "Actual cost",
+      actual_cost_usd: "Actual cost",
       totalCostUsd: "Actual cost",
       baselineCostUsd: "Baseline cost",
+      baseline_cost_usd: "Baseline cost",
       avgCostUsd: "Avg cost/request",
     },
     hiddenKeys: hasActualCost ? ["totalCostUsd"] : undefined,
