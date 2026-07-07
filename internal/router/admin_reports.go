@@ -1257,13 +1257,7 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	}
 	if spec.Diagnostic != "" {
 		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, spec.Sort)
-		parentOpts := adminDiagnosticParentOptions(filters.UsageReportOptions, spec.Diagnostic)
-		rows, err := s.usage.rows(parentOpts)
-		if err != nil {
-			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
-			return
-		}
-		resp, err := s.buildAdminDiagnosticReportResponse(filters, rows, spec)
+		resp, err := s.buildAdminDiagnosticReportResponseSQL(filters, spec)
 		if err != nil {
 			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
@@ -1381,6 +1375,25 @@ func (s *Service) buildAdminScalarReportResponseSQL(filters adminReportFilters, 
 		resp.Summary.SavingsPct = &savingsPct
 	}
 	resp.Pagination = adminTopNPagination(filters, len(resp.Rows), hasMore, "Aggregate rows are top-N for the selected filters.")
+	return resp, nil
+}
+
+func (s *Service) buildAdminDiagnosticReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec) (adminScalarReportResponse, error) {
+	table, total, hasMore, err := s.usage.adminDiagnosticAggsSQL(filters.UsageReportOptions, spec.Diagnostic, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	generatedAt := formatUsageTime(time.Now().UTC())
+	reportRows := adminDiagnosticRowsFromAgg(table, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	resp := adminScalarReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Report:       spec.Report,
+		Summary:      adminSummaryFromAgg(total),
+		Rows:         reportRows,
+		Charts:       adminDiagnosticCharts(filters, generatedAt, spec, reportRows),
+		Pagination:   adminTopNPagination(filters, len(reportRows), hasMore, "Diagnostic aggregate rows are top-N for the selected filters."),
+		GeneratedUTC: generatedAt,
+	}
 	return resp, nil
 }
 

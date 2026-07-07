@@ -4256,6 +4256,39 @@ type tokenScalarAggRecord struct {
 	CacheSnapshotCount       int64
 }
 
+type diagnosticAggSQLRecord struct {
+	Key                     string
+	SecondaryKey            string
+	Status                  int
+	ErrorClass              string
+	Provider                string
+	Model                   string
+	Dialect                 string
+	RequestShapeFingerprint string
+	ToolSchemaFingerprint   string
+	Requests                int64
+	Errors                  int64
+	Attempts                int64
+	RetryableAttempts       int64
+	TimeoutAttempts         int64
+	Fallbacks               int64
+	FallbackSucceeded       int64
+	FallbackFailed          int64
+	TerminalErrors          int64
+	UpstreamErrorDetails    int64
+	FieldsStripped          int64
+	FieldsRewritten         int64
+	UnsupportedFields       int64
+	TranslationWarnings     int64
+	AffectedUsers           int64
+	AffectedClients         int64
+	LatencyMS               int64
+	UpstreamMS              int64
+	UpstreamMSCount         int64
+	MaxLatencyMS            int64
+	MaxUpstreamMS           int64
+}
+
 type savingsAggRecord struct {
 	Key               string
 	Requests          int64
@@ -4708,6 +4741,396 @@ func aggFromTokenScalarAggRecord(rec tokenScalarAggRecord) agg {
 		CacheOccupancySum:        rec.CacheOccupancySum,
 		CacheSnapshotCount:       rec.CacheSnapshotCount,
 	}
+}
+
+func (s *usageStore) adminDiagnosticAggsSQL(opts UsageReportOptions, diagnostic, sortKey string, limit int) (map[string]*adminDiagnosticAgg, *agg, bool, error) {
+	parentOpts := adminDiagnosticParentOptions(opts, diagnostic)
+	var totalRec tokenScalarAggRecord
+	if err := s.usageRowsQuery(parentOpts).Select(adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})).Scan(&totalRec).Error; err != nil {
+		return nil, nil, false, err
+	}
+	table := map[string]*adminDiagnosticAgg{}
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	var err error
+	switch diagnostic {
+	case "upstream_failures":
+		err = s.adminUpstreamFailureAggsSQL(table, parentOpts, opts, sortKey, limitN)
+	case "request_shape_mismatches":
+		err = s.adminRequestShapeMismatchAggsSQL(table, parentOpts, opts, sortKey, limitN)
+	case "fallback_health":
+		err = s.adminFallbackHealthAggsSQL(table, parentOpts, opts, sortKey, limitN)
+	case "client_impact":
+		err = s.adminClientImpactAggsSQL(table, parentOpts, opts, sortKey, limitN)
+	}
+	if err != nil {
+		return nil, nil, false, err
+	}
+	total := aggFromTokenScalarAggRecord(totalRec)
+	return table, &total, len(table) > limitN, nil
+}
+
+func (s *usageStore) adminUpstreamFailureAggsSQL(table map[string]*adminDiagnosticAgg, parentOpts, opts UsageReportOptions, sortKey string, limit int) error {
+	attempts := s.db.Table("request_attempts AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", s.usageRowsQuery(parentOpts)).
+		Where("(child.status_code >= 400 OR child.error_class <> '' OR child.timed_out = ? OR child.client_canceled = ?)", true, true)
+	attempts = applyAdminAttemptDiagnosticFilters(attempts, opts)
+	selectExpr := `
+		(COALESCE(NULLIF(child.error_class, ''), CASE
+			WHEN child.timed_out THEN 'upstream_timeout'
+			WHEN child.client_canceled THEN 'client_canceled'
+			WHEN child.status_code >= 500 THEN 'upstream_5xx'
+			WHEN child.status_code >= 400 THEN 'upstream_4xx'
+			ELSE 'upstream_error'
+		END) || '|' || CASE WHEN child.status_code = 0 THEN 'status:none' ELSE 'status:' || CAST(child.status_code AS TEXT) END) AS key,
+		(COALESCE(NULLIF(child.provider, ''), 'unknown') || '|' || COALESCE(NULLIF(child.model, ''), 'unknown') || '|' || COALESCE(NULLIF(child.dialect, ''), 'unknown')) AS secondary_key,
+		child.status_code AS status,
+		COALESCE(NULLIF(child.error_class, ''), CASE
+			WHEN child.timed_out THEN 'upstream_timeout'
+			WHEN child.client_canceled THEN 'client_canceled'
+			WHEN child.status_code >= 500 THEN 'upstream_5xx'
+			WHEN child.status_code >= 400 THEN 'upstream_4xx'
+			ELSE 'upstream_error'
+		END) AS error_class,
+		child.provider AS provider,
+		child.model AS model,
+		child.dialect AS dialect,
+		COUNT(DISTINCT u.request_id) AS requests,
+		COUNT(*) AS errors,
+		COUNT(*) AS attempts,
+		SUM(CASE WHEN child.retryable THEN 1 ELSE 0 END) AS retryable_attempts,
+		SUM(CASE WHEN child.timed_out THEN 1 ELSE 0 END) AS timeout_attempts,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`
+	groupBy := `COALESCE(NULLIF(child.error_class, ''), CASE
+			WHEN child.timed_out THEN 'upstream_timeout'
+			WHEN child.client_canceled THEN 'client_canceled'
+			WHEN child.status_code >= 500 THEN 'upstream_5xx'
+			WHEN child.status_code >= 400 THEN 'upstream_4xx'
+			ELSE 'upstream_error'
+		END), child.status_code, child.provider, child.model, child.dialect`
+	var attemptRecords []diagnosticAggSQLRecord
+	if err := attempts.Select(selectExpr).Group(groupBy).Order(adminDiagnosticAggSQLOrder(sortKey)).Limit(limit + 1).Scan(&attemptRecords).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, attemptRecords)
+
+	details := s.db.Table("request_upstream_error_details AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", s.usageRowsQuery(parentOpts))
+	details = applyAdminUpstreamDetailDiagnosticFilters(details, opts)
+	var detailRecords []diagnosticAggSQLRecord
+	if err := details.Select(`
+		(COALESCE(NULLIF(child.error_class, ''), 'unknown') || '|field:' || COALESCE(NULLIF(child.field_name, ''), 'unknown')) AS key,
+		COALESCE(NULLIF(child.source, ''), 'upstream') AS secondary_key,
+		child.status_code AS status,
+		child.error_class AS error_class,
+		COUNT(DISTINCT u.request_id) AS requests,
+		COUNT(*) AS upstream_error_details,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`).
+		Group("child.error_class, child.field_name, child.source, child.status_code").
+		Order(adminDiagnosticAggSQLOrder(sortKey)).
+		Limit(limit + 1).
+		Scan(&detailRecords).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, detailRecords)
+	return nil
+}
+
+func (s *usageStore) adminRequestShapeMismatchAggsSQL(table map[string]*adminDiagnosticAgg, parentOpts, opts UsageReportOptions, sortKey string, limit int) error {
+	translationSelect := func(key string) string {
+		return fmt.Sprintf(`'%s' AS key,
+		(COALESCE(NULLIF(child.provider, ''), 'unknown') || '|' || COALESCE(NULLIF(child.model, ''), 'unknown') || '|' || COALESCE(NULLIF(child.dialect, ''), 'unknown')) AS secondary_key,
+		child.provider AS provider,
+		child.model AS model,
+		child.dialect AS dialect,
+		COALESCE(NULLIF(child.request_shape_fingerprint, ''), shape.request_shape_fingerprint) AS request_shape_fingerprint,
+		COALESCE(NULLIF(child.tool_schema_fingerprint, ''), shape.tool_schema_fingerprint) AS tool_schema_fingerprint,
+		COUNT(DISTINCT u.request_id) AS requests,
+		SUM(CASE WHEN child.unsupported_fields_present THEN 1 ELSE 0 END) AS errors,
+		COUNT(*) AS attempts,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(child.fields_stripped_count) AS fields_stripped,
+		SUM(child.fields_rewritten_count) AS fields_rewritten,
+		SUM(CASE WHEN child.unsupported_fields_present THEN 1 ELSE 0 END) AS unsupported_fields,
+		SUM(child.translation_warning_count) AS translation_warnings,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`, key)
+	}
+	translationGroup := "child.provider, child.model, child.dialect, COALESCE(NULLIF(child.request_shape_fingerprint, ''), shape.request_shape_fingerprint), COALESCE(NULLIF(child.tool_schema_fingerprint, ''), shape.tool_schema_fingerprint)"
+	translationConditions := []struct {
+		key       string
+		condition string
+	}{
+		{"unsupported-fields", "child.unsupported_fields_present"},
+		{"fields-stripped", "child.fields_stripped_count > 0"},
+		{"fields-rewritten", "child.fields_rewritten_count > 0"},
+		{"translation-warning", "child.translation_warning_count > 0"},
+		{"tool-count-changed", "shape.request_id IS NOT NULL AND shape.tool_count <> child.translated_tool_count"},
+		{"tool-choice-changed", "shape.tool_choice_mode <> '' AND child.translated_tool_choice_mode <> '' AND shape.tool_choice_mode <> child.translated_tool_choice_mode"},
+		{"output-cap-field-changed", "shape.requested_output_cap_field <> '' AND child.translated_output_cap_field <> '' AND shape.requested_output_cap_field <> child.translated_output_cap_field"},
+		{"output-cap-bucket-changed", "shape.requested_output_cap_bucket <> '' AND child.translated_output_cap_bucket <> '' AND shape.requested_output_cap_bucket <> child.translated_output_cap_bucket"},
+		{"reasoning-control-translated", "shape.reasoning_present AND child.translated_reasoning_control <> ''"},
+		{"request-bytes-bucket-changed", "shape.total_request_bytes_bucket <> '' AND child.translated_request_bytes_bucket <> '' AND shape.total_request_bytes_bucket <> child.translated_request_bytes_bucket"},
+	}
+	noMismatchCondition := `NOT (
+		child.unsupported_fields_present
+		OR child.fields_stripped_count > 0
+		OR child.fields_rewritten_count > 0
+		OR child.translation_warning_count > 0
+		OR COALESCE(shape.request_id IS NOT NULL AND shape.tool_count <> child.translated_tool_count, false)
+		OR COALESCE(shape.tool_choice_mode <> '' AND child.translated_tool_choice_mode <> '' AND shape.tool_choice_mode <> child.translated_tool_choice_mode, false)
+		OR COALESCE(shape.requested_output_cap_field <> '' AND child.translated_output_cap_field <> '' AND shape.requested_output_cap_field <> child.translated_output_cap_field, false)
+		OR COALESCE(shape.requested_output_cap_bucket <> '' AND child.translated_output_cap_bucket <> '' AND shape.requested_output_cap_bucket <> child.translated_output_cap_bucket, false)
+		OR COALESCE(shape.reasoning_present AND child.translated_reasoning_control <> '', false)
+		OR COALESCE(shape.total_request_bytes_bucket <> '' AND child.translated_request_bytes_bucket <> '' AND shape.total_request_bytes_bucket <> child.translated_request_bytes_bucket, false)
+	)`
+	translationConditions = append(translationConditions, struct {
+		key       string
+		condition string
+	}{"translated-without-warning", noMismatchCondition})
+	for _, condition := range translationConditions {
+		translations := s.db.Table("request_translation_shapes AS child").
+			Joins("JOIN (?) AS u ON u.request_id = child.request_id", s.usageRowsQuery(parentOpts)).
+			Joins("LEFT JOIN request_shapes AS shape ON shape.request_id = child.request_id").
+			Where(condition.condition)
+		translations = applyAdminTranslationDiagnosticFilters(translations, opts)
+		var records []diagnosticAggSQLRecord
+		if err := translations.Select(translationSelect(condition.key)).
+			Group(translationGroup).
+			Order(adminDiagnosticAggSQLOrder(sortKey)).
+			Limit(limit + 1).
+			Scan(&records).Error; err != nil {
+			return err
+		}
+		adminMergeDiagnosticSQLRecords(table, records)
+	}
+
+	events := s.db.Table("request_translation_field_events AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", s.usageRowsQuery(parentOpts)).
+		Joins("LEFT JOIN request_shapes AS shape ON shape.request_id = child.request_id")
+	var eventRecords []diagnosticAggSQLRecord
+	if err := events.Select(`
+		('field|' || COALESCE(NULLIF(child.field_name, ''), 'other') || '|' || COALESCE(NULLIF(child.action, ''), 'unknown')) AS key,
+		COALESCE(NULLIF(child.reason, ''), 'unspecified') AS secondary_key,
+		shape.request_shape_fingerprint AS request_shape_fingerprint,
+		shape.tool_schema_fingerprint AS tool_schema_fingerprint,
+		COUNT(DISTINCT u.request_id) AS requests,
+		SUM(CASE WHEN child.action = 'unsupported' THEN 1 ELSE 0 END) AS errors,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(CASE WHEN child.action = 'stripped' THEN 1 ELSE 0 END) AS fields_stripped,
+		SUM(CASE WHEN child.action = 'rewritten' THEN 1 ELSE 0 END) AS fields_rewritten,
+		SUM(CASE WHEN child.action = 'unsupported' THEN 1 ELSE 0 END) AS unsupported_fields,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`).
+		Group("child.field_name, child.action, child.reason, shape.request_shape_fingerprint, shape.tool_schema_fingerprint").
+		Order(adminDiagnosticAggSQLOrder(sortKey)).
+		Limit(limit + 1).
+		Scan(&eventRecords).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, eventRecords)
+	return nil
+}
+
+func (s *usageStore) adminFallbackHealthAggsSQL(table map[string]*adminDiagnosticAgg, parentOpts, opts UsageReportOptions, sortKey string, limit int) error {
+	transitions := s.db.Table("request_fallback_transitions AS child").
+		Joins("JOIN (?) AS u ON u.request_id = child.request_id", s.usageRowsQuery(parentOpts))
+	transitions = applyAdminFallbackDiagnosticFilters(transitions, opts)
+	var records []diagnosticAggSQLRecord
+	if err := transitions.Select(`
+		(COALESCE(NULLIF(child.fallback_reason, ''), 'fallback') || '|' || COALESCE(NULLIF(child.error_class, ''), 'unknown')) AS key,
+		(COALESCE(NULLIF(child.failed_provider, ''), 'unknown') || '|' || COALESCE(NULLIF(child.failed_model, ''), 'unknown') || '|to|' || COALESCE(NULLIF(child.fallback_provider, ''), 'unknown') || '|' || COALESCE(NULLIF(child.fallback_model, ''), 'unknown')) AS secondary_key,
+		child.error_class AS error_class,
+		child.failed_provider AS provider,
+		child.failed_model AS model,
+		child.failed_dialect AS dialect,
+		COUNT(DISTINCT u.request_id) AS requests,
+		COUNT(*) AS errors,
+		COUNT(*) AS attempts,
+		SUM(CASE WHEN child.retryable THEN 1 ELSE 0 END) AS retryable_attempts,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(CASE WHEN child.fallback_succeeded THEN 1 ELSE 0 END) AS fallback_succeeded,
+		SUM(CASE WHEN child.fallback_succeeded THEN 0 ELSE 1 END) AS fallback_failed,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`).
+		Group("child.fallback_reason, child.error_class, child.failed_provider, child.failed_model, child.failed_dialect, child.fallback_provider, child.fallback_model").
+		Order(adminDiagnosticAggSQLOrder(sortKey)).
+		Limit(limit + 1).
+		Scan(&records).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, records)
+
+	parentOnly := s.usageRowsQuery(parentOpts).
+		Where("(fallback_used = ? OR attempts > 1)", true).
+		Where("request_id NOT IN (SELECT request_id FROM request_fallback_transitions)")
+	if opts.Status != 0 {
+		parentOnly = parentOnly.Where("status = ?", opts.Status)
+	}
+	if opts.TargetProvider != "" {
+		parentOnly = parentOnly.Where("target_provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		parentOnly = parentOnly.Where("target_model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		parentOnly = parentOnly.Where("target_dialect = ?", opts.TargetDialect)
+	}
+	var parentRecords []diagnosticAggSQLRecord
+	if err := parentOnly.Select(`
+		(COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown') || '|' || CASE
+			WHEN fallback_used AND status < 400 THEN 'fallback:recovered'
+			WHEN fallback_used THEN 'fallback:failed'
+			ELSE 'fallback:not-used'
+		END || '|attempts:' || CAST(attempts AS TEXT) || '|status:' || CAST(status AS TEXT)) AS key,
+		(COALESCE(NULLIF(target_provider, ''), 'unknown') || '/' || COALESCE(NULLIF(target_model, ''), 'unknown')) AS secondary_key,
+		status AS status,
+		target_provider AS provider,
+		target_model AS model,
+		target_dialect AS dialect,
+		COUNT(DISTINCT request_id) AS requests,
+		SUM(CASE WHEN fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(CASE WHEN fallback_used AND status < 400 THEN 1 ELSE 0 END) AS fallback_succeeded,
+		SUM(CASE WHEN fallback_used AND status >= 400 THEN 1 ELSE 0 END) AS fallback_failed,
+		COUNT(DISTINCT CASE WHEN caller_user <> '' THEN caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN client <> '' THEN client END) AS affected_clients,
+		SUM(latency_ms) AS latency_ms,
+		SUM(COALESCE(upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(upstream_duration_ms) AS upstream_ms_count,
+		MAX(latency_ms) AS max_latency_ms,
+		MAX(COALESCE(upstream_duration_ms, 0)) AS max_upstream_ms`).
+		Group(`COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown'), fallback_used, attempts, status, target_provider, target_model, target_dialect`).
+		Order(adminDiagnosticAggSQLOrder(sortKey)).
+		Limit(limit + 1).
+		Scan(&parentRecords).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, parentRecords)
+	return nil
+}
+
+func (s *usageStore) adminClientImpactAggsSQL(table map[string]*adminDiagnosticAgg, parentOpts, opts UsageReportOptions, sortKey string, limit int) error {
+	q := s.db.Table("(?) AS u", s.usageRowsQuery(parentOpts)).
+		Joins("LEFT JOIN request_errors AS err ON err.request_id = u.request_id")
+	if opts.TargetProvider != "" {
+		q = q.Where("err.provider = ?", opts.TargetProvider)
+	}
+	if opts.TargetModel != "" {
+		q = q.Where("err.model = ?", opts.TargetModel)
+	}
+	if opts.TargetDialect != "" {
+		q = q.Where("err.dialect = ?", opts.TargetDialect)
+	}
+	if opts.Status != 0 {
+		q = q.Where("err.status = ? OR u.status = ?", opts.Status, opts.Status)
+	}
+	if opts.ErrorClass != "" {
+		q = q.Where("err.error_class = ?", opts.ErrorClass)
+	}
+	var records []diagnosticAggSQLRecord
+	if err := q.Select(`
+		(COALESCE(NULLIF(u.client, ''), 'unknown') || '|' || COALESCE(NULLIF(u.caller_user, ''), 'unknown')) AS key,
+		(COALESCE(NULLIF(u.caller_project, ''), 'unknown') || '|' || COALESCE(NULLIF(u.caller_environment, ''), 'unknown') || '|' || COALESCE(NULLIF(u.resolved_group, ''), NULLIF(u.requested_model, ''), 'unknown')) AS secondary_key,
+		u.status AS status,
+		COALESCE(err.error_class, '') AS error_class,
+		u.target_provider AS provider,
+		u.target_model AS model,
+		u.target_dialect AS dialect,
+		COUNT(DISTINCT u.request_id) AS requests,
+		SUM(CASE WHEN u.status >= 400 THEN 1 ELSE 0 END) AS errors,
+		SUM(u.attempts) AS attempts,
+		SUM(CASE WHEN u.fallback_used THEN 1 ELSE 0 END) AS fallbacks,
+		SUM(CASE WHEN err.request_id IS NOT NULL THEN 1 ELSE 0 END) AS terminal_errors,
+		COUNT(DISTINCT CASE WHEN u.caller_user <> '' THEN u.caller_user END) AS affected_users,
+		COUNT(DISTINCT CASE WHEN u.client <> '' THEN u.client END) AS affected_clients,
+		SUM(u.latency_ms) AS latency_ms,
+		SUM(COALESCE(u.upstream_duration_ms, 0)) AS upstream_ms,
+		COUNT(u.upstream_duration_ms) AS upstream_ms_count,
+		MAX(u.latency_ms) AS max_latency_ms,
+		MAX(COALESCE(u.upstream_duration_ms, 0)) AS max_upstream_ms`).
+		Group("u.client, u.caller_user, u.caller_project, u.caller_environment, COALESCE(NULLIF(u.resolved_group, ''), NULLIF(u.requested_model, ''), 'unknown'), u.status, err.error_class, u.target_provider, u.target_model, u.target_dialect").
+		Order(adminDiagnosticAggSQLOrder(sortKey)).
+		Limit(limit + 1).
+		Scan(&records).Error; err != nil {
+		return err
+	}
+	adminMergeDiagnosticSQLRecords(table, records)
+	return nil
+}
+
+func adminMergeDiagnosticSQLRecords(table map[string]*adminDiagnosticAgg, records []diagnosticAggSQLRecord) {
+	for _, rec := range records {
+		agg := adminDiagnosticAggFor(table, rec.Key, rec.SecondaryKey)
+		agg.Status = rec.Status
+		agg.ErrorClass = rec.ErrorClass
+		agg.Provider = rec.Provider
+		agg.Model = rec.Model
+		agg.Dialect = rec.Dialect
+		agg.RequestShapeFingerprint = rec.RequestShapeFingerprint
+		agg.ToolSchemaFingerprint = rec.ToolSchemaFingerprint
+		for i := int64(0); i < rec.Requests; i++ {
+			agg.RequestIDs[fmt.Sprintf("sql:%s:%s:%d", rec.Key, rec.SecondaryKey, i)] = true
+		}
+		for i := int64(0); i < rec.AffectedUsers; i++ {
+			agg.Users[fmt.Sprintf("sql:%s:%d", rec.Key, i)] = true
+		}
+		for i := int64(0); i < rec.AffectedClients; i++ {
+			agg.Clients[fmt.Sprintf("sql:%s:%d", rec.SecondaryKey, i)] = true
+		}
+		agg.Errors += rec.Errors
+		agg.Attempts += rec.Attempts
+		agg.RetryableAttempts += rec.RetryableAttempts
+		agg.TimeoutAttempts += rec.TimeoutAttempts
+		agg.Fallbacks += rec.Fallbacks
+		agg.FallbackSucceeded += rec.FallbackSucceeded
+		agg.FallbackFailed += rec.FallbackFailed
+		agg.TerminalErrors += rec.TerminalErrors
+		agg.UpstreamErrorDetails += rec.UpstreamErrorDetails
+		agg.FieldsStripped += rec.FieldsStripped
+		agg.FieldsRewritten += rec.FieldsRewritten
+		agg.UnsupportedFields += rec.UnsupportedFields
+		agg.TranslationWarnings += rec.TranslationWarnings
+		agg.LatencyMS += rec.LatencyMS
+		agg.UpstreamMS += rec.UpstreamMS
+		agg.UpstreamMSCount += rec.UpstreamMSCount
+		agg.MaxLatencyMS = adminMaxInt64(agg.MaxLatencyMS, rec.MaxLatencyMS)
+		agg.MaxUpstreamMS = adminMaxInt64(agg.MaxUpstreamMS, rec.MaxUpstreamMS)
+	}
+}
+
+func adminDiagnosticAggSQLOrder(sortKey string) string {
+	return "1 ASC, 2 ASC"
 }
 
 func (s *usageStore) adminUsageRowsPage(opts adminUsagePageOptions) (adminUsagePage, error) {

@@ -2835,8 +2835,10 @@ func TestAdminTroubleshootingReportsUseSafeDiagnosticTelemetry(t *testing.T) {
 		"/admin/reports/api/upstream-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
 		"/admin/reports/api/upstream-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&status=400&limit=10",
 		"/admin/reports/api/request-shape-failures?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+		"/admin/reports/api/request-shape-mismatches?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
 		"/admin/reports/api/fallback-health?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
 		"/admin/reports/api/user-client-impact?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
+		"/admin/reports/api/client-impact?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=10",
 	} {
 		body := adminReportJSON(t, svc, path)
 		if len(body["rows"].([]any)) == 0 || len(body["charts"].([]any)) == 0 {
