@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-06
+Last deployed: 2026-07-07
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-07-06
 
 ## Deployed Version
 
-- Router package/image version: `777d2ed-linux-amd64`
-- Source commit: `777d2ed`
+- Router package/image version: `09d3246-linux-amd64`
+- Source commit: `09d3246`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,41 @@ Last deployed: 2026-07-06
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-07 Admin Reports SQL Aggregate Production Refresh
+
+Package `smart-llmrouter:09d3246-linux-amd64` was deployed to production after PR #453 fixed PostgreSQL aggregate reports with no secondary dimension.
+
+Source commit: `09d3246` (`fix: omit empty SQL report group dimensions (#453)`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous package backup: `/opt/smart-llmrouter.backup.refresh-09d3246-20260707T164748Z`.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-09d3246-20260707T164748Z`.
+- Docker load log: `/tmp/smart-llmrouter-docker-load-09d3246.log`.
+
+Validation:
+
+- `go test ./internal/router -run 'TestAdminScalarSQLGroupByOmitsEmptySecondaryDimension|TestAdminSavingsAggregateSQLTopNUsesFullWindowSummary|TestAdminMarkdownExportUsesBoundedRecentRows'`: passed.
+- `go test ./...`: passed.
+- `make package-docker VERSION=09d3246 COMMIT=09d3246`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` returned 200 and `/version` returned `09d3246`, commit `09d3246`, license compile mode `required`.
+- Hosted `/docs/` returned 200.
+- The previously failing production aggregate APIs returned 200:
+  - `/admin/reports/api/savings-by-key?since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc`
+  - `/admin/reports/api/savings-by-user?since=15d&limit=50&baseline=gpt-5.5`
+  - `/admin/reports/api/usage-by-key?since=15d&limit=50`
+- Browser-facing `/admin/reports/?tab=savings-by-key&since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc` returned 200.
+- Reusable Harbor caller authenticated `/v1/models` returned `big-coder`; authenticated `big-coder` Responses smoke returned 200 with output `OK`.
+- Router log tail after deploy showed startup only and no immediate error lines.
+- Temporary uploaded package and staging files were removed from `/tmp`.
+
+Deployment note:
+
+- An intermediate refresh to `02ac181-linux-amd64` started successfully but exposed PostgreSQL `GROUP BY ''` incompatibility in aggregate admin report APIs. Production was immediately advanced to `09d3246-linux-amd64` after PR #453 merged and validation passed.
+- Safe report-query failure logging follow-up is tracked in issue #452.
 
 ## 2026-07-06 Admin Reports Long-Window OOM Fix
 
