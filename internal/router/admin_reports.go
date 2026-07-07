@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"math"
 	"net/http"
@@ -1836,11 +1837,20 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	rows, err := s.usage.rows(filters.UsageReportOptions)
+	if !validateAdminTopNPageParams(w, filters) {
+		return
+	}
+	page, err := s.usage.adminUsageRowsPage(adminUsagePageOptions{
+		UsageReportOptions: filters.UsageReportOptions,
+		Limit:              filters.Limit,
+		Sort:               "timeUtc",
+		Direction:          "desc",
+	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
 		return
 	}
+	rows := page.Rows
 	decisionSummary := s.usage.decisionTelemetrySummary(rows)
 	upstreamShapeEvents, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 	if err != nil {
@@ -1848,7 +1858,11 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	_, _ = w.Write([]byte(renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary, upstreamShapeEvents)))
+	md := renderUsageMarkdown(filters.From, filters.To, rows, decisionSummary, upstreamShapeEvents)
+	if page.HasMore {
+		md = strings.Replace(md, "\n\n", fmt.Sprintf("\n\n> Export scope: showing the most recent %d request rows for this filter; more rows matched the selected window. Use cursor-paged request APIs or narrower filters for row-by-row review.\n\n", len(rows)), 1)
+	}
+	_, _ = w.Write([]byte(md))
 }
 
 func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, _ bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {

@@ -233,7 +233,7 @@ Anomaly reports are deterministic operational triage views rather than machine-l
 
 The browser shell adds shared usability controls across tabs: URL-backed selected tab, global filters, server sort/direction, limit, and cursor state; global filters for caller/project/model/provider context; per-tab panels for tab-local controls such as baseline/status/cache/sort/traffic-shaping scope; a table-toolbar `Rows` server limit; clearly labeled quick filtering of the returned page or top-N rows; sortable headers; refresh; request-ID drilldown; and CSV export of current-page, top-N, or visible safe scalar columns. Server endpoints remain authenticated, bounded, and domain-scoped to the admin's policy domain unless an explicit `*` policy domain grants deployment-wide report access. The browser controls do not expose or persist bearer tokens.
 
-CSV export scope is explicit in the button label: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for unpaged responses. Markdown export is labeled as a full current-filter report, omits page cursors, and escapes raw HTML plus active Markdown table-cell syntax. Cross-domain request IDs return `404` for domain-scoped admins.
+CSV export scope is explicit in the button label: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for unpaged responses. Markdown export is a bounded current-filter report that includes the most recent matching request rows up to the requested `limit`, adds an export-scope note when more rows matched, and escapes raw HTML plus active Markdown table-cell syntax. Cross-domain request IDs return `404` for domain-scoped admins.
 
 Browser investigation examples:
 

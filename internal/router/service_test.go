@@ -2128,6 +2128,58 @@ func TestAdminReportExpensiveRequestsAndTopNMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminMarkdownExportUsesBoundedRecentRows(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	svc.cfg.Server.AdminReports.ExportMarkdown = true
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	costs := []float64{999, 2, 3}
+	for i, tokenID := range []string{"rtr_export_old", "rtr_export_mid", "rtr_export_new"} {
+		svc.usage.Emit(logRecord{
+			TS:                base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			RequestID:         fmt.Sprintf("export-req-%d", i),
+			CallerID:          "export-user",
+			CallerUser:        "export@example.com",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           tokenID,
+			RequestedModel:    "big-coder",
+			ResolvedGroup:     "big-coder",
+			TargetProvider:    "mock",
+			TargetModel:       "mock-model",
+			TargetDialect:     "openai-chat",
+			Cache:             "miss",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         int64(100 + i),
+			Usage:             Usage{InputTokens: 10, OutputTokens: 2, TotalTokens: 12},
+			TotalCostUSD:      costs[i],
+			QuotaState:        "ok",
+			KeyState:          "ok",
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2&sort=costUsd", nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK {
+		t.Fatalf("export status=%d body=%s", rr.Code, body)
+	}
+	if !strings.Contains(body, "Export scope: showing the most recent 2 request rows") {
+		t.Fatalf("export missing bounded scope note: %s", body)
+	}
+	if strings.Contains(body, "rtr_export_old") {
+		t.Fatalf("export included row outside bounded recent sample: %s", body)
+	}
+	for _, want := range []string{"rtr_export_mid", "rtr_export_new"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("export missing bounded row %q: %s", want, body)
+		}
+	}
+}
+
 func TestAdminSavingsAggregateSQLTopNUsesFullWindowSummary(t *testing.T) {
 	svc := newAdminReportPaginationTestService(t, false)
 	defer svc.Close()
