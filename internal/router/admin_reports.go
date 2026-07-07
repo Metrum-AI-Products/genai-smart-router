@@ -1308,6 +1308,15 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
+	if adminScalarSpecCanUseSQLMultiAgg(spec) {
+		resp, err := s.buildAdminScalarMultiReportResponseSQL(filters, spec, baseline)
+		if err != nil {
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	if adminScalarSpecCanUseSQLAgg(spec) {
 		resp, err := s.buildAdminScalarReportResponseSQL(filters, spec, baseline)
 		if err != nil {
@@ -1348,15 +1357,35 @@ func adminScalarSpecCanUseSQLAgg(spec adminScalarEndpointSpec) bool {
 	if spec.Requests || spec.Anomalies || spec.Diagnostic != "" || spec.ShapeReport != "" {
 		return false
 	}
-	if spec.Report == "cache" {
-		return false
-	}
 	_, ok := adminScalarDimensionSQLExpr(spec.Dimension)
 	if !ok {
 		return false
 	}
 	_, ok = adminScalarDimensionSQLExpr(spec.Secondary)
 	return ok
+}
+
+func adminScalarSpecCanUseSQLMultiAgg(spec adminScalarEndpointSpec) bool {
+	if spec.Requests || spec.Anomalies || spec.Diagnostic != "" || spec.ShapeReport != "" || spec.WithBaseline {
+		return false
+	}
+	switch spec.Dimension {
+	case "dynamic_signal", "dynamic_score_bucket", "dynamic_threshold", "max_token_bucket", "input_token_bucket":
+	default:
+		return false
+	}
+	_, ok := adminScalarDimensionSQLExprForAlias(spec.Secondary, "u")
+	return ok
+}
+
+func (s *Service) buildAdminScalarMultiReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {
+	table, total, hasMore, err := s.usage.adminScalarMultiBucketAggsSQL(filters.UsageReportOptions, spec, defaultString(filters.Sort, spec.Sort), filters.Limit)
+	if err != nil {
+		return adminScalarReportResponse{}, err
+	}
+	resp := buildAdminScalarReportResponseFromAgg(filters, table, total, spec, baseline)
+	resp.Pagination = adminTopNPagination(filters, len(resp.Rows), hasMore, "Aggregate rows are top-N for the selected filters.")
+	return resp, nil
 }
 
 func (s *Service) buildAdminScalarReportResponseSQL(filters adminReportFilters, spec adminScalarEndpointSpec, baseline adminSavingsBaselineDTO) (adminScalarReportResponse, error) {

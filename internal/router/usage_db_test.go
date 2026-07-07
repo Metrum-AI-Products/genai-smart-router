@@ -793,6 +793,196 @@ func TestUsageRollupDailyTotalsDraftRerunAndFinalize(t *testing.T) {
 	}
 }
 
+func TestAdminScalarMultiBucketAggsSQLUsesNormalizedBuckets(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	rows := []usageRow{
+		{
+			TS:             from.Add(time.Hour),
+			RequestID:      "req_bucket_1",
+			CallerUser:     "alice",
+			CallerProject:  "analytics",
+			TokenID:        "rtr_alice",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			TargetProvider: "mock",
+			TargetModel:    "model-a",
+			TargetDialect:  "openai-chat",
+			Cache:          "miss",
+			Status:         200,
+			Attempts:       1,
+			LatencyMS:      100,
+			InputTokens:    10,
+			OutputTokens:   5,
+			TotalTokens:    15,
+			TotalCostUSD:   0.15,
+		},
+		{
+			TS:             from.Add(2 * time.Hour),
+			RequestID:      "req_bucket_2",
+			CallerUser:     "bob",
+			CallerProject:  "platform",
+			TokenID:        "rtr_bob",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			TargetProvider: "mock",
+			TargetModel:    "model-b",
+			TargetDialect:  "openai-chat",
+			Cache:          "hit",
+			Status:         502,
+			Attempts:       2,
+			FallbackUsed:   true,
+			LatencyMS:      250,
+			InputTokens:    4,
+			OutputTokens:   6,
+			TotalTokens:    10,
+			TotalCostUSD:   0.10,
+		},
+		{
+			TS:             to.Add(time.Hour),
+			RequestID:      "req_bucket_outside",
+			CallerUser:     "alice",
+			CallerProject:  "analytics",
+			TokenID:        "rtr_alice",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			Cache:          "miss",
+			Status:         200,
+			Attempts:       1,
+			LatencyMS:      999,
+			InputTokens:    100,
+			OutputTokens:   100,
+			TotalTokens:    200,
+		},
+	}
+	for _, row := range rows {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, feature := range []decisionShapeFeatureRecord{
+		{RequestID: "req_bucket_1", Seq: 1, FeatureName: "max_token_bucket", TextValue: "tiny"},
+		{RequestID: "req_bucket_1", Seq: 2, FeatureName: "input_token_bucket", TextValue: "small"},
+		{RequestID: "req_bucket_2", Seq: 1, FeatureName: "max_token_bucket", TextValue: "standard"},
+		{RequestID: "req_bucket_2", Seq: 2, FeatureName: "input_token_bucket", TextValue: "small"},
+		{RequestID: "req_bucket_outside", Seq: 1, FeatureName: "max_token_bucket", TextValue: "outside"},
+	} {
+		if err := store.db.Create(&feature).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, signal := range []routingSignalRecord{
+		{RequestID: "req_bucket_1", Seq: 1, Strategy: "dynamic_score", SignalName: "observed_performance", Source: "dynamic_score", BoolValue: true},
+		{RequestID: "req_bucket_2", Seq: 1, Strategy: "dynamic_score", SignalName: "cost", Source: "dynamic_score", BoolValue: true},
+		{RequestID: "req_bucket_outside", Seq: 1, Strategy: "dynamic_score", SignalName: "outside", Source: "dynamic_score", BoolValue: true},
+	} {
+		if err := store.db.Create(&signal).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts := UsageReportOptions{From: from, To: to, CallerProject: "analytics"}
+	table, total, hasMore, err := store.adminScalarMultiBucketAggsSQL(opts, adminScalarEndpointSpec{Dimension: "max_token_bucket", Secondary: "model_group"}, "requests", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("unexpected pagination overflow")
+	}
+	if total.Calls != 1 {
+		t.Fatalf("total calls=%d, want filtered parent count 1", total.Calls)
+	}
+	if got := table[joinKey("tiny", "default")]; got == nil || got.Agg.Calls != 1 || got.Agg.TotalTokens != 15 {
+		t.Fatalf("missing filtered max-token bucket aggregate: %#v", table)
+	}
+	if table[joinKey("standard", "default")] != nil || table[joinKey("outside", "default")] != nil {
+		t.Fatalf("bucket aggregate ignored filters/window: %#v", table)
+	}
+	signals, _, _, err := store.adminScalarMultiBucketAggsSQL(UsageReportOptions{From: from, To: to}, adminScalarEndpointSpec{Dimension: "dynamic_signal", Secondary: "model_group"}, "requests", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals[joinKey("observed_performance", "default")] == nil || signals[joinKey("cost", "default")] == nil {
+		t.Fatalf("missing dynamic signal aggregates: %#v", signals)
+	}
+	if signals[joinKey("outside", "default")] != nil {
+		t.Fatalf("dynamic signal aggregate included outside-window row: %#v", signals)
+	}
+}
+
+func TestAdminScalarAggsSQLUsesLatestCacheSnapshot(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	for _, row := range []usageRow{
+		{
+			TS:                from.Add(time.Hour),
+			RequestID:         "req_cache_old",
+			CallerUser:        "alice",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			Cache:             "miss",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         100,
+			CacheEnabled:      true,
+			CacheItems:        100,
+			CacheBytes:        9000,
+			CacheMaxBytes:     10000,
+			CacheOccupancyPct: 90,
+		},
+		{
+			TS:                from.Add(2 * time.Hour),
+			RequestID:         "req_cache_latest",
+			CallerUser:        "alice",
+			RequestedModel:    "default",
+			ResolvedGroup:     "default",
+			Cache:             "hit",
+			Status:            200,
+			Attempts:          1,
+			LatencyMS:         100,
+			CacheEnabled:      true,
+			CacheItems:        2,
+			CacheBytes:        200,
+			CacheMaxBytes:     10000,
+			CacheOccupancyPct: 2,
+		},
+	} {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	table, total, _, hasMore, err := store.adminScalarAggsSQL(UsageReportOptions{From: from, To: to}, adminScalarEndpointSpec{Dimension: "cache", Secondary: "model_group"}, adminSavingsBaselineDTO{}, "requests", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("unexpected pagination overflow")
+	}
+	if total.CacheItemsLatest != 2 || total.CacheBytesLatest != 200 || total.CacheOccupancyLatest != 2 {
+		t.Fatalf("total latest cache snapshot used max values: %#v", total)
+	}
+	if total.CacheItemsMax != 100 || total.CacheBytesMax != 9000 || total.CacheOccupancyMax != 90 {
+		t.Fatalf("total max cache snapshot lost high-water values: %#v", total)
+	}
+	hit := table[joinKey("hit", "default")]
+	if hit == nil || hit.Agg.CacheItemsLatest != 2 || hit.Agg.CacheBytesLatest != 200 || hit.Agg.CacheItemsMax != 2 {
+		t.Fatalf("hit aggregate latest cache snapshot mismatch: %#v", hit)
+	}
+	miss := table[joinKey("miss", "default")]
+	if miss == nil || miss.Agg.CacheItemsLatest != 100 || miss.Agg.CacheBytesLatest != 9000 {
+		t.Fatalf("miss aggregate latest cache snapshot mismatch: %#v", miss)
+	}
+}
+
 func TestUsageRollupHourlyAndMonthlyWithBaseline(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

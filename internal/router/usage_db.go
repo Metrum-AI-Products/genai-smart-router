@@ -4528,7 +4528,204 @@ func (s *usageStore) adminScalarAggsSQL(opts UsageReportOptions, spec adminScala
 		table[mapKey] = scalar
 	}
 	total := aggFromTokenScalarAggRecord(totalRec)
+	if err := s.applyLatestCacheSnapshotsSQL(opts, spec, table, &total); err != nil {
+		return nil, nil, 0, false, err
+	}
 	return table, &total, totalRec.BaselineCostUSD, hasMore, nil
+}
+
+type latestCacheSnapshotRecord struct {
+	CacheItems        int64
+	CacheBytes        int64
+	CacheMaxBytes     int64
+	CacheOccupancyPct float64
+}
+
+func (s *usageStore) applyLatestCacheSnapshotsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, table map[string]*adminScalarAgg, total *agg) error {
+	latest, ok, err := s.latestCacheSnapshotSQL(s.usageRowsQuery(opts))
+	if err != nil {
+		return err
+	}
+	if ok {
+		applyLatestCacheSnapshotToAgg(total, latest)
+	}
+	keyExpr, keyOK := adminScalarDimensionSQLExpr(spec.Dimension)
+	secondaryExpr, secondaryOK := adminScalarDimensionSQLExpr(spec.Secondary)
+	if !keyOK || !secondaryOK {
+		return nil
+	}
+	for _, scalar := range table {
+		q := s.usageRowsQuery(opts)
+		if spec.Dimension != "" {
+			q = q.Where(keyExpr+" = ?", scalar.Key)
+		}
+		if spec.Secondary != "" {
+			q = q.Where(secondaryExpr+" = ?", scalar.SecondaryKey)
+		}
+		latest, ok, err := s.latestCacheSnapshotSQL(q)
+		if err != nil {
+			return err
+		}
+		if ok {
+			applyLatestCacheSnapshotToAgg(&scalar.Agg, latest)
+		}
+	}
+	return nil
+}
+
+func (s *usageStore) latestCacheSnapshotSQL(q *gorm.DB) (latestCacheSnapshotRecord, bool, error) {
+	var rec latestCacheSnapshotRecord
+	err := q.Select("cache_items, cache_bytes, cache_max_bytes, cache_occupancy_pct").
+		Where("cache_enabled = ? OR cache_max_bytes > 0", true).
+		Order("ts DESC, request_id DESC").
+		Limit(1).
+		Scan(&rec).Error
+	if err != nil {
+		return latestCacheSnapshotRecord{}, false, err
+	}
+	return rec, rec.CacheMaxBytes > 0 || rec.CacheItems > 0 || rec.CacheBytes > 0 || rec.CacheOccupancyPct > 0, nil
+}
+
+func applyLatestCacheSnapshotToAgg(a *agg, latest latestCacheSnapshotRecord) {
+	if a == nil {
+		return
+	}
+	a.CacheItemsLatest = latest.CacheItems
+	a.CacheBytesLatest = latest.CacheBytes
+	a.CacheMaxBytesLatest = latest.CacheMaxBytes
+	a.CacheOccupancyLatest = latest.CacheOccupancyPct
+}
+
+func (s *usageStore) adminScalarMultiBucketAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) (map[string]*adminScalarAgg, *agg, bool, error) {
+	secondaryExpr, ok := adminScalarDimensionSQLExprForAlias(spec.Secondary, "u")
+	if !ok {
+		return nil, nil, false, fmt.Errorf("unsupported SQL scalar secondary dimension %q", spec.Secondary)
+	}
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	table := map[string]*adminScalarAgg{}
+	var hasMore bool
+	addBucketed := func(bucketed *gorm.DB) error {
+		records, more, err := s.adminScalarBucketedAggsSQL(bucketed, sortKey, limitN)
+		if err != nil {
+			return err
+		}
+		hasMore = hasMore || more
+		for _, rec := range records {
+			scalar := adminScalarAggFromSQLRecord(rec, adminSavingsBaselineDTO{})
+			mapKey := joinKey(scalar.Key, scalar.SecondaryKey)
+			if existing := table[mapKey]; existing != nil {
+				existing.Agg.Calls += scalar.Agg.Calls
+				existing.Agg.Errors += scalar.Agg.Errors
+				existing.Agg.Streams += scalar.Agg.Streams
+				existing.Agg.CacheHits += scalar.Agg.CacheHits
+				existing.Agg.CacheMisses += scalar.Agg.CacheMisses
+				existing.Agg.CacheBypass += scalar.Agg.CacheBypass
+				existing.Agg.Fallbacks += scalar.Agg.Fallbacks
+				existing.Agg.Attempts += scalar.Agg.Attempts
+				existing.Agg.InputTokens += scalar.Agg.InputTokens
+				existing.Agg.OutputTokens += scalar.Agg.OutputTokens
+				existing.Agg.TotalTokens += scalar.Agg.TotalTokens
+				existing.InputImageCount += scalar.InputImageCount
+				existing.InputImageTokens += scalar.InputImageTokens
+				existing.PIIFilteredRequests += scalar.PIIFilteredRequests
+				existing.PIIFilterReplacements += scalar.PIIFilterReplacements
+				existing.UpstreamReportedCostUSD += scalar.UpstreamReportedCostUSD
+				existing.Agg.InputCostUSD += scalar.Agg.InputCostUSD
+				existing.Agg.ImageCostUSD += scalar.Agg.ImageCostUSD
+				existing.Agg.OutputCostUSD += scalar.Agg.OutputCostUSD
+				existing.Agg.TotalCostUSD += scalar.Agg.TotalCostUSD
+				existing.Agg.LatencyMS += scalar.Agg.LatencyMS
+				existing.Agg.MaxLatencyMS = adminMaxInt64(existing.Agg.MaxLatencyMS, scalar.Agg.MaxLatencyMS)
+				continue
+			}
+			table[mapKey] = scalar
+		}
+		return nil
+	}
+	parent := s.usageRowsQuery(opts)
+	switch spec.Dimension {
+	case "dynamic_signal":
+		bucketed := s.db.Table("(?) AS u", parent).
+			Joins("JOIN request_routing_signals rs ON rs.request_id = u.request_id").
+			Where("rs.strategy = ? AND rs.source = ? AND rs.bool_value = ?", "dynamic_score", "dynamic_score", true).
+			Select("u.*, COALESCE(NULLIF(rs.signal_name, ''), 'none') AS key, " + secondaryExpr + " AS secondary_key")
+		if err := addBucketed(bucketed); err != nil {
+			return nil, nil, false, err
+		}
+	case "dynamic_score_bucket":
+		valueBucketed := s.db.Table("(?) AS u", parent).
+			Joins("JOIN request_dynamic_score_terms dst ON dst.request_id = u.request_id").
+			Where("COALESCE(NULLIF(dst.value_bucket, ''), '') <> ''").
+			Select("u.*, COALESCE(NULLIF(dst.score_name, ''), 'score') || ':' || dst.value_bucket AS key, " + secondaryExpr + " AS secondary_key")
+		if err := addBucketed(valueBucketed); err != nil {
+			return nil, nil, false, err
+		}
+		finalBucketed := s.db.Table("(?) AS u", parent).
+			Joins("JOIN request_dynamic_score_terms dst ON dst.request_id = u.request_id").
+			Where("COALESCE(NULLIF(dst.final_score_bucket, ''), '') <> ''").
+			Select("u.*, 'final_score:' || dst.final_score_bucket AS key, " + secondaryExpr + " AS secondary_key")
+		if err := addBucketed(finalBucketed); err != nil {
+			return nil, nil, false, err
+		}
+	case "dynamic_threshold":
+		bucketed := s.db.Table("(?) AS u", parent).
+			Joins("JOIN request_target_filter_reasons fr ON fr.request_id = u.request_id").
+			Where("fr.reason = ? OR (fr.stage = ? AND fr.reason LIKE ?)", "max-tokens-honored", "dynamic_score", "%threshold%").
+			Select("u.*, CASE WHEN fr.reason = 'max-tokens-honored' THEN 'max_token_cap_filtered' ELSE COALESCE(NULLIF(fr.reason, ''), 'none') END AS key, " + secondaryExpr + " AS secondary_key")
+		if err := addBucketed(bucketed); err != nil {
+			return nil, nil, false, err
+		}
+	case "max_token_bucket", "input_token_bucket":
+		feature := map[string]string{
+			"max_token_bucket":   "max_token_bucket",
+			"input_token_bucket": "input_token_bucket",
+		}[spec.Dimension]
+		bucketed := s.db.Table("(?) AS u", parent).
+			Joins("JOIN request_decision_shape_features sf ON sf.request_id = u.request_id").
+			Where("sf.feature_name = ?", feature).
+			Select("u.*, COALESCE(NULLIF(sf.text_value, ''), 'unknown') AS key, " + secondaryExpr + " AS secondary_key")
+		if err := addBucketed(bucketed); err != nil {
+			return nil, nil, false, err
+		}
+	default:
+		return nil, nil, false, fmt.Errorf("unsupported SQL multi-bucket dimension %q", spec.Dimension)
+	}
+	var totalRec tokenScalarAggRecord
+	if err := s.usageRowsQuery(opts).Select(adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})).Scan(&totalRec).Error; err != nil {
+		return nil, nil, false, err
+	}
+	total := aggFromTokenScalarAggRecord(totalRec)
+	if len(table) > limitN {
+		hasMore = true
+		trimmed := adminScalarRowsFromAgg(table, sortKey, limitN)
+		keep := map[string]bool{}
+		for _, row := range trimmed {
+			keep[joinKey(row.Key, row.SecondaryKey)] = true
+		}
+		for key := range table {
+			if !keep[key] {
+				delete(table, key)
+			}
+		}
+	}
+	return table, &total, hasMore, nil
+}
+
+func (s *usageStore) adminScalarBucketedAggsSQL(bucketed *gorm.DB, sortKey string, limitN int) ([]tokenScalarAggRecord, bool, error) {
+	var records []tokenScalarAggRecord
+	selectExpr := "key, secondary_key, " + adminScalarAggSQLSelectExpr(adminSavingsBaselineDTO{})
+	q := s.db.Table("(?) AS b", bucketed).Select(selectExpr).Group("key, secondary_key").Order(adminScalarAggSQLOrder(sortKey, adminSavingsBaselineDTO{})).Limit(limitN + 1)
+	if err := q.Scan(&records).Error; err != nil {
+		return nil, false, err
+	}
+	hasMore := len(records) > limitN
+	if hasMore {
+		records = records[:limitN]
+	}
+	return records, hasMore, nil
 }
 
 func adminScalarAggSQLGroupBy(spec adminScalarEndpointSpec, keyExpr, secondaryExpr string) string {
@@ -4646,45 +4843,58 @@ func adminScalarAggFromSQLRecord(rec tokenScalarAggRecord, baseline adminSavings
 }
 
 func adminScalarDimensionSQLExpr(dimension string) (string, bool) {
+	return adminScalarDimensionSQLExprForAlias(dimension, "")
+}
+
+func adminScalarDimensionSQLExprForAlias(dimension, alias string) (string, bool) {
+	col := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
+	}
+	def := func(name, fallback string) string {
+		return adminSQLDefault(col(name), fallback)
+	}
 	switch dimension {
 	case "":
 		return "''", true
 	case "caller_id":
-		return adminSQLDefault("caller_id", "unknown"), true
+		return def("caller_id", "unknown"), true
 	case "caller_user":
-		return adminSQLDefault("caller_user", "unknown"), true
+		return def("caller_user", "unknown"), true
 	case "token_id":
-		return adminSQLDefault("token_id", "unknown"), true
+		return def("token_id", "unknown"), true
 	case "requested_model":
-		return adminSQLDefault("requested_model", "unknown"), true
+		return def("requested_model", "unknown"), true
 	case "model_group":
-		return "COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')", true
+		return "COALESCE(NULLIF(" + col("resolved_group") + ", ''), NULLIF(" + col("requested_model") + ", ''), 'unknown')", true
 	case "provider_model":
-		return adminSQLDefault("target_provider", "unknown") + " || '/' || " + adminSQLDefault("target_model", "unknown"), true
+		return def("target_provider", "unknown") + " || '/' || " + def("target_model", "unknown"), true
 	case "dialect":
-		return adminSQLDefault("target_dialect", "unknown"), true
+		return def("target_dialect", "unknown"), true
 	case "client":
-		return adminSQLDefault("client", "unknown"), true
+		return def("client", "unknown"), true
 	case "inbound_dialect":
-		return adminSQLDefault("inbound_dialect", "unknown"), true
+		return def("inbound_dialect", "unknown"), true
 	case "status_error":
-		return "CAST(status AS TEXT) || '/' || CASE WHEN status >= 400 THEN " + adminSQLDefault("error", "error") + " ELSE 'ok' END", true
+		return "CAST(" + col("status") + " AS TEXT) || '/' || CASE WHEN " + col("status") + " >= 400 THEN " + def("error", "error") + " ELSE 'ok' END", true
 	case "cache":
-		return adminSQLDefault("cache", "bypass"), true
+		return def("cache", "bypass"), true
 	case "quota_key_state":
-		return adminSQLDefault("quota_state", "unknown") + " || '/' || " + adminSQLDefault("key_state", "unknown"), true
+		return def("quota_state", "unknown") + " || '/' || " + def("key_state", "unknown"), true
 	case "routing_decision":
-		return adminSQLDefault("strategy", "unknown") + " || '/' || COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')", true
+		return def("strategy", "unknown") + " || '/' || COALESCE(NULLIF(" + col("resolved_group") + ", ''), NULLIF(" + col("requested_model") + ", ''), 'unknown')", true
 	case "contract_bucket":
-		return "CASE WHEN contract_present THEN " + adminSQLDefault("contract_bucket", "unknown") + " ELSE 'none' END", true
+		return "CASE WHEN " + col("contract_present") + " THEN " + def("contract_bucket", "unknown") + " ELSE 'none' END", true
 	case "contract_workload":
-		return "CASE WHEN contract_present THEN " + adminSQLDefault("contract_workload", "unspecified") + " ELSE 'none' END", true
+		return "CASE WHEN " + col("contract_present") + " THEN " + def("contract_workload", "unspecified") + " ELSE 'none' END", true
 	case "target_validation":
-		return adminSQLDefault("target_validation_status", "missing") + " || '/' || " + adminSQLDefault("target_validation_age_bucket", "missing"), true
+		return def("target_validation_status", "missing") + " || '/' || " + def("target_validation_age_bucket", "missing"), true
 	case "project":
-		return adminSQLDefault("caller_project", "unknown"), true
+		return def("caller_project", "unknown"), true
 	case "environment":
-		return adminSQLDefault("caller_environment", "unknown"), true
+		return def("caller_environment", "unknown"), true
 	default:
 		return "", false
 	}
