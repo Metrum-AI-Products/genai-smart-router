@@ -2917,6 +2917,91 @@ func TestAdminSecurityReportCursorPagination(t *testing.T) {
 	}
 }
 
+func TestAdminOverviewIncludesAuthorizedSecurityTrendCharts(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, true)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 15, 0, 0, time.UTC)
+	for _, event := range []securityAccessEvent{
+		{
+			TS:                base,
+			RequestID:         "sec-allowed",
+			EventType:         "admin_access",
+			Surface:           "admin_reports",
+			StatusCode:        http.StatusOK,
+			Outcome:           "allowed",
+			ReasonCode:        "",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+		},
+		{
+			TS:                base.Add(30 * time.Minute),
+			RequestID:         "sec-denied",
+			EventType:         "api_auth_failed",
+			Surface:           "v1_chat_completions",
+			StatusCode:        http.StatusForbidden,
+			Outcome:           "forbidden",
+			ReasonCode:        "reports-forbidden",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+		},
+		{
+			TS:                base,
+			RequestID:         "sec-other-domain",
+			EventType:         "api_auth_failed",
+			Surface:           "v1_messages",
+			StatusCode:        http.StatusUnauthorized,
+			Outcome:           "unauthorized",
+			ReasonCode:        "invalid-token",
+			CallerProject:     "other",
+			CallerEnvironment: "prod",
+		},
+	} {
+		svc.usage.EmitSecurityAccessEvent(event)
+	}
+
+	resp := adminReportJSON(t, svc, "/admin/reports/api/overview?from=2026-06-20T12:00:00Z&to=2026-06-20T14:00:00Z&limit=50")
+	charts := resp["charts"].([]any)
+	events := jsonChartByID(t, charts, "security_events_over_time")
+	series := jsonChartSeriesTotals(events)
+	if series["allowed"] < 1 || series["forbidden"] != 1 {
+		t.Fatalf("security event series=%#v", series)
+	}
+	if _, ok := series["unauthorized"]; ok {
+		t.Fatalf("overview leaked out-of-domain unauthorized event: %#v", series)
+	}
+	denials := jsonChartByID(t, charts, "security_denials_over_time")
+	denialSeries := jsonChartSeriesTotals(denials)
+	if denialSeries["v1_chat_completions"] != 1 {
+		t.Fatalf("security denial series=%#v", denialSeries)
+	}
+	if _, ok := denialSeries["v1_messages"]; ok {
+		t.Fatalf("overview leaked out-of-domain denial surface: %#v", denialSeries)
+	}
+}
+
+func TestAdminOverviewOmitsSecurityTrendChartsWithoutSecurityPermission(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	svc.usage.EmitSecurityAccessEvent(securityAccessEvent{
+		TS:                time.Date(2026, 6, 20, 12, 15, 0, 0, time.UTC),
+		RequestID:         "sec-denied",
+		EventType:         "api_auth_failed",
+		Surface:           "v1_chat_completions",
+		StatusCode:        http.StatusForbidden,
+		Outcome:           "forbidden",
+		ReasonCode:        "reports-forbidden",
+		CallerProject:     "local",
+		CallerEnvironment: "test",
+	})
+
+	resp := adminReportJSON(t, svc, "/admin/reports/api/overview?from=2026-06-20T12:00:00Z&to=2026-06-20T14:00:00Z&limit=50")
+	for _, chart := range resp["charts"].([]any) {
+		if strings.HasPrefix(chart.(map[string]any)["chart_id"].(string), "security_") {
+			t.Fatalf("overview included security chart without security permission: %#v", chart)
+		}
+	}
+}
+
 func newAdminReportPaginationTestService(t *testing.T, security bool) *Service {
 	t.Helper()
 	hash := mustBcryptHash(t, "yell-yell-yum")
@@ -2963,6 +3048,31 @@ func adminReportJSON(t *testing.T, svc *Service, path string) map[string]any {
 		t.Fatalf("%s status=%d body=%s", path, rr.Code, rr.Body.String())
 	}
 	return mustJSONMap(t, rr.Body.String())
+}
+
+func jsonChartByID(t *testing.T, charts []any, id string) map[string]any {
+	t.Helper()
+	for _, raw := range charts {
+		chart := raw.(map[string]any)
+		if chart["chart_id"] == id {
+			return chart
+		}
+	}
+	t.Fatalf("chart %q not found in %#v", id, charts)
+	return nil
+}
+
+func jsonChartSeriesTotals(chart map[string]any) map[string]float64 {
+	out := map[string]float64{}
+	for _, rawSeries := range chart["series"].([]any) {
+		series := rawSeries.(map[string]any)
+		name := series["name"].(string)
+		for _, rawPoint := range series["points"].([]any) {
+			point := rawPoint.(map[string]any)
+			out[name] += point["y"].(float64)
+		}
+	}
+	return out
 }
 
 func requestIDsFromAdminRows(rows []any) []string {

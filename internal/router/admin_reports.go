@@ -1196,7 +1196,43 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 		s.writeAdminReportQueryFailed(w, r, "summary", "handleAdminReportSummary", &filters, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildAdminReportResponseSQL(filters, overview, baseline))
+	resp := buildAdminReportResponseSQL(filters, overview, baseline)
+	if s.adminOverviewCanIncludeSecurityCharts(subject) {
+		globalSecurity := s.authorizeGlobalAdmin(subject, authzObjectSecurityReports, authzActionRead)
+		charts, err := s.adminOverviewSecurityCharts(filters, subject, globalSecurity)
+		if err != nil {
+			s.writeAdminReportQueryFailed(w, r, "overview-security", "handleAdminReportSummary", &filters, err)
+			return
+		}
+		resp.Charts = append(resp.Charts, charts...)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Service) adminOverviewCanIncludeSecurityCharts(subject adminAuthSubject) bool {
+	return s.cfg.Server.AdminReports.Security.Enabled && s.authorizeAdmin(subject, authzObjectSecurityReports, authzActionRead)
+}
+
+func (s *Service) adminOverviewSecurityCharts(filters adminReportFilters, subject adminAuthSubject, global bool) ([]adminReportChart, error) {
+	opts := SecurityReportOptions{
+		From:              filters.From,
+		To:                filters.To,
+		Limit:             filters.Limit,
+		CallerID:          filters.CallerID,
+		CallerUser:        filters.CallerUser,
+		CallerProject:     filters.CallerProject,
+		CallerEnvironment: filters.CallerEnvironment,
+		TokenID:           filters.TokenID,
+		Client:            filters.Client,
+	}
+	if !global {
+		applyAdminSecurityDomainScope(&opts, subject.domain)
+	}
+	trends, err := s.usage.adminSecurityTrendBucketsSQL(opts)
+	if err != nil {
+		return nil, err
+	}
+	return adminSecurityTrendCharts(filters, formatUsageTime(time.Now().UTC()), trends), nil
 }
 
 func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -3128,6 +3164,66 @@ func adminSecurityCharts(filters adminReportFilters, generatedAt string, rows []
 		adminCategoryChart(filters, generatedAt, "security_surfaces", "Security surfaces", "Surface", "Events", "count", []adminReportChartSeries{adminSeriesFromCounts("Events", "count", "blue", bySurface)}),
 		adminCategoryChart(filters, generatedAt, "security_reasons", "Security reasons", "Reason", "Events", "count", []adminReportChartSeries{adminSeriesFromCounts("Events", "count", "red", byReason)}),
 	}
+}
+
+func adminSecurityTrendCharts(filters adminReportFilters, generatedAt string, records []securityTrendBucketRecord) []adminReportChart {
+	if len(records) == 0 {
+		return nil
+	}
+	outcomeSeries := adminSecurityTrendSeries(records, func(record securityTrendBucketRecord) (string, bool) {
+		return defaultString(record.Outcome, "unknown"), true
+	})
+	denialSeries := adminSecurityTrendSeries(records, func(record securityTrendBucketRecord) (string, bool) {
+		switch record.Outcome {
+		case "unauthorized", "forbidden", "denied", "error":
+			return defaultString(record.Surface, "unknown"), true
+		default:
+			return "", false
+		}
+	})
+	charts := []adminReportChart{
+		adminTimeChart(filters, generatedAt, "security_events_over_time", "Security Events Over Time", "Events", "count", outcomeSeries),
+	}
+	if len(denialSeries) > 0 {
+		charts = append(charts, adminTimeChart(filters, generatedAt, "security_denials_over_time", "Security Denials Over Time", "Events", "count", denialSeries))
+	}
+	return charts
+}
+
+func adminSecurityTrendSeries(records []securityTrendBucketRecord, label func(securityTrendBucketRecord) (string, bool)) []adminReportChartSeries {
+	pointsByLabel := map[string]map[string]float64{}
+	buckets := map[string]bool{}
+	for _, record := range records {
+		key, ok := label(record)
+		if !ok || key == "" {
+			continue
+		}
+		if pointsByLabel[key] == nil {
+			pointsByLabel[key] = map[string]float64{}
+		}
+		pointsByLabel[key][record.BucketUTC] += float64(record.Events)
+		buckets[record.BucketUTC] = true
+	}
+	bucketList := make([]string, 0, len(buckets))
+	for bucket := range buckets {
+		bucketList = append(bucketList, bucket)
+	}
+	sort.Strings(bucketList)
+	labels := make([]string, 0, len(pointsByLabel))
+	for key := range pointsByLabel {
+		labels = append(labels, key)
+	}
+	sort.Strings(labels)
+	colors := []string{"magenta", "blue", "red", "warning", "purple", "text"}
+	series := make([]adminReportChartSeries, 0, len(labels))
+	for i, key := range labels {
+		points := make([]adminReportChartPoint, 0, len(bucketList))
+		for _, bucket := range bucketList {
+			points = append(points, adminReportChartPoint{X: bucket, XUnixMs: adminReportTimeUnixMs(bucket), Y: pointsByLabel[key][bucket]})
+		}
+		series = append(series, adminReportChartSeries{Name: key, Unit: "count", ColorKey: colors[i%len(colors)], Points: points})
+	}
+	return series
 }
 
 func adminCatalogStatusCharts(generatedAt string, rows []adminCatalogStatusRow) []adminReportChart {

@@ -188,6 +188,14 @@ type SecurityReportOptions struct {
 	Client            string
 }
 
+type securityTrendBucketRecord struct {
+	BucketUTC string
+	Outcome   string
+	Surface   string
+	Reason    string
+	Events    int64
+}
+
 type usageRow struct {
 	TS                                 time.Time
 	RequestID                          string
@@ -5909,6 +5917,19 @@ func (s *usageStore) adminSecurityEventsPage(opts adminSecurityPageOptions) (adm
 		return adminSecurityPage{}, err
 	}
 	return adminSecurityPage{Events: events, TotalCount: total, HasMore: hasMore}, nil
+}
+
+func (s *usageStore) adminSecurityTrendBucketsSQL(opts SecurityReportOptions) ([]securityTrendBucketRecord, error) {
+	var records []securityTrendBucketRecord
+	err := s.securityAccessEventsQuery(opts).
+		Select("substr(ts, 1, 13) || ':00:00Z' AS bucket_utc, COALESCE(NULLIF(outcome, ''), 'unknown') AS outcome, COALESCE(NULLIF(surface, ''), 'unknown') AS surface, COALESCE(NULLIF(reason_code, ''), 'none') AS reason, COUNT(*) AS events").
+		Group("bucket_utc, outcome, surface, reason").
+		Order("bucket_utc ASC, outcome ASC, surface ASC, reason ASC").
+		Scan(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func (s *usageStore) securityAccessEventsQuery(opts SecurityReportOptions) *gorm.DB {
