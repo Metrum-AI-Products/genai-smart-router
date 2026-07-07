@@ -2523,6 +2523,9 @@ func ImportUsageJSONLTo(cfg UsageDBConfig, logPath string) (int, error) {
 		if line == "" {
 			continue
 		}
+		if usageJSONLLineHasEventType(line) {
+			continue
+		}
 		var rec logRecord
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			return count, fmt.Errorf("parse %s line %d: %w", logPath, count+1, err)
@@ -2531,6 +2534,16 @@ func ImportUsageJSONLTo(cfg UsageDBConfig, logPath string) (int, error) {
 		count++
 	}
 	return count, scanner.Err()
+}
+
+func usageJSONLLineHasEventType(line string) bool {
+	var envelope struct {
+		EventType string `json:"event_type"`
+	}
+	if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+		return false
+	}
+	return envelope.EventType != ""
 }
 
 func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {

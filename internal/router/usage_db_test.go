@@ -172,6 +172,41 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 }
 
+func TestUsageJSONLImportSkipsOperationalEventRecords(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	dbPath := filepath.Join(dir, "usage.sqlite")
+	raw := strings.Join([]string{
+		`{"ts":"2026-06-14T01:00:00.000Z","event_type":"admin_report_query_failed","report":"requests","handler":"handleAdminReportRequests","admin_request_id":"admin-report-test","request_id":"req_real","error_class":"sqlite","error_message":"sanitized failure"}`,
+		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_real","caller_id":"alice","caller_user":"alice","caller_project":"metrum-insights","caller_environment":"test","token_id":"rtr_alice_test","client":"codex","inbound_dialect":"openai-chat","requested_model":"big-coder","resolved_group":"big-coder","strategy":"static","target_provider":"mock","target_model":"mock-model","target_dialect":"openai-chat","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":25,"usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5},"quota_state":"ok","key_state":"active","warnings":[]}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(logPath, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	imported, err := ImportUsageJSONL(dbPath, logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported != 1 {
+		t.Fatalf("imported=%d, want 1 usage row", imported)
+	}
+
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var rows []usageRecord
+	if err := store.db.Order("request_id").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RequestID != "req_real" || rows[0].CallerID != "alice" {
+		t.Fatalf("imported rows=%#v, want only the real usage record", rows)
+	}
+}
+
 func TestSQLiteUsageDBUsesPrivateFileMode(t *testing.T) {
 	oldUmask := syscall.Umask(0)
 	defer syscall.Umask(oldUmask)

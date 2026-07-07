@@ -1497,6 +1497,194 @@ func TestAdminReportsRequireBasicAndCasbinAuthorization(t *testing.T) {
 	}
 }
 
+func TestAdminReportQueryFailuresLogSafeStructuredContext(t *testing.T) {
+	cases := []struct {
+		name      string
+		path      string
+		requestID string
+		want      map[string]any
+	}{
+		{
+			name:      "scalar aggregate report",
+			path:      "/admin/reports/api/provider-model-mix?since=24h&limit=7&sort=costUsd&direction=asc",
+			requestID: "admin-report-test-scalar",
+			want: map[string]any{
+				"event_type":       "admin_report_query_failed",
+				"report":           "provider-model-mix",
+				"handler":          "handleAdminScalarEndpoint",
+				"db_driver":        "sqlite",
+				"admin_request_id": "admin-report-test-scalar",
+				"limit":            float64(7),
+				"sort":             "cost",
+				"direction":        "asc",
+			},
+		},
+		{
+			name:      "request page report",
+			path:      "/admin/reports/api/requests?since=24h&limit=3&sort=latencyMs&direction=desc",
+			requestID: "admin-report-test-requests",
+			want: map[string]any{
+				"event_type":       "admin_report_query_failed",
+				"report":           "requests",
+				"handler":          "handleAdminReportRequests",
+				"db_driver":        "sqlite",
+				"admin_request_id": "admin-report-test-requests",
+				"limit":            float64(3),
+				"sort":             "latencyMs",
+				"direction":        "desc",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, logPath := newAdminReportFailureLoggingService(t, true)
+			defer svc.Close()
+			closeUsageDBForAdminReportFailureTest(t, svc)
+
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.SetBasicAuth("admin", "yell-yell-yum")
+			req.Header.Set("X-Request-Id", tc.requestID)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusInternalServerError {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			if rr.Body.String() != `{"error":{"message":"report-query-failed","type":"report-query-failed"}}`+"\n" {
+				t.Fatalf("caller response changed or leaked detail: %s", rr.Body.String())
+			}
+
+			event := readSingleAdminReportFailureLogEvent(t, logPath)
+			for key, want := range tc.want {
+				if got := event[key]; got != want {
+					t.Fatalf("event[%s]=%#v, want %#v; event=%#v", key, got, want, event)
+				}
+			}
+			if event["from"] == "" || event["to"] == "" || event["error_class"] == "" || event["error_message"] == "" {
+				t.Fatalf("event missing required scalar context: %#v", event)
+			}
+			assertAdminReportFailureLogSanitized(t, event)
+		})
+	}
+}
+
+func TestAdminReportMarkdownQueryFailureLogsSafeStructuredContext(t *testing.T) {
+	svc, logPath := newAdminReportFailureLoggingService(t, true)
+	defer svc.Close()
+	closeUsageDBForAdminReportFailureTest(t, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?since=24h&limit=5", nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	req.Header.Set("X-Request-Id", "admin-report-test-markdown")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	event := readSingleAdminReportFailureLogEvent(t, logPath)
+	for key, want := range map[string]any{
+		"event_type":       "admin_report_query_failed",
+		"report":           "markdown-export",
+		"handler":          "handleAdminReportMarkdown",
+		"db_driver":        "sqlite",
+		"admin_request_id": "admin-report-test-markdown",
+		"limit":            float64(5),
+		"sort":             "timeUtc",
+		"direction":        "desc",
+	} {
+		if got := event[key]; got != want {
+			t.Fatalf("event[%s]=%#v, want %#v; event=%#v", key, got, want, event)
+		}
+	}
+	assertAdminReportFailureLogSanitized(t, event)
+}
+
+func newAdminReportFailureLoggingService(t *testing.T, exportMarkdown bool) (*Service, string) {
+	t.Helper()
+	hash := mustBcryptHash(t, "yell-yell-yum")
+	t.Setenv("SMART_ROUTER_ADMIN_REPORT_FAILURE_PASSWORD_HASH", hash)
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
+		Enabled:           true,
+		Realm:             "Unit Test Admin",
+		AllowInsecureHTTP: true,
+		Users: []AdminBasicAuthUser{{
+			Username:        "admin",
+			PasswordHashEnv: "SMART_ROUTER_ADMIN_REPORT_FAILURE_PASSWORD_HASH",
+			Subject:         "basic:admin",
+			Domain:          "metrum-insights/test",
+		}},
+	}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{
+		Enabled: true,
+		Policy: []string{
+			"p, basic:admin, metrum-insights/test, admin:reports, read|export|drilldown",
+		},
+	}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true, DefaultSince: "24h", MaxRange: "31d", MaxRows: 100, ExportMarkdown: exportMarkdown}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, cfg.Server.Logging.Path
+}
+
+func closeUsageDBForAdminReportFailureTest(t *testing.T, svc *Service) {
+	t.Helper()
+	sqlDB, err := svc.usage.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readSingleAdminReportFailureLogEvent(t *testing.T, logPath string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("log line count=%d raw=%s", len(lines), raw)
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatalf("decode log event: %v raw=%s", err, raw)
+	}
+	return event
+}
+
+func assertAdminReportFailureLogSanitized(t *testing.T, event map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, forbidden := range []string{
+		testToken,
+		"provider-key",
+		"yell-yell-yum",
+		"Basic ",
+		"Authorization",
+		"token_sha256",
+		"SELECT ",
+		" FROM ",
+		" WHERE ",
+		"messages",
+		"prompt",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("admin report failure log leaked %q: %s", forbidden, text)
+		}
+	}
+}
+
 func TestAdminSavingsUsesStoredRequestTimeActualCost(t *testing.T) {
 	var agg adminSavingsAgg
 	baseline := adminSavingsBaselineDTO{

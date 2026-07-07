@@ -14,6 +14,22 @@ type requestLogger struct {
 	file *os.File
 }
 
+type adminReportQueryFailureLogRecord struct {
+	TS             string `json:"ts"`
+	EventType      string `json:"event_type"`
+	Report         string `json:"report"`
+	Handler        string `json:"handler"`
+	DBDriver       string `json:"db_driver,omitempty"`
+	AdminRequestID string `json:"admin_request_id,omitempty"`
+	From           string `json:"from,omitempty"`
+	To             string `json:"to,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
+	Sort           string `json:"sort,omitempty"`
+	Direction      string `json:"direction,omitempty"`
+	ErrorClass     string `json:"error_class"`
+	ErrorMessage   string `json:"error_message"`
+}
+
 type logRecord struct {
 	TS                                 string                           `json:"ts"`
 	RequestID                          string                           `json:"request_id"`
@@ -461,6 +477,25 @@ func (l *requestLogger) Emit(rec logRecord) {
 	}
 	if rec.TS == "" {
 		rec.TS = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	}
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, _ = l.file.Write(append(raw, '\n'))
+}
+
+func (l *requestLogger) EmitAdminReportQueryFailure(rec adminReportQueryFailureLogRecord) {
+	if l == nil {
+		return
+	}
+	if rec.TS == "" {
+		rec.TS = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	}
+	if rec.EventType == "" {
+		rec.EventType = "admin_report_query_failed"
 	}
 	raw, err := json.Marshal(rec)
 	if err != nil {

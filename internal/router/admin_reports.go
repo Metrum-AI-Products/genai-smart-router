@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"path"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1093,6 +1094,69 @@ func (s *Service) setAdminReportHeaders(w http.ResponseWriter, static bool) {
 	w.Header().Set("Pragma", "no-cache")
 }
 
+func (s *Service) writeAdminReportQueryFailed(w http.ResponseWriter, r *http.Request, report, handler string, filters *adminReportFilters, err error) {
+	s.logAdminReportQueryFailure(r, report, handler, filters, err)
+	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+}
+
+func (s *Service) logAdminReportQueryFailure(r *http.Request, report, handler string, filters *adminReportFilters, err error) {
+	if err == nil {
+		return
+	}
+	rec := adminReportQueryFailureLogRecord{
+		EventType:      "admin_report_query_failed",
+		Report:         report,
+		Handler:        handler,
+		DBDriver:       s.adminReportDBDriver(),
+		AdminRequestID: adminReportFailureRequestID(r),
+		ErrorClass:     adminReportErrorClass(err),
+		ErrorMessage:   sanitizeDiagnosticText(err.Error(), false, 512),
+	}
+	if filters != nil {
+		rec.From = filters.From.UTC().Format(time.RFC3339)
+		rec.To = filters.To.UTC().Format(time.RFC3339)
+		rec.Limit = filters.Limit
+		rec.Sort = filters.Sort
+		rec.Direction = filters.Direction
+	}
+	s.logger.EmitAdminReportQueryFailure(rec)
+}
+
+func (s *Service) adminReportDBDriver() string {
+	if s == nil || s.cfg == nil {
+		return ""
+	}
+	return strings.ToLower(defaultString(s.cfg.Server.UsageDB.Driver, "sqlite"))
+}
+
+func adminReportFailureRequestID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if id := strings.TrimSpace(r.Header.Get("X-Request-Id")); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(r.URL.Query().Get("request_id")); id != "" {
+		return id
+	}
+	const marker = "/api/request/"
+	if idx := strings.Index(r.URL.Path, marker); idx >= 0 {
+		return strings.TrimSpace(r.URL.Path[idx+len(marker):])
+	}
+	return ""
+}
+
+func adminReportErrorClass(err error) string {
+	if err == nil {
+		return ""
+	}
+	t := reflect.TypeOf(err)
+	if t == nil {
+		return "error"
+	}
+	return t.String()
+}
+
 func (s *Service) serveAdminReportAsset(w http.ResponseWriter, r *http.Request, name string) {
 	sub, err := fs.Sub(embeddedAdminReports, "admindist")
 	if err != nil {
@@ -1115,7 +1179,7 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "savings")
 	rows, err := s.usage.rowsWithoutBuckets(filters.UsageReportOptions)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		s.writeAdminReportQueryFailed(w, r, "summary", "handleAdminReportSummary", &filters, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, buildAdminReportResponse(filters, rows))
@@ -1136,7 +1200,7 @@ func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Reques
 	}
 	resp, err := s.buildAdminSavingsResponseSQL(filters, baseline)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		s.writeAdminReportQueryFailed(w, r, "savings", "handleAdminReportSavings", &filters, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -1164,7 +1228,8 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 			Cursor:             cursor,
 		})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			filters.Sort = sortKey
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		filters.Sort = sortKey
@@ -1181,12 +1246,12 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 		parentOpts := adminDiagnosticParentOptions(filters.UsageReportOptions, spec.Diagnostic)
 		rows, err := s.usage.rows(parentOpts)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		resp, err := s.buildAdminDiagnosticReportResponse(filters, rows, spec)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -1195,17 +1260,17 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	if spec.Report == "traffic-tuning-advisor" {
 		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		attempts, err := s.usage.trafficTuningAttemptsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, buildAdminTrafficTuningAdvisorResponse(filters, rows, events, attempts, spec))
@@ -1214,13 +1279,13 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	if spec.ShapeReport != "" {
 		rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "")
 		events, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, buildAdminShapeReportResponse(filters, rows, events, spec))
@@ -1238,7 +1303,7 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	if adminScalarSpecCanUseSQLAgg(spec) {
 		resp, err := s.buildAdminScalarReportResponseSQL(filters, spec, baseline)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -1246,7 +1311,7 @@ func (s *Service) handleAdminScalarEndpoint(w http.ResponseWriter, r *http.Reque
 	}
 	rows, err := s.adminScalarReportRows(filters.UsageReportOptions, spec)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		s.writeAdminReportQueryFailed(w, r, spec.Report, "handleAdminScalarEndpoint", &filters, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, buildAdminScalarReportResponse(filters, rows, spec, baseline))
@@ -1326,7 +1391,8 @@ func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Reque
 		Cursor:                cursor,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		filters.Sort = sortKey
+		s.writeAdminReportQueryFailed(w, r, "security-events", "handleAdminSecurityEvents", &filters, err)
 		return
 	}
 	filters.Sort = sortKey
@@ -1336,13 +1402,13 @@ func (s *Service) handleAdminSecurityEvents(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Service) handleAdminSecurityCSV(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
-	opts, _, ok := s.parseAdminSecurityFilters(w, r, subject, global)
+	opts, filters, ok := s.parseAdminSecurityFilters(w, r, subject, global)
 	if !ok {
 		return
 	}
 	events, err := s.usage.securityAccessEvents(opts)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		s.writeAdminReportQueryFailed(w, r, "security-export", "handleAdminSecurityCSV", &filters, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -1527,7 +1593,8 @@ func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Reque
 		Cursor:             cursor,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		filters.Sort = sortKey
+		s.writeAdminReportQueryFailed(w, r, "requests", "handleAdminReportRequests", &filters, err)
 		return
 	}
 	filters.Sort = sortKey
@@ -1548,9 +1615,9 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid-report-filter", "message": "invalid-report-filter"}})
 		return
 	}
-	resp, found, queryOK := s.adminRequestEvidenceResponse(requestID, subject, global)
-	if !queryOK {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+	resp, found, err := s.adminRequestEvidenceResponse(requestID, subject, global)
+	if err != nil {
+		s.writeAdminReportQueryFailed(w, r, "request-evidence", "handleAdminReportRequestDetail", nil, err)
 		return
 	}
 	if !found {
@@ -1560,20 +1627,20 @@ func (s *Service) handleAdminReportRequestDetail(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAuthSubject, global bool) (adminEvidenceBundleResponse, bool, bool) {
+func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAuthSubject, global bool) (adminEvidenceBundleResponse, bool, error) {
 	var usage usageRecord
 	if err := s.usage.db.Where("request_id = ?", requestID).First(&usage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return adminEvidenceBundleResponse{}, false, true
+			return adminEvidenceBundleResponse{}, false, nil
 		}
-		return adminEvidenceBundleResponse{}, false, false
+		return adminEvidenceBundleResponse{}, false, err
 	}
 	row, err := rowFromUsageRecord(usage)
 	if err != nil {
-		return adminEvidenceBundleResponse{}, false, false
+		return adminEvidenceBundleResponse{}, false, err
 	}
 	if !global && !adminDomainAllowsUsageRow(subject.domain, row) {
-		return adminEvidenceBundleResponse{}, false, true
+		return adminEvidenceBundleResponse{}, false, nil
 	}
 	var attempts []requestAttemptRecord
 	var traces []requestTraceEventRecord
@@ -1657,7 +1724,7 @@ func (s *Service) adminRequestEvidenceResponse(requestID string, subject adminAu
 		DiagnosticCompleteness:      completeness,
 		EvidenceSections:            sections,
 		DiagnosticCompletenessScore: score,
-	}, true, true
+	}, true, nil
 }
 
 func adminEvidenceBundleFrom(row usageRow, request adminReportRequest, sections []adminEvidenceSection, completeness string, score int, candidates []decisionTargetCandidateRecord, filterReasons []decisionTargetFilterReasonRecord, routingDecisions []routingDecisionRecord, fallbackTransitions []fallbackTransitionRecord) adminRequestEvidenceBundle {
@@ -1847,14 +1914,16 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 		Direction:          "desc",
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		filters.Sort = "timeUtc"
+		filters.Direction = "desc"
+		s.writeAdminReportQueryFailed(w, r, "markdown-export", "handleAdminReportMarkdown", &filters, err)
 		return
 	}
 	rows := page.Rows
 	decisionSummary := s.usage.decisionTelemetrySummary(rows)
 	upstreamShapeEvents, err := s.usage.upstreamShapeEventsForRows(rows, filters.UsageReportOptions)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+		s.writeAdminReportQueryFailed(w, r, "markdown-export", "handleAdminReportMarkdown", &filters, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
