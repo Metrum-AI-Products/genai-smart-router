@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/DataTable";
-import { MetricGrid } from "@/components/MetricGrid";
+import { MetricGrid, type MetricGridConfig } from "@/components/MetricGrid";
 import { ReportCharts } from "@/components/ReportCharts";
 import { TabFilterPanel } from "@/components/TabFilterPanel";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
   const supportedSortKeys = supportedSortKeysForTab(tab);
   const sortKey = resolveSortKey(report?.pagination?.sort || filters.sort, rows, columns);
   const sortDir = (report?.pagination?.direction || filters.direction) === "asc" ? "asc" : "desc";
+  const metricGridConfig = metricGridConfigForTab(tab, report);
   return (
     <main className="space-y-4">
       <div>
@@ -85,7 +86,7 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
       ) : null}
       {loading ? <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">Loading report data...</div> : null}
       <TabFilterPanel tab={tab} columns={columns} supportedSortKeys={supportedSortKeys} filters={filters} onFiltersChange={onFiltersChange} />
-      <MetricGrid summary={report?.summary} />
+      <MetricGrid summary={report?.summary} config={metricGridConfig} />
       {tab.id === "savings" && report?.warnings?.length ? (
         <Card className="border-metrum-red/30 bg-metrum-red/10">
           <CardHeader>
@@ -119,6 +120,37 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
       />
     </main>
   );
+}
+
+function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): MetricGridConfig | undefined {
+  if (tab.id !== "savings") return undefined;
+  const hasActualCost = typeof report?.summary?.actualCostUsd === "number";
+  return {
+    priority: [
+      "savingsUsd",
+      "savingsPct",
+      "actualCostUsd",
+      "totalCostUsd",
+      "baselineCostUsd",
+      "requests",
+      "totalTokens",
+      "tokens",
+      "avgCostUsd",
+      "errors",
+      "fallbacks",
+    ],
+    labels: {
+      savingsUsd: "Total savings",
+      savingsPct: "Savings rate",
+      actualCostUsd: "Actual cost",
+      totalCostUsd: "Actual cost",
+      baselineCostUsd: "Baseline cost",
+      avgCostUsd: "Avg cost/request",
+    },
+    hiddenKeys: hasActualCost ? ["totalCostUsd"] : undefined,
+    hideZeroKeys: ["errors", "fallbacks"],
+    maxItems: 9,
+  };
 }
 
 function relatedReportHref(tabId: string) {
