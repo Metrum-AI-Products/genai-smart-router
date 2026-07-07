@@ -2543,6 +2543,106 @@ func TestAdminSavingsAggregateSQLTopNUsesFullWindowSummary(t *testing.T) {
 	}
 }
 
+func TestAdminOverviewSQLUsesFullWindowSummaryAndBoundedSample(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	ttfb := int64(20)
+	upstream := int64(70)
+	downstream := int64(10)
+	upstreamTPS := 42.5
+	downstreamTPS := 38.25
+	for i, rec := range []struct {
+		id     string
+		caller string
+		cost   float64
+		status int
+		cache  string
+	}{
+		{id: "overview-old", caller: "alice", cost: 1, status: 200, cache: "hit"},
+		{id: "overview-mid", caller: "alice", cost: 2, status: 502, cache: "miss"},
+		{id: "overview-new", caller: "alice", cost: 9, status: 200, cache: "bypass"},
+		{id: "overview-other", caller: "bob", cost: 100, status: 200, cache: "hit"},
+	} {
+		svc.usage.Emit(logRecord{
+			TS:                  base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			RequestID:           rec.id,
+			CallerID:            rec.caller,
+			CallerUser:          rec.caller + "@example.com",
+			CallerProject:       "local",
+			CallerEnvironment:   "test",
+			TokenID:             fmt.Sprintf("rtr_overview_%d", i),
+			Client:              "codex-cli",
+			RequestedModel:      "default",
+			ResolvedGroup:       "default",
+			TargetProvider:      "mock",
+			TargetModel:         "mock-model",
+			TargetDialect:       "openai-chat",
+			Cache:               rec.cache,
+			Status:              rec.status,
+			Attempts:            1,
+			FallbackUsed:        rec.status >= 500,
+			LatencyMS:           int64(100 + i),
+			TTFBMS:              &ttfb,
+			UpstreamMS:          &upstream,
+			DownstreamMS:        &downstream,
+			UpstreamOutputTPS:   &upstreamTPS,
+			UpstreamTotalTPS:    &upstreamTPS,
+			DownstreamOutputTPS: &downstreamTPS,
+			DownstreamTotalTPS:  &downstreamTPS,
+			Usage:               Usage{InputTokens: 1_000_000, OutputTokens: 0, TotalTokens: 1_000_000},
+			InputCostUSD:        rec.cost,
+			TotalCostUSD:        rec.cost,
+			CacheEnabled:        true,
+			CacheItems:          int64(10 + i),
+			CacheBytes:          int64(100 + i),
+			CacheMaxBytes:       1000,
+			CacheOccupancyPct:   float64(10 + i),
+			QuotaState:          "ok",
+			KeyState:            "ok",
+		})
+	}
+
+	report := adminReportJSON(t, svc, "/admin/reports/api/overview?from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&caller_id=alice&limit=1&baseline=custom&baseline_input_price_per_million_usd=10&baseline_output_price_per_million_usd=0")
+	summary := report["summary"].(map[string]any)
+	if summary["requests"].(float64) != 3 || summary["errors"].(float64) != 1 {
+		t.Fatalf("overview summary did not use full filtered window: %#v", summary)
+	}
+	assertCloseFloat(t, "overview actual cost", summary["actualCostUsd"].(float64), 12)
+	assertCloseFloat(t, "overview baseline cost", summary["baselineCostUsd"].(float64), 30)
+	assertCloseFloat(t, "overview savings", summary["savingsUsd"].(float64), 18)
+	requests := report["requests"].([]any)
+	if len(requests) != 1 || requests[0].(map[string]any)["requestId"] != "overview-new" {
+		t.Fatalf("overview recent sample=%#v, want only newest filtered request", requests)
+	}
+	page := report["pagination"].(map[string]any)
+	if page["mode"] != "top_n" || page["returned"].(float64) != 1 || page["has_more"] != true {
+		t.Fatalf("overview pagination=%#v", page)
+	}
+	cache := report["cache"].(map[string]any)
+	if cache["latestItems"].(float64) != 12 || cache["latestBytes"].(float64) != 102 {
+		t.Fatalf("overview cache should use latest filtered snapshot: %#v", cache)
+	}
+	chartIDs := map[string]bool{}
+	for _, raw := range report["charts"].([]any) {
+		chartIDs[raw.(map[string]any)["chart_id"].(string)] = true
+	}
+	for _, want := range []string{"requests", "cost", "cost_baseline_savings", "savings_pct", "latency", "throughput", "errors_fallbacks", "error_fallback_rates", "cache", "cache_hit_rate"} {
+		if !chartIDs[want] {
+			t.Fatalf("missing overview chart %q in %#v", want, chartIDs)
+		}
+	}
+	series := report["series"].([]any)
+	if len(series) != 1 {
+		t.Fatalf("series len=%d, want one hourly bucket: %#v", len(series), series)
+	}
+	bucket := series[0].(map[string]any)
+	if bucket["successes"].(float64) != 2 || bucket["errors"].(float64) != 1 {
+		t.Fatalf("unexpected overview bucket counts: %#v", bucket)
+	}
+	assertCloseFloat(t, "bucket savings pct", bucket["savingsPct"].(float64), 60)
+}
+
 func TestAdminScalarSQLGroupByOmitsEmptySecondaryDimension(t *testing.T) {
 	groupBy := adminScalarAggSQLGroupBy(adminScalarEndpointSpec{
 		Report:    "usage-by-key",
@@ -2559,6 +2659,11 @@ func TestAdminScalarSQLGroupByOmitsEmptySecondaryDimension(t *testing.T) {
 	}, "target_provider || '/' || target_model", "target_dialect")
 	if groupBy != "target_provider || '/' || target_model, target_dialect" {
 		t.Fatalf("group by with secondary=%q", groupBy)
+	}
+
+	latencyOrder := adminScalarAggSQLOrder("latency", adminSavingsBaselineDTO{})
+	if strings.Contains(latencyOrder, "avgLatency") || strings.Contains(latencyOrder, "avg_latency") || !strings.Contains(latencyOrder, "SUM(latency_ms)") {
+		t.Fatalf("latency order should repeat aggregate expression instead of alias arithmetic: %q", latencyOrder)
 	}
 }
 

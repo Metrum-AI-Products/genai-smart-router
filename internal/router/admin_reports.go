@@ -625,17 +625,30 @@ type adminReportCache struct {
 }
 
 type adminReportSeries struct {
-	TimeUTC     string  `json:"timeUtc"`
-	Requests    int64   `json:"requests"`
-	Errors      int64   `json:"errors"`
-	CostUSD     float64 `json:"costUsd"`
-	Tokens      int64   `json:"tokens"`
-	LatencyMS   int64   `json:"latencyMs"`
-	TTFBMS      int64   `json:"ttfbMs"`
-	CacheHits   int64   `json:"cacheHits"`
-	CacheMisses int64   `json:"cacheMisses"`
-	CacheBypass int64   `json:"cacheBypass"`
-	Fallbacks   int64   `json:"fallbacks"`
+	TimeUTC             string  `json:"timeUtc"`
+	Requests            int64   `json:"requests"`
+	Successes           int64   `json:"successes"`
+	Errors              int64   `json:"errors"`
+	CostUSD             float64 `json:"costUsd"`
+	BaselineCostUSD     float64 `json:"baselineCostUsd,omitempty"`
+	SavingsUSD          float64 `json:"savingsUsd,omitempty"`
+	SavingsPct          float64 `json:"savingsPct,omitempty"`
+	Tokens              int64   `json:"tokens"`
+	LatencyMS           int64   `json:"latencyMs"`
+	TTFBMS              int64   `json:"ttfbMs"`
+	UpstreamMS          int64   `json:"upstreamMs"`
+	DownstreamMS        int64   `json:"downstreamMs"`
+	UpstreamOutputTPS   float64 `json:"upstreamOutputTokensPerSec,omitempty"`
+	UpstreamTotalTPS    float64 `json:"upstreamTotalTokensPerSec,omitempty"`
+	DownstreamOutputTPS float64 `json:"downstreamOutputTokensPerSec,omitempty"`
+	DownstreamTotalTPS  float64 `json:"downstreamTotalTokensPerSec,omitempty"`
+	ErrorRatePct        float64 `json:"errorRatePct"`
+	FallbackRatePct     float64 `json:"fallbackRatePct"`
+	CacheHits           int64   `json:"cacheHits"`
+	CacheMisses         int64   `json:"cacheMisses"`
+	CacheBypass         int64   `json:"cacheBypass"`
+	CacheHitRatePct     float64 `json:"cacheHitRatePct"`
+	Fallbacks           int64   `json:"fallbacks"`
 }
 
 type adminReportChart struct {
@@ -1177,12 +1190,13 @@ func (s *Service) handleAdminReportSummary(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	filters.Sort = normalizeAdminAggregateSortOrDefault(filters.Sort, "savings")
-	rows, err := s.usage.rowsWithoutBuckets(filters.UsageReportOptions)
+	baseline := s.adminOverviewBaseline(r)
+	overview, err := s.usage.adminOverviewSQL(filters.UsageReportOptions, baseline, filters.Limit)
 	if err != nil {
 		s.writeAdminReportQueryFailed(w, r, "summary", "handleAdminReportSummary", &filters, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildAdminReportResponse(filters, rows))
+	writeJSON(w, http.StatusOK, buildAdminReportResponseSQL(filters, overview, baseline))
 }
 
 func (s *Service) handleAdminReportSavings(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -1570,6 +1584,42 @@ func (s *Service) adminSavingsBaselines() []adminSavingsBaselineDTO {
 		})
 	}
 	return out
+}
+
+func (s *Service) adminOverviewBaseline(r *http.Request) adminSavingsBaselineDTO {
+	baselineID := strings.TrimSpace(r.URL.Query().Get("baseline"))
+	if strings.EqualFold(baselineID, "custom") {
+		input, errIn := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("baseline_input_price_per_million_usd")), 64)
+		output, errOut := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("baseline_output_price_per_million_usd")), 64)
+		if errIn == nil && errOut == nil && input >= 0 && output >= 0 && input <= 100000 && output <= 100000 {
+			name := strings.TrimSpace(r.URL.Query().Get("baseline_name"))
+			if name == "" {
+				name = "Custom baseline"
+			}
+			return adminSavingsBaselineDTO{
+				BaselineID:                       "custom",
+				BaselineName:                     name,
+				PricingSource:                    "custom-session",
+				PricingUpdatedAt:                 formatUsageTime(time.Now().UTC()),
+				BaselineInputPricePerMillionUSD:  input,
+				BaselineOutputPricePerMillionUSD: output,
+				Custom:                           true,
+			}
+		}
+	}
+	if baselineID == "" {
+		baselineID = "gpt-5.5"
+	}
+	for _, baseline := range s.adminSavingsBaselines() {
+		if baseline.BaselineID == baselineID {
+			return baseline
+		}
+	}
+	baselines := s.adminSavingsBaselines()
+	if len(baselines) > 0 {
+		return baselines[0]
+	}
+	return adminSavingsBaselineDTO{}
 }
 
 func (s *Service) handleAdminReportRequests(w http.ResponseWriter, r *http.Request, subject adminAuthSubject, global bool) {
@@ -2563,7 +2613,7 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Summary:      adminSummaryFromAgg(total),
 		Series:       series,
-		Charts:       adminChartsFromSeries(filters, generatedAt, series, adminRowsFromAgg(byProvider)),
+		Charts:       adminChartsFromSeries(filters, generatedAt, series, adminRowsFromAgg(byProvider), false),
 		ByToken:      adminRowsFromAgg(byToken),
 		ByGroup:      adminRowsFromAgg(byGroup),
 		ByProvider:   adminRowsFromAgg(byProvider),
@@ -2571,6 +2621,41 @@ func buildAdminReportResponse(filters adminReportFilters, rows []usageRow) admin
 		Cache:        adminCacheFromAgg(total),
 		Requests:     requests,
 		Pagination:   adminTopNPagination(filters, len(requests), len(rows) > filters.Limit, "Summary request rows are a top-N recent sample for the selected filters."),
+		GeneratedUTC: generatedAt,
+	}
+}
+
+func buildAdminReportResponseSQL(filters adminReportFilters, overview adminOverviewSQLResult, baseline adminSavingsBaselineDTO) adminReportResponse {
+	total := aggFromTokenScalarAggRecord(overview.Total)
+	series := adminSeriesFromSQLRecords(overview.ByHour, baseline)
+	generatedAt := formatUsageTime(time.Now().UTC())
+	requests := make([]adminReportRequest, 0, len(overview.RecentRequests))
+	for _, row := range overview.RecentRequests {
+		requests = append(requests, adminRequestFromRow(row))
+	}
+	summary := adminSummaryFromAgg(&total)
+	if baseline.BaselineID != "" {
+		actualCost := summary.TotalCostUSD
+		baselineCost := overview.Total.BaselineCostUSD
+		savings := baselineCost - actualCost
+		savingsPct := ratioPctFloat(savings, baselineCost)
+		summary.ActualCostUSD = &actualCost
+		summary.BaselineCostUSD = &baselineCost
+		summary.SavingsUSD = &savings
+		summary.SavingsPct = &savingsPct
+	}
+	return adminReportResponse{
+		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
+		Summary:      summary,
+		Series:       series,
+		Charts:       adminChartsFromSeries(filters, generatedAt, series, adminRowsFromSQLRecords(overview.ByProvider), baseline.BaselineID != ""),
+		ByToken:      adminRowsFromSQLRecords(overview.ByToken),
+		ByGroup:      adminRowsFromSQLRecords(overview.ByGroup),
+		ByProvider:   adminRowsFromSQLRecords(overview.ByProvider),
+		ByStatus:     adminRowsFromSQLRecords(overview.ByStatus),
+		Cache:        adminCacheFromAgg(&total),
+		Requests:     requests,
+		Pagination:   adminTopNPagination(filters, len(requests), overview.RequestHasMore || overview.GroupHasMore, "Overview summaries and breakdowns use full-window SQL aggregates; request rows are a bounded recent sample for the selected filters."),
 		GeneratedUTC: generatedAt,
 	}
 }
@@ -4846,34 +4931,100 @@ func adminRowsFromAgg(data map[string]*agg) []adminReportTableRow {
 	return out
 }
 
+func adminRowsFromSQLRecords(records []tokenScalarAggRecord) []adminReportTableRow {
+	out := make([]adminReportTableRow, 0, len(records))
+	for _, rec := range records {
+		a := aggFromTokenScalarAggRecord(rec)
+		key := defaultString(rec.Key, "unknown")
+		out = append(out, adminReportTableRow{Key: key, Requests: a.Calls, Errors: a.Errors, Tokens: a.TotalTokens, TotalTokens: a.TotalTokens, InputTokens: a.InputTokens, OutputTokens: a.OutputTokens, CostUSD: a.TotalCostUSD, InputCostUSD: a.InputCostUSD, ImageCostUSD: a.ImageCostUSD, OutputCostUSD: a.OutputCostUSD, TotalCostUSD: a.TotalCostUSD, Attempts: a.Attempts, Fallbacks: a.Fallbacks, AvgLatencyMS: avg(a.LatencyMS, a.Calls), MaxLatencyMS: a.MaxLatencyMS})
+	}
+	return out
+}
+
 func adminSeriesFromAgg(data map[string]*agg) []adminReportSeries {
 	keys := sortedAggKeys(data)
 	sort.Strings(keys)
 	out := make([]adminReportSeries, 0, len(keys))
 	for _, key := range keys {
 		a := data[key]
-		out = append(out, adminReportSeries{TimeUTC: key, Requests: a.Calls, Errors: a.Errors, CostUSD: a.TotalCostUSD, Tokens: a.TotalTokens, LatencyMS: avg(a.LatencyMS, a.Calls), TTFBMS: avg(a.TTFBMS, a.TTFBCount), CacheHits: a.CacheHits, CacheMisses: a.CacheMisses, CacheBypass: a.CacheBypass, Fallbacks: a.Fallbacks})
+		out = append(out, adminSeriesFromAggValue(key, *a, 0, false))
 	}
 	return out
 }
 
-func adminChartsFromSeries(filters adminReportFilters, generatedAt string, series []adminReportSeries, providers []adminReportTableRow) []adminReportChart {
-	return []adminReportChart{
+func adminSeriesFromSQLRecords(records []tokenScalarAggRecord, baseline adminSavingsBaselineDTO) []adminReportSeries {
+	out := make([]adminReportSeries, 0, len(records))
+	for _, rec := range records {
+		out = append(out, adminSeriesFromAggValue(defaultString(rec.Key, "unknown"), aggFromTokenScalarAggRecord(rec), rec.BaselineCostUSD, baseline.BaselineID != ""))
+	}
+	return out
+}
+
+func adminSeriesFromAggValue(key string, a agg, baselineCost float64, hasBaseline bool) adminReportSeries {
+	successes := a.Calls - a.Errors
+	if successes < 0 {
+		successes = 0
+	}
+	row := adminReportSeries{
+		TimeUTC:             key,
+		Requests:            a.Calls,
+		Successes:           successes,
+		Errors:              a.Errors,
+		CostUSD:             a.TotalCostUSD,
+		Tokens:              a.TotalTokens,
+		LatencyMS:           avg(a.LatencyMS, a.Calls),
+		TTFBMS:              avg(a.TTFBMS, a.TTFBCount),
+		UpstreamMS:          avg(a.UpstreamMS, a.UpstreamMSCount),
+		DownstreamMS:        avg(a.DownstreamMS, a.DownstreamMSCount),
+		UpstreamOutputTPS:   avgFloat(a.UpstreamOutputTPS, a.UpstreamOutputTPSCount),
+		UpstreamTotalTPS:    avgFloat(a.UpstreamTotalTPS, a.UpstreamTotalTPSCount),
+		DownstreamOutputTPS: avgFloat(a.DownstreamOutputTPS, a.DownstreamOutputTPSCount),
+		DownstreamTotalTPS:  avgFloat(a.DownstreamTotalTPS, a.DownstreamTotalTPSCount),
+		ErrorRatePct:        ratioPct(a.Errors, a.Calls),
+		FallbackRatePct:     ratioPct(a.Fallbacks, a.Calls),
+		CacheHits:           a.CacheHits,
+		CacheMisses:         a.CacheMisses,
+		CacheBypass:         a.CacheBypass,
+		CacheHitRatePct:     ratioPct(a.CacheHits, a.CacheHits+a.CacheMisses),
+		Fallbacks:           a.Fallbacks,
+	}
+	if hasBaseline {
+		row.BaselineCostUSD = baselineCost
+		row.SavingsUSD = baselineCost - a.TotalCostUSD
+		row.SavingsPct = ratioPctFloat(row.SavingsUSD, baselineCost)
+	}
+	return row
+}
+
+func adminChartsFromSeries(filters adminReportFilters, generatedAt string, series []adminReportSeries, providers []adminReportTableRow, hasBaseline bool) []adminReportChart {
+	charts := []adminReportChart{
 		adminTimeChart(filters, generatedAt, "requests", "Requests", "Requests", "count", []adminReportChartSeries{
 			adminChartSeriesFromTimeRows("Requests", "count", "magenta", series, func(row adminReportSeries) float64 { return float64(row.Requests) }),
+			adminChartSeriesFromTimeRows("Successes", "count", "success", series, func(row adminReportSeries) float64 { return float64(row.Successes) }),
 			adminChartSeriesFromTimeRows("Errors", "count", "red", series, func(row adminReportSeries) float64 { return float64(row.Errors) }),
 		}),
 		adminTimeChart(filters, generatedAt, "cost", "Cost", "USD", "usd", []adminReportChartSeries{
 			adminChartSeriesFromTimeRows("Cost", "usd", "red", series, func(row adminReportSeries) float64 { return row.CostUSD }),
 		}),
-		adminTimeChart(filters, generatedAt, "latency", "Latency", "Milliseconds", "ms", []adminReportChartSeries{
+		adminTimeChart(filters, generatedAt, "latency", "Latency And Duration", "Milliseconds", "ms", []adminReportChartSeries{
 			adminChartSeriesFromTimeRows("Latency", "ms", "violet", series, func(row adminReportSeries) float64 { return float64(row.LatencyMS) }),
 			adminChartSeriesFromTimeRows("TTFB", "ms", "blue", series, func(row adminReportSeries) float64 { return float64(row.TTFBMS) }),
+			adminChartSeriesFromTimeRows("Upstream duration", "ms", "magenta", series, func(row adminReportSeries) float64 { return float64(row.UpstreamMS) }),
+			adminChartSeriesFromTimeRows("Downstream duration", "ms", "text", series, func(row adminReportSeries) float64 { return float64(row.DownstreamMS) }),
+		}),
+		adminTimeChart(filters, generatedAt, "throughput", "Throughput", "Tokens per second", "tokens_per_sec", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Upstream output", "tokens_per_sec", "blue", series, func(row adminReportSeries) float64 { return row.UpstreamOutputTPS }),
+			adminChartSeriesFromTimeRows("Upstream total", "tokens_per_sec", "magenta", series, func(row adminReportSeries) float64 { return row.UpstreamTotalTPS }),
+			adminChartSeriesFromTimeRows("Downstream output", "tokens_per_sec", "success", series, func(row adminReportSeries) float64 { return row.DownstreamOutputTPS }),
+			adminChartSeriesFromTimeRows("Downstream total", "tokens_per_sec", "warning", series, func(row adminReportSeries) float64 { return row.DownstreamTotalTPS }),
 		}),
 		adminTimeChart(filters, generatedAt, "cache", "Cache", "Requests", "count", []adminReportChartSeries{
 			adminChartSeriesFromTimeRows("Hits", "count", "success", series, func(row adminReportSeries) float64 { return float64(row.CacheHits) }),
 			adminChartSeriesFromTimeRows("Misses", "count", "warning", series, func(row adminReportSeries) float64 { return float64(row.CacheMisses) }),
 			adminChartSeriesFromTimeRows("Bypass", "count", "text", series, func(row adminReportSeries) float64 { return float64(row.CacheBypass) }),
+		}),
+		adminTimeChart(filters, generatedAt, "cache_hit_rate", "Cache Hit Rate", "Percent", "percent", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Hit rate", "percent", "success", series, func(row adminReportSeries) float64 { return row.CacheHitRatePct }),
 		}),
 		adminCategoryChart(filters, generatedAt, "provider_tokens", "Provider token volume", "Provider / model", "Token count", "tokens", []adminReportChartSeries{
 			adminChartSeriesFromTableRows("Input Tokens", "tokens", "blue", providers, func(row adminReportTableRow) float64 { return float64(row.InputTokens) }),
@@ -4884,7 +5035,24 @@ func adminChartsFromSeries(filters adminReportFilters, generatedAt string, serie
 			adminChartSeriesFromTimeRows("Errors", "count", "red", series, func(row adminReportSeries) float64 { return float64(row.Errors) }),
 			adminChartSeriesFromTimeRows("Fallbacks", "count", "warning", series, func(row adminReportSeries) float64 { return float64(row.Fallbacks) }),
 		}),
+		adminTimeChart(filters, generatedAt, "error_fallback_rates", "Error And Fallback Rates", "Percent", "percent", []adminReportChartSeries{
+			adminChartSeriesFromTimeRows("Error rate", "percent", "red", series, func(row adminReportSeries) float64 { return row.ErrorRatePct }),
+			adminChartSeriesFromTimeRows("Fallback rate", "percent", "warning", series, func(row adminReportSeries) float64 { return row.FallbackRatePct }),
+		}),
 	}
+	if hasBaseline {
+		charts = append(charts,
+			adminTimeChart(filters, generatedAt, "cost_baseline_savings", "Actual Cost, Baseline, And Savings", "USD", "usd", []adminReportChartSeries{
+				adminChartSeriesFromTimeRows("Actual cost", "usd", "red", series, func(row adminReportSeries) float64 { return row.CostUSD }),
+				adminChartSeriesFromTimeRows("Baseline cost", "usd", "blue", series, func(row adminReportSeries) float64 { return row.BaselineCostUSD }),
+				adminChartSeriesFromTimeRows("Savings", "usd", "magenta", series, func(row adminReportSeries) float64 { return row.SavingsUSD }),
+			}),
+			adminTimeChart(filters, generatedAt, "savings_pct", "Savings Rate", "Percent", "percent", []adminReportChartSeries{
+				adminChartSeriesFromTimeRows("Savings rate", "percent", "purple", series, func(row adminReportSeries) float64 { return row.SavingsPct }),
+			}),
+		)
+	}
+	return charts
 }
 
 func adminTimeChart(filters adminReportFilters, generatedAt, id, title, yLabel, yUnit string, chartSeries []adminReportChartSeries) adminReportChart {

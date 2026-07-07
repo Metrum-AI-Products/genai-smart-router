@@ -4268,6 +4268,128 @@ type savingsAggRecord struct {
 	MissingActualCost int64
 }
 
+type adminOverviewSQLResult struct {
+	Total          tokenScalarAggRecord
+	ByHour         []tokenScalarAggRecord
+	ByToken        []tokenScalarAggRecord
+	ByGroup        []tokenScalarAggRecord
+	ByProvider     []tokenScalarAggRecord
+	ByStatus       []tokenScalarAggRecord
+	RecentRequests []usageRow
+	GroupHasMore   bool
+	RequestHasMore bool
+}
+
+func (s *usageStore) adminOverviewSQL(opts UsageReportOptions, baseline adminSavingsBaselineDTO, limit int) (adminOverviewSQLResult, error) {
+	limitN := limit
+	if limitN <= 0 {
+		limitN = 50
+	}
+	aggExpr := adminScalarAggSQLSelectExpr(baseline)
+	var result adminOverviewSQLResult
+	if err := s.usageRowsQuery(opts).Select(aggExpr).Scan(&result.Total).Error; err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	if latest, ok, err := s.adminLatestCacheSnapshot(opts); err != nil {
+		return adminOverviewSQLResult{}, err
+	} else if ok {
+		result.Total.CacheItemsMax = latest.CacheItems
+		result.Total.CacheBytesMax = latest.CacheBytes
+		result.Total.CacheMaxBytesLatest = latest.CacheMaxBytes
+		result.Total.CacheOccupancyMax = latest.CacheOccupancyPct
+	}
+	hourExpr := "substr(ts, 1, 13) || ':00:00Z'"
+	var err error
+	if result.ByHour, err = s.adminOverviewGroupSQL(opts, hourExpr, aggExpr, "key ASC", 0); err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	tokenExpr := adminSQLDefault("token_id", "unknown")
+	if result.ByToken, result.GroupHasMore, err = s.adminOverviewTopNSQL(opts, tokenExpr, aggExpr, limitN); err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	groupExpr := "COALESCE(NULLIF(resolved_group, ''), NULLIF(requested_model, ''), 'unknown')"
+	var groupHasMore bool
+	if result.ByGroup, groupHasMore, err = s.adminOverviewTopNSQL(opts, groupExpr, aggExpr, limitN); err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	result.GroupHasMore = result.GroupHasMore || groupHasMore
+	providerExpr := adminSQLDefault("target_provider", "unknown") + " || '/' || " + adminSQLDefault("target_model", "unknown")
+	if result.ByProvider, groupHasMore, err = s.adminOverviewTopNSQL(opts, providerExpr, aggExpr, limitN); err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	result.GroupHasMore = result.GroupHasMore || groupHasMore
+	statusExpr := "CAST(status AS TEXT)"
+	if result.ByStatus, groupHasMore, err = s.adminOverviewTopNSQL(opts, statusExpr, aggExpr, limitN); err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	result.GroupHasMore = result.GroupHasMore || groupHasMore
+	result.RecentRequests, result.RequestHasMore, err = s.adminOverviewRecentRequestsSQL(opts, limitN)
+	if err != nil {
+		return adminOverviewSQLResult{}, err
+	}
+	return result, nil
+}
+
+func (s *usageStore) adminOverviewTopNSQL(opts UsageReportOptions, keyExpr, aggExpr string, limit int) ([]tokenScalarAggRecord, bool, error) {
+	records, err := s.adminOverviewGroupSQL(opts, keyExpr, aggExpr, "COUNT(*) DESC, key ASC", limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	return records, hasMore, nil
+}
+
+func (s *usageStore) adminOverviewGroupSQL(opts UsageReportOptions, keyExpr, aggExpr, orderExpr string, limit int) ([]tokenScalarAggRecord, error) {
+	selectExpr := keyExpr + " AS key, '' AS secondary_key, " + aggExpr
+	q := s.usageRowsQuery(opts).Select(selectExpr).Group(keyExpr).Order(orderExpr)
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	var records []tokenScalarAggRecord
+	if err := q.Scan(&records).Error; err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (s *usageStore) adminLatestCacheSnapshot(opts UsageReportOptions) (usageRecord, bool, error) {
+	var rec usageRecord
+	err := s.usageRowsQuery(opts).
+		Where("(cache_enabled = ? OR cache_max_bytes > ?)", true, 0).
+		Order("ts DESC, request_id DESC").
+		Limit(1).
+		First(&rec).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return usageRecord{}, false, nil
+	}
+	if err != nil {
+		return usageRecord{}, false, err
+	}
+	return rec, true, nil
+}
+
+func (s *usageStore) adminOverviewRecentRequestsSQL(opts UsageReportOptions, limit int) ([]usageRow, bool, error) {
+	if limit <= 0 {
+		return nil, false, nil
+	}
+	var records []usageRecord
+	if err := s.usageRowsQuery(opts).Order("ts DESC, request_id DESC").Limit(limit + 1).Find(&records).Error; err != nil {
+		return nil, false, err
+	}
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+	rows, err := usageRowsFromRecords(records)
+	if err != nil {
+		return nil, false, err
+	}
+	return rows, hasMore, nil
+}
+
 func (s *usageStore) adminSavingsAggsSQL(opts UsageReportOptions, baseline adminSavingsBaselineDTO, limit int) (adminSavingsRow, []adminSavingsRow, []adminSavingsRow, bool, int64, int64, error) {
 	limitN := limit
 	if limitN <= 0 {
