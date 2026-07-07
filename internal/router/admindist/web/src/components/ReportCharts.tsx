@@ -10,6 +10,7 @@ import { compactFmt, usdCompactFmt } from "@/lib/utils";
 
 type Props = {
   charts?: ReportChart[];
+  reportId?: string;
 };
 
 const palette: Record<string, string> = {
@@ -24,13 +25,33 @@ const palette: Record<string, string> = {
   warning: "#f59e0b",
 };
 
-export function ReportCharts({ charts }: Props) {
+export function ReportCharts({ charts, reportId }: Props) {
   const normalized = useMemo(
     () => (charts || []).map(normalizeChart).filter((chart) => chart.series.some((series) => series.points.length > 0)),
     [charts],
   );
   if (normalized.length === 0) {
     return <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">No chart data for the selected filters.</div>;
+  }
+  if (reportId === "overview") {
+    const sections = overviewChartSections(normalized);
+    return (
+      <section className="space-y-5" aria-label="Overview charts">
+        {sections.map((section) => (
+          <div key={section.id} data-chart-section={section.id}>
+            <div className="mb-3">
+              <h3 className="font-display text-base text-white">{section.title}</h3>
+              <p className="text-xs text-white/50">{section.description}</p>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              {section.charts.map((chart) => (
+                <ChartCard key={chart.id} chart={chart} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+    );
   }
   return (
     <section className="grid gap-4 xl:grid-cols-2">
@@ -39,6 +60,81 @@ export function ReportCharts({ charts }: Props) {
       ))}
     </section>
   );
+}
+
+type OverviewChartSection = {
+  id: string;
+  title: string;
+  description: string;
+  charts: NormalizedChart[];
+};
+
+type ChartIdentity = Pick<NormalizedChart, "id" | "title">;
+
+const overviewSectionDefs = [
+  {
+    id: "health",
+    title: "Health",
+    description: "Request volume, success, errors, and fallback behavior over the selected window.",
+    patterns: [/request/i, /error/i, /fallback/i],
+  },
+  {
+    id: "value",
+    title: "Value",
+    description: "Actual cost, baseline cost, and savings signals for the selected filters.",
+    patterns: [/cost/i, /saving/i, /baseline/i],
+  },
+  {
+    id: "performance",
+    title: "Performance",
+    description: "Latency, upstream duration, TTFB, and token throughput trends.",
+    patterns: [/latency/i, /ttfb/i, /throughput/i, /tok.?s/i, /duration/i],
+  },
+  {
+    id: "operations",
+    title: "Operations",
+    description: "Cache and security activity that can affect operator triage.",
+    patterns: [/cache/i, /security/i, /incident/i, /auth/i],
+  },
+  {
+    id: "topn",
+    title: "Top groups",
+    description: "Bounded ranked categories for provider, model, caller, and status dimensions.",
+    patterns: [/provider/i, /model/i, /token/i, /status/i, /group/i, /user/i, /key/i],
+  },
+] as const;
+
+export function overviewChartSectionIds(charts: ChartIdentity[]): string[] {
+  return overviewChartSections(charts as NormalizedChart[]).map((section) => section.id);
+}
+
+function overviewChartSections(charts: NormalizedChart[]): OverviewChartSection[] {
+  const buckets = new Map<string, NormalizedChart[]>(overviewSectionDefs.map((section) => [section.id, []]));
+  const other: NormalizedChart[] = [];
+  for (const chart of charts) {
+    const haystack = `${chart.id} ${chart.title}`;
+    const section = overviewSectionDefs.find((candidate) => candidate.patterns.some((pattern) => pattern.test(haystack)));
+    if (section) {
+      buckets.get(section.id)?.push(chart);
+    } else {
+      other.push(chart);
+    }
+  }
+  if (other.length > 0) {
+    buckets.set("other", other);
+  }
+  const sections: OverviewChartSection[] = overviewSectionDefs
+    .map((section) => ({ ...section, charts: buckets.get(section.id) || [] }))
+    .filter((section) => section.charts.length > 0);
+  if (other.length > 0) {
+    sections.push({
+      id: "other",
+      title: "Additional charts",
+      description: "Other chart data returned by the report API.",
+      charts: other,
+    });
+  }
+  return sections;
 }
 
 function ChartCard({ chart }: { chart: NormalizedChart }) {

@@ -101,7 +101,7 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
           </CardContent>
         </Card>
       ) : null}
-      <ReportCharts charts={report?.charts} />
+      <ReportCharts charts={report?.charts} reportId={tab.id} />
       <DataTable
         rows={rows}
         columns={columns}
