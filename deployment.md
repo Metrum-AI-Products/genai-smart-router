@@ -16,8 +16,8 @@ Last deployed: 2026-07-07
 
 ## Deployed Version
 
-- Router package/image version: `09d3246-linux-amd64`
-- Source commit: `09d3246`
+- Router package/image version: `b6f407a-linux-amd64`
+- Source commit: `b6f407a`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,36 @@ Last deployed: 2026-07-07
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-07 Admin Reports SQL Aggregate And Traffic Advisor Production Refresh
+
+Package `smart-llmrouter:b6f407a-linux-amd64` was deployed to production after upstream admin-report SQL aggregate and traffic-advisor improvements merged.
+
+Source commit: `b6f407a` (`Use SQL aggregates for traffic tuning adv...`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-b6f407a-20260707T214011Z`.
+- Docker load log: `/tmp/smart-llmrouter-docker-load-b6f407a.log`.
+
+Validation:
+
+- `go test ./internal/router -run 'TestAdminReport|TestTraffic|TestUsage|TestAdminScalar|TestAdminMarkdown|TestOverview|TestReport'`: passed.
+- `go test ./...`: passed.
+- `make package-docker VERSION=b6f407a COMMIT=b6f407a`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `b6f407a`, commit `b6f407a`, build date `2026-07-07T21:35:31Z`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: b6f407a`.
+- Reusable Harbor caller authenticated `/v1/models` returned 200 with `big-coder` available.
+- Authenticated `big-coder` Responses smoke through `https://llm-api-engg.metrum.ai/v1/responses` returned 200 with output `OK`.
+- Production admin report APIs returned 200:
+  - `/admin/reports/api/savings-by-key?since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc`
+  - `/admin/reports/api/savings-by-user?since=15d&limit=50&baseline=gpt-5.5`
+  - `/admin/reports/api/usage-by-key?since=15d&limit=50`
+- Production Harbor e2e `case-20260707T214118Z` against `https://llm-api-engg.metrum.ai` passed for `codex` + `big-coder`: `status=ok`, `exit_code=0`, `reward=1`, `errors=0`, elapsed 115s.
+- Router log tail after deploy showed no panic/fatal/error lines.
+- Temporary uploaded package and staging files were removed from `/tmp`; `docker system prune -f` was run.
 
 ## 2026-07-07 Admin Reports SQL Aggregate Production Refresh
 
