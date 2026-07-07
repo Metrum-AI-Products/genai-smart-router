@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestAnthropicIngressUnaryHappyPath(t *testing.T) {
@@ -2365,6 +2367,116 @@ func TestAdminMarkdownExportUsesBoundedRecentRows(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("export missing bounded row %q: %s", want, body)
 		}
+	}
+}
+
+func TestAdminMarkdownSummaryExportUsesSQLTotalsAndTopN(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	svc.cfg.Server.AdminReports.ExportMarkdown = true
+	if err := svc.usage.db.Callback().Query().Before("gorm:query").Register("test:forbid_summary_raw_usage_records", func(tx *gorm.DB) {
+		switch tx.Statement.Dest.(type) {
+		case *[]usageRecord, []usageRecord:
+			tx.AddError(errors.New("summary export must not materialize raw usage rows"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	fixtures := []struct {
+		id     string
+		group  string
+		caller string
+		tokens int
+		cost   float64
+		status int
+	}{
+		{"summary-old-secret-req", "group-a", "caller-a", 100, 1000, 200},
+		{"summary-mid-secret-req", "group-b", "caller-b", 20, 2, 200},
+		{"summary-new-secret-req", "group-c", "caller-c", 30, 3, 500},
+	}
+	for i, fixture := range fixtures {
+		var errorText *string
+		if fixture.status >= 400 {
+			v := "upstream-failed"
+			errorText = &v
+		}
+		svc.usage.Emit(logRecord{
+			TS:                base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			RequestID:         fixture.id,
+			CallerID:          fixture.caller,
+			CallerUser:        "summary@example.com",
+			CallerProject:     "local",
+			CallerEnvironment: "test",
+			TokenID:           fmt.Sprintf("rtr_summary_secret_%d", i),
+			Client:            "codex",
+			InboundDialect:    "openai-responses",
+			RequestedModel:    fixture.group,
+			ResolvedGroup:     fixture.group,
+			TargetProvider:    "mock",
+			TargetModel:       "mock-model",
+			TargetDialect:     "openai-chat",
+			Cache:             "miss",
+			Status:            fixture.status,
+			Attempts:          1,
+			LatencyMS:         int64(100 + i),
+			Usage:             Usage{InputTokens: fixture.tokens, OutputTokens: 1, TotalTokens: fixture.tokens + 1},
+			TotalCostUSD:      fixture.cost,
+			QuotaState:        "ok",
+			KeyState:          "ok",
+			Error:             errorText,
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?mode=summary&from=2026-06-20T11:00:00Z&to=2026-06-20T13:00:00Z&limit=2", nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK {
+		t.Fatalf("summary export status=%d body=%s", rr.Code, body)
+	}
+	for _, want := range []string{
+		"# Smart LLM Router Usage Summary",
+		"Mode: `summary`",
+		"Scope: full-window SQL totals with bounded top-N aggregate sections; no raw request rows are included.",
+		"Requests: `3`",
+		"Errors: `1`",
+		"Total Tokens: `153`; Input Tokens: `150`; Output Tokens: `3`",
+		"Cost: `$1005.000000` total",
+		"## Top Model Groups By Requests",
+		"Top 2 aggregate rows ranked by `requests`",
+		"More aggregate buckets matched the selected window.",
+		"## Top Provider Models By Tokens",
+		"## Top Callers By Cost",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("summary export missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "group-c") {
+		t.Fatalf("summary top-N section included third model-group bucket despite limit=2:\n%s", body)
+	}
+	for _, forbidden := range []string{"summary-old-secret-req", "summary-mid-secret-req", "summary-new-secret-req", "rtr_summary_secret_"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("summary export leaked raw row/token value %q:\n%s", forbidden, body)
+		}
+	}
+}
+
+func TestAdminMarkdownExportRejectsUnknownMode(t *testing.T) {
+	svc := newAdminReportPaginationTestService(t, false)
+	defer svc.Close()
+	svc.cfg.Server.AdminReports.ExportMarkdown = true
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/export.md?mode=everything", nil)
+	req.SetBasicAuth("admin", "yell-yell-yum")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("unknown mode status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid-report-filter") {
+		t.Fatalf("unknown mode did not return safe filter error: %s", rr.Body.String())
 	}
 }
 

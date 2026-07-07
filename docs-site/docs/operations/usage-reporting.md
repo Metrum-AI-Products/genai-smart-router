@@ -209,7 +209,8 @@ Savings breakdown browser tables intentionally emphasize attribution fields: dim
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
 - `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, terminal error, shape, sanitized upstream-error, and decision-telemetry rows.
 - `/admin/reports/api/request-evidence?request_id=<request_id>` returns the same request-level evidence bundle with `diagnosticCompleteness`, `diagnosticCompletenessScore`, and per-section `present` / `not_applicable` / `missing` states.
-- `/admin/reports/export.md?since=24h` returns the Markdown report used by the CLI renderer.
+- `/admin/reports/export.md?since=24h` returns the bounded detail Markdown report used by the CLI renderer, with recent matching request rows capped by `limit`.
+- `/admin/reports/export.md?since=24h&mode=summary` returns a SQL-backed Markdown summary with full-window totals and bounded top-N aggregate sections, without raw request rows.
 
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Category charts shorten long bucket labels on the axis and show a collapsible bucket legend that maps each short label to its full value; tables, exports, and JSON responses keep the full label. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
 
@@ -233,7 +234,7 @@ Anomaly reports are deterministic operational triage views rather than machine-l
 
 The browser shell adds shared usability controls across tabs: URL-backed selected tab, global filters, server sort/direction, limit, and cursor state; global filters for caller/project/model/provider context; per-tab panels for tab-local controls such as baseline/status/cache/sort/traffic-shaping scope; a table-toolbar `Rows` server limit; clearly labeled quick filtering of the returned page or top-N rows; sortable headers; refresh; request-ID drilldown; and CSV export of current-page, top-N, or visible safe scalar columns. Server endpoints remain authenticated, bounded, and domain-scoped to the admin's policy domain unless an explicit `*` policy domain grants deployment-wide report access. The browser controls do not expose or persist bearer tokens.
 
-CSV export scope is explicit in the button label: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for unpaged responses. Markdown export is a bounded current-filter report that includes the most recent matching request rows up to the requested `limit`, adds an export-scope note when more rows matched, and escapes raw HTML plus active Markdown table-cell syntax. Cross-domain request IDs return `404` for domain-scoped admins.
+CSV export scope is explicit in the button label: current cursor page for request/security detail, returned top-N rows for aggregate tabs, or visible rows for unpaged responses. Markdown detail export is a bounded current-filter report that includes the most recent matching request rows up to the requested `limit`, adds an export-scope note when more rows matched, and escapes raw HTML plus active Markdown table-cell syntax. Markdown summary export is available with `mode=summary`; it computes full-window totals and top-N aggregate sections in SQL so large windows do not require loading every matching raw request row. Both Markdown modes use safe scalar report fields only and must not expose prompts, raw images, tool payloads, bearer tokens, token hashes, provider keys, full config, or unsanitized upstream bodies. Cross-domain request IDs return `404` for domain-scoped admins.
 
 Browser investigation examples:
 

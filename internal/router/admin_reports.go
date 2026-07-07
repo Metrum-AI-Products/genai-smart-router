@@ -1907,6 +1907,21 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 	if !validateAdminTopNPageParams(w, filters) {
 		return
 	}
+	switch mode := strings.TrimSpace(r.URL.Query().Get("mode")); mode {
+	case "", "detail", "raw":
+	case "summary":
+		md, err := s.renderAdminReportSummaryMarkdown(filters)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "report-query-failed", "message": "report-query-failed"}})
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(md))
+		return
+	default:
+		writeInvalidReportFilter(w, "unsupported markdown export mode")
+		return
+	}
 	page, err := s.usage.adminUsageRowsPage(adminUsagePageOptions{
 		UsageReportOptions: filters.UsageReportOptions,
 		Limit:              filters.Limit,
@@ -1932,6 +1947,121 @@ func (s *Service) handleAdminReportMarkdown(w http.ResponseWriter, r *http.Reque
 		md = strings.Replace(md, "\n\n", fmt.Sprintf("\n\n> Export scope: showing the most recent %d request rows for this filter; more rows matched the selected window. Use cursor-paged request APIs or narrower filters for row-by-row review.\n\n", len(rows)), 1)
 	}
 	_, _ = w.Write([]byte(md))
+}
+
+type adminMarkdownSummarySection struct {
+	Title   string
+	Columns []string
+	Rows    []adminScalarReportRow
+	HasMore bool
+	Sort    string
+	Limit   int
+}
+
+func (s *Service) renderAdminReportSummaryMarkdown(filters adminReportFilters) (string, error) {
+	limit := filters.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	totalSpec := adminScalarEndpointSpec{Report: "summary-totals", Sort: "requests"}
+	_, total, _, _, err := s.usage.adminScalarAggsSQL(filters.UsageReportOptions, totalSpec, adminSavingsBaselineDTO{}, "requests", 1)
+	if err != nil {
+		return "", err
+	}
+	sectionSpecs := []struct {
+		title   string
+		columns []string
+		spec    adminScalarEndpointSpec
+	}{
+		{"Top Model Groups By Requests", []string{"Model Group"}, adminScalarEndpointSpec{Report: "summary-model-groups", Dimension: "model_group", Sort: "requests"}},
+		{"Top Provider Models By Tokens", []string{"Provider / Model", "Dialect"}, adminScalarEndpointSpec{Report: "summary-provider-models", Dimension: "provider_model", Secondary: "dialect", Sort: "tokens"}},
+		{"Top Callers By Cost", []string{"Caller ID", "Project"}, adminScalarEndpointSpec{Report: "summary-callers", Dimension: "caller_id", Secondary: "project", Sort: "cost"}},
+		{"Top Clients By Requests", []string{"Client", "Inbound Dialect"}, adminScalarEndpointSpec{Report: "summary-clients", Dimension: "client", Secondary: "inbound_dialect", Sort: "requests"}},
+		{"Top Projects By Cost", []string{"Project", "Environment"}, adminScalarEndpointSpec{Report: "summary-projects", Dimension: "project", Secondary: "environment", Sort: "cost"}},
+		{"Top Requested Models By Requests", []string{"Requested Model", "Resolved Group"}, adminScalarEndpointSpec{Report: "summary-requested-models", Dimension: "requested_model", Secondary: "model_group", Sort: "requests"}},
+		{"Top Status/Error Buckets By Errors", []string{"Status / Error", "Provider / Model"}, adminScalarEndpointSpec{Report: "summary-status-errors", Dimension: "status_error", Secondary: "provider_model", Sort: "errors"}},
+	}
+	sections := make([]adminMarkdownSummarySection, 0, len(sectionSpecs))
+	for _, sectionSpec := range sectionSpecs {
+		table, _, _, hasMore, err := s.usage.adminScalarAggsSQL(filters.UsageReportOptions, sectionSpec.spec, adminSavingsBaselineDTO{}, sectionSpec.spec.Sort, limit)
+		if err != nil {
+			return "", err
+		}
+		rows := adminScalarRowsFromAgg(table, sectionSpec.spec.Sort, limit)
+		sections = append(sections, adminMarkdownSummarySection{
+			Title:   sectionSpec.title,
+			Columns: sectionSpec.columns,
+			Rows:    rows,
+			HasMore: hasMore,
+			Sort:    sectionSpec.spec.Sort,
+			Limit:   limit,
+		})
+	}
+	return renderAdminReportSummaryMarkdown(filters.From, filters.To, total, sections), nil
+}
+
+func renderAdminReportSummaryMarkdown(from, to time.Time, total *agg, sections []adminMarkdownSummarySection) string {
+	if total == nil {
+		total = &agg{}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Smart LLM Router Usage Summary\n\n")
+	fmt.Fprintf(&b, "- Mode: `summary`\n")
+	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
+	fmt.Fprintf(&b, "- Scope: full-window SQL totals with bounded top-N aggregate sections; no raw request rows are included.\n")
+	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
+	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)
+	fmt.Fprintf(&b, "- Total Tokens: `%d`; Input Tokens: `%d`; Output Tokens: `%d`\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
+	fmt.Fprintf(&b, "- Cost: `$%s` total, `$%s` input, `$%s` image, `$%s` output\n", fmtUSD(total.TotalCostUSD), fmtUSD(total.InputCostUSD), fmtUSD(total.ImageCostUSD), fmtUSD(total.OutputCostUSD))
+	fmt.Fprintf(&b, "- Cache: `%d` hits, `%d` misses, `%d` bypass\n", total.CacheHits, total.CacheMisses, total.CacheBypass)
+	fmt.Fprintf(&b, "- Upstream attempts: `%d`; fallbacks: `%d`; streaming requests: `%d`\n", total.Attempts, total.Fallbacks, total.Streams)
+	fmt.Fprintf(&b, "- Latency: `%d ms` avg, `%d ms` max\n\n", avg(total.LatencyMS, total.Calls), total.MaxLatencyMS)
+
+	for _, section := range sections {
+		writeAdminMarkdownSummarySection(&b, section)
+	}
+	return b.String()
+}
+
+func writeAdminMarkdownSummarySection(b *strings.Builder, section adminMarkdownSummarySection) {
+	fmt.Fprintf(b, "## %s\n\n", section.Title)
+	sortLabel := defaultString(section.Sort, "requests")
+	fmt.Fprintf(b, "> Top %d aggregate rows ranked by `%s`. Full-window totals above are not limited by this top-N bound.", section.Limit, sortLabel)
+	if section.HasMore {
+		fmt.Fprint(b, " More aggregate buckets matched the selected window.")
+	}
+	fmt.Fprint(b, "\n\n")
+	for _, column := range section.Columns {
+		fmt.Fprintf(b, "| %s ", column)
+	}
+	fmt.Fprintln(b, "| Requests | Errors | Total Tokens | Input Tokens | Output Tokens | Total Cost USD | Cache Hits | Cache Misses | Cache Bypass | Attempts | Fallbacks | Avg Latency ms | Max Latency ms |")
+	for range section.Columns {
+		fmt.Fprint(b, "|---")
+	}
+	fmt.Fprintln(b, "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	for _, row := range section.Rows {
+		values := []string{row.Key}
+		if len(section.Columns) > 1 {
+			values = append(values, row.SecondaryKey)
+		}
+		for i := 0; i < len(section.Columns); i++ {
+			value := ""
+			if i < len(values) {
+				value = values[i]
+			}
+			fmt.Fprintf(b, "| %s ", esc(value))
+		}
+		fmt.Fprintf(b, "| %d | %d | %d | %d | %d | $%s | %d | %d | %d | %d | %d | %d | %d |\n",
+			row.Requests, row.Errors, row.TotalTokens, row.InputTokens, row.OutputTokens, fmtUSD(row.TotalCostUSD),
+			row.CacheHits, row.CacheMisses, row.CacheBypass, row.Attempts, row.Fallbacks, row.AvgLatencyMS, row.MaxLatencyMS)
+	}
+	if len(section.Rows) == 0 {
+		for range section.Columns {
+			fmt.Fprint(b, "| _none_ ")
+		}
+		fmt.Fprintln(b, "| 0 | 0 | 0 | 0 | 0 | $0.000000 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |")
+	}
+	fmt.Fprintln(b)
 }
 
 func (s *Service) parseAdminReportFilters(w http.ResponseWriter, r *http.Request, _ bool, subject adminAuthSubject, global bool) (adminReportFilters, bool) {
