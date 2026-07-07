@@ -312,7 +312,7 @@ function savingsBreakdownColumns(primaryLabel: string, secondaryLabel?: string):
     { key: "inputTokens", label: "Input tokens" },
     { key: "outputTokens", label: "Output tokens" },
     { key: "totalTokens", label: "Total tokens" },
-    { key: "totalCostUsd", label: "Actual cost", unit: "USD" },
+    { key: "actualCostUsd", label: "Actual cost", unit: "USD" },
     { key: "baselineCostUsd", label: "Baseline cost", unit: "USD" },
     { key: "savingsUsd", label: "Savings", unit: "USD" },
     { key: "savingsPct", label: "Savings rate", unit: "%" },
@@ -1306,6 +1306,7 @@ export function rowsForTab(tab: TabSpec, report: ReportResponse): ReportRow[] {
     return rows;
   }
   if (tab.requests || tab.id === "requests") return report.requests || [];
+  if (isSavingsBreakdownTab(tab)) return normalizeSavingsBreakdownRows(report.rows || report.byTime || []);
   if (tab.id === "retention-status") {
     const retention = report as ReportResponse & { tables?: ReportRow[]; rollups?: ReportRow[] };
     return [...(retention.tables || []), ...(retention.rollups || [])];
@@ -1321,7 +1322,7 @@ export function columnsForTab(tab: TabSpec, rows: ReportRow[]): ReportColumn[] {
       if (hasVisibleValue(row[key])) available.add(key);
     }
   }
-  const selected = schema.filter((column) => available.has(column.key));
+  const selected = schema.filter((column) => available.has(column.key) || (isSavingsBreakdownTab(tab) && columnAliasesVisible(column.key, rows)));
   const seen = new Set<string>();
   const deduped = selected.filter((column) => {
     if (seen.has(column.key)) return false;
@@ -1329,6 +1330,31 @@ export function columnsForTab(tab: TabSpec, rows: ReportRow[]): ReportColumn[] {
     return true;
   });
   return describeColumns(suppressRedundantAliases(deduped, rows));
+}
+
+function isSavingsBreakdownTab(tab: TabSpec): boolean {
+  return tab.savings === true && tab.id.startsWith("savings-by-");
+}
+
+function normalizeSavingsBreakdownRows(rows: ReportRow[]): ReportRow[] {
+  return rows.map((row) => ({
+    ...row,
+    inputTokens: firstVisibleValue(row, ["inputTokens", "input_tokens"]),
+    outputTokens: firstVisibleValue(row, ["outputTokens", "output_tokens"]),
+    totalTokens: firstVisibleValue(row, ["totalTokens", "total_tokens", "tokens"]),
+    actualCostUsd: firstVisibleValue(row, ["actualCostUsd", "actual_cost_usd", "totalCostUsd", "costUsd"]),
+    baselineCostUsd: firstVisibleValue(row, ["baselineCostUsd", "baseline_cost_usd"]),
+    savingsUsd: firstVisibleValue(row, ["savingsUsd", "savings_usd"]),
+    savingsPct: firstVisibleValue(row, ["savingsPct", "savings_pct"]),
+    avgCostUsd: firstVisibleValue(row, ["avgCostUsd", "avg_cost_usd"]),
+  }));
+}
+
+function firstVisibleValue(row: ReportRow, keys: string[]): unknown {
+  for (const key of keys) {
+    if (hasVisibleValue(row[key])) return row[key];
+  }
+  return undefined;
 }
 
 const columnDescriptions: Record<string, string> = {
@@ -1543,10 +1569,29 @@ function rowsEveryEqual(rows: ReportRow[], left: string, right: string): boolean
   return rows.length > 0 && rows.every((row) => String(row[left] ?? "") === String(row[right] ?? ""));
 }
 
+const columnAliases: Record<string, string[]> = {
+  actualCostUsd: ["actual_cost_usd", "totalCostUsd", "costUsd"],
+  baselineCostUsd: ["baseline_cost_usd"],
+  savingsUsd: ["savings_usd"],
+  savingsPct: ["savings_pct"],
+  inputTokens: ["input_tokens"],
+  outputTokens: ["output_tokens"],
+  totalTokens: ["total_tokens", "tokens"],
+  avgCostUsd: ["avg_cost_usd"],
+};
+
+function columnAliasesVisible(key: string, rows: ReportRow[]): boolean {
+  for (const alias of columnAliases[key] || []) {
+    if (rows.some((row) => hasVisibleValue(row[alias]))) return true;
+  }
+  return false;
+}
+
 const sortAliases: Record<string, string[]> = {
   actualCostUsd: ["actual_cost_usd", "costUsd", "totalCostUsd"],
   baselineCostUsd: ["baseline_cost_usd", "baselineCostUsd"],
-  costUsd: ["totalCostUsd"],
+  costUsd: ["actualCostUsd", "totalCostUsd"],
+  totalCostUsd: ["actualCostUsd", "costUsd"],
   savingsUsd: ["savings_usd", "savingsUsd"],
   savingsPct: ["savings_pct", "savingsPct"],
   inputTokens: ["inputTokens", "input_tokens"],

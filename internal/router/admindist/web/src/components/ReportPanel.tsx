@@ -174,10 +174,13 @@ function HelpList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function supportedSortKeysForTab(tab: TabSpec): ReadonlySet<string> | undefined {
+export function supportedSortKeysForTab(tab: TabSpec): ReadonlySet<string> | undefined {
   if (tab.security) return new Set(["timeUtc", "status", "outcome", "surface", "reason"]);
   if (tab.requests) return new Set(["timeUtc", "costUsd", "totalCostUsd", "latencyMs", "status", "requestId"]);
   if (!tab.filters?.includes("sort")) return undefined;
+  if (tab.savings && tab.id.startsWith("savings-by-")) {
+    return new Set(["savingsUsd", "savingsPct", "baselineCostUsd", "actualCostUsd", "totalCostUsd", "requests", "totalTokens", "avgCostUsd"]);
+  }
   return new Set([
     "key",
     "requests",
