@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-07
+Last deployed: 2026-07-08
 
 ## Live Environment
 
@@ -16,8 +16,8 @@ Last deployed: 2026-07-07
 
 ## Deployed Version
 
-- Router package/image version: `b6f407a-linux-amd64`
-- Source commit: `b6f407a`
+- Router package/image version: `0ce7fa9-linux-amd64`
+- Source commit: `0ce7fa9`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,36 @@ Last deployed: 2026-07-07
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-08 Bridge Sessions And Admin Reports Production Refresh
+
+Package `smart-llmrouter:0ce7fa9-linux-amd64` was deployed to production after upstream PRs for traffic-shaping report SQL compatibility, safer PostgreSQL report diagnostics, Anthropic endpoint validation docs, Responses-body compatibility gates, and Redis-backed Chat-to-Responses stateful sessions merged.
+
+Source commit: `0ce7fa9` (`Add Redis backend for bridge stateful sessions`)
+
+Production change:
+
+- Updated only `SMART_LLMROUTER_VERSION` in `/opt/smart-llmrouter/compose/.env`.
+- Preserved live production router config, provider keys, caller tokens, state, logs, database settings, and Caddy compose config.
+- Previous `.env` backup: `/opt/smart-llmrouter/compose/.env.bak.refresh-0ce7fa9-20260708T042534Z`.
+- Docker load log: `/tmp/smart-llmrouter-docker-load-0ce7fa9.log`.
+
+Validation:
+
+- `go test ./internal/router -run 'TestResponsesBodyOnChatEndpoint|TestChatToResponsesBridgeStatefulSessionConfigValidation|TestBridgeSessionStore|TestRedisBridgeSession|TestChatInboundResponsesBridgeStatefulSession|TestChatInboundResponsesBridgeSharedBackend|TestAdminShapeAggsSQLAggregates|TestAdminReport(QueryFailure|MarkdownQueryFailure)'`: passed.
+- `go test -timeout 15m ./...`: passed.
+- `make docs-qa`: passed.
+- `make package-docker VERSION=0ce7fa9 COMMIT=0ce7fa9`: passed for linux/amd64 and linux/arm64.
+- Production `/readyz` and `/version` returned `0ce7fa9`, commit `0ce7fa9`, build date `2026-07-08T04:21:11Z`.
+- Hosted `/docs/` returned 200 with `x-smart-llmrouter-version: 0ce7fa9`.
+- Reusable Harbor caller authenticated `/v1/models` returned 200 with `big-coder` available.
+- Authenticated `big-coder` Responses smoke through `https://llm-api-engg.metrum.ai/v1/responses` returned 200 with output `OK`.
+- Production admin report APIs returned 200:
+  - `/admin/reports/api/traffic-shaping-overview?since=7d&limit=50`
+  - `/admin/reports/api/savings-by-key?since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc`
+- Production Harbor e2e `case-20260708T042615Z` against `https://llm-api-engg.metrum.ai` passed for `codex` + `big-coder`: `status=ok`, `exit_code=0`, `reward=1`, `errors=0`, elapsed 96s.
+- Router log tail after deploy showed no panic/fatal/error lines.
+- Temporary uploaded package and staging files were removed from `/tmp`; `docker system prune -f` was run.
 
 ## 2026-07-07 Admin Reports SQL Aggregate And Traffic Advisor Production Refresh
 
