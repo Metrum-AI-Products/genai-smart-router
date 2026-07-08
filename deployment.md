@@ -32,6 +32,27 @@ Last deployed: 2026-07-08
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
 
+## 2026-07-08 OpenAI Provider Key Rotation
+
+Rotated the local ignored `env.json` and production `/opt/smart-llmrouter/compose/config/env.json` `OPENAI_API_KEY` value. The raw key was not recorded in git, docs, tickets, or logs.
+
+Production change:
+
+- Backed up the prior production env file at `/opt/smart-llmrouter/compose/config/env.json.bak.openai-key-20260708T144924Z`.
+- Updated only the `OPENAI_API_KEY` value in the production env file.
+- Restarted the router container so provider keys were reloaded.
+- Production software remained `smart-llmrouter:0ce7fa9-linux-amd64`; router config and caller tokens were unchanged.
+
+Validation:
+
+- Local `env.json` JSON parse: passed.
+- Production `env.json` JSON parse: passed.
+- Local direct OpenAI Responses smoke with `gpt-5.4-nano`: passed with output `OK`.
+- Production-host direct OpenAI Responses smoke with `gpt-5.4-nano`: passed with output `OK`.
+- Production `/readyz` and `/version`: healthy on `0ce7fa9`.
+- Production router `big-coder` Responses smoke with the reusable Harbor caller returned 200 with output `OK`.
+- Router log tail after restart showed no panic/fatal/error lines.
+
 ## 2026-07-08 Bridge Sessions And Admin Reports Production Refresh
 
 Package `smart-llmrouter:0ce7fa9-linux-amd64` was deployed to production after upstream PRs for traffic-shaping report SQL compatibility, safer PostgreSQL report diagnostics, Anthropic endpoint validation docs, Responses-body compatibility gates, and Redis-backed Chat-to-Responses stateful sessions merged.
