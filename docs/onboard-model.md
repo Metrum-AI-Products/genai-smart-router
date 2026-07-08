@@ -83,7 +83,7 @@ Run router-level smokes through the same API shapes that passed directly upstrea
 
 - `/v1/chat/completions` for OpenAI Chat clients;
 - `/v1/responses` for Responses-compatible clients and Codex-style tool flows;
-- `/v1/messages` for Anthropic-compatible clients and Claude Code-style tool flows.
+- `/anthropic/v1/messages` for Anthropic-compatible clients and Claude Code-style tool flows; legacy `/v1/messages` remains a compatibility alias, not the preferred validation path.
 
 For Chat-only upstreams exposed to Responses callers through the stateless bridge, keep the target dialect `openai-chat` and add explicit `responses_to_chat` metadata only after validation. The minimum bridge evidence is direct OpenAI Chat text, cap, and function-tool smoke plus router-level `/v1/responses` text and function-tool smokes through a restricted model group. Verify the upstream attempt uses `/chat/completions`, the caller receives Responses output, usage shows inbound `openai-responses` and target `openai-chat`, and translation diagnostics record `bridge_direction = responses_to_chat`. Enable `responses_to_chat.reasoning` only after a separate bridge smoke proves Responses `reasoning.effort` is preserved as Chat `reasoning_effort`. Stateful `previous_response_id`, provider-hosted tools, file/code/computer tools, images, structured output, and streaming remain unsupported until separate bridge flags and smokes pass.
 

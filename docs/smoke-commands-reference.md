@@ -331,7 +331,7 @@ For Anthropic-compatible aggregators that use bearer auth, replace `x-api-key: $
 Router-level:
 
 ```bash
-curl -fsS "${ROUTER_BASE_URL}/v1/messages" \
+curl -fsS "${ROUTER_BASE_URL}/anthropic/v1/messages" \
   -H "Authorization: Bearer ${ROUTER_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \

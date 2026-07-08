@@ -40,6 +40,29 @@ Harbor or another outcome harness is required when a change promotes, demotes, o
 | Coding-agent client compatibility | deterministic fixture matrix with `rtk python3 scripts/coding_agent_matrix.py --mode mock`, opencode API capability matrix with `rtk python3 scripts/opencode_api_matrix.py` for provider/model skin support, then live Codex/Claude Code/opencode/aider smokes when the route change affects those clients |
 | Kubernetes deployment artifacts | `kubectl kustomize deploy/kubernetes/overlays/example`, YAML parse, `kubectl apply --dry-run=client` or server dry-run when available, then staging port-forward smoke for `/readyz`, `/docs/`, `/version`, `/v1/models`, one chat request, admin reports when enabled, and metrics/admin denial for ordinary caller tokens |
 
+## Anthropic Endpoint Split And Metadata Migration Proof
+
+Use this proof after changing Anthropic endpoint routing, stricter Anthropic inbound eligibility, or production metadata for groups used by Claude Code or other Anthropic-compatible clients. The implementation slice for the endpoint split was completed by PRs #385, #386, and #387; this proof is the production-safe closeout evidence for issue #476-style migration work.
+
+Local validation:
+
+1. Sync from `origin/main` and verify the relevant endpoint split commits are present.
+2. Use an ignored temporary config derived from the intended deployment config. Do not print or commit production config, raw caller tokens, token hashes, provider keys, prompts, images, or tool payloads.
+3. For every broad group that should accept Anthropic Messages text through a non-native OpenAI Chat or Responses target, verify the active target has `request_shape_support.supported_inbound_dialects` including `anthropic` and a source-dated validation note. Native Anthropic Messages targets do not need this translation opt-in, but tool-bearing Claude Code traffic still needs `tool_support.anthropic_messages` or an explicitly validated Messages bridge.
+4. Start the router and smoke `/readyz`, `/v1/models`, `/anthropic/v1/messages`, and `/anthropic/v1/messages/count_tokens` with a scoped caller token and safe synthetic payloads. Smoke legacy `/v1/messages` and `/v1/messages/count_tokens` only as compatibility aliases.
+5. Run at least one negative Messages request against a group without an eligible target and expect `502 no-eligible-target` before upstream, with safe request ID and candidate/filter evidence.
+6. Run a representative coding-agent compatibility check for the affected group. Harbor is appropriate for coding-agent outcome proof; a narrower Claude Code text/tool/file smoke is enough when the change is only endpoint or metadata eligibility.
+
+Production validation, when deployment is in scope:
+
+1. Verify `/version` or package metadata reports the expected post-merge build timestamp/version.
+2. Verify production config metadata with a sanitized summary: group name, target provider/model label, target dialect, whether Anthropic inbound text is enabled, whether the target is native Anthropic Messages, and whether `tool_support.anthropic_messages` is present for tool traffic. Do not print full config or secret values.
+3. Smoke `/readyz`, `/version`, authenticated `/v1/models`, `/anthropic/v1/messages`, and `/anthropic/v1/messages/count_tokens` with safe payloads. Record only status, request ID, model group, selected provider/model/dialect, fallback flag, latency, and sanitized error class.
+4. Run the approved Harbor production smoke with the reusable Harbor caller when the model group is being validated for coding-agent quality. Separate results by case ID, client, model group, timestamps, and usage-report filters; never print the raw Harbor token.
+5. Check safe usage/report evidence for `inbound_dialect`, selected target dialect, bridge direction when present, status, latency, attempts, fallback, and terminal errors. A plain Anthropic Messages text request that fails with `no-eligible-target` usually means the group is authorized but missing native Messages targets or `supported_inbound_dialects: [anthropic]` on the translated text target.
+
+Rollback options are config-local: restore the previous target list, remove an invalid Anthropic inbound opt-in, remove or lower a bad target's weight, isolate the target in a restricted smoke group, or temporarily direct affected Claude Code users to a previously validated group that their token is allowed to use. After rollback, rerun `/v1/models`, a positive Messages smoke, and the negative `no-eligible-target` smoke.
+
 ## Automated Capability Probe
 
 Use the capability probe before adding or changing provider catalog metadata. It runs direct upstream smokes, records pass/fail evidence, and emits a `recommended_config` block that maps directly to catalog fields:

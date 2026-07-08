@@ -29,6 +29,8 @@ Anthropic-compatible clients use the `/anthropic` base URL:
 
 Legacy Anthropic aliases remain available for existing clients: `/v1/messages` and `/v1/messages/count_tokens`. New setup should prefer `/anthropic` so OpenAI-compatible and Anthropic-compatible client configuration stays visibly separate.
 
+Model discovery stays on `/v1/models` for both setup flows. An Anthropic-compatible client should call `/v1/models` with the same router token, choose one returned deployment-defined model group, then send Messages traffic to `/anthropic/v1/messages`.
+
 Operational and administrative endpoints remain on the router origin:
 
 | Endpoint | Purpose | Typical clients |
@@ -96,6 +98,16 @@ Usage and diagnostics show both sides: `inbound_dialect = openai-responses`, `ta
 For OpenAI Chat Completions requests, both `max_tokens` and `max_completion_tokens` are treated as explicit output caps. If a Chat request sends both fields, `max_tokens` takes precedence for router eligibility and normalized upstream forwarding.
 
 The same model group can therefore expose different effective upstream pools to different API surfaces. A Chat client can use only active Chat-compatible targets, a Responses client can use only active Responses-compatible targets, and a Messages client can use only active Anthropic-compatible targets unless the deployment has configured and documented an explicit bridge. Provider catalog metadata for another skin is not enough by itself; the active target's resolved skin controls eligibility.
+
+## Anthropic Messages Eligibility
+
+Anthropic-compatible inbound requests are filtered independently from OpenAI Chat and Responses requests. Native Anthropic Messages targets are eligible for `/anthropic/v1/messages` when their provider skin is configured as Anthropic-compatible and any requested tools, images, reasoning, and output-cap behavior have matching metadata.
+
+When a deployment intentionally lets plain Anthropic Messages text use a non-native OpenAI Chat or Responses target, that active target must explicitly opt in with `request_shape_support.supported_inbound_dialects` including `anthropic`. This metadata is a validation claim for that provider/model/skin and model group; it should be based on direct upstream and router-level smoke evidence for the translated text path.
+
+Tool-bearing Claude Code traffic has a stricter requirement. Use Anthropic Messages-compatible targets with `tool_support.anthropic_messages`, or a separately documented bridge that has passed the exact client-tool workflow. OpenAI Chat or Responses tool metadata does not make a target eligible for Anthropic client tools.
+
+If a caller can see a group in `/v1/models` but `/anthropic/v1/messages` returns `502 no-eligible-target`, the token is authorized but the requested group has no target that satisfies the Messages request shape. For plain text, administrators should check whether non-native translated targets are missing `supported_inbound_dialects: [anthropic]` or whether all eligible Messages targets are `tool_only`. For tools, images, or thinking, the group needs target metadata for those exact Anthropic Messages capabilities.
 
 ## Chat To Responses Bridge
 

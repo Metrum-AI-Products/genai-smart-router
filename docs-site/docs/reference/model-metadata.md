@@ -206,6 +206,17 @@ request_shape_support:
 
 Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
 
+`supported_inbound_dialects` is the explicit opt-in for translated inbound API shapes. Use it when an active target's provider skin is not the same as the caller surface but the translated path has been validated. For the Anthropic endpoint split, plain `/anthropic/v1/messages` text can use a non-native OpenAI Chat or Responses target only when that target declares Anthropic inbound support, for example:
+
+```yaml
+request_shape_support:
+  supported_inbound_dialects: [openai-chat, anthropic]
+  validation_status: passed
+  validation_notes: Router-level Anthropic Messages text translation passed for this target and group.
+```
+
+Do not use `supported_inbound_dialects` as a shortcut for tools, images, or reasoning. Anthropic Messages client tools still require an Anthropic Messages-compatible provider skin with `tool_support.anthropic_messages`, or a separately validated bridge that documents the exact client-tool behavior. Image input needs `image` in `input_modalities`, and explicit `thinking` needs compatible reasoning metadata. If a group lacks a compatible target for the full Messages shape, callers receive `502 no-eligible-target` before upstream.
+
 Set `supports_large_coding_agent_payloads: true` only after a direct upstream smoke and a router-level smoke pass for the exact provider, model ID, dialect, account, and request shape. The validation note should include the date, approximate request bytes, tool count, serialized tool-schema size, output cap, and prompt-token scale. If that evidence is missing, leave the value unset or set it to `false` with a reason and keep the target in a restricted smoke group.
 
 Estimate and context-fit telemetry is diagnostic, not billed usage. The router stores scalar estimates, caps, request bytes, target context, headroom, fit booleans, and bounded reason labels in relational rows. It does not store raw prompts, raw tool schemas, tool outputs, images, router tokens, token hashes, provider keys, or full config.
