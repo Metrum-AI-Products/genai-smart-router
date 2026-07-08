@@ -599,11 +599,33 @@ type DialectBridgeSupport struct {
 }
 
 type BridgeStatefulSessionsConfig struct {
-	Enabled       bool   `yaml:"enabled" json:"enabled,omitempty"`
-	Backend       string `yaml:"backend" json:"backend,omitempty"`
-	SessionHeader string `yaml:"session_header" json:"sessionHeader,omitempty"`
-	TTLSeconds    int    `yaml:"ttl_seconds" json:"ttlSeconds,omitempty"`
-	MaxEntries    int    `yaml:"max_entries" json:"maxEntries,omitempty"`
+	Enabled       bool                              `yaml:"enabled" json:"enabled,omitempty"`
+	Backend       string                            `yaml:"backend" json:"backend,omitempty"`
+	SessionHeader string                            `yaml:"session_header" json:"sessionHeader,omitempty"`
+	TTLSeconds    int                               `yaml:"ttl_seconds" json:"ttlSeconds,omitempty"`
+	MaxEntries    int                               `yaml:"max_entries" json:"maxEntries,omitempty"`
+	Redis         BridgeStatefulSessionsRedisConfig `yaml:"redis" json:"redis,omitempty"`
+}
+
+type BridgeStatefulSessionsRedisConfig struct {
+	Address          string                               `yaml:"address" json:"address,omitempty"`
+	Namespace        string                               `yaml:"namespace" json:"namespace,omitempty"`
+	DB               int                                  `yaml:"db" json:"db,omitempty"`
+	UsernameEnv      string                               `yaml:"username_env" json:"usernameEnv,omitempty"`
+	PasswordEnv      string                               `yaml:"password_env" json:"passwordEnv,omitempty"`
+	Username         string                               `yaml:"username" json:"-"`
+	Password         string                               `yaml:"password" json:"-"`
+	TLS              BridgeStatefulSessionsRedisTLSConfig `yaml:"tls" json:"tls,omitempty"`
+	ConnectTimeoutMS int                                  `yaml:"connect_timeout_ms" json:"connectTimeoutMs,omitempty"`
+	ReadTimeoutMS    int                                  `yaml:"read_timeout_ms" json:"readTimeoutMs,omitempty"`
+	WriteTimeoutMS   int                                  `yaml:"write_timeout_ms" json:"writeTimeoutMs,omitempty"`
+	PoolSize         int                                  `yaml:"pool_size" json:"poolSize,omitempty"`
+}
+
+type BridgeStatefulSessionsRedisTLSConfig struct {
+	Enabled            bool   `yaml:"enabled" json:"enabled,omitempty"`
+	ServerName         string `yaml:"server_name" json:"serverName,omitempty"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify" json:"insecureSkipVerify,omitempty"`
 }
 
 type TrafficShapeConfig struct {
@@ -2326,6 +2348,50 @@ func mergeBridgeStatefulSessions(base, override BridgeStatefulSessionsConfig) Br
 	if override.MaxEntries != 0 {
 		out.MaxEntries = override.MaxEntries
 	}
+	if !bridgeStatefulSessionsRedisConfigEmpty(override.Redis) {
+		out.Redis = mergeBridgeStatefulSessionsRedis(base.Redis, override.Redis)
+	}
+	return out
+}
+
+func mergeBridgeStatefulSessionsRedis(base, override BridgeStatefulSessionsRedisConfig) BridgeStatefulSessionsRedisConfig {
+	out := base
+	if strings.TrimSpace(override.Address) != "" {
+		out.Address = override.Address
+	}
+	if strings.TrimSpace(override.Namespace) != "" {
+		out.Namespace = override.Namespace
+	}
+	if override.DB != 0 {
+		out.DB = override.DB
+	}
+	if strings.TrimSpace(override.UsernameEnv) != "" {
+		out.UsernameEnv = override.UsernameEnv
+	}
+	if strings.TrimSpace(override.PasswordEnv) != "" {
+		out.PasswordEnv = override.PasswordEnv
+	}
+	if strings.TrimSpace(override.Username) != "" {
+		out.Username = override.Username
+	}
+	if strings.TrimSpace(override.Password) != "" {
+		out.Password = override.Password
+	}
+	if override.TLS.Enabled || strings.TrimSpace(override.TLS.ServerName) != "" || override.TLS.InsecureSkipVerify {
+		out.TLS = override.TLS
+	}
+	if override.ConnectTimeoutMS != 0 {
+		out.ConnectTimeoutMS = override.ConnectTimeoutMS
+	}
+	if override.ReadTimeoutMS != 0 {
+		out.ReadTimeoutMS = override.ReadTimeoutMS
+	}
+	if override.WriteTimeoutMS != 0 {
+		out.WriteTimeoutMS = override.WriteTimeoutMS
+	}
+	if override.PoolSize != 0 {
+		out.PoolSize = override.PoolSize
+	}
 	return out
 }
 
@@ -2450,10 +2516,19 @@ func validateDialectBridgeSupport(prefix string, bridge DialectBridgeSupport, al
 	}
 	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
 	if backend == "" {
-		backend = "memory"
+		backend = defaultBridgeStatefulSessionBackend
 	}
-	if backend != "memory" {
-		return fmt.Errorf("%s stateful_sessions backend must be memory", prefix)
+	switch backend {
+	case "memory":
+		if !bridgeStatefulSessionsRedisConfigEmpty(cfg.Redis) {
+			return fmt.Errorf("%s stateful_sessions.redis requires backend redis", prefix)
+		}
+	case "redis":
+		if err := validateBridgeStatefulSessionsRedis(prefix+" stateful_sessions.redis", cfg.Redis); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("%s stateful_sessions backend must be memory or redis", prefix)
 	}
 	header := bridgeStatefulSessionHeader(cfg)
 	if header == "" {
@@ -2465,10 +2540,96 @@ func validateDialectBridgeSupport(prefix string, bridge DialectBridgeSupport, al
 	if cfg.TTLSeconds < 0 {
 		return fmt.Errorf("%s stateful_sessions ttl_seconds cannot be negative", prefix)
 	}
+	if cfg.TTLSeconds > 0 && cfg.TTLSeconds < 10 {
+		return fmt.Errorf("%s stateful_sessions ttl_seconds must be at least 10 when set", prefix)
+	}
 	if cfg.MaxEntries < 0 {
 		return fmt.Errorf("%s stateful_sessions max_entries cannot be negative", prefix)
 	}
 	return nil
+}
+
+func validateBridgeStatefulSessionsRedis(prefix string, cfg BridgeStatefulSessionsRedisConfig) error {
+	cfg = bridgeStatefulSessionRedisConfig(cfg)
+	address := strings.TrimSpace(cfg.Address)
+	if address == "" {
+		return fmt.Errorf("%s address is required", prefix)
+	}
+	if strings.Contains(address, "://") || strings.Contains(address, "@") {
+		return fmt.Errorf("%s address must be host:port without URL scheme or credentials; use username_env/password_env for credentials", prefix)
+	}
+	if strings.TrimSpace(cfg.Username) != "" {
+		return fmt.Errorf("%s username must use username_env, not an inline value", prefix)
+	}
+	if strings.TrimSpace(cfg.Password) != "" {
+		return fmt.Errorf("%s password must use password_env, not an inline value", prefix)
+	}
+	if strings.TrimSpace(cfg.UsernameEnv) != "" && !validEnvName(cfg.UsernameEnv) {
+		return fmt.Errorf("%s username_env %q is invalid", prefix, cfg.UsernameEnv)
+	}
+	if strings.TrimSpace(cfg.PasswordEnv) != "" && !validEnvName(cfg.PasswordEnv) {
+		return fmt.Errorf("%s password_env %q is invalid", prefix, cfg.PasswordEnv)
+	}
+	if !validBridgeSessionRedisNamespace(cfg.Namespace) {
+		return fmt.Errorf("%s namespace %q is invalid", prefix, cfg.Namespace)
+	}
+	if cfg.DB < 0 {
+		return fmt.Errorf("%s db cannot be negative", prefix)
+	}
+	if !cfg.TLS.Enabled && strings.TrimSpace(cfg.TLS.ServerName) != "" {
+		return fmt.Errorf("%s tls.server_name requires tls.enabled", prefix)
+	}
+	if !cfg.TLS.Enabled && cfg.TLS.InsecureSkipVerify {
+		return fmt.Errorf("%s tls.insecure_skip_verify requires tls.enabled", prefix)
+	}
+	if cfg.ConnectTimeoutMS < 0 {
+		return fmt.Errorf("%s connect_timeout_ms cannot be negative", prefix)
+	}
+	if cfg.ReadTimeoutMS < 0 {
+		return fmt.Errorf("%s read_timeout_ms cannot be negative", prefix)
+	}
+	if cfg.WriteTimeoutMS < 0 {
+		return fmt.Errorf("%s write_timeout_ms cannot be negative", prefix)
+	}
+	if cfg.PoolSize < 0 {
+		return fmt.Errorf("%s pool_size cannot be negative", prefix)
+	}
+	return nil
+}
+
+func bridgeStatefulSessionsRedisConfigEmpty(cfg BridgeStatefulSessionsRedisConfig) bool {
+	return strings.TrimSpace(cfg.Address) == "" &&
+		strings.TrimSpace(cfg.Namespace) == "" &&
+		cfg.DB == 0 &&
+		strings.TrimSpace(cfg.UsernameEnv) == "" &&
+		strings.TrimSpace(cfg.PasswordEnv) == "" &&
+		strings.TrimSpace(cfg.Username) == "" &&
+		strings.TrimSpace(cfg.Password) == "" &&
+		!cfg.TLS.Enabled &&
+		strings.TrimSpace(cfg.TLS.ServerName) == "" &&
+		!cfg.TLS.InsecureSkipVerify &&
+		cfg.ConnectTimeoutMS == 0 &&
+		cfg.ReadTimeoutMS == 0 &&
+		cfg.WriteTimeoutMS == 0 &&
+		cfg.PoolSize == 0
+}
+
+func validBridgeSessionRedisNamespace(namespace string) bool {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" || len(namespace) > 128 {
+		return false
+	}
+	for _, r := range namespace {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == ':':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func validateRequestShapeSupport(prefix string, support RequestShapeSupport) error {

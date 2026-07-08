@@ -1,8 +1,10 @@
 package router
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -11,6 +13,20 @@ import (
 )
 
 const defaultBridgeStatefulSessionHeader = "X-Router-Session"
+const defaultBridgeStatefulSessionBackend = "memory"
+const defaultBridgeStatefulSessionRedisNamespace = "smart-llmrouter"
+
+type bridgeSessionBackend interface {
+	Get(ctx context.Context, key string) (bridgeSessionEntry, bool, error)
+	Set(ctx context.Context, key, previousResponseID string, ttl time.Duration, maxEntries int) error
+	Delete(ctx context.Context, key string) error
+	Close() error
+}
+
+type bridgeSessionBackends struct {
+	memory *bridgeSessionStore
+	redis  map[string]bridgeSessionBackend
+}
 
 type bridgeSessionStore struct {
 	mu      sync.Mutex
@@ -41,27 +57,94 @@ func newBridgeSessionStore() *bridgeSessionStore {
 	}
 }
 
-func (s *bridgeSessionStore) Get(key string) (bridgeSessionEntry, bool) {
+func newBridgeSessionBackends(ctx context.Context, cfg *Config) (*bridgeSessionBackends, error) {
+	backends := &bridgeSessionBackends{
+		memory: newBridgeSessionStore(),
+		redis:  map[string]bridgeSessionBackend{},
+	}
+	if cfg == nil {
+		return backends, nil
+	}
+	for groupName, group := range cfg.Models {
+		for _, target := range group.Targets {
+			resolved, err := cfg.resolveTarget(groupName, target)
+			if err != nil {
+				return nil, err
+			}
+			sessionCfg := bridgeStatefulSessionConfig(resolved)
+			if !sessionCfg.Enabled || bridgeStatefulSessionBackendName(sessionCfg) != "redis" {
+				continue
+			}
+			key := bridgeRedisBackendKey(sessionCfg.Redis)
+			if _, ok := backends.redis[key]; ok {
+				continue
+			}
+			store, err := newRedisBridgeSessionStore(ctx, sessionCfg.Redis)
+			if err != nil {
+				backends.Close()
+				return nil, fmt.Errorf("chat_to_responses stateful_sessions redis backend for model group %s: %w", groupName, err)
+			}
+			backends.redis[key] = store
+		}
+	}
+	return backends, nil
+}
+
+func (b *bridgeSessionBackends) backend(cfg BridgeStatefulSessionsConfig) (bridgeSessionBackend, error) {
+	if b == nil {
+		return nil, fmt.Errorf("bridge session backend registry is nil")
+	}
+	switch bridgeStatefulSessionBackendName(cfg) {
+	case "memory":
+		if b.memory == nil {
+			return nil, fmt.Errorf("memory bridge session backend is nil")
+		}
+		return b.memory, nil
+	case "redis":
+		key := bridgeRedisBackendKey(cfg.Redis)
+		backend, ok := b.redis[key]
+		if !ok || backend == nil {
+			return nil, fmt.Errorf("redis bridge session backend is not initialized")
+		}
+		return backend, nil
+	default:
+		return nil, fmt.Errorf("unsupported bridge session backend")
+	}
+}
+
+func (b *bridgeSessionBackends) Close() {
+	if b == nil {
+		return
+	}
+	for _, backend := range b.redis {
+		if backend == nil {
+			continue
+		}
+		_ = backend.Close()
+	}
+}
+
+func (s *bridgeSessionStore) Get(ctx context.Context, key string) (bridgeSessionEntry, bool, error) {
 	if s == nil || strings.TrimSpace(key) == "" {
-		return bridgeSessionEntry{}, false
+		return bridgeSessionEntry{}, false, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.entries[key]
 	if !ok {
-		return bridgeSessionEntry{}, false
+		return bridgeSessionEntry{}, false, nil
 	}
 	now := s.now()
 	if !entry.ExpiresAt.IsZero() && !entry.ExpiresAt.After(now) {
 		delete(s.entries, key)
-		return bridgeSessionEntry{}, false
+		return bridgeSessionEntry{}, false, nil
 	}
-	return entry, true
+	return entry, true, nil
 }
 
-func (s *bridgeSessionStore) Set(key, previousResponseID string, ttl time.Duration, maxEntries int) {
+func (s *bridgeSessionStore) Set(ctx context.Context, key, previousResponseID string, ttl time.Duration, maxEntries int) error {
 	if s == nil || strings.TrimSpace(key) == "" || strings.TrimSpace(previousResponseID) == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -72,15 +155,21 @@ func (s *bridgeSessionStore) Set(key, previousResponseID string, ttl time.Durati
 	}
 	s.entries[key] = entry
 	s.pruneLocked(now, maxEntries)
+	return nil
 }
 
-func (s *bridgeSessionStore) Delete(key string) {
+func (s *bridgeSessionStore) Delete(ctx context.Context, key string) error {
 	if s == nil || strings.TrimSpace(key) == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.entries, key)
+	return nil
+}
+
+func (s *bridgeSessionStore) Close() error {
+	return nil
 }
 
 func (s *bridgeSessionStore) Len() int {
@@ -120,7 +209,7 @@ func (s *bridgeSessionStore) pruneLocked(now time.Time, maxEntries int) {
 	}
 }
 
-func (s *Service) chatToResponsesBridgeSession(rc *requestContext, groupName string, target Target) bridgeSessionLookup {
+func (s *Service) chatToResponsesBridgeSession(ctx context.Context, rc *requestContext, groupName string, target Target, attemptIndex int) bridgeSessionLookup {
 	cfg := bridgeStatefulSessionConfig(target)
 	if rc == nil || !cfg.Enabled || !isChatToResponsesBridge(rc.dialect, targetDialect(s.cfg.Provider[target.Provider], target), target) {
 		return bridgeSessionLookup{}
@@ -142,16 +231,64 @@ func (s *Service) chatToResponsesBridgeSession(rc *requestContext, groupName str
 		TTL:        bridgeStatefulSessionTTL(cfg),
 		MaxEntries: bridgeStatefulSessionMaxEntries(cfg),
 	}
-	if entry, ok := s.bridgeSessions.Get(key); ok {
+	backend, err := s.bridgeSessions.backend(cfg)
+	if err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session backend unavailable", target, attemptIndex, 0, "bridge_session_backend", false, 0)
+		return lookup
+	}
+	start := time.Now()
+	entry, ok, err := backend.Get(ctx, key)
+	if err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session get failed", target, attemptIndex, 0, "bridge_session_get", false, durationMillis(time.Since(start)))
+		return lookup
+	}
+	if ok {
 		lookup.PreviousResponseID = entry.PreviousResponseID
+		rc.trace("bridge_session_lookup_hit", "chat-to-responses stateful session previous_response_id found", target, attemptIndex, 0, "", false, durationMillis(time.Since(start)))
+	} else {
+		rc.trace("bridge_session_lookup_miss", "chat-to-responses stateful session previous_response_id not found", target, attemptIndex, 0, "", false, durationMillis(time.Since(start)))
 	}
 	return lookup
+}
+
+func (s *Service) setChatToResponsesBridgeSession(ctx context.Context, rc *requestContext, lookup bridgeSessionLookup, target Target, previousResponseID string, attemptIndex int) {
+	if !lookup.Requested || strings.TrimSpace(previousResponseID) == "" {
+		return
+	}
+	cfg := bridgeStatefulSessionConfig(target)
+	backend, err := s.bridgeSessions.backend(cfg)
+	if err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session backend unavailable", target, attemptIndex, 0, "bridge_session_backend", false, 0)
+		return
+	}
+	start := time.Now()
+	if err := backend.Set(ctx, lookup.Key, previousResponseID, lookup.TTL, lookup.MaxEntries); err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session set failed", target, attemptIndex, 0, "bridge_session_set", false, durationMillis(time.Since(start)))
+		return
+	}
+	rc.trace("bridge_session_set", "chat-to-responses stateful session previous_response_id stored", target, attemptIndex, 0, "", false, durationMillis(time.Since(start)))
+}
+
+func (s *Service) deleteChatToResponsesBridgeSession(ctx context.Context, rc *requestContext, lookup bridgeSessionLookup, target Target, attemptIndex int) error {
+	cfg := bridgeStatefulSessionConfig(target)
+	backend, err := s.bridgeSessions.backend(cfg)
+	if err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session backend unavailable", target, attemptIndex, 0, "bridge_session_backend", false, 0)
+		return err
+	}
+	start := time.Now()
+	if err := backend.Delete(ctx, lookup.Key); err != nil {
+		rc.trace("bridge_session_backend_error", "chat-to-responses stateful session delete failed", target, attemptIndex, 0, "bridge_session_delete", false, durationMillis(time.Since(start)))
+		return err
+	}
+	rc.trace("bridge_session_delete", "chat-to-responses stateful session previous_response_id deleted", target, attemptIndex, 0, "", false, durationMillis(time.Since(start)))
+	return nil
 }
 
 func bridgeStatefulSessionConfig(target Target) BridgeStatefulSessionsConfig {
 	cfg := target.Bridges.ChatToResponses.StatefulSessions
 	if strings.TrimSpace(cfg.Backend) == "" {
-		cfg.Backend = "memory"
+		cfg.Backend = defaultBridgeStatefulSessionBackend
 	}
 	if strings.TrimSpace(cfg.SessionHeader) == "" {
 		cfg.SessionHeader = defaultBridgeStatefulSessionHeader
@@ -161,6 +298,31 @@ func bridgeStatefulSessionConfig(target Target) BridgeStatefulSessionsConfig {
 	}
 	if cfg.MaxEntries == 0 {
 		cfg.MaxEntries = 10000
+	}
+	cfg.Redis = bridgeStatefulSessionRedisConfig(cfg.Redis)
+	return cfg
+}
+
+func bridgeStatefulSessionBackendName(cfg BridgeStatefulSessionsConfig) string {
+	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
+	if backend == "" {
+		return defaultBridgeStatefulSessionBackend
+	}
+	return backend
+}
+
+func bridgeStatefulSessionRedisConfig(cfg BridgeStatefulSessionsRedisConfig) BridgeStatefulSessionsRedisConfig {
+	if strings.TrimSpace(cfg.Namespace) == "" {
+		cfg.Namespace = defaultBridgeStatefulSessionRedisNamespace
+	}
+	if cfg.ConnectTimeoutMS == 0 {
+		cfg.ConnectTimeoutMS = 500
+	}
+	if cfg.ReadTimeoutMS == 0 {
+		cfg.ReadTimeoutMS = 500
+	}
+	if cfg.WriteTimeoutMS == 0 {
+		cfg.WriteTimeoutMS = 500
 	}
 	return cfg
 }

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -22,6 +23,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -9861,6 +9863,285 @@ func TestChatInboundResponsesBridgeStatefulSessionInjectsPreviousResponseID(t *t
 	}
 }
 
+func TestChatInboundResponsesBridgeSharedBackendContinuesAcrossServices(t *testing.T) {
+	var upstreamBodies []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var upstreamBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		upstreamBodies = append(upstreamBodies, upstreamBody)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          fmt.Sprintf("resp_shared_%d", len(upstreamBodies)),
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "shared ok",
+			"usage":       map[string]any{"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	store := newTestSharedBridgeSessionStore()
+	svc1 := newSharedBackendBridgeService(t, upstream.URL, store, t.TempDir())
+	defer svc1.Close()
+	svc2 := newSharedBackendBridgeService(t, upstream.URL, store, t.TempDir())
+	defer svc2.Close()
+
+	for i, svc := range []*Service{svc1, svc2} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf(`{"model":"bridge-stateful","messages":[{"role":"user","content":"turn %d"}],"max_tokens":16}`, i+1)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("X-Router-Session", "session-alpha")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("turn %d status=%d body=%s", i+1, rr.Code, rr.Body.String())
+		}
+	}
+	if len(upstreamBodies) != 2 {
+		t.Fatalf("upstream calls=%d", len(upstreamBodies))
+	}
+	if _, ok := upstreamBodies[0]["previous_response_id"]; ok {
+		t.Fatalf("first request had previous_response_id: %#v", upstreamBodies[0])
+	}
+	if got := upstreamBodies[1]["previous_response_id"]; got != "resp_shared_1" {
+		t.Fatalf("second previous_response_id=%#v body=%#v", got, upstreamBodies[1])
+	}
+	for _, key := range store.keys() {
+		if strings.Contains(key, "session-alpha") || strings.Contains(key, testToken) {
+			t.Fatalf("shared backend key leaked raw session or token: %q", key)
+		}
+	}
+}
+
+func TestChatInboundResponsesBridgeSharedBackendStaleRetryPurgesMapping(t *testing.T) {
+	var upstreamBodies []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var upstreamBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		upstreamBodies = append(upstreamBodies, upstreamBody)
+		if upstreamBody["previous_response_id"] == "resp_stale_shared" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": "previous_response_id was not found"}})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          fmt.Sprintf("resp_shared_recovered_%d", len(upstreamBodies)),
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "recovered",
+			"usage":       map[string]any{"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	store := newTestSharedBridgeSessionStore()
+	dir := t.TempDir()
+	svc := newSharedBackendBridgeService(t, upstream.URL, store, dir)
+	defer svc.Close()
+	rc := &requestContext{rec: logRecord{TokenID: svc.cfg.Callers[0].TokenID}, caller: svc.quota.callers["alice"]}
+	target := svc.cfg.Models["bridge-stateful"].Targets[0]
+	key := bridgeSessionKey(rc, "bridge-stateful", target, "session-alpha")
+	if err := store.Set(context.Background(), key, "resp_stale_shared", time.Minute, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-stateful","messages":[{"role":"user","content":"recover"}],"max_tokens":16}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Router-Session", "session-alpha")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(upstreamBodies) != 2 {
+		t.Fatalf("upstream calls=%d bodies=%#v", len(upstreamBodies), upstreamBodies)
+	}
+	if upstreamBodies[0]["previous_response_id"] != "resp_stale_shared" {
+		t.Fatalf("first upstream body=%#v", upstreamBodies[0])
+	}
+	if _, ok := upstreamBodies[1]["previous_response_id"]; ok {
+		t.Fatalf("stateless retry still had previous_response_id: %#v", upstreamBodies[1])
+	}
+	if entry, ok, err := store.Get(context.Background(), key); err != nil || !ok || entry.PreviousResponseID == "resp_stale_shared" {
+		t.Fatalf("shared session was not refreshed after stale purge: entry=%#v ok=%v err=%v", entry, ok, err)
+	}
+	var traces []requestTraceEventRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).Order("seq ASC").Find(&traces).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !traceEventsContain(traces, "bridge_session_delete") || !traceEventsContain(traces, "bridge_session_previous_response_stale_purged") || !traceEventsContain(traces, "bridge_session_stateless_retry") {
+		t.Fatalf("missing shared stale retry trace events: %#v", traces)
+	}
+}
+
+func TestChatInboundResponsesBridgeSharedBackendGetOutageContinuesStateless(t *testing.T) {
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "resp_after_outage",
+			"object":      "response",
+			"status":      "completed",
+			"model":       stringValue(upstreamBody["model"]),
+			"output_text": "stateless ok",
+			"usage":       map[string]any{"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer upstream.Close()
+
+	store := newTestSharedBridgeSessionStore()
+	store.getErr = errors.New("redis unavailable")
+	svc := newSharedBackendBridgeService(t, upstream.URL, store, t.TempDir())
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-stateful","messages":[{"role":"user","content":"outage"}],"max_tokens":16}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Router-Session", "session-alpha")
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if _, ok := upstreamBody["previous_response_id"]; ok {
+		t.Fatalf("outage request should continue stateless: %#v", upstreamBody)
+	}
+	var traces []requestTraceEventRecord
+	if err := svc.usage.db.Where("request_id = ?", rr.Header().Get("X-Request-Id")).Order("seq ASC").Find(&traces).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !traceEventsContain(traces, "bridge_session_backend_error") || !traceEventsContain(traces, "bridge_session_set") {
+		t.Fatalf("missing outage trace events: %#v", traces)
+	}
+}
+
+func newSharedBackendBridgeService(t *testing.T, upstreamURL string, store bridgeSessionBackend, dir string) *Service {
+	t.Helper()
+	cfg := testConfig(t, upstreamURL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.DecisionTelemetry.Enabled = true
+	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstreamURL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models["bridge-stateful"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider: "responses",
+		Model:    "responses-text-model",
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true,
+			StatefulSessions: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				SessionHeader: "X-Router-Session",
+				TTLSeconds:    60,
+				MaxEntries:    10,
+			},
+		}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bridge-stateful")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisCfg := BridgeStatefulSessionsRedisConfig{
+		Address:   "redis.example.test:6379",
+		Namespace: "test-router",
+	}
+	group := svc.cfg.Models["bridge-stateful"]
+	target := group.Targets[0]
+	target.Bridges.ChatToResponses.StatefulSessions.Backend = "redis"
+	target.Bridges.ChatToResponses.StatefulSessions.Redis = redisCfg
+	group.Targets[0] = target
+	svc.cfg.Models["bridge-stateful"] = group
+	svc.bridgeSessions.redis[bridgeRedisBackendKey(redisCfg)] = store
+	return svc
+}
+
+type testSharedBridgeSessionStore struct {
+	mu      sync.Mutex
+	entries map[string]testSharedBridgeSessionEntry
+	now     func() time.Time
+	getErr  error
+	setErr  error
+	delErr  error
+	seen    []string
+}
+
+type testSharedBridgeSessionEntry struct {
+	previousResponseID string
+	expiresAt          time.Time
+}
+
+func newTestSharedBridgeSessionStore() *testSharedBridgeSessionStore {
+	return &testSharedBridgeSessionStore{
+		entries: map[string]testSharedBridgeSessionEntry{},
+		now:     time.Now,
+	}
+}
+
+func (s *testSharedBridgeSessionStore) Get(ctx context.Context, key string) (bridgeSessionEntry, bool, error) {
+	if s == nil || strings.TrimSpace(key) == "" {
+		return bridgeSessionEntry{}, false, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen = append(s.seen, key)
+	if s.getErr != nil {
+		return bridgeSessionEntry{}, false, s.getErr
+	}
+	entry, ok := s.entries[key]
+	if !ok {
+		return bridgeSessionEntry{}, false, nil
+	}
+	if !entry.expiresAt.IsZero() && !entry.expiresAt.After(s.now()) {
+		delete(s.entries, key)
+		return bridgeSessionEntry{}, false, nil
+	}
+	return bridgeSessionEntry{PreviousResponseID: entry.previousResponseID}, true, nil
+}
+
+func (s *testSharedBridgeSessionStore) Set(ctx context.Context, key, previousResponseID string, ttl time.Duration, maxEntries int) error {
+	if s == nil || strings.TrimSpace(key) == "" || strings.TrimSpace(previousResponseID) == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen = append(s.seen, key)
+	if s.setErr != nil {
+		return s.setErr
+	}
+	entry := testSharedBridgeSessionEntry{previousResponseID: previousResponseID}
+	if ttl > 0 {
+		entry.expiresAt = s.now().Add(ttl)
+	}
+	s.entries[key] = entry
+	return nil
+}
+
+func (s *testSharedBridgeSessionStore) Delete(ctx context.Context, key string) error {
+	if s == nil || strings.TrimSpace(key) == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen = append(s.seen, key)
+	if s.delErr != nil {
+		return s.delErr
+	}
+	delete(s.entries, key)
+	return nil
+}
+
+func (s *testSharedBridgeSessionStore) Close() error {
+	return nil
+}
+
+func (s *testSharedBridgeSessionStore) keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.seen...)
+}
+
 func TestChatInboundResponsesBridgeReasoningTelemetry(t *testing.T) {
 	var upstreamBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -9972,7 +10253,9 @@ func TestChatInboundResponsesBridgeStatefulSessionStaleRetryPurgesMapping(t *tes
 
 	rc := &requestContext{rec: logRecord{TokenID: cfg.Callers[0].TokenID}, caller: svc.quota.callers["alice"]}
 	key := bridgeSessionKey(rc, "bridge-stateful", target, "session-alpha")
-	svc.bridgeSessions.Set(key, "resp_stale", time.Minute, 10)
+	if err := svc.bridgeSessions.memory.Set(context.Background(), key, "resp_stale", time.Minute, 10); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"bridge-stateful","messages":[{"role":"user","content":"retry without stale state"}],"max_tokens":16}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -9991,7 +10274,7 @@ func TestChatInboundResponsesBridgeStatefulSessionStaleRetryPurgesMapping(t *tes
 	if _, ok := upstreamBodies[1]["previous_response_id"]; ok {
 		t.Fatalf("stateless retry still had previous_response_id: %#v", upstreamBodies[1])
 	}
-	if entry, ok := svc.bridgeSessions.Get(key); !ok || entry.PreviousResponseID == "resp_stale" {
+	if entry, ok, err := svc.bridgeSessions.memory.Get(context.Background(), key); err != nil || !ok || entry.PreviousResponseID == "resp_stale" {
 		t.Fatalf("session was not refreshed after stale purge: entry=%#v ok=%v", entry, ok)
 	}
 	var traces []requestTraceEventRecord

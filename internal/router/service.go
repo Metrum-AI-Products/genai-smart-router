@@ -45,7 +45,7 @@ type Service struct {
 	metrics        *metricsStore
 	trafficShape   *trafficShapeManager
 	license        *licenseManager
-	bridgeSessions *bridgeSessionStore
+	bridgeSessions *bridgeSessionBackends
 	scripts        map[string]*scriptStrategy
 	observations   *dynamicObservationStore
 	shaping        *upstreamShapeManager
@@ -148,6 +148,13 @@ func New(cfg *Config) (*Service, error) {
 		_ = logger.Close()
 		return nil, err
 	}
+	bridgeSessions, err := newBridgeSessionBackends(context.Background(), cfg)
+	if err != nil {
+		_ = quota.Close()
+		_ = logger.Close()
+		_ = usage.Close()
+		return nil, err
+	}
 	s := &Service{
 		cfg:            cfg,
 		mux:            http.NewServeMux(),
@@ -161,7 +168,7 @@ func New(cfg *Config) (*Service, error) {
 		usage:          usage,
 		metrics:        newMetricsStore(),
 		trafficShape:   newTrafficShapeManager(),
-		bridgeSessions: newBridgeSessionStore(),
+		bridgeSessions: bridgeSessions,
 		scripts:        map[string]*scriptStrategy{},
 		observations:   newDynamicObservationStore(),
 		shaping:        newUpstreamShapeManager(),
@@ -170,6 +177,7 @@ func New(cfg *Config) (*Service, error) {
 		_ = quota.Close()
 		_ = logger.Close()
 		_ = usage.Close()
+		bridgeSessions.Close()
 		return nil, fmt.Errorf("generate admin report cursor key: %w", err)
 	}
 	s.license, err = newLicenseManager(cfg.Server.License, cfg, defaultLicensePublicKeys())
@@ -177,6 +185,7 @@ func New(cfg *Config) (*Service, error) {
 		_ = quota.Close()
 		_ = logger.Close()
 		_ = usage.Close()
+		bridgeSessions.Close()
 		return nil, err
 	}
 	s.authorizer, err = newAuthorizer(cfg.Server.AdminAuth.Authorization, quota.callers, usage)
@@ -184,6 +193,7 @@ func New(cfg *Config) (*Service, error) {
 		_ = quota.Close()
 		_ = logger.Close()
 		_ = usage.Close()
+		bridgeSessions.Close()
 		return nil, err
 	}
 	if cfg.Server.AdminAuth.OIDC.Enabled {
@@ -192,6 +202,7 @@ func New(cfg *Config) (*Service, error) {
 			_ = quota.Close()
 			_ = logger.Close()
 			_ = usage.Close()
+			bridgeSessions.Close()
 			return nil, err
 		}
 	}
@@ -199,6 +210,7 @@ func New(cfg *Config) (*Service, error) {
 		_ = quota.Close()
 		_ = logger.Close()
 		_ = usage.Close()
+		bridgeSessions.Close()
 		return nil, err
 	}
 	for _, rt := range quota.callers {
@@ -244,6 +256,7 @@ func (s *Service) Close() {
 	_ = s.quota.Close()
 	_ = s.logger.Close()
 	_ = s.usage.Close()
+	s.bridgeSessions.Close()
 	s.license.close()
 }
 
@@ -1585,7 +1598,7 @@ func (s *Service) callOne(ctx context.Context, rc *requestContext, callerDialect
 	} else if passthrough {
 		upReqBody, err = encodeToolPassthrough(outDialect, target.Model, req, target)
 	} else if chatResponsesBridge {
-		chatResponsesSession = s.chatToResponsesBridgeSession(rc, groupName, target)
+		chatResponsesSession = s.chatToResponsesBridgeSession(ctx, rc, groupName, target, attemptIndex)
 		if chatResponsesSession.PreviousResponseID != "" {
 			rc.trace("bridge_session_previous_response_applied", "chat-to-responses previous_response_id applied", target, attemptIndex, 0, "", false, 0)
 		}
@@ -1679,8 +1692,11 @@ sendUpstream:
 			cancel()
 		}
 		if chatResponsesBridgeStaleStateRetryAllowed(chatResponsesBridge, chatResponsesSession, httpResp.StatusCode, raw, retriedStateless) {
-			s.bridgeSessions.Delete(chatResponsesSession.Key)
-			rc.trace("bridge_session_previous_response_stale_purged", "chat-to-responses previous_response_id purged after stale upstream state", target, attemptIndex, httpResp.StatusCode, "bridge_session_stale_state", false, durationMillis(time.Since(start)))
+			if err := s.deleteChatToResponsesBridgeSession(ctx, rc, chatResponsesSession, target, attemptIndex); err != nil {
+				rc.trace("bridge_session_previous_response_stale_purge_failed", "chat-to-responses previous_response_id purge failed after stale upstream state", target, attemptIndex, httpResp.StatusCode, "bridge_session_stale_state", false, durationMillis(time.Since(start)))
+			} else {
+				rc.trace("bridge_session_previous_response_stale_purged", "chat-to-responses previous_response_id purged after stale upstream state", target, attemptIndex, httpResp.StatusCode, "bridge_session_stale_state", false, durationMillis(time.Since(start)))
+			}
 			upReqBody, err = encodeChatToResponsesBridge(target.Model, req, target, "")
 			attempt.RequestBytes = int64(len(upReqBody))
 			if err != nil {
@@ -1756,9 +1772,7 @@ sendUpstream:
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
-		if chatResponsesSession.Requested && resp.ID != "" {
-			s.bridgeSessions.Set(chatResponsesSession.Key, resp.ID, chatResponsesSession.TTL, chatResponsesSession.MaxEntries)
-		}
+		s.setChatToResponsesBridgeSession(ctx, rc, chatResponsesSession, target, resp.ID, attemptIndex)
 		return resp, attempt, nil
 	}
 	resp, err := decodeUpstreamResponse(outDialect, raw, target.Model)

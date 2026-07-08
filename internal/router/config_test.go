@@ -129,43 +129,153 @@ func TestProviderModelRefsResolveAndOverride(t *testing.T) {
 }
 
 func TestChatToResponsesBridgeStatefulSessionConfigValidation(t *testing.T) {
-	cfg := minimalConfig(t)
-	cfg.Provider["responses"] = ProviderConfig{BaseURL: "https://responses.example.test/v1", Dialect: "openai-responses"}
-	cfg.Models["stateful"] = ModelGroup{Strategy: "static", Targets: []Target{{
-		Provider: "responses",
-		Model:    "responses-model",
-		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
-			Enabled: true,
-			StatefulSessions: BridgeStatefulSessionsConfig{
+	tests := []struct {
+		name    string
+		session BridgeStatefulSessionsConfig
+		want    string
+	}{
+		{
+			name: "memory remains valid",
+			session: BridgeStatefulSessionsConfig{
 				Enabled:       true,
 				Backend:       "memory",
 				SessionHeader: "X-Router-Session",
 				TTLSeconds:    600,
 				MaxEntries:    100,
 			},
-		}},
-	}}}
-	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "stateful")
-	if err := cfg.Validate(); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg = minimalConfig(t)
-	cfg.Provider["responses"] = ProviderConfig{BaseURL: "https://responses.example.test/v1", Dialect: "openai-responses"}
-	cfg.Models["bad"] = ModelGroup{Strategy: "static", Targets: []Target{{
-		Provider: "responses",
-		Model:    "responses-model",
-		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
-			Enabled: true,
-			StatefulSessions: BridgeStatefulSessionsConfig{
+		},
+		{
+			name: "redis valid",
+			session: BridgeStatefulSessionsConfig{
+				Enabled:       true,
+				Backend:       "redis",
+				SessionHeader: "X-Router-Session",
+				TTLSeconds:    600,
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address:          "redis.example.test:6379",
+					Namespace:        "prod-router",
+					PasswordEnv:      "ROUTER_BRIDGE_REDIS_PASSWORD",
+					ConnectTimeoutMS: 250,
+					ReadTimeoutMS:    250,
+					WriteTimeoutMS:   250,
+					TLS: BridgeStatefulSessionsRedisTLSConfig{
+						Enabled:    true,
+						ServerName: "redis.example.test",
+					},
+				},
+			},
+		},
+		{
+			name: "unsupported backend",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "postgres",
+			},
+			want: "backend must be memory or redis",
+		},
+		{
+			name: "bad header",
+			session: BridgeStatefulSessionsConfig{
 				Enabled:       true,
 				SessionHeader: "Bad Header",
 			},
-		}},
-	}}}
-	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "bad")
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "session_header") {
-		t.Fatalf("expected invalid session_header error, got %v", err)
+			want: "session_header",
+		},
+		{
+			name: "redis missing address",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis:   BridgeStatefulSessionsRedisConfig{Namespace: "prod-router"},
+			},
+			want: "address is required",
+		},
+		{
+			name: "redis rejects inline password",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address:  "redis.example.test:6379",
+					Password: "raw-secret",
+				},
+			},
+			want: "password_env",
+		},
+		{
+			name: "redis rejects url address credentials",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address: "redis://:raw-secret@redis.example.test:6379",
+				},
+			},
+			want: "without URL scheme or credentials",
+		},
+		{
+			name: "redis rejects userinfo address",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address: "user:raw-secret@redis.example.test:6379",
+				},
+			},
+			want: "without URL scheme or credentials",
+		},
+		{
+			name: "redis rejects invalid namespace",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address:   "redis.example.test:6379",
+					Namespace: "prod/router",
+				},
+			},
+			want: "namespace",
+		},
+		{
+			name: "redis tls server name requires tls",
+			session: BridgeStatefulSessionsConfig{
+				Enabled: true,
+				Backend: "redis",
+				Redis: BridgeStatefulSessionsRedisConfig{
+					Address: "redis.example.test:6379",
+					TLS:     BridgeStatefulSessionsRedisTLSConfig{ServerName: "redis.example.test"},
+				},
+			},
+			want: "tls.server_name",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig(t)
+			cfg.Provider["responses"] = ProviderConfig{BaseURL: "https://responses.example.test/v1", Dialect: "openai-responses"}
+			cfg.Models["stateful"] = ModelGroup{Strategy: "static", Targets: []Target{{
+				Provider: "responses",
+				Model:    "responses-model",
+				Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+					Enabled:          true,
+					StatefulSessions: tt.session,
+				}},
+			}}}
+			cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "stateful")
+			err := cfg.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() err=%v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate() err=%v, want %q", err, tt.want)
+			}
+			if strings.Contains(err.Error(), "raw-secret") {
+				t.Fatalf("Validate() exposed inline password: %v", err)
+			}
+		})
 	}
 }
 
