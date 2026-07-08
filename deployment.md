@@ -97,6 +97,28 @@ Deployment note:
 - An intermediate refresh to `02ac181-linux-amd64` started successfully but exposed PostgreSQL `GROUP BY ''` incompatibility in aggregate admin report APIs. Production was immediately advanced to `09d3246-linux-amd64` after PR #453 merged and validation passed.
 - Safe report-query failure logging follow-up is tracked in issue #452.
 
+## 2026-07-07 Chetan AMD AI Day Daily Quota Increase
+
+Tripled the production daily token quota for caller `chetan-amd-ai-day-prod` after recent `big-coder` Codex TUI traffic hit caller-side `429 quota-exhausted`.
+
+- Daily token quota: `100,000,000` -> `300,000,000`
+- Monthly token quota unchanged: `1,200,000,000`
+- TPM unchanged: `5,000,000`
+- Allowed model groups unchanged: `big-coder`
+
+Production backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.chetan-amd-daily-quota-300m-20260707T063040Z`.
+
+Validation:
+
+- Local and live production config SHA-256 matched before editing.
+- Local config validation passed with 33 callers.
+- `go test ./internal/router -run 'Test.*Config|TestLoad'`: passed.
+- Production `docker compose config`: passed.
+- Production router restarted on `smart-llmrouter:777d2ed-linux-amd64`.
+- Production `/readyz`: 200.
+- Live config now shows `quota.day.tokens: 300000000` for `chetan-amd-ai-day-prod`.
+- Local and live production config SHA-256 matched after deployment.
+
 ## 2026-07-06 Admin Reports Long-Window OOM Fix
 
 Package `smart-llmrouter:777d2ed-linux-amd64` was deployed to production to fix 15-day `savings-by-key` admin reports returning HTTP 502 after the router was OOM-killed while materializing long-window request rows.
@@ -120,6 +142,35 @@ Validation:
 - Exact failing API shape `savings-by-key?since=15d&limit=50&baseline=gpt-5.5&sort=savingsUsd&direction=desc` returned 200 in about 1 second.
 - Four concurrent requests for the same long-window report all returned 200; router `RestartCount` stayed 0, `OOMKilled` stayed false, and memory stayed around 32 MiB.
 - Browser-facing admin reports URL for the same tab/filter returned 200.
+
+## 2026-07-06 PR Verification Caller Tokens
+
+Created two purpose-specific production caller tokens for automatic PR verification and approval in the `metrum-insights` project:
+
+- `aditya-metrum-insights-prod-pr-verifier`
+- `aidan-metrum-insights-prod-pr-verifier`
+
+Public token IDs:
+
+- `rtr_metrum_aditya_metrum-insights_prod_pr-verifier-20260706`
+- `rtr_metrum_aidan_metrum-insights_prod_pr-verifier-20260706`
+
+Allowed model groups for both keys: `default`, `fast`, `small`, `medium`, `high`, `big-coder`, and `vision`.
+
+Raw/base64 token material was saved only in the ignored local credential file `ROUTER_TOKENS_PR_VERIFICATION_20260706.txt`; do not paste it into docs, tickets, logs, or chat.
+
+Rollback backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.pr-verifier-pre-20260706T171050Z`.
+
+Validation:
+
+- Synced local `config.production.yaml` from the live production config before editing.
+- Local production config validation passed with 33 callers.
+- `go test ./internal/router -run 'Test.*Config|TestLoad'`: passed.
+- Production `docker compose config`: passed.
+- Production router restarted on `smart-llmrouter:777d2ed-linux-amd64`.
+- Production `/readyz`: 200.
+- Local and live production config SHA-256 matched after deployment.
+- Authenticated `/v1/models` for both new tokens returned exactly `big-coder`, `default`, `fast`, `high`, `medium`, `small`, and `vision`.
 
 ## 2026-07-05 Public Docs Cleanup Production Refresh
 
