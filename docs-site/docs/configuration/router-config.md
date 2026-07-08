@@ -54,3 +54,9 @@ Use these pages as the canonical homes for each configuration area:
 ## Operational Notes
 
 Change config with structured YAML tooling, validate the result, run the relevant smoke tests, and keep deployment-facing guidance current when behavior changes. For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
+
+## OpenAI Endpoint Compatibility
+
+`server.openai_compatibility.tolerate_responses_body_on_chat_endpoint` is disabled by default. Leave it disabled for deployments where clients use the normal API paths: Chat Completions bodies on `/v1/chat/completions` and Responses bodies on `/v1/responses`.
+
+Enable it only after validating a client adapter that posts a Responses-shaped body to `/v1/chat/completions`. The router detects the request shape from JSON fields, not from client names, and accepts only the documented subset in [API Compatibility](../reference/api-compatibility#mixed-openai-endpoint-compatibility). Roll back by setting the flag back to `false` and restarting or redeploying the router; ordinary Chat Completions requests are unaffected by the disabled mode.

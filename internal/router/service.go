@@ -584,6 +584,7 @@ func (s *Service) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect string) {
+	endpointDialect := dialect
 	rc, ok := s.begin(w, r, dialect)
 	if !ok {
 		return
@@ -592,6 +593,42 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	if err != nil {
 		s.writeError(w, rc, http.StatusBadRequest, "invalid-body")
 		return
+	}
+	responsesBodyOnChatEndpoint := false
+	if endpointDialect == "openai-chat" {
+		normalizedBody, shape, errCode, err := normalizeResponsesBodyOnChatEndpoint(body)
+		if err != nil {
+			if errCode == "" {
+				s.writeError(w, rc, http.StatusBadRequest, "invalid-request")
+				return
+			}
+			mode := "enabled"
+			if !s.cfg.Server.OpenAICompatibility.TolerateResponsesBodyOnChatEndpoint {
+				mode = "disabled"
+				errCode = openAIChatEndpointResponsesShapeDisabledError
+			}
+			detectedShape := defaultString(shape.Name, "unknown")
+			rc.trace("openai_compatibility_shape", fmt.Sprintf("endpoint=/v1/chat/completions detected_shape=%s bridge_direction=responses_to_chat mode=%s rejection_reason=%s", detectedShape, mode, errCode), Target{}, 0, http.StatusBadRequest, errCode, false, 0)
+			s.writeError(w, rc, http.StatusBadRequest, errCode)
+			return
+		}
+		if shape.Detected {
+			if !s.cfg.Server.OpenAICompatibility.TolerateResponsesBodyOnChatEndpoint {
+				rc.trace("openai_compatibility_shape", "endpoint=/v1/chat/completions detected_shape=openai-responses bridge_direction=responses_to_chat mode=disabled rejection_reason="+openAIChatEndpointResponsesShapeDisabledError, Target{}, 0, http.StatusBadRequest, openAIChatEndpointResponsesShapeDisabledError, false, 0)
+				s.writeError(w, rc, http.StatusBadRequest, openAIChatEndpointResponsesShapeDisabledError)
+				return
+			}
+			body = normalizedBody
+			dialect = "openai-responses"
+			rc.dialect = dialect
+			rc.rec.InboundDialect = dialect
+			responsesBodyOnChatEndpoint = true
+			rc.trace("openai_compatibility_shape", "endpoint=/v1/chat/completions detected_shape=openai-responses bridge_direction=responses_to_chat mode=enabled", Target{}, 0, 0, "", false, 0)
+			if lerr := s.license.enforce(licenseFeatureForRoute(dialect)); lerr != nil {
+				s.writeError(w, rc, lerr.StatusCode, lerr.Code)
+				return
+			}
+		}
 	}
 	req, err := decodeRequest(dialect, body, r.Header)
 	if err != nil {
@@ -618,6 +655,11 @@ func (s *Service) handleLLM(w http.ResponseWriter, r *http.Request, dialect stri
 	group, ok := s.cfg.Models[req.Model]
 	if !ok {
 		s.writeError(w, rc, http.StatusForbidden, "model-not-found")
+		return
+	}
+	if responsesBodyOnChatEndpoint && rawValuePresent(req.Raw, "previous_response_id") && !modelGroupHasNativeResponsesTarget(s.cfg, group) {
+		rc.trace("openai_compatibility_shape", "endpoint=/v1/chat/completions detected_shape=openai-responses bridge_direction=responses_to_chat mode=enabled rejection_reason="+openAIChatEndpointPreviousResponseUnsupportedError, Target{}, 0, http.StatusBadRequest, openAIChatEndpointPreviousResponseUnsupportedError, false, 0)
+		s.writeError(w, rc, http.StatusBadRequest, openAIChatEndpointPreviousResponseUnsupportedError)
 		return
 	}
 	rc.rec.RequestedModel = req.Model

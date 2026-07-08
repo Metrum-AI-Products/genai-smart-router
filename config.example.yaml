@@ -1,6 +1,12 @@
 server:
   listen: :8080
   default_model_group: default
+  # Optional OpenAI endpoint compatibility gates. Disabled by default so
+  # `/v1/chat/completions` accepts Chat Completions bodies and rejects
+  # Responses-shaped bodies clearly. Enable only for deployments that have
+  # validated clients which post Responses-shaped payloads to the Chat endpoint.
+  openai_compatibility:
+    tolerate_responses_body_on_chat_endpoint: false
   cache:
     enabled: true
     max_bytes: 134217728

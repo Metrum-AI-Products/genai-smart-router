@@ -85,6 +85,38 @@ The smoke emits safe scalar proof only: request IDs, API surface, status, select
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
+## Mixed OpenAI Endpoint Compatibility
+
+Clients should normally send Chat Completions bodies to `/v1/chat/completions` and Responses bodies to `/v1/responses`. Some OpenAI-compatible client adapters can be configured incorrectly and post a Responses-shaped JSON body to the Chat Completions path. By default the router rejects that mismatch with `400 responses-body-on-chat-endpoint-disabled` while ordinary Chat Completions requests continue to work.
+
+An operator can opt in to the compatibility mode:
+
+```yaml
+server:
+  openai_compatibility:
+    tolerate_responses_body_on_chat_endpoint: true
+```
+
+When enabled, detection is based on request fields such as `input`, `instructions`, `reasoning`, `text`, `previous_response_id`, or `max_output_tokens`; it is not based on user agent, client name, or SDK name. The accepted subset on the Chat path is Responses-style `input`, `instructions`, `reasoning`, function `tools`, `tool_choice`, `text.format`, Chat-style `response_format` converted to `text.format`, `previous_response_id` only for groups with a native Responses target, one positive output cap field normalized to `max_output_tokens`, and `stream`. Sampling fields such as `temperature`, `top_p`, and `parallel_tool_calls` are preserved when the selected target path supports them.
+
+Unsupported fields such as `include`, `truncation`, `metadata`, `store`, mixed `messages` plus `input`, multiple output cap fields, provider-hosted tool descriptors, or conflicting `text.format` plus `response_format` return a clear 400-level compatibility error before upstream. Target-specific gaps such as an unvalidated Responses-to-Chat tool choice or reasoning bridge can still return `502 no-eligible-target` with safe filter diagnostics.
+
+Example request:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "your-model-group",
+    "input": "Reply with one short sentence.",
+    "reasoning": {"effort": "low"},
+    "max_output_tokens": 64
+  }'
+```
+
+Successful compatibility requests are handled as OpenAI Responses ingress for routing and response shaping. Diagnostics record safe scalar evidence such as the Chat endpoint path, detected Responses body shape, compatibility mode, `inbound_dialect = openai-responses`, selected target dialect, bridge direction when a Responses-to-Chat bridge is used, translated output-cap field, and bounded filter or rejection reason. Diagnostics do not store raw prompts, images, tool schemas, bearer tokens, token hashes, provider keys, or full config.
+
 ## API Bridges
 
 Deployments can expose a validated Chat Completions upstream to `/v1/responses` callers through an explicit stateless Responses-to-Chat bridge. This is useful for Codex or Responses-compatible clients when a model is only validated through OpenAI Chat Completions.

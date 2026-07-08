@@ -33,21 +33,26 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen            string                   `yaml:"listen"`
-	DefaultModelGroup string                   `yaml:"default_model_group"`
-	AdminAuth         AdminAuthConfig          `yaml:"admin_auth"`
-	AdminReports      AdminReportsConfig       `yaml:"admin_reports"`
-	License           LicenseConfig            `yaml:"license" json:"license"`
-	ClientIP          ClientIPConfig           `yaml:"client_ip" json:"client_ip"`
-	Cache             CacheConfig              `yaml:"cache"`
-	Logging           LoggingConfig            `yaml:"logging"`
-	UsageDB           UsageDBConfig            `yaml:"usage_db"`
-	Upstream          UpstreamConfig           `yaml:"upstream"`
-	Diagnostics       DiagnosticsConfig        `yaml:"diagnostics"`
-	ContentCapture    ContentCaptureConfig     `yaml:"content_capture"`
-	Retention         RetentionConfig          `yaml:"retention"`
-	DecisionTelemetry DecisionTelemetryConfig  `yaml:"decision_telemetry"`
-	TrafficShape      ServerTrafficShapeConfig `yaml:"traffic_shape" json:"traffic_shape"`
+	Listen              string                    `yaml:"listen"`
+	DefaultModelGroup   string                    `yaml:"default_model_group"`
+	OpenAICompatibility OpenAICompatibilityConfig `yaml:"openai_compatibility" json:"openai_compatibility"`
+	AdminAuth           AdminAuthConfig           `yaml:"admin_auth"`
+	AdminReports        AdminReportsConfig        `yaml:"admin_reports"`
+	License             LicenseConfig             `yaml:"license" json:"license"`
+	ClientIP            ClientIPConfig            `yaml:"client_ip" json:"client_ip"`
+	Cache               CacheConfig               `yaml:"cache"`
+	Logging             LoggingConfig             `yaml:"logging"`
+	UsageDB             UsageDBConfig             `yaml:"usage_db"`
+	Upstream            UpstreamConfig            `yaml:"upstream"`
+	Diagnostics         DiagnosticsConfig         `yaml:"diagnostics"`
+	ContentCapture      ContentCaptureConfig      `yaml:"content_capture"`
+	Retention           RetentionConfig           `yaml:"retention"`
+	DecisionTelemetry   DecisionTelemetryConfig   `yaml:"decision_telemetry"`
+	TrafficShape        ServerTrafficShapeConfig  `yaml:"traffic_shape" json:"traffic_shape"`
+}
+
+type OpenAICompatibilityConfig struct {
+	TolerateResponsesBodyOnChatEndpoint bool `yaml:"tolerate_responses_body_on_chat_endpoint" json:"tolerateResponsesBodyOnChatEndpoint"`
 }
 
 type LicenseConfig struct {

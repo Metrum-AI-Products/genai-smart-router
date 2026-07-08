@@ -123,8 +123,17 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 		if req.MaxTokens > 0 {
 			body["max_output_tokens"] = req.MaxTokens
 		}
+		if previousResponseID := strings.TrimSpace(stringValue(req.Raw["previous_response_id"])); previousResponseID != "" {
+			body["previous_response_id"] = previousResponseID
+		}
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
+		}
+		if topP, ok := numberAsFloat(req.Raw["top_p"]); ok {
+			body["top_p"] = topP
+		}
+		if parallelToolCalls, ok := req.Raw["parallel_tool_calls"].(bool); ok {
+			body["parallel_tool_calls"] = parallelToolCalls
 		}
 		if target.ForceStoreFalse {
 			body["store"] = false

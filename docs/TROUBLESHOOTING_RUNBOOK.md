@@ -109,6 +109,29 @@ When a caller reports missing reasoning or an unexpected bridge failure, prove e
 
 Common client expectations: Codex normally uses OpenAI Responses and may need Responses-native or explicitly bridged targets. Claude Code uses Anthropic Messages and may include `thinking` or tool-related thinking constraints. Cursor, opencode, aider, and SDK-based IDE clients can use OpenAI Chat, Anthropic-compatible, or mixed legacy OpenAI-compatible shapes depending on version and configuration; always use the stored inbound dialect, request ID, and selected provider skin as evidence.
 
+### Responses Body Posted To Chat Endpoint
+
+The normal fix is to point the client at `/v1/responses` for Responses-shaped payloads. If a deployment must temporarily accept a Responses-shaped body on `/v1/chat/completions`, set:
+
+```yaml
+server:
+  openai_compatibility:
+    tolerate_responses_body_on_chat_endpoint: true
+```
+
+The default is `false`. Disabled mode returns `400 responses-body-on-chat-endpoint-disabled` for Responses-shaped bodies while ordinary Chat Completions requests still route as Chat. Enabled mode is request-shape based, not client-name based. Supported fields on the Chat endpoint are `input`, `instructions`, `reasoning`, function `tools`, `tool_choice`, `text.format`, Chat-style `response_format` normalized to `text.format`, one output token cap normalized to `max_output_tokens`, `stream`, and `previous_response_id` only when the requested group has a native `openai-responses` target. The compatibility gate rejects unsupported fields such as `include`, `truncation`, `metadata`, `store`, mixed `messages` plus `input`, multiple output cap fields, provider-hosted tool descriptors, and conflicting structured-output fields with a 400 before upstream.
+
+Test with a sanitized curl body and a caller allowed to a dedicated smoke group:
+
+```bash
+curl "$ROUTER_BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<smoke-group>","input":"Reply OK only.","reasoning":{"effort":"low"},"max_output_tokens":32}'
+```
+
+Evidence should include safe trace event `openai_compatibility_shape` with endpoint, detected shape, mode, and rejection reason when present; `request_shapes.inbound_dialect = openai-responses`; selected target dialect on `request_usage`; and `request_translation_shapes.bridge_direction = responses_to_chat` when a Chat target is reached through the bridge. Do not collect raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config. Roll back by setting the flag to `false` and redeploying; clients that still post Responses-shaped bodies to the Chat endpoint will get the deterministic disabled error.
+
 ### Codex Does Not Show Reasoning Controls
 
 Use the exact caller token that Codex uses and call `/v1/models`. If the requested model group is missing `supported_reasoning_levels` and `default_reasoning_level`, the running deployment is not advertising active reasoning metadata to that caller. Check these in order:

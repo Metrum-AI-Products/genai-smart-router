@@ -26,7 +26,7 @@ func (s *Service) sanitizeDiagnosticError(text string) string {
 }
 
 func (s *Service) sanitizeDiagnosticTraceMessage(event, text string) string {
-	if event == "routing_decision" {
+	if safeInternalTraceMessageEvent(event) {
 		return sanitizeInternalDiagnosticText(text, s.diagnosticMaxErrorBytes())
 	}
 	return s.sanitizeDiagnosticError(text)
@@ -50,10 +50,19 @@ func sanitizePersistedDiagnosticText(text string) string {
 }
 
 func sanitizePersistedTraceMessage(event, text string) string {
-	if event == "routing_decision" {
+	if safeInternalTraceMessageEvent(event) {
 		return sanitizeInternalDiagnosticText(text, 2048)
 	}
 	return sanitizePersistedDiagnosticText(text)
+}
+
+func safeInternalTraceMessageEvent(event string) bool {
+	switch event {
+	case "routing_decision", "openai_compatibility_shape":
+		return true
+	default:
+		return false
+	}
 }
 
 func sanitizeInternalDiagnosticText(text string, maxBytes int) string {
