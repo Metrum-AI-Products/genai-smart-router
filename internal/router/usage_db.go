@@ -5028,7 +5028,7 @@ func (s *usageStore) adminShapeAggsSQL(opts UsageReportOptions, spec adminScalar
 	}
 	if len(table) > limitN {
 		hasMore = true
-		trimmed := adminShapeRowsFromAgg(table, limitN)
+		trimmed := adminShapeRowsFromAgg(table, sortKey, limitN)
 		keep := map[string]bool{}
 		for _, row := range trimmed {
 			keep[joinKey(row.Key, row.SecondaryKey)] = true
@@ -5043,13 +5043,33 @@ func (s *usageStore) adminShapeAggsSQL(opts UsageReportOptions, spec adminScalar
 	return table, &total, hasMore, nil
 }
 
+type adminShapeSQLKeySpec struct {
+	keyExpr       string
+	secondaryExpr string
+	keyFilterExpr string
+}
+
+func (s adminShapeSQLKeySpec) groupExpr() string {
+	if s.keyFilterExpr == "" {
+		return s.secondaryExpr
+	}
+	return s.keyFilterExpr + ", " + s.secondaryExpr
+}
+
+func (s adminShapeSQLKeySpec) applyRecordFilter(q *gorm.DB, key, secondary string) *gorm.DB {
+	if s.keyFilterExpr == "" {
+		return q.Where(s.secondaryExpr+" = ?", secondary)
+	}
+	return q.Where(s.keyFilterExpr+" = ? AND "+s.secondaryExpr+" = ?", key, secondary)
+}
+
 func (s *usageStore) adminCallerShapeAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) ([]shapeAggSQLRecord, bool, error) {
-	keyExpr, secondaryExpr, err := adminCallerShapeSQLKeyExpr(spec)
+	keySpec, err := adminCallerShapeSQLKeyExpr(spec)
 	if err != nil {
 		return nil, false, err
 	}
-	selectExpr := keyExpr + ` AS key,
-		` + secondaryExpr + ` AS secondary_key,
+	selectExpr := keySpec.keyExpr + ` AS key,
+		` + keySpec.secondaryExpr + ` AS secondary_key,
 		COUNT(*) AS requests,
 		SUM(CASE WHEN traffic_shape_decision = '` + trafficShapeDecisionRejected + `' THEN 1 ELSE 0 END) AS rejected,
 		SUM(CASE WHEN traffic_shape_decision = '` + trafficShapeDecisionQueued + `' THEN 1 ELSE 0 END) AS queued,
@@ -5065,7 +5085,7 @@ func (s *usageStore) adminCallerShapeAggsSQL(opts UsageReportOptions, spec admin
 	var records []shapeAggSQLRecord
 	q := s.usageRowsQuery(opts).Where("traffic_shape_applied = ?", true).
 		Select(selectExpr).
-		Group(keyExpr + ", " + secondaryExpr).
+		Group(keySpec.groupExpr()).
 		Order(adminShapeAggSQLOrder(sortKey)).
 		Limit(limit + 1)
 	if err := q.Scan(&records).Error; err != nil {
@@ -5076,7 +5096,7 @@ func (s *usageStore) adminCallerShapeAggsSQL(opts UsageReportOptions, spec admin
 		records = records[:limit]
 	}
 	for i := range records {
-		if err := s.applyCallerShapeQueuePercentiles(opts, keyExpr, secondaryExpr, &records[i]); err != nil {
+		if err := s.applyCallerShapeQueuePercentiles(opts, keySpec, &records[i]); err != nil {
 			return nil, false, err
 		}
 	}
@@ -5084,7 +5104,7 @@ func (s *usageStore) adminCallerShapeAggsSQL(opts UsageReportOptions, spec admin
 }
 
 func (s *usageStore) adminUpstreamShapeAggsSQL(opts UsageReportOptions, spec adminScalarEndpointSpec, sortKey string, limit int) ([]shapeAggSQLRecord, bool, error) {
-	keyExpr, secondaryExpr, err := adminUpstreamShapeSQLKeyExpr(spec)
+	keySpec, err := adminUpstreamShapeSQLKeyExpr(spec)
 	if err != nil {
 		return nil, false, err
 	}
@@ -5109,8 +5129,8 @@ func (s *usageStore) adminUpstreamShapeAggsSQL(opts UsageReportOptions, spec adm
 	if spec.ShapeReport == "adaptive" {
 		q = q.Where("child.bucket = ?", shapeBucketBackoff)
 	}
-	selectExpr := keyExpr + ` AS key,
-		` + secondaryExpr + ` AS secondary_key,
+	selectExpr := keySpec.keyExpr + ` AS key,
+		` + keySpec.secondaryExpr + ` AS secondary_key,
 		COUNT(*) AS requests,
 		SUM(CASE WHEN child.decision = '` + shapeDecisionRejected + `' THEN 1 ELSE 0 END) AS rejected,
 		SUM(CASE WHEN child.decision = '` + shapeDecisionSkipped + `' THEN 1 ELSE 0 END) AS skipped_targets,
@@ -5130,7 +5150,7 @@ func (s *usageStore) adminUpstreamShapeAggsSQL(opts UsageReportOptions, spec adm
 		SUM(CASE WHEN child.decision = '` + shapeDecisionSkipped + `' AND u.status < 400 THEN 1 ELSE 0 END) AS route_around_success`
 	var records []shapeAggSQLRecord
 	q = q.Select(selectExpr).
-		Group(keyExpr + ", " + secondaryExpr).
+		Group(keySpec.groupExpr()).
 		Order(adminUpstreamShapeAggSQLOrder(sortKey)).
 		Limit(limit + 1)
 	if err := q.Scan(&records).Error; err != nil {
@@ -5141,48 +5161,52 @@ func (s *usageStore) adminUpstreamShapeAggsSQL(opts UsageReportOptions, spec adm
 		records = records[:limit]
 	}
 	for i := range records {
-		if err := s.applyUpstreamShapeQueuePercentiles(opts, spec, keyExpr, secondaryExpr, &records[i]); err != nil {
+		if err := s.applyUpstreamShapeQueuePercentiles(opts, spec, keySpec, &records[i]); err != nil {
 			return nil, false, err
 		}
 	}
 	return records, hasMore, nil
 }
 
-func adminCallerShapeSQLKeyExpr(spec adminScalarEndpointSpec) (string, string, error) {
+func adminCallerShapeSQLKeyExpr(spec adminScalarEndpointSpec) (adminShapeSQLKeySpec, error) {
 	keyExpr := "'caller'"
+	keyFilterExpr := ""
 	if spec.Dimension != "shape_surface" {
 		var ok bool
 		keyExpr, ok = adminScalarDimensionSQLExpr(spec.Dimension)
 		if !ok {
-			return "", "", fmt.Errorf("unsupported SQL caller shape dimension %q", spec.Dimension)
+			return adminShapeSQLKeySpec{}, fmt.Errorf("unsupported SQL caller shape dimension %q", spec.Dimension)
 		}
+		keyFilterExpr = keyExpr
 	}
 	secondaryExpr := adminSQLDefault("traffic_shape_scope", "unknown") + " || '|' || " + adminSQLDefault("traffic_shape_bucket", "unknown") + " || '|' || " + adminSQLDefault("traffic_shape_decision", "unknown")
 	if spec.Secondary != "shape_bucket" {
 		var ok bool
 		secondaryExpr, ok = adminScalarDimensionSQLExpr(spec.Secondary)
 		if !ok {
-			return "", "", fmt.Errorf("unsupported SQL caller shape secondary dimension %q", spec.Secondary)
+			return adminShapeSQLKeySpec{}, fmt.Errorf("unsupported SQL caller shape secondary dimension %q", spec.Secondary)
 		}
 	}
-	return keyExpr, secondaryExpr, nil
+	return adminShapeSQLKeySpec{keyExpr: keyExpr, secondaryExpr: secondaryExpr, keyFilterExpr: keyFilterExpr}, nil
 }
 
-func adminUpstreamShapeSQLKeyExpr(spec adminScalarEndpointSpec) (string, string, error) {
+func adminUpstreamShapeSQLKeyExpr(spec adminScalarEndpointSpec) (adminShapeSQLKeySpec, error) {
 	bucketExpr := adminSQLDefault("child.scope", "unknown") + " || '|' || " + adminSQLDefault("child.bucket", "unknown") + " || '|' || " + adminSQLDefault("child.decision", "unknown")
 	switch spec.Dimension {
 	case "shape_surface":
-		return "'provider/model'", bucketExpr, nil
+		return adminShapeSQLKeySpec{keyExpr: "'provider/model'", secondaryExpr: bucketExpr}, nil
 	case "provider_model":
-		return adminSQLDefault("child.provider", "unknown") + " || '/' || " + adminSQLDefault("child.model", "unknown"), bucketExpr, nil
+		keyExpr := adminSQLDefault("child.provider", "unknown") + " || '/' || " + adminSQLDefault("child.model", "unknown")
+		return adminShapeSQLKeySpec{keyExpr: keyExpr, secondaryExpr: bucketExpr, keyFilterExpr: keyExpr}, nil
 	case "backoff_reason":
-		return adminSQLDefault("child.backoff_reason", "adaptive-backoff"), adminSQLDefault("child.provider", "unknown") + " || '|' || " + adminSQLDefault("child.model", "unknown"), nil
+		keyExpr := adminSQLDefault("child.backoff_reason", "adaptive-backoff")
+		return adminShapeSQLKeySpec{keyExpr: keyExpr, secondaryExpr: adminSQLDefault("child.provider", "unknown") + " || '|' || " + adminSQLDefault("child.model", "unknown"), keyFilterExpr: keyExpr}, nil
 	default:
 		keyExpr, ok := adminScalarDimensionSQLExprForAlias(spec.Dimension, "u")
 		if !ok {
-			return "", "", fmt.Errorf("unsupported SQL upstream shape dimension %q", spec.Dimension)
+			return adminShapeSQLKeySpec{}, fmt.Errorf("unsupported SQL upstream shape dimension %q", spec.Dimension)
 		}
-		return keyExpr, bucketExpr, nil
+		return adminShapeSQLKeySpec{keyExpr: keyExpr, secondaryExpr: bucketExpr, keyFilterExpr: keyExpr}, nil
 	}
 }
 
@@ -5210,9 +5234,11 @@ func adminUpstreamShapeAggSQLOrder(sortKey string) string {
 	}
 }
 
-func (s *usageStore) applyCallerShapeQueuePercentiles(opts UsageReportOptions, keyExpr, secondaryExpr string, rec *shapeAggSQLRecord) error {
+func (s *usageStore) applyCallerShapeQueuePercentiles(opts UsageReportOptions, keySpec adminShapeSQLKeySpec, rec *shapeAggSQLRecord) error {
 	q := s.usageRowsQuery(opts).Where("traffic_shape_applied = ? AND traffic_shape_queue_wait_ms > 0", true).
-		Where(keyExpr+" = ? AND "+secondaryExpr+" = ?", rec.Key, rec.SecondaryKey)
+		Scopes(func(q *gorm.DB) *gorm.DB {
+			return keySpec.applyRecordFilter(q, rec.Key, rec.SecondaryKey)
+		})
 	p50, p95, err := s.shapeQueuePercentiles(q, "traffic_shape_queue_wait_ms")
 	if err != nil {
 		return err
@@ -5222,12 +5248,14 @@ func (s *usageStore) applyCallerShapeQueuePercentiles(opts UsageReportOptions, k
 	return nil
 }
 
-func (s *usageStore) applyUpstreamShapeQueuePercentiles(opts UsageReportOptions, spec adminScalarEndpointSpec, keyExpr, secondaryExpr string, rec *shapeAggSQLRecord) error {
+func (s *usageStore) applyUpstreamShapeQueuePercentiles(opts UsageReportOptions, spec adminScalarEndpointSpec, keySpec adminShapeSQLKeySpec, rec *shapeAggSQLRecord) error {
 	parent := s.usageRowsQuery(opts)
 	q := s.db.Table("request_upstream_shape_events AS child").
 		Joins("JOIN (?) AS u ON u.request_id = child.request_id", parent).
 		Where("child.queue_wait_ms > 0").
-		Where(keyExpr+" = ? AND "+secondaryExpr+" = ?", rec.Key, rec.SecondaryKey)
+		Scopes(func(q *gorm.DB) *gorm.DB {
+			return keySpec.applyRecordFilter(q, rec.Key, rec.SecondaryKey)
+		})
 	if opts.TrafficShapeScope != "" {
 		q = q.Where("child.scope = ?", opts.TrafficShapeScope)
 	}

@@ -1107,6 +1107,155 @@ func TestAdminShapeAggsSQLAggregatesCallerShapingWithLimit(t *testing.T) {
 	}
 }
 
+func TestAdminShapeAggsSQLAggregatesOverviewCallerAndProvider(t *testing.T) {
+	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	from := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	for _, row := range []usageRow{
+		{
+			TS:                               from.Add(time.Hour),
+			RequestID:                        "req_caller_1",
+			CallerProject:                    "analytics",
+			RequestedModel:                   "default",
+			ResolvedGroup:                    "default",
+			Status:                           200,
+			Attempts:                         1,
+			LatencyMS:                        20,
+			TrafficShapeApplied:              true,
+			TrafficShapeDecision:             trafficShapeDecisionQueued,
+			TrafficShapeScope:                "caller",
+			TrafficShapeBucket:               "caller.total_reserved_tokens_per_sec",
+			TrafficShapeQueueWaitMS:          100,
+			TrafficShapeEstimatedInputTokens: 10,
+			TrafficShapeReservedOutputTokens: 90,
+			TrafficShapeTotalReservedTokens:  100,
+		},
+		{
+			TS:                               from.Add(2 * time.Hour),
+			RequestID:                        "req_caller_2",
+			CallerProject:                    "analytics",
+			RequestedModel:                   "default",
+			ResolvedGroup:                    "default",
+			Status:                           200,
+			Attempts:                         1,
+			LatencyMS:                        25,
+			TrafficShapeApplied:              true,
+			TrafficShapeDecision:             trafficShapeDecisionQueued,
+			TrafficShapeScope:                "caller",
+			TrafficShapeBucket:               "caller.total_reserved_tokens_per_sec",
+			TrafficShapeQueueWaitMS:          300,
+			TrafficShapeEstimatedInputTokens: 20,
+			TrafficShapeReservedOutputTokens: 80,
+			TrafficShapeTotalReservedTokens:  100,
+		},
+		{
+			TS:             from.Add(3 * time.Hour),
+			RequestID:      "req_provider",
+			CallerProject:  "analytics",
+			RequestedModel: "default",
+			ResolvedGroup:  "default",
+			TargetProvider: "mock",
+			TargetModel:    "mock-model",
+			TargetDialect:  "openai-chat",
+			Status:         429,
+			Attempts:       1,
+			LatencyMS:      30,
+		},
+	} {
+		if err := store.db.Create(recordFromRow(row)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.db.Create(&requestUpstreamShapeEventRecord{
+		RequestID:            "req_provider",
+		Seq:                  1,
+		TS:                   formatUsageTime(from.Add(3 * time.Hour)),
+		Scope:                "provider",
+		Provider:             "mock",
+		Model:                "mock-model",
+		Dialect:              "openai-chat",
+		Bucket:               shapeBucketRequestStart,
+		Decision:             shapeDecisionRejected,
+		RetryAfterMS:         750,
+		QueueWaitMS:          250,
+		EstimatedInputTokens: 5,
+		ReservedOutputTokens: 15,
+		TotalReservedTokens:  20,
+		BackoffReason:        "provider-shape-throttled",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	spec := adminScalarEndpointSpec{Report: "traffic-shaping-overview", Dimension: "shape_surface", Secondary: "shape_bucket", ShapeReport: "overview", Sort: "requests"}
+	table, total, hasMore, err := store.adminShapeAggsSQL(
+		UsageReportOptions{From: from, To: to, CallerProject: "analytics"},
+		spec,
+		"requests",
+		10,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("unexpected overview pagination overflow")
+	}
+	if total.Calls != 3 {
+		t.Fatalf("summary calls=%d, want 3", total.Calls)
+	}
+	callerKey := joinKey("caller", "caller|caller.total_reserved_tokens_per_sec|"+trafficShapeDecisionQueued)
+	providerKey := joinKey("provider/model", "provider|"+shapeBucketRequestStart+"|"+shapeDecisionRejected)
+	caller := table[callerKey].row()
+	if caller.Key != "caller" || caller.SecondaryKey != "caller|caller.total_reserved_tokens_per_sec|"+trafficShapeDecisionQueued || caller.Requests != 2 || caller.Queued != 2 || caller.P50QueueWaitMS != 100 || caller.P95QueueWaitMS != 300 {
+		t.Fatalf("caller overview aggregate mismatch: %#v", caller)
+	}
+	provider := table[providerKey].row()
+	if provider.Key != "provider/model" || provider.SecondaryKey != "provider|"+shapeBucketRequestStart+"|"+shapeDecisionRejected || provider.Requests != 1 || provider.Rejections != 1 || provider.P50QueueWaitMS != 250 || provider.P95QueueWaitMS != 250 {
+		t.Fatalf("provider overview aggregate mismatch: %#v", provider)
+	}
+	if got := adminShapeRowsFromAgg(table, "requests", 10); len(got) != 2 || got[0].Key != "caller" || got[1].Key != "provider/model" {
+		t.Fatalf("requests sort mismatch: %#v", got)
+	}
+	if got := adminShapeRowsFromAgg(table, "errors", 10); len(got) != 2 || got[0].Key != "provider/model" || got[1].Key != "caller" {
+		t.Fatalf("errors sort mismatch: %#v", got)
+	}
+	if got := adminShapeRowsFromAgg(table, "key", 10); len(got) != 2 || got[0].Key != "caller" || got[1].Key != "provider/model" {
+		t.Fatalf("key sort mismatch: %#v", got)
+	}
+}
+
+func TestAdminShapeSQLKeyExprOmitsSyntheticSurfaceFromGroupAndFilter(t *testing.T) {
+	caller, err := adminCallerShapeSQLKeyExpr(adminScalarEndpointSpec{Dimension: "shape_surface", Secondary: "shape_bucket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(caller.groupExpr(), "'caller'") || caller.keyFilterExpr != "" {
+		t.Fatalf("caller synthetic key leaked into SQL group/filter: group=%q filter=%q", caller.groupExpr(), caller.keyFilterExpr)
+	}
+	if !strings.Contains(caller.groupExpr(), "traffic_shape_scope") || !strings.Contains(caller.groupExpr(), "traffic_shape_bucket") || !strings.Contains(caller.groupExpr(), "traffic_shape_decision") {
+		t.Fatalf("caller synthetic group lost secondary bucket expression: %q", caller.groupExpr())
+	}
+	upstream, err := adminUpstreamShapeSQLKeyExpr(adminScalarEndpointSpec{Dimension: "shape_surface", Secondary: "shape_bucket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(upstream.groupExpr(), "'provider/model'") || upstream.keyFilterExpr != "" {
+		t.Fatalf("upstream synthetic key leaked into SQL group/filter: group=%q filter=%q", upstream.groupExpr(), upstream.keyFilterExpr)
+	}
+	if !strings.Contains(upstream.groupExpr(), "child.scope") || !strings.Contains(upstream.groupExpr(), "child.bucket") || !strings.Contains(upstream.groupExpr(), "child.decision") {
+		t.Fatalf("upstream synthetic group lost secondary bucket expression: %q", upstream.groupExpr())
+	}
+	byProvider, err := adminUpstreamShapeSQLKeyExpr(adminScalarEndpointSpec{Dimension: "provider_model", Secondary: "shape_bucket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byProvider.keyFilterExpr == "" || !strings.Contains(byProvider.groupExpr(), byProvider.keyFilterExpr) {
+		t.Fatalf("real upstream key missing from group/filter: group=%q filter=%q", byProvider.groupExpr(), byProvider.keyFilterExpr)
+	}
+}
+
 func TestAdminShapeAggsSQLAggregatesProviderAndAdaptiveBackoff(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

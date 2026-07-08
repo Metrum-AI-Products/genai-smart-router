@@ -1488,7 +1488,7 @@ func (s *Service) buildAdminShapeReportResponseSQL(filters adminReportFilters, s
 		return adminScalarReportResponse{}, err
 	}
 	generatedAt := formatUsageTime(time.Now().UTC())
-	reportRows := adminShapeRowsFromAgg(table, filters.Limit)
+	reportRows := adminShapeRowsFromAgg(table, defaultString(filters.Sort, spec.Sort), filters.Limit)
 	resp := adminScalarReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Report:       spec.Report,
@@ -3544,7 +3544,7 @@ func buildAdminShapeReportResponse(filters adminReportFilters, rows []usageRow, 
 			adminShapeAggFor(table, key, secondary).addUpstream(event)
 		}
 	}
-	shapeRows := adminShapeRowsFromAgg(table, filters.Limit)
+	shapeRows := adminShapeRowsFromAgg(table, filters.Sort, filters.Limit)
 	resp := adminScalarReportResponse{
 		Period:       adminReportPeriod{From: formatUsageTime(filters.From), To: formatUsageTime(filters.To)},
 		Report:       spec.Report,
@@ -4317,12 +4317,26 @@ func (a *adminShapeAgg) row() adminScalarReportRow {
 	}
 }
 
-func adminShapeRowsFromAgg(table map[string]*adminShapeAgg, limit int) []adminScalarReportRow {
+func adminShapeRowsFromAgg(table map[string]*adminShapeAgg, sortKey string, limit int) []adminScalarReportRow {
 	rows := make([]adminScalarReportRow, 0, len(table))
 	for _, agg := range table {
 		rows = append(rows, agg.row())
 	}
 	sort.Slice(rows, func(i, j int) bool {
+		switch sortKey {
+		case "errors":
+			if rows[i].Errors != rows[j].Errors {
+				return rows[i].Errors > rows[j].Errors
+			}
+		case "key":
+			if rows[i].Key != rows[j].Key {
+				return rows[i].Key < rows[j].Key
+			}
+			if rows[i].SecondaryKey != rows[j].SecondaryKey {
+				return rows[i].SecondaryKey < rows[j].SecondaryKey
+			}
+			return rows[i].Requests > rows[j].Requests
+		}
 		if rows[i].Requests == rows[j].Requests {
 			if rows[i].Key == rows[j].Key {
 				return rows[i].SecondaryKey < rows[j].SecondaryKey
