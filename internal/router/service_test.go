@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -1599,6 +1600,132 @@ func TestAdminReportMarkdownQueryFailureLogsSafeStructuredContext(t *testing.T) 
 		}
 	}
 	assertAdminReportFailureLogSanitized(t, event)
+}
+
+func TestAdminReportQueryFailureLogsWrappedPostgresDiagnostics(t *testing.T) {
+	svc, logPath := newAdminReportFailureLogOnlyService(t, "postgres")
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/api/traffic-shaping-overview", nil)
+	req.Header.Set("X-Request-Id", "pg-report-test")
+	filters := &adminReportFilters{
+		From:      time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		To:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Limit:     10,
+		Sort:      "requests",
+		Direction: "desc",
+	}
+	err := fmt.Errorf("admin report query failed: %w", &pgconn.PgError{
+		Severity: "ERROR",
+		Code:     "42803",
+		Message:  "non-integer constant in GROUP BY",
+		Detail:   "unsafe detail should not be logged",
+		Hint:     "unsafe hint should not be logged",
+	})
+
+	svc.logAdminReportQueryFailure(req, "traffic-shaping-overview", "handleAdminScalarEndpoint", filters, err)
+
+	event := readSingleAdminReportFailureLogEvent(t, logPath)
+	for key, want := range map[string]any{
+		"event_type":       "admin_report_query_failed",
+		"report":           "traffic-shaping-overview",
+		"handler":          "handleAdminScalarEndpoint",
+		"db_driver":        "postgres",
+		"admin_request_id": "pg-report-test",
+		"error_class":      "*pgconn.PgError",
+		"pg_code":          "42803",
+		"pg_severity":      "ERROR",
+		"pg_message":       "non-integer constant in GROUP BY",
+		"limit":            float64(10),
+		"sort":             "requests",
+		"direction":        "desc",
+	} {
+		if got := event[key]; got != want {
+			t.Fatalf("event[%s]=%#v, want %#v; event=%#v", key, got, want, event)
+		}
+	}
+	if event["error_message"] == "" || event["from"] == "" || event["to"] == "" {
+		t.Fatalf("event missing bounded safe diagnostic context: %#v", event)
+	}
+	if _, ok := event["pg_detail"]; ok {
+		t.Fatalf("pg_detail should be omitted by default: %#v", event)
+	}
+	if _, ok := event["pg_hint"]; ok {
+		t.Fatalf("pg_hint should be omitted by default: %#v", event)
+	}
+	assertAdminReportFailureLogSanitized(t, event)
+}
+
+func TestAdminReportQueryFailureLogsGenericSafeMessage(t *testing.T) {
+	svc, logPath := newAdminReportFailureLogOnlyService(t, "postgres")
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/api/provider-model-mix", nil)
+	req.Header.Set("X-Request-Id", "generic-report-test")
+	err := errors.New("query failed for Bearer rtr_abcdefghijklmnopqrstuvwxyz: api_key=sk-provider-secret-123456")
+
+	svc.logAdminReportQueryFailure(req, "provider-model-mix", "handleAdminScalarEndpoint", nil, err)
+
+	event := readSingleAdminReportFailureLogEvent(t, logPath)
+	if got, want := event["error_class"], "*errors.errorString"; got != want {
+		t.Fatalf("error_class=%#v, want %#v; event=%#v", got, want, event)
+	}
+	msg, _ := event["error_message"].(string)
+	for _, forbidden := range []string{"rtr_abcdefghijklmnopqrstuvwxyz", "sk-provider-secret-123456", "provider-secret"} {
+		if strings.Contains(msg, forbidden) {
+			t.Fatalf("generic error message leaked %q: %#v", forbidden, event)
+		}
+	}
+	for _, want := range []string{"Bearer [REDACTED]", "api_key=[REDACTED]"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("generic error message missing %q: %#v", want, event)
+		}
+	}
+	if len(msg) > 512 {
+		t.Fatalf("generic error message length=%d, want <=512", len(msg))
+	}
+	assertAdminReportFailureLogSanitized(t, event)
+}
+
+func TestAdminReportQueryFailureRedactsRawSQLAndValues(t *testing.T) {
+	svc, logPath := newAdminReportFailureLogOnlyService(t, "postgres")
+	req := httptest.NewRequest(http.MethodGet, "/admin/reports/api/requests", nil)
+	rawSQL := "SELECT * FROM request_usage WHERE caller_token = 'rtr_abcdefghijklmnopqrstuvwxyz' AND prompt = 'summarize payroll for jane@example.test'"
+	err := errors.New("query failed: " + rawSQL)
+
+	svc.logAdminReportQueryFailure(req, "requests", "handleAdminReportRequests", nil, err)
+
+	event := readSingleAdminReportFailureLogEvent(t, logPath)
+	msg, _ := event["error_message"].(string)
+	if !strings.Contains(msg, "[REDACTED_SQL]") {
+		t.Fatalf("SQL-shaped diagnostic was not redacted: %#v", event)
+	}
+	for _, forbidden := range []string{"SELECT ", " FROM ", " WHERE ", "caller_token", "rtr_abcdefghijklmnopqrstuvwxyz", "summarize payroll", "jane@example.test"} {
+		if strings.Contains(msg, forbidden) {
+			t.Fatalf("SQL-shaped diagnostic leaked %q: %#v", forbidden, event)
+		}
+	}
+	if len(msg) > 512 {
+		t.Fatalf("SQL-shaped error message length=%d, want <=512", len(msg))
+	}
+	assertAdminReportFailureLogSanitized(t, event)
+}
+
+func newAdminReportFailureLogOnlyService(t *testing.T, driver string) (*Service, string) {
+	t.Helper()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "requests.jsonl")
+	logger, err := newRequestLogger(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := logger.Close(); err != nil {
+			t.Fatalf("close logger: %v", err)
+		}
+	})
+	return &Service{
+		cfg: &Config{Server: ServerConfig{
+			UsageDB: UsageDBConfig{Driver: driver},
+		}},
+		logger: logger,
+	}, logPath
 }
 
 func newAdminReportFailureLoggingService(t *testing.T, exportMarkdown bool) (*Service, string) {

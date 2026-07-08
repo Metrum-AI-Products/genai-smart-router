@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math"
@@ -20,6 +21,7 @@ import (
 
 	"smart-llmrouter/internal/buildinfo"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -1123,7 +1125,12 @@ func (s *Service) logAdminReportQueryFailure(r *http.Request, report, handler st
 		DBDriver:       s.adminReportDBDriver(),
 		AdminRequestID: adminReportFailureRequestID(r),
 		ErrorClass:     adminReportErrorClass(err),
-		ErrorMessage:   sanitizeDiagnosticText(err.Error(), false, 512),
+		ErrorMessage:   sanitizeAdminReportDiagnosticMessage(err.Error(), 512),
+	}
+	if pgErr := adminReportPGError(err); pgErr != nil {
+		rec.PGCode = sanitizeAdminReportDiagnosticMessage(pgErr.Code, 32)
+		rec.PGSeverity = sanitizeAdminReportDiagnosticMessage(pgErr.Severity, 64)
+		rec.PGMessage = sanitizeAdminReportDiagnosticMessage(pgErr.Message, 512)
 	}
 	if filters != nil {
 		rec.From = filters.From.UTC().Format(time.RFC3339)
@@ -1163,11 +1170,22 @@ func adminReportErrorClass(err error) string {
 	if err == nil {
 		return ""
 	}
+	if adminReportPGError(err) != nil {
+		return "*pgconn.PgError"
+	}
 	t := reflect.TypeOf(err)
 	if t == nil {
 		return "error"
 	}
 	return t.String()
+}
+
+func adminReportPGError(err error) *pgconn.PgError {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr
+	}
+	return nil
 }
 
 func (s *Service) serveAdminReportAsset(w http.ResponseWriter, r *http.Request, name string) {

@@ -14,6 +14,7 @@ var (
 	diagnosticHexHashRe       = regexp.MustCompile(`(?i)\b[a-f0-9]{64}\b`)
 	diagnosticContentFieldRe  = regexp.MustCompile(`(?i)\b(prompt|messages?|input|content|request|raw[_-]?body|response[_-]?body|body)\b\s*[:=]\s*[^;]+`)
 	diagnosticJSONLikeFieldRe = regexp.MustCompile(`(?i)("?(?:api[_-]?key|authorization|provider[_-]?(?:api[_-]?)?key|secret|token|token[_-]?hash|x-api-key|prompt|messages?|input|content|request|raw[_-]?body|response[_-]?body|body)"?\s*:\s*)(?:"(?:\\.|[^"\\])*"?|[^,}\]]*)`)
+	diagnosticSQLTextRe       = regexp.MustCompile(`(?is)\b(?:SELECT|INSERT|UPDATE|DELETE|WITH)\b[\s\S]*`)
 )
 
 func (s *Service) sanitizeDiagnosticError(text string) string {
@@ -84,6 +85,19 @@ func sanitizeDiagnosticText(text string, storeUpstreamSnippet bool, maxBytes int
 	return truncateDiagnosticText(text, maxBytes)
 }
 
+func sanitizeAdminReportDiagnosticMessage(text string, maxBytes int) string {
+	text = normalizeDiagnosticText(text)
+	if text == "" {
+		return ""
+	}
+	text = redactDiagnosticSecrets(text)
+	text = diagnosticJSONLikeFieldRe.ReplaceAllString(text, "${1}[REDACTED]")
+	text = diagnosticContentFieldRe.ReplaceAllString(text, "$1=[REDACTED]")
+	text = redactDiagnosticSQLText(text)
+	text = redactDiagnosticSecrets(text)
+	return truncateDiagnosticText(text, maxBytes)
+}
+
 func normalizeDiagnosticText(text string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
 }
@@ -141,6 +155,10 @@ func redactDiagnosticSecrets(text string) string {
 	text = diagnosticSHA256PrefixRe.ReplaceAllString(text, "sha256:[REDACTED]")
 	text = diagnosticHexHashRe.ReplaceAllString(text, "[REDACTED_HASH]")
 	return text
+}
+
+func redactDiagnosticSQLText(text string) string {
+	return diagnosticSQLTextRe.ReplaceAllString(text, "[REDACTED_SQL]")
 }
 
 func truncateDiagnosticText(text string, maxBytes int) string {

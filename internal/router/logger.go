@@ -28,6 +28,9 @@ type adminReportQueryFailureLogRecord struct {
 	Direction      string `json:"direction,omitempty"`
 	ErrorClass     string `json:"error_class"`
 	ErrorMessage   string `json:"error_message"`
+	PGCode         string `json:"pg_code,omitempty"`
+	PGSeverity     string `json:"pg_severity,omitempty"`
+	PGMessage      string `json:"pg_message,omitempty"`
 }
 
 type logRecord struct {
