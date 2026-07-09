@@ -208,6 +208,7 @@ func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte,
 	// The router calls upstreams in unary mode and synthesizes downstream SSE.
 	// This keeps tool-call responses and usage accounting deterministic.
 	body["stream"] = false
+	delete(body, "stream_options")
 	applyOpenAIChatMaxTokens(body, req, true)
 	applyTargetOpenAIChatEncoding(body, target)
 	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {

@@ -1296,9 +1296,18 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 	if got := cfg.Provider["minimax_responses"].Models["m3"]; !stringSliceContains(got.ToolSupport.OpenAIResponses, "function") || !got.ForceStoreFalse || !got.Reasoning.Supported || !stringSliceContains(got.RequestShapeSupport.UnsupportedRequestFeatures, "forced_tool_choice") {
 		t.Fatalf("example config MiniMax Responses catalog entry=%#v", got)
 	}
+	if got := cfg.Provider["xai"].Models["grok-4-5"]; !stringSliceContains(got.RequestShapeSupport.UnsupportedRequestFeatures, "stream_options") {
+		t.Fatalf("example config xAI Grok 4.5 should gate opencode stream_options shape: %#v", got.RequestShapeSupport)
+	}
+	if got := cfg.Provider["kimi"].Models["kimi-k2.7-code"]; !stringSliceContains(got.RequestShapeSupport.UnsupportedRequestFeatures, "stream_options") {
+		t.Fatalf("example config Kimi K2.7 Code should gate opencode stream_options shape: %#v", got.RequestShapeSupport)
+	}
 	if got := cfg.Provider["fireworks_responses"].Models["kimi-k2p7-code"]; got.InputPricePerMillionUSD != 0.95 || got.OutputPricePerMillionUSD != 4.00 ||
 		!stringSliceContains(got.ToolSupport.OpenAIResponses, "function") || !got.ForceStoreFalse {
 		t.Fatalf("example config Fireworks Responses Kimi catalog entry=%#v", got)
+	}
+	if got := cfg.Provider["fireworks"].Models["deepseek-v4-flash"]; !stringSliceContains(got.RequestShapeSupport.UnsupportedRequestFeatures, "stream_options") {
+		t.Fatalf("example config Fireworks DeepSeek should gate opencode stream_options shape: %#v", got.RequestShapeSupport)
 	}
 	if got := cfg.Provider["crusoe"].Models["gpt-oss-120b"]; got.Model != "openai/gpt-oss-120b" || got.InputPricePerMillionUSD != 0.05 || got.OutputPricePerMillionUSD != 0.2 {
 		t.Fatalf("example config Crusoe GPT OSS catalog entry=%#v", got)

@@ -2678,7 +2678,7 @@ func requestShapeFeatureAllowed(feature string) bool {
 	switch strings.ToLower(strings.TrimSpace(feature)) {
 	case "tools", "tool_choice", "forced_tool_choice", "structured_output", "response_format",
 		"previous_response_id", "function_call_output", "tool_result", "include", "truncation",
-		"metadata", "store", "reasoning", "image", "audio", "video", "stream":
+		"metadata", "store", "reasoning", "image", "audio", "video", "stream", "stream_options":
 		return true
 	default:
 		return false

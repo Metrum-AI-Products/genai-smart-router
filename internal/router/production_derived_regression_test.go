@@ -18,6 +18,8 @@ type productionDerivedLargePayloadFixture struct {
 	ClientName                 string `json:"client_name"`
 	ModelGroup                 string `json:"model_group"`
 	Stream                     bool   `json:"stream"`
+	StreamOptionsPresent       bool   `json:"stream_options_present"`
+	ParallelToolCallsPresent   bool   `json:"parallel_tool_calls_present"`
 	MessageCount               int    `json:"message_count"`
 	ToolCount                  int    `json:"tool_count"`
 	ImageCount                 int    `json:"image_count"`
@@ -262,6 +264,100 @@ func TestProductionDerivedLargeOpenAIChatToolPayloadSkipsShapeLimitedTarget(t *t
 	}
 	if translation.Provider != fixture.AllowedSelectedTargets[0].Provider || translation.Model != fixture.AllowedSelectedTargets[0].Model || translation.TranslatedToolCount != fixture.ToolCount || translation.TranslatedRequestBytesBucket != fixture.RequestBytesBucket {
 		t.Fatalf("unexpected translation shape: %#v", translation)
+	}
+	assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "production-derived-secret", "provider-key", testToken)
+}
+
+func TestProductionDerivedOpenCodeAIStreamingOptionsSkipIncompatibleTargets(t *testing.T) {
+	fixture := loadProductionDerivedLargePayloadFixture(t, "opencode-ai-sdk-chat-stream-options.json")
+	body := syntheticProductionDerivedOpenAIChatPayload(t, fixture)
+
+	var selectedModel string
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatalf("decode upstream body: %v", err)
+		}
+		selectedModel = stringValue(upstreamBody["model"])
+		for _, target := range fixture.MustNotSelect {
+			if selectedModel == target.Model {
+				t.Fatalf("incompatible production-derived target was selected: %s", selectedModel)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "chatcmpl_opencode_stream_options",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1200, "completion_tokens": 2, "total_tokens": 1202},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := productionDerivedOpenCodeStreamOptionsConfig(t, dir, upstream.URL)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", fixture.ClientName)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if selectedModel != fixture.AllowedSelectedTargets[0].Model {
+		t.Fatalf("selected upstream model=%q, want %q", selectedModel, fixture.AllowedSelectedTargets[0].Model)
+	}
+	if _, ok := upstreamBody["stream_options"]; ok {
+		t.Fatalf("upstream stream_options=%#v, want omitted after unary passthrough normalization", upstreamBody["stream_options"])
+	}
+	if upstreamBody["stream"] != false {
+		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	}
+
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !shape.Stream || !shape.ParallelToolCallsPresent || shape.ToolCount != fixture.ToolCount || shape.ToolChoiceMode != "auto" {
+		t.Fatalf("unexpected request shape: %#v", shape)
+	}
+	if shape.TotalRequestBytesBucket != fixture.RequestBytesBucket || shape.ToolSchemaBytesBucket != fixture.ToolSchemaBytesBucket || shape.EstimatedInputTokensBucket != fixture.EstimatedInputTokensBucket {
+		t.Fatalf("unexpected request shape buckets: %#v", shape)
+	}
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Order("candidate_index ASC").Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != len(fixture.MustNotSelect)+1 {
+		t.Fatalf("candidate count=%d candidates=%#v", len(candidates), candidates)
+	}
+	for i, target := range fixture.MustNotSelect {
+		candidate := candidates[i]
+		if candidate.Provider != target.Provider || candidate.Model != target.Model || candidate.EligibilityReason != "request-shape-unsupported-feature" || candidate.Selected {
+			t.Fatalf("candidate %d not skipped by stream_options metadata: %#v", i, candidate)
+		}
+	}
+	selected := candidates[len(candidates)-1]
+	if selected.Provider != fixture.AllowedSelectedTargets[0].Provider || selected.Model != fixture.AllowedSelectedTargets[0].Model || !selected.Selected {
+		t.Fatalf("fallback selected candidate=%#v", selected)
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !filterReasonsContain(reasons, "request_shape", "request-shape-unsupported-feature") {
+		t.Fatalf("missing request-shape unsupported-feature reason: %#v", reasons)
 	}
 	assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "production-derived-secret", "provider-key", testToken)
 }
@@ -602,6 +698,73 @@ func productionDerivedRegressionConfig(t *testing.T, dir, upstreamURL string) *C
 	}
 }
 
+func productionDerivedOpenCodeStreamOptionsConfig(t *testing.T, dir, upstreamURL string) *Config {
+	t.Helper()
+	sum := sha256.Sum256([]byte(testToken))
+	return &Config{
+		Server: ServerConfig{
+			Listen:            ":0",
+			DefaultModelGroup: "big-coder-opencode-stream-options-smoke",
+			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
+			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
+			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
+		},
+		StatePath: filepath.Join(dir, "state.json"),
+		Provider: map[string]ProviderConfig{
+			"xai":       {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+			"fireworks": {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+			"kimi":      {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+			"minimax":   {BaseURL: upstreamURL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+		},
+		Models: map[string]ModelGroup{
+			"big-coder-opencode-stream-options-smoke": {
+				Strategy: "static",
+				Targets: []Target{
+					{
+						Provider:            "xai",
+						Model:               "grok-4.5",
+						ContextTokens:       500000,
+						ToolSupport:         ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+						RequestShapeSupport: RequestShapeSupport{UnsupportedRequestFeatures: []string{"stream_options"}},
+					},
+					{
+						Provider:            "fireworks",
+						Model:               "accounts/fireworks/models/deepseek-v4-flash",
+						ContextTokens:       160000,
+						ToolSupport:         ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+						RequestShapeSupport: RequestShapeSupport{UnsupportedRequestFeatures: []string{"stream_options"}},
+					},
+					{
+						Provider:            "kimi",
+						Model:               "kimi-k2.7-code",
+						ContextTokens:       262144,
+						ToolSupport:         ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+						RequestShapeSupport: RequestShapeSupport{UnsupportedRequestFeatures: []string{"stream_options"}},
+					},
+					{
+						Provider:      "minimax",
+						Model:         "MiniMax-M3",
+						ContextTokens: 1000000,
+						ToolSupport:   ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+					},
+				},
+			},
+		},
+		Callers: []CallerConfig{{
+			ID:          "alice",
+			User:        "alice",
+			Project:     "metrum-insights",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(sum[:]),
+			TokenID:     "rtr_alice_test",
+			Allow:       []string{"big-coder-opencode-stream-options-smoke"},
+			Rate:        RateConfig{RPM: 100, TPM: 1000000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 1000000}, Month: BudgetConfig{Tokens: 1000000}},
+			Key:         KeyConfig{LifetimeTokens: 1000000},
+		}},
+	}
+}
+
 func syntheticProductionDerivedOpenAIChatPayload(t *testing.T, fixture productionDerivedLargePayloadFixture) string {
 	t.Helper()
 	messages := make([]map[string]any, 0, fixture.MessageCount)
@@ -644,6 +807,15 @@ func syntheticProductionDerivedOpenAIChatPayload(t *testing.T, fixture productio
 		"tools":       tools,
 		"tool_choice": "auto",
 		"metadata":    map[string]any{"fixture": fixture.Name},
+	}
+	if fixture.ParallelToolCallsPresent {
+		payload["parallel_tool_calls"] = true
+	}
+	if fixture.StreamOptionsPresent {
+		payload["stream_options"] = map[string]any{"include_usage": true}
+	}
+	if fixture.OutputCapPresent {
+		payload["max_tokens"] = 512
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

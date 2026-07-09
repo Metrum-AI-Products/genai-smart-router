@@ -267,6 +267,8 @@ func requestFeaturePresent(req *IRRequest, feature string) bool {
 		return rawContainsModality(req.Raw, "video")
 	case "stream":
 		return req.Stream
+	case "stream_options":
+		return rawValuePresent(req.Raw, "stream_options")
 	default:
 		return false
 	}

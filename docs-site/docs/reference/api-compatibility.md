@@ -234,6 +234,8 @@ OpenAI Responses provider-hosted tools such as Fireworks-documented `mcp` and `s
 
 The router controls upstream persistence policy for OpenAI-compatible requests. Same-dialect Chat Completions and Responses passthrough strip caller-supplied provider `metadata`; they send `store:false` upstream only when the resolved target sets `force_store_false: true`. Translated Responses calls use the same flag. Chat passthrough also honors target encoding metadata such as `output_token_field: max_completion_tokens` for upstreams that require `max_completion_tokens` instead of `max_tokens`.
 
+For OpenAI Chat tool passthrough, the router calls upstreams with `stream:false` and synthesizes downstream SSE when the caller requested streaming. Streaming-only Chat fields such as `stream_options` are not forwarded to the unary upstream request. If a provider/model still rejects a caller shape that includes `stream_options`, configure `request_shape_support.unsupported_request_features: [stream_options]` for that target until the exact client, provider, model, dialect, and router path pass direct and router-level smokes.
+
 Large OpenAI Chat coding-agent payload compatibility is a separate claim from ordinary text or tool support. Before a provider/model/dialect joins broad IDE or agent routes, validate representative request bytes, message count, serialized tool-schema size, explicit output cap, token scale, and router translation path with a synthetic fixture. If the target is not validated for that shape, keep it in a smoke group or configure `request_shape_support` limits so incompatible large requests skip it before upstream.
 
 ## Reasoning And Thinking

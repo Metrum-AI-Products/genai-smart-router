@@ -1,0 +1,53 @@
+{
+  "name": "opencode-ai-sdk-chat-stream-options",
+  "source_incident_issue": "#485",
+  "client_name": "opencode/1.17.11 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
+  "surface": "openai_chat",
+  "model_group": "big-coder-opencode-stream-options-smoke",
+  "stream": true,
+  "stream_options_present": true,
+  "parallel_tool_calls_present": true,
+  "message_count": 48,
+  "tool_count": 12,
+  "image_count": 0,
+  "output_cap_present": true,
+  "estimated_input_tokens_bucket": "huge",
+  "request_bytes_bucket": "64kb-256kb",
+  "tool_schema_bytes_bucket": "16kb-64kb",
+  "required_capabilities": [
+    "tools",
+    "tool_choice",
+    "stream_options_shape_gate"
+  ],
+  "must_not_select": [
+    {
+      "provider": "xai",
+      "model": "grok-4.5",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "fireworks",
+      "model": "accounts/fireworks/models/deepseek-v4-flash",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "kimi",
+      "model": "kimi-k2.7-code",
+      "dialect": "openai-chat"
+    }
+  ],
+  "allowed_selected_targets": [
+    {
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "dialect": "openai-chat"
+    }
+  ],
+  "telemetry_assertions": [
+    "request_shapes",
+    "request_translation_shapes",
+    "request_target_candidates",
+    "request_target_filter_reasons"
+  ],
+  "production_smoke_safe_payload_template": "synthetic-opencode-ai-sdk-chat-stream-options-v1"
+}

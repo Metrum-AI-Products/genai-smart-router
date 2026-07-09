@@ -218,11 +218,14 @@ request_shape_support:
   unsupported_request_features:
     - previous_response_id
     - function_call_output
+    - stream_options
   validation_status: limited
   validation_notes: Large coding-agent payload validation has not passed yet.
 ```
 
 Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
+
+Use `unsupported_request_features` for deterministic provider incompatibilities that are narrower than the whole target. For example, some OpenAI-compatible coding-agent clients send Chat `stream_options` while the router converts tool-bearing upstream calls to unary requests and synthesizes downstream SSE. If a provider/model rejects that exact shape, set `stream_options` until a direct upstream smoke and router-level smoke pass for that provider/model/skin.
 
 `supported_inbound_dialects` is the explicit opt-in for translated inbound API shapes. Use it when an active target's provider skin is not the same as the caller surface but the translated path has been validated. For the Anthropic endpoint split, plain `/anthropic/v1/messages` text can use a non-native OpenAI Chat or Responses target only when that target declares Anthropic inbound support, for example:
 

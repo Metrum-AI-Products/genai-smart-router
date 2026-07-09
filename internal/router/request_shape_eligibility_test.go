@@ -143,6 +143,16 @@ func TestRequestShapeUnsupportedForcedToolChoiceIgnoresAutoAndNone(t *testing.T)
 	}
 }
 
+func TestRequestShapeFeatureDetectsStreamOptions(t *testing.T) {
+	req := &IRRequest{Raw: map[string]any{"stream_options": map[string]any{"include_usage": true}}}
+	if !requestFeaturePresent(req, "stream_options") {
+		t.Fatal("stream_options feature should be present when the raw request contains stream_options")
+	}
+	if requestFeaturePresent(&IRRequest{Raw: map[string]any{}}, "stream_options") {
+		t.Fatal("stream_options feature should be absent when the raw request omits stream_options")
+	}
+}
+
 func TestLargeCodingAgentPayloadSkipsSmallContextTargetAndPersistsSafeTelemetry(t *testing.T) {
 	var seenModels []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

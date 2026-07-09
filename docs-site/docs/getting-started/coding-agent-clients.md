@@ -109,6 +109,8 @@ When a Messages request includes image content, the router filters the requested
 
 Configure opencode to use the router through the OpenAI-compatible endpoint at `https://<router-host>/v1`. The configured model is a router model group returned by `/v1/models`, not a raw upstream provider model name. Hosted examples may use groups such as `big-coder`, but each deployment chooses its own group names and token allow lists.
 
+opencode uses the AI SDK OpenAI-compatible provider, which can send streaming Chat requests with `stream_options`. The router handles this shape by filtering to targets that have passed that request shape and by omitting streaming-only options from synthesized unary upstream tool calls. If a deployment sees repeated upstream 400s for opencode traffic, validate a sanitized fixture for the exact request-shape buckets before changing the production model-group composition.
+
 Create a local token file with owner-only permissions. Use the real router token in place of the placeholder, and keep this file in local secret storage rather than packages, tickets, shared support bundles, or shared project files.
 
 ```bash

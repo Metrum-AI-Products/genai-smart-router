@@ -253,10 +253,15 @@ providers:
         pricing_updated_at: '2026-06-17'
         request_shape_support:
           supported_inbound_dialects: [openai-chat, anthropic]
+          unsupported_request_features: [stream_options]
           validation_status: passed
           validation_notes: Router-level Anthropic Messages to OpenAI Chat text
             translation is validated for broad coding groups; use the dedicated
-            Kimi Anthropic provider skin for Claude Code client tools.
+            Kimi Anthropic provider skin for Claude Code client tools. Production-derived
+            opencode/AI SDK Chat requests with stream_options caused upstream 400s
+            on 2026-07-09; keep that shape gated until direct and router-level
+            smokes pass for this exact provider/model/skin. Production big-coder
+            composition changes still require operator confirmation.
         tool_support:
           openai_chat:
           - tools
@@ -311,10 +316,15 @@ providers:
           router-level image smokes pass for this exact model and endpoint.
         request_shape_support:
           supported_inbound_dialects: [openai-chat, anthropic]
+          unsupported_request_features: [stream_options]
           validation_status: passed
           validation_notes: Anthropic Messages text/thinking translation to this
             OpenAI Chat skin is allowed for broad coding groups; Claude Code
-            client tools still require Anthropic Messages targets.
+            client tools still require Anthropic Messages targets. Production-derived
+            opencode/AI SDK Chat requests with stream_options caused mixed upstream
+            400s on 2026-07-09; keep that shape gated until direct and router-level
+            smokes pass for this exact provider/model/skin. Production big-coder
+            composition changes still require operator confirmation.
         tool_support:
           openai_chat:
           - tools
@@ -711,6 +721,7 @@ providers:
           sanitized HTTP 400 rows.
         request_shape_support:
           supports_large_coding_agent_payloads: true
+          unsupported_request_features: [stream_options]
           validation_status: passed
           validation_notes: Direct Fireworks Chat and local router-level smokes
             passed on 2026-06-29 and were rerun on 2026-06-30 with a synthetic
@@ -718,8 +729,12 @@ providers:
             route shape for ordinary large OpenAI Chat agent requests. Direct
             Anthropic Messages text/tools
             passed on 2026-06-30, but revalidate through the router before enabling
-            that skin in active routing. Revalidate before enabling image, Responses,
-            or materially larger tool-schema shapes.
+            that skin in active routing. Production-derived opencode/AI SDK Chat
+            requests with stream_options caused repeated upstream 400s on 2026-07-09;
+            keep that shape gated until direct and router-level smokes pass for this
+            exact provider/model/skin. Revalidate before enabling image, Responses,
+            materially larger tool-schema shapes, or production big-coder composition
+            changes.
         tool_support:
           openai_chat:
           - tools

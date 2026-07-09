@@ -4051,7 +4051,8 @@ func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T
 		"messages":[{"role":"user","content":"weather"}],
 		"tools":[{"type":"function","function":{"name":"get_weather","description":"weather","parameters":{"type":"object","properties":{"location":{"type":"string"}}}}}],
 		"tool_choice":"auto",
-		"parallel_tool_calls":true
+		"parallel_tool_calls":true,
+		"stream_options":{"include_usage":true}
 	}`))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set("User-Agent", "OpenAI/Go 3.15.0")
@@ -4065,6 +4066,9 @@ func TestOpenAIChatToolPassthroughPreservesToolsAndStreamsToolCalls(t *testing.T
 	}
 	if upstreamBody["stream"] != false {
 		t.Fatalf("upstream stream=%#v, want false", upstreamBody["stream"])
+	}
+	if _, ok := upstreamBody["stream_options"]; ok {
+		t.Fatalf("upstream stream_options=%#v, want omitted for synthesized unary passthrough", upstreamBody["stream_options"])
 	}
 	if tools, ok := upstreamBody["tools"].([]any); !ok || len(tools) != 1 {
 		t.Fatalf("tools not preserved upstream: %#v", upstreamBody)
