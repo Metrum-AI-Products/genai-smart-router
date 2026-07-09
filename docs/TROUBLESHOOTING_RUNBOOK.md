@@ -34,7 +34,7 @@ Use `X-Request-Id` to inspect relational usage tables:
 - `request_shapes`: one safe request-shape row with dialect, stream flag, item/message/role counts, tool count, tool-choice mode, structured-output/reasoning/multimodal flags, coarse size/token/output-cap buckets, and non-reversible request/tool-schema fingerprints.
 - `request_translation_shapes`: one safe translated-shape row per upstream attempt with provider/model/dialect/path, translated stream/tools/tool-choice/output-cap/reasoning controls, translated request bytes bucket, and strip/rewrite/warning counts.
 - `request_translation_field_events`: bounded child rows for allowlisted translated fields or `other`, with actions such as `stripped`, `rewritten`, and `unsupported`.
-- `request_upstream_error_details`: bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and categorized provider message when `store_sanitized_upstream_errors` is enabled.
+- `request_upstream_error_details`: bounded allowlisted provider 4xx/5xx fields such as code, type, param, request ID, and categorized provider message. These rows are enabled by default with diagnostics; set `store_sanitized_upstream_errors: false` only to suppress provider detail rows.
 - `request_errors`: sanitized terminal error class/message.
 
 Diagnostic tables must not store raw prompts, raw image payloads, image URLs, raw tool schemas, raw tool outputs, raw tokens, token hashes, provider keys, full upstream headers, or unsanitized upstream response bodies.

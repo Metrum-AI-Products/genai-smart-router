@@ -388,7 +388,7 @@ func TestProductionDerivedUpstreamErrorClassificationIsCallerVisible(t *testing.
 			dir := t.TempDir()
 			cfg := testConfig(t, upstream.URL, "provider-key", dir)
 			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
-			cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+			cfg.Server.Diagnostics.StoreSanitizedUpstreamError = boolPtr(true)
 			svc, err := New(cfg)
 			if err != nil {
 				t.Fatal(err)

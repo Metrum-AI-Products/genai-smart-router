@@ -29,7 +29,7 @@ server:
   diagnostics:
     enabled: true
     retention_days: 30
-    store_sanitized_upstream_errors: false
+    store_sanitized_upstream_errors: true
     max_error_bytes: 2048
   content_capture:
     enabled: false
@@ -47,6 +47,8 @@ server:
       enabled: false
       kms_key_id: ""
 ```
+
+`store_sanitized_upstream_errors` defaults to `true` when diagnostics are enabled. It writes only bounded allowlisted provider error fields such as code, type, param, provider request ID, and categorized message values; set it to `false` only when you want to suppress those provider detail rows.
 
 ## Schema
 

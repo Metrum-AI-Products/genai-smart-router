@@ -187,7 +187,7 @@ type UpstreamConfig struct {
 type DiagnosticsConfig struct {
 	Enabled                     *bool `yaml:"enabled"`
 	RetentionDays               int   `yaml:"retention_days"`
-	StoreSanitizedUpstreamError bool  `yaml:"store_sanitized_upstream_errors"`
+	StoreSanitizedUpstreamError *bool `yaml:"store_sanitized_upstream_errors"`
 	MaxErrorBytes               int   `yaml:"max_error_bytes"`
 }
 
@@ -914,6 +914,10 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.Diagnostics.MaxErrorBytes == 0 {
 		c.Server.Diagnostics.MaxErrorBytes = 2048
+	}
+	if c.Server.Diagnostics.StoreSanitizedUpstreamError == nil {
+		store := true
+		c.Server.Diagnostics.StoreSanitizedUpstreamError = &store
 	}
 	if c.Server.DecisionTelemetry.MaxCandidates == 0 {
 		c.Server.DecisionTelemetry.MaxCandidates = 64

@@ -189,7 +189,7 @@ Administrators can use `X-Request-Id` with `/admin/reports/api/request-evidence?
 - `request_attempts` for each provider/model attempt.
 - `request_trace_events` for routing, fallback, timeout, and cache decisions.
 - `request_upstream_shape_events` for provider/model/target admission, skip, rejection, and adaptive-backoff cooldown decisions.
-- `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields when sanitized upstream error storage is enabled.
+- `request_upstream_error_details` for bounded allowlisted provider 4xx/5xx fields when diagnostics are enabled. Deployments can set `server.diagnostics.store_sanitized_upstream_errors: false` to suppress those rows.
 - `request_errors` for sanitized terminal error summaries.
 
 The evidence bundle also reports diagnostic completeness so operators can tell whether a section is present, not applicable, or unexpectedly missing. Evidence and diagnostic rows exclude prompt text, raw image payloads, raw image URLs, raw tool schemas, raw tool outputs, raw router tokens, token hashes, provider API keys, full upstream headers, cookies, OIDC tokens, full config, and unsanitized upstream bodies. The [Diagnostics Schema](./diagnostics-schema#fields-intentionally-not-persisted) is the canonical public reference for safe and forbidden persisted data.

@@ -1290,7 +1290,7 @@ Ordinary usage, diagnostics, decision telemetry, logs, and reports must not pers
 | Provider API keys | No | Provider credentials remain in runtime configuration or environment-backed secret files and are never copied into usage tables. |
 | Token hashes | No | Token hashes are secret credential material; diagnostic tables use public token IDs rather than hashes. |
 | Full upstream headers | No | Header capture is allowlisted and redacted when governed content capture is enabled; ordinary diagnostics exclude full upstream headers. |
-| Full upstream response bodies | No | `request_upstream_error_details` stores only bounded, allowlisted, sanitized fields when enabled; full bodies are excluded. |
+| Full upstream response bodies | No | `request_upstream_error_details` stores only bounded, allowlisted, sanitized fields when diagnostics are enabled and upstream-error detail storage is not explicitly disabled; full bodies are excluded. |
 | PII placeholder maps and regex captures | No | `pii_filter` mappings are in-memory only; usage stores safe counters such as applied flag, mode, replacement count, and matched-rule count. |
 
 Governed content capture is separate from ordinary diagnostics. It is disabled by default and writes to `request_content_captures`, `request_content_headers`, and `request_content_audit_events` only when explicitly enabled by the operator. Captured content remains authorization-controlled, redacted according to capture policy, retention-managed, and outside ordinary usage reports.

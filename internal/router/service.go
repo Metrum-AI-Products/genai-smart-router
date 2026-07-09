@@ -1053,6 +1053,14 @@ func (s *Service) diagnosticsEnabled() bool {
 	return enabled == nil || *enabled
 }
 
+func (s *Service) storeSanitizedUpstreamErrors() bool {
+	if s == nil || s.cfg == nil {
+		return true
+	}
+	enabled := s.cfg.Server.Diagnostics.StoreSanitizedUpstreamError
+	return enabled == nil || *enabled
+}
+
 func (rc *requestContext) trace(event, message string, target Target, attempt, status int, errorClass string, retryable bool, durationMS int64) {
 	if rc == nil {
 		return

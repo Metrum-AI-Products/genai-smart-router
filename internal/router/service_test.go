@@ -11680,7 +11680,7 @@ func TestDiagnosticsSanitizeUpstreamErrorBeforePersistence(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
-	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = boolPtr(true)
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -11773,7 +11773,7 @@ func TestDiagnosticsSanitizeTruncatedUpstreamErrorBeforePersistence(t *testing.T
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
-	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = boolPtr(true)
 	cfg.Server.Diagnostics.MaxErrorBytes = maxErrorBytes
 	svc, err := New(cfg)
 	if err != nil {
@@ -11840,22 +11840,168 @@ func TestSanitizedUpstreamErrorDetailsPersistAllowlistedFields(t *testing.T) {
 		bearerToken  = "Bearer detail-provider-token-1234567890"
 		providerKey  = "sk-detail-provider-key-1234567890"
 	)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": map[string]any{
-				"message": "Unsupported value for parameter temperature",
-				"type":    "invalid_request_error",
-				"code":    "unsupported_value",
-				"param":   "temperature",
-				"details": map[string]any{
+
+	scenarios := []struct {
+		name     string
+		body     map[string]any
+		expected map[string]string
+	}{
+		{
+			name: "openai-compatible",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "Unsupported value for parameter temperature",
+					"type":    "invalid_request_error",
+					"code":    "unsupported_value",
+					"param":   "temperature",
+					"details": map[string]any{
+						"prompt":           echoedPrompt,
+						"authorization":    bearerToken,
+						"provider_api_key": providerKey,
+					},
+				},
+				"request_id": "req_provider_safe_123",
+			},
+			expected: map[string]string{
+				"code":       "unsupported_value",
+				"message":    "provider_message:unsupported_field",
+				"param":      "temperature",
+				"request_id": "req_provider_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
+			name: "anthropic-compatible",
+			body: map[string]any{
+				"type": "error",
+				"error": map[string]any{
+					"type":    "invalid_request_error",
+					"message": "tool schema invalid for prompt " + echoedPrompt,
+				},
+				"request_id": "req_anthropic_safe_123",
+				"body": map[string]any{
+					"messages": []string{echoedPrompt},
+					"token":    bearerToken,
+				},
+			},
+			expected: map[string]string{
+				"message":    "provider_message:tool_schema_rejected",
+				"request_id": "req_anthropic_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
+			name: "generic",
+			body: map[string]any{
+				"error_code":          "context_length_exceeded",
+				"message":             "maximum context length exceeded near " + echoedPrompt,
+				"provider_request_id": "prq_safe_123",
+				"status":              400,
+				"debug": map[string]any{
 					"prompt":           echoedPrompt,
 					"authorization":    bearerToken,
 					"provider_api_key": providerKey,
 				},
 			},
-			"request_id": "req_provider_safe_123",
+			expected: map[string]string{
+				"error_code":          "context_length_exceeded",
+				"message":             "provider_message:context_limit",
+				"provider_request_id": "prq_safe_123",
+				"status":              "400",
+			},
+		},
+		{
+			name: "unsafe-param-redacted",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "Bad request",
+					"type":    "invalid_request_error",
+					"code":    "invalid_param",
+					"param":   "messages.0.content " + echoedPrompt,
+				},
+			},
+			expected: map[string]string{
+				"code":    "invalid_param",
+				"message": "provider_message:invalid_request",
+				"param":   "[REDACTED]",
+				"type":    "invalid_request_error",
+			},
+		},
+	}
+
+	for _, scenario := range scenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(scenario.body)
+			}))
+			defer upstream.Close()
+
+			dir := t.TempDir()
+			cfg := testConfig(t, upstream.URL, "provider-key", dir)
+			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+			svc, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer svc.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"caller prompt should not be stored"}]}`))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			rr := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+
+			var attempts []requestAttemptRecord
+			if err := svc.usage.db.Find(&attempts).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_bad_request" || attempts[0].Retryable {
+				t.Fatalf("unexpected attempt: %#v", attempts)
+			}
+			var details []requestUpstreamErrorDetailRecord
+			if err := svc.usage.db.Order("field_name").Find(&details).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(details) == 0 {
+				t.Fatal("expected sanitized upstream error detail rows")
+			}
+			got := map[string]string{}
+			allText := ""
+			for _, detail := range details {
+				got[detail.FieldName] = detail.FieldValue
+				allText += detail.FieldName + "=" + detail.FieldValue + " source=" + detail.Source + "\n"
+				if detail.RequestID == "" || detail.AttemptIndex != 1 || detail.StatusCode != http.StatusBadRequest || detail.ErrorClass != "upstream_bad_request" {
+					t.Fatalf("bad detail row: %#v", detail)
+				}
+			}
+			for key, want := range scenario.expected {
+				if got[key] != want {
+					t.Fatalf("detail %s=%q, want %q; all details:\n%s", key, got[key], want, allText)
+				}
+			}
+			for _, forbidden := range []string{echoedPrompt, bearerToken, providerKey, "caller prompt should not be stored", "Unsupported value for parameter temperature", "authorization", "provider_api_key"} {
+				if strings.Contains(allText, forbidden) {
+					t.Fatalf("upstream error details leaked %q in:\n%s", forbidden, allText)
+				}
+			}
+		})
+	}
+}
+
+func TestSanitizedUpstreamErrorDetailsExplicitOptOut(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"message": "unsupported field store",
+				"type":    "invalid_request_error",
+				"code":    "unsupported_value",
+			},
 		})
 	}))
 	defer upstream.Close()
@@ -11863,7 +12009,7 @@ func TestSanitizedUpstreamErrorDetailsPersistAllowlistedFields(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
-	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = true
+	cfg.Server.Diagnostics.StoreSanitizedUpstreamError = boolPtr(false)
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -11878,41 +12024,12 @@ func TestSanitizedUpstreamErrorDetailsPersistAllowlistedFields(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
 
-	var attempts []requestAttemptRecord
-	if err := svc.usage.db.Find(&attempts).Error; err != nil {
+	var count int64
+	if err := svc.usage.db.Model(&requestUpstreamErrorDetailRecord{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(attempts) != 1 || attempts[0].ErrorClass != "upstream_bad_request" || attempts[0].Retryable {
-		t.Fatalf("unexpected attempt: %#v", attempts)
-	}
-	var details []requestUpstreamErrorDetailRecord
-	if err := svc.usage.db.Order("field_name").Find(&details).Error; err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]string{}
-	allText := ""
-	for _, detail := range details {
-		got[detail.FieldName] = detail.FieldValue
-		allText += detail.FieldName + "=" + detail.FieldValue + " source=" + detail.Source + "\n"
-		if detail.RequestID == "" || detail.AttemptIndex != 1 || detail.StatusCode != http.StatusBadRequest || detail.ErrorClass != "upstream_bad_request" {
-			t.Fatalf("bad detail row: %#v", detail)
-		}
-	}
-	for key, want := range map[string]string{
-		"code":       "unsupported_value",
-		"message":    "provider_message:unsupported_field",
-		"param":      "temperature",
-		"request_id": "req_provider_safe_123",
-		"type":       "invalid_request_error",
-	} {
-		if got[key] != want {
-			t.Fatalf("detail %s=%q, want %q; all details:\n%s", key, got[key], want, allText)
-		}
-	}
-	for _, forbidden := range []string{echoedPrompt, bearerToken, providerKey, "caller prompt should not be stored", "Unsupported value for parameter temperature", "authorization", "provider_api_key"} {
-		if strings.Contains(allText, forbidden) {
-			t.Fatalf("upstream error details leaked %q in:\n%s", forbidden, allText)
-		}
+	if count != 0 {
+		t.Fatalf("upstream error details count=%d, want explicit opt-out to suppress rows", count)
 	}
 }
 

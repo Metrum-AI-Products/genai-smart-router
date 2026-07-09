@@ -71,8 +71,9 @@ server:
     # request_upstream_error_details for allowlisted fields such as code, type,
     # param, provider request ID, and sanitized message. This never stores raw
     # upstream bodies, prompts, images, tool schemas, bearer tokens, provider
-    # keys, or token hashes.
-    store_sanitized_upstream_errors: false
+    # keys, or token hashes. Defaults to true when diagnostics are enabled;
+    # set false only for deployments that want to suppress provider detail rows.
+    store_sanitized_upstream_errors: true
     max_error_bytes: 2048
   # Optional caller/server traffic shaping smooths short bursts before upstream
   # calls. It is separate from hard rpm/tpm/concurrent limits and quotas.

@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -42,8 +43,10 @@ var upstreamErrorDetailBlockedFields = map[string]bool{
 	"tools":            true,
 }
 
+var upstreamErrorDetailSafeIdentifierRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/\[\]-]{0,127}$`)
+
 func (s *Service) extractUpstreamErrorDetails(raw []byte, status int, class string, attemptIndex int, ts string) []upstreamErrorDetailLogRecord {
-	if s == nil || s.cfg == nil || !s.cfg.Server.Diagnostics.StoreSanitizedUpstreamError || len(raw) == 0 {
+	if s == nil || s.cfg == nil || !s.diagnosticsEnabled() || !s.storeSanitizedUpstreamErrors() || len(raw) == 0 {
 		return nil
 	}
 	maxBytes := s.diagnosticMaxErrorBytes()
@@ -113,7 +116,10 @@ func collectUpstreamErrorFields(value any, path string, fields map[string]upstre
 				if scalar, ok := upstreamErrorDetailScalar(child); ok {
 					sanitized, truncated := sanitizeUpstreamErrorDetailValue(name, scalar, maxBytes)
 					if sanitized != "" {
-						fields[name] = upstreamErrorDetailValue{Name: name, Value: sanitized, Source: childPath, Truncated: truncated}
+						candidate := upstreamErrorDetailValue{Name: name, Value: sanitized, Source: childPath, Truncated: truncated}
+						if existing, ok := fields[name]; !ok || upstreamErrorDetailSourcePriority(candidate.Source) > upstreamErrorDetailSourcePriority(existing.Source) {
+							fields[name] = candidate
+						}
 					}
 					continue
 				}
@@ -131,6 +137,17 @@ func normalizeUpstreamErrorFieldName(name string) string {
 	name = strings.TrimSpace(strings.ToLower(name))
 	name = strings.NewReplacer("-", "_", " ", "_").Replace(name)
 	return name
+}
+
+func upstreamErrorDetailSourcePriority(source string) int {
+	switch {
+	case strings.HasPrefix(source, "error."):
+		return 3
+	case strings.Contains(source, ".error."):
+		return 2
+	default:
+		return 1
+	}
 }
 
 func upstreamErrorDetailScalar(value any) (string, bool) {
@@ -162,6 +179,9 @@ func sanitizeUpstreamErrorDetailValue(fieldName, value string, maxBytes int) (st
 		value = diagnosticContentFieldRe.ReplaceAllString(value, "$1=[REDACTED]")
 	}
 	value = redactDiagnosticSecrets(value)
+	if !upstreamErrorDetailSafeIdentifierRe.MatchString(value) || strings.Contains(value, "[REDACTED]") {
+		return "[REDACTED]", false
+	}
 	limit := upstreamErrorDetailMaxValueBytes
 	if maxBytes > 0 && maxBytes < limit {
 		limit = maxBytes

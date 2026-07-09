@@ -18,11 +18,14 @@ var (
 )
 
 func (s *Service) sanitizeDiagnosticError(text string) string {
-	storeUpstreamSnippet := false
-	if s != nil && s.cfg != nil {
-		storeUpstreamSnippet = s.cfg.Server.Diagnostics.StoreSanitizedUpstreamError
+	if isUpstreamStatusBodyDiagnostic(text) {
+		storeUpstreamSnippet := false
+		if s != nil && s.cfg != nil {
+			storeUpstreamSnippet = s.storeSanitizedUpstreamErrors()
+		}
+		return sanitizeDiagnosticText(text, storeUpstreamSnippet, s.diagnosticMaxErrorBytes())
 	}
-	return sanitizeDiagnosticText(text, storeUpstreamSnippet, s.diagnosticMaxErrorBytes())
+	return sanitizeInternalDiagnosticText(text, s.diagnosticMaxErrorBytes())
 }
 
 func (s *Service) sanitizeDiagnosticTraceMessage(event, text string) string {
@@ -92,6 +95,19 @@ func sanitizeDiagnosticText(text string, storeUpstreamSnippet bool, maxBytes int
 	text = redactDiagnosticSecrets(text)
 	text = redactDiagnosticFreeformBody(text)
 	return truncateDiagnosticText(text, maxBytes)
+}
+
+func isUpstreamStatusBodyDiagnostic(text string) bool {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "upstream status ") {
+		return false
+	}
+	idx := strings.Index(text, ":")
+	if idx <= 0 || idx == len(text)-1 {
+		return false
+	}
+	body := strings.TrimSpace(text[idx+1:])
+	return body != ""
 }
 
 func sanitizeAdminReportDiagnosticMessage(text string, maxBytes int) string {
