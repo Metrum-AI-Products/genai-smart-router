@@ -7,7 +7,7 @@ doc_type: howto
 
 Use this section to triage customer-visible failures without exposing secrets or private deployment details. Start from the caller symptom, collect safe evidence, then choose the fix path.
 
-From Troubleshooting, you might be looking for the canonical error catalog: see [Error Responses](/docs/reference/errors).
+From Troubleshooting, you might be looking for the canonical downstream error contract and error catalog: see [Error Responses](/docs/reference/errors).
 
 ## Triage Flow
 
@@ -52,6 +52,8 @@ When escalating, include:
 - exact UTC time window;
 - request ID values;
 - caller-visible error code and HTTP status;
+- safe upstream fields when present, such as `X-Router-Error-Class`, `X-Upstream-Status`, `error.details.error_class`, and `error.details.upstream_status`;
+- retry hints when present, such as `Retry-After`, `retry_after_seconds`, or `error.details.retryable`;
 - requested model group;
 - public token ID when available from reports;
 - client name and version when relevant;

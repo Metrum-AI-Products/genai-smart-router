@@ -85,6 +85,8 @@ The smoke emits safe scalar proof only: request IDs, API surface, status, select
 
 If a request includes tools, structured-output fields, images, or an explicit max-token cap, the router filters the model group's target list before policy selection. Targets that do not satisfy the request shape are skipped. If no compatible target remains, the router returns `502 no-eligible-target` before sending an upstream request.
 
+If a request reaches an upstream provider and that provider rejects the translated shape, the terminal response is usually `502 upstream-failed` with safe details such as `error.details.error_class = upstream_bad_request`, `error.details.upstream_status`, `X-Router-Error-Class`, `X-Upstream-Status`, and a request ID. Treat that as provider/model/dialect/request-shape evidence, not a generic retry signal. See [Error Reference](./errors) and [Request Troubleshooting](../troubleshooting/requests) for the downstream contract and request-ID workflow.
+
 ## Mixed OpenAI Endpoint Compatibility
 
 Clients should normally send Chat Completions bodies to `/v1/chat/completions` and Responses bodies to `/v1/responses`. Some OpenAI-compatible client adapters can be configured incorrectly and post a Responses-shaped JSON body to the Chat Completions path. By default the router rejects that mismatch with `400 responses-body-on-chat-endpoint-disabled` while ordinary Chat Completions requests continue to work.

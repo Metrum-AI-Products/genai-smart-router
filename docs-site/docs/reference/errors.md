@@ -7,6 +7,42 @@ doc_type: reference
 
 GenAI Smart Router returns structured errors intended to be useful to both callers and administrators. Every response includes `X-Request-Id`; include that ID when asking an administrator to inspect router traces.
 
+## Standard Error Shape
+
+Caller-facing errors use a sanitized JSON envelope. Clients should parse `error.type` first, then use `X-Request-Id` when escalating to an operator. Some route-specific errors also include `error.details.request_id`.
+
+```json
+{
+  "error": {
+    "type": "upstream-failed",
+    "message": "all eligible upstream targets failed for model \"example-coder\" after 1 attempt(s); contact the router operator with the request_id",
+    "details": {
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "model": "example-coder",
+      "dialect": "openai-chat",
+      "attempts": 1,
+      "error_class": "upstream_bad_request",
+      "upstream_status": 400,
+      "retryable": false,
+      "fallbackUsed": false
+    }
+  }
+}
+```
+
+Fields are intentionally bounded:
+
+- `error.type`: stable router error category for client handling.
+- `error.message`: safe human-readable summary. Do not parse it for control flow.
+- `X-Request-Id`: request identifier for operator drilldown on every response.
+- `error.details.request_id`: request identifier included by upstream-failure and other route-specific errors when a details object is present.
+- `error.details.retryable`, `Retry-After`, or `retry_after_seconds`: retry guidance when present.
+- `error.details.error_class` and `X-Router-Error-Class`: sanitized upstream or router failure class.
+- `error.details.upstream_status` and `X-Upstream-Status`: upstream HTTP status when a provider returned one.
+- `requirements`, `bucket`, `model`, `dialect`, `attempts`, and `fallbackUsed`: safe triage context for administrators.
+
+The error body, headers, diagnostics, and reports must not expose raw prompts, raw images or image URLs, raw tool schemas, raw tool outputs, bearer tokens, provider API keys, router tokens, token hashes, full upstream headers, unsanitized upstream bodies, cookies, OIDC tokens, or full config. If governed content capture is enabled, captured content is stored separately from usage diagnostics and is controlled by its own authorization and retention workflow.
+
 ## Common Errors
 
 | Type | HTTP status | Meaning | Caller action | Admin action |
@@ -26,7 +62,8 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `upstream-rate-limited` | 503 | All eligible upstream attempts were rejected by provider-side rate limits. | Retry later with backoff, or contact the administrator with the request ID if it persists. | Inspect `request_attempts`, provider status, and upstream rate-limit policy. |
 | `upstream-capacity-throttled` | 503 | Every otherwise eligible target is temporarily unavailable because provider/model/target shared shaping or adaptive backoff is protecting upstream capacity. | Retry after the `Retry-After` window when present, or contact the administrator with the request ID. | Inspect `request_upstream_shape_events`, `request_trace_events`, current traffic-shape config, and recent upstream `429` or quota events. |
 | `upstream-quota-exhausted` | 503 | All eligible upstream attempts failed because a provider reported exhausted balance, credits, quota, billing, or payment state. | Retry later only after the provider account is funded or quota is restored; include the request ID when escalating. | Inspect `request_attempts` for `upstream_quota_exhausted`, then verify provider account balance, billing, quota, and entitlement state. |
-| `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class, or a request was blocked by upstream payload controls such as private image URL egress policy. `error.details.reason_code` gives the sanitized cause when it is known, for example `upstream_bad_request` or `upstream_request_too_large`. | Retry only after checking whether the request shape is allowed; do not retry blocked private image URLs unchanged. If `reason_code` is `upstream_bad_request` or `upstream_request_too_large`, reduce request size/tool payload or contact the operator with the request ID. | Inspect request attempts, fallback behavior, provider status, request-shape buckets, redirect responses, response-size limits, and image URL egress policy. |
+| `upstream-access-denied` | 503 | All eligible upstream attempts failed because provider credentials, entitlement, region, policy, or model access prevented serving the request. | Do not rotate the router caller token for this symptom. Contact the operator with the request ID. | Inspect `request_attempts` for provider access classes, check provider credentials and entitlement, and confirm whether fallback recovered any target. |
+| `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class, or a request was blocked by upstream payload controls such as private image URL egress policy. `error.details.reason_code` gives the sanitized cause when it is known, for example `upstream_bad_request` or `upstream_request_too_large`. | Retry only after checking whether the request shape is allowed; do not retry blocked private image URLs unchanged. If `reason_code` is `upstream_bad_request` or `upstream_request_too_large`, reduce request size/tool payload or contact the operator with the request ID. | Inspect request attempts, fallback behavior, provider status, sanitized upstream error details, request/translation shape rows, request-shape buckets, redirect responses, response-size limits, and image URL egress policy. |
 | `upstream-timeout` | 504 | The upstream did not complete within configured timeout. | Retry with a smaller task or larger timeout if available. | Tune timeout, fallback, provider mix, or client token budget. |
 | `metrics-forbidden` | 403 | `/metrics` was requested with a caller token that is not authorized for metrics. | Use `/v1/usage` for caller usage. | Grant metrics access through authorization policy or an existing `metrics_admin: true` operator caller. |
 | `reports-forbidden` | 403 | `/admin/reports/*` was requested without an authorized admin subject or without `admin:security_reports` for security access reports. | Do not call admin report endpoints from application clients. | Grant authorization policy `admin:reports` and, when needed, `admin:security_reports` read/export policy only to approved admin subjects. |
@@ -140,6 +177,31 @@ Safe upstream bad-request example:
 ```
 
 The response excludes raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, router tokens, token hashes, raw upstream bodies, and raw provider headers.
+
+`upstream_bad_request` usually means provider/request-shape incompatibility rather than a transient outage. Common causes are a provider rejecting a translated field, a target missing the right API skin, an unsupported forced tool choice, structured-output or reasoning controls sent to a target that has not validated them, image input sent to a text-only target, the wrong output-token cap field, request bytes or tool schema bytes beyond a target limit, or stale target metadata such as `force_store_false` on an upstream that rejects `store:false`. Callers should provide the request ID and avoid repeatedly sending the same large payload unchanged. Operators should group by provider, model, dialect, upstream status, sanitized upstream code/type/param, request-size bucket, tool-schema bucket, tool count, tool-choice mode, output-cap bucket, reasoning/image/structured-output flags, and request-shape fingerprint.
+
+Safe large coding-agent example:
+
+```json
+{
+  "error": {
+    "type": "upstream-failed",
+    "message": "all eligible upstream targets failed for model \"agent-validation\" after 1 attempt(s); contact the router operator with the request_id",
+    "details": {
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "model": "agent-validation",
+      "dialect": "openai-chat",
+      "attempts": 1,
+      "error_class": "upstream_bad_request",
+      "upstream_status": 400,
+      "retryable": false,
+      "fallbackUsed": false
+    }
+  }
+}
+```
+
+The operator should inspect safe shape diagnostics for the same request ID, such as request bytes bucket, tool-schema bytes bucket, tool count, tool-choice mode, translated output cap, and sanitized provider code/param. They should reproduce with a sanitized synthetic fixture against a staging or smoke model group before changing broad production routes.
 
 ## Cursor And Large-Context TPM Troubleshooting
 

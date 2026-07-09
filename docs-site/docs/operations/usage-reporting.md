@@ -50,6 +50,10 @@ Use these rows when a request works for one client or prompt size but fails for 
 
 Bucket definitions are intentionally coarse: byte buckets are `none`, `1b-1kb`, `1kb-16kb`, `16kb-64kb`, `64kb-256kb`, `256kb-1mb`, and `gt-1mb`; reasoning budget buckets are `none`, `tiny`, `small`, `medium`, `large`, and `xlarge`; max-token and estimated-input-token buckets reuse the router's existing reporting buckets. Fingerprints are for comparing repeated request shapes inside a deployment without storing prompts or tool schemas.
 
+When a caller reports `upstream-failed`, start with the downstream error contract from the [Error Reference](../reference/errors). `error.details.request_id` or `X-Request-Id` joins to reports, while `error.details.error_class`, `X-Router-Error-Class`, `error.details.upstream_status`, and `X-Upstream-Status` separate provider responses from router-side admission errors. `upstream_bad_request` is normally a provider/request-shape compatibility signal, not a reason to increase caller quota. Group the window by provider, model, dialect, upstream status, sanitized upstream code/type/param, request bytes bucket, tool-schema bucket, tool count, tool-choice mode, structured-output flag, reasoning flag, image count, output-cap bucket, request-shape fingerprint, and tool-schema fingerprint before changing route weights.
+
+For large coding-agent payload failures, use only these safe buckets and fingerprints. Reproduce the dominant failed shape with a sanitized synthetic fixture against a staging or smoke model group and, when possible, a direct upstream smoke for the same provider/model/dialect. Do not export raw prompts, repository contents, screenshots, tool schemas, tool outputs, bearer tokens, token hashes, provider keys, raw upstream bodies, headers, or full config.
+
 Traffic-shaping report sections appear when the selected window contains caller shaping or upstream shared-capacity events. They include:
 
 - Traffic Shaping Summary;

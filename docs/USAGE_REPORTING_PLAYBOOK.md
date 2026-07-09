@@ -27,6 +27,15 @@ Request-shape and provider-translation triage uses normalized diagnostics tables
 
 These tables are for answering “what changed between successful and failed requests to the same provider/model/dialect?” They must never contain raw prompts, raw images, image URLs, tool schema text, tool outputs, bearer tokens, provider keys, token hashes, full upstream headers, or full config.
 
+Downstream error triage starts with the caller-visible contract and then groups reports by safe evidence:
+
+- `error.type` and HTTP status identify the broad caller action: access, quota, traffic shaping, eligibility, upstream failure, timeout, provider quota, or provider access.
+- `error.details.request_id` or `X-Request-Id` joins the caller report to `request_usage` and diagnostic child tables.
+- `error.details.error_class`, `X-Router-Error-Class`, `error.details.upstream_status`, and `X-Upstream-Status` separate upstream/provider responses from router-side admission failures.
+- `retryable`, `Retry-After`, attempt count, fallback state, and request-shape buckets tell whether retry, payload reduction, route-around, or operator configuration work is appropriate.
+
+Use upstream failure reports for `upstream_bad_request` before changing quotas. In most incidents this class means the provider rejected the translated request shape or target metadata is wrong for that provider/model/dialect. Group by provider, model, dialect, upstream status, sanitized upstream code/type/param, request bytes bucket, tool-schema bucket, tool count, tool-choice mode, structured-output flag, reasoning flag, image count, output-cap field, translated output-cap bucket, request-shape fingerprint, and tool-schema fingerprint. If the failed group is a large coding-agent shape, reproduce with a sanitized synthetic fixture against a validation group or direct upstream smoke; do not copy raw prompts, repository content, screenshots, tool schemas, tool outputs, bearer tokens, token hashes, provider keys, raw upstream bodies, headers, or full config into reports.
+
 For Responses-to-Chat bridge analysis, group `request_usage` by `inbound_dialect`, `target_dialect`, provider, model, and `request_translation_shapes.bridge_direction`. Native Responses attempts have inbound and target dialect `openai-responses`; bridged attempts have inbound `openai-responses`, target `openai-chat`, and bridge direction `responses_to_chat`. When a bridged request is rejected before upstream, decision telemetry filter reasons use bounded labels beginning with `responses-to-chat-`.
 
 ```sql

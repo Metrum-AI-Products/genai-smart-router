@@ -25,7 +25,9 @@ Record these safe fields:
 - UTC timestamp;
 - request ID;
 - HTTP status;
-- router error code, if present;
+- router error code from `error.type`, if present;
+- `error.details.error_class`, `error.details.upstream_status`, `X-Router-Error-Class`, and `X-Upstream-Status` when present;
+- retry hints such as `Retry-After`, `retry_after_seconds`, or `error.details.retryable`;
 - requested model group;
 - API shape, such as Chat Completions, Responses, or Anthropic Messages;
 - client base URL shape, such as `/v1` for OpenAI-compatible clients or `/anthropic` for Claude Code and Anthropic-compatible clients;
@@ -34,6 +36,8 @@ Record these safe fields:
 - whether the request used streaming, tools, images, large input context, or a large output cap.
 
 Do not record raw prompts, image payloads, bearer tokens, provider keys, tool outputs, or full request bodies unless a governed content-capture process is explicitly enabled for the deployment. Use the public token ID from diagnostics instead of raw router tokens or token hashes.
+
+For the canonical downstream error fields and examples, see the [Error Reference](../reference/errors). Treat `request_id` as the handoff key: callers can share it safely, and administrators use it to open request evidence without asking for secrets or full payloads.
 
 ## 2. Check Caller Access
 
@@ -76,6 +80,7 @@ Router-side quota, traffic-shaping, and admission failures usually return `429`.
 - `traffic-shaped` appears as a terminal caller response with a safe bucket and `Retry-After` when a configured caller/server shaping bucket limits the burst.
 - Upstream `429` attempts may be followed by fallback to another target.
 - Terminal upstream failures include safe `X-Router-Error-Class`, `X-Upstream-Status`, `error.details.error_class`, `error.details.upstream_status`, `error.details.reason_code`, and `error.details.reason` fields. When available, the error body can also include safe request-shape hints such as dialect, tool count, tool-choice mode, request-size bucket, tool-schema bucket, estimated-input bucket, and output-cap bucket. Use these fields to separate upstream `400`/`413`/`429` provider responses from router-side `429` policy responses. `upstream_bad_request` usually means the selected upstream rejected the request shape or parameters; `upstream_request_too_large` means the request should be reduced before retry.
+- `upstream_bad_request` usually points to provider/request-shape incompatibility, not caller quota. Do not blindly retry the same large payload; compare request-shape and translation-shape buckets first.
 - Large-context developer tools can exhaust TPM through in-flight reservations even when daily or monthly budget remains available.
 
 Use usage reports or admin browser troubleshooting buckets for quota, TPM/RPM, concurrency, traffic-shaping bucket, input-token, and max-token signals. For exact field names and retention classes, see the [Diagnostics Schema](../reference/diagnostics-schema).
@@ -113,6 +118,8 @@ For a slow or failed request, inspect:
 
 If only one provider/model/dialect is failing, isolate that upstream before changing the broader model group. If all targets are failing, inspect shared config, network, license, database, or caller request shape.
 
+For `upstream-failed` with `error_class = upstream_bad_request`, start with shape and translation evidence before retry policy. Compare the failed provider/model/dialect with successful rows by upstream status, sanitized upstream code/type/param, request bytes bucket, tool-schema bytes bucket, tool count, tool-choice mode, structured-output flag, reasoning flag, image count, requested and translated output cap, request-shape fingerprint, and tool-schema fingerprint. Common fixes are to remove or lower an incompatible target, add `request_shape_support` limits, correct target encoding metadata, validate a bridge flag, or keep that provider in a staging group until a sanitized fixture passes.
+
 ## 6. Check Request Shape
 
 Common request-shape causes:
@@ -134,6 +141,8 @@ For missing reasoning controls, first call `/v1/models` with the same caller tok
 ### Large Agent Payloads
 
 For “small requests work but large Cursor/Codex/Claude Code requests fail,” inspect the request drilldown or usage DB rows for `request_token_estimates`, `request_target_candidates`, and `request_target_filter_reasons`. Safe fields to compare are estimated total input tokens, requested output cap, total reserved tokens, request bytes, target `context_tokens`, context headroom, `request_bytes_fit`, `tool_schema_fit`, and bounded reasons such as `request-shape-context-exceeded`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`. Operators can replay a sanitized synthetic shape when the deployment has a safe smoke caller, a dedicated validation group, and report access. Use that validation group instead of changing a broad production coding group just to reproduce the shape. These diagnostics intentionally do not contain raw prompts, raw tool schemas, images, bearer tokens, token hashes, provider keys, or full config.
+
+If the large request reached upstream and returned `upstream_bad_request`, add `request_attempts`, `request_translation_shapes`, and sanitized upstream error details to the comparison. The likely issue is no longer just router-side eligibility; it may be a provider payload limit, unsupported field combination, wrong output-token cap name, unsupported forced tool choice, unsupported structured-output or reasoning control, or an active target that passed ordinary text but not representative coding-agent payloads.
 
 ### Claude Code Model Selection
 

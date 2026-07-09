@@ -15,6 +15,50 @@ Capture:
 
 Do not ask users for provider keys or raw router tokens.
 
+## Downstream Error Contract
+
+Caller-facing failures use a stable, sanitized JSON envelope plus `X-Request-Id`. Treat this as the incident handoff contract:
+
+- `error.type`: bounded router error type, such as `no-eligible-target`, `traffic-shaped`, `upstream-failed`, `upstream-timeout`, `upstream-rate-limited`, `upstream-quota-exhausted`, or `upstream-access-denied`.
+- `error.message`: human-readable safe summary. It can explain the broad action but must not contain raw provider bodies, prompts, tool schemas, images, tokens, headers, or config.
+- `X-Request-Id`: request ID to join caller evidence to diagnostics.
+- `error.details.request_id`: request ID included by upstream-failure and other route-specific errors when a details object is present.
+- `error.details.retryable`, `retry_after_seconds`, or the `Retry-After` header: caller retry hint when present. Absence of a retry hint is not permission to blindly retry.
+- `error.details.error_class` and `X-Router-Error-Class`: sanitized upstream/request-shape class when a provider attempt failed.
+- `error.details.upstream_status` and `X-Upstream-Status`: provider HTTP status when one was returned.
+- `error.details.model`, `dialect`, `attempts`, `fallbackUsed`, `requirements`, and bucket fields: safe context for the operator, not a substitute for request evidence.
+
+Caller action depends on the type/class:
+
+- `no-eligible-target`: do not retry unchanged. The requested group has no target for the API skin, tools, images, structured output, reasoning, context, or cap behavior. Use another allowed group only when an operator has validated that path.
+- `traffic-shaped`, `rpm-exceeded`, `tpm-exceeded`, `concurrency-exceeded`, `quota-exhausted`, or `key-exhausted`: honor retry guidance, reduce burst/context/output cap, or request a policy change.
+- `upstream-timeout` or `upstream-rate-limited`: retry with backoff only when the workload is still needed; repeated failures require provider/model or timeout triage.
+- `upstream-quota-exhausted` or `upstream-access-denied`: do not ask the caller to rotate router tokens. Inspect provider account, billing, entitlement, region, credentials, and fallback evidence.
+- `upstream-failed` with `error_class = upstream_bad_request`: usually a provider/request-shape incompatibility, malformed upstream translation, payload limit, unsupported tool/structured-output/reasoning field, or target metadata drift. Do not blindly retry the same shape across providers; classify the failing provider/model/dialect/status and route around or fix metadata.
+
+Safe example:
+
+```json
+{
+  "error": {
+    "type": "upstream-failed",
+    "message": "all eligible upstream targets failed for model \"example-coder\" after 1 attempt(s); contact the router operator with the request_id",
+    "details": {
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "model": "example-coder",
+      "dialect": "openai-chat",
+      "attempts": 1,
+      "error_class": "upstream_bad_request",
+      "upstream_status": 400,
+      "retryable": false,
+      "fallbackUsed": false
+    }
+  }
+}
+```
+
+When fixing incidents, check whether the downstream body tells the caller the right action without leaking sensitive detail. If the body is too generic and request evidence/logs also lack a safe root-cause bucket, create an operational logging follow-up before closeout.
+
 ## Health And Version
 
 ```bash
@@ -58,6 +102,14 @@ rtk curl -u admin:<password> \
 The same data is available at `/admin/reports/api/request/<request_id>` for path-style drilldown links. Both endpoints require `admin:reports` `drilldown`, send `Cache-Control: no-store`, and return `403 reports-forbidden` to ordinary router caller tokens. Domain-scoped admins receive `404` for request IDs outside their Casbin domain.
 
 Evidence bundles are assembled from normalized relational rows keyed by `request_id`. They include a safe request summary, caller/project/client labels, requested and resolved model group, selected provider/model/dialect, stored request-time token and cost fields, upstream-reported billed cost fields, latency/TTFB/upstream/downstream timing, quota/key/cache state, traffic-shaping state, target candidate/filter/routing summaries, attempt rows, sanitized upstream error fields, trace rows, and completeness metadata.
+
+To map one caller-visible error to a provider/model/root-cause bucket, start with the downstream fields and then confirm through evidence:
+
+1. Match `error.type`, `error.details.error_class`, `error.details.upstream_status`, `X-Router-Error-Class`, and `X-Upstream-Status`.
+2. Open the request evidence bundle and note `requested_model`, `resolved_group`, inbound dialect, selected provider/model/dialect, attempts count, and fallback state.
+3. If `error_class` is `upstream_bad_request`, inspect `request_shapes`, `request_translation_shapes`, `request_translation_field_events`, and `request_upstream_error_details` before changing quota or route weights. Compare the failed shape with successful requests by request byte bucket, tool count, tool-schema byte bucket, tool-choice mode, structured-output/reasoning/image flags, translated output cap, and provider status.
+4. If all attempts share one provider/model/dialect/status bucket, reproduce with a sanitized direct upstream smoke and a router smoke pinned to a validation group. If only the router path fails, inspect translation metadata such as `force_store_false`, output-token field, bridge flags, request-shape limits, and active target skin.
+5. If fallback succeeded, keep the terminal request status and the failed attempt separate in the incident notes. A `200` with a failed `upstream_bad_request` attempt still needs target compatibility follow-up when the failed target remains active.
 
 Use `diagnosticCompleteness` and `evidenceSections` to decide whether missing evidence is expected:
 
@@ -272,6 +324,8 @@ Provider rate limits are recorded as `upstream_rate_limited` and return `503 ups
 Separate upstream provider access failures from caller authentication and caller quota. Caller-token auth and allow-list failures happen before any provider call. Provider-key, account, region, policy, entitlement, or model-access failures appear in `request_attempts.error_class` as `upstream_auth_failed`, `upstream_access_denied`, `upstream_entitlement_failed`, or `upstream_model_access_denied`. Invalid provider credentials are terminal for that request and should not be fixed by changing caller TPM/RPM. Target-specific provider access failures can route around to the next eligible target without marking the failed attempt retryable; inspect fallback rows to see whether another target recovered the request. If every attempted target fails with provider access classes, callers receive `503 upstream-access-denied` with a sanitized request ID.
 
 Ordinary upstream 4xx malformed-request errors remain non-retryable and stop fallback so the same incompatible caller payload is not replayed to another provider. The router classifies common non-access 4xx cases as `upstream_bad_request`, `upstream_request_too_large`, or generic `upstream_status`; provider 408, quota, credit, billing, rate-limit, timeout, network, and 5xx classes remain retryable when another eligible target exists. Caller responses for terminal upstream failures include safe diagnostics in `error.details.error_class`, `error.details.upstream_status`, `error.details.reason_code`, `error.details.reason`, `X-Router-Error-Class`, and `X-Upstream-Status`; use those fields to distinguish upstream 400s from router-side `429` policy or traffic-shaping responses. For `upstream_bad_request` and `upstream_request_too_large`, the body can also include safe request-shape hints such as inbound/target dialect, tool count, tool-choice mode, request-size bucket, tool-schema-size bucket, estimated-input bucket, and output-cap bucket. These are diagnostic buckets only; they must not include prompts, image URLs, tool schemas, bearer tokens, provider keys, token hashes, raw upstream bodies, or raw provider headers. Redirect responses are not followed; investigate the configured provider base URL instead of expecting the router to chase `Location` headers.
+
+For large coding-agent payloads, `upstream_bad_request` is usually request-shape evidence, not a provider outage. Common safe buckets are large request bytes, large tool schema bytes, unsupported forced tool choice, unsupported structured output, unsupported reasoning field, image sent to a text-only skin, wrong output-token cap field, or bridge metadata missing for the requested shape. Compare failed and successful rows by client, inbound dialect, provider/model/dialect, request bytes bucket, tool-schema bucket, tool count, output-cap bucket, and sanitized upstream code/type/param. Do not paste the tool schema, repository contents, prompts, screenshots, raw upstream response, bearer token, token hash, provider key, or full production config into the incident.
 
 If an image-bearing request fails before upstream with `image_url_forbidden`, inspect only the URL class, not the raw image content. The default policy blocks `http`/`https` image URLs that point to or resolve to loopback, link-local, RFC1918/private, multicast, or unspecified addresses, including public URLs that redirect to those destinations. Prefer data URLs or a reviewed public object-store URL; use `server.upstream.allow_private_image_urls: true` only for a private VLM deployment with reviewed egress controls.
 
