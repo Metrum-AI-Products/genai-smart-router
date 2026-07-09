@@ -32,6 +32,9 @@ class RegressionSmokeHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions" and RegressionSmokeHandler.bodies_seen[-1].get("metadata", {}).get("scenario") == "expected-error":
             self.write_json(200, {"choices": [{"message": {"role": "assistant", "content": "unexpected"}}]}, {"X-Request-Id": "req_error_expected"})
             return
+        if self.path == "/v1/chat/completions" and RegressionSmokeHandler.bodies_seen[-1].get("metadata", {}).get("scenario") == "unexpected-target":
+            self.write_json(200, {"choices": [{"message": {"role": "assistant", "content": "unexpected"}}]}, {"X-Request-Id": "req_unexpected_target"})
+            return
         if self.path == "/v1/chat/completions":
             self.write_json(200, {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}, {"X-Request-Id": "req_chat"})
             return
@@ -122,6 +125,7 @@ CREATE TABLE request_translation_shapes (
                 ("req_responses", "minimax_responses", "MiniMax-M3", "openai-responses", 1, 1),
                 ("req_messages", "kimi_anthropic", "kimi-k2.7-code", "anthropic", 1, 1),
                 ("req_error_expected", "minimax", "MiniMax-M3", "openai-chat", 1, 0),
+                ("req_unexpected_target", "kimi", "kimi-k2.7-code", "openai-chat", 1, 1),
             ]
             for request_id, provider, model, dialect, messages, tools in rows:
                 conn.execute("INSERT INTO request_usage VALUES (?, 200, '', 'admitted')", (request_id,))
@@ -209,6 +213,25 @@ CREATE TABLE request_translation_shapes (
         }
         (self.fixtures / "expected-error-test.json").write_text(json.dumps(fixture), encoding="utf-8")
 
+    def write_allowed_target_fixture(self) -> None:
+        fixture = {
+            "name": "allowed-target-test",
+            "model_group": "high",
+            "scenarios": [
+                {
+                    "name": "unexpected-target",
+                    "surface": "openai_chat",
+                    "message_count": 1,
+                    "tool_count": 1,
+                    "allowed_selected_targets": [
+                        {"provider": "minimax", "model": "MiniMax-M3", "dialect": "openai-chat"}
+                    ],
+                    "production_smoke_safe_payload_template": "synthetic-allowed-target-v1",
+                }
+            ],
+        }
+        (self.fixtures / "allowed-target-test.json").write_text(json.dumps(fixture), encoding="utf-8")
+
     def run_smoke(self, *extra: str) -> tuple[int, str]:
         args = [
             "--mode",
@@ -265,6 +288,38 @@ CREATE TABLE request_translation_shapes (
         code, _ = self.run_smoke()
 
         self.assertEqual(code, 1)
+
+    def test_allowed_selected_targets_are_enforced(self) -> None:
+        self.write_allowed_target_fixture()
+
+        code, _ = self.run_smoke()
+
+        self.assertEqual(code, 1)
+
+    def test_gt1mb_chat_fixture_builds_expected_safe_shape(self) -> None:
+        fixture = {
+            "name": "gt1mb",
+            "model_group": "high",
+            "surface": "openai_chat",
+            "stream": True,
+            "message_count": 6,
+            "tool_count": 11,
+            "request_bytes_bucket": "gt-1mb",
+            "tool_schema_bytes_bucket": "gt-1mb",
+        }
+
+        endpoint, payload = smoke.make_payload(fixture, {}, "high")
+        raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        tool_raw = json.dumps(payload["tools"], separators=(",", ":")).encode("utf-8")
+
+        self.assertEqual(endpoint, "/v1/chat/completions")
+        self.assertEqual(payload["model"], "high")
+        self.assertEqual(payload["tool_choice"], "auto")
+        self.assertEqual(len(payload["messages"]), 6)
+        self.assertEqual(len(payload["tools"]), 11)
+        self.assertGreater(len(raw), 1024 * 1024)
+        self.assertGreater(len(tool_raw), 1024 * 1024)
+        self.assertNotIn(os.environ[self.token_env], raw.decode("utf-8"))
 
 
 if __name__ == "__main__":

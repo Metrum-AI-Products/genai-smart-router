@@ -47,12 +47,15 @@ def fixture_paths(args: argparse.Namespace) -> list[Path]:
 
 
 def make_tool(index: int) -> dict[str, Any]:
-    pad = "safe schema description " * 42
+    return make_tool_with_description(index, "safe schema description " * 42)
+
+
+def make_tool_with_description(index: int, description: str) -> dict[str, Any]:
     return {
         "type": "function",
         "function": {
             "name": f"fixture_tool_{index:02d}",
-            "description": pad,
+            "description": description,
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -78,6 +81,9 @@ def make_chat_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_g
     message_count = int(fixture_value(fixture, scenario, "message_count", 1))
     tool_count = int(fixture_value(fixture, scenario, "tool_count", 0))
     filler = "production-derived-safe-filler " * 62
+    tool_description = "safe schema description " * 42
+    if fixture_value(fixture, scenario, "request_bytes_bucket") == "gt-1mb" or fixture_value(fixture, scenario, "tool_schema_bytes_bucket") == "gt-1mb":
+        tool_description = "safe schema description " * 5000
     messages: list[dict[str, str]] = [
         {
             "role": "system",
@@ -94,7 +100,7 @@ def make_chat_payload(fixture: dict[str, Any], scenario: dict[str, Any], model_g
         "metadata": {"fixture": fixture["name"], "scenario": scenario.get("name", fixture["name"])},
     }
     if tool_count:
-        payload["tools"] = [make_tool(i) for i in range(tool_count)]
+        payload["tools"] = [make_tool_with_description(i, tool_description) for i in range(tool_count)]
         payload["tool_choice"] = fixture_value(fixture, scenario, "tool_choice_mode", "auto")
     if scenario.get("reasoning_control") == "reasoning_effort":
         payload["reasoning_effort"] = scenario.get("reasoning_effort", "low")
@@ -253,6 +259,15 @@ def normalize_bool(value: Any) -> bool:
     return str(value).lower() in {"1", "t", "true", "yes"}
 
 
+def target_matches(row: dict[str, Any], target: dict[str, Any]) -> bool:
+    return (
+        row.get("provider") == target.get("provider")
+        and row.get("model") == target.get("model")
+        and row.get("dialect") == target.get("dialect")
+        and normalize_bool(row.get("selected"))
+    )
+
+
 def scenario_list(fixture: dict[str, Any]) -> list[dict[str, Any]]:
     scenarios = fixture.get("scenarios")
     if isinstance(scenarios, list):
@@ -287,14 +302,13 @@ def check_result(
         return 1
     if row:
         for denied in fixture.get("must_not_select", []) + scenario.get("must_not_select", []):
-            if (
-                row.get("provider") == denied.get("provider")
-                and row.get("model") == denied.get("model")
-                and row.get("dialect") == denied.get("dialect")
-                and normalize_bool(row.get("selected"))
-            ):
+            if target_matches(row, denied):
                 print("fixture selected a must-not-select target", file=sys.stderr)
                 return 1
+        allowed_targets = fixture.get("allowed_selected_targets", []) + scenario.get("allowed_selected_targets", [])
+        if allowed_targets and not any(target_matches(row, allowed) for allowed in allowed_targets):
+            print("fixture selected a target outside allowed_selected_targets", file=sys.stderr)
+            return 1
         if expected_error_class and row.get("error_class") != expected_error_class:
             print("telemetry error class mismatch", file=sys.stderr)
             return 1

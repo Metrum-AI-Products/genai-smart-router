@@ -1,0 +1,70 @@
+{
+  "name": "high-gt1mb-openai-chat-tools",
+  "source_incident_issue": "#487",
+  "client_name": "opencode",
+  "surface": "openai_chat",
+  "model_group": "high",
+  "stream": true,
+  "message_count": 6,
+  "tool_count": 11,
+  "image_count": 0,
+  "output_cap_present": false,
+  "estimated_input_tokens_bucket": "huge",
+  "request_bytes_bucket": "gt-1mb",
+  "tool_schema_bytes_bucket": "gt-1mb",
+  "required_capabilities": [
+    "tools",
+    "tool_choice"
+  ],
+  "must_not_select": [
+    {
+      "provider": "baseten",
+      "model": "openai/gpt-oss-120b",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "baseten",
+      "model": "nvidia/Nemotron-120B-A12B",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "baseten",
+      "model": "zai-org/GLM-5.2",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it:nitro",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "crusoe",
+      "model": "zai/GLM-5.2",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "kimi",
+      "model": "kimi-k2.7-code",
+      "dialect": "openai-chat"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "dialect": "openai-responses"
+    }
+  ],
+  "allowed_selected_targets": [
+    {
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "dialect": "openai-chat"
+    }
+  ],
+  "telemetry_assertions": [
+    "request_shapes",
+    "request_translation_shapes",
+    "request_target_candidates",
+    "request_target_filter_reasons"
+  ],
+  "production_smoke_safe_payload_template": "synthetic-gt1mb-openai-chat-tools-v1"
+}

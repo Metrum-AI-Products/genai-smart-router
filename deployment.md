@@ -462,6 +462,24 @@ Deployment evidence required after routing, provider-skin, bridge, reasoning, qu
 
 Future reasoning bridge deployments must record the router version, deployment config fingerprint, request IDs, selected upstream provider/model/dialect, `/v1/models` metadata evidence for the exact caller token, bridge direction, translated reasoning control, fallback state, and request-shape/candidate filter evidence. Chat-to-Responses reasoning requires both `bridges.chat_to_responses.reasoning: true` and compatible target reasoning metadata. Responses-to-Chat reasoning remains unsupported unless a target explicitly opts into `responses_to_chat.reasoning` after exact tests. Keep bridge state evidence separate from reasoning evidence: stateless bridges do not prove `previous_response_id` continuity.
 
+## 2026-07-09 High Route gt-1mb Tool Payload Gating
+
+This branch brings the production mitigation for issue #487 into the reference config and local regression suite. It does not change production `big-coder` composition.
+
+Reference config and workflow changes:
+
+- Added `request_shape_support.max_request_bytes: 1048576` to ordinary non-MiniMax `high` targets.
+- Left the ordinary MiniMax `high` target uncapped for gt-1mb OpenAI Chat tool payloads, matching the production mitigation evidence.
+- Added `testdata/smokes/production-derived/high-gt1mb-openai-chat-tools.json` and local regression coverage for an opencode-style OpenAI Chat request with 11 tools and gt-1mb request/tool-schema buckets.
+- Extended `scripts/prod_smoke_regressions.py` so sanitized fixture metadata can generate gt-1mb safe payloads without storing raw prompts or raw tool schemas.
+
+Deployment evidence required after applying this reference change to any environment:
+
+- local `rtk go test ./internal/router -run 'ProductionDerived|ExampleConfigLargeOpenAIChatToolsSmokeHasShapeGate'` and `rtk python3 scripts/prod_smoke_regressions_test.py` results;
+- staging or production smoke output for `high-gt1mb-openai-chat-tools.json`;
+- request ID, selected provider/model/dialect, attempts, fallback state, request byte bucket, tool schema byte bucket, and candidate filter reason evidence showing non-MiniMax ordinary high targets skipped by `request-shape-max-request-bytes`;
+- confirmation that no raw prompts, raw tool schemas, bearer tokens, token hashes, provider keys, or full production config were copied into notes.
+
 ## 2026-06-30 Model List Compatibility And Harbor Validation Refresh
 
 Deployed package/image `smart-llmrouter:0ea98f7-linux-amd64` from source commit `0ea98f7`.

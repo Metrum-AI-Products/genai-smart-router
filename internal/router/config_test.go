@@ -1757,6 +1757,44 @@ func TestExampleConfigLargeOpenAIChatToolsSmokeHasShapeGate(t *testing.T) {
 			t.Fatalf("big-coder Fireworks GPT OSS target should not carry the smoke-group request-shape cap: %#v", target.RequestShapeSupport)
 		}
 	}
+	highGroup := cfg.Models["high"]
+	wantCappedHighTargets := map[string]bool{
+		"baseten:openai/gpt-oss-120b":                false,
+		"baseten:nvidia/Nemotron-120B-A12B":          false,
+		"baseten:zai-org/GLM-5.2":                    false,
+		"openrouter:google/gemma-4-26b-a4b-it:nitro": false,
+		"crusoe:zai/GLM-5.2":                         false,
+		"kimi:kimi-k2.7-code":                        false,
+		"openai:gpt-5.4-nano":                        false,
+	}
+	foundUncappedMiniMax := false
+	for _, target := range highGroup.Targets {
+		if target.ToolOnly {
+			continue
+		}
+		key := target.Provider + ":" + target.Model
+		if key == "minimax:MiniMax-M3" {
+			foundUncappedMiniMax = true
+			if target.RequestShapeSupport.MaxRequestBytes != 0 {
+				t.Fatalf("high MiniMax M3 target should remain uncapped for gt-1mb OpenAI Chat tools: %#v", target.RequestShapeSupport)
+			}
+			continue
+		}
+		if _, ok := wantCappedHighTargets[key]; ok {
+			wantCappedHighTargets[key] = true
+			if target.RequestShapeSupport.MaxRequestBytes != 1048576 {
+				t.Fatalf("high target %s max_request_bytes=%d, want 1048576", key, target.RequestShapeSupport.MaxRequestBytes)
+			}
+		}
+	}
+	if !foundUncappedMiniMax {
+		t.Fatalf("high group missing uncapped MiniMax M3 ordinary target")
+	}
+	for key, found := range wantCappedHighTargets {
+		if !found {
+			t.Fatalf("high group missing capped ordinary target %s", key)
+		}
+	}
 }
 
 func assertDefaultGroupTargets(t *testing.T, defaultGroup ModelGroup) {

@@ -165,6 +165,7 @@ The shared fixture set covers:
 | #344/#350 | Reasoning metadata, OpenAI Chat `reasoning_effort`, Responses `reasoning`, and Anthropic `thinking` |
 | #352/#353 | Large Cursor/OpenAI Chat tool payloads and upstream/router error classification |
 | #357/#358/#359 | Agent-specific bridge negatives, previous-response handling, streaming bridge rejection, thinking budget/cap edge cases, and Codex/Cursor/Claude Code/opencode/aider surfaces |
+| #487 | `high` gt-1mb opencode/OpenAI Chat tool payloads route around ordinary non-MiniMax targets and select validated MiniMax Chat |
 
 ## opencode API Capability Matrix
 
@@ -482,7 +483,7 @@ For agent CLI smokes, the agent must create a file and the test must assert the 
 
 Run these smokes when adding or changing `request_shape_support`, `context_tokens`, tool metadata, coding-agent groups, or provider targets that previously returned invalid-request or context-limit errors for large Cursor, Codex, Claude Code, or opencode payloads.
 
-The reference config includes `large-openai-chat-tools-smoke` as a restricted validation group for the production-derived OpenAI Chat shape with `stream:true`, 105 messages, 19 tools, no images, no caller output cap, `64kb-256kb` request/text buckets, a `16kb-64kb` tool-schema bucket, and a huge estimated input-token bucket. Grant Harbor and Chetan validation callers access to that smoke group before rerunning production or staging validation; do not change a broad production coding group just to run this regression fixture.
+The reference config includes `large-openai-chat-tools-smoke` as a restricted validation group for the production-derived OpenAI Chat shape with `stream:true`, 105 messages, 19 tools, no images, no caller output cap, `64kb-256kb` request/text buckets, a `16kb-64kb` tool-schema bucket, and a huge estimated input-token bucket. It also includes a `high` gt-1mb opencode/OpenAI Chat tool fixture that proves ordinary non-MiniMax `high` targets are skipped by `max_request_bytes: 1048576` while MiniMax Chat remains eligible. Grant Harbor and Chetan validation callers access to dedicated smoke groups before rerunning staging validation; for production validation of caller-visible groups, use an existing scoped production caller and confirm selected provider/model/dialect from safe usage/report rows. Do not change production `big-coder` just to run these regression fixtures.
 
 | Case | Smoke |
 |---|---|

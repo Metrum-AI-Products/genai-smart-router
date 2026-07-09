@@ -266,6 +266,112 @@ func TestProductionDerivedLargeOpenAIChatToolPayloadSkipsShapeLimitedTarget(t *t
 	assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "production-derived-secret", "provider-key", testToken)
 }
 
+func TestProductionDerivedHighGt1MBOpenAIChatToolPayloadRoutesToMiniMax(t *testing.T) {
+	fixture := loadProductionDerivedLargePayloadFixture(t, "high-gt1mb-openai-chat-tools.json")
+	body := syntheticProductionDerivedOpenAIChatPayload(t, fixture)
+
+	var selectedModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var decoded map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&decoded); err != nil {
+			t.Fatalf("decode upstream body: %v", err)
+		}
+		selectedModel = stringValue(decoded["model"])
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "chatcmpl_high_gt1mb",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 260000, "completion_tokens": 2, "total_tokens": 260002},
+		})
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := productionDerivedHighRegressionConfig(t, dir, upstream.URL, fixture)
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("User-Agent", fixture.ClientName)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if selectedModel != fixture.AllowedSelectedTargets[0].Model {
+		t.Fatalf("selected upstream model=%q, want %q", selectedModel, fixture.AllowedSelectedTargets[0].Model)
+	}
+
+	var usage usageRecord
+	if err := svc.usage.db.First(&usage).Error; err != nil {
+		t.Fatal(err)
+	}
+	var shape requestShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&shape).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !shape.Stream || shape.MessageCount != fixture.MessageCount || shape.ToolCount != fixture.ToolCount || shape.ImageCount != fixture.ImageCount {
+		t.Fatalf("unexpected request shape counts: %#v", shape)
+	}
+	if shape.TotalRequestBytesBucket != fixture.RequestBytesBucket || shape.ToolSchemaBytesBucket != fixture.ToolSchemaBytesBucket || shape.EstimatedInputTokensBucket != fixture.EstimatedInputTokensBucket {
+		t.Fatalf("unexpected request shape buckets: %#v", shape)
+	}
+
+	var candidates []decisionTargetCandidateRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Order("candidate_index ASC").Find(&candidates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != len(fixture.MustNotSelect)+len(fixture.AllowedSelectedTargets) {
+		t.Fatalf("candidate count=%d candidates=%#v", len(candidates), candidates)
+	}
+	skipped := map[string]bool{}
+	for _, candidate := range candidates {
+		key := candidate.Provider + "|" + candidate.Model + "|" + candidate.Dialect
+		if candidate.Selected {
+			want := fixture.AllowedSelectedTargets[0]
+			if candidate.Provider != want.Provider || candidate.Model != want.Model || candidate.Dialect != want.Dialect {
+				t.Fatalf("unexpected selected candidate=%#v", candidate)
+			}
+			continue
+		}
+		wantReason := "request-shape-max-request-bytes"
+		if candidate.Provider == "openai" && candidate.Dialect == "openai-responses" {
+			wantReason = "chat-to-responses-bridge-disabled"
+		}
+		if candidate.EligibilityReason != wantReason {
+			t.Fatalf("candidate not skipped by max request bytes: %#v", candidate)
+		}
+		skipped[key] = true
+	}
+	for _, denied := range fixture.MustNotSelect {
+		key := denied.Provider + "|" + denied.Model + "|" + denied.Dialect
+		if !skipped[key] {
+			t.Fatalf("must-not-select target was not shape-skipped: %s candidates=%#v", key, candidates)
+		}
+	}
+	var reasons []decisionTargetFilterReasonRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).Find(&reasons).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !filterReasonsContain(reasons, "request_shape", "request-shape-max-request-bytes") {
+		t.Fatalf("missing request-shape filter reason: %#v", reasons)
+	}
+	var translation requestTranslationShapeRecord
+	if err := svc.usage.db.Where("request_id = ?", usage.RequestID).First(&translation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if translation.Provider != fixture.AllowedSelectedTargets[0].Provider || translation.Model != fixture.AllowedSelectedTargets[0].Model || translation.TranslatedToolCount != fixture.ToolCount || translation.TranslatedRequestBytesBucket != fixture.RequestBytesBucket {
+		t.Fatalf("unexpected translation shape: %#v", translation)
+	}
+	assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "production-derived-secret", "provider-key", testToken)
+}
+
 func TestProductionDerivedUpstreamErrorClassificationIsCallerVisible(t *testing.T) {
 	fixture := loadProductionDerivedErrorFixture(t, "upstream-error-classification.json")
 	for _, scenario := range fixture.Scenarios {
@@ -388,6 +494,63 @@ func TestProductionDerivedRouterTrafficShapeRejectionSkipsUpstream(t *testing.T)
 	}
 }
 
+func productionDerivedHighRegressionConfig(t *testing.T, dir, upstreamURL string, fixture productionDerivedLargePayloadFixture) *Config {
+	t.Helper()
+	sum := sha256.Sum256([]byte(testToken))
+	providers := map[string]ProviderConfig{}
+	targets := make([]Target, 0, len(fixture.MustNotSelect)+len(fixture.AllowedSelectedTargets))
+	for _, denied := range fixture.MustNotSelect {
+		providers[denied.Provider] = ProviderConfig{BaseURL: upstreamURL + "/v1", Dialect: denied.Dialect, APIKey: "provider-key"}
+		targets = append(targets, Target{
+			Provider:            denied.Provider,
+			Model:               denied.Model,
+			Weight:              10,
+			ContextTokens:       2000000,
+			ToolSupport:         ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+			RequestShapeSupport: RequestShapeSupport{MaxRequestBytes: 1048576},
+		})
+	}
+	for _, allowed := range fixture.AllowedSelectedTargets {
+		providers[allowed.Provider] = ProviderConfig{BaseURL: upstreamURL + "/v1", Dialect: allowed.Dialect, APIKey: "provider-key"}
+		targets = append(targets, Target{
+			Provider:      allowed.Provider,
+			Model:         allowed.Model,
+			Weight:        10,
+			ContextTokens: 2000000,
+			ToolSupport:   ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+		})
+	}
+	return &Config{
+		Server: ServerConfig{
+			Listen:            ":0",
+			DefaultModelGroup: fixture.ModelGroup,
+			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
+			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
+			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
+		},
+		StatePath: filepath.Join(dir, "state.json"),
+		Provider:  providers,
+		Models: map[string]ModelGroup{
+			fixture.ModelGroup: {
+				Strategy: "weighted",
+				Targets:  targets,
+			},
+		},
+		Callers: []CallerConfig{{
+			ID:          "alice",
+			User:        "alice",
+			Project:     "metrum-insights",
+			Environment: "test",
+			TokenSHA256: hex.EncodeToString(sum[:]),
+			TokenID:     "rtr_alice_test",
+			Allow:       []string{fixture.ModelGroup},
+			Rate:        RateConfig{RPM: 100, TPM: 1000000, Concurrent: 4},
+			Quota:       QuotaConfig{Day: BudgetConfig{Requests: 100, Tokens: 1000000}, Month: BudgetConfig{Tokens: 1000000}},
+			Key:         KeyConfig{LifetimeTokens: 1000000},
+		}},
+	}
+}
+
 func productionDerivedRegressionConfig(t *testing.T, dir, upstreamURL string) *Config {
 	t.Helper()
 	sum := sha256.Sum256([]byte(testToken))
@@ -452,7 +615,11 @@ func syntheticProductionDerivedOpenAIChatPayload(t *testing.T, fixture productio
 		messages = append(messages, map[string]any{"role": role, "content": filler + "turn " + string(rune('a'+(i%26)))})
 	}
 	tools := make([]map[string]any, 0, fixture.ToolCount)
-	description := strings.Repeat("safe schema description ", 42)
+	descriptionRepeat := 42
+	if fixture.RequestBytesBucket == "gt-1mb" || fixture.ToolSchemaBytesBucket == "gt-1mb" {
+		descriptionRepeat = 5000
+	}
+	description := strings.Repeat("safe schema description ", descriptionRepeat)
 	for i := 0; i < fixture.ToolCount; i++ {
 		tools = append(tools, map[string]any{
 			"type": "function",

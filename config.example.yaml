@@ -2015,27 +2015,44 @@ models:
     - provider: baseten
       model_ref: gpt-oss-120b
       weight: 45
+      # Issue #487: route gt-1mb OpenAI Chat tool payloads away from this
+      # ordinary high target until target-specific large-payload validation
+      # passes. MiniMax M3 remains uncapped for this shape.
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: minimax
       model_ref: m3
       weight: 26
     - provider: baseten
       model_ref: nemotron-120b-a12b
       weight: 3
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: baseten
       model_ref: glm-5-2
       weight: 6
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: openrouter
       model_ref: gemma-4-26b-a4b-it-nitro
       weight: 2
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: crusoe
       model_ref: glm-5-2
       weight: 7
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: kimi
       model_ref: kimi-k2.7-code
       weight: 10
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 1
+      request_shape_support:
+        max_request_bytes: 1048576
     - provider: minimax_responses
       model_ref: m3
       weight: 5
