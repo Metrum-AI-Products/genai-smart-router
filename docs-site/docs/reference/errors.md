@@ -26,7 +26,7 @@ GenAI Smart Router returns structured errors intended to be useful to both calle
 | `upstream-rate-limited` | 503 | All eligible upstream attempts were rejected by provider-side rate limits. | Retry later with backoff, or contact the administrator with the request ID if it persists. | Inspect `request_attempts`, provider status, and upstream rate-limit policy. |
 | `upstream-capacity-throttled` | 503 | Every otherwise eligible target is temporarily unavailable because provider/model/target shared shaping or adaptive backoff is protecting upstream capacity. | Retry after the `Retry-After` window when present, or contact the administrator with the request ID. | Inspect `request_upstream_shape_events`, `request_trace_events`, current traffic-shape config, and recent upstream `429` or quota events. |
 | `upstream-quota-exhausted` | 503 | All eligible upstream attempts failed because a provider reported exhausted balance, credits, quota, billing, or payment state. | Retry later only after the provider account is funded or quota is restored; include the request ID when escalating. | Inspect `request_attempts` for `upstream_quota_exhausted`, then verify provider account balance, billing, quota, and entitlement state. |
-| `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class, or a request was blocked by upstream payload controls such as private image URL egress policy. | Retry only after checking whether the request shape is allowed; do not retry blocked private image URLs unchanged. | Inspect request attempts, fallback behavior, provider status, redirect responses, response-size limits, and image URL egress policy. |
+| `upstream-failed` | 502 | All eligible upstream attempts failed for another upstream error class, or a request was blocked by upstream payload controls such as private image URL egress policy. `error.details.reason_code` gives the sanitized cause when it is known, for example `upstream_bad_request` or `upstream_request_too_large`. | Retry only after checking whether the request shape is allowed; do not retry blocked private image URLs unchanged. If `reason_code` is `upstream_bad_request` or `upstream_request_too_large`, reduce request size/tool payload or contact the operator with the request ID. | Inspect request attempts, fallback behavior, provider status, request-shape buckets, redirect responses, response-size limits, and image URL egress policy. |
 | `upstream-timeout` | 504 | The upstream did not complete within configured timeout. | Retry with a smaller task or larger timeout if available. | Tune timeout, fallback, provider mix, or client token budget. |
 | `metrics-forbidden` | 403 | `/metrics` was requested with a caller token that is not authorized for metrics. | Use `/v1/usage` for caller usage. | Grant metrics access through authorization policy or an existing `metrics_admin: true` operator caller. |
 | `reports-forbidden` | 403 | `/admin/reports/*` was requested without an authorized admin subject or without `admin:security_reports` for security access reports. | Do not call admin report endpoints from application clients. | Grant authorization policy `admin:reports` and, when needed, `admin:security_reports` read/export policy only to approved admin subjects. |
@@ -105,9 +105,41 @@ Terminal upstream failures include safe fields that help clients and operators d
 - `X-Router-Error-Class`: sanitized upstream class such as `upstream_bad_request`, `upstream_rate_limited`, or `upstream_quota_exhausted`;
 - `X-Upstream-Status`: upstream HTTP status when one was returned;
 - `error.details.error_class` and `error.details.upstream_status`: JSON equivalents for clients that do not expose response headers;
+- `error.details.reason_code` and `error.details.reason`: caller-actionable sanitized cause when the class is known, such as `upstream_bad_request` for rejected request shape/parameters or `upstream_request_too_large` for upstream payload-size rejection;
+- `error.details.inbound_dialect`, `target_dialect`, `tool_count`, `tool_choice_mode`, `request_bytes_bucket`, `tool_schema_bytes_bucket`, `estimated_input_tokens_bucket`, `output_cap_field`, and `output_cap_bucket`: safe request-shape hints when available;
 - `error.details.router_quota_state` and `error.details.router_key_state`: safe caller admission state at the time of the request.
 
-An upstream `400` normally remains a `502 upstream-failed` terminal router response because the proxy could not satisfy the caller request, but its `error_class` is `upstream_bad_request` and `retryable` is false in diagnostics. A router-side `429` such as `traffic-shaped`, `tpm-exceeded`, or `rpm-exceeded` happens before upstream attempts and does not include `X-Upstream-Status`.
+An upstream `400` normally remains a `502 upstream-failed` terminal router response because the proxy could not satisfy the caller request, but its `error_class` and `reason_code` are `upstream_bad_request` and `retryable` is false in diagnostics. This usually means the selected upstream rejected the request shape or parameters; do not blindly retry the same payload. An upstream `413` returns `reason_code: upstream_request_too_large`, which means callers should reduce context, attachments, tool schemas, or output caps before retrying. A router-side `429` such as `traffic-shaped`, `tpm-exceeded`, or `rpm-exceeded` happens before upstream attempts and does not include `X-Upstream-Status`.
+
+Safe upstream bad-request example:
+
+```json
+{
+  "error": {
+    "type": "upstream-failed",
+    "message": "selected upstream rejected the request shape or parameters for model \"big-coder\" after 1 attempt(s); contact the router operator with the request_id",
+    "details": {
+      "model": "big-coder",
+      "dialect": "openai-chat",
+      "target_dialect": "openai-chat",
+      "attempts": 1,
+      "retryable": false,
+      "request_id": "req_0123456789abcdef0123456789abcdef",
+      "error_class": "upstream_bad_request",
+      "upstream_status": 400,
+      "reason_code": "upstream_bad_request",
+      "reason": "selected upstream rejected the request shape or parameters",
+      "tool_count": 11,
+      "tool_choice_mode": "auto",
+      "request_bytes_bucket": "gt-1mb",
+      "output_cap_bucket": "omitted",
+      "fallbackUsed": false
+    }
+  }
+}
+```
+
+The response excludes raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, router tokens, token hashes, raw upstream bodies, and raw provider headers.
 
 ## Cursor And Large-Context TPM Troubleshooting
 

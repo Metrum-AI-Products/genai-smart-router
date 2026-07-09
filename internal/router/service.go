@@ -3046,7 +3046,8 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 			"model":    targets[i].Model,
 		})
 	}
-	message := callerUpstreamFailureMessage(code, req.Model, attempts)
+	reasonCode, reason := callerUpstreamFailureReason(classified.Class)
+	message := callerUpstreamFailureMessage(code, req.Model, attempts, reason)
 	if classified.Class != "" {
 		w.Header().Set("X-Router-Error-Class", classified.Class)
 	}
@@ -3054,14 +3055,19 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 		w.Header().Set("X-Upstream-Status", strconv.Itoa(classified.StatusCode))
 	}
 	details := map[string]any{
-		"model":        req.Model,
-		"dialect":      rc.dialect,
-		"attempts":     attempts,
-		"targets":      attempted,
-		"last_error":   s.sanitizeDiagnosticError(classified.Message),
-		"retryable":    classified.Retryable,
-		"request_id":   rc.id,
-		"fallbackUsed": attempts > 1,
+		"model":          req.Model,
+		"dialect":        rc.dialect,
+		"target_dialect": terminalAttemptDialect(rc, dec, attempts),
+		"attempts":       attempts,
+		"targets":        attempted,
+		"last_error":     s.sanitizeDiagnosticError(classified.Message),
+		"retryable":      classified.Retryable,
+		"request_id":     rc.id,
+		"fallbackUsed":   attempts > 1,
+	}
+	if reasonCode != "" {
+		details["reason_code"] = reasonCode
+		details["reason"] = reason
 	}
 	if classified.Class != "" {
 		details["error_class"] = classified.Class
@@ -3076,6 +3082,7 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 		if rc.rec.KeyState != "" {
 			details["router_key_state"] = rc.rec.KeyState
 		}
+		addCallerSafeRequestShapeDetails(details, rc.rec.RequestShape)
 	}
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
@@ -3084,6 +3091,54 @@ func (s *Service) writeUpstreamFailureError(w http.ResponseWriter, rc *requestCo
 			"details": details,
 		},
 	})
+}
+
+func terminalAttemptDialect(rc *requestContext, dec decision, attempts int) string {
+	if rc != nil && attempts > 0 && attempts <= len(rc.rec.AttemptsDetail) {
+		if dialect := strings.TrimSpace(rc.rec.AttemptsDetail[attempts-1].Dialect); dialect != "" {
+			return dialect
+		}
+	}
+	targets := append([]Target{dec.Target}, dec.Fallbacks...)
+	if attempts > 0 && attempts <= len(targets) {
+		if dialect := strings.TrimSpace(targets[attempts-1].Dialect); dialect != "" {
+			return dialect
+		}
+	}
+	return strings.TrimSpace(dec.Target.Dialect)
+}
+
+func addCallerSafeRequestShapeDetails(details map[string]any, shape *requestShapeLogRecord) {
+	if details == nil || shape == nil {
+		return
+	}
+	if shape.InboundDialect != "" {
+		details["inbound_dialect"] = shape.InboundDialect
+	}
+	if shape.ToolCount > 0 {
+		details["tool_count"] = shape.ToolCount
+	}
+	if shape.ToolChoiceMode != "" {
+		details["tool_choice_mode"] = shape.ToolChoiceMode
+	}
+	if shape.TotalRequestBytesBucket != "" {
+		details["request_bytes_bucket"] = shape.TotalRequestBytesBucket
+	}
+	if shape.ToolSchemaBytesBucket != "" {
+		details["tool_schema_bytes_bucket"] = shape.ToolSchemaBytesBucket
+	}
+	if shape.EstimatedInputTokensBucket != "" {
+		details["estimated_input_tokens_bucket"] = shape.EstimatedInputTokensBucket
+	}
+	if shape.RequestedOutputCapBucket != "" {
+		details["output_cap_bucket"] = shape.RequestedOutputCapBucket
+	}
+	if shape.RequestedOutputCapField != "" {
+		details["output_cap_field"] = shape.RequestedOutputCapField
+	}
+	if shape.ImageCount > 0 {
+		details["image_count"] = shape.ImageCount
+	}
 }
 
 func (s *Service) writeUpstreamCapacityThrottledError(w http.ResponseWriter, rc *requestContext, model, dialect string, err upstreamCapacityThrottledError) {
@@ -3171,7 +3226,7 @@ func attemptsAllClass(rc *requestContext, class string) bool {
 	return true
 }
 
-func callerUpstreamFailureMessage(code, model string, attempts int) string {
+func callerUpstreamFailureMessage(code, model string, attempts int, reason string) string {
 	switch code {
 	case "upstream-quota-exhausted":
 		return fmt.Sprintf("upstream provider quota, credits, or billing limits were exhausted for model %q after %d attempt(s); retry later or contact the router operator with the request_id", model, attempts)
@@ -3182,7 +3237,33 @@ func callerUpstreamFailureMessage(code, model string, attempts int) string {
 	case "upstream-access-denied":
 		return fmt.Sprintf("upstream provider access or entitlement failed for model %q after %d attempt(s); contact the router operator with the request_id", model, attempts)
 	default:
+		if reason != "" {
+			return fmt.Sprintf("%s for model %q after %d attempt(s); contact the router operator with the request_id", reason, model, attempts)
+		}
 		return fmt.Sprintf("all eligible upstream targets failed for model %q after %d attempt(s)", model, attempts)
+	}
+}
+
+func callerUpstreamFailureReason(class string) (string, string) {
+	switch class {
+	case "upstream_bad_request":
+		return class, "selected upstream rejected the request shape or parameters"
+	case "upstream_request_too_large":
+		return class, "selected upstream rejected the request size"
+	case "upstream_model_access_denied":
+		return class, "upstream model access was denied or unavailable for the deployment account"
+	case "upstream_auth_failed":
+		return class, "upstream authentication failed"
+	case "upstream_entitlement_failed":
+		return class, "upstream entitlement or account access failed"
+	case "upstream_rate_limited":
+		return class, "upstream rate limit was reached"
+	case "upstream_quota_exhausted":
+		return class, "upstream provider quota, credits, or billing were exhausted"
+	case "upstream_timeout":
+		return class, "upstream timed out"
+	default:
+		return "", ""
 	}
 }
 

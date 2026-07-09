@@ -10757,8 +10757,8 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
-		{Provider: "mock", Model: "bad-request-model"},
-		{Provider: "mock", Model: "fallback-model"},
+		{Provider: "mock", Model: "bad-request-model", ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}},
+		{Provider: "mock", Model: "fallback-model", ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}},
 	}}
 	svc, err := New(cfg)
 	if err != nil {
@@ -10766,12 +10766,40 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	}
 	defer svc.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"do not replay"}]}`))
+	reqBody := `{
+		"model":"default",
+		"messages":[{"role":"user","content":"do not replay secret prompt"}],
+		"tools":[{"type":"function","function":{"name":"noop","description":"No-op","parameters":{"type":"object","properties":{}}}}],
+		"tool_choice":"auto",
+		"max_tokens":2048
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rr := httptest.NewRecorder()
 	svc.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadGateway {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var downstream map[string]map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &downstream); err != nil {
+		t.Fatalf("decode downstream error: %v body=%s", err, rr.Body.String())
+	}
+	errObj := downstream["error"]
+	details, _ := errObj["details"].(map[string]any)
+	if errObj["type"] != "upstream-failed" || !strings.Contains(stringValue(errObj["message"]), "rejected the request shape or parameters") {
+		t.Fatalf("unexpected downstream error: %#v", errObj)
+	}
+	if details["reason_code"] != "upstream_bad_request" || details["reason"] != "selected upstream rejected the request shape or parameters" ||
+		details["error_class"] != "upstream_bad_request" || details["upstream_status"] != float64(http.StatusBadRequest) ||
+		details["tool_count"] != float64(1) || details["tool_choice_mode"] != "auto" ||
+		details["output_cap_field"] != "max_tokens" || details["output_cap_bucket"] == "" ||
+		details["request_bytes_bucket"] == "" {
+		t.Fatalf("unexpected downstream details: %#v", details)
+	}
+	for _, forbidden := range []string{"do not replay secret prompt", testToken, "provider-key"} {
+		if strings.Contains(rr.Body.String(), forbidden) {
+			t.Fatalf("downstream error leaked %q in %s", forbidden, rr.Body.String())
+		}
 	}
 	if fallbackCalls.Load() != 0 {
 		t.Fatalf("fallback calls=%d, want 0", fallbackCalls.Load())
@@ -10782,6 +10810,100 @@ func TestNonRetryableUpstream4xxStopsFallback(t *testing.T) {
 	}
 	if len(attempts) != 1 || attempts[0].Retryable || attempts[0].FallbackReason != "upstream_bad_request" {
 		t.Fatalf("unexpected attempts: %#v", attempts)
+	}
+}
+
+func TestUpstreamRequestTooLargeReturnsSafeShapeReason(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		_, _ = w.Write([]byte(`{"error":{"message":"payload too large for this route","type":"invalid_request_error"}}`))
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"large private request"}],"max_tokens":64}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var downstream map[string]map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &downstream); err != nil {
+		t.Fatalf("decode downstream error: %v body=%s", err, rr.Body.String())
+	}
+	errObj := downstream["error"]
+	details, _ := errObj["details"].(map[string]any)
+	if errObj["type"] != "upstream-failed" || !strings.Contains(stringValue(errObj["message"]), "rejected the request size") {
+		t.Fatalf("unexpected downstream error: %#v", errObj)
+	}
+	if details["reason_code"] != "upstream_request_too_large" || details["reason"] != "selected upstream rejected the request size" ||
+		details["error_class"] != "upstream_request_too_large" || details["upstream_status"] != float64(http.StatusRequestEntityTooLarge) ||
+		details["request_id"] == "" || details["request_bytes_bucket"] == "" {
+		t.Fatalf("unexpected downstream details: %#v", details)
+	}
+	for _, forbidden := range []string{"large private request", testToken, "provider-key", "payload too large for this route"} {
+		if strings.Contains(rr.Body.String(), forbidden) {
+			t.Fatalf("downstream error leaked %q in %s", forbidden, rr.Body.String())
+		}
+	}
+}
+
+func TestUpstreamFailureDetailsUseTerminalAttemptDialect(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chat/v1/chat/completions":
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"message":"retryable"}}`))
+		case "/anthropic/v1/messages":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"unsupported message shape","type":"invalid_request_error"}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Provider["mock_chat"] = ProviderConfig{BaseURL: upstream.URL + "/chat/v1", Dialect: "openai-chat", APIKey: "provider-key"}
+	cfg.Provider["mock_anthropic"] = ProviderConfig{BaseURL: upstream.URL + "/anthropic", Dialect: "anthropic", APIKey: "provider-key"}
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
+		{Provider: "mock_chat", Model: "retryable-chat-model"},
+		{Provider: "mock_anthropic", Model: "terminal-anthropic-model"},
+	}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"default","messages":[{"role":"user","content":"private prompt"}],"max_tokens":64}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var downstream map[string]map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &downstream); err != nil {
+		t.Fatalf("decode downstream error: %v body=%s", err, rr.Body.String())
+	}
+	details, _ := downstream["error"]["details"].(map[string]any)
+	if details["reason_code"] != "upstream_bad_request" || details["target_dialect"] != "anthropic" || details["fallbackUsed"] != true {
+		t.Fatalf("unexpected downstream details: %#v", details)
+	}
+	if strings.Contains(rr.Body.String(), "private prompt") || strings.Contains(rr.Body.String(), "provider-key") || strings.Contains(rr.Body.String(), testToken) {
+		t.Fatalf("downstream error leaked sensitive material: %s", rr.Body.String())
 	}
 }
 
