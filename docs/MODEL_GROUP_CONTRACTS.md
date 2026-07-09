@@ -7,14 +7,16 @@ Public customer-facing strategy ownership guidance lives in `docs-site/docs/rout
 ## Policy Design Checklist
 
 - Define the workload and owner.
-- Choose whether this belongs in one model group, multiple groups, or a separate router instance.
+- Choose whether this belongs in one stable model group, a staging/smoke group, multiple groups, or a separate router instance.
 - Choose the strategy: `static`, `failover`, `weighted`, `dynamic_score`, `script`, `external`, or a contract-backed combination.
 - Define eligible providers and models under `models.<group>.targets[]`; do not treat provider catalog entries as active routes.
 - Document required API shapes, tool modes, modalities, reasoning controls, structured-output support, and max-token cap behavior.
+- Document request-shape boundaries such as expected request bytes, tool count, serialized tool-schema bytes, output-cap fields, streaming mode, bridge direction, and large-agent payload coverage.
 - Define quality, cost, latency, throughput, error-rate, timeout, and fallback targets.
 - Run direct upstream smokes for every provider/model/dialect/skin being claimed.
 - Run router-level smokes through each caller API shape and negative no-eligible-target path.
 - Run representative evaluation or proof for the workload.
+- Keep new provider/model/API-skin candidates in a restricted smoke or staging group until all required direct, router, client, and workload gates pass for the exact request shapes the stable group will receive.
 - Define rollback: remove the target from affected groups, remove or tighten the capability metadata that made it eligible, isolate it behind a restricted smoke group, relax a contract only when the contract is too strict, switch strategy, or restore the previous config.
 
 ## Config Fields
@@ -65,9 +67,11 @@ Use `rtk go test ./cmd/... ./internal/...` after contract edits. For production-
 
 ## Rollout And Rollback
 
-Roll out on a deployment-defined test group first. Add at least two interchangeable validated targets, then run representative text, tool, image, structured-output, reasoning or thinking, and low-token-cap smokes according to the declared contract. Confirm in usage reports that selected targets stay inside the requested group and that no-eligible failures use safe buckets such as `contract-quality-floor` or `contract-validation-expired`.
+Roll out on a deployment-defined smoke or staging group first. Add at least two interchangeable validated targets when the stable group contract expects redundancy, then run representative text, tool, image, structured-output, reasoning or thinking, and low-token-cap smokes according to the declared contract. For coding-agent groups, include large OpenAI Chat tool payloads, OpenAI Responses function-tool flows, Anthropic Messages client-tool flows, tool-choice modes, streaming where supported, and any configured bridge direction. Confirm in usage reports that selected targets stay inside the requested group and that no-eligible failures use safe buckets such as `contract-quality-floor`, `contract-validation-expired`, `request-shape-max-request-bytes`, or `request-shape-tool-schema-bytes`.
 
-Rollback is config-only: remove the `contract` block, relax a specific `quality_floor` or `operational_targets` field, remove stale validation age checks, or restore the previous strategy and weights. Restart/reload with the normal deployment process and rerun the smoke that failed.
+Promotion from staging into a stable group is a separate decision. Promote only the provider/model/dialect/API skin that passed the exact request shapes expected for that group. If a target passes ordinary text or small tools but fails large coding-agent shapes, keep it in the stable group only behind accurate `request_shape_support` limits or leave it in staging until the large-shape gate passes.
+
+Rollback is config-only: remove the `contract` block, relax a specific `quality_floor` or `operational_targets` field, remove stale validation age checks, lower or remove the affected target weight, move the candidate back to staging, tighten request-shape metadata, or restore the previous strategy and weights. Restart/reload with the normal deployment process and rerun the smoke that failed.
 
 ## Reporting
 

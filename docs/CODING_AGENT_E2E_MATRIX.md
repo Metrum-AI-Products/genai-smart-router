@@ -2,6 +2,8 @@
 
 Use this runbook before promoting routing changes that affect coding-agent clients, tool routing, Anthropic-compatible skins, OpenAI Responses skins, image-bearing agent requests, or model-group access.
 
+Run coding-agent validation against a deployment-defined smoke or staging group before changing a stable group used by ordinary agents. Broad groups should receive a new provider/model/API skin only after the exact client surfaces pass: Codex/OpenAI Responses, Claude Code/Anthropic Messages, Cursor/opencode/aider OpenAI Chat where applicable, and any bridge direction being enabled. Do not use a successful simple text or tiny tool smoke as promotion evidence for large repository or IDE traffic.
+
 The deterministic harness is:
 
 ```bash
@@ -58,6 +60,8 @@ Run each workload in an isolated temp checkout, never in the main router reposit
 ## Production Smoke Matrix
 
 For production route changes, record client version, model group, request ID, selected provider/model/dialect from usage reports when available, status, verifier result, elapsed time, and token totals.
+
+For large-agent payload promotion, also record safe request-shape metrics: request byte bucket, estimated input tokens, output cap field and value bucket, tool count, serialized tool-schema byte bucket, streaming flag, tool-choice mode, bridge direction, attempts, fallback state, and sanitized error class. If only one target has passed a large shape, gate other targets with `request_shape_support` or keep them in staging for that shape rather than removing them from all ordinary traffic.
 
 | Smoke | Required when |
 |---|---|

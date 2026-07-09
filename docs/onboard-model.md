@@ -73,9 +73,9 @@ Catalog metadata is not active routing eligibility by itself. If one upstream mo
 
 ## 6. Add A Restricted Smoke Group
 
-Create a deployment-defined smoke group with the candidate as the only target, or as the only target for the specific request shape being validated. Restrict caller access to test tokens or internal operators. Validate sample and local production snapshots with structured YAML parsing before starting the router.
+Create a deployment-defined smoke or staging group with the candidate as the only target, or as the only target for the specific request shape being validated. Restrict caller access to test tokens, internal operators, or explicitly opted-in users and agents. Validate sample and local production snapshots with structured YAML parsing before starting the router.
 
-Do not promote directly from catalog to broad active groups. The smoke group proves router encoding, target eligibility, diagnostics, cost calculation, and error behavior without exposing ordinary callers.
+Do not promote directly from catalog to broad active groups. The smoke or staging group proves router encoding, target eligibility, diagnostics, cost calculation, and error behavior without exposing ordinary callers.
 
 ## 7. Router-Smoke The Same Shapes
 
@@ -99,15 +99,31 @@ For OpenAI Chat coding-agent routes that will receive large repository or IDE se
 
 ## 8. Promote Conservatively With Rollback
 
-Move the candidate into active routing only after direct and router smokes, workload acceptance gates, and docs/config review pass. Start with low weight or a narrow group, then monitor status, latency, usage, costs, fallback, provider errors, and caller complaints.
+Move the candidate into stable active routing only after direct and router smokes, workload acceptance gates, and docs/config review pass for the exact request shapes the stable group will receive. Start with low weight or a narrow group, then monitor status, latency, usage, costs, fallback, provider errors, and caller complaints.
+
+Use this promotion checklist for broad or coding-agent groups:
+
+- direct upstream smokes passed for each exact provider/model/account/API skin;
+- router-level smokes passed through the staging group for OpenAI Chat, OpenAI Responses, Anthropic Messages, or bridge directions that callers will use;
+- large tool-bearing payloads passed when the target will serve Cursor, opencode, aider, Codex, Claude Code, or other repository/IDE agent traffic;
+- smokes covered tool count, serialized tool-schema bytes, request byte bucket, output-cap field, forced or object `tool_choice`, streaming mode, reasoning or thinking controls, structured output, and modalities that the group advertises;
+- provider catalog status shows the expected `activeEligibilitySkin`, effective tool support, modalities, and no misleading inactive capability as active support;
+- usage/report evidence contains safe request IDs, selected provider/model/dialect, attempts, fallback state, request-shape buckets, latency, token usage, and sanitized error classes;
+- workload acceptance, Harbor, unit-test, OCR, browser-control, extraction, or other objective verifier passed at the group quality target;
+- rollback is written down before the weight or caller allow-list change.
+
+Partial compatibility should become metadata, not a blanket removal. If a target handles ordinary text and small tools but fails large coding-agent payloads, keep or promote it only with accurate `request_shape_support` limits such as `max_request_bytes`, tool-schema byte limits, supported inbound dialects, bridge flags, and capability metadata. The router should skip that target for unsupported shapes before upstream instead of discovering the incompatibility as repeated provider HTTP 400s.
+
+Do not blanket-switch a stable group from Chat to Responses, from Responses to Chat, or to an Anthropic-compatible skin to mitigate an incident. First identify the incident surface and bridge direction from request evidence, then validate and promote only the separate skin or bridge target that passed that surface.
 
 Define rollback before promotion:
 
 1. remove or lower the active target weight;
 2. remove capability metadata that made unsafe requests eligible;
-3. isolate the target back into a smoke group;
-4. restore the previous config snapshot and restart;
-5. rerun `/readyz`, `/v1/models`, and affected API smokes.
+3. add or tighten `request_shape_support` so known-bad shapes skip before upstream;
+4. isolate the target back into a smoke or staging group;
+5. restore the previous config snapshot and restart;
+6. rerun `/readyz`, `/v1/models`, affected API smokes, and the representative workload fixture that triggered rollback.
 
 ## 9. Update Docs, Tests, And Evidence
 

@@ -8,6 +8,22 @@ For quality complaints or router-versus-fixed-model decisions, do not treat a sm
 
 Harbor or another outcome harness is required when a change promotes, demotes, or broadly reweights a model group based on task quality. Lighter compatibility smokes are enough for narrow checks such as "does this API skin authenticate," "is `max_tokens: 1` forwarded," or "does the client reach a tool-capable target," as long as no broader quality claim is being made.
 
+## Model-Group Promotion Gate
+
+Use this gate before moving a provider, model, endpoint, API skin, or bridge target from catalog or smoke-only status into a stable caller-facing group. A stable group is any group ordinary applications, production users, or coding agents depend on for day-to-day work. A staging group is a deployment-defined group with deliberate caller access for opt-in validation.
+
+Promotion requires evidence for the exact request shape, not just the model name:
+
+- direct upstream smokes for the exact provider credential, model ID, endpoint family, account or region, and API skin;
+- router-level smokes through a restricted smoke or staging group before the target enters a broad group;
+- OpenAI Chat, OpenAI Responses, Anthropic Messages, and bridge validation kept separate unless each surface passed independently;
+- large coding-agent payload coverage when the group serves IDE or agent traffic: representative message count, tool count, serialized tool-schema bytes, request byte bucket, output cap, tool-choice mode, streaming behavior, and prompt-token scale;
+- negative no-eligible-target coverage for unsupported tools, modalities, bridge fields, reasoning controls, hosted tools, large payloads, or output caps;
+- safe usage/report evidence for request ID, selected provider/model/dialect, attempts, fallback, request-shape buckets, latency, token totals, and sanitized upstream error class;
+- a rollback plan that can lower weight, tighten metadata, move the target back to staging, or restore the previous config snapshot.
+
+Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted retry luck to mask them. Add request-shape gates such as `request_shape_support.max_request_bytes`, tool-schema byte limits, supported inbound dialects, explicit bridge flags, or capability metadata so unsupported shapes skip before upstream while validated ordinary traffic can continue using the target.
+
 ## Core API Smokes
 
 | Change type | Required smoke |

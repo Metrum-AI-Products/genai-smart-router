@@ -28,6 +28,16 @@ Weights are local to each model group. A target with weight `60` in one group ha
 
 Groups can use `static`, `failover`, `weighted`, `dynamic_score`, `script`, or `external` strategies. Contracts, request-shape filters, modalities, tools, structured outputs, reasoning metadata, and max-token safety all filter the target list before strategy selection.
 
+## Stable And Staging Groups
+
+Use stable groups for day-to-day application and agent traffic. Use staging or smoke groups for new provider/model/API-skin combinations, bridge experiments, large-payload validation, and opt-in trials. Grant staging access deliberately through caller tokens so teams can test without changing the default group that production users depend on.
+
+Promote a target from staging to a stable group only after the exact caller request shapes pass. For coding-agent and IDE traffic, that means more than a simple text response: validate the API surface, tool dialect, tool-choice mode, streaming behavior, output-cap field, request byte scale, serialized tool-schema size, reasoning or thinking controls, bridge direction, and modalities that callers will send.
+
+If a target supports ordinary text or small tool requests but not large repository or agent payloads, keep that distinction in metadata. Request-shape gates such as `request_shape_support.max_request_bytes`, tool-schema byte limits, supported inbound dialects, and explicit bridge flags let the router skip the target for unsupported shapes while still using it where it is proven.
+
+Avoid treating a provider model as universally compatible across API skins. OpenAI Chat, OpenAI Responses, Anthropic Messages, Chat-to-Responses bridges, and Responses-to-Chat bridges are separate compatibility surfaces. A target should enter a stable group for a surface only after direct upstream and router-level smokes pass for that surface.
+
 ## Capacity Pooling
 
 A model group can pool usable capacity across multiple upstream providers or private endpoints. Each provider account or model may have a different RPM, TPM, concurrency, quota, or billing envelope. When several targets are validated for the same request shape, the router can distribute traffic across those separately limited upstreams instead of forcing all callers through one provider bottleneck.

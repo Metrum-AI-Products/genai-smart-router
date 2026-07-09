@@ -70,11 +70,15 @@ Use the [Prove Router Quality](./prove-router-quality) decision matrix when deci
 Before a group receives broad caller access:
 
 - direct upstream smokes pass for each active target;
-- router-level smokes pass for each required API shape;
+- router-level smokes pass through a staging or smoke group for each required API shape;
+- Chat, Responses, Anthropic Messages, and bridge behavior are validated separately for every promoted provider/model/API skin;
 - tool requests are validated with real tool calls when tools are advertised;
+- coding-agent and IDE routes are validated with representative large tool-bearing payloads, including request bytes, tool count, serialized tool-schema bytes, tool-choice mode, output-cap field, streaming behavior, and prompt-token scale;
 - image requests are validated with realistic VLM budgets when image modality is advertised;
 - reasoning or thinking requests are validated for each advertised API shape and target control mode;
 - capped request behavior is tested for the caller API's output cap field, including OpenAI Chat `max_completion_tokens`;
+- unsupported shapes produce safe no-eligible-target behavior or request-shape filter reasons before upstream;
+- partial compatibility is encoded with request-shape gates, bridge flags, modality/tool metadata, or output-cap metadata instead of broad claims about the model;
 - usage rows include selected provider/model, token counts, status, latency, cache behavior, and cost fields;
 - Harbor or workload-specific validation meets the group success criteria;
 - a gate artifact records the run matrix, verifier/reward, client matrix, pass/fail thresholds, cost and latency results, selected upstream distribution, request IDs, and promotion or rollback decision;

@@ -88,6 +88,21 @@ Contract enforcement is group-local. A cheaper, faster, or more capable target i
 
 Target `validation` metadata is safe scalar metadata about how a target was tested. Keep validation notes free of prompts, images, tool outputs, bearer tokens, provider keys, token hashes, private headers, and full config snippets.
 
+## Promotion Checklist
+
+Use a staging group before changing a stable group that callers depend on. A provider/model/API-skin target is ready for stable promotion when:
+
+- direct upstream smokes passed for the exact provider account, model ID, endpoint, and API skin;
+- router-level smokes passed through the staging group for each caller surface that the stable group exposes;
+- Chat, Responses, Anthropic Messages, and bridge routes were validated separately;
+- tool-bearing requests covered the expected tool dialect, tool count, tool-choice mode, output-cap field, streaming mode, and structured-output shape;
+- coding-agent groups covered representative large request bytes, serialized tool-schema bytes, message count, prompt-token scale, and any image or reasoning controls the client can send;
+- usage or report evidence shows selected provider/model/dialect, attempts, fallback state, request-shape buckets, latency, token usage, and sanitized error classes;
+- a workload verifier such as unit tests, extraction accuracy, OCR goldens, browser-control tasks, Harbor, or product acceptance tests passed at the group quality target;
+- rollback can lower weight, remove the target, tighten request-shape metadata, move the target back to staging, or restore the previous config.
+
+If only some request shapes pass, keep the target eligible only for those shapes. For example, a target that works for small OpenAI Chat tool requests but fails large IDE payloads should have request-shape limits instead of being treated as compatible with every coding-agent request.
+
 ## Strategy Interaction
 
 Contracts are not a separate strategy. They filter the target list before the configured strategy runs.

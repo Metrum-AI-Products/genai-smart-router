@@ -17,6 +17,8 @@ The happy path is:
 6. Add low production weight only after workload acceptance and report evidence pass.
 7. Keep rollback as a config change wherever possible.
 
+Use stable and staging groups intentionally. A stable group is a caller-facing contract for day-to-day traffic. A smoke or staging group is where new providers, model IDs, API skins, and bridge targets prove compatibility before broad caller access changes.
+
 ## Current Provider Examples
 
 Provider examples in these docs are validation patterns, not promises that a public provider, account, region, or model is active in every deployment. Revalidate provider docs, account entitlement, pricing, model IDs, tool behavior, modality support, streaming, usage reporting, and max-token cap behavior for the exact deployment before promotion.
@@ -221,6 +223,10 @@ models:
 ```
 
 Do not declare `tool_support`, `structured_outputs`, `reasoning`, image/audio/video modalities, or `honors_max_tokens` behavior from provider marketing copy. Declare them only after the exact request shape passes direct and router smokes. OpenAI Chat support does not imply OpenAI Responses support, and neither implies Anthropic Messages support; each dialect/skin needs independent direct upstream and router-level validation.
+
+For targets that may later enter a stable coding-agent group, treat large-payload compatibility as a promotion requirement. A small `Reply OK only` smoke and a tiny tool request do not prove compatibility with Cursor, opencode, aider, Codex, Claude Code, or other agent clients. Validate representative request bytes, tool count, serialized tool-schema bytes, output-cap field, tool-choice mode, streaming mode, bridge direction, prompt-token scale, and modalities through the smoke group before granting broad access.
+
+If a target passes only part of the matrix, encode that limit instead of over-promoting it. Use request-shape metadata, supported inbound dialects, bridge flags, modality/tool metadata, or output-cap metadata so unsupported shapes skip before upstream. This prevents repeated provider HTTP 400 responses from becoming intermittent caller failures in weighted groups.
 
 ### Expose A Chat-Only Upstream To Responses Callers
 
