@@ -16,8 +16,8 @@ Last deployed: 2026-07-09
 
 ## Deployed Version
 
-- Router package/image version: `0ce7fa9-linux-amd64`
-- Source commit: `0ce7fa9`
+- Router package/image version: `f52a918-linux-amd64`
+- Source commit: `f52a918`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -31,6 +31,45 @@ Last deployed: 2026-07-09
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-09 Upstream Error And Documentation Package Refresh
+
+Package `smart-llmrouter:f52a918-linux-amd64` was deployed to production after upstream PRs #491, #495, #496, #497, and #498 merged.
+
+Source commit: `f52a918` (`Document downstream error contract (#498)`)
+
+Production backup:
+
+```text
+/opt/smart-llmrouter.backup.refresh-f52a918-20260709T193628Z
+```
+
+Deployment notes:
+
+- Preserved live production router config, provider keys, caller tokens, state, logs, usage DB settings, and Caddy compose config.
+- No production `big-coder` composition or provider weight changes were made.
+- Removed the uploaded package, removed the replaced deployment tree, and ran `docker system prune -f` after validation.
+
+Validation:
+
+```text
+go test ./cmd/... ./internal/...: passed, 660 tests in 9 packages
+make docs-build: passed; npm audit still reports the existing docs-site moderate advisory
+make package-docker-one GOOS=linux GOARCH=amd64: passed
+local packaged image version check: f52a918, go1.26.4 linux/amd64
+production docker compose config: passed
+production /readyz: 200, version f52a918, build_date 2026-07-09T19:33:39Z
+production /version: f52a918, build_date 2026-07-09T19:33:39Z, go1.26.4 linux/amd64
+hosted /docs/overview: 200 with x-smart-llmrouter-version f52a918
+production authenticated /v1/models with reusable Harbor caller: 200, big-coder available
+production big-coder OpenAI Chat smoke: passed; selected zai/GLM-5.2 and returned HTTP 200
+production big-coder OpenAI Responses smoke: passed; selected MiniMax-M3 and returned completed response
+production big-coder Anthropic Messages tool smoke: passed; selected kimi-k2.7-code and returned HTTP 200
+production admin reports summary API with Basic admin: 200
+production router log tail after deploy: no panic/fatal/error lines in the checked tail
+production Harbor case prod-f52a918-big-coder-20260709T193825Z: codex + big-coder passed, reward 1, errors 0
+production Harbor case prod-f52a918-big-coder-20260709T193825Z: claude-code + big-coder failed task quality, reward 0, errors 0, exceptions 0; verifier showed generated two_bucket.py returned None for all cases, matching the local post-merge Claude Code quality failure pattern and not a router HTTP failure
+```
 
 ## 2026-07-09 xAI Grok 4.5 Big-Coder Config Update
 
