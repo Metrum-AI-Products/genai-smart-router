@@ -11915,6 +11915,130 @@ func TestSanitizedUpstreamErrorDetailsPersistAllowlistedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "openrouter-style",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "upstream provider maximum context length exceeded near " + echoedPrompt,
+					"code":    "context_length_exceeded",
+					"metadata": map[string]any{
+						"raw":   `{"prompt":"` + echoedPrompt + `"}`,
+						"token": bearerToken,
+					},
+				},
+				"provider_request_id": "or_req_safe_123",
+			},
+			expected: map[string]string{
+				"code":                "context_length_exceeded",
+				"message":             "provider_message:context_limit",
+				"provider_request_id": "or_req_safe_123",
+			},
+		},
+		{
+			name: "baseten-style",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "Unknown field store in request body",
+					"type":    "invalid_request_error",
+					"code":    "unsupported_value",
+					"param":   "store",
+				},
+				"request_id": "bt_req_safe_123",
+				"request": map[string]any{
+					"messages": []string{echoedPrompt},
+					"headers":  map[string]any{"authorization": bearerToken},
+				},
+			},
+			expected: map[string]string{
+				"code":       "unsupported_value",
+				"message":    "provider_message:unsupported_field",
+				"param":      "store",
+				"request_id": "bt_req_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
+			name: "minimax-style",
+			body: map[string]any{
+				"error_code": "unsupported_image",
+				"error": map[string]any{
+					"message": "unsupported image input for this model",
+					"type":    "invalid_request_error",
+				},
+				"request_id": "mm_req_safe_123",
+				"input": map[string]any{
+					"prompt": echoedPrompt,
+					"tools":  []string{"raw tool schema should not be stored"},
+				},
+			},
+			expected: map[string]string{
+				"error_code": "unsupported_image",
+				"message":    "provider_message:unsupported_field",
+				"request_id": "mm_req_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
+			name: "kimi-style",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "model not found or access denied",
+					"type":    "invalid_request_error",
+					"code":    "model_not_found",
+				},
+				"request_id": "moonshot_req_safe_123",
+				"messages":   []string{echoedPrompt},
+			},
+			expected: map[string]string{
+				"code":       "model_not_found",
+				"message":    "provider_message:model_access",
+				"request_id": "moonshot_req_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
+			name: "xai-style",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "permission denied for API key",
+					"type":    "authentication_error",
+					"code":    "invalid_api_key",
+				},
+				"request_id": "xai_req_safe_123",
+				"debug": map[string]any{
+					"authorization": bearerToken,
+					"raw_body":      echoedPrompt,
+				},
+			},
+			expected: map[string]string{
+				"code":       "invalid_api_key",
+				"message":    "provider_message:auth",
+				"request_id": "xai_req_safe_123",
+				"type":       "authentication_error",
+			},
+		},
+		{
+			name: "crusoe-style",
+			body: map[string]any{
+				"error": map[string]any{
+					"message": "tool schema invalid for selected parser",
+					"type":    "invalid_request_error",
+					"code":    "invalid_tool_schema",
+					"param":   "tools.0.function.parameters",
+				},
+				"request_id": "crusoe_req_safe_123",
+				"tools": []map[string]any{{
+					"function": map[string]any{"parameters": echoedPrompt},
+				}},
+			},
+			expected: map[string]string{
+				"code":       "invalid_tool_schema",
+				"message":    "provider_message:tool_schema_rejected",
+				"param":      "tools.0.function.parameters",
+				"request_id": "crusoe_req_safe_123",
+				"type":       "invalid_request_error",
+			},
+		},
+		{
 			name: "unsafe-param-redacted",
 			body: map[string]any{
 				"error": map[string]any{

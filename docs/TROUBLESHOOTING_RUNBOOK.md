@@ -68,6 +68,47 @@ Use `diagnosticCompleteness` and `evidenceSections` to decide whether missing ev
 
 Do not treat a missing optional section as proof that routing skipped that phase unless the section status says `not_applicable`. For non-2xx requests, missing `attempts`, `terminal_errors`, `request_shape`, `target_eligibility`, `sanitized_upstream_errors`, or `trace_timeline` should be investigated as a telemetry regression unless the request was rejected before that phase.
 
+## Sanitized Upstream Error Detail Rollout
+
+Use this procedure when enabling or re-enabling `server.diagnostics.store_sanitized_upstream_errors` for a production deployment. Do not combine it with provider routing changes, model-group composition changes, caller-token rotation, or quota changes.
+
+Preflight:
+
+- Confirm diagnostics are enabled and usage persistence is healthy.
+- Run the sanitizer and persistence tests before touching runtime config.
+- Review the current runtime setting without printing the full config or any secrets.
+- Take a timestamped backup of the deployment config and record the backup path in private operator notes.
+- Confirm the admin account used for validation has `admin:reports` drilldown access for the target domain.
+
+Enablement:
+
+- Set `server.diagnostics.store_sanitized_upstream_errors: true` only in the deployment config being rolled out.
+- Restart or reload using the normal deployment procedure for that environment.
+- Do not change `config.example.yaml`, production provider targets, big-coder composition, or caller allowlists as part of this rollout unless a separate approved change requires it.
+
+Validation:
+
+- Send one controlled failing request through a dedicated smoke caller and smoke group, or a known safe invalid request against a staging/mock upstream.
+- Prefer failures that exercise unsupported fields, model access, provider quota/billing, context limits, or tool-schema rejection without sending customer prompts, raw tool schemas, raw images, bearer tokens, provider keys, token hashes, or full upstream bodies.
+- Capture only the response status, `X-Request-Id`, selected provider/model/dialect, and safe smoke fixture name.
+- Query `/admin/reports/api/request-evidence?request_id=<request_id>` or the request drilldown page and confirm `sanitized_upstream_errors` is present.
+- Confirm rows include only bounded scalar fields such as `code`, `type`, `param`, `request_id`, `provider_request_id`, `status`, and categorized `provider_message:*` values.
+- Confirm rows do not include raw prompts, image payloads, image URLs, tool schemas, tool outputs, bearer tokens, provider keys, router tokens, token hashes, full headers, raw provider response bodies, or free-form provider prose.
+- Check the Upstream failures and Request drilldown admin views for display of the same safe fields.
+
+Monitoring:
+
+- During the first incident window after enablement, compare `request_upstream_error_details` row counts to failed `request_attempts` counts by provider/model/status.
+- Watch usage database growth and retention job status for `usage_diagnostics`.
+- Treat missing detail rows for upstream 4xx/5xx responses as a diagnostics regression unless the setting is disabled, the upstream body is empty, or the request was rejected before upstream.
+
+Rollback:
+
+- Restore the timestamped config backup or set `server.diagnostics.store_sanitized_upstream_errors: false`.
+- Restart or reload through the normal deployment procedure.
+- Re-run a controlled failing smoke and confirm no new `request_upstream_error_details` rows are written while `request_attempts` and terminal errors still persist.
+- Leave existing safe rows to normal retention unless an approved data handling procedure requires targeted cleanup.
+
 For incident windows with many requests, page the admin request API instead of asking the browser to load the whole result set:
 
 ```bash
