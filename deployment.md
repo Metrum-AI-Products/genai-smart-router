@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-08
+Last deployed: 2026-07-09
 
 ## Live Environment
 
@@ -31,6 +31,43 @@ Last deployed: 2026-07-08
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-09 xAI Grok 4.5 Big-Coder Config Update
+
+Production software remained `smart-llmrouter:0ce7fa9-linux-amd64`; this was a config-only update to add xAI `grok-4.5` to `big-coder`.
+
+Config change:
+
+```text
+Fireworks GPT OSS 20B: 25
+MiniMax M3 Responses: 25
+xAI Grok 4.5: 15
+Fireworks DeepSeek-V4-Flash: 15
+MiniMax M3 Chat: 5
+Kimi K2.7 Code: 5
+Crusoe GLM 5.2: 5
+OpenAI GPT-5.4 Nano: 5
+```
+
+Production config backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.grok45-20260709T032547Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.grok45-20260709T032602Z
+```
+
+Validation:
+
+- xAI docs checked on 2026-07-09: `grok-4.5`, Chat Completions and Responses APIs, 500K context, $2.00/M input, $0.50/M cached input, $6.00/M output, low/medium/high reasoning, function calling, and structured outputs.
+- Direct xAI smokes from local passed for Chat text, Chat streaming, `max_tokens: 1`, auto tools, forced `tool_choice`, JSON schema structured outputs, `reasoning_effort` low/medium, Responses text, and Responses JSON schema structured outputs.
+- Local router-level `xai-grok-45-smoke` passed `/v1/models` reasoning metadata, Chat text, `reasoning_effort: low`, forced function tools, structured outputs, usage, request-time cost, latency, and no fallback.
+- Production host direct xAI Chat smoke returned 200 from `grok-4.5` with `OK`.
+- Production `/readyz` through `https://llm-api-engg.metrum.ai` returned 200 after restart.
+- Production authenticated `/v1/models` for the reusable Harbor caller included `big-coder` with three reasoning levels.
+- Production weighted `big-coder` Chat smoke selected `grok-4.5` on attempt 7 and returned `OK` with request `req_9c075ff5208b1c67`.
+- Production weighted `big-coder` forced-tool Chat smoke selected `grok-4.5` on attempt 1 and returned tool calls with request `req_da8749771ca15896`.
+- A single production Harbor `codex` + `big-coder` case `case-20260709T032841Z-grok45-prod` was attempted but was manually stopped after several minutes with no result row and an empty Harbor log, so it is inconclusive and not counted as pass evidence.
+- Local ignored `config.production.yaml` was resynced from the live deployed config after the rollout; live/local config SHA-256 prefix `f1b85bdf6707`.
 
 ## 2026-07-08 OpenAI Provider Key Rotation
 

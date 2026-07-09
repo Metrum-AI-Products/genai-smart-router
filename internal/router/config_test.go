@@ -1849,7 +1849,8 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	t.Helper()
 	wantNormal := map[string]int{
 		"fireworks:accounts/fireworks/models/gpt-oss-20b":       25,
-		"minimax_responses:MiniMax-M3":                          40,
+		"minimax_responses:MiniMax-M3":                          25,
+		"xai:grok-4.5":                                          15,
 		"fireworks:accounts/fireworks/models/deepseek-v4-flash": 15,
 		"minimax:MiniMax-M3":                                    5,
 		"kimi:kimi-k2.7-code":                                   5,
@@ -2058,21 +2059,27 @@ func assertActiveGroupPolicy(t *testing.T, name string, group ModelGroup) {
 		t.Fatalf("example config group %s missing tool-only targets codex=%v codex_openrouter_minimax=%v codex_fireworks=%v minimax=%v baseten=%v kimi=%v claude_openrouter_minimax=%v claude_gemma=%v", name, codexToolTarget, codexOpenRouterMiniMaxToolTarget, codexFireworksToolTarget, claudeMiniMaxToolTarget, claudeBasetenToolTarget, claudeKimiToolTarget, claudeOpenRouterMiniMaxToolTarget, claudeGemmaToolTarget)
 	}
 	want := map[string]struct {
-		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, fireworksGPTOSS20B, fireworksGLM52, fireworksKimi, fireworksDeepSeek, fireworksQwen, targets int
+		gptOSS, m3, gemma, kimi, openAI, basetenNemotron, basetenGLM, crusoeGemma, crusoeGLM, crusoeNemotron, fireworksGPTOSS20B, fireworksGLM52, fireworksKimi, fireworksDeepSeek, fireworksQwen, xaiGrok45, targets int
 	}{
-		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 8},
-		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 0, 0, 0, 0, 0, 0, 8},
-		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 8},
-		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 8},
-		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 8},
-		"big-coder": {0, 20, 0, 15, 10, 0, 0, 0, 15, 0, 0, 0, 0, 40, 0, 5},
+		"default":   {51, 27, 2, 6, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 8},
+		"fast":      {56, 26, 2, 5, 1, 3, 5, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8},
+		"small":     {58, 28, 2, 4, 1, 3, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8},
+		"medium":    {51, 25, 2, 8, 1, 3, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 8},
+		"high":      {45, 26, 2, 10, 1, 3, 6, 0, 7, 0, 0, 0, 0, 0, 0, 0, 8},
+		"big-coder": {0, 20, 0, 15, 10, 0, 0, 0, 15, 0, 0, 0, 0, 25, 0, 15, 6},
 	}
 	expect, ok := want[name]
 	if !ok {
 		t.Fatalf("example config group %s has no expected weight policy", name)
 	}
-	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma || crusoeGLMWeight != expect.crusoeGLM || crusoeNemotronWeight != expect.crusoeNemotron || fireworksGPTOSS20BWeight != expect.fireworksGPTOSS20B || fireworksGLM52Weight != expect.fireworksGLM52 || fireworksKimiWeight != expect.fireworksKimi || fireworksDeepSeekWeight != expect.fireworksDeepSeek || fireworksQwenWeight != expect.fireworksQwen {
-		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d crusoe_glm=%d crusoe_nemotron=%d fireworks_gpt_oss_20b=%d fireworks_glm52=%d fireworks_kimi=%d fireworks_deepseek=%d fireworks_qwen=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, crusoeGLMWeight, crusoeNemotronWeight, fireworksGPTOSS20BWeight, fireworksGLM52Weight, fireworksKimiWeight, fireworksDeepSeekWeight, fireworksQwenWeight, totalWeight, normalTargets, expect)
+	xaiGrok45Weight := 0
+	for _, target := range group.Targets {
+		if !target.ToolOnly && target.Provider == "xai" && target.Model == "grok-4.5" {
+			xaiGrok45Weight += target.Weight
+		}
+	}
+	if totalWeight != 100 || normalTargets != expect.targets || basetenGPTOSSWeight != expect.gptOSS || m3Weight != expect.m3 || gemmaWeight != expect.gemma || kimiWeight != expect.kimi || openAIWeight != expect.openAI || basetenNemotronWeight != expect.basetenNemotron || basetenGLMWeight != expect.basetenGLM || crusoeGemmaWeight != expect.crusoeGemma || crusoeGLMWeight != expect.crusoeGLM || crusoeNemotronWeight != expect.crusoeNemotron || fireworksGPTOSS20BWeight != expect.fireworksGPTOSS20B || fireworksGLM52Weight != expect.fireworksGLM52 || fireworksKimiWeight != expect.fireworksKimi || fireworksDeepSeekWeight != expect.fireworksDeepSeek || fireworksQwenWeight != expect.fireworksQwen || xaiGrok45Weight != expect.xaiGrok45 {
+		t.Fatalf("example config group %s weights gpt_oss=%d m3=%d gemma=%d kimi=%d openai=%d baseten_nemotron=%d baseten_glm=%d crusoe_gemma=%d crusoe_glm=%d crusoe_nemotron=%d fireworks_gpt_oss_20b=%d fireworks_glm52=%d fireworks_kimi=%d fireworks_deepseek=%d fireworks_qwen=%d xai_grok_45=%d total=%d normal_targets=%d, want %#v", name, basetenGPTOSSWeight, m3Weight, gemmaWeight, kimiWeight, openAIWeight, basetenNemotronWeight, basetenGLMWeight, crusoeGemmaWeight, crusoeGLMWeight, crusoeNemotronWeight, fireworksGPTOSS20BWeight, fireworksGLM52Weight, fireworksKimiWeight, fireworksDeepSeekWeight, fireworksQwenWeight, xaiGrok45Weight, totalWeight, normalTargets, expect)
 	}
 }
 

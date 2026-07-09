@@ -286,6 +286,43 @@ providers:
           openai_chat:
           - tools
           - structured_outputs
+      grok-4-5:
+        model: grok-4.5
+        tier: coding
+        input_price_per_million_usd: 2.0
+        output_price_per_million_usd: 6.0
+        input_modalities:
+        - text
+        output_modalities:
+        - text
+        pricing_source: https://docs.x.ai/developers/pricing
+        pricing_updated_at: '2026-07-09'
+        pricing_notes: xAI pricing checked on 2026-07-09 lists Grok 4.5 with
+          500K context, $2.00/M input, $0.50/M cached input, and $6.00/M
+          output. Direct xAI smokes passed on 2026-07-09 for Chat text,
+          Chat streaming, max_tokens=1 cap, OpenAI Chat auto and forced
+          function tools, JSON schema structured outputs, reasoning_effort
+          low/medium, Responses text, and Responses JSON schema structured
+          outputs. Local router-level OpenAI Chat smokes passed on 2026-07-09
+          for text, reasoning_effort low, forced function tools, structured
+          outputs, /v1/models reasoning metadata, usage, latency, cost, and
+          no fallback. This catalog entry is text-only until direct and
+          router-level image smokes pass for this exact model and endpoint.
+        request_shape_support:
+          supported_inbound_dialects: [openai-chat, anthropic]
+          validation_status: passed
+          validation_notes: Anthropic Messages text/thinking translation to this
+            OpenAI Chat skin is allowed for broad coding groups; Claude Code
+            client tools still require Anthropic Messages targets.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
+        reasoning:
+          supported: true
+          mode: opt_in
+          control: effort_enum
   baseten:
     base_url: https://inference.baseten.co/v1
     dialect: openai-chat
@@ -2055,7 +2092,10 @@ models:
       weight: 25
     - provider: minimax_responses
       model_ref: m3
-      weight: 40
+      weight: 25
+    - provider: xai
+      model_ref: grok-4-5
+      weight: 15
     - provider: fireworks
       model_ref: deepseek-v4-flash
       weight: 15
