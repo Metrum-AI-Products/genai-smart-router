@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smart-llmrouter
+  annotations:
+    cert-manager.io/cluster-issuer: null
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - smartrouter.apps.metrum.ai
+      secretName: apps-metrum-ai-wildcard-tls
+  rules:
+    - host: smartrouter.apps.metrum.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: smart-llmrouter
+                port:
+                  name: http

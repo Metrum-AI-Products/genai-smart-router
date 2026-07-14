@@ -166,6 +166,42 @@ rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrou
 rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 ```
 
+## EKS Staging Migration
+
+- The EKS validation endpoint is `https://smartrouter.apps.metrum.ai`.
+  It is live as a one-replica staging-only deployment on EKS and must not
+  receive ordinary production caller traffic or become a DNS target for either
+  current production hostname. The staging caller token is stored in AWS
+  Secrets Manager as `smartrouter/staging/caller-token`; do not print it.
+- The staging browser-admin Basic credential is stored separately as
+  `smartrouter/staging/basic-admin`; do not print it. Its bcrypt hash belongs
+  only in the Kubernetes runtime Secret.
+- The existing Compose router at `https://llm-api-engg.metrum.ai` is the
+  production authority during EKS validation. It runs on the EC2 host above as
+  `ubuntu` and the current SSH key path remains
+  `~/.ssh/chetan-jun-2026.pem`; use this access only for safe inspection,
+  backups, and later approved cutover work.
+- The staging deployment uses one router replica, a durable
+  `smartrouter-gp3` state PVC, a dedicated staging caller, the validated
+  configured license fingerprint, and a fresh private, encrypted single-AZ
+  `db.t4g.medium` RDS PostgreSQL 18.3 database. Do not copy the EC2 usage
+  database or file-backed state during this validation phase.
+- Runtime `config.yaml`, `env.json`, `license.json`, the RDS CA bundle, and
+  `ROUTER_USAGE_DB_DSN` belong only in the deployment-created Kubernetes
+  Secret `smartrouter-staging-runtime`. Never commit, render, log, or paste
+  these files or their secret values.
+- The Metrum overlay is
+  `deploy/kubernetes/overlays/metrum-staging`; follow
+  `docs/EKS_STAGING_MIGRATION.md` before applying it. Confirm namespace RBAC,
+  the `nginx` ingress class, namespace-local wildcard TLS Secret, deployment
+  `smartrouter-gp3` StorageClass, RDS TLS, and exact trusted-proxy CIDRs before
+  rollout. The current nginx ingress pod range is `192.168.0.0/16`; do not
+  reuse the legacy Compose-only `172.18.0.0/16` range in this EKS deployment.
+- Do not scale the staging router horizontally. Quota and license state are
+  file-backed. A production EKS cutover requires separate approval, an EC2
+  write freeze, logical Postgres migration and reconciliation, DNS transition,
+  client acceptance, and a documented rollback window.
+
 ## Production Config Update Process
 
 For config-only production changes:

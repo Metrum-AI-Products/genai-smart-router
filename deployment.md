@@ -2,6 +2,29 @@
 
 Last deployed: 2026-07-09
 
+## EKS Staging Migration Status
+
+As of 2026-07-14, the EKS validation router is live at
+`https://smartrouter.apps.metrum.ai`. It runs image
+`f52a918-linux-amd64` from the Metrum ECR repository in namespace
+`smart-llmrouter-staging`, with one replica, a `smartrouter-gp3` state PVC, a
+dedicated staging caller, and a fresh encrypted private single-AZ RDS
+PostgreSQL 18.3 `db.t4g.medium` database. The caller token is stored only in
+AWS Secrets Manager under `smartrouter/staging/caller-token`.
+The staging-only HTTP Basic browser-admin credential is stored separately as
+`smartrouter/staging/basic-admin`; its bcrypt hash is present only in the
+namespace runtime Secret. The EKS config trusts nginx forwarded HTTPS headers
+from `192.168.0.0/16`, not the legacy Compose proxy subnet.
+
+Validation passed for `/readyz`, caller `/v1/models`, OpenAI Chat with a
+realistic output budget, OpenAI Responses, and tool-bearing Anthropic Messages.
+The normal staging caller receives `403 metrics-forbidden` from `/metrics`.
+
+The Docker Compose router at `https://llm-api-engg.metrum.ai` remains the
+production authority; no usage data or ordinary caller traffic has moved to
+EKS. A future production cutover still requires separately approved database
+reconciliation and DNS transition. See `docs/EKS_STAGING_MIGRATION.md`.
+
 ## Live Environment
 
 - Public URLs: `https://llm-api-engg.metrum.ai`, `https://llm-api.metrum.ai`

@@ -9,6 +9,12 @@ Use Kubernetes when GenAI Smart Router needs to run inside a customer-managed cl
 
 Metrum maintains Kustomize-friendly manifests as a production-oriented starting point. The manifests are examples. Review them against your cluster's ingress controller, network policy engine, storage class, registry, and secret-management process before production rollout. If you are installing from a package that does not include Kubernetes manifests, obtain the matching manifest bundle from Metrum for that release.
 
+The base and example overlay are deployment-neutral. Choose your own hostname,
+ingress class, certificate workflow, registry, database topology, storage class,
+resource sizing, and caller policy. A managed deployment can maintain a private
+environment-specific overlay, but those values are not product defaults and do
+not belong in public manifests or package documentation.
+
 ## Prerequisites
 
 - A Kubernetes cluster with an ingress controller and TLS automation or a separate TLS termination plan.
@@ -118,6 +124,19 @@ kubectl -n smart-llmrouter create secret generic smart-llmrouter-secrets \
 ```
 
 The router config is mounted at `/app/config/config.yaml`. Provider keys are mounted at `/app/config/env.json`. The signed license is mounted read-only at `/app/config/license.json`. Durable license and router state are written under `/app/state`.
+
+When a deployment configuration includes caller token hashes, browser-admin
+credentials, or other sensitive deployment values, store the entire runtime
+`config.yaml` in a Kubernetes Secret rather than a ConfigMap. Mount it beside
+`env.json` so the router's adjacent-file loading behavior remains intact. Keep
+the database DSN and any private CA material in the same protected runtime
+secret or equivalent secret-manager integration; do not render those values
+into checked-in manifests.
+
+For managed PostgreSQL, use TLS with hostname verification. Mount the
+provider's CA bundle when the container trust store does not already contain
+the required root, and reference that file from the DSN. Validate the database
+connection from the router pod before publishing the Ingress.
 
 For production, use an external secret manager or sealed-secret workflow if that is the cluster standard. Keep raw provider keys, router tokens, token hashes, license files, and DSNs out of tickets, screenshots, and public docs.
 
