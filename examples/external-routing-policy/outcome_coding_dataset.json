@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "group": "outcome-coding-demo",
+  "minSimilarity": 0.8,
+  "strongDefault": {"provider": "mock", "model": "strong-coder"},
+  "candidates": [
+    {"provider": "mock", "model": "cheap-coder", "estimatedCostUsd": 0.001},
+    {"provider": "mock", "model": "medium-coder", "estimatedCostUsd": 0.004},
+    {"provider": "mock", "model": "strong-coder", "estimatedCostUsd": 0.012}
+  ],
+  "classes": [
+    {"id": "simple-coding", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["Rename a variable in this Python function and return the code only."]},
+    {"id": "medium-coding", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["Write a Python function that parses a CSV file and returns validated records with unit tests."]},
+    {"id": "difficult-coding", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["Create a runnable HTTP server load-testing benchmark with concurrency controls, reporting, and tests."]}
+  ],
+  "cases": [
+    {"id": "rename-variable", "class": "simple-coding", "request": {"messages": [{"role": "user", "content": "Rename a variable in this Python function and return the code only."}], "max_tokens": 128}},
+    {"id": "csv-parser", "class": "medium-coding", "request": {"messages": [{"role": "user", "content": "Write a Python function that parses a CSV file and returns validated records with unit tests."}], "max_tokens": 768}},
+    {"id": "http-load-benchmark", "class": "difficult-coding", "request": {"messages": [{"role": "user", "content": "Create a runnable HTTP server load-testing benchmark with concurrency controls, reporting, and tests."}], "max_tokens": 1536}}
+  ]
+}

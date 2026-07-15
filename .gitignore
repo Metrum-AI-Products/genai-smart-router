@@ -18,6 +18,9 @@ license-state.json
 *private-key*.pem
 *.log
 *.jsonl
+# Synthetic human-review fixture for the outcome-calibrated policy reference.
+!examples/external-routing-policy/reviewed_outcomes.jsonl
+!examples/external-routing-policy/reviewed_coding_outcomes.jsonl
 router-state.json
 requests.jsonl
 smart-llmrouter

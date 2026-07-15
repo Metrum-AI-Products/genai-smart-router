@@ -1,0 +1,9 @@
+{"candidate":{"model":"cheap-coder","provider":"mock"},"caseId":"rename-variable","costUsd":0.001,"passed":true}
+{"candidate":{"model":"medium-coder","provider":"mock"},"caseId":"rename-variable","costUsd":0.004,"passed":false}
+{"candidate":{"model":"strong-coder","provider":"mock"},"caseId":"rename-variable","costUsd":0.012,"passed":false}
+{"candidate":{"model":"cheap-coder","provider":"mock"},"caseId":"csv-parser","costUsd":0.001,"passed":false}
+{"candidate":{"model":"medium-coder","provider":"mock"},"caseId":"csv-parser","costUsd":0.004,"passed":true}
+{"candidate":{"model":"strong-coder","provider":"mock"},"caseId":"csv-parser","costUsd":0.012,"passed":false}
+{"candidate":{"model":"cheap-coder","provider":"mock"},"caseId":"http-load-benchmark","costUsd":0.001,"passed":false}
+{"candidate":{"model":"medium-coder","provider":"mock"},"caseId":"http-load-benchmark","costUsd":0.004,"passed":false}
+{"candidate":{"model":"strong-coder","provider":"mock"},"caseId":"http-load-benchmark","costUsd":0.012,"passed":true}

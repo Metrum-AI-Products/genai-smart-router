@@ -339,7 +339,21 @@ Local/mock CI command:
 
 ```bash
 python3 scripts/evaluate_workload_gate_test.py
+python3 scripts/outcome_calibrated_policy_test.py
 ```
+
+The outcome-calibrated policy self-test uses synthetic arithmetic,
+benchmark-code, folder-listing, and unclassified requests with fake embeddings;
+it must select the calibrated target or strong default without live credentials.
+
+Run `make outcome-calibrated-synthetic-demo` to record the local regression
+fixture under `tmp/outcome-calibrated-demo/`. It uses fake embeddings and mock
+upstreams, so it verifies wiring only. For a provider-backed smoke, use a
+dedicated staging group, real OpenAI embeddings, real candidate responses, an
+objective workload verifier, and `scripts/run_outcome_calibrated_live_demo.py`.
+The protected evidence must join each verifier result to the router request ID
+and the authenticated policy audit selection. Supply a unique run ID to bypass
+response-cache reuse.
 
 Harbor/workload gate command:
 

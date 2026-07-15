@@ -96,6 +96,27 @@ configuration, but it must:
 Never create the Secret from a tracked file, a shell history containing a raw
 DSN, or a rendered manifest committed to the repository.
 
+## Outcome-Calibrated Routing Validation
+
+The staging namespace may run the separate `outcome-calibrated-policy` service
+when validating `strategy: external`. It is a ClusterIP-only trusted policy
+service, not router product code. The service receives the router's
+`include_request: true` policy payload, calls the configured OpenAI embeddings
+endpoint using a Kubernetes Secret, and accepts the router only with a separate
+request-authentication header. Its audit endpoint has a different secret and is
+accessed only through an operator port-forward for evidence collection.
+
+Keep the deployment-owned dataset, real candidate responses, reviewed outcomes,
+generated profile, temporary caller token, audit token, and evidence output in
+an ignored protected directory. The reusable sequence is: dispatch each
+case/candidate with calibration overrides, run the objective verifier, generate
+the promotable profile, redeploy without overrides, then run fresh requests with
+a unique run ID. Retain the router request IDs, selected policy targets, and
+verifier result as validation evidence. Remove the policy Deployment, Service,
+NetworkPolicy, ConfigMaps, and policy Secret when the staging validation ends;
+the router group must also be removed from the runtime Secret before treating
+the staging configuration as a general baseline.
+
 ## Deployment And Validation
 
 1. Create the `smart-llmrouter-staging` namespace, then create the runtime
