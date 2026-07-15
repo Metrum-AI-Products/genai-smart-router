@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "group": "outcome-policy-demo",
+  "minSimilarity": 0.8,
+  "strongDefault": {"provider": "mock", "model": "strong-code"},
+  "candidates": [
+    {"provider": "mock", "model": "cheap-text", "estimatedCostUsd": 0.001},
+    {"provider": "mock", "model": "strong-code", "estimatedCostUsd": 0.010}
+  ],
+  "classes": [
+    {"id": "arithmetic", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["What is 2+2?"]},
+    {"id": "benchmark-code", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["Create a runnable load-testing benchmark for HTTP servers."]},
+    {"id": "folder-listing", "minPassRate": 1.0, "minReviewed": 1, "exemplars": ["Show a folder listing."]}
+  ],
+  "cases": [
+    {"id": "math-2-plus-2", "class": "arithmetic", "request": {"messages": [{"role": "user", "content": "What is 2+2? Reply with only the answer."}], "max_tokens": 16}},
+    {"id": "http-benchmark", "class": "benchmark-code", "request": {"messages": [{"role": "user", "content": "Create a runnable load-testing benchmark for HTTP servers."}], "max_tokens": 1024}},
+    {"id": "folder-listing", "class": "folder-listing", "request": {"messages": [{"role": "user", "content": "Show a folder listing."}], "max_tokens": 64}}
+  ]
+}

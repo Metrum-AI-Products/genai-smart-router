@@ -1,0 +1,6 @@
+{"candidate":{"model":"cheap-text","provider":"mock"},"caseId":"math-2-plus-2","costUsd":0.001,"passed":true}
+{"candidate":{"model":"strong-code","provider":"mock"},"caseId":"math-2-plus-2","costUsd":0.01,"passed":true}
+{"candidate":{"model":"cheap-text","provider":"mock"},"caseId":"http-benchmark","costUsd":0.001,"passed":false}
+{"candidate":{"model":"strong-code","provider":"mock"},"caseId":"http-benchmark","costUsd":0.01,"passed":true}
+{"candidate":{"model":"cheap-text","provider":"mock"},"caseId":"folder-listing","costUsd":0.001,"passed":true}
+{"candidate":{"model":"strong-code","provider":"mock"},"caseId":"folder-listing","costUsd":0.01,"passed":true}

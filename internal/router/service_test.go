@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -15,11 +16,14 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -7485,6 +7489,212 @@ func TestExternalRoutingPolicyStrategy(t *testing.T) {
 	reasoning, _ := context["reasoning"].(map[string]any)
 	if reasoning["requested"] != true || reasoning["kind"] != "effort" || reasoning["effort"] != "high" || reasoning["source"] != "openai_chat_reasoning_effort" {
 		t.Fatalf("policy context missing safe reasoning signals: %#v", context)
+	}
+}
+
+func TestExternalRoutingPolicyTrustedOutcomeDecision(t *testing.T) {
+	var selectedModels []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		selectedModels = append(selectedModels, body["model"].(string))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "outcome_policy",
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+		})
+	}))
+	defer upstream.Close()
+
+	policy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		raw, ok := payload["request"].(map[string]any)
+		if !ok {
+			t.Fatal("trusted outcome policy did not receive include_request mirror")
+		}
+		messages, _ := raw["messages"].([]any)
+		message, _ := messages[0].(map[string]any)
+		content, _ := message["content"].(string)
+		targetIndex := 1 // Strong default for unclassified work.
+		label := "outcome-policy:unclassified"
+		switch content {
+		case "What is 2+2?":
+			targetIndex, label = 0, "outcome-policy:arithmetic"
+		case "Create a runnable load-testing benchmark for HTTP servers.":
+			targetIndex, label = 1, "outcome-policy:benchmark-code"
+		case "Show a folder listing.":
+			targetIndex, label = 0, "outcome-policy:folder-listing"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"targetIndex": targetIndex, "classLabel": label})
+	}))
+	defer policy.Close()
+	policyURL, err := url.Parse(policy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["outcome-policy"] = ModelGroup{
+		Strategy: "external",
+		ExternalPolicy: ExternalPolicyConfig{
+			URL: policy.URL + "/route", AllowHosts: []string{policyURL.Hostname()},
+			TimeoutMS: 500, MaxResponseBytes: 4096, IncludeRequest: true,
+		},
+		Targets: []Target{
+			{Provider: "mock", Model: "cheap-text", Weight: 50, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.2},
+			{Provider: "mock", Model: "strong-code", Weight: 50, InputPricePerMillionUSD: 1.0, OutputPricePerMillionUSD: 2.0},
+		},
+	}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "outcome-policy")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	for _, prompt := range []string{
+		"What is 2+2?",
+		"Create a runnable load-testing benchmark for HTTP servers.",
+		"Show a folder listing.",
+		"Write a poem about a moonlit river.",
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"outcome-policy","messages":[{"role":"user","content":`+strconv.Quote(prompt)+`}],"max_tokens":64}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("prompt=%q status=%d body=%s", prompt, rr.Code, rr.Body.String())
+		}
+	}
+	want := []string{"cheap-text", "strong-code", "cheap-text", "strong-code"}
+	if !reflect.DeepEqual(selectedModels, want) {
+		t.Fatalf("selected models=%v want=%v", selectedModels, want)
+	}
+}
+
+func TestOutcomeCalibratedPolicyReferenceEndToEnd(t *testing.T) {
+	root := filepath.Join("..", "..")
+	script := filepath.Join(root, "examples", "external-routing-policy", "outcome_calibrated_policy.py")
+	dataset := filepath.Join(root, "examples", "external-routing-policy", "outcome_coding_dataset.json")
+	reviews := filepath.Join(root, "examples", "external-routing-policy", "reviewed_coding_outcomes.jsonl")
+	profile := filepath.Join(t.TempDir(), "profile.json")
+	patch := filepath.Join(t.TempDir(), "weights.yaml")
+	calibrate := exec.Command("python3", script, "calibrate", "--dataset", dataset, "--reviews", reviews, "--out-profile", profile, "--out-yaml", patch)
+	if output, err := calibrate.CombinedOutput(); err != nil {
+		t.Fatalf("calibrate outcome reference: %v output=%s", err, output)
+	}
+	if _, err := os.Stat(patch); err != nil {
+		t.Fatalf("outcome weight patch missing: %v", err)
+	}
+
+	vectors := map[string][]float64{
+		"Rename a variable in this Python function and return the code only.":                                   {1, 0, 0},
+		"Write a Python function that parses a CSV file and returns validated records with unit tests.":         {0, 1, 0},
+		"Create a runnable HTTP server load-testing benchmark with concurrency controls, reporting, and tests.": {0, 0, 1},
+		"Rename a local variable in this Python function and return only runnable code.":                        {1, 0, 0},
+		"Parse CSV records with validation and include Python unit tests.":                                      {0, 1, 0},
+		"Build a runnable concurrent HTTP load-testing benchmark with reports and tests.":                       {0, 0, 1},
+		"Explain quantum entanglement in one sentence.":                                                         {-1, 0, 0},
+	}
+	embeddings := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		data := make([]map[string]any, 0, len(body.Input))
+		for index, input := range body.Input {
+			vector, ok := vectors[input]
+			if !ok {
+				t.Fatalf("unexpected embedding input %q", input)
+			}
+			data = append(data, map[string]any{"index": index, "embedding": vector})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": data})
+	}))
+	defer embeddings.Close()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	var policyStderr bytes.Buffer
+	policyProcess := exec.Command("python3", script, "serve", "--profile", profile, "--embedding-base-url", embeddings.URL, "--embedding-model", "fake-embedding-model", "--port", strconv.Itoa(port))
+	policyProcess.Stderr = &policyStderr
+	if err := policyProcess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = policyProcess.Process.Kill()
+		_ = policyProcess.Wait()
+	}()
+	policyURL := fmt.Sprintf("http://127.0.0.1:%d/route", port)
+	ready := false
+	for attempt := 0; attempt < 50; attempt++ {
+		response, callErr := http.Post(policyURL, "application/json", strings.NewReader(`{}`))
+		if callErr == nil {
+			_ = response.Body.Close()
+			ready = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("outcome policy did not start: %s", policyStderr.String())
+	}
+
+	var selectedModels []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		model, _ := body["model"].(string)
+		selectedModels = append(selectedModels, model)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "outcome-demo", "choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}}}, "usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}})
+	}))
+	defer upstream.Close()
+	parsedPolicyURL, err := url.Parse(policyURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["outcome-coding-demo"] = ModelGroup{Strategy: "external", ExternalPolicy: ExternalPolicyConfig{URL: policyURL, AllowHosts: []string{parsedPolicyURL.Hostname()}, TimeoutMS: 500, MaxResponseBytes: 4096, IncludeRequest: true}, Targets: []Target{{Provider: "mock", Model: "cheap-coder", Weight: 34, InputPricePerMillionUSD: 0.1, OutputPricePerMillionUSD: 0.2}, {Provider: "mock", Model: "medium-coder", Weight: 33, InputPricePerMillionUSD: 0.4, OutputPricePerMillionUSD: 0.8}, {Provider: "mock", Model: "strong-coder", Weight: 33, InputPricePerMillionUSD: 1.2, OutputPricePerMillionUSD: 2.4}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "outcome-coding-demo")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	cases := []struct{ prompt, want, class string }{
+		{"Rename a local variable in this Python function and return only runnable code.", "cheap-coder", "simple-coding"},
+		{"Parse CSV records with validation and include Python unit tests.", "medium-coder", "medium-coding"},
+		{"Build a runnable concurrent HTTP load-testing benchmark with reports and tests.", "strong-coder", "difficult-coding"},
+		{"Explain quantum entanglement in one sentence.", "strong-coder", "unclassified"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"outcome-coding-demo","messages":[{"role":"user","content":`+strconv.Quote(tc.prompt)+`}],"max_tokens":256}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("class=%s status=%d body=%s", tc.class, rr.Code, rr.Body.String())
+		}
+		got := selectedModels[len(selectedModels)-1]
+		evidence, _ := json.Marshal(map[string]string{"class": tc.class, "prompt": tc.prompt, "selectedModel": got, "expectedModel": tc.want})
+		t.Logf("OUTCOME_DEMO %s", evidence)
+	}
+	if !reflect.DeepEqual(selectedModels, []string{"cheap-coder", "medium-coder", "strong-coder", "strong-coder"}) {
+		t.Fatalf("selected models=%v", selectedModels)
 	}
 }
 

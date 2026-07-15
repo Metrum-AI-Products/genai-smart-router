@@ -190,3 +190,39 @@ Names such as `external-policy-demo`, `cheap`, and `heavy` are examples. Deploym
 - Treat `routing-policy-error` as a deployment/configuration issue. The response means the policy service failed, timed out, returned non-JSON, returned non-2xx, or selected an invalid target.
 
 When decision telemetry is enabled, external-policy executions write safe scalar policy rows. Successful policy decisions record outcome, selected candidate index, fallback count, and safe class label. Fail-closed policy errors before selection record an execution row even when no routing-decision row exists, with policy kind, outcome, duration, eligible/all target counts, safe error class, and terminal error type. `on_error: fallback` records the configured fallback outcome and then normal routing/fallback telemetry explains the selected target. These rows do not store the policy request body, policy response JSON, prompt text, tool schemas, bearer tokens, provider keys, token hashes, raw URLs, policy headers, or full config.
+
+## Outcome-Calibrated Example
+
+The repository includes an outcome-calibrated reference policy under
+`examples/external-routing-policy/`. It demonstrates how a team can use a
+deployment-owned dataset, human-reviewed outcomes, and an OpenAI-compatible
+embeddings service to route simple and difficult workloads to different eligible
+targets. The reference first rejects candidates that miss each class's required
+pass rate, then weights the remaining candidates toward lower observed cost.
+
+This workflow is operator-controlled: it emits a profile and a YAML patch for
+review rather than changing an active group. The synthetic arithmetic,
+benchmark-code, and folder-listing cases prove the mechanics only. Teams should
+use a larger representative dataset and their own verifier or reviewer process
+before promotion.
+
+The reference policy requires `include_request: true` because it classifies the
+trusted request content. Enable that only when the policy service is inside the
+approved trust boundary. For PII-filtered groups, the router sends redacted
+content. The service uses the existing eligible target, price, capability, and
+safe caller context already present in the external-policy request; it never
+needs router tokens, provider credentials, token hashes, or full configuration.
+Keep response-bearing human-review artifacts in that same protected boundary;
+the committed examples contain synthetic data only.
+
+The repository's synthetic coding demonstration is a repeatable local wiring
+test only; it uses fake embeddings and mock upstreams and is not a
+production-quality claim. For a real evaluation, operators run the reference
+policy with their secret-held OpenAI-compatible embedding credential (for
+example `text-embedding-3-small`), collect real candidate responses through a
+dedicated staging group, apply a workload-specific reviewer or verifier, and
+calibrate the reviewable profile. A protected live runner then records the
+router request ID, selected eligible target, class label, usage, response, and
+verifier result for new requests. It adds a unique run marker so a response
+cache cannot bypass policy evaluation. Keep this evidence within the trusted
+deployment boundary and approve it before changing production weights.

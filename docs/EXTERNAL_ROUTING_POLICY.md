@@ -75,3 +75,40 @@ The sample `external-policy-demo` group in `config.example.yaml` points at `http
 - Use `on_error: fallback` only when the configured target order is explicitly approved as the default policy.
 - After rollout, monitor `request_usage.error_class`, `request_trace_events`, `request_policy_executions`, selected provider/model, latency, and class labels.
 - Document rollback as either disabling the policy group, switching the group back to `weighted`/`static`, or setting `on_error: fallback` if approved.
+
+## Outcome-Calibrated Reference
+
+`examples/external-routing-policy/outcome_calibrated_policy.py` demonstrates a
+deployment-owned calibration loop for task classes with different quality and
+cost requirements. It has no router-side control plane and never writes active
+configuration. The reference uses explicit exemplar classes, runs each
+synthetic case through a restricted external-policy group, records reviewer
+JSONL outcomes, rejects candidates below a class quality gate, and emits a
+reviewable policy profile plus target-weight YAML patch.
+
+The live service uses `external_policy.include_request: true` and an
+OpenAI-compatible embeddings endpoint to match trusted redacted request content
+to approved exemplars. The existing policy request already supplies the
+eligible targets, model/provider identifiers, pricing, capabilities, request
+shape, and safe caller metadata required for selection; do not add provider
+keys, token hashes, or full config to the policy contract. Unknown or ambiguous
+requests select the profile's designated strong default, not a cheap candidate.
+
+The three committed cases are a workflow demonstration, not promotion evidence.
+Use a deployment-owned larger dataset and retain the default minimum reviewed
+sample gate before applying a generated patch. Keep response-bearing reviewer
+JSONL in the trusted deployment boundary and never commit captured production
+content. Roll back by restoring the last approved profile and target weights or
+by disabling the external group.
+
+Run `make outcome-calibrated-synthetic-demo` for the repeatable local
+regression fixture. It uses fake embeddings and mock upstreams, writes an
+ignored bundle with the profile, review-only YAML patch, and router test log,
+and must never be treated as provider-quality evidence.
+
+For provider-backed evidence, deploy the reference with a secret-held OpenAI
+embedding key and `text-embedding-3-small`, collect real candidate responses,
+verify each outcome, calibrate the profile, then run
+`scripts/run_outcome_calibrated_live_demo.py` against a dedicated staging group.
+Require a private policy request header and authenticated audit endpoint. Use a
+unique `--run-id` so a cached response cannot skip policy selection.

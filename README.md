@@ -726,6 +726,15 @@ models:
 
 Policy responses use the same selector shape as TypeScript: `targetIndex` or `target`, optional `fallbackIndexes`/`fallbacks`, and optional `classLabel`. Class labels are telemetry labels, not content fields: keep them to short tokens using letters, numbers, `_`, `-`, `.`, and `:`. Unsafe, long, or content-like labels are stored as `unsafe_class_label` before logs or usage rows are written. When a TypeScript script omits `fallbackIndexes` and `fallbacks`, remaining eligible targets are used as retries; when either field is present, the supplied entries are the complete retry set. The default `on_error` behavior is `fail_closed`, returning `502 routing-policy-error`; `fallback` can be configured when the target order is an acceptable default. A runnable demo service lives at `examples/external-routing-policy/prompt_size_policy.py`.
 
+`examples/external-routing-policy/outcome_calibrated_policy.py` is a separate
+tested reference for outcome-calibrated routing. It uses deployment-owned
+exemplar classes, an OpenAI-compatible embedding endpoint, and reviewed outcome
+records to emit a reviewable external-policy profile and target-weight patch.
+It never changes active configuration automatically; unmatched work uses a
+deployment-designated strong default. The reference requires
+`external_policy.include_request: true` and therefore belongs only in trusted
+infrastructure, with redacted input when the model group uses `pii_filter`.
+
 External policy URLs use the same egress rules as `router.fetchJSON`: HTTPS by default, plaintext HTTP only for loopback hosts or with `external_policy.allow_http: true`, exact-host allowlisting, and redirect revalidation on every hop. A redirect to a host outside `allow_hosts`, including a loopback address that was not explicitly allowed, fails before the redirected service is reached.
 
 The default `scripts/router.ts` does three things:
