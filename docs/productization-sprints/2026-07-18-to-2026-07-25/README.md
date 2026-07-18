@@ -61,10 +61,10 @@ observability begin early and close after the surfaces they assess exist.
 These are static, customer-safe design previews. Open them directly in a browser;
 they contain fictional values and no production configuration or credentials.
 
-* [Checkout and provisioning journey](previews/checkout-provisioning.html)
-* [Prosumer console](previews/prosumer-console.html)
-* [Canary operations console](previews/canary-operations.html)
-* [Operations and reconciliation dashboard](previews/operations-dashboard.html)
+* Checkout and provisioning journey: [HTML](previews/checkout-provisioning.html) · [PNG](previews/checkout-provisioning.png)
+* Prosumer console: [HTML](previews/prosumer-console.html) · [PNG](previews/prosumer-console.png)
+* Canary operations console: [HTML](previews/canary-operations.html) · [PNG](previews/canary-operations.png)
+* Operations and reconciliation dashboard: [HTML](previews/operations-dashboard.html) · [PNG](previews/operations-dashboard.png)
 
 ## Decisions required from people
 
