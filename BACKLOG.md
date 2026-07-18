@@ -4,6 +4,11 @@ Epic: [#520](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/520
 (`productization-sprint-1`). This index is the execution map; GitHub issue bodies
 are the implementation contracts and evidence checklists.
 
+Detailed implementation designs, configuration/account inventories, complete
+test plans, and customer/operator UI previews are in the
+[2026-07-18 to 2026-07-25 sprint folder](docs/productization-sprints/2026-07-18-to-2026-07-25/README.md)
+(plan version v1.0.0).
+
 | Issue | Launch class | Area labels | Primary dependencies |
 | --- | --- | --- | --- |
 | #521 Control plane lifecycle | Blocking | `area:control-plane`, `NEEDS-HUMAN` | #7, #507, D1/D6/D7 |

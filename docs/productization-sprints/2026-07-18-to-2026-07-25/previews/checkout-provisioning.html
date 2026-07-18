@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Metrum Prosumer Checkout &amp; Provisioning — Design Preview</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07111f;--panel:#0d1b2c;--line:#22364c;--text:#edf5ff;--muted:#93a8bd;--blue:#35a7ff;--cyan:#48d9c5;--amber:#ffca58;--red:#ff667c}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 0,#143c5a 0,transparent 32%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+    header,main{max-width:1180px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    .brand{font-weight:800;letter-spacing:.02em}.brand span{color:var(--cyan)}.preview{font-size:12px;color:var(--amber);border:1px solid #805f24;padding:6px 10px;border-radius:999px}
+    .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;padding:56px 0 28px}.eyebrow{color:var(--cyan);text-transform:uppercase;letter-spacing:.13em;font-size:12px}h1{font-size:48px;line-height:1.05;margin:10px 0 18px;max-width:760px}h2{font-size:21px;margin:0 0 14px}p{color:var(--muted)}
+    .card{background:linear-gradient(145deg,#0e2035,#0a1727);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 20px 50px #0005}.price{font-size:36px;font-weight:800}.price small{font-size:14px;color:var(--muted);font-weight:500}.pill{display:inline-flex;padding:5px 9px;border-radius:999px;background:#12364a;color:var(--cyan);font-size:12px}
+    .btn{display:inline-flex;justify-content:center;align-items:center;border:0;border-radius:10px;padding:12px 16px;font-weight:750;background:var(--blue);color:#04101c;text-decoration:none}.btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.actions{display:flex;gap:10px;margin-top:20px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.flow{margin:34px 0}.step{position:relative;min-height:180px}.num{width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:#163e55;color:var(--cyan);font-weight:800}.status{display:flex;gap:9px;align-items:center;margin:10px 0;color:#cfe2f5}.dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan)}.dot.wait{background:var(--amber);box-shadow:none}.dot.off{background:#536a7f;box-shadow:none}
+    .timeline{display:grid;gap:10px;margin:18px 0}.row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:11px;background:#091626;border:1px solid #1e3146;border-radius:10px}.ok{color:var(--cyan)}.wait{color:var(--amber)}code{background:#06101d;padding:3px 6px;border-radius:5px;color:#bce8ff}.note{border-left:3px solid var(--amber);padding:10px 14px;background:#241d0d;color:#d8c895;border-radius:4px}
+    footer{max-width:1180px;margin:30px auto;padding:24px;color:var(--muted);border-top:1px solid var(--line)}
+    @media(max-width:850px){.hero,.grid{grid-template-columns:1fr}h1{font-size:36px}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">METRUM <span>GENAI ROUTER</span></div><div class="preview">Static design preview · fictional data</div></header>
+  <main>
+    <section class="hero">
+      <div><div class="eyebrow">Get a running endpoint</div><h1>Fund once. Route across validated models in minutes.</h1><p>Create a verified account, purchase prepaid credits through Stripe, and receive a governed Metrum-managed API endpoint. Your balance and hard limits protect against surprise spend.</p><div class="actions"><a class="btn" href="#journey">Start with prepaid credits</a><a class="btn secondary" href="#details">See how provisioning works</a></div></div>
+      <div class="card"><span class="pill">Recommended starter pack</span><h2>Developer credits</h2><div class="price">$25 <small>one-time prepaid purchase</small></div><p>Credits are debited using the approved price book. Taxes, minimum charge, and refund terms appear before checkout after business approval.</p><label><input type="checkbox" checked> Auto-top up $25 when balance falls below $5</label><div class="actions"><button class="btn" type="button">Continue to Stripe Checkout</button></div><p><small>Card details are entered on Stripe-hosted Checkout and are never handled by the router.</small></p></div>
+    </section>
+
+    <section id="journey" class="flow"><div class="eyebrow">End-to-end journey</div><h2>What happens after you click pay</h2><div class="grid">
+      <article class="card step"><div class="num">1</div><h2>Verify &amp; pay</h2><p>Email is verified and risk policy approves the account. Stripe confirms payment by signed webhook—not by the browser redirect.</p><div class="status"><span class="dot"></span>Payment confirmed</div></article>
+      <article class="card step"><div class="num">2</div><h2>Provision safely</h2><p>The control plane credits the ledger, creates the tenant, activates limits and a signed balance grant, then deploys/configures EKS.</p><div class="status"><span class="dot wait"></span>Provisioning · 2m 14s</div></article>
+      <article class="card step"><div class="num">3</div><h2>Test &amp; hand off</h2><p>Readiness, license/lease, <code>/v1/models</code>, API shape, usage and settlement smokes pass before the token is shown once.</p><div class="status"><span class="dot off"></span>Waiting for service smoke</div></article>
+    </div></section>
+
+    <section id="details" class="hero">
+      <div class="card"><h2>Provisioning status</h2><div class="timeline">
+        <div class="row"><span class="ok">✓</span><span>Account and organization</span><small class="ok">complete</small></div>
+        <div class="row"><span class="ok">✓</span><span>Prepaid ledger credit</span><small class="ok">complete</small></div>
+        <div class="row"><span class="ok">✓</span><span>Tenant limits and balance grant</span><small class="ok">complete</small></div>
+        <div class="row"><span class="wait">•••</span><span>EKS config and online lease</span><small class="wait">running</small></div>
+        <div class="row"><span>○</span><span>DNS/TLS (dedicated plans only)</span><small>not applicable</small></div>
+        <div class="row"><span>○</span><span>Chat, Responses, Messages and settlement smoke</span><small>queued</small></div>
+      </div><div class="note">If a step fails, no API token is activated. Retry resumes from durable state; support receives a safe operation ID.</div></div>
+      <div><div class="eyebrow">Recommended launch topology</div><h2>One regional API, logically isolated tenants</h2><p>Prosumer tenants share a highly available regional EKS fleet. Each receives scoped caller credentials, model access, hard quotas, a signed online lease and finite balance grant. Provider keys remain server-side.</p><p>A dedicated managed tier adds a namespace/release, secret references, certificate and tenant hostname before the same smoke gate.</p><h2>Ready state</h2><p><code>https://api.example.invalid/v1</code><br>API key shown once after tests pass · Allowed groups discovered with <code>/v1/models</code>.</p></div>
+    </section>
+  </main>
+  <footer>Design artifact for issues #520, #524, #525 and #526 · Plan v1.0.0 · No real pricing, hostnames, credentials or customer data.</footer>
+</body>
+</html>

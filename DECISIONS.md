@@ -74,3 +74,40 @@ Options: Metrum-pooled keys, BYOK, or hybrid. Recommendation: pooled keys only
 with prepaid grants/holds and hard caps; BYOK can be a fast-follow because it
 changes credential custody and pricing. Blocks initial price book and balance
 admission policy.
+
+## D8 — Identity and transactional email — NEEDS-HUMAN
+
+Question: which managed OIDC/email services own signup, verified email, session
+claims, MFA readiness, and customer communications.
+
+Options: Amazon Cognito plus SES; a dedicated SaaS identity provider plus its
+email/integration; or a self-hosted identity stack. Recommendation: use a managed
+OIDC provider with authorization-code/PKCE and verified-email claims; on the AWS
+launch stack, Cognito plus SES has the smallest new vendor surface. Self-hosting
+identity is not recommended for this sprint. Blocks #521 and #525.
+
+## D9 — Hosted DNS model — NEEDS-HUMAN
+
+Options: one regional shared API hostname, one hostname per logical tenant, or a
+dedicated hostname only for dedicated deployments. Recommendation: one regional
+hostname for the shared Prosumer fleet; tenant identity comes from the caller
+credential, not the hostname. Use per-tenant Route 53/TLS only for a paid dedicated
+tier. Blocks #526 and public onboarding copy.
+
+## D10 — Trial and free-credit policy — NEEDS-HUMAN
+
+Options: no free credit; small one-time credit after verified identity/risk; or a
+larger card-verified trial. Recommendation: a small one-time, non-withdrawable,
+expiring credit after verified identity and abuse checks, with hard per-tenant and
+provider-account caps. Finance/Legal/Security must approve amount, eligibility,
+expiry, region and appeal. Blocks #529 and public pricing/trial copy.
+
+## D11 — Balance-exhaustion API contract — NEEDS-HUMAN
+
+Question: the customer-facing HTTP status, error type, retry semantics, headers,
+and recovery link for insufficient prepaid authority. Options include HTTP 402,
+403, or 429 with a distinct router error type. Recommendation: add a stable
+`balance-exhausted` error distinct from provider quota/billing errors, return no
+upstream attempt, include a safe request ID and top-up URL/header, and document
+whether retry without funding is allowed. API/Product must choose the status.
+Blocks #522, #525 and #533.
