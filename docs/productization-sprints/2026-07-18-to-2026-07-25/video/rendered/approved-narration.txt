@@ -1,0 +1,27 @@
+This sprint designs Metrum GenAI Smart Router for a self-serve prosumer launch: a developer can get a managed running instance, pay in advance, make a first request, and understand what they spent—without staff in the loop.
+
+The design keeps a hard boundary. The commercial control plane owns identity, tenants, payments, price books, the ledger, provisioning, and support. The router remains the data plane: it protects provider credentials, filters PII, routes requests, applies caller limits, and records usage. Stripe and card state never enter the inference hot path.
+
+The journey starts with sign-up, verified email, accepted terms, and an organization. A risk policy either grants a small bounded trial or sends the customer to Stripe-hosted Checkout. A browser return is not proof of payment. Only a verified, signed webhook can create credit.
+
+That webhook posts immutable, balanced ledger entries in integer microcredits. The ledger distinguishes a quoted reserve, the settled customer charge, the calculated upstream cost, provider-billed cost when available, and later reconciliation. Credits, holds, reversals, refunds, and adjustments stay traceable instead of silently changing a balance.
+
+Funding triggers an idempotent provisioning saga. The recommended launch path is a shared regional EKS router fleet: a logical tenant gets caller access, model groups, quota and traffic-shaping policy, an entitlement, and a signed balance grant. A dedicated tier can add namespace, Helm release, secrets, DNS, TLS, and license—only when that higher-cost isolation is approved.
+
+A tenant does not become active until health gates pass. We verify readiness, allowed models, OpenAI Chat, OpenAI Responses, Anthropic Messages, a credited usage settlement, and metrics-admin isolation. Then the console shows an API key once, along with tested curl, OpenAI, and Anthropic examples.
+
+Before any upstream call, the router validates a local, signed, short-lived balance grant and reserves the conservative maximum customer price. It does not call Stripe, the ledger, or the control plane during inference. Actual usage settles asynchronously and releases unused reserve. If authority, pricing, or the reservation backend is unsafe, the request fails closed before Metrum can incur provider cost.
+
+The prosumer console makes the operating state legible: balance and held amount, live usage and cost, API-key lifecycle, budgets, receipts, top-up, and safe low-balance guidance. Support sees a redacted tenant timeline, not customer credentials or request content. Cancellation first revokes grants and access, then preserves required financial evidence before governed teardown.
+
+Day-one abuse is part of the launch design. Verified identity, trial velocity limits, payment risk signals, per-tier hard caps, bounded authorization holds, anomaly alerts, and a tenant kill switch prevent a free-credit or runaway-spend path from becoming Metrum’s provider bill.
+
+Delivery is Git-native and migration-safe. The release train runs source and contract checks, signed images with SBOMs, an ephemeral full-stack environment, expand-and-migrate compatibility, staging, synthetic customer journeys, soak and SLO gates, human approval, then progressive production rollout. A failed gate stops promotion and rolls workloads or configuration back without deleting financial history.
+
+Each blocking issue closes with proof: unit and PostgreSQL integration tests, browser end-to-end tests, concurrency and fault injection, load and security tests, redacted terminal replays, safe audit and ledger queries, dashboard screenshots, and rollback evidence. Critical invariants include no negative prepaid authority, one economic effect per source event, no cross-tenant access, and no commercial network call from the router handler.
+
+The July 18 to 25 sprint starts with the shared account registry, EKS release foundation, and threat model. It then builds lifecycle, ledger, signed grants, provisioning, fraud protection, payments, console, observability, and customer-facing documentation. Experimental model canaries and Marketplace artifacts follow as fast-follow work after the launch blockers are proven.
+
+Before launch, product, finance, security, SRE, legal, and support must record the tenancy, ledger, prepaid pricing, region, provider, identity, trial, and customer-error decisions. Go or no-go requires a redacted evidence bundle, reconciled finance results, security sign-off, operational readiness, and a rollback owner for every exception.
+
+The goal is simple: give a prosumer a fast path to a running instance while keeping Metrum’s cost exposure bounded, customer data protected, and every operational claim testable. This sprint turns that goal into an executable, reviewable release plan.

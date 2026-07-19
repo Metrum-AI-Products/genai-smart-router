@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nabapro"
+  short_description: "Generate and edit Nano Banana Pro images with built-in Metrum AI branding"
+  default_prompt: "Use $nabapro to generate or edit images, applying Metrum AI brand styling by default. Set --brand none for custom projects."

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Metrum UX · #506 x402 overage payment</title>
+<link rel="stylesheet" href="../_ds/metrum-bento.css">
+<script>
+function showPanel(id, btn){
+  const root=btn?btn.closest('.tile')||document:document;
+  root.querySelectorAll('[data-panel]').forEach(el=>el.classList.add('panel-hidden'));
+  root.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  const p=root.querySelector('[data-panel="'+id+'"]');
+  if(p) p.classList.remove('panel-hidden');
+  if(btn) btn.classList.add('active');
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <img class="logo" src="../_ds/metrum-logo-white.png" alt="Metrum AI">
+    <div class="title">#506 · x402 overage payment</div>
+    <div class="meta">Static UX mock · fictional data</div>
+  </header>
+  <div class="accent-line"></div>
+  <main class="bento">
+
+    <div class="tile span-3"><h2>State</h2><span class="tag wait">payment-required</span></div>
+    <div class="tile span-3"><h2>Quote</h2><div class="value" style="font-size:18px">$0.02</div><div class="sub">q_demo_9f3a</div></div>
+    <div class="tile span-3"><h2>Group</h2><div class="value" style="font-size:18px">high</div></div>
+    <div class="tile span-3"><h2>Upstream</h2><span class="tag err">blocked</span></div>
+    <div class="tile span-7 row-2"><h2>Challenge (safe)</h2>
+      <textarea readonly>HTTP/1.1 402 Payment Required
+PAYMENT-REQUIRED: <x402-requirements-opaque>
+{"error":"payment-required","request_id":"req_demo_…","quote_id":"q_demo_9f3a"}</textarea>
+    </div>
+    <div class="tile span-5 row-2"><h2>After settlement</h2>
+      <div class="timeline">
+        <div class="item"><span class="mark">✓</span><span>Verify proof</span><small class="ok">ok</small></div>
+        <div class="item"><span class="mark">✓</span><span>Settle once</span><small class="ok">pay_demo_…</small></div>
+        <div class="item"><span class="mark">✓</span><span>Upstream once</span><small class="ok">200</small></div>
+        <div class="item"><span class="mark">✓</span><span>Ledger posting</span><small class="ok">ok</small></div>
+      </div>
+    </div>
+
+  </main>
+  <footer class="footer">
+    <span>#506 · subscription + included allowance + x402 overage</span>
+    <span>No real credentials, prices, or customer data</span>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "nabapro": {
+      "source": "chetan-metrum-ai/skills-and-plugins",
+      "sourceType": "github",
+      "skillPath": "skills/nabapro/SKILL.md",
+      "computedHash": "ea8fe14ef2caa58961a21e17297e4347b34f3f36157b342b564e85942e55f52a"
+    },
+    "narrated-video-production": {
+      "source": "chetan-metrum-ai/skills-and-plugins",
+      "sourceType": "github",
+      "skillPath": "skills/narrated-video-production/SKILL.md",
+      "computedHash": "6d72580287b3fbf229fb0ba51f06d35fc9cfb03c5d7cdc397249c127a4804b6f"
+    }
+  }
+}

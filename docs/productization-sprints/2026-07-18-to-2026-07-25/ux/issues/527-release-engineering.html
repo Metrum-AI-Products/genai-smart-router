@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Metrum UX · #527 Release engineering gates</title>
+<link rel="stylesheet" href="../_ds/metrum-bento.css">
+<script>
+function showPanel(id, btn){
+  const root=btn?btn.closest('.tile')||document:document;
+  root.querySelectorAll('[data-panel]').forEach(el=>el.classList.add('panel-hidden'));
+  root.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  const p=root.querySelector('[data-panel="'+id+'"]');
+  if(p) p.classList.remove('panel-hidden');
+  if(btn) btn.classList.add('active');
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <img class="logo" src="../_ds/metrum-logo-white.png" alt="Metrum AI">
+    <div class="title">#527 · Release engineering gates</div>
+    <div class="meta">Static UX mock · fictional data</div>
+  </header>
+  <div class="accent-line"></div>
+  <main class="bento">
+
+    <div class="tile span-3"><h2>Image</h2><span class="tag ok">signed</span></div>
+    <div class="tile span-3"><h2>SBOM</h2><span class="tag ok">pass</span></div>
+    <div class="tile span-3"><h2>Migrate</h2><span class="tag ok">compat</span></div>
+    <div class="tile span-3"><h2>Smoke</h2><span class="tag wait">running</span></div>
+    <div class="tile span-12"><h2>Evidence gates</h2>
+      <div class="timeline">
+        <div class="item"><span class="mark">✓</span><span>Unit/integration</span><small class="ok">ok</small></div>
+        <div class="item"><span class="mark">✓</span><span>Postgres migration drill</span><small class="ok">ok</small></div>
+        <div class="item"><span class="mark wait">•••</span><span>Staging E2E subscription path</span><small class="wait">…</small></div>
+        <div class="item"><span class="mark off">○</span><span>Prod-like promote</span><small>blocked</small></div>
+      </div>
+    </div>
+
+  </main>
+  <footer class="footer">
+    <span>#527 · subscription + included allowance + x402 overage</span>
+    <span>No real credentials, prices, or customer data</span>
+  </footer>
+</div>
+</body>
+</html>

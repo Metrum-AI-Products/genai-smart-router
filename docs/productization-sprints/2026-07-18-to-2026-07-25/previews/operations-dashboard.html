@@ -1,19 +1,43 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Metrum Prosumer Operations — Design Preview</title>
-<style>
-:root{color-scheme:dark;--bg:#060e17;--panel:#0c1926;--line:#213347;--text:#eef6ff;--muted:#8fa4b8;--green:#45d49c;--blue:#3aa8ff;--amber:#ffc456;--red:#ff6275}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 Inter,system-ui,sans-serif}.layout{display:grid;grid-template-columns:220px 1fr;min-height:100vh}aside{border-right:1px solid var(--line);background:#08131f;padding:20px 14px}.brand{font-weight:900;margin:0 8px 24px}.brand b{color:var(--blue)}aside a{display:block;padding:9px 11px;color:var(--muted);text-decoration:none;border-radius:7px}aside a.active{background:#142b40;color:var(--text)}main{padding:22px 28px;max-width:1600px}.top{display:flex;justify-content:space-between}.preview{color:var(--amber)}h1{margin:0;font-size:27px}h2{font-size:15px;margin:0 0 10px}.muted,p{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:17px}.card{background:linear-gradient(145deg,#0e1d2b,#091522);border:1px solid var(--line);border-radius:12px;padding:15px}.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}.metric{font-size:25px;font-weight:800}.good{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}.row{display:grid;grid-template-columns:1.3fr .8fr .6fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #1b2d3e}.row:last-child{border:0}.tag{padding:3px 7px;border-radius:99px;background:#16392f;color:var(--green);font-size:10px}.tag.warn{background:#3b2c12;color:var(--amber)}.tag.bad{background:#3c1b22;color:#ff9baa}.spark{height:75px;display:flex;align-items:end;gap:4px}.spark i{flex:1;background:#215b7e;border-radius:3px 3px 0 0}.h22{height:22%}.h23{height:23%}.h25{height:25%}.h26{height:26%}.h27{height:27%}.h28{height:28%}.h31{height:31%}.h34{height:34%}.h39{height:39%}.h48{height:48%;background:#9a792c!important}.btn{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 9px;border-radius:7px}.incident{border-left:3px solid var(--amber);background:#251e10;padding:11px;border-radius:6px}.tiny{font-size:11px}@media(max-width:950px){.layout{grid-template-columns:1fr}aside{display:none}.c2,.c3,.c4,.c5,.c7,.c8{grid-column:span 12}.row{grid-template-columns:1fr 1fr}}
-</style></head><body><div class="layout"><aside><div class="brand">METRUM <b>OPS</b></div><a class="active" href="#">Launch health</a><a href="#">Customer journey</a><a href="#">Ledger &amp; grants</a><a href="#">Stripe</a><a href="#">Provisioning</a><a href="#">Router &amp; providers</a><a href="#">Security &amp; abuse</a><a href="#">Queues &amp; workers</a><a href="#">Incidents</a><a href="#">Runbooks</a></aside><main>
-<div class="top"><div><h1>Prosumer launch health</h1><p>prod · us-east cell · last refresh 14s ago</p></div><div class="preview">Static preview · fictional aggregate data</div></div>
-<section class="grid">
-<article class="card c2"><h2>Customer API</h2><div class="metric good">99.97%</div><small>30d objective 99.9%</small></article><article class="card c2"><h2>First request</h2><div class="metric good">3m 42s</div><small>p95 verified → settled</small></article><article class="card c2"><h2>Webhook lag</h2><div class="metric good">1.8s</div><small>p95 paid fulfillment</small></article><article class="card c2"><h2>Provisioning</h2><div class="metric good">98.9%</div><small>within 8m SLO</small></article><article class="card c2"><h2>Reconciliation</h2><div class="metric warn">$0.14</div><small>open variance · 2 items</small></article><article class="card c2"><h2>Exposure</h2><div class="metric good">Bounded</div><small>0 over-grant admits</small></article>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Metrum UX · #531 Observability & on-call</title>
+<link rel="stylesheet" href="../ux/_ds/metrum-bento.css">
+<script>
+function showPanel(id, btn){
+  const root=btn?btn.closest('.tile')||document:document;
+  root.querySelectorAll('[data-panel]').forEach(el=>el.classList.add('panel-hidden'));
+  root.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  const p=root.querySelector('[data-panel="'+id+'"]');
+  if(p) p.classList.remove('panel-hidden');
+  if(btn) btn.classList.add('active');
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <img class="logo" src="../ux/_ds/metrum-logo-white.png" alt="Metrum AI">
+    <div class="title">#531 · Observability & on-call</div>
+    <div class="meta">Static UX mock · fictional data</div>
+  </header>
+  <div class="accent-line"></div>
+  <main class="bento">
 
-<article class="card c7"><h2>Customer journey synthetics</h2><div class="row"><span>OIDC signup + verified fixture</span><span>1.2s</span><span>99.9%</span><strong class="good">healthy</strong></div><div class="row"><span>Stripe paid webhook → ledger credit</span><span>1.8s</span><span>99.8%</span><strong class="good">healthy</strong></div><div class="row"><span>Tenant provision → ready</span><span>3m 08s</span><span>98.9%</span><strong class="good">healthy</strong></div><div class="row"><span>Chat / Responses / Messages</span><span>1.7s p95</span><span>99.7%</span><strong class="good">healthy</strong></div><div class="row"><span>Usage → settlement → console</span><span>6.4s</span><span>99.6%</span><strong class="good">healthy</strong></div></article>
-<article class="card c5"><h2>Settlement consumer lag</h2><div class="spark" role="img" aria-label="Settlement lag"><i class="h25"></i><i class="h28"></i><i class="h22"></i><i class="h34"></i><i class="h48"></i><i class="h39"></i><i class="h31"></i><i class="h27"></i><i class="h23"></i><i class="h26"></i><i class="h22"></i><i class="h25"></i></div><p>p95 4.2s · oldest 9.1s · page at 60s</p><button class="btn" type="button">Open ledger runbook</button></article>
+    <div class="tile span-2"><h2>Signup</h2><div class="value" style="font-size:16px">99.2%</div></div>
+    <div class="tile span-2"><h2>Provision p95</h2><div class="value" style="font-size:16px">2.1m</div></div>
+    <div class="tile span-2"><h2>Webhook lag</h2><div class="value" style="font-size:16px">9s</div></div>
+    <div class="tile span-2"><h2>x402 settle</h2><div class="value" style="font-size:16px">180ms</div></div>
+    <div class="tile span-2"><h2>Reconcile Δ</h2><div class="value" style="font-size:16px">$0.00</div></div>
+    <div class="tile span-2"><h2>Pages</h2><div class="value" style="font-size:16px">0</div></div>
+    <div class="tile span-12"><h2>On-call</h2><div class="sub">Primary: sre-demo · Secondary: finance-oncall · Status page components: API, Checkout, x402</div></div>
 
-<article class="card c8"><h2>Financial integrity and grants</h2><div class="row"><span>Balanced journal violations</span><span>0</span><span>zero tolerance</span><span class="tag">OK</span></div><div class="row"><span>Negative available prevented</span><span>183</span><span>24h</span><span class="tag">OK</span></div><div class="row"><span>Stuck holds &gt; 10m</span><span>2</span><span>$0.14</span><span class="tag warn">WARN</span></div><div class="row"><span>Grant refresh failures</span><span>0.03%</span><span>24h</span><span class="tag">OK</span></div><div class="row"><span>Admission over signed authority</span><span>0</span><span>all time</span><span class="tag">OK</span></div></article>
-<article class="card c4"><h2>Provisioning states</h2><div class="row"><span>Active</span><span>1,284</span><span></span><span class="tag">OK</span></div><div class="row"><span>Running</span><span>7</span><span>oldest 4m</span><span class="tag">OK</span></div><div class="row"><span>Failed/retry</span><span>1</span><span>safe op id</span><span class="tag warn">WATCH</span></div><div class="row"><span>Orphan resources</span><span>0</span><span></span><span class="tag">OK</span></div></article>
-
-<article class="card c12"><div class="incident"><strong>Open incident · SEV-3</strong> — Two settlement holds exceed the 10-minute objective after a worker rollout. Customer balances remain conservatively held; no negative exposure. <button class="btn" type="button">Open timeline</button> <button class="btn" type="button">Run reconciliation</button></div></article>
-
-<article class="card c4"><h2>Stripe and fulfillment</h2><div class="row"><span>Signed events</span><span>4,812</span><span></span><span class="tag">OK</span></div><div class="row"><span>Invalid signature</span><span>7</span><span>denied</span><span class="tag">OK</span></div><div class="row"><span>Dead letters</span><span>0</span><span></span><span class="tag">OK</span></div></article><article class="card c4"><h2>Security and abuse</h2><div class="row"><span>Cross-tenant denials</span><span>12</span><span>24h</span><span class="tag">reviewed</span></div><div class="row"><span>Kill switches</span><span>1</span><span>tenant</span><span class="tag warn">open</span></div><div class="row"><span>Metrics normal-caller access</span><span>0 allowed</span><span></span><span class="tag">OK</span></div></article><article class="card c4"><h2>On-call</h2><p>Primary: Platform SRE<br>Finance: FinOps<br>Security: SecOps</p><button class="btn" type="button">Runbooks</button> <button class="btn" type="button">Status page</button></article>
-</section></main></div></body></html>
+  </main>
+  <footer class="footer">
+    <span>#531 · subscription + included allowance + x402 overage</span>
+    <span>No real credentials, prices, or customer data</span>
+  </footer>
+</div>
+</body>
+</html>

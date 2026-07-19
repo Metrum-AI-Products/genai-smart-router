@@ -1,0 +1,4 @@
+interface:
+  display_name: "Narrated Video Production"
+  short_description: "Create approval-gated narrated videos"
+  default_prompt: "Use $narrated-video-production to create an approval-gated demo video from these instructions and sources."

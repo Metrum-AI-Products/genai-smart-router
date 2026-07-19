@@ -4,6 +4,8 @@ Plan version: **v1.0.0**
 Issue: [#524](https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/524)  
 Classification: **launch blocking**
 
+**Commercial model update (2026-07-19):** This plan is superseded in part by DECISIONS.md D3. The hosted product is base monthly Stripe subscription + model-mix included allowance + x402 overage. Prepaid credit packs / Stripe Billing Meters are not the primary overage rail. Read this document with that model in mind; the GitHub issue body is the current source of truth.
+
 ## Product and UI approach
 
 Use Stripe-hosted Checkout for one-time prepaid credit packs and Stripe Customer

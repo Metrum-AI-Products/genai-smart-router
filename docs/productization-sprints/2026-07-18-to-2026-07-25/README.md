@@ -13,25 +13,36 @@ end-to-end flow, tests, evidence, observability, rollback, and completion rule.
 
 ## Product flow this sprint is designing
 
+Commercial model (see `DECISIONS.md` D3): **base monthly subscription** (Stripe)
++ **included usage allowance** sized by the plan's model mix (input + output
+tokens and any plan-defined billable units) + **x402 per-request payment** for
+usage beyond the included allowance.
+
 ```text
 customer signup + verified email
   -> organization/tenant created in commercial control plane
-  -> trial risk check OR Stripe-hosted prepaid Checkout
-  -> signed webhook -> immutable ledger credit
+  -> trial risk check OR Stripe-hosted subscription Checkout
+  -> signed webhook -> active subscription entitlement
+  -> ledger: recognize subscription + grant included-allowance for the period
   -> provisioning saga
        shared launch path: logical tenant + caller + lease/grant on regional EKS fleet
        dedicated path: namespace/Helm + secrets + license + DNS/TLS + smokes
   -> API token shown once + /v1/models test
-  -> inference admission reserves from local signed balance grant
-  -> upstream call -> usage persisted -> async ledger settlement
-  -> console balance/usage + alerts + top-up
-  -> suspend/cancel: revoke future grants first, then governed teardown
+  -> inference admission:
+       1. validate subscription entitlement (local, cached)
+       2. reserve from included-allowance grant (worst-case quote)
+       3. if allowance cannot cover the quote -> x402 challenge (HTTP 402)
+       4. on valid x402 payment -> verify + settle locally, then proceed
+  -> upstream call -> usage persisted
+  -> async ledger settlement (allowance consume / x402 settlement record)
+  -> console: subscription state, included-allowance usage, x402 spend, alerts
+  -> suspend/cancel: revoke future grants/leases first, then governed teardown
 ```
 
 Stripe, card state, disputes, invoices, and the commercial ledger remain outside
-the inference request path. A router request validates a locally available signed
-grant and uses its existing admission/reservation controls; it never calls Stripe
-or waits on the commercial control plane.
+the inference request path. A router request validates a locally available
+subscription entitlement and included-allowance grant, or a valid x402
+settlement; it never calls Stripe or waits on the commercial control plane.
 
 ## Ordered implementation documents
 
@@ -45,52 +56,64 @@ observability begin early and close after the surfaces they assess exist.
 | 02 | #527 | [Migration-safe EKS delivery foundation](02-release-engineering-527.md) | launch blocking |
 | 03 | #530 | [Threat model and compliance baseline](03-security-compliance-530.md) | launch blocking |
 | 04 | #521 | [Commercial control plane and tenant lifecycle](04-control-plane-lifecycle-521.md) | launch blocking |
-| 05 | #523 | [Double-entry prepaid ledger](05-prepaid-ledger-523.md) | launch blocking |
-| 06 | #522 | [Balance grants and router admission](06-balance-grants-522.md) | launch blocking |
-| 07 | #526 | [EKS tenant provisioning and teardown](07-eks-provisioning-526.md) | launch blocking |
-| 08 | #529 | [Abuse, fraud, and provider-cost protection](08-abuse-fraud-protection-529.md) | launch blocking |
-| 09 | #524 | [Stripe payment and reconciliation flow](09-stripe-payments-524.md) | launch blocking |
-| 10 | #525 | [Prosumer onboarding and console](10-prosumer-console-525.md) | launch blocking |
-| 11 | #531 | [SLOs, monitoring, and on-call](11-observability-oncall-531.md) | launch blocking |
-| 12 | #533 | [Docs, legal, pricing, and support](12-docs-legal-support-533.md) | launch blocking |
-| 13 | #528 | [Experimental-model canaries](13-routing-canaries-528.md) | fast follow |
-| 14 | #532 | [Marketplace and hardened artifacts](14-marketplace-artifacts-532.md) | fast follow |
+| 05 | #540 | [Plan catalog: SKUs, allowance, x402 bands](15-plan-catalog-540.md) | launch blocking |
+| 06 | #523 | [Double-entry prepaid ledger](05-prepaid-ledger-523.md) | launch blocking |
+| 07 | #522 | [Balance grants and router admission](06-balance-grants-522.md) | launch blocking |
+| 08 | #506 | [x402 overage payment and settlement](16-x402-overage-506.md) | launch blocking |
+| 09 | #526 | [EKS tenant provisioning and teardown](07-eks-provisioning-526.md) | launch blocking |
+| 10 | #529 | [Abuse, fraud, and provider-cost protection](08-abuse-fraud-protection-529.md) | launch blocking |
+| 11 | #524 | [Stripe subscription and reconciliation](09-stripe-payments-524.md) | launch blocking |
+| 12 | #525 | [Prosumer onboarding and console](10-prosumer-console-525.md) | launch blocking |
+| 13 | #531 | [SLOs, monitoring, and on-call](11-observability-oncall-531.md) | launch blocking |
+| 14 | #533 | [Docs, legal, pricing, and support](12-docs-legal-support-533.md) | launch blocking |
+| 15 | #534 | [Integrated beta: sub + allowance + x402](17-integrated-beta-534.md) | launch gate |
+| 16 | #528 | [Experimental-model canaries](13-routing-canaries-528.md) | fast follow |
+| 17 | #532 | [Marketplace and hardened artifacts](14-marketplace-artifacts-532.md) | fast follow |
+| 18 | #541 | [Outcome-based auto-tune](18-auto-tune-541.md) | fast follow |
 
 ## Viewable UI prototypes
 
-These are static, customer-safe design previews. Open them directly in a browser;
-they contain fictional values and no production configuration or credentials.
+**Canonical UX catalog (narratives + Metrum bento mocks):** [`ux/INDEX.md`](ux/INDEX.md)
 
-* Checkout and provisioning journey: [HTML](previews/checkout-provisioning.html) · [PNG](previews/checkout-provisioning.png)
-* Prosumer console: [HTML](previews/prosumer-console.html) · [PNG](previews/prosumer-console.png)
-* Canary operations console: [HTML](previews/canary-operations.html) · [PNG](previews/canary-operations.png)
-* Operations and reconciliation dashboard: [HTML](previews/operations-dashboard.html) · [PNG](previews/operations-dashboard.png)
+Master E2E subscription journey: [`ux/e2e-subscription.md`](ux/e2e-subscription.md) · personas: [`ux/personas.md`](ux/personas.md)
 
-## Narrated-video approval package
+Rewritten previews (subscription + included allowance + x402; bento/Metrum):
 
-[`dubday.mp4` approval package](video/dubday-approval-package.md) contains the
-complete approval-gated narration, scene/timing plan, proposed mock-screen
-captures, test-proof montage, and July 18–25 release-plan sequence. No audio or
-video render may begin until the narration is explicitly approved.
+* Checkout and provisioning: [HTML](ux/previews/checkout-provisioning.html) (also mirrored under [previews/](previews/checkout-provisioning.html))
+* Prosumer console: [HTML](ux/previews/prosumer-console.html)
+* Canary operations: [HTML](ux/previews/canary-operations.html)
+* Operations dashboard: [HTML](ux/previews/operations-dashboard.html)
+
+Per-issue narrative + HTML: [`ux/issues/`](ux/issues/) · Shipped surfaces: [`ux/shipped/`](ux/shipped/)
+
+Legacy PNG thumbnails under `previews/*.png` may still show prepaid-era art; prefer the HTML mocks above.
+
+## Narrated-video approval packages
+
+* Sprint dubday package: [`video/dubday-approval-package.md`](video/dubday-approval-package.md)
+* **Mock-interaction clips (V1–V7, ~1 min each):** [`ux/video/README.md`](ux/video/README.md) — awaiting explicit narration approval before TTS/render.
+
+No audio or video render may begin until the relevant narration is explicitly approved.
 
 ## Decisions required from people
 
 The launch defaults below are recommendations only until the named owner records
 approval. See the full tradeoffs in the root [`DECISIONS.md`](../../../DECISIONS.md).
 
-| Gate | Recommended launch default | Owner | Blocks |
+| Gate | Launch default | Owner | Blocks |
 | --- | --- | --- | --- |
 | D1 tenancy | Shared regional EKS fleet with logical tenant isolation | Product + Security + SRE | #521, #526 |
 | D2 ledger | PostgreSQL double-entry behind a `Ledger` interface | Finance + Architecture | #522, #523 |
-| D3 billing | Prepaid credits with opt-in auto-top-up | Product + Finance | #524, #525 |
-| D4 pricing | Versioned per-model-group price book and deterministic microcredit rounding | Finance + Product | #522-#525 |
-| D5 Marketplace | SaaS/private offer after direct Stripe launch; AMI/container for BYOC | Commercial | #532 |
+| D3 billing | **DECIDED:** base monthly Stripe subscription + model-mix included allowance + x402 overage | Product + Finance | #506, #522–#525, #534 |
+| D4 pricing | Versioned plan SKUs (Stripe Price + included tokens by mix + x402 bands) | Finance + Product | #506, #522–#525, #534 |
+| D5 Marketplace | SaaS/private offer after Stripe+x402 launch; AMI/container for BYOC | Commercial | #532 |
 | D6 region | One disclosed launch region; region field is immutable after provisioning | Legal + SRE | #521, #526 |
-| D7 providers | Pooled keys only behind grants/hard caps; BYOK fast-follow | Finance + Security | #522, #526 |
+| D7 providers | Pooled keys only behind entitlement + allowance grants + x402; BYOK fast-follow | Finance + Security | #522, #526 |
 | D8 identity/email | Managed OIDC with verified-email and MFA-ready claims; recommend Cognito on AWS | Security + Product | #521, #525 |
 | D9 domain | One regional API hostname for shared tenancy; per-tenant DNS only for dedicated tier | Product + SRE | #526 |
-| D10 trial policy | Small one-time credit only after verified identity and risk checks | Finance + Legal + Security | #529 |
-| D11 customer error | Use a new documented `balance-exhausted` error with HTTP status approved by API owner | API + Product | #522, #525, #533 |
+| D10 trial policy | Time-boxed trial **subscription entitlement** (not prepaid cash) after verified identity/risk | Finance + Legal + Security | #529 |
+| D11 customer error | Distinct `entitlement-*` / `payment-required` / `payment-invalid` / `payment-unavailable` errors | API + Product | #506, #522, #525, #533, #534 |
+| D12 x402 prod | Protocol+staging launch-blocking; live settlement gated on treasury/compliance | Security + Finance + Legal | #506, #534 |
 
 ## Definition of sprint-plan completeness
 
