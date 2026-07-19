@@ -174,6 +174,7 @@ func encodeUpstreamForTarget(dialect, model string, req *IRRequest, target Targe
 		body := map[string]any{"model": model, "messages": msgs, "stream": false}
 		applyOpenAIChatMaxTokens(body, req, false)
 		applyTargetOpenAIChatEncoding(body, target)
+		applyDefaultOpenAIChatThinking(body, target)
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature
 		}
@@ -211,10 +212,21 @@ func encodeChatPassthrough(model string, req *IRRequest, target Target) ([]byte,
 	delete(body, "stream_options")
 	applyOpenAIChatMaxTokens(body, req, true)
 	applyTargetOpenAIChatEncoding(body, target)
+	applyDefaultOpenAIChatThinking(body, target)
 	if err := applyReasoningToOpenAIChat(body, req, target); err != nil {
 		return nil, err
 	}
 	return json.Marshal(body)
+}
+
+func applyDefaultOpenAIChatThinking(body map[string]any, target Target) {
+	if len(target.DefaultOpenAIChatThinking) == 0 {
+		return
+	}
+	if _, present := body["thinking"]; present {
+		return
+	}
+	body["thinking"] = target.DefaultOpenAIChatThinking
 }
 
 func encodeAnthropicPassthrough(model string, req *IRRequest, target Target) ([]byte, error) {

@@ -266,6 +266,30 @@ providers:
           openai_chat:
           - tools
           - tool_choice
+      kimi-k3:
+        model: kimi-k3
+        tier: frontier
+        context_tokens: 1000000
+        input_modalities: [text]
+        output_modalities: [text]
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
+        pricing_source: https://platform.kimi.ai/
+        pricing_updated_at: '2026-07-19'
+        pricing_notes: Kimi K3 direct OpenAI Chat text, SSE streaming, max_tokens=1,
+          JSON-schema, auto/forced function-tool, function-result continuation,
+          and 524 KB synthetic 24-tool payload smokes passed on 2026-07-19. K3
+          rejects forced tool_choice while its upstream thinking mode is enabled;
+          configure default_openai_chat_thinking.type=disabled only on a target
+          that passed the same router-level smokes. Do not claim OpenAI Responses
+          support because the native endpoint returned 404. Explicit caller
+          reasoning remains separately eligible and must not be inferred from
+          this compatibility default.
+        tool_support:
+          openai_chat:
+          - tools
+          - tool_choice
+          - structured_outputs
   xai:
     base_url: https://api.x.ai/v1
     dialect: openai-chat
@@ -1183,6 +1207,25 @@ providers:
         output_price_per_million_usd: 3.5
         pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
         pricing_updated_at: '2026-06-17'
+        tool_support:
+          anthropic_messages:
+          - client_tools
+      kimi-k3:
+        model: kimi-k3
+        tier: frontier
+        context_tokens: 1000000
+        input_modalities: [text]
+        output_modalities: [text]
+        input_price_per_million_usd: 3.0
+        output_price_per_million_usd: 15.0
+        pricing_source: https://platform.kimi.ai/
+        pricing_updated_at: '2026-07-19'
+        pricing_notes: Kimi K3 direct Anthropic Messages text, SSE streaming,
+          max_tokens=1, auto/forced client-tool, and thinking smokes passed on
+          2026-07-19. Forced client tools with thinking enabled returned HTTP 400;
+          use default_thinking.type=disabled on tool-capable targets and omit
+          reasoning metadata so explicit thinking traffic selects a separately
+          validated target. Native OpenAI Responses returned 404.
         tool_support:
           anthropic_messages:
           - client_tools

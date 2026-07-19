@@ -281,6 +281,18 @@ models:
 
 Use `output_token_field: max_completion_tokens` for models that reject Chat Completions `max_tokens`, including tool-bearing requests. This is independent of reasoning metadata: if reasoning compatibility also rewrites `max_tokens`, both rules converge on `max_completion_tokens` and the router avoids sending both cap fields.
 
+`default_openai_chat_thinking` is a target-scoped OpenAI Chat passthrough default for an upstream-specific `thinking` object. The router adds it only when the caller did not supply `thinking`; it never rewrites an explicit caller value. Use it only after direct and router-level validation proves that the exact provider/model needs a default thinking mode for an otherwise supported request shape. A value of `type: disabled` is an encoding compatibility setting, not a claim that the target supports caller-requested reasoning; do not add reasoning metadata merely because this default is configured.
+
+```yaml
+models:
+  deployment-defined-group:
+    targets:
+      - provider: compatible-provider
+        model_ref: validated-model
+        default_openai_chat_thinking:
+          type: disabled
+```
+
 Responses targets use `max_output_tokens`; Anthropic Messages targets use `max_tokens`. Store output-cap quirks as target metadata, for example `min_requested_output_tokens`, `honors_max_tokens: false`, or `output_token_field: max_completion_tokens`, so tiny caller caps can be forwarded, translated, or filtered consistently. A model that supports reasoning with realistic budgets may still reject or exhaust tiny caps; document that as a cap behavior caveat rather than as broad reasoning failure.
 
 ## Reasoning And Thinking

@@ -541,6 +541,7 @@ type Target struct {
 	ToolOnly                           bool                  `yaml:"tool_only" json:"toolOnly,omitempty"`
 	TimeoutMS                          int                   `yaml:"timeout_ms" json:"timeoutMs,omitempty"`
 	DefaultThinking                    map[string]any        `yaml:"default_thinking" json:"defaultThinking,omitempty"`
+	DefaultOpenAIChatThinking          map[string]any        `yaml:"default_openai_chat_thinking" json:"defaultOpenaiChatThinking,omitempty"`
 	Tags                               []string              `yaml:"tags" json:"tags,omitempty"`
 	Weight                             int                   `yaml:"weight" json:"weight"`
 	RPM                                int                   `yaml:"rpm" json:"rpm"`

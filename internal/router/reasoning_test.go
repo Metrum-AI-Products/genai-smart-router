@@ -415,6 +415,17 @@ func TestReasoningModelListDoesNotAdvertiseToolOnlyThinking(t *testing.T) {
 	t.Fatalf("default group missing from /v1/models: %#v", body)
 }
 
+func TestDisabledDefaultThinkingDoesNotAdvertiseReasoning(t *testing.T) {
+	target := Target{DefaultThinking: map[string]any{"type": "disabled"}}
+	if targetSupportsReasoning(target) {
+		t.Fatalf("disabled default thinking must not advertise reasoning support: %#v", target)
+	}
+	request := &IRRequest{Reasoning: ReasoningIntent{Requested: true, Kind: "token_budget", BudgetTokens: 512}}
+	if targetCanSatisfyReasoning(target, "anthropic", request) {
+		t.Fatalf("disabled default thinking must not satisfy an explicit reasoning request: %#v", target)
+	}
+}
+
 func assertEmptyCodexReasoningModelMetadata(t *testing.T, model map[string]any) {
 	t.Helper()
 	for _, key := range []string{

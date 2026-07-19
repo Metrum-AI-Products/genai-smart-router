@@ -62,7 +62,14 @@ func requestRequiresReasoning(req *IRRequest) bool {
 }
 
 func targetSupportsReasoning(target Target) bool {
-	return target.Reasoning.Supported || strings.EqualFold(target.Reasoning.Mode, reasoningModeAlwaysOn) || len(target.DefaultThinking) > 0
+	return target.Reasoning.Supported || strings.EqualFold(target.Reasoning.Mode, reasoningModeAlwaysOn) || defaultThinkingEnabled(target)
+}
+
+func defaultThinkingEnabled(target Target) bool {
+	if len(target.DefaultThinking) == 0 {
+		return false
+	}
+	return !strings.EqualFold(strings.TrimSpace(stringValue(target.DefaultThinking["type"])), "disabled")
 }
 
 func targetCanSatisfyReasoning(target Target, outDialect string, req *IRRequest) bool {
@@ -75,7 +82,7 @@ func targetCanSatisfyReasoning(target Target, outDialect string, req *IRRequest)
 	control := strings.ToLower(strings.TrimSpace(target.Reasoning.Control))
 	switch outDialect {
 	case "anthropic":
-		if control != reasoningControlTokenBudget && len(target.DefaultThinking) == 0 {
+		if control != reasoningControlTokenBudget && !defaultThinkingEnabled(target) {
 			return false
 		}
 		return reasoningBudgetForTarget(req.Reasoning, target) > 0

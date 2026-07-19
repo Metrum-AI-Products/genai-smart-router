@@ -3047,7 +3047,7 @@ func targetSupportsReasoningForDialect(target Target, dialect string) bool {
 	control := strings.ToLower(strings.TrimSpace(target.Reasoning.Control))
 	switch normalizeDialect(dialect) {
 	case "anthropic":
-		return control == reasoningControlTokenBudget || len(target.DefaultThinking) > 0
+		return control == reasoningControlTokenBudget || defaultThinkingEnabled(target)
 	case "openai-chat", "openai-responses":
 		return control == reasoningControlEffortEnum || control == reasoningControlTokenBudget
 	default:

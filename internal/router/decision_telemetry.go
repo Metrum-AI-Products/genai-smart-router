@@ -130,7 +130,7 @@ func (s *Service) recordEligibilityTelemetry(rc *requestContext, groupName strin
 			ReasoningSupport:            targetSupportsReasoning(target),
 			ReasoningMode:               target.Reasoning.Mode,
 			ReasoningControl:            target.Reasoning.Control,
-			ReasoningDefault:            target.Reasoning.DefaultOn || len(target.DefaultThinking) > 0,
+			ReasoningDefault:            target.Reasoning.DefaultOn || defaultThinkingEnabled(target),
 			ReasoningStream:             target.Reasoning.StreamBlock,
 			ValidationStatus:            decisionCandidateValidationStatus(target.Validation),
 			ValidationAge:               validationAgeBucket(target.Validation, time.Now().UTC()),

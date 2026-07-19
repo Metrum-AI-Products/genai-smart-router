@@ -9404,6 +9404,68 @@ func TestAnthropicToolPassthroughAppliesDefaultThinking(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatToolPassthroughAppliesTargetDefaultThinking(t *testing.T) {
+	var gotThinking map[string]any
+	var gotToolChoice any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		gotThinking, _ = body["thinking"].(map[string]any)
+		gotToolChoice = body["tool_choice"]
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      "chatcmpl_kimi",
+			"object":  "chat.completion",
+			"model":   body["model"],
+			"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(t, upstream.URL, "provider-key", t.TempDir())
+	cfg.Models["kimi-k3-tools"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:                  "mock",
+		Model:                     "kimi-k3",
+		DefaultOpenAIChatThinking: map[string]any{"type": "disabled"},
+		ToolSupport:               ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+	}}}
+	cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, "kimi-k3-tools")
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	request := func(thinking string) {
+		body := `{"model":"kimi-k3-tools","messages":[{"role":"user","content":"use the tool"}],"tools":[{"type":"function","function":{"name":"echo","parameters":{"type":"object"}}}],"tool_choice":{"type":"function","function":{"name":"echo"}}}`
+		if thinking != "" {
+			body = strings.TrimSuffix(body, `}`) + `,"thinking":{"type":"` + thinking + `"}}`
+		}
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+
+	request("")
+	if gotThinking["type"] != "disabled" {
+		t.Fatalf("thinking=%#v, want target default disabled", gotThinking)
+	}
+	if gotToolChoice == nil {
+		t.Fatal("tool_choice was removed, want caller option preserved")
+	}
+
+	request("enabled")
+	if gotThinking["type"] != "enabled" {
+		t.Fatalf("thinking=%#v, want caller value preserved", gotThinking)
+	}
+}
+
 func TestResponsesToolPassthroughUsesMiniMaxResponsesProviderSkin(t *testing.T) {
 	var gotPath, gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -36,7 +36,7 @@ Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted 
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
 | Text routing | relevant dialect with realistic token budget |
 | Max-token cap | request with `max_tokens: 1`, OpenAI Chat `max_completion_tokens: 1`, or Responses `max_output_tokens: 1` |
-| OpenAI-compatible encoding | prove `force_store_false` and `output_token_field` produce the upstream payload the exact provider accepts |
+| OpenAI-compatible encoding | prove `force_store_false`, `output_token_field`, and any target-scoped `default_openai_chat_thinking` produce the upstream payload the exact provider accepts without overriding caller intent |
 | Reasoning production proof | restricted `reasoning-smoke` or deployment-selected group; `/v1/models` reasoning metadata, OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning.effort`, Anthropic Messages `thinking`, and usage DB `request_translation_shapes.translated_reasoning_control` for every request ID |
 | Chat-to-Responses bridge | restricted smoke group with `bridges.chat_to_responses.enabled: true`; Chat non-streaming text request, Chat function-tool request when `tools: true`, Chat `reasoning_effort` only when `bridges.chat_to_responses.reasoning: true`, optional two-request stateful-session proof when `stateful_sessions.enabled`, negative unsupported shape such as `stream:true`, usage rows with inbound Chat and target Responses, and safe translation-shape diagnostics |
 | Usage/cost fields | query usage DB/report after a request |
