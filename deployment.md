@@ -1,6 +1,6 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-09
+Last deployed: 2026-07-19
 
 ## EKS Staging Migration Status
 
@@ -39,8 +39,8 @@ reconciliation and DNS transition. See `docs/EKS_STAGING_MIGRATION.md`.
 
 ## Deployed Version
 
-- Router package/image version: `f52a918-linux-amd64`
-- Source commit: `f52a918`
+- Router package/image version: `834aa41-linux-amd64`
+- Source commit: `834aa41`
 - Deployment root: `/opt/smart-llmrouter`
 - Compose directory: `/opt/smart-llmrouter/compose`
 - Router config: `/opt/smart-llmrouter/compose/config/config.yaml`
@@ -54,6 +54,45 @@ reconciliation and DNS transition. See `docs/EKS_STAGING_MIGRATION.md`.
 - Steen production token file: `/opt/smart-llmrouter/compose/ROUTER_TOKEN_STEEN.txt`
 
 Do not copy `env.json`, `ROUTER_TOKEN.txt`, `ROUTER_TOKEN_HARBOR.txt`, or `ROUTER_TOKEN_STEEN.txt` into git, chat, tickets, or logs. Token files are stored on the host as `ubuntu:ubuntu` with mode `0600`.
+
+## 2026-07-19 Kimi K3 Big-Coder-Latest Production Rollout
+
+Deployed `smart-llmrouter:834aa41-linux-amd64` and introduced the opt-in
+`big-coder-latest` group. The stable `big-coder` group was not changed. Every
+active production caller can discover and use `big-coder-latest` through
+`/v1/models`.
+
+Kimi K3 has exactly 35% configured weight in the validated OpenAI Chat target
+set and exactly 35% in the Anthropic Messages tool target set. The K3 Chat
+target supplies `thinking: {type: disabled}` only when the client omits the
+field, allowing forced tools; an explicit caller thinking request excludes K3.
+K3 is deliberately excluded from OpenAI Responses traffic because the provider
+documents Chat Completions compatibility and direct native Responses testing
+returned 404. Other `big-coder-latest` targets continue to serve Responses.
+
+Production configuration backups:
+
+```text
+/opt/smart-llmrouter/compose/config/config.yaml.bak.k3-20260719T022644Z
+/opt/smart-llmrouter/compose/config/config.yaml.bak.k3-dialect-20260719T023216Z
+```
+
+Validation:
+
+- Direct K3 tests passed for OpenAI Chat text, streaming usage, explicit tiny
+  output cap, JSON Schema output, auto and forced tools with no-thinking,
+  tool-result continuation, and a synthetic 524 KB / 24-tool payload.
+- Direct K3 Anthropic Messages tests passed for text, streaming, output cap,
+  auto and forced client tools with no-thinking, and tool-result continuation.
+- Production `/v1/models` exposes `big-coder-latest` to the reusable smoke
+  caller; the configuration validator confirmed 33 caller grants.
+- Production forced-tool tests selected K3 and returned an OpenAI Chat tool
+  call and an Anthropic Messages `tool_use` block.
+- Production K3 Chat JSON Schema output returned the expected valid object;
+  streaming selected K3, included usage, and completed with `[DONE]`.
+- Production OpenAI Responses selected MiniMax M3 rather than K3 and returned
+  a completed response. An explicit Chat thinking request selected a non-K3
+  target.
 
 ## 2026-07-09 Upstream Error And Documentation Package Refresh
 

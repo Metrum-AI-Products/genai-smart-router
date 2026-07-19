@@ -276,6 +276,8 @@ providers:
         output_price_per_million_usd: 15.0
         pricing_source: https://platform.kimi.ai/
         pricing_updated_at: '2026-07-19'
+        request_shape_support:
+          supported_inbound_dialects: [openai-chat]
         pricing_notes: Kimi K3 direct OpenAI Chat text, SSE streaming, max_tokens=1,
           JSON-schema, auto/forced function-tool, function-result continuation,
           and 524 KB synthetic 24-tool payload smokes passed on 2026-07-19. K3
@@ -1220,6 +1222,8 @@ providers:
         output_price_per_million_usd: 15.0
         pricing_source: https://platform.kimi.ai/
         pricing_updated_at: '2026-07-19'
+        request_shape_support:
+          supported_inbound_dialects: [anthropic]
         pricing_notes: Kimi K3 direct Anthropic Messages text, SSE streaming,
           max_tokens=1, auto/forced client-tool, and thinking smokes passed on
           2026-07-19. Forced client tools with thinking enabled returned HTTP 400;
