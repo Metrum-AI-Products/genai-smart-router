@@ -66,6 +66,13 @@ they contain fictional values and no production configuration or credentials.
 * Canary operations console: [HTML](previews/canary-operations.html) · [PNG](previews/canary-operations.png)
 * Operations and reconciliation dashboard: [HTML](previews/operations-dashboard.html) · [PNG](previews/operations-dashboard.png)
 
+## Narrated-video approval package
+
+[`dubday.mp4` approval package](video/dubday-approval-package.md) contains the
+complete approval-gated narration, scene/timing plan, proposed mock-screen
+captures, test-proof montage, and July 18–25 release-plan sequence. No audio or
+video render may begin until the narration is explicitly approved.
+
 ## Decisions required from people
 
 The launch defaults below are recommendations only until the named owner records
