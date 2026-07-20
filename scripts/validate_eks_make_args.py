@@ -28,6 +28,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--cluster")
     result.add_argument("--namespace")
     result.add_argument("--linkerd-namespace")
+    result.add_argument("--ingress-namespace")
+    result.add_argument("--ingress-service-account")
     result.add_argument("--ecr-repository")
     result.add_argument("--output")
     return result
@@ -48,6 +50,13 @@ def main() -> int:
                 validate(name, value)
             if args.linkerd_namespace:
                 validate("namespace", args.linkerd_namespace)
+            if bool(args.ingress_namespace) != bool(args.ingress_service_account):
+                raise ValueError("ingress namespace and service account must be supplied together")
+            if args.linkerd_namespace:
+                validate("namespace", args.ingress_namespace)
+                validate("namespace", args.ingress_service_account)
+            elif args.ingress_namespace:
+                raise ValueError("ingress identity is only valid when Linkerd discovery is selected")
             output = Path(args.output or "")
             if not output.is_absolute() or output.parent == Path("/"):
                 raise ValueError("output must be an explicit absolute path outside the repository")

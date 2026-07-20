@@ -21,6 +21,8 @@ EKS_REGION ?=
 EKS_CLUSTER ?=
 EKS_NAMESPACE ?=
 EKS_LINKERD_NAMESPACE ?=
+EKS_INGRESS_NAMESPACE ?=
+EKS_INGRESS_SERVICE_ACCOUNT ?=
 EKS_ECR_REPOSITORY ?=
 EKS_DISCOVERY_OUTPUT ?=
 EKS_ADMIN_PROFILE ?= default
@@ -30,7 +32,7 @@ EKS_MFA_KEYCHAIN_SERVICE ?=
 EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
 EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
@@ -55,6 +57,7 @@ secret-check:
 	python3 scripts/validate_docker_context.py
 	python3 scripts/harness_security_test.py
 	python3 scripts/makefile_security_test.py
+	python3 scripts/bootstrap_eks_session_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata
 
@@ -211,11 +214,11 @@ eks-identity-check:
 	esac
 
 eks-discovery-validate:
-	python3 scripts/validate_eks_make_args.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
+	python3 scripts/validate_eks_make_args.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ingress-namespace "$$EKS_INGRESS_NAMESPACE" --ingress-service-account "$$EKS_INGRESS_SERVICE_ACCOUNT" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
 
 eks-discover: eks-discovery-validate eks-identity-check
 	if [ -n "$$EKS_LINKERD_NAMESPACE" ]; then \
-		python3 scripts/eks_discover.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"; \
+		python3 scripts/eks_discover.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ingress-namespace "$$EKS_INGRESS_NAMESPACE" --ingress-service-account "$$EKS_INGRESS_SERVICE_ACCOUNT" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"; \
 	else \
 		python3 scripts/eks_discover.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"; \
 	fi

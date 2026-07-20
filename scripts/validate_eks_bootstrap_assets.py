@@ -14,6 +14,7 @@ DISCOVERY_ROLE = ROOT / "deploy/aws/genai-smart-router-eks-discovery-role.exampl
 LINKERD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-linkerd-policy.example.yaml"
 DISCOVERY_NAMESPACE_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml"
 DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linkerd-namespace-rbac.example.yaml"
+DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
 
 
 def main() -> int:
@@ -34,6 +35,7 @@ def main() -> int:
     for path, required_resources in (
         (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses")),
         (DISCOVERY_LINKERD_RBAC, ("serviceaccounts",)),
+        (DISCOVERY_INGRESS_RBAC, ("serviceaccounts",)),
     ):
         content = path.read_text(encoding="utf-8")
         if "kind: Role\n" not in content or "kind: RoleBinding\n" not in content or "kind: Group\n" not in content:

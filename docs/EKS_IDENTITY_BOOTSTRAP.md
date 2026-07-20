@@ -71,6 +71,8 @@ make eks-discover \
   EKS_CLUSTER=approved-cluster \
   EKS_NAMESPACE=tenant-approved-customer \
   EKS_LINKERD_NAMESPACE=linkerd \
+  EKS_INGRESS_NAMESPACE=ingress-nginx \
+  EKS_INGRESS_SERVICE_ACCOUNT=ingress-nginx \
   EKS_ECR_REPOSITORY=approved-router-repository \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json
 ```
@@ -86,6 +88,8 @@ python3 scripts/eks_discover.py \
   --cluster approved-cluster \
   --namespace approved-namespace \
   --linkerd-namespace linkerd \
+  --ingress-namespace ingress-nginx \
+  --ingress-service-account ingress-nginx \
   --ecr-repository approved-router-repository \
   --output /secure/evidence/eks-discovery.json
 ```
@@ -94,7 +98,9 @@ python3 scripts/eks_discover.py \
 cluster that does not use Linkerd. When selected, it is the explicit
 control-plane namespace (not a product default), and discovery requires the
 Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
-`ServerAuthorization` APIs used by the checked-in template.
+`ServerAuthorization` APIs used by the checked-in template. Select the actual
+ingress namespace and service account as well; discovery proves that exact
+identity exists before reporting Linkerd readiness.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
@@ -133,9 +139,11 @@ It also requires the reviewed namespace-scoped read-only binding in
 the selected tenant namespace: ServiceAccounts, NetworkPolicies, Deployments,
 Services, PVCs, and Ingresses. If Linkerd discovery is selected, apply the
 separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
-Linkerd control-plane namespace. Both templates bind the EKS access entry's
-configured Kubernetes group, not its IAM principal ARN; neither grants Secret
-or ConfigMap reads or any write verb.
+Linkerd control-plane namespace and
+`eks-discovery-ingress-namespace-rbac.example.yaml` in the selected ingress
+namespace. All templates bind the EKS access entry's configured Kubernetes
+group, not its IAM principal ARN; none grants Secret or ConfigMap reads or any
+write verb.
 
 The router workload uses EKS Pod Identity or IRSA only after discovery confirms
 cluster support. Its AWS policy may read only approved secret references and

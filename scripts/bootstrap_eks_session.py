@@ -58,11 +58,27 @@ def write_profiles(profile: str, role_profile: str, role_arn: str, region: str, 
 def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> None:
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
-        with temporary.open("x", encoding="utf-8") as file:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
             config.write(file)
             file.flush()
             os.fsync(file.fileno())
-        temporary.chmod(0o600)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def write_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    payload = json.dumps({"source_user": source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n"
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(payload)
+            file.flush()
+            os.fsync(file.fileno())
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -113,6 +129,9 @@ def main() -> int:
     try:
         access = json.loads(command(["aws", "iam", "create-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--output", "json"]))["AccessKey"]
         key_id = access["AccessKeyId"]
+        # Persist this before any network call or profile write: a killed process
+        # must leave an actionable key identifier, never durable credentials.
+        write_cleanup_record(args.cleanup_record, args.source_user, key_id)
         if args.propagation_wait_seconds:
             time.sleep(args.propagation_wait_seconds)
         env = os.environ.copy()
@@ -124,6 +143,7 @@ def main() -> int:
         deleted = delete_source_key()
         if not deleted:
             raise RuntimeError("temporary source key deletion failed after retries")
+        args.cleanup_record.unlink(missing_ok=True)
         key_id = ""
         role_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--output", "json"]))
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
@@ -131,9 +151,7 @@ def main() -> int:
     finally:
         if key_id:
             if not delete_source_key() and not deleted:
-                args.cleanup_record.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                args.cleanup_record.write_text(json.dumps({"source_user": args.source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n", encoding="utf-8")
-                args.cleanup_record.chmod(0o600)
+                write_cleanup_record(args.cleanup_record, args.source_user, key_id)
                 raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
 
