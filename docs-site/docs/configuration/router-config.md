@@ -61,6 +61,25 @@ active revisions: the loader samples at most two matching records and refuses
 to serve when more than one is present. Correct the configuration state or roll
 back to the reviewed revision before serving traffic.
 
+## Managed Catalog Capability Foundation
+
+The current managed-configuration foundation is an operator-installed,
+read-only relational projection; it is not enabled by normal router startup,
+and YAML remains the runtime configuration source today. When a deployment
+uses that projection for a provider catalog, each catalog model has one
+capability record plus normalized rows for validated tools, modalities,
+request-shape limits, inbound dialects, unsupported features, and explicit
+bridges. The loader rejects a model with no capability record rather than
+silently dropping its tool, image, bridge, output-cap, or output-token
+semantics.
+
+Catalog capability metadata is inherited by targets that use `model_ref`.
+Target-specific capability overrides and traffic-shaping overrides are not yet
+part of the managed projection; keep them in the reviewed YAML bootstrap
+configuration until the managed activation workflow supports typed overrides.
+This boundary keeps client-facing model eligibility deterministic while the
+control plane evolves.
+
 ## OpenAI Endpoint Compatibility
 
 `server.openai_compatibility.tolerate_responses_body_on_chat_endpoint` is disabled by default. Leave it disabled for deployments where clients use the normal API paths: Chat Completions bodies on `/v1/chat/completions` and Responses bodies on `/v1/responses`.

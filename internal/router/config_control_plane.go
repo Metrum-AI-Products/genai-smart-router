@@ -25,6 +25,8 @@ const configControlPlanePhase2MigrationID = 2026072002
 
 const configControlPlanePhase3MigrationID = 2026072003
 
+const configControlPlanePhase4MigrationID = 2026072004
+
 const configControlPlaneProviderHeaderNameConstraint = "router_config_provider_headers_non_secret_name_ck"
 
 const configControlPlaneProviderHeaderNameCheck = "header_name = TRIM(header_name) AND LOWER(header_name) IN ('http-referer', 'user-agent', 'x-title')"
@@ -33,7 +35,7 @@ const configControlPlaneProviderHeaderNameCIIndex = "router_config_provider_head
 
 const configControlPlaneOneActiveSetPerScopeIndex = "router_config_one_active_set_per_scope"
 
-var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 3, MinData: 0, MaxData: 0}
+var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 4, MinData: 0, MaxData: 0}
 
 var configControlPlaneMigrationDefinitions = []MigrationDefinition{
 	{
@@ -74,6 +76,19 @@ var configControlPlaneMigrationDefinitions = []MigrationDefinition{
 		RollbackClass:   "restore-required",
 		Apply:           applyConfigControlPlanePhase3,
 		Verify:          verifyConfigControlPlanePhase3,
+	},
+	{
+		ID:              configControlPlanePhase4MigrationID,
+		Scope:           configControlPlaneScope,
+		Name:            "project provider-model capability metadata relationally",
+		Release:         "2026.7",
+		Checksum:        "a22b2ec3ee8bdee8c28ce58fec61b1e1f91d3745791ef442b1fb6f9ad50f2e46",
+		SchemaVersion:   4,
+		Transactional:   true,
+		MaintenanceMode: "maintenance",
+		RollbackClass:   "restore-required",
+		Apply:           applyConfigControlPlanePhase4,
+		Verify:          verifyConfigControlPlanePhase4,
 	},
 }
 
@@ -169,7 +184,36 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 			return nil, err
 		}
 		for _, model := range models {
-			p.Models[model.ModelRef] = ProviderModel{Model: model.Model, Dialect: model.Dialect, DisplayName: model.DisplayName, ContextTokens: model.ContextTokens, InputPricePerMillionUSD: model.InputPricePerMillionUSD, OutputPricePerMillionUSD: model.OutputPricePerMillionUSD, PricingSource: model.PricingSource, PricingUpdatedAt: model.PricingUpdatedAt, PricingNotes: model.PricingNotes}
+			capabilities, err := loadProviderModelCapabilities(db, set.ID, row.ProviderName, model.ModelRef)
+			if err != nil {
+				return nil, err
+			}
+			p.Models[model.ModelRef] = ProviderModel{
+				Model:                              model.Model,
+				Dialect:                            model.Dialect,
+				DisplayName:                        model.DisplayName,
+				ContextTokens:                      model.ContextTokens,
+				InputPricePerMillionUSD:            model.InputPricePerMillionUSD,
+				OutputPricePerMillionUSD:           model.OutputPricePerMillionUSD,
+				ImageInputPricePerMillionTokensUSD: capabilities.ImageInputPricePerMillionTokensUSD,
+				ImageInputPricePerImageUSD:         capabilities.ImageInputPricePerImageUSD,
+				PricingSource:                      model.PricingSource,
+				PricingUpdatedAt:                   model.PricingUpdatedAt,
+				PricingNotes:                       model.PricingNotes,
+				ToolSupport:                        capabilities.ToolSupport,
+				Reasoning:                          capabilities.Reasoning,
+				InputModalities:                    capabilities.InputModalities,
+				OutputModalities:                   capabilities.OutputModalities,
+				HonorsMaxTokens:                    capabilities.HonorsMaxTokens,
+				ForceStoreFalse:                    capabilities.ForceStoreFalse,
+				OutputTokenField:                   capabilities.OutputTokenField,
+				RequestShapeSupport:                capabilities.RequestShapeSupport,
+				ResponsesToChat:                    capabilities.ResponsesToChat,
+				Bridges:                            capabilities.Bridges,
+				RPM:                                capabilities.RPM,
+				Tier:                               capabilities.Tier,
+				Cost:                               capabilities.Cost,
+			}
 		}
 		cfg.Provider[row.ProviderName] = p
 	}
@@ -238,6 +282,160 @@ func controlPlaneAllowedProviderHeader(name string) bool {
 	default:
 		return false
 	}
+}
+
+// loadProviderModelCapabilities projects the relational capability records
+// into the existing ProviderModel shape. Every catalog model must have exactly
+// one scalar capability row; missing state fails closed rather than silently
+// weakening a reviewed eligibility contract.
+func loadProviderModelCapabilities(db *gorm.DB, configSetID, providerName, modelRef string) (ProviderModel, error) {
+	var capabilityRows []providerModelCapabilityRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Limit(2).Find(&capabilityRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q capabilities: %w", providerName, modelRef, err)
+	}
+	if len(capabilityRows) == 0 {
+		return ProviderModel{}, fmt.Errorf("provider %q model %q has no capability record", providerName, modelRef)
+	}
+	if len(capabilityRows) != 1 {
+		return ProviderModel{}, fmt.Errorf("provider %q model %q has multiple capability records", providerName, modelRef)
+	}
+	row := capabilityRows[0]
+	model := ProviderModel{
+		ImageInputPricePerMillionTokensUSD: row.ImageInputPricePerMillionTokensUSD,
+		ImageInputPricePerImageUSD:         row.ImageInputPricePerImageUSD,
+		RPM:                                row.RPM,
+		Tier:                               row.Tier,
+		Cost:                               row.Cost,
+		Reasoning: ReasoningSupport{
+			Supported:                     row.ReasoningSupported,
+			Mode:                          row.ReasoningMode,
+			Control:                       row.ReasoningControl,
+			DefaultOn:                     row.ReasoningDefaultOn,
+			MinBudgetTokens:               row.ReasoningMinBudgetTokens,
+			MaxBudgetTokens:               row.ReasoningMaxBudgetTokens,
+			BudgetMustBeLessThanMaxTokens: row.ReasoningBudgetMustBeLessThanMaxTokens,
+			StreamBlock:                   row.ReasoningStreamBlock,
+			RejectsMaxTokens:              row.ReasoningRejectsMaxTokens,
+			RejectsTemperature:            row.ReasoningRejectsTemperature,
+			RejectsTopP:                   row.ReasoningRejectsTopP,
+			SupportsSummaries:             row.ReasoningSupportsSummaries,
+		},
+		HonorsMaxTokens:  controlPlaneOptionalBool(row.HonorsMaxTokens),
+		ForceStoreFalse:  row.ForceStoreFalse,
+		OutputTokenField: row.OutputTokenField,
+		RequestShapeSupport: RequestShapeSupport{
+			MaxRequestBytes:                  row.MaxRequestBytes,
+			MaxEstimatedInputTokens:          row.MaxEstimatedInputTokens,
+			MinRequestedOutputTokens:         row.MinRequestedOutputTokens,
+			MaxRequestedOutputTokens:         row.MaxRequestedOutputTokens,
+			MaxToolSchemaBytes:               row.MaxToolSchemaBytes,
+			SupportsLargeCodingAgentPayloads: controlPlaneOptionalBool(row.SupportsLargeCodingAgentPayloads),
+			ValidationStatus:                 row.RequestShapeValidationStatus,
+			ValidationNotes:                  row.RequestShapeValidationNotes,
+		},
+		ResponsesToChat: ResponsesToChatBridge{
+			Enabled:           row.ResponsesToChatEnabled,
+			Text:              row.ResponsesToChatText,
+			FunctionTools:     row.ResponsesToChatFunctionTools,
+			ToolChoice:        row.ResponsesToChatToolChoice,
+			StructuredOutputs: row.ResponsesToChatStructuredOutputs,
+			Reasoning:         row.ResponsesToChatReasoning,
+			Images:            row.ResponsesToChatImages,
+			Streaming:         row.ResponsesToChatStreaming,
+			ValidationStatus:  row.ResponsesToChatValidationStatus,
+			ValidationNotes:   row.ResponsesToChatValidationNotes,
+		},
+	}
+
+	var toolRows []providerModelToolSupportRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Order("api_surface ASC, capability ASC").Find(&toolRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q tool support: %w", providerName, modelRef, err)
+	}
+	for _, tool := range toolRows {
+		switch tool.APISurface {
+		case "openai_chat":
+			model.ToolSupport.OpenAIChat = append(model.ToolSupport.OpenAIChat, tool.Capability)
+		case "openai_responses":
+			model.ToolSupport.OpenAIResponses = append(model.ToolSupport.OpenAIResponses, tool.Capability)
+		case "anthropic_messages":
+			model.ToolSupport.AnthropicMessages = append(model.ToolSupport.AnthropicMessages, tool.Capability)
+		case "provider_hosted":
+			model.ToolSupport.ProviderHosted = append(model.ToolSupport.ProviderHosted, tool.Capability)
+		default:
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has unsupported tool API surface %q", providerName, modelRef, tool.APISurface)
+		}
+	}
+
+	var modalityRows []providerModelModalityRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Order("direction ASC, modality ASC").Find(&modalityRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q modalities: %w", providerName, modelRef, err)
+	}
+	for _, modality := range modalityRows {
+		switch modality.Direction {
+		case "input":
+			model.InputModalities = append(model.InputModalities, modality.Modality)
+		case "output":
+			model.OutputModalities = append(model.OutputModalities, modality.Modality)
+		default:
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has unsupported modality direction %q", providerName, modelRef, modality.Direction)
+		}
+	}
+
+	var inboundDialectRows []providerModelRequestInboundDialectRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Order("inbound_dialect ASC").Find(&inboundDialectRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q inbound dialects: %w", providerName, modelRef, err)
+	}
+	seenInboundDialects := map[string]bool{}
+	for _, dialect := range inboundDialectRows {
+		if seenInboundDialects[dialect.InboundDialect] {
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has duplicate inbound dialect %q", providerName, modelRef, dialect.InboundDialect)
+		}
+		seenInboundDialects[dialect.InboundDialect] = true
+		model.RequestShapeSupport.SupportedInboundDialects = append(model.RequestShapeSupport.SupportedInboundDialects, dialect.InboundDialect)
+	}
+
+	var unsupportedFeatureRows []providerModelRequestUnsupportedFeatureRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Order("feature ASC").Find(&unsupportedFeatureRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q unsupported request features: %w", providerName, modelRef, err)
+	}
+	seenUnsupportedFeatures := map[string]bool{}
+	for _, feature := range unsupportedFeatureRows {
+		if seenUnsupportedFeatures[feature.Feature] {
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has duplicate unsupported request feature %q", providerName, modelRef, feature.Feature)
+		}
+		seenUnsupportedFeatures[feature.Feature] = true
+		model.RequestShapeSupport.UnsupportedRequestFeatures = append(model.RequestShapeSupport.UnsupportedRequestFeatures, feature.Feature)
+	}
+
+	var bridgeRows []providerModelBridgeRow
+	if err := db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", configSetID, providerName, modelRef).Order("direction ASC").Find(&bridgeRows).Error; err != nil {
+		return ProviderModel{}, fmt.Errorf("load provider %q model %q bridges: %w", providerName, modelRef, err)
+	}
+	seenBridgeDirections := map[string]bool{}
+	for _, bridgeRow := range bridgeRows {
+		if seenBridgeDirections[bridgeRow.Direction] {
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has duplicate bridge direction %q", providerName, modelRef, bridgeRow.Direction)
+		}
+		seenBridgeDirections[bridgeRow.Direction] = true
+		bridge := bridgeRow.dialectBridgeSupport()
+		switch bridgeRow.Direction {
+		case "chat_to_responses":
+			model.Bridges.ChatToResponses = bridge
+		case "responses_to_chat":
+			model.Bridges.ResponsesToChat = bridge
+		default:
+			return ProviderModel{}, fmt.Errorf("provider %q model %q has unsupported bridge direction %q", providerName, modelRef, bridgeRow.Direction)
+		}
+	}
+	return model, nil
+}
+
+func controlPlaneOptionalBool(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	resolved := value.Bool
+	return &resolved
 }
 
 func applyConfigControlPlanePhase1(tx *gorm.DB) error {
@@ -475,6 +673,73 @@ func verifyConfigControlPlanePhase3(tx *gorm.DB) error {
 	}
 }
 
+// applyConfigControlPlanePhase4 preserves catalog capability metadata in
+// scalar and child rows. Capability values are inherited only by targets that
+// name the catalog model through model_ref; target-specific overrides remain
+// outside this bounded read-only projection.
+func applyConfigControlPlanePhase4(tx *gorm.DB) error {
+	for _, stmt := range configControlPlanePhase4DDL {
+		if err := tx.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("create provider-model capability projection: %w", err)
+		}
+	}
+	if err := backfillConfigControlPlaneProviderModelCapabilities(tx); err != nil {
+		return err
+	}
+	if tx.Dialector.Name() == "postgres" {
+		for _, stmt := range configControlPlanePhase4PostgresComments {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("comment provider-model capability projection: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// backfillConfigControlPlaneProviderModelCapabilities gives existing phase-3
+// catalog rows an explicit all-default capability record. The record preserves
+// pre-phase-4 behavior while making future loader reads fail closed when a
+// newly inserted provider model omits its required capability identity.
+func backfillConfigControlPlaneProviderModelCapabilities(tx *gorm.DB) error {
+	var stmt string
+	switch tx.Dialector.Name() {
+	case "sqlite":
+		stmt = `INSERT OR IGNORE INTO router_config_provider_model_capabilities (config_set_id, provider_name, model_ref) SELECT config_set_id, provider_name, model_ref FROM router_config_provider_models`
+	case "postgres":
+		stmt = `INSERT INTO router_config_provider_model_capabilities (config_set_id, provider_name, model_ref) SELECT config_set_id, provider_name, model_ref FROM router_config_provider_models ON CONFLICT (config_set_id, provider_name, model_ref) DO NOTHING`
+	default:
+		return fmt.Errorf("unsupported control-plane database driver %q", tx.Dialector.Name())
+	}
+	if err := tx.Exec(stmt).Error; err != nil {
+		return fmt.Errorf("backfill provider-model capability records: %w", err)
+	}
+	return nil
+}
+
+func verifyConfigControlPlanePhase4(tx *gorm.DB) error {
+	if err := verifyConfigControlPlanePhase3(tx); err != nil {
+		return err
+	}
+	for _, table := range configControlPlanePhase4Tables {
+		if !tx.Migrator().HasTable(table) {
+			return fmt.Errorf("required control-plane capability table %s is missing", table)
+		}
+	}
+	for table, columns := range configControlPlanePhase4RequiredColumns {
+		for _, column := range columns {
+			if !tx.Migrator().HasColumn(table, column) {
+				return fmt.Errorf("required control-plane capability column %s.%s is missing", table, column)
+			}
+		}
+	}
+	for _, foreignKey := range configControlPlanePhase4RequiredForeignKeys {
+		if err := verifyConfigControlPlaneForeignKey(tx, foreignKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func verifyConfigControlPlaneProviderHeaderCIIndexSQLite(tx *gorm.DB) error {
 	var unique int
 	if err := tx.Raw(`SELECT "unique" FROM pragma_index_list('router_config_provider_headers') WHERE name = ?`, configControlPlaneProviderHeaderNameCIIndex).Row().Scan(&unique); err != nil {
@@ -572,6 +837,15 @@ func normalizeConfigControlPlaneIndexDefinition(value string) string {
 
 var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}
 
+var configControlPlanePhase4Tables = []string{
+	"router_config_provider_model_capabilities",
+	"router_config_provider_model_tool_support",
+	"router_config_provider_model_modalities",
+	"router_config_provider_model_request_inbound_dialects",
+	"router_config_provider_model_request_unsupported_features",
+	"router_config_provider_model_bridges",
+}
+
 var configControlPlaneRequiredColumns = map[string][]string{
 	"router_config_sets":                  {"id", "runtime_scope", "name", "status", "validation_status", "created_by", "created_at", "activated_at"},
 	"router_config_server":                {"config_set_id", "listen", "default_model_group", "state_path", "license_enabled", "license_path", "license_state_path"},
@@ -582,6 +856,26 @@ var configControlPlaneRequiredColumns = map[string][]string{
 	"router_config_model_group_targets":   {"config_set_id", "group_name", "sequence", "provider_name", "model_ref", "model", "dialect", "weight", "rpm", "tier", "cost"},
 	"router_config_callers":               {"config_set_id", "caller_id", "owner_user", "project", "environment", "status", "token_sha256", "token_id", "metrics_admin", "content_admin", "rpm", "tpm", "concurrent"},
 	"router_config_caller_allowed_groups": {"config_set_id", "caller_id", "group_name"},
+}
+
+var configControlPlanePhase4RequiredColumns = map[string][]string{
+	"router_config_provider_model_capabilities": {
+		"config_set_id", "provider_name", "model_ref",
+		"image_input_price_per_million_tokens_usd", "image_input_price_per_image_usd", "rpm", "tier", "cost",
+		"reasoning_supported", "reasoning_mode", "reasoning_control", "reasoning_default_on", "reasoning_min_budget_tokens", "reasoning_max_budget_tokens", "reasoning_budget_must_be_less_than_max_tokens", "reasoning_stream_block", "reasoning_rejects_max_tokens", "reasoning_rejects_temperature", "reasoning_rejects_top_p", "reasoning_supports_summaries",
+		"honors_max_tokens", "force_store_false", "output_token_field",
+		"max_request_bytes", "max_estimated_input_tokens", "min_requested_output_tokens", "max_requested_output_tokens", "max_tool_schema_bytes", "supports_large_coding_agent_payloads", "request_shape_validation_status", "request_shape_validation_notes",
+		"responses_to_chat_enabled", "responses_to_chat_text", "responses_to_chat_function_tools", "responses_to_chat_tool_choice", "responses_to_chat_structured_outputs", "responses_to_chat_reasoning", "responses_to_chat_images", "responses_to_chat_streaming", "responses_to_chat_validation_status", "responses_to_chat_validation_notes",
+	},
+	"router_config_provider_model_tool_support":                 {"config_set_id", "provider_name", "model_ref", "api_surface", "capability"},
+	"router_config_provider_model_modalities":                   {"config_set_id", "provider_name", "model_ref", "direction", "modality"},
+	"router_config_provider_model_request_inbound_dialects":     {"config_set_id", "provider_name", "model_ref", "inbound_dialect"},
+	"router_config_provider_model_request_unsupported_features": {"config_set_id", "provider_name", "model_ref", "feature"},
+	"router_config_provider_model_bridges": {
+		"config_set_id", "provider_name", "model_ref", "direction", "enabled", "text_enabled", "tools", "tool_choice", "parallel_tool_calls", "structured_outputs", "images", "reasoning", "streaming",
+		"stateful_sessions_enabled", "stateful_sessions_backend", "stateful_sessions_session_header", "stateful_sessions_ttl_seconds", "stateful_sessions_max_entries",
+		"stateful_sessions_redis_address", "stateful_sessions_redis_namespace", "stateful_sessions_redis_db", "stateful_sessions_redis_username_env", "stateful_sessions_redis_password_env", "stateful_sessions_redis_tls_enabled", "stateful_sessions_redis_tls_server_name", "stateful_sessions_redis_tls_insecure_skip_verify", "stateful_sessions_redis_connect_timeout_ms", "stateful_sessions_redis_read_timeout_ms", "stateful_sessions_redis_write_timeout_ms", "stateful_sessions_redis_pool_size",
+	},
 }
 
 var configControlPlaneRequiredIndexes = map[string][]string{
@@ -620,6 +914,15 @@ var configControlPlaneRequiredForeignKeys = []configControlPlaneForeignKey{
 	{Table: "router_config_callers", Columns: []string{"config_set_id"}, ReferencedTable: "router_config_sets", ReferencedColumns: []string{"id"}},
 	{Table: "router_config_caller_allowed_groups", Columns: []string{"config_set_id", "caller_id"}, ReferencedTable: "router_config_callers", ReferencedColumns: []string{"config_set_id", "caller_id"}},
 	{Table: "router_config_caller_allowed_groups", Columns: []string{"config_set_id", "group_name"}, ReferencedTable: "router_config_model_groups", ReferencedColumns: []string{"config_set_id", "group_name"}},
+}
+
+var configControlPlanePhase4RequiredForeignKeys = []configControlPlaneForeignKey{
+	{Table: "router_config_provider_model_capabilities", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_models", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_provider_model_tool_support", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_model_capabilities", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_provider_model_modalities", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_model_capabilities", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_provider_model_request_inbound_dialects", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_model_capabilities", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_provider_model_request_unsupported_features", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_model_capabilities", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_provider_model_bridges", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_model_capabilities", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
 }
 
 func verifyConfigControlPlaneForeignKey(tx *gorm.DB, required configControlPlaneForeignKey) error {
@@ -690,6 +993,18 @@ var configControlPlaneDDL = []string{
 	`CREATE INDEX IF NOT EXISTS router_config_targets_provider_model ON router_config_model_group_targets(config_set_id, provider_name, model_ref)`,
 	`CREATE TABLE IF NOT EXISTS router_config_callers (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), caller_id TEXT NOT NULL, owner_user TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', environment TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '', token_sha256 TEXT NOT NULL DEFAULT '', token_id TEXT NOT NULL DEFAULT '', metrics_admin BOOLEAN NOT NULL DEFAULT FALSE, content_admin BOOLEAN NOT NULL DEFAULT FALSE, rpm BIGINT NOT NULL DEFAULT 0, tpm BIGINT NOT NULL DEFAULT 0, concurrent BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, caller_id))`,
 	`CREATE TABLE IF NOT EXISTS router_config_caller_allowed_groups (config_set_id TEXT NOT NULL, caller_id TEXT NOT NULL, group_name TEXT NOT NULL, PRIMARY KEY (config_set_id, caller_id, group_name), FOREIGN KEY (config_set_id, caller_id) REFERENCES router_config_callers(config_set_id, caller_id), FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name))`,
+}
+
+// configControlPlanePhase4DDL keeps repeated capability values in child rows
+// rather than JSON, arrays, or packed text. Every child is scoped to the
+// immutable provider-model identity within a versioned configuration set.
+var configControlPlanePhase4DDL = []string{
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_capabilities (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, image_input_price_per_million_tokens_usd DOUBLE PRECISION NOT NULL DEFAULT 0, image_input_price_per_image_usd DOUBLE PRECISION NOT NULL DEFAULT 0, rpm BIGINT NOT NULL DEFAULT 0, tier TEXT NOT NULL DEFAULT '', cost BIGINT NOT NULL DEFAULT 0, reasoning_supported BOOLEAN NOT NULL DEFAULT FALSE, reasoning_mode TEXT NOT NULL DEFAULT '', reasoning_control TEXT NOT NULL DEFAULT '', reasoning_default_on BOOLEAN NOT NULL DEFAULT FALSE, reasoning_min_budget_tokens BIGINT NOT NULL DEFAULT 0, reasoning_max_budget_tokens BIGINT NOT NULL DEFAULT 0, reasoning_budget_must_be_less_than_max_tokens BOOLEAN NOT NULL DEFAULT FALSE, reasoning_stream_block TEXT NOT NULL DEFAULT '', reasoning_rejects_max_tokens BOOLEAN NOT NULL DEFAULT FALSE, reasoning_rejects_temperature BOOLEAN NOT NULL DEFAULT FALSE, reasoning_rejects_top_p BOOLEAN NOT NULL DEFAULT FALSE, reasoning_supports_summaries BOOLEAN NOT NULL DEFAULT FALSE, honors_max_tokens BOOLEAN, force_store_false BOOLEAN NOT NULL DEFAULT FALSE, output_token_field TEXT NOT NULL DEFAULT '', max_request_bytes BIGINT NOT NULL DEFAULT 0, max_estimated_input_tokens BIGINT NOT NULL DEFAULT 0, min_requested_output_tokens BIGINT NOT NULL DEFAULT 0, max_requested_output_tokens BIGINT NOT NULL DEFAULT 0, max_tool_schema_bytes BIGINT NOT NULL DEFAULT 0, supports_large_coding_agent_payloads BOOLEAN, request_shape_validation_status TEXT NOT NULL DEFAULT '', request_shape_validation_notes TEXT NOT NULL DEFAULT '', responses_to_chat_enabled BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_text BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_function_tools BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_tool_choice BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_structured_outputs BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_reasoning BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_images BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_streaming BOOLEAN NOT NULL DEFAULT FALSE, responses_to_chat_validation_status TEXT NOT NULL DEFAULT '', responses_to_chat_validation_notes TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name, model_ref), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_models(config_set_id, provider_name, model_ref))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_tool_support (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, api_surface TEXT NOT NULL, capability TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, model_ref, api_surface, capability), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_model_capabilities(config_set_id, provider_name, model_ref))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_modalities (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, direction TEXT NOT NULL, modality TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, model_ref, direction, modality), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_model_capabilities(config_set_id, provider_name, model_ref))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_request_inbound_dialects (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, inbound_dialect TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, model_ref, inbound_dialect), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_model_capabilities(config_set_id, provider_name, model_ref))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_request_unsupported_features (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, feature TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, model_ref, feature), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_model_capabilities(config_set_id, provider_name, model_ref))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_model_bridges (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, direction TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT FALSE, text_enabled BOOLEAN, tools BOOLEAN NOT NULL DEFAULT FALSE, tool_choice BOOLEAN NOT NULL DEFAULT FALSE, parallel_tool_calls BOOLEAN NOT NULL DEFAULT FALSE, structured_outputs BOOLEAN NOT NULL DEFAULT FALSE, images BOOLEAN NOT NULL DEFAULT FALSE, reasoning BOOLEAN NOT NULL DEFAULT FALSE, streaming BOOLEAN NOT NULL DEFAULT FALSE, stateful_sessions_enabled BOOLEAN NOT NULL DEFAULT FALSE, stateful_sessions_backend TEXT NOT NULL DEFAULT '', stateful_sessions_session_header TEXT NOT NULL DEFAULT '', stateful_sessions_ttl_seconds BIGINT NOT NULL DEFAULT 0, stateful_sessions_max_entries BIGINT NOT NULL DEFAULT 0, stateful_sessions_redis_address TEXT NOT NULL DEFAULT '', stateful_sessions_redis_namespace TEXT NOT NULL DEFAULT '', stateful_sessions_redis_db BIGINT NOT NULL DEFAULT 0, stateful_sessions_redis_username_env TEXT NOT NULL DEFAULT '', stateful_sessions_redis_password_env TEXT NOT NULL DEFAULT '', stateful_sessions_redis_tls_enabled BOOLEAN NOT NULL DEFAULT FALSE, stateful_sessions_redis_tls_server_name TEXT NOT NULL DEFAULT '', stateful_sessions_redis_tls_insecure_skip_verify BOOLEAN NOT NULL DEFAULT FALSE, stateful_sessions_redis_connect_timeout_ms BIGINT NOT NULL DEFAULT 0, stateful_sessions_redis_read_timeout_ms BIGINT NOT NULL DEFAULT 0, stateful_sessions_redis_write_timeout_ms BIGINT NOT NULL DEFAULT 0, stateful_sessions_redis_pool_size BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, provider_name, model_ref, direction), FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_model_capabilities(config_set_id, provider_name, model_ref))`,
 }
 
 var configControlPlanePostgresComments = []string{
@@ -773,6 +1088,104 @@ var configControlPlanePostgresComments = []string{
 	`COMMENT ON COLUMN router_config_caller_allowed_groups.group_name IS 'Referenced allowed model group.'`,
 }
 
+var configControlPlanePhase4PostgresComments = []string{
+	`COMMENT ON TABLE router_config_provider_model_capabilities IS 'Scalar capability, request-shape, bridge-compatibility, and non-secret pricing metadata for one provider model.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.image_input_price_per_million_tokens_usd IS 'Image input price per million image tokens in USD.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.image_input_price_per_image_usd IS 'Image input price per image in USD.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.rpm IS 'Catalogued provider-model request-rate value.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.tier IS 'Deployment-local provider-model tier label.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.cost IS 'Deployment-local provider-model relative cost class.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_supported IS 'Whether the provider model supports declared reasoning controls.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_mode IS 'Declared reasoning mode.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_control IS 'Declared upstream reasoning control field.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_default_on IS 'Whether reasoning defaults on.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_min_budget_tokens IS 'Minimum allowed reasoning budget tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_max_budget_tokens IS 'Maximum allowed reasoning budget tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_budget_must_be_less_than_max_tokens IS 'Whether the reasoning budget must be less than the output cap.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_stream_block IS 'Declared reasoning stream-block encoding.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_rejects_max_tokens IS 'Whether the upstream rejects a normal max-token field while reasoning is active.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_rejects_temperature IS 'Whether the upstream rejects temperature while reasoning is active.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_rejects_top_p IS 'Whether the upstream rejects top_p while reasoning is active.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.reasoning_supports_summaries IS 'Whether the upstream supports reasoning summaries.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.honors_max_tokens IS 'Nullable explicit maximum-output-token conformance; null preserves the router default.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.force_store_false IS 'Whether supported OpenAI-compatible calls require store:false.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.output_token_field IS 'Upstream output-cap field, such as max_tokens or max_completion_tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.max_request_bytes IS 'Maximum validated inbound request bytes.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.max_estimated_input_tokens IS 'Maximum validated estimated input tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.min_requested_output_tokens IS 'Minimum validated requested output tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.max_requested_output_tokens IS 'Maximum validated requested output tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.max_tool_schema_bytes IS 'Maximum validated serialized tool-schema bytes.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.supports_large_coding_agent_payloads IS 'Nullable explicit large coding-agent payload support flag.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.request_shape_validation_status IS 'Request-shape validation status.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.request_shape_validation_notes IS 'Sanitized request-shape validation notes.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_enabled IS 'Whether the legacy Responses-to-Chat bridge is enabled.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_text IS 'Whether the legacy Responses-to-Chat bridge supports text.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_function_tools IS 'Whether the legacy Responses-to-Chat bridge supports function tools.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_tool_choice IS 'Whether the legacy Responses-to-Chat bridge supports tool choice.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_structured_outputs IS 'Whether the legacy Responses-to-Chat bridge supports structured outputs.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_reasoning IS 'Whether the legacy Responses-to-Chat bridge supports reasoning.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_images IS 'Whether the legacy Responses-to-Chat bridge supports images.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_streaming IS 'Whether the legacy Responses-to-Chat bridge supports streaming.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_validation_status IS 'Legacy Responses-to-Chat bridge validation status.'`,
+	`COMMENT ON COLUMN router_config_provider_model_capabilities.responses_to_chat_validation_notes IS 'Sanitized legacy Responses-to-Chat bridge validation notes.'`,
+	`COMMENT ON TABLE router_config_provider_model_tool_support IS 'One validated tool capability per provider-model API surface.'`,
+	`COMMENT ON COLUMN router_config_provider_model_tool_support.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_tool_support.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_tool_support.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_tool_support.api_surface IS 'Validated API surface such as openai_chat or anthropic_messages.'`,
+	`COMMENT ON COLUMN router_config_provider_model_tool_support.capability IS 'One validated tool capability label.'`,
+	`COMMENT ON TABLE router_config_provider_model_modalities IS 'One declared validated input or output modality per provider model.'`,
+	`COMMENT ON COLUMN router_config_provider_model_modalities.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_modalities.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_modalities.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_modalities.direction IS 'Modality direction: input or output.'`,
+	`COMMENT ON COLUMN router_config_provider_model_modalities.modality IS 'One validated modality value.'`,
+	`COMMENT ON TABLE router_config_provider_model_request_inbound_dialects IS 'One validated inbound dialect supported by a provider model request shape.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_inbound_dialects.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_inbound_dialects.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_inbound_dialects.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_inbound_dialects.inbound_dialect IS 'One validated inbound request dialect.'`,
+	`COMMENT ON TABLE router_config_provider_model_request_unsupported_features IS 'One bounded request feature intentionally unsupported by a provider model.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_unsupported_features.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_unsupported_features.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_unsupported_features.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_request_unsupported_features.feature IS 'One bounded unsupported request feature label.'`,
+	`COMMENT ON TABLE router_config_provider_model_bridges IS 'One explicit dialect-bridge capability record per provider model and bridge direction.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.model_ref IS 'Referenced provider-model catalog reference.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.direction IS 'Bridge direction: chat_to_responses or responses_to_chat.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.enabled IS 'Whether the dialect bridge is enabled.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.text_enabled IS 'Nullable explicit text-shape bridge support.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.tools IS 'Whether the dialect bridge supports tools.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.tool_choice IS 'Whether the dialect bridge supports tool choice.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.parallel_tool_calls IS 'Whether the dialect bridge supports parallel tool calls.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.structured_outputs IS 'Whether the dialect bridge supports structured outputs.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.images IS 'Whether the dialect bridge supports images.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.reasoning IS 'Whether the dialect bridge supports reasoning.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.streaming IS 'Whether the dialect bridge supports streaming.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_enabled IS 'Whether stateful bridge sessions are enabled.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_backend IS 'Stateful bridge-session backend selector.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_session_header IS 'Stateful bridge-session correlation header.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_ttl_seconds IS 'Stateful bridge-session retention in seconds.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_max_entries IS 'Maximum stateful bridge-session entries.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_address IS 'Redis host and port without credentials.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_namespace IS 'Redis key namespace.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_db IS 'Redis database number.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_username_env IS 'Environment variable naming Redis username.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_password_env IS 'Environment variable naming Redis password.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_tls_enabled IS 'Whether Redis transport TLS is enabled.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_tls_server_name IS 'Redis TLS server-name override.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_tls_insecure_skip_verify IS 'Whether Redis TLS verification is explicitly disabled.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_connect_timeout_ms IS 'Redis connection timeout in milliseconds.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_read_timeout_ms IS 'Redis read timeout in milliseconds.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_write_timeout_ms IS 'Redis write timeout in milliseconds.'`,
+	`COMMENT ON COLUMN router_config_provider_model_bridges.stateful_sessions_redis_pool_size IS 'Redis connection pool size.'`,
+}
+
 type configSetRow struct {
 	ID               string `gorm:"column:id"`
 	RuntimeScope     string `gorm:"column:runtime_scope"`
@@ -828,6 +1241,152 @@ type providerModelRow struct {
 
 func (providerModelRow) TableName() string { return "router_config_provider_models" }
 
+type providerModelCapabilityRow struct {
+	ImageInputPricePerMillionTokensUSD     float64      `gorm:"column:image_input_price_per_million_tokens_usd"`
+	ImageInputPricePerImageUSD             float64      `gorm:"column:image_input_price_per_image_usd"`
+	RPM                                    int          `gorm:"column:rpm"`
+	Tier                                   string       `gorm:"column:tier"`
+	Cost                                   int          `gorm:"column:cost"`
+	ReasoningSupported                     bool         `gorm:"column:reasoning_supported"`
+	ReasoningMode                          string       `gorm:"column:reasoning_mode"`
+	ReasoningControl                       string       `gorm:"column:reasoning_control"`
+	ReasoningDefaultOn                     bool         `gorm:"column:reasoning_default_on"`
+	ReasoningMinBudgetTokens               int          `gorm:"column:reasoning_min_budget_tokens"`
+	ReasoningMaxBudgetTokens               int          `gorm:"column:reasoning_max_budget_tokens"`
+	ReasoningBudgetMustBeLessThanMaxTokens bool         `gorm:"column:reasoning_budget_must_be_less_than_max_tokens"`
+	ReasoningStreamBlock                   string       `gorm:"column:reasoning_stream_block"`
+	ReasoningRejectsMaxTokens              bool         `gorm:"column:reasoning_rejects_max_tokens"`
+	ReasoningRejectsTemperature            bool         `gorm:"column:reasoning_rejects_temperature"`
+	ReasoningRejectsTopP                   bool         `gorm:"column:reasoning_rejects_top_p"`
+	ReasoningSupportsSummaries             bool         `gorm:"column:reasoning_supports_summaries"`
+	HonorsMaxTokens                        sql.NullBool `gorm:"column:honors_max_tokens"`
+	ForceStoreFalse                        bool         `gorm:"column:force_store_false"`
+	OutputTokenField                       string       `gorm:"column:output_token_field"`
+	MaxRequestBytes                        int          `gorm:"column:max_request_bytes"`
+	MaxEstimatedInputTokens                int          `gorm:"column:max_estimated_input_tokens"`
+	MinRequestedOutputTokens               int          `gorm:"column:min_requested_output_tokens"`
+	MaxRequestedOutputTokens               int          `gorm:"column:max_requested_output_tokens"`
+	MaxToolSchemaBytes                     int          `gorm:"column:max_tool_schema_bytes"`
+	SupportsLargeCodingAgentPayloads       sql.NullBool `gorm:"column:supports_large_coding_agent_payloads"`
+	RequestShapeValidationStatus           string       `gorm:"column:request_shape_validation_status"`
+	RequestShapeValidationNotes            string       `gorm:"column:request_shape_validation_notes"`
+	ResponsesToChatEnabled                 bool         `gorm:"column:responses_to_chat_enabled"`
+	ResponsesToChatText                    bool         `gorm:"column:responses_to_chat_text"`
+	ResponsesToChatFunctionTools           bool         `gorm:"column:responses_to_chat_function_tools"`
+	ResponsesToChatToolChoice              bool         `gorm:"column:responses_to_chat_tool_choice"`
+	ResponsesToChatStructuredOutputs       bool         `gorm:"column:responses_to_chat_structured_outputs"`
+	ResponsesToChatReasoning               bool         `gorm:"column:responses_to_chat_reasoning"`
+	ResponsesToChatImages                  bool         `gorm:"column:responses_to_chat_images"`
+	ResponsesToChatStreaming               bool         `gorm:"column:responses_to_chat_streaming"`
+	ResponsesToChatValidationStatus        string       `gorm:"column:responses_to_chat_validation_status"`
+	ResponsesToChatValidationNotes         string       `gorm:"column:responses_to_chat_validation_notes"`
+}
+
+func (providerModelCapabilityRow) TableName() string {
+	return "router_config_provider_model_capabilities"
+}
+
+type providerModelToolSupportRow struct {
+	APISurface string `gorm:"column:api_surface"`
+	Capability string `gorm:"column:capability"`
+}
+
+func (providerModelToolSupportRow) TableName() string {
+	return "router_config_provider_model_tool_support"
+}
+
+type providerModelModalityRow struct {
+	Direction string `gorm:"column:direction"`
+	Modality  string `gorm:"column:modality"`
+}
+
+func (providerModelModalityRow) TableName() string {
+	return "router_config_provider_model_modalities"
+}
+
+type providerModelRequestInboundDialectRow struct {
+	InboundDialect string `gorm:"column:inbound_dialect"`
+}
+
+func (providerModelRequestInboundDialectRow) TableName() string {
+	return "router_config_provider_model_request_inbound_dialects"
+}
+
+type providerModelRequestUnsupportedFeatureRow struct {
+	Feature string `gorm:"column:feature"`
+}
+
+func (providerModelRequestUnsupportedFeatureRow) TableName() string {
+	return "router_config_provider_model_request_unsupported_features"
+}
+
+type providerModelBridgeRow struct {
+	Direction                                  string       `gorm:"column:direction"`
+	Enabled                                    bool         `gorm:"column:enabled"`
+	TextEnabled                                sql.NullBool `gorm:"column:text_enabled"`
+	Tools                                      bool         `gorm:"column:tools"`
+	ToolChoice                                 bool         `gorm:"column:tool_choice"`
+	ParallelToolCalls                          bool         `gorm:"column:parallel_tool_calls"`
+	StructuredOutputs                          bool         `gorm:"column:structured_outputs"`
+	Images                                     bool         `gorm:"column:images"`
+	Reasoning                                  bool         `gorm:"column:reasoning"`
+	Streaming                                  bool         `gorm:"column:streaming"`
+	StatefulSessionsEnabled                    bool         `gorm:"column:stateful_sessions_enabled"`
+	StatefulSessionsBackend                    string       `gorm:"column:stateful_sessions_backend"`
+	StatefulSessionsSessionHeader              string       `gorm:"column:stateful_sessions_session_header"`
+	StatefulSessionsTTLSeconds                 int          `gorm:"column:stateful_sessions_ttl_seconds"`
+	StatefulSessionsMaxEntries                 int          `gorm:"column:stateful_sessions_max_entries"`
+	StatefulSessionsRedisAddress               string       `gorm:"column:stateful_sessions_redis_address"`
+	StatefulSessionsRedisNamespace             string       `gorm:"column:stateful_sessions_redis_namespace"`
+	StatefulSessionsRedisDB                    int          `gorm:"column:stateful_sessions_redis_db"`
+	StatefulSessionsRedisUsernameEnv           string       `gorm:"column:stateful_sessions_redis_username_env"`
+	StatefulSessionsRedisPasswordEnv           string       `gorm:"column:stateful_sessions_redis_password_env"`
+	StatefulSessionsRedisTLSEnabled            bool         `gorm:"column:stateful_sessions_redis_tls_enabled"`
+	StatefulSessionsRedisTLSServerName         string       `gorm:"column:stateful_sessions_redis_tls_server_name"`
+	StatefulSessionsRedisTLSInsecureSkipVerify bool         `gorm:"column:stateful_sessions_redis_tls_insecure_skip_verify"`
+	StatefulSessionsRedisConnectTimeoutMS      int          `gorm:"column:stateful_sessions_redis_connect_timeout_ms"`
+	StatefulSessionsRedisReadTimeoutMS         int          `gorm:"column:stateful_sessions_redis_read_timeout_ms"`
+	StatefulSessionsRedisWriteTimeoutMS        int          `gorm:"column:stateful_sessions_redis_write_timeout_ms"`
+	StatefulSessionsRedisPoolSize              int          `gorm:"column:stateful_sessions_redis_pool_size"`
+}
+
+func (providerModelBridgeRow) TableName() string {
+	return "router_config_provider_model_bridges"
+}
+
+func (row providerModelBridgeRow) dialectBridgeSupport() DialectBridgeSupport {
+	return DialectBridgeSupport{
+		Enabled:           row.Enabled,
+		Text:              controlPlaneOptionalBool(row.TextEnabled),
+		Tools:             row.Tools,
+		ToolChoice:        row.ToolChoice,
+		ParallelToolCalls: row.ParallelToolCalls,
+		StructuredOutputs: row.StructuredOutputs,
+		Images:            row.Images,
+		Reasoning:         row.Reasoning,
+		Streaming:         row.Streaming,
+		StatefulSessions: BridgeStatefulSessionsConfig{
+			Enabled:       row.StatefulSessionsEnabled,
+			Backend:       row.StatefulSessionsBackend,
+			SessionHeader: row.StatefulSessionsSessionHeader,
+			TTLSeconds:    row.StatefulSessionsTTLSeconds,
+			MaxEntries:    row.StatefulSessionsMaxEntries,
+			Redis: BridgeStatefulSessionsRedisConfig{
+				Address:          row.StatefulSessionsRedisAddress,
+				Namespace:        row.StatefulSessionsRedisNamespace,
+				DB:               row.StatefulSessionsRedisDB,
+				UsernameEnv:      row.StatefulSessionsRedisUsernameEnv,
+				PasswordEnv:      row.StatefulSessionsRedisPasswordEnv,
+				TLS:              BridgeStatefulSessionsRedisTLSConfig{Enabled: row.StatefulSessionsRedisTLSEnabled, ServerName: row.StatefulSessionsRedisTLSServerName, InsecureSkipVerify: row.StatefulSessionsRedisTLSInsecureSkipVerify},
+				ConnectTimeoutMS: row.StatefulSessionsRedisConnectTimeoutMS,
+				ReadTimeoutMS:    row.StatefulSessionsRedisReadTimeoutMS,
+				WriteTimeoutMS:   row.StatefulSessionsRedisWriteTimeoutMS,
+				PoolSize:         row.StatefulSessionsRedisPoolSize,
+			},
+		},
+	}
+}
+
 type modelGroupRow struct {
 	GroupName        string `gorm:"column:group_name"`
 	Strategy         string `gorm:"column:strategy"`
@@ -877,6 +1436,7 @@ func (callerAllowedGroupRow) TableName() string { return "router_config_caller_a
 // tests and operator inspection without exposing configuration values.
 func ConfigControlPlaneTableNames() []string {
 	names := append([]string(nil), configControlPlaneTables...)
+	names = append(names, configControlPlanePhase4Tables...)
 	sort.Strings(names)
 	return names
 }

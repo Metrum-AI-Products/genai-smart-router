@@ -52,6 +52,12 @@ the raw credential in a config database, catalog metadata, headers, logs, or
 examples. A catalog-only provider can remain unconfigured when its deployment
 does not have an entitled credential.
 
+For the current managed catalog projection, capability metadata is stored as
+one required catalog capability record with normalized child records rather
+than JSON or packed lists. See [Managed Catalog Capability
+Foundation](./router-config#managed-catalog-capability-foundation) for its
+read-only scope and target-override boundary.
+
 ## Capability Declaration Rules
 
 Capability fields are eligibility controls, not marketing descriptions. If a capability is omitted, the router treats it as unavailable and skips the target for requests that require it.

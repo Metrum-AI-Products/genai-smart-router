@@ -28,7 +28,7 @@ func TestConfigControlPlanePhase1MigratesRelationalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != 3 {
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != 4 {
 		t.Fatalf("unexpected migration status: %+v", status)
 	}
 	for _, table := range ConfigControlPlaneTableNames() {
@@ -36,7 +36,8 @@ func TestConfigControlPlanePhase1MigratesRelationalSchema(t *testing.T) {
 			t.Fatalf("missing table %s", table)
 		}
 	}
-	for _, stmt := range configControlPlaneDDL {
+	allDDL := append(append([]string(nil), configControlPlaneDDL...), configControlPlanePhase4DDL...)
+	for _, stmt := range allDDL {
 		lower := strings.ToLower(stmt)
 		for _, forbidden := range []string{" json", "jsonb", "[]", " array"} {
 			if strings.Contains(lower, forbidden) {
@@ -65,6 +66,7 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect, api_key_env) VALUES (?, ?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai", "MOCK_API_KEY"}},
 		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "X-Title", "test"}},
 		{`INSERT INTO router_config_provider_models (config_set_id, provider_name, model_ref, model, context_tokens, input_price_per_million_usd, output_price_per_million_usd) VALUES (?, ?, ?, ?, ?, ?, ?)`, []any{"set-1", "mock", "small", "mock-small", 8192, 0.1, 0.2}},
+		{`INSERT INTO router_config_provider_model_capabilities (config_set_id, provider_name, model_ref) VALUES (?, ?, ?)`, []any{"set-1", "mock", "small"}},
 		{`INSERT INTO router_config_model_groups (config_set_id, group_name, strategy) VALUES (?, ?, ?)`, []any{"set-1", "default", "static"}},
 		{`INSERT INTO router_config_model_group_targets (config_set_id, group_name, sequence, provider_name, model_ref, weight) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "default", 1, "mock", "small", 100}},
 	} {
@@ -91,6 +93,226 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 	}
 	if model := provider.Models["small"]; model.Model != "mock-small" || model.ContextTokens != 8192 {
 		t.Fatalf("model projection mismatch: %+v", model)
+	}
+}
+
+func TestLoadActiveConfigFromDBLoadsNormalizedProviderModelCapabilities(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	applyConfigControlPlaneMigrationsForTest(t, r)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "capabilities", "active", "valid", now}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai-chat"}},
+		{`INSERT INTO router_config_provider_models (config_set_id, provider_name, model_ref, model, context_tokens) VALUES (?, ?, ?, ?, ?)`, []any{"set-1", "mock", "capable", "mock-capable", 32768}},
+		{`INSERT INTO router_config_provider_model_capabilities (config_set_id, provider_name, model_ref, image_input_price_per_million_tokens_usd, image_input_price_per_image_usd, rpm, tier, cost, reasoning_supported, reasoning_mode, reasoning_control, reasoning_default_on, reasoning_min_budget_tokens, reasoning_max_budget_tokens, reasoning_budget_must_be_less_than_max_tokens, reasoning_stream_block, reasoning_rejects_max_tokens, reasoning_rejects_temperature, reasoning_rejects_top_p, reasoning_supports_summaries, honors_max_tokens, force_store_false, output_token_field, max_request_bytes, max_estimated_input_tokens, min_requested_output_tokens, max_requested_output_tokens, max_tool_schema_bytes, supports_large_coding_agent_payloads, request_shape_validation_status, request_shape_validation_notes, responses_to_chat_enabled, responses_to_chat_text, responses_to_chat_function_tools, responses_to_chat_tool_choice, responses_to_chat_structured_outputs, responses_to_chat_reasoning, responses_to_chat_images, responses_to_chat_streaming, responses_to_chat_validation_status, responses_to_chat_validation_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, []any{"set-1", "mock", "capable", 1.25, 0.006, 17, "tested", 2, true, "opt_in", "effort_enum", true, 32, 256, false, "thinking", true, true, false, true, false, true, "max_completion_tokens", 2048, 400, 16, 256, 512, false, "passed", "synthetic capability projection", true, true, true, true, true, true, true, true, "passed", "synthetic bridge projection"}},
+		{`INSERT INTO router_config_model_groups (config_set_id, group_name, strategy) VALUES (?, ?, ?)`, []any{"set-1", "default", "static"}},
+		{`INSERT INTO router_config_model_group_targets (config_set_id, group_name, sequence, provider_name, model_ref, weight) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "default", 1, "mock", "capable", 100}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, row := range []struct {
+		surface    string
+		capability string
+	}{
+		{"openai_chat", "tools"},
+		{"openai_responses", "function"},
+		{"anthropic_messages", "client_tools"},
+		{"provider_hosted", "tool_calls"},
+	} {
+		if err := r.db.Exec(`INSERT INTO router_config_provider_model_tool_support (config_set_id, provider_name, model_ref, api_surface, capability) VALUES (?, ?, ?, ?, ?)`, "set-1", "mock", "capable", row.surface, row.capability).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, row := range []struct {
+		direction string
+		modality  string
+	}{
+		{"input", "text"},
+		{"input", "image"},
+		{"output", "text"},
+	} {
+		if err := r.db.Exec(`INSERT INTO router_config_provider_model_modalities (config_set_id, provider_name, model_ref, direction, modality) VALUES (?, ?, ?, ?, ?)`, "set-1", "mock", "capable", row.direction, row.modality).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, dialect := range []string{"openai-chat", "openai-responses"} {
+		if err := r.db.Exec(`INSERT INTO router_config_provider_model_request_inbound_dialects (config_set_id, provider_name, model_ref, inbound_dialect) VALUES (?, ?, ?, ?)`, "set-1", "mock", "capable", dialect).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, feature := range []string{"previous_response_id", "stream_options"} {
+		if err := r.db.Exec(`INSERT INTO router_config_provider_model_request_unsupported_features (config_set_id, provider_name, model_ref, feature) VALUES (?, ?, ?, ?)`, "set-1", "mock", "capable", feature).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, bridge := range []struct {
+		direction string
+		values    []any
+	}{
+		{
+			direction: "chat_to_responses",
+			values:    []any{true, true, true, true, true, true, true, true, true, true, "redis", "X-Bridge-Session", 30, 5, "redis.example:6379", "router", 1, "REDIS_USER", "REDIS_PASSWORD", true, "redis.example", false, 10, 20, 30, 4},
+		},
+		{
+			direction: "responses_to_chat",
+			values:    []any{true, true, true, true, true, true, true, true, true, false, "", "", 0, 0, "", "", 0, "", "", false, "", false, 0, 0, 0, 0},
+		},
+	} {
+		values := append([]any{"set-1", "mock", "capable", bridge.direction}, bridge.values...)
+		if err := r.db.Exec(`INSERT INTO router_config_provider_model_bridges (config_set_id, provider_name, model_ref, direction, enabled, text_enabled, tools, tool_choice, parallel_tool_calls, structured_outputs, images, reasoning, streaming, stateful_sessions_enabled, stateful_sessions_backend, stateful_sessions_session_header, stateful_sessions_ttl_seconds, stateful_sessions_max_entries, stateful_sessions_redis_address, stateful_sessions_redis_namespace, stateful_sessions_redis_db, stateful_sessions_redis_username_env, stateful_sessions_redis_password_env, stateful_sessions_redis_tls_enabled, stateful_sessions_redis_tls_server_name, stateful_sessions_redis_tls_insecure_skip_verify, stateful_sessions_redis_connect_timeout_ms, stateful_sessions_redis_read_timeout_ms, stateful_sessions_redis_write_timeout_ms, stateful_sessions_redis_pool_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg, err := LoadActiveConfigFromDB(r.db, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := cfg.Provider["mock"].Models["capable"]
+	if model.ImageInputPricePerMillionTokensUSD != 1.25 || model.ImageInputPricePerImageUSD != 0.006 || model.RPM != 17 || model.Tier != "tested" || model.Cost != 2 {
+		t.Fatalf("catalog scalar capability projection mismatch: %#v", model)
+	}
+	if !model.Reasoning.Supported || model.Reasoning.Mode != "opt_in" || model.Reasoning.Control != "effort_enum" || !model.Reasoning.DefaultOn || model.Reasoning.MinBudgetTokens != 32 || model.Reasoning.MaxBudgetTokens != 256 || !model.Reasoning.RejectsMaxTokens || !model.Reasoning.RejectsTemperature || model.Reasoning.RejectsTopP || !model.Reasoning.SupportsSummaries {
+		t.Fatalf("reasoning capability projection mismatch: %#v", model.Reasoning)
+	}
+	if model.HonorsMaxTokens == nil || *model.HonorsMaxTokens || !model.ForceStoreFalse || model.OutputTokenField != "max_completion_tokens" {
+		t.Fatalf("max-token/output-token capability projection mismatch: %#v", model)
+	}
+	if strings.Join(model.ToolSupport.OpenAIChat, ",") != "tools" || strings.Join(model.ToolSupport.OpenAIResponses, ",") != "function" || strings.Join(model.ToolSupport.AnthropicMessages, ",") != "client_tools" || strings.Join(model.ToolSupport.ProviderHosted, ",") != "tool_calls" {
+		t.Fatalf("tool capability projection mismatch: %#v", model.ToolSupport)
+	}
+	if strings.Join(model.InputModalities, ",") != "image,text" || strings.Join(model.OutputModalities, ",") != "text" {
+		t.Fatalf("modality projection mismatch: input=%#v output=%#v", model.InputModalities, model.OutputModalities)
+	}
+	shape := model.RequestShapeSupport
+	if shape.MaxRequestBytes != 2048 || shape.MaxEstimatedInputTokens != 400 || shape.MinRequestedOutputTokens != 16 || shape.MaxRequestedOutputTokens != 256 || shape.MaxToolSchemaBytes != 512 || shape.SupportsLargeCodingAgentPayloads == nil || *shape.SupportsLargeCodingAgentPayloads || shape.ValidationStatus != "passed" || shape.ValidationNotes != "synthetic capability projection" || strings.Join(shape.SupportedInboundDialects, ",") != "openai-chat,openai-responses" || strings.Join(shape.UnsupportedRequestFeatures, ",") != "previous_response_id,stream_options" {
+		t.Fatalf("request-shape capability projection mismatch: %#v", shape)
+	}
+	if !model.ResponsesToChat.Enabled || !model.ResponsesToChat.Text || !model.ResponsesToChat.FunctionTools || !model.ResponsesToChat.ToolChoice || !model.ResponsesToChat.StructuredOutputs || !model.ResponsesToChat.Reasoning || !model.ResponsesToChat.Images || !model.ResponsesToChat.Streaming || model.ResponsesToChat.ValidationStatus != "passed" {
+		t.Fatalf("legacy responses-to-chat capability projection mismatch: %#v", model.ResponsesToChat)
+	}
+	chatBridge := model.Bridges.ChatToResponses
+	if !chatBridge.Enabled || chatBridge.Text == nil || !*chatBridge.Text || !chatBridge.Tools || !chatBridge.ToolChoice || !chatBridge.ParallelToolCalls || !chatBridge.StructuredOutputs || !chatBridge.Images || !chatBridge.Reasoning || !chatBridge.Streaming || !chatBridge.StatefulSessions.Enabled || chatBridge.StatefulSessions.Backend != "redis" || chatBridge.StatefulSessions.Redis.Address != "redis.example:6379" || chatBridge.StatefulSessions.Redis.Password != "" || chatBridge.StatefulSessions.Redis.PasswordEnv != "REDIS_PASSWORD" {
+		t.Fatalf("chat-to-responses bridge capability projection mismatch: %#v", chatBridge)
+	}
+	responsesBridge := model.Bridges.ResponsesToChat
+	if !responsesBridge.Enabled || responsesBridge.Text == nil || !*responsesBridge.Text || !responsesBridge.Tools || !responsesBridge.ToolChoice || !responsesBridge.ParallelToolCalls || !responsesBridge.StructuredOutputs || !responsesBridge.Images || !responsesBridge.Reasoning || !responsesBridge.Streaming || responsesBridge.StatefulSessions.Enabled {
+		t.Fatalf("responses-to-chat bridge capability projection mismatch: %#v", responsesBridge)
+	}
+	target := cfg.Models["default"].Targets[0]
+	if target.Model != "mock-capable" || target.HonorsMaxTokens == nil || *target.HonorsMaxTokens || !target.ForceStoreFalse || target.OutputTokenField != "max_completion_tokens" || strings.Join(target.InputModalities, ",") != "image,text" || !target.Bridges.ChatToResponses.Enabled || !target.ResponsesToChat.Enabled {
+		t.Fatalf("model_ref target did not inherit catalog capability projection: %#v", target)
+	}
+}
+
+func TestLoadActiveConfigFromDBFailsClosedWithoutProviderModelCapabilityRecord(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	applyConfigControlPlaneMigrationsForTest(t, r)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "missing-capabilities", "active", "valid", now}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai-chat"}},
+		{`INSERT INTO router_config_provider_models (config_set_id, provider_name, model_ref, model) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "missing", "mock-missing"}},
+		{`INSERT INTO router_config_model_groups (config_set_id, group_name, strategy) VALUES (?, ?, ?)`, []any{"set-1", "default", "static"}},
+		{`INSERT INTO router_config_model_group_targets (config_set_id, group_name, sequence, provider_name, model_ref, weight) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "default", 1, "mock", "missing", 100}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "has no capability record") {
+		t.Fatalf("missing provider-model capability record must fail closed, got %v", err)
+	}
+}
+
+func TestConfigControlPlanePhase4BackfillsExistingProviderModelCapabilities(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	phase3Runner, err := NewMigrationRunner(r.db, configControlPlaneScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 3, MinData: 0, MaxData: 0}, configControlPlaneMigrationDefinitions[:3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := phase3Runner.ApplyPending("test-online"); err == nil || !strings.Contains(err.Error(), "requires explicit maintenance runner") {
+		t.Fatalf("phase-3 setup must stop before maintenance migrations, got %v", err)
+	}
+	if err := phase3Runner.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "phase-three", "draft", "valid", now}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai-chat"}},
+		{`INSERT INTO router_config_provider_models (config_set_id, provider_name, model_ref, model) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "existing", "mock-existing"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatal(err)
+	}
+	var capability providerModelCapabilityRow
+	if err := r.db.Where("config_set_id = ? AND provider_name = ? AND model_ref = ?", "set-1", "mock", "existing").First(&capability).Error; err != nil {
+		t.Fatalf("phase-4 migration did not backfill the existing provider model capability record: %v", err)
+	}
+	if capability.HonorsMaxTokens.Valid || capability.ForceStoreFalse || capability.OutputTokenField != "" || capability.ReasoningSupported {
+		t.Fatalf("phase-4 capability backfill must preserve all-default prior semantics, got %#v", capability)
+	}
+}
+
+func TestConfigControlPlanePhase4VerifierRejectsMissingCapabilityForeignKey(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	applyConfigControlPlaneMigrationsForTest(t, r)
+	if err := r.db.Exec(`DROP TABLE router_config_provider_model_modalities`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := r.db.Exec(`CREATE TABLE router_config_provider_model_modalities (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, direction TEXT NOT NULL, modality TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, model_ref, direction, modality))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Verify(); err == nil || !strings.Contains(err.Error(), "router_config_provider_model_modalities") {
+		t.Fatalf("expected missing provider-model capability foreign-key verification failure, got %v", err)
+	}
+}
+
+func TestConfigControlPlanePhase4PostgresCommentsCoverCapabilitySchema(t *testing.T) {
+	comments := strings.Join(configControlPlanePhase4PostgresComments, "\n")
+	for _, table := range configControlPlanePhase4Tables {
+		if !strings.Contains(comments, "COMMENT ON TABLE "+table+" ") {
+			t.Fatalf("missing PostgreSQL table comment for %s", table)
+		}
+		for _, column := range configControlPlanePhase4RequiredColumns[table] {
+			if !strings.Contains(comments, "COMMENT ON COLUMN "+table+"."+column+" ") {
+				t.Fatalf("missing PostgreSQL column comment for %s.%s", table, column)
+			}
+		}
 	}
 }
 
