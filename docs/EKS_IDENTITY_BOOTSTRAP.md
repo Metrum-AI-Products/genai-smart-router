@@ -61,6 +61,21 @@ make eks-discover \
 `make eks-identity-check` is available for an identity-only preflight. Neither
 Make target creates an AWS, EKS, or Kubernetes resource.
 
+### Browser-Login Fallback
+
+If the local AWS CLI browser callback cannot complete, a bootstrap administrator
+may use a time-boxed recovery path: create one access key for the approved
+`smartrouter` IAM user, exchange it together with that user's enrolled MFA code
+for a one-hour `sts:GetSessionToken` session, configure the session—not the
+source key—as the `smartrouter` local profile, and delete the source access key
+before the discovery profile is used. Verify `list-access-keys` is empty after
+the exchange. Do not put the source key, session secret, session token, MFA
+seed, or MFA code in Git, shell history, chat, or persistent configuration.
+
+This is a local break-glass bootstrap only, not the normal deployment flow.
+Record the actor, time, account, session expiry, discovery-role identity, and
+source-key deletion result as safe operational evidence.
+
 ```bash
 python3 scripts/eks_discover.py \
   --account-id 123456789012 \
