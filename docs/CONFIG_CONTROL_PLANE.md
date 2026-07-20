@@ -39,7 +39,9 @@ exactly the `runtime_scope` key, and use the partial predicate `status =
 
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
 active set and reuses `Config.Validate`; missing active state and invalid
-relational data fail closed. For a provider with `api_key_env`, it resolves the
+relational data fail closed. It reads at most two matching active rows and
+refuses to choose when integrity drift leaves more than one validated active
+set in a runtime scope. For a provider with `api_key_env`, it resolves the
 named deployment environment variable only into the returned in-memory runtime
 configuration; it never writes or logs that value. An unset reference remains
 unconfigured so catalog-only providers can stay cataloged without an entitled

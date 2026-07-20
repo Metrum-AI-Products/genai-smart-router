@@ -106,6 +106,27 @@ func TestLoadActiveConfigFromDBFailsClosedWithoutValidatedActiveSet(t *testing.T
 	}
 }
 
+func TestLoadActiveConfigFromDBFailsClosedWithMultipleValidatedActiveSets(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	applyConfigControlPlaneMigrationsForTest(t, r)
+	if err := r.db.Exec(`DROP INDEX router_config_one_active_set_per_scope`).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, id := range []string{"set-1", "set-2"} {
+		if err := r.db.Exec(`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, id, "staging", id, "active", "valid", now).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "multiple validated active") {
+		t.Fatalf("expected ambiguous active-set failure, got %v", err)
+	}
+}
+
 func TestConfigControlPlaneAllowsOnlyOneActiveSetPerScope(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {

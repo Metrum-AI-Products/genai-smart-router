@@ -113,13 +113,17 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 	if runtimeScope == "" {
 		return nil, errors.New("config runtime scope is required")
 	}
-	var set configSetRow
-	if err := db.Where("runtime_scope = ? AND status = ? AND validation_status = ?", runtimeScope, "active", "valid").First(&set).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("no validated active config set for runtime scope %q", runtimeScope)
-		}
+	var sets []configSetRow
+	if err := db.Where("runtime_scope = ? AND status = ? AND validation_status = ?", runtimeScope, "active", "valid").Limit(2).Find(&sets).Error; err != nil {
 		return nil, fmt.Errorf("load active config set: %w", err)
 	}
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("no validated active config set for runtime scope %q", runtimeScope)
+	}
+	if len(sets) != 1 {
+		return nil, fmt.Errorf("multiple validated active config sets for runtime scope %q", runtimeScope)
+	}
+	set := sets[0]
 	var server serverConfigRow
 	if err := db.Where("config_set_id = ?", set.ID).First(&server).Error; err != nil {
 		return nil, fmt.Errorf("load server config: %w", err)

@@ -57,8 +57,9 @@ Change config with structured YAML tooling, validate the result, run the relevan
 
 For managed configuration sources, keep exactly one validated active revision
 per runtime scope. Do not let a deployment select arbitrarily between competing
-active revisions; correct the configuration state or roll back to the reviewed
-revision before serving traffic.
+active revisions: the loader samples at most two matching records and refuses
+to serve when more than one is present. Correct the configuration state or roll
+back to the reviewed revision before serving traffic.
 
 ## OpenAI Endpoint Compatibility
 
