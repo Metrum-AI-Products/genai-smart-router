@@ -33,6 +33,12 @@ store AWS access keys in CI. Keep discovery evidence limited to safe inventory
 such as versions, resource names, and policy presence—not secrets, endpoints,
 certificate bodies, DSNs, or rendered Secret data.
 
+If deployment tooling creates a temporary source access key to establish a
+short-lived session, reserve durable local recovery state before that IAM call.
+An interrupted or ambiguous creation must block retries until an operator has
+reconciled the dedicated source user's keys; never create a second key merely
+because the first process did not return a key identifier.
+
 Use distinct roles for discovery, registry push, staging deployment, production
 promotion, and workload access. GitHub Actions should use OIDC with repository
 and environment claims constrained in the AWS trust policy; configure the

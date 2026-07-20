@@ -37,9 +37,11 @@ source_profile = smartrouter
 region = <approved-region>
 ```
 
-Run the canonical bootstrap target. It creates a one-time source key, exchanges
-it with the macOS Keychain MFA seed for a one-hour STS session, verifies the
-discovery-role identity, and deletes the source key even when bootstrap fails:
+Run the canonical bootstrap target. Before it creates a one-time source key,
+it atomically reserves the mode-0600 recovery-record path. It then exchanges
+the key with the macOS Keychain MFA seed for a one-hour STS session, verifies
+the discovery-role identity, and deletes the source key even when bootstrap
+fails:
 
 ```bash
 make eks-session-bootstrap \
@@ -55,11 +57,42 @@ session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
 
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
-and writes a mode-0600 cleanup record containing only the temporary access-key
-ID and required deletion action—never the secret key. If that record already
-exists, bootstrap refuses to create another source key. Delete the recorded
-key through the approved admin path, then remove the record before retrying;
-the bootstrap tool never overwrites an unresolved record.
+with a mode-0600 recovery record containing only safe state: either an exact
+temporary access-key ID after a known create response, or a pre-create
+reservation when the process was killed or the create result is ambiguous.
+It never records the secret key. An existing recovery record blocks all new
+source-key creation; the bootstrap tool never overwrites an unresolved record.
+
+### Reconcile A Stale Recovery Record
+
+Do not rerun bootstrap or delete a recovery record blindly. First inspect its
+safe state locally:
+
+```bash
+make eks-session-recovery-status \
+  EKS_CLEANUP_RECORD=/secure/local/eks-source-key-cleanup.json
+```
+
+If it reports `access_key_created`, use the approved non-root admin identity to
+delete exactly the recorded key ID, verify deletion, then remove the recovery
+record and retry. If it reports `reserved_before_create`, no key ID can be
+safely inferred: the AWS create request may have succeeded after the client was
+killed or disconnected. Using the approved admin identity, list access keys for
+the dedicated source user, delete any unexpected bootstrap key, and verify that
+no temporary source key remains before removing the reservation and retrying.
+The dedicated `smartrouter` source user should not retain normal access keys,
+which makes that reconciliation bounded and reviewable. Never create another
+key until this reconciliation is complete.
+
+```bash
+# Read-only reconciliation inventory; it never reveals secret access-key material.
+aws iam list-access-keys --profile <approved-admin-profile> --user-name smartrouter --output json
+
+# After review, delete only an unexpected temporary key ID or the ID reported
+# by access_key_created. Then re-run the list command and remove the local
+# recovery record only when no temporary source key remains.
+aws iam delete-access-key --profile <approved-admin-profile> --user-name smartrouter --access-key-id <temporary-key-id>
+```
 
 Use the Make targets to prevent implicit target selection and root-profile
 access. They validate identifiers, require the expected assumed role, and only

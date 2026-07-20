@@ -15,12 +15,18 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 ARN = re.compile(r"^arn:aws:iam::[0-9]{12}:(?:user|role)/[A-Za-z0-9+=,.@_/-]+$")
 SERIAL = re.compile(r"^arn:aws:iam::[0-9]{12}:mfa/[A-Za-z0-9+=,.@_/-]+$")
+RESERVATION_ID = re.compile(r"^[a-f0-9]{32}$")
+ACCESS_KEY_ID = re.compile(r"^[A-Z0-9]{16,128}$")
+RECOVERY_RECORD_VERSION = 1
+RESERVED_BEFORE_CREATE = "reserved_before_create"
+ACCESS_KEY_CREATED = "access_key_created"
 
 
 def command(args: list[str], *, env: dict[str, str] | None = None) -> str:
@@ -70,21 +76,25 @@ def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> Non
             temporary.unlink()
 
 
-def cleanup_record_payload(source_user: str, key_id: str) -> str:
-    return json.dumps({"source_user": source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n"
+def reservation_payload(source_user: str, reservation_id: str) -> dict[str, object]:
+    return {
+        "record_version": RECOVERY_RECORD_VERSION,
+        "state": RESERVED_BEFORE_CREATE,
+        "source_user": source_user,
+        "reservation_id": reservation_id,
+        "required_action": "reconcile source-user access keys before retrying",
+    }
 
 
-def cleanup_record_exists(path: Path) -> bool:
-    # Use lexists so a dangling symlink cannot bypass recovery protection.
-    return os.path.lexists(path)
-
-
-def require_no_unresolved_cleanup_record(path: Path) -> None:
-    if cleanup_record_exists(path):
-        raise RuntimeError(
-            "an unresolved temporary source access-key cleanup record already exists; "
-            "delete the recorded key, then remove the record before retrying"
-        )
+def key_cleanup_payload(source_user: str, reservation_id: str, key_id: str) -> dict[str, object]:
+    return {
+        "record_version": RECOVERY_RECORD_VERSION,
+        "state": ACCESS_KEY_CREATED,
+        "source_user": source_user,
+        "reservation_id": reservation_id,
+        "access_key_id": key_id,
+        "required_action": "delete temporary source access key before removing this record",
+    }
 
 
 def fsync_parent(path: Path) -> None:
@@ -97,19 +107,40 @@ def fsync_parent(path: Path) -> None:
         os.close(descriptor)
 
 
-def write_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    require_no_unresolved_cleanup_record(path)
+def read_recovery_record(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("recovery record could not be read safely; preserve it and reconcile before retrying") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("recovery record is not an object; preserve it and reconcile before retrying")
+    return payload
+
+
+def write_temporary_record(path: Path, payload: dict[str, object]) -> Path:
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as file:
             os.fchmod(file.fileno(), 0o600)
-            file.write(cleanup_record_payload(source_user, key_id))
+            file.write(json.dumps(payload, sort_keys=True) + "\n")
             file.flush()
             os.fsync(file.fileno())
-        # link(2) is an atomic create: unlike os.replace it can never replace
-        # a record for an earlier still-active source key.
+    except Exception:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+    return temporary
+
+
+def reserve_recovery_record(path: Path, source_user: str) -> dict[str, object]:
+    """Durably reserve the only recovery slot before the IAM create call."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    payload = reservation_payload(source_user, uuid.uuid4().hex)
+    temporary = write_temporary_record(path, payload)
+    try:
+        # link(2) is an atomic exclusive create. A concurrent invocation or a
+        # crash residue can never be overwritten by a later create attempt.
         os.link(temporary, path)
         fsync_parent(path)
     except FileExistsError as exc:
@@ -120,35 +151,93 @@ def write_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
+    return payload
 
 
-def remove_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
-    """Remove only the record this invocation created after confirmed deletion."""
+def replace_owned_recovery_record(path: Path, expected: dict[str, object], replacement: dict[str, object]) -> None:
+    """Advance only this invocation's reservation to its known access-key state."""
+    if read_recovery_record(path) != expected:
+        raise RuntimeError("recovery record changed; preserving it for operator reconciliation")
+    temporary = write_temporary_record(path, replacement)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError("temporary source key was deleted but its cleanup record could not be safely verified") from exc
-    if payload != json.loads(cleanup_record_payload(source_user, key_id)):
-        raise RuntimeError("temporary source key was deleted but its cleanup record changed; preserving it for operator review")
+        os.replace(temporary, path)
+        fsync_parent(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def promote_recovery_reservation(path: Path, reservation: dict[str, object], source_user: str, key_id: str) -> dict[str, object]:
+    payload = key_cleanup_payload(source_user, str(reservation["reservation_id"]), key_id)
+    replace_owned_recovery_record(path, reservation, payload)
+    return payload
+
+
+def remove_own_recovery_record(path: Path, reservation: dict[str, object], source_user: str, key_id: str) -> None:
+    """Remove only this invocation's reservation after confirmed key deletion."""
+    current = read_recovery_record(path)
+    key_record = key_cleanup_payload(source_user, str(reservation["reservation_id"]), key_id)
+    if current not in (reservation, key_record):
+        raise RuntimeError("temporary source key was deleted but its recovery record changed; preserving it for operator review")
     path.unlink()
     fsync_parent(path)
+
+
+def recovery_status(path: Path) -> dict[str, object]:
+    """Return only actionable, non-secret local recovery state."""
+    payload = read_recovery_record(path)
+    state = payload.get("state")
+    common = {"record_version", "state", "source_user", "reservation_id", "required_action"}
+    if (
+        state == RESERVED_BEFORE_CREATE
+        and set(payload) == common
+        and payload.get("record_version") == RECOVERY_RECORD_VERSION
+        and isinstance(payload.get("source_user"), str)
+        and SAFE_NAME.fullmatch(payload["source_user"])
+        and isinstance(payload.get("reservation_id"), str)
+        and RESERVATION_ID.fullmatch(payload["reservation_id"])
+        and payload.get("required_action") == "reconcile source-user access keys before retrying"
+    ):
+        return payload
+    key_fields = common | {"access_key_id"}
+    if (
+        state == ACCESS_KEY_CREATED
+        and set(payload) == key_fields
+        and payload.get("record_version") == RECOVERY_RECORD_VERSION
+        and isinstance(payload.get("source_user"), str)
+        and SAFE_NAME.fullmatch(payload["source_user"])
+        and isinstance(payload.get("reservation_id"), str)
+        and RESERVATION_ID.fullmatch(payload["reservation_id"])
+        and isinstance(payload.get("access_key_id"), str)
+        and ACCESS_KEY_ID.fullmatch(payload["access_key_id"])
+        and payload.get("required_action") == "delete temporary source access key before removing this record"
+    ):
+        return payload
+    raise RuntimeError("recovery record has an unknown format; preserve it and reconcile before retrying")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--admin-profile", default="default")
-    parser.add_argument("--source-user", required=True)
-    parser.add_argument("--mfa-serial", required=True)
-    parser.add_argument("--macos-keychain-service", required=True)
-    parser.add_argument("--macos-keychain-account", required=True)
+    parser.add_argument("--source-user")
+    parser.add_argument("--mfa-serial")
+    parser.add_argument("--macos-keychain-service")
+    parser.add_argument("--macos-keychain-account")
     parser.add_argument("--session-profile", default="smartrouter")
     parser.add_argument("--role-profile", default="genai-smart-router-eks-discovery")
-    parser.add_argument("--role-arn", required=True)
-    parser.add_argument("--region", required=True)
+    parser.add_argument("--role-arn")
+    parser.add_argument("--region")
     parser.add_argument("--duration-seconds", type=int, default=3600)
     parser.add_argument("--propagation-wait-seconds", type=int, default=8)
-    parser.add_argument("--cleanup-record", required=True, type=Path)
+    parser.add_argument("--cleanup-record", type=Path)
+    parser.add_argument("--recovery-status", type=Path, help="read-only safe status for an existing recovery record")
     args = parser.parse_args()
+    if args.recovery_status:
+        print(json.dumps(recovery_status(args.recovery_status), sort_keys=True))
+        return 0
+    for name in ("source_user", "mfa_serial", "macos_keychain_service", "macos_keychain_account", "role_arn", "region", "cleanup_record"):
+        if getattr(args, name) in {None, ""}:
+            parser.error(f"--{name.replace('_', '-')} is required for session bootstrap")
     for value in (args.admin_profile, args.source_user, args.macos_keychain_account, args.session_profile, args.role_profile):
         if not SAFE_NAME.fullmatch(value):
             parser.error("profile and identity names must be simple identifiers")
@@ -156,9 +245,9 @@ def main() -> int:
         parser.error("invalid MFA serial, role ARN, or region")
     if not 900 <= args.duration_seconds <= 43200 or not 0 <= args.propagation_wait_seconds <= 30:
         parser.error("invalid session duration or propagation wait")
+    assert args.cleanup_record is not None
     if str(args.cleanup_record) in {"", "."} or args.cleanup_record.is_dir():
         parser.error("--cleanup-record must be a non-directory protected file path")
-    require_no_unresolved_cleanup_record(args.cleanup_record)
     approved_account = args.role_arn.split(":")[4]
     if args.mfa_serial.split(":")[4] != approved_account:
         parser.error("role ARN and MFA serial must use the same approved account")
@@ -166,9 +255,12 @@ def main() -> int:
     if str(admin_identity.get("Account", "")) != approved_account or str(admin_identity.get("Arn", "")).endswith(":root"):
         raise RuntimeError("admin profile must be a non-root identity in the approved account before creating an access key")
 
+    # This atomic reservation is intentionally immediately before the only IAM
+    # mutation. If this process is killed or the create result is ambiguous, it
+    # remains in place and blocks a retry until an operator reconciles it.
+    reservation = reserve_recovery_record(args.cleanup_record, args.source_user)
     key_id = ""
     deleted = False
-    cleanup_record_persisted = False
     def delete_source_key() -> bool:
         for _ in range(3):
             try:
@@ -178,12 +270,19 @@ def main() -> int:
                 time.sleep(1)
         return False
     try:
-        access = json.loads(command(["aws", "iam", "create-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--output", "json"]))["AccessKey"]
-        key_id = access["AccessKeyId"]
-        # Persist this before any network call or profile write: a killed process
-        # must leave an actionable key identifier, never durable credentials.
-        write_cleanup_record(args.cleanup_record, args.source_user, key_id)
-        cleanup_record_persisted = True
+        try:
+            access = json.loads(command(["aws", "iam", "create-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--output", "json"]))["AccessKey"]
+            candidate_key_id = access["AccessKeyId"]
+            if not isinstance(candidate_key_id, str) or not ACCESS_KEY_ID.fullmatch(candidate_key_id):
+                raise ValueError("create-access-key did not return a safe access-key identifier")
+            key_id = candidate_key_id
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
+            raise RuntimeError(
+                f"source key creation outcome is unknown; do not retry until recovery record is reconciled: {args.cleanup_record}"
+            ) from exc
+        # The reservation already protects the narrow create-result window.
+        # Promote it to an exact key-ID record before any later network call.
+        promote_recovery_reservation(args.cleanup_record, reservation, args.source_user, key_id)
         if args.propagation_wait_seconds:
             time.sleep(args.propagation_wait_seconds)
         env = os.environ.copy()
@@ -195,8 +294,7 @@ def main() -> int:
         deleted = delete_source_key()
         if not deleted:
             raise RuntimeError("temporary source key deletion failed after retries")
-        remove_cleanup_record(args.cleanup_record, args.source_user, key_id)
-        cleanup_record_persisted = False
+        remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
         key_id = ""
         role_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--output", "json"]))
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
@@ -205,18 +303,15 @@ def main() -> int:
         if key_id and not deleted:
             deleted = delete_source_key()
             if deleted:
-                if cleanup_record_persisted:
-                    remove_cleanup_record(args.cleanup_record, args.source_user, key_id)
-                    cleanup_record_persisted = False
+                remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
                 key_id = ""
             else:
-                if not cleanup_record_persisted:
-                    # This path is reachable only if a filesystem race/error
-                    # prevented the initial record write. Never replace an
-                    # existing recovery record; surface that failure instead.
-                    write_cleanup_record(args.cleanup_record, args.source_user, key_id)
                 raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except RuntimeError as exc:
+        print(f"EKS session bootstrap failed safely: {exc}", file=sys.stderr)
+        raise SystemExit(2)
