@@ -352,7 +352,7 @@ func UsageMigrationRunner(cfg UsageDBConfig) (*migrationRunner, func() error, er
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewMigrationRunner(db, usageMigrationScope, usageMigrationCompatibility, usageMigrationDefinitions)
+	r, err := newUsageMigrationRunner(db)
 	if err != nil {
 		sqlDB, _ := db.DB()
 		if sqlDB != nil {
@@ -368,4 +368,8 @@ func UsageMigrationRunner(cfg UsageDBConfig) (*migrationRunner, func() error, er
 		return sqlDB.Close()
 	}
 	return r, closeFn, nil
+}
+
+func newUsageMigrationRunner(db *gorm.DB) (*migrationRunner, error) {
+	return NewMigrationRunner(db, usageMigrationScope, usageMigrationCompatibility, usageMigrationDefinitions)
 }

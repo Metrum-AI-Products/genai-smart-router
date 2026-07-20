@@ -29,6 +29,31 @@ type usageStore struct {
 	db *gorm.DB
 }
 
+const (
+	// usageDBMigrationPolicyLegacyAutoMigrate preserves the historical startup
+	// initializer temporarily. It must not be selected for new production
+	// deployments after an explicit fresh-install manifest is available.
+	usageDBMigrationPolicyLegacyAutoMigrate = "legacy-auto-migrate"
+	// usageDBMigrationPolicyValidate verifies a fully applied immutable ledger
+	// and never applies application-schema DDL during serving startup.
+	usageDBMigrationPolicyValidate = "validate"
+	// usageDBMigrationPolicyAutoSafe applies only checked-in transactional online
+	// migrations. The current baseline cannot initialize an empty database.
+	usageDBMigrationPolicyAutoSafe = "auto-safe"
+	// usageDBMigrationPolicyDeploymentJob verifies a current ledger while a
+	// non-serving deployment job owns all migration application.
+	usageDBMigrationPolicyDeploymentJob = "deployment-job"
+)
+
+func validUsageDBMigrationPolicy(policy string) bool {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case usageDBMigrationPolicyLegacyAutoMigrate, usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob:
+		return true
+	default:
+		return false
+	}
+}
+
 type UsageReportOptions struct {
 	Driver             string
 	DBPath             string
@@ -1414,11 +1439,54 @@ func OpenUsageStore(cfg UsageDBConfig) (*usageStore, error) {
 		return nil, err
 	}
 	store := &usageStore{db: db}
-	if err := store.migrate(); err != nil {
+	if err := store.initializeSchema(cfg.MigrationPolicy); err != nil {
 		_ = store.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+// initializeSchema isolates the legacy implicit initializer from the explicit
+// migration startup policies. A serving process never runs application DDL
+// under validate or deployment-job; both fail closed unless the ledger is
+// current and its postconditions verify.
+func (s *usageStore) initializeSchema(policy string) error {
+	policy = strings.ToLower(strings.TrimSpace(defaultString(policy, usageDBMigrationPolicyLegacyAutoMigrate)))
+	switch policy {
+	case usageDBMigrationPolicyLegacyAutoMigrate:
+		return s.migrate()
+	case usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob:
+		r, err := newUsageMigrationRunner(s.db)
+		if err != nil {
+			return err
+		}
+		status, err := r.Verify()
+		if err != nil {
+			return fmt.Errorf("usage migration %s: %w", policy, err)
+		}
+		if !status.Compatible || status.State != "current" {
+			return fmt.Errorf("usage migration %s requires a current compatible ledger (state %s)", policy, status.State)
+		}
+		return nil
+	case usageDBMigrationPolicyAutoSafe:
+		r, err := newUsageMigrationRunner(s.db)
+		if err != nil {
+			return err
+		}
+		if err := r.ApplyPending("router-startup"); err != nil {
+			return fmt.Errorf("usage migration auto-safe: %w", err)
+		}
+		status, err := r.Verify()
+		if err != nil {
+			return fmt.Errorf("usage migration auto-safe: %w", err)
+		}
+		if !status.Compatible || status.State != "current" {
+			return fmt.Errorf("usage migration auto-safe requires a current compatible ledger (state %s)", status.State)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported usage migration policy %q", policy)
+	}
 }
 
 func OpenUsageStorePath(path string) (*usageStore, error) {

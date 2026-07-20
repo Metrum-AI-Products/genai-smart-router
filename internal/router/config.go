@@ -244,10 +244,11 @@ type LoggingConfig struct {
 }
 
 type UsageDBConfig struct {
-	Driver string `yaml:"driver"`
-	Path   string `yaml:"path"`
-	DSN    string `yaml:"dsn"`
-	Enable *bool  `yaml:"enabled"`
+	Driver          string `yaml:"driver"`
+	Path            string `yaml:"path"`
+	DSN             string `yaml:"dsn"`
+	Enable          *bool  `yaml:"enabled"`
+	MigrationPolicy string `yaml:"migration_policy"`
 }
 
 type DecisionTelemetryConfig struct {
@@ -896,6 +897,12 @@ func (c *Config) setDefaults() {
 	if c.Server.UsageDB.Driver == "" {
 		c.Server.UsageDB.Driver = "sqlite"
 	}
+	if c.Server.UsageDB.MigrationPolicy == "" {
+		// Preserve the established initializer until the complete, reviewed
+		// fresh-install DDL manifest replaces it. New production deployments
+		// should explicitly select validate or deployment-job instead.
+		c.Server.UsageDB.MigrationPolicy = usageDBMigrationPolicyLegacyAutoMigrate
+	}
 	if c.Server.UsageDB.Path == "" && c.Server.UsageDB.DSN == "" && strings.EqualFold(c.Server.UsageDB.Driver, "sqlite") {
 		dir := filepath.Dir(c.StatePath)
 		if dir == "." {
@@ -994,6 +1001,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.DecisionTelemetry.Enabled && c.Server.UsageDB.Enable != nil && !*c.Server.UsageDB.Enable {
 		return fmt.Errorf("server decision_telemetry requires usage_db enabled")
+	}
+	if c.Server.UsageDB.MigrationPolicy != "" && !validUsageDBMigrationPolicy(c.Server.UsageDB.MigrationPolicy) {
+		return fmt.Errorf("server usage_db migration_policy must be one of %q, %q, %q, or %q", usageDBMigrationPolicyLegacyAutoMigrate, usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob)
 	}
 	if err := validateLicenseConfig(c.Server.License); err != nil {
 		return err

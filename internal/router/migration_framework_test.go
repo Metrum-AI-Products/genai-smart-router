@@ -153,3 +153,41 @@ func TestUsageMigrationBaselineRejectsEmptyDatabase(t *testing.T) {
 		t.Fatalf("failed baseline adoption must leave no ledger entry: %+v", status)
 	}
 }
+
+func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	legacy, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A deployment job (or explicitly enabled safe startup migration) may adopt
+	// this existing schema. It must not run the legacy AutoMigrate path.
+	auto, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	if err != nil {
+		t.Fatalf("auto-safe adoption: %v", err)
+	}
+	if err := auto.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob} {
+		store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: policy})
+		if err != nil {
+			t.Fatalf("%s must accept current verified ledger: %v", policy, err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	empty := filepath.Join(t.TempDir(), "empty.sqlite")
+	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob, usageDBMigrationPolicyAutoSafe} {
+		if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: policy}); err == nil {
+			t.Fatalf("%s must reject an empty database without an explicit bootstrap manifest", policy)
+		}
+	}
+}
