@@ -1,0 +1,26 @@
+# Apply only after discovery confirms the installed Linkerd policy API/version.
+# This example is namespace-scoped and contains no trust material or secrets.
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: router-http
+  namespace: replace-with-approved-tenant-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: smart-llmrouter
+  port: http
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: ServerAuthorization
+metadata:
+  name: router-from-ingress
+  namespace: replace-with-approved-tenant-namespace
+spec:
+  server:
+    name: router-http
+  client:
+    meshTLS:
+      identities:
+        - "ingress-nginx.ingress-nginx.serviceaccount.identity.linkerd.cluster.local"

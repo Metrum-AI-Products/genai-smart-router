@@ -24,6 +24,25 @@ not belong in public manifests or package documentation.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
 - A router config reviewed for the deployment's model groups, callers, admin auth, and reporting settings.
 
+## EKS Identity And Bootstrap
+
+For EKS, begin with an explicitly selected account, region, cluster, namespace,
+and repository. Use a short-lived federated identity to perform read-only
+discovery before applying manifests; do not rely on a current kube context or
+store AWS access keys in CI. Keep discovery evidence limited to safe inventory
+such as versions, resource names, and policy presence—not secrets, endpoints,
+certificate bodies, DSNs, or rendered Secret data.
+
+Use distinct roles for discovery, registry push, staging deployment, production
+promotion, and workload access. GitHub Actions should use OIDC with repository,
+branch, and environment claims constrained in the AWS trust policy. Bind
+deployment and tenant-provisioner identities only within their approved
+namespaces; they must not read arbitrary Secrets, alter cluster roles, or modify
+another tenant. Where Linkerd is used, verify its control plane, policy CRDs,
+namespace injection, and identity/trust readiness before applying namespace
+policy resources. Review RBAC, service-account, network-policy, quota, and
+Linkerd-policy drift before overwriting it.
+
 ## Image And Architecture
 
 Release Docker packages include per-architecture image tarballs:

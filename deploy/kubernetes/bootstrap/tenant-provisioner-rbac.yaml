@@ -1,0 +1,42 @@
+# Namespace-scoped binding template. A platform administrator creates one copy
+# in each approved tenant namespace after discovery validates Linkerd policy CRDs.
+# It intentionally grants no cluster-scoped permissions and no Secret read/write.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-provisioner
+  namespace: replace-with-approved-tenant-namespace
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tenant-bootstrap-provisioner
+  namespace: replace-with-approved-tenant-namespace
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "serviceaccounts", "resourcequotas", "limitranges", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["policy.linkerd.io"]
+    resources: ["servers", "serverauthorizations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-bootstrap-provisioner
+  namespace: replace-with-approved-tenant-namespace
+subjects:
+  - kind: ServiceAccount
+    name: tenant-provisioner
+    namespace: replace-with-approved-tenant-namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tenant-bootstrap-provisioner

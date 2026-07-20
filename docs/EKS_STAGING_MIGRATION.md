@@ -35,6 +35,12 @@ provider keys, caller tokens, token hashes, or complete config.
 
 ## Prerequisites
 
+Before any automated or repeated EKS access, follow
+[`EKS_IDENTITY_BOOTSTRAP.md`](./EKS_IDENTITY_BOOTSTRAP.md) to reauthenticate,
+produce a redacted explicit-target discovery report, and review identity,
+Linkerd, and namespace bootstrap prerequisites. This staging runbook does not
+authorize a production cutover.
+
 1. Obtain Kubernetes RBAC for the deployment identity: namespace creation,
    Secret/PVC/Service/Ingress/Deployment/NetworkPolicy management, pod logs,
    and port-forwarding. EKS authentication alone is insufficient.
