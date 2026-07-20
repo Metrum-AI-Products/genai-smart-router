@@ -164,11 +164,11 @@ class Delivery:
                 self.event("server_side_dry_run", result="passed")
             elif self.args.action == "apply":
                 command(["kubectl", "apply", "--server-side", "-f", str(manifest)], env, quiet=True)
-                command(["kubectl", "rollout", "status", "deployment/router", "-n", self.args.k8s_namespace, "--timeout=5m"], env, quiet=True)
+                command(["kubectl", "rollout", "status", "deployment/smart-llmrouter", "-n", self.args.k8s_namespace, "--timeout=5m"], env, quiet=True)
                 self.event("apply", result="passed")
             elif self.args.action == "rollback":
-                command(["kubectl", "rollout", "undo", "deployment/router", "-n", self.args.k8s_namespace], env, quiet=True)
-                command(["kubectl", "rollout", "status", "deployment/router", "-n", self.args.k8s_namespace, "--timeout=5m"], env, quiet=True)
+                command(["kubectl", "rollout", "undo", "deployment/smart-llmrouter", "-n", self.args.k8s_namespace], env, quiet=True)
+                command(["kubectl", "rollout", "status", "deployment/smart-llmrouter", "-n", self.args.k8s_namespace, "--timeout=5m"], env, quiet=True)
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
                 if not self.args.smoke_command:

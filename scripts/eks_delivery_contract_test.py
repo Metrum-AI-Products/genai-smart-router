@@ -67,6 +67,8 @@ def main() -> int:
         assert production.returncode != 0 and "only ENVIRONMENT=staging" in production.stderr
         applied = run("apply", root, ["--confirm", "STAGING_APPLY"])
         assert applied.returncode == 0, applied.stderr
+        calls = (bindir / "calls.log").read_text()
+        assert "deployment/smart-llmrouter" in calls and "deployment/router" not in calls
         smoke = run("smoke", root, ["--smoke-command", "sh -c 'echo token=leak >&2; exit 1'"])
         assert smoke.returncode != 0 and "token=leak" not in smoke.stderr
         assert "token=leak" not in (root / "tmp/evidence/evidence.json").read_text()
