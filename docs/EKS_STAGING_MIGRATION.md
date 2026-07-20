@@ -44,10 +44,11 @@ authorize a production cutover.
 1. Obtain Kubernetes RBAC for the deployment identity: namespace creation,
    Secret/PVC/Service/Ingress/Deployment/NetworkPolicy management, pod logs,
    and port-forwarding. EKS authentication alone is insufficient.
-2. Confirm the `nginx` ingress class, `ingress-nginx` namespace, and the
+2. Confirm the `nginx` ingress class, selected ingress namespace, and the
    namespace-local wildcard certificate Secret named
-   `apps-metrum-ai-wildcard-tls`. Update the overlay only when the platform
-   uses different names.
+   `apps-metrum-ai-wildcard-tls`. Render the discovery-derived ingress
+   NetworkPolicy and Linkerd policy for that namespace; do not restore a fixed
+   ingress namespace in the overlay.
 3. Create `deploy/kubernetes/overlays/metrum-staging/storageclass.yaml` with a
    cluster-admin identity before applying the overlay. It defines the internal
    `smartrouter-gp3` class using this EKS cluster's Auto Mode EBS CSI driver;

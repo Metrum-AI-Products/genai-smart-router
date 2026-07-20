@@ -45,6 +45,8 @@ short-lived session, reserve durable local recovery state before that IAM call.
 An interrupted or ambiguous creation must block retries until an operator has
 reconciled the dedicated source user's keys; never create a second key merely
 because the first process did not return a key identifier.
+The bootstrap must verify the exact approved account and discovery assumed-role
+identity before it reports success.
 
 Use distinct roles for discovery, registry push, staging deployment, production
 promotion, and workload access. GitHub Actions should use OIDC with repository
@@ -65,7 +67,11 @@ sidecar. Discovery derives the domain from every selected proxy's safe literal
 trust-domain configuration and compares its safe local-identity configuration
 with the selected ingress namespace and Linkerd control-plane namespace before
 rendering; never apply a template with a fixed, unresolved, or merely
-service-account-existence-based ingress identity.
+service-account-existence-based ingress identity. The base router
+`NetworkPolicy` denies ingress until the same verified report renders its
+companion selected-namespace allow policy; review, dry-run, and apply that
+policy together with the Linkerd authorization rather than restoring a fixed
+ingress namespace.
 
 ## Image And Architecture
 

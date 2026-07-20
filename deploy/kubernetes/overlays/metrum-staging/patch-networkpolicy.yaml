@@ -9,14 +9,6 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 8080
   egress:
     - to:
         - namespaceSelector:

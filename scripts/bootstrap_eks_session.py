@@ -27,6 +27,7 @@ ACCESS_KEY_ID = re.compile(r"^[A-Z0-9]{16,128}$")
 RECOVERY_RECORD_VERSION = 1
 RESERVED_BEFORE_CREATE = "reserved_before_create"
 ACCESS_KEY_CREATED = "access_key_created"
+DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
 
 
 def command(args: list[str], *, env: dict[str, str] | None = None) -> str:
@@ -103,6 +104,17 @@ def profile_verification_environment(credentials_path: Path, config_path: Path, 
         }
     )
     return env
+
+
+def validate_discovery_role_identity(identity: object, approved_account: str) -> str:
+    """Require the exact approved discovery role before bootstrap can succeed."""
+    if not isinstance(identity, dict) or str(identity.get("Account", "")) != approved_account:
+        raise RuntimeError("configured role profile identity account does not match the approved account")
+    arn = str(identity.get("Arn", ""))
+    expected_prefix = f"arn:aws:sts::{approved_account}:assumed-role/{DISCOVERY_ROLE_NAME}/"
+    if not arn.startswith(expected_prefix):
+        raise RuntimeError("configured role profile is not the expected discovery assumed role")
+    return arn
 
 
 def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> None:
@@ -295,6 +307,9 @@ def main() -> int:
     approved_account = args.role_arn.split(":")[4]
     if args.mfa_serial.split(":")[4] != approved_account:
         parser.error("role ARN and MFA serial must use the same approved account")
+    expected_role_arn = f"arn:aws:iam::{approved_account}:role/{DISCOVERY_ROLE_NAME}"
+    if args.role_arn != expected_role_arn:
+        parser.error("--role-arn must be the exact approved discovery role")
     admin_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.admin_profile, "--output", "json"]))
     if str(admin_identity.get("Account", "")) != approved_account or str(admin_identity.get("Arn", "")).endswith(":root"):
         raise RuntimeError("admin profile must be a non-root identity in the approved account before creating an access key")
@@ -343,18 +358,19 @@ def main() -> int:
             credentials_path=credentials_path,
             config_path=config_path,
         )
-        deleted = delete_source_key()
-        if not deleted:
-            raise RuntimeError("temporary source key deletion failed after retries")
-        remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
-        key_id = ""
         role_identity = json.loads(
             command(
                 ["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--region", args.region, "--output", "json"],
                 env=profile_verification_environment(credentials_path, config_path, args.region),
             )
         )
-        print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
+        verified_role_arn = validate_discovery_role_identity(role_identity, approved_account)
+        deleted = delete_source_key()
+        if not deleted:
+            raise RuntimeError("temporary source key deletion failed after retries")
+        remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
+        key_id = ""
+        print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": verified_role_arn, "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:
         if key_id and not deleted:

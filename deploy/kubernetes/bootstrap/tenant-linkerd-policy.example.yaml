@@ -1,7 +1,8 @@
 # Render only after discovery verifies the selected ingress service account and
 # installed Linkerd policy API/version. Do not apply this unrendered template: use
-# `make eks-render-linkerd-policy` to derive the identity from the scrubbed,
-# validated discovery report. This template contains no trust material or secrets.
+# `make eks-render-linkerd-policy` to derive the identity and companion ingress
+# NetworkPolicy from the scrubbed, validated discovery report. This template
+# contains no trust material or secrets.
 apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:

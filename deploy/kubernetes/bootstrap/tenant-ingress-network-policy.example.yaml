@@ -1,0 +1,25 @@
+# Render this template only through `make eks-render-linkerd-policy` after a
+# successful, verified Linkerd discovery. The base NetworkPolicy denies ingress
+# until this selected-namespace allow policy is reviewed and applied alongside
+# the rendered Linkerd policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: smart-llmrouter-discovered-ingress
+  namespace: __TENANT_NAMESPACE__
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: smart-llmrouter
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: __INGRESS_NAMESPACE__
+      ports:
+        - protocol: TCP
+          port: 8080

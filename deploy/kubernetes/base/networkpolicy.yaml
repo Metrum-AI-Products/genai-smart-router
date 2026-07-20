@@ -11,14 +11,9 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 8080
+  # Ingress is denied until the reviewed discovery-derived policy is rendered
+  # for the selected ingress namespace. Do not restore a fixed namespace here.
+  ingress: []
   egress:
     - to:
         - namespaceSelector: {}

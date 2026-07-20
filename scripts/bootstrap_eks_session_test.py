@@ -69,7 +69,7 @@ def assert_precreate_reservation_order(root: Path) -> None:
             if profile == "admin":
                 return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
             if profile == "genai-smart-router-eks-discovery":
-                return json.dumps({"Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             if MODULE.recovery_status(cleanup)["state"] != MODULE.RESERVED_BEFORE_CREATE:
                 raise AssertionError("IAM create was attempted before the exclusive recovery reservation")
@@ -207,7 +207,7 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
                 ):
                     raise AssertionError("role verification inherited ambient AWS credentials or role selection")
                 role_verification_seen = True
-                return json.dumps({"Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
         if args[:3] == ["aws", "sts", "get-session-token"]:
@@ -242,6 +242,48 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
     config.read(config_path)
     if config["profile genai-smart-router-eks-discovery"].get("source_profile") != "smartrouter":
         raise AssertionError("bootstrap did not write the role profile to AWS_CONFIG_FILE")
+
+
+def assert_unexpected_role_identity_is_rejected(root: Path) -> None:
+    cleanup = root / "unexpected-role" / "recovery.json"
+    source_key_deleted = False
+
+    def command(args: list[str], *, env=None) -> str:
+        nonlocal source_key_deleted
+        if args[:3] == ["aws", "sts", "get-caller-identity"]:
+            profile = args[args.index("--profile") + 1]
+            if profile == "admin":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
+            if profile == "genai-smart-router-eks-discovery":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/unexpected-role/test"})
+        if args[:3] == ["aws", "iam", "create-access-key"]:
+            return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
+        if args[:3] == ["aws", "sts", "get-session-token"]:
+            return json.dumps({"Credentials": {"AccessKeyId": "ASIAEXAMPLEKEYID", "SecretAccessKey": "test-only-session-secret", "SessionToken": "test-only-session-token", "Expiration": "2030-01-01T00:00:00Z"}})
+        if args[:3] == ["aws", "iam", "delete-access-key"]:
+            source_key_deleted = True
+            return ""
+        raise AssertionError(f"unexpected command: {args}")
+
+    try:
+        run_main_with_stubs(cleanup, command)
+    except RuntimeError as exc:
+        if str(exc) != "configured role profile is not the expected discovery assumed role":
+            raise
+    else:
+        raise AssertionError("bootstrap accepted an unexpected assumed role")
+    if not source_key_deleted or cleanup.exists():
+        raise AssertionError("unexpected role identity did not preserve temporary-key cleanup guarantees")
+    for identity in (
+        {"Account": "000000000000", "Arn": "arn:aws:sts::000000000000:assumed-role/genai-smart-router-eks-discovery/test"},
+        {"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/unexpected-role/test"},
+    ):
+        try:
+            MODULE.validate_discovery_role_identity(identity, "123456789012")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("role identity validation accepted a wrong account or role")
 
 
 def main() -> int:
@@ -299,6 +341,7 @@ def main() -> int:
         assert_ambiguous_create_preserves_reservation(root)
         assert_concurrent_reservation_is_exclusive(root)
         assert_configured_profile_paths_and_role_verification(root)
+        assert_unexpected_role_identity_is_rejected(root)
     print("EKS session bootstrap safety tests passed")
     return 0
 

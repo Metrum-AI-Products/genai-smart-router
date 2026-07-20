@@ -40,8 +40,9 @@ region = <approved-region>
 Run the canonical bootstrap target. Before it creates a one-time source key,
 it atomically reserves the mode-0600 recovery-record path. It then exchanges
 the key with the macOS Keychain MFA seed for a one-hour STS session, verifies
-the discovery-role identity, and deletes the source key even when bootstrap
-fails:
+the exact approved account and `genai-smart-router-eks-discovery` assumed-role
+identity before reporting success, and deletes the source key even when
+bootstrap fails:
 
 ```bash
 make eks-session-bootstrap \
@@ -53,8 +54,10 @@ make eks-session-bootstrap \
 ```
 
 Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discovery`
-session before running discovery. EKS access entries plus namespace-scoped
-Kubernetes RBAC remain separately required for `kubectl` reads.
+session in the approved account before running discovery. Bootstrap rejects a
+wrong account or any other assumed role rather than reporting success. EKS
+access entries plus namespace-scoped Kubernetes RBAC remain separately required
+for `kubectl` reads.
 
 If AWS_CONFIG_FILE or AWS_SHARED_CREDENTIALS_FILE is set, bootstrap writes the
 session and role profiles to those exact selected files (otherwise the standard
@@ -245,22 +248,26 @@ Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
 labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
 discovery must still confirm both versions and the ingress Deployment's actual
-meshed service-account identity against the cluster before rendering. The
-template deliberately contains unresolved
-namespace and ingress-identity placeholders. Render it only from the successful
-scrubbed discovery report, not from hand-copied values:
+meshed service-account identity against the cluster before rendering. The base
+router NetworkPolicy intentionally denies ingress until a companion, selected-
+namespace allow policy is rendered. Both artifacts must come only from the
+successful scrubbed discovery report, never from hand-copied values:
 
 ```bash
 make eks-render-linkerd-policy \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
   EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
 ```
 
-The renderer derives
+The Make target first renders the additive ingress NetworkPolicy for the
+verified ingress namespace, then renders the Linkerd policy. It refuses a base
+policy with a fixed namespace or one that does not deny ingress while the
+discovery-derived policy is absent. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
-placeholders. Review and server-side dry-run the resulting outside-repository
-artifact before any apply.
+placeholders. Review and server-side dry-run both outside-repository artifacts
+together before any apply; apply neither artifact alone.
 
 ## Idempotence, Drift, And Rollback
 
