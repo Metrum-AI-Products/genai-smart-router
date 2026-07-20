@@ -44,6 +44,16 @@ contracts, PII filtering, quotas, and deterministic fallbacks while later work
 adds the bounded structured selector, relational overhead records, reviewed
 shadow comparisons, and promotion gates.
 
+The router now has an internal v1 selector contract ready for that later
+decision call. Candidates are assigned per-request opaque IDs such as
+`candidate-0001` only after normal eligibility filtering. The contract accepts
+only the configured schema version, one eligible candidate ID, optional unique
+eligible fallback IDs, a finite confidence value at or above the configured
+threshold, a short safe class label, and up to eight short taxonomy-style
+reason codes. Malformed, unknown, duplicate, unsafe, or low-confidence output
+is a selector failure; callers of this internal contract must use the existing
+deterministic baseline. It has no provider invocation or telemetry side effect.
+
 Do not add an intelligent group to production until those later capabilities,
 direct decision-model smokes, router-level shape tests, and rollout/rollback
 documentation are complete. The feature requires the `intelligent_routing`
