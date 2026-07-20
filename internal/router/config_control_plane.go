@@ -20,21 +20,42 @@ const configControlPlaneScope = "router_config"
 
 const configControlPlanePhase1MigrationID = 2026072001
 
-var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}
+const configControlPlanePhase2MigrationID = 2026072002
 
-var configControlPlaneMigrationDefinitions = []MigrationDefinition{{
-	ID:              configControlPlanePhase1MigrationID,
-	Scope:           configControlPlaneScope,
-	Name:            "create relational read-only configuration projection",
-	Release:         "2026.7",
-	Checksum:        "a2c3e1ea4db3422e260a17b0b03ae67a8f7f07e0282ec2f39d0879b64f9d0f9a",
-	SchemaVersion:   1,
-	Transactional:   true,
-	MaintenanceMode: "online",
-	RollbackClass:   "restore-required",
-	Apply:           applyConfigControlPlanePhase1,
-	Verify:          verifyConfigControlPlanePhase1,
-}}
+const configControlPlaneProviderHeaderNameConstraint = "router_config_provider_headers_non_secret_name_ck"
+
+const configControlPlaneProviderHeaderNameCheck = "header_name = TRIM(header_name) AND LOWER(header_name) IN ('http-referer', 'user-agent', 'x-title')"
+
+var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}
+
+var configControlPlaneMigrationDefinitions = []MigrationDefinition{
+	{
+		ID:              configControlPlanePhase1MigrationID,
+		Scope:           configControlPlaneScope,
+		Name:            "create relational read-only configuration projection",
+		Release:         "2026.7",
+		Checksum:        "a2c3e1ea4db3422e260a17b0b03ae67a8f7f07e0282ec2f39d0879b64f9d0f9a",
+		SchemaVersion:   1,
+		Transactional:   true,
+		MaintenanceMode: "online",
+		RollbackClass:   "restore-required",
+		Apply:           applyConfigControlPlanePhase1,
+		Verify:          verifyConfigControlPlanePhase1,
+	},
+	{
+		ID:              configControlPlanePhase2MigrationID,
+		Scope:           configControlPlaneScope,
+		Name:            "enforce non-secret provider header names at database boundary",
+		Release:         "2026.7",
+		Checksum:        "9237debd70c0ee58c674f96e3a43fe8fcec7cbf05b3a674a04db4d90d831c1ad",
+		SchemaVersion:   2,
+		Transactional:   true,
+		MaintenanceMode: "online",
+		RollbackClass:   "restore-required",
+		Apply:           applyConfigControlPlanePhase2,
+		Verify:          verifyConfigControlPlanePhase2,
+	},
+}
 
 // ConfigControlPlaneMigrationRunner opens a dedicated config-control-plane
 // database scope. It never initializes or changes the usage schema.
@@ -160,7 +181,10 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 }
 
 func controlPlaneAllowedProviderHeader(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
+	if name != strings.TrimSpace(name) {
+		return false
+	}
+	switch strings.ToLower(name) {
 	case "http-referer", "user-agent", "x-title":
 		return true
 	default:
@@ -210,6 +234,50 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 				return fmt.Errorf("required control-plane foreign key %s.%s is missing", table, constraint)
 			}
 		}
+	}
+	return nil
+}
+
+// applyConfigControlPlanePhase2 puts the provider-header allowlist in the
+// database instead of relying solely on a read-path validation. That means a
+// direct SQL import or any future write API cannot durably store a credential
+// header that the router might later forward upstream.
+func applyConfigControlPlanePhase2(tx *gorm.DB) error {
+	switch tx.Dialector.Name() {
+	case "sqlite":
+		return applyConfigControlPlaneProviderHeaderConstraintSQLite(tx)
+	case "postgres":
+		stmt := fmt.Sprintf(`ALTER TABLE router_config_provider_headers ADD CONSTRAINT %s CHECK (%s)`, configControlPlaneProviderHeaderNameConstraint, configControlPlaneProviderHeaderNameCheck)
+		if err := tx.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("add provider-header allowlist constraint: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported control-plane database driver %q", tx.Dialector.Name())
+	}
+}
+
+func applyConfigControlPlaneProviderHeaderConstraintSQLite(tx *gorm.DB) error {
+	constraint := fmt.Sprintf("CONSTRAINT %s CHECK (%s)", configControlPlaneProviderHeaderNameConstraint, configControlPlaneProviderHeaderNameCheck)
+	for _, stmt := range []string{
+		`CREATE TABLE router_config_provider_headers_rebuild (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, header_name TEXT NOT NULL, header_value TEXT NOT NULL, ` + constraint + `, PRIMARY KEY (config_set_id, provider_name, header_name), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
+		`INSERT INTO router_config_provider_headers_rebuild (config_set_id, provider_name, header_name, header_value) SELECT config_set_id, provider_name, header_name, header_value FROM router_config_provider_headers`,
+		`DROP TABLE router_config_provider_headers`,
+		`ALTER TABLE router_config_provider_headers_rebuild RENAME TO router_config_provider_headers`,
+	} {
+		if err := tx.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("rebuild provider-header table with non-secret allowlist: %w", err)
+		}
+	}
+	return nil
+}
+
+func verifyConfigControlPlanePhase2(tx *gorm.DB) error {
+	if err := verifyConfigControlPlanePhase1(tx); err != nil {
+		return err
+	}
+	if !tx.Migrator().HasConstraint("router_config_provider_headers", configControlPlaneProviderHeaderNameConstraint) {
+		return fmt.Errorf("required control-plane constraint router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameConstraint)
 	}
 	return nil
 }

@@ -16,6 +16,12 @@ Raw provider credentials and raw caller tokens have no column in this schema.
 Provider credentials remain environment/secret references; caller rows retain
 only an existing SHA-256 token hash and public token ID.
 
+The database enforces the provider-header boundary on both inserts and
+updates. Only `HTTP-Referer`, `User-Agent`, and `X-Title` metadata headers are
+representable; standard or provider-specific credential headers are rejected.
+Values in these metadata fields must remain non-secret. Use `api_key_env` or a
+deployment-managed secret reference for every upstream credential.
+
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
 active set and reuses `Config.Validate`; missing active state and invalid
 relational data fail closed. Runtime DB mode, YAML import/export, write APIs,

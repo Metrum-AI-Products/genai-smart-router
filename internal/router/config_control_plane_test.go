@@ -20,7 +20,7 @@ func TestConfigControlPlanePhase1MigratesRelationalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != 1 {
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != 2 {
 		t.Fatalf("unexpected migration status: %+v", status)
 	}
 	for _, table := range ConfigControlPlaneTableNames() {
@@ -141,7 +141,7 @@ func TestConfigControlPlaneEnforcesTargetProviderAndModelForeignKeys(t *testing.
 	}
 }
 
-func TestLoadActiveConfigFromDBRejectsCredentialBearingProviderHeader(t *testing.T) {
+func TestConfigControlPlaneRejectsCredentialBearingProviderHeadersAtDatabaseBoundary(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {
 		t.Fatal(err)
@@ -156,51 +156,66 @@ func TestLoadActiveConfigFromDBRejectsCredentialBearingProviderHeader(t *testing
 		values []any
 	}{
 		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
-		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
 		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
-		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "Authorization", "not-a-real-secret"}},
 	} {
 		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "unsupported header") {
-		t.Fatalf("expected secret header rejection, got %v", err)
+	for _, headerName := range []string{"Authorization", "Proxy-Authorization", "X-Goog-Api-Key", "Ocp-Apim-Subscription-Key", " X-Title "} {
+		if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", headerName, "not-a-real-secret").Error; err == nil {
+			t.Fatalf("database accepted disallowed provider header %q", headerName)
+		}
+	}
+	if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", "X-Title", "non-secret-metadata").Error; err != nil {
+		t.Fatalf("database rejected approved non-secret header: %v", err)
+	}
+	if err := r.db.Exec(`UPDATE router_config_provider_headers SET header_name = ? WHERE config_set_id = ? AND provider_name = ? AND header_name = ?`, "Authorization", "set-1", "mock", "X-Title").Error; err == nil {
+		t.Fatal("database accepted credential-bearing provider header through update")
 	}
 }
 
-func TestLoadActiveConfigFromDBAllowsOnlyNonSecretProviderHeaders(t *testing.T) {
-	for _, headerName := range []string{"X-Goog-Api-Key", "Ocp-Apim-Subscription-Key", "Authorization"} {
-		r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
-		if err != nil {
+func TestConfigControlPlanePhase2UpgradesExistingAllowedProviderHeaders(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	phase1Runner, err := NewMigrationRunner(r.db, configControlPlaneScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, configControlPlaneMigrationDefinitions[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := phase1Runner.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "draft", "valid", now}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "X-Title", "non-secret-metadata"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := r.ApplyPending("test-runner"); err != nil {
-			_ = closeDB()
-			t.Fatal(err)
-		}
-		now := time.Now().UTC().Format(time.RFC3339Nano)
-		for _, seed := range []struct {
-			sql    string
-			values []any
-		}{
-			{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
-			{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
-			{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
-			{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", headerName, "not-a-real-secret"}},
-		} {
-			if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
-				_ = closeDB()
-				t.Fatal(err)
-			}
-		}
-		if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "unsupported header") {
-			_ = closeDB()
-			t.Fatalf("header %q must be rejected, got %v", headerName, err)
-		}
-		if err := closeDB(); err != nil {
-			t.Fatal(err)
-		}
+	}
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Verify(); err != nil {
+		t.Fatal(err)
+	}
+	var header providerHeaderRow
+	if err := r.db.Where("config_set_id = ? AND provider_name = ? AND header_name = ?", "set-1", "mock", "X-Title").First(&header).Error; err != nil {
+		t.Fatalf("approved provider header was not preserved by phase 2: %v", err)
+	}
+	if header.HeaderValue != "non-secret-metadata" {
+		t.Fatalf("provider header value = %q, want preserved non-secret metadata", header.HeaderValue)
+	}
+	if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", "Authorization", "not-a-real-secret").Error; err == nil {
+		t.Fatal("phase 2 migration did not reject credential-bearing provider headers")
 	}
 }
 
