@@ -1,0 +1,25 @@
+# Apply only when --linkerd-namespace is selected for discovery. Replace the
+# namespace and Kubernetes group with the values configured on the EKS access
+# entry. This grants no write access and no access to Secret or ConfigMap data.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: genai-smart-router-eks-linkerd-discovery
+  namespace: replace-with-approved-linkerd-control-plane-namespace
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: genai-smart-router-eks-linkerd-discovery
+  namespace: replace-with-approved-linkerd-control-plane-namespace
+subjects:
+  - kind: Group
+    name: replace-with-approved-eks-access-entry-kubernetes-group
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: genai-smart-router-eks-linkerd-discovery

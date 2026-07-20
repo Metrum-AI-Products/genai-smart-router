@@ -74,6 +74,10 @@ def main() -> int:
     parser.add_argument("--region", required=True)
     parser.add_argument("--cluster", required=True)
     parser.add_argument("--namespace", required=True)
+    parser.add_argument(
+        "--linkerd-namespace",
+        help="optional Linkerd control-plane namespace; when set, require the policy CRDs and template API versions",
+    )
     parser.add_argument("--ecr-repository", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
@@ -101,20 +105,37 @@ def main() -> int:
         ])
         context = "discovery-target"
         namespace = kubectl_json(kubeconfig, ["--context", context, "get", "namespace", args.namespace])
-        api_resources = run(["kubectl", "--kubeconfig", str(kubeconfig), "--context", context, "api-resources", "--api-group=policy.linkerd.io", "-o", "name"]).splitlines()
-        required_linkerd_resources = {"servers.policy.linkerd.io", "serverauthorizations.policy.linkerd.io"}
-        if not required_linkerd_resources.issubset(set(api_resources)):
-            raise DiscoveryError("Linkerd policy CRDs required for namespace bootstrap are unavailable or incompatible")
-        linkerd_namespace = kubectl_json(kubeconfig, ["--context", context, "get", "namespace", "linkerd"])
-        linkerd_service_accounts = kubectl_json(kubeconfig, ["--context", context, "-n", "linkerd", "get", "serviceaccounts"])
-        linkerd_crd_versions: dict[str, list[str]] = {}
-        for crd in sorted(required_linkerd_resources):
-            crd_payload = kubectl_json(kubeconfig, ["--context", context, "get", "customresourcedefinition", crd])
-            linkerd_crd_versions[crd] = sorted(version.get("name", "") for version in crd_payload.get("spec", {}).get("versions", []) if version.get("served"))
-        required_versions = {"servers.policy.linkerd.io": "v1beta3", "serverauthorizations.policy.linkerd.io": "v1beta1"}
-        for crd, version in required_versions.items():
-            if version not in linkerd_crd_versions[crd]:
-                raise DiscoveryError(f"Linkerd {crd} does not serve required {version} API")
+        linkerd: dict[str, Any] = {
+            "requested": bool(args.linkerd_namespace),
+            "control_plane_namespace": args.linkerd_namespace,
+            "control_plane_namespace_present": False,
+            "policy_api_resources": [],
+            "policy_crd_served_versions": {},
+            "namespace_injection_labels": {k: v for k, v in namespace_labels(namespace).items() if "linkerd.io" in k},
+            "identity_service_accounts": [],
+            "trust_identity_config_payload_read": False,
+        }
+        if args.linkerd_namespace:
+            api_resources = run(["kubectl", "--kubeconfig", str(kubeconfig), "--context", context, "api-resources", "--api-group=policy.linkerd.io", "-o", "name"]).splitlines()
+            required_linkerd_resources = {"servers.policy.linkerd.io", "serverauthorizations.policy.linkerd.io"}
+            if not required_linkerd_resources.issubset(set(api_resources)):
+                raise DiscoveryError("requested Linkerd policy CRDs required for namespace bootstrap are unavailable or incompatible")
+            linkerd_namespace = kubectl_json(kubeconfig, ["--context", context, "get", "namespace", args.linkerd_namespace])
+            linkerd_service_accounts = kubectl_json(kubeconfig, ["--context", context, "-n", args.linkerd_namespace, "get", "serviceaccounts"])
+            linkerd_crd_versions: dict[str, list[str]] = {}
+            for crd in sorted(required_linkerd_resources):
+                crd_payload = kubectl_json(kubeconfig, ["--context", context, "get", "customresourcedefinition", crd])
+                linkerd_crd_versions[crd] = sorted(version.get("name", "") for version in crd_payload.get("spec", {}).get("versions", []) if version.get("served"))
+            required_versions = {"servers.policy.linkerd.io": "v1beta3", "serverauthorizations.policy.linkerd.io": "v1beta1"}
+            for crd, version in required_versions.items():
+                if version not in linkerd_crd_versions[crd]:
+                    raise DiscoveryError(f"Linkerd {crd} does not serve required {version} API")
+            linkerd.update({
+                "control_plane_namespace_present": bool(linkerd_namespace.get("metadata", {}).get("name")),
+                "policy_api_resources": sorted(api_resources),
+                "policy_crd_served_versions": linkerd_crd_versions,
+                "identity_service_accounts": item_names(linkerd_service_accounts),
+            })
 
         report: dict[str, Any] = {
             "schema_version": 1,
@@ -134,7 +155,7 @@ def main() -> int:
             },
             "namespace": {"name": args.namespace, "labels": namespace_labels(namespace), "service_accounts": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "serviceaccounts"])), "network_policies": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "networkpolicies"])), "rds_connectivity_boundary": "review namespace NetworkPolicy names and approved private database boundary outside this report", "router_resources": {}},
             "cluster_resources": {"ingress_classes": item_names(kubectl_json(kubeconfig, ["--context", context, "get", "ingressclasses"])), "storage_classes": item_names(kubectl_json(kubeconfig, ["--context", context, "get", "storageclasses"]))},
-            "linkerd": {"control_plane_namespace_present": bool(linkerd_namespace.get("metadata", {}).get("name")), "policy_api_resources": sorted(api_resources), "policy_crd_served_versions": linkerd_crd_versions, "namespace_injection_labels": {k: v for k, v in namespace_labels(namespace).items() if "linkerd.io" in k}, "identity_service_accounts": item_names(linkerd_service_accounts), "trust_identity_config_payload_read": False},
+            "linkerd": linkerd,
             "ecr": {},
             "evidence": {"secrets_read": False, "secret_data_read": False, "config_payloads_read": False, "drift_requires_review": True},
         }

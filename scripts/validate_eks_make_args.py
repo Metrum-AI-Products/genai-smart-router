@@ -27,6 +27,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--region", required=True)
     result.add_argument("--cluster")
     result.add_argument("--namespace")
+    result.add_argument("--linkerd-namespace")
     result.add_argument("--ecr-repository")
     result.add_argument("--output")
     return result
@@ -45,6 +46,8 @@ def main() -> int:
         if not args.identity_only:
             for name, value in (("cluster", args.cluster), ("namespace", args.namespace), ("ecr-repository", args.ecr_repository)):
                 validate(name, value)
+            if args.linkerd_namespace:
+                validate("namespace", args.linkerd_namespace)
             output = Path(args.output or "")
             if not output.is_absolute() or output.parent == Path("/"):
                 raise ValueError("output must be an explicit absolute path outside the repository")

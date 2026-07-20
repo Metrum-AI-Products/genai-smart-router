@@ -42,7 +42,9 @@ deployment and tenant-provisioner identities only within their approved
 namespaces; they must not read arbitrary Secrets, alter cluster roles, or modify
 another tenant. Where Linkerd is used, verify its control plane, policy CRDs,
 namespace injection, and identity/trust readiness before applying namespace
-policy resources. Review RBAC, service-account, network-policy, quota, and
+policy resources. Select the actual Linkerd control-plane namespace during
+read-only discovery; clusters that do not use Linkerd may omit it. Review RBAC,
+service-account, network-policy, quota, and
 Linkerd-policy drift before overwriting it.
 
 ## Image And Architecture

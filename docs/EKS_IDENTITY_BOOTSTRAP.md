@@ -70,6 +70,7 @@ make eks-discover \
   EKS_REGION=us-east-1 \
   EKS_CLUSTER=approved-cluster \
   EKS_NAMESPACE=tenant-approved-customer \
+  EKS_LINKERD_NAMESPACE=linkerd \
   EKS_ECR_REPOSITORY=approved-router-repository \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json
 ```
@@ -84,16 +85,25 @@ python3 scripts/eks_discover.py \
   --region us-east-1 \
   --cluster approved-cluster \
   --namespace approved-namespace \
+  --linkerd-namespace linkerd \
   --ecr-repository approved-router-repository \
   --output /secure/evidence/eks-discovery.json
 ```
+
+`EKS_LINKERD_NAMESPACE` / `--linkerd-namespace` is optional. Omit it for a
+cluster that does not use Linkerd. When selected, it is the explicit
+control-plane namespace (not a product default), and discovery requires the
+Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
+`ServerAuthorization` APIs used by the checked-in template.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
 containing only safe names, booleans, versions, labels needed for Linkerd
 injection, and policy presence. An expired session, wrong account, missing
-namespace RBAC, unavailable Linkerd API, inaccessible ECR, or missing EKS
-access fails before producing a success report. Keep evidence outside Git.
+namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
+a success report. When Linkerd was selected, missing Linkerd API/RBAC also
+fails before success; otherwise the report records Linkerd as not requested.
+Keep evidence outside Git.
 
 Review the report before bootstrap: EKS version/auth mode/access entries,
 endpoint exposure, audit logging, ingress/storage names, namespace labels and
@@ -118,6 +128,15 @@ the approved discovery identity: get Namespaces and CRDs, and get/list
 IngressClasses and StorageClasses. Do not add those permissions to the tenant
 provisioner Role or grant wildcard cluster administration.
 
+It also requires the reviewed namespace-scoped read-only binding in
+`deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml` for
+the selected tenant namespace: ServiceAccounts, NetworkPolicies, Deployments,
+Services, PVCs, and Ingresses. If Linkerd discovery is selected, apply the
+separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
+Linkerd control-plane namespace. Both templates bind the EKS access entry's
+configured Kubernetes group, not its IAM principal ARN; neither grants Secret
+or ConfigMap reads or any write verb.
+
 The router workload uses EKS Pod Identity or IRSA only after discovery confirms
 cluster support. Its AWS policy may read only approved secret references and
 write only required CloudWatch telemetry. It must not inherit node credentials.
@@ -137,7 +156,8 @@ references. Verify with `kubectl auth can-i` for allowed resources and explicit
 denials for `secrets`, `deployments`, `serviceaccounts`, `clusterroles`, other
 namespaces, and `pods/exec`.
 
-Before using `tenant-linkerd-policy.example.yaml`, verify the discovered
+Before using `tenant-linkerd-policy.example.yaml`, select the Linkerd
+control-plane namespace during discovery and verify the discovered
 Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
 labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;

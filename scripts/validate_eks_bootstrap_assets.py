@@ -12,6 +12,8 @@ RBAC = ROOT / "deploy/kubernetes/bootstrap/tenant-provisioner-rbac.yaml"
 TRUST = ROOT / "deploy/aws/github-oidc-trust-policy.example.json"
 DISCOVERY_ROLE = ROOT / "deploy/aws/genai-smart-router-eks-discovery-role.example.json"
 LINKERD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-linkerd-policy.example.yaml"
+DISCOVERY_NAMESPACE_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml"
+DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linkerd-namespace-rbac.example.yaml"
 
 
 def main() -> int:
@@ -28,6 +30,18 @@ def main() -> int:
         raise SystemExit("Linkerd Server template must use the served v1beta3 API")
     if "apiVersion: policy.linkerd.io/v1beta1\nkind: ServerAuthorization\n" not in linkerd:
         raise SystemExit("Linkerd ServerAuthorization template must use the separately served v1beta1 API")
+
+    for path, required_resources in (
+        (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses")),
+        (DISCOVERY_LINKERD_RBAC, ("serviceaccounts",)),
+    ):
+        content = path.read_text(encoding="utf-8")
+        if "kind: Role\n" not in content or "kind: RoleBinding\n" not in content or "kind: Group\n" not in content:
+            raise SystemExit(f"{path.name} must bind an EKS Kubernetes group with namespace-scoped RBAC")
+        if any(value in content for value in ('verbs: [\"*\"]', '\"secrets\"', '\"configmaps\"')):
+            raise SystemExit(f"{path.name} must not grant broad or sensitive reads")
+        if any(resource not in content for resource in required_resources):
+            raise SystemExit(f"{path.name} lacks a required discovery read")
 
     discovery = json.loads(DISCOVERY_ROLE.read_text(encoding="utf-8"))["InlinePolicy"]["Statement"]
     eks = next(statement for statement in discovery if statement["Sid"] == "EksReadOnlyDiscovery")
