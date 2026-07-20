@@ -56,6 +56,13 @@ Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discove
 session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
 
+If AWS_CONFIG_FILE or AWS_SHARED_CREDENTIALS_FILE is set, bootstrap writes the
+session and role profiles to those exact selected files (otherwise the standard
+~/.aws files) and pins its verification command to them. It ignores ambient AWS
+credentials, profile selection, and web-identity overrides while performing
+that verification, so it cannot validate an older same-named profile. Keep the
+selected local files protected and distinct.
+
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
 with a mode-0600 recovery record containing only safe state: either an exact
 temporary access-key ID after a known create response, or a pre-create
@@ -151,7 +158,11 @@ injection, and policy presence. An expired session, wrong account, missing
 namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
 a success report. When Linkerd was selected, missing Linkerd API/RBAC also
 fails before success; otherwise the report records Linkerd as not requested.
-Keep evidence outside Git.
+Discovery locally serializes use of one output path, invalidates its previous
+report before the first live probe, and atomically publishes only a fully
+successful replacement. A failed probe or publish therefore leaves no reusable
+success report at that selected path. Preserve historical evidence under a
+different timestamped path before a rerun. Keep evidence outside Git.
 
 Review the report before bootstrap: EKS version/auth mode/access entries,
 endpoint exposure, audit logging, ingress/storage names, namespace labels and

@@ -60,6 +60,8 @@ secret-check:
 	python3 scripts/harness_security_test.py
 	python3 scripts/makefile_security_test.py
 	python3 scripts/bootstrap_eks_session_test.py
+	python3 scripts/eks_discover_test.py
+	python3 scripts/validate_eks_bootstrap_assets.py
 	python3 scripts/render_tenant_linkerd_policy_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata

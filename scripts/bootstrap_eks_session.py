@@ -46,11 +46,28 @@ def mfa_code_from_keychain(service: str, account: str) -> str:
     return f"{value % 1_000_000:06d}"
 
 
-def write_profiles(profile: str, role_profile: str, role_arn: str, region: str, credentials: dict[str, str]) -> None:
+def configured_aws_profile_paths() -> tuple[Path, Path]:
+    """Return the exact AWS CLI profile files selected for this process."""
     aws_dir = Path.home() / ".aws"
-    aws_dir.mkdir(mode=0o700, exist_ok=True)
-    credentials_path = aws_dir / "credentials"
-    config_path = aws_dir / "config"
+    credentials_path = Path(os.environ.get("AWS_SHARED_CREDENTIALS_FILE") or aws_dir / "credentials").expanduser()
+    config_path = Path(os.environ.get("AWS_CONFIG_FILE") or aws_dir / "config").expanduser()
+    if credentials_path == config_path:
+        raise RuntimeError("AWS config and shared credentials paths must be different")
+    return credentials_path, config_path
+
+
+def write_profiles(
+    profile: str,
+    role_profile: str,
+    role_arn: str,
+    region: str,
+    credentials: dict[str, str],
+    *,
+    credentials_path: Path,
+    config_path: Path,
+) -> None:
+    for directory in {credentials_path.parent, config_path.parent}:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     creds = configparser.RawConfigParser()
     creds.read(credentials_path)
     creds[profile] = credentials
@@ -60,6 +77,32 @@ def write_profiles(profile: str, role_profile: str, role_arn: str, region: str, 
     config[f"profile {profile}"] = {"region": region}
     config[f"profile {role_profile}"] = {"role_arn": role_arn, "source_profile": profile, "region": region}
     atomic_write_config(config_path, config)
+
+
+def profile_verification_environment(credentials_path: Path, config_path: Path, region: str) -> dict[str, str]:
+    """Pin role verification to newly written profiles, not ambient credentials."""
+    env = os.environ.copy()
+    for name in (
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+        "AWS_PROFILE",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_ROLE_ARN",
+        "AWS_ROLE_SESSION_NAME",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+    ):
+        env.pop(name, None)
+    env.update(
+        {
+            "AWS_CONFIG_FILE": str(config_path),
+            "AWS_SHARED_CREDENTIALS_FILE": str(credentials_path),
+            "AWS_DEFAULT_REGION": region,
+        }
+    )
+    return env
 
 
 def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> None:
@@ -248,6 +291,7 @@ def main() -> int:
     assert args.cleanup_record is not None
     if str(args.cleanup_record) in {"", "."} or args.cleanup_record.is_dir():
         parser.error("--cleanup-record must be a non-directory protected file path")
+    credentials_path, config_path = configured_aws_profile_paths()
     approved_account = args.role_arn.split(":")[4]
     if args.mfa_serial.split(":")[4] != approved_account:
         parser.error("role ARN and MFA serial must use the same approved account")
@@ -290,13 +334,26 @@ def main() -> int:
             env.pop(name, None)
         env.update({"AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull, "AWS_ACCESS_KEY_ID": access["AccessKeyId"], "AWS_SECRET_ACCESS_KEY": access["SecretAccessKey"], "AWS_DEFAULT_REGION": args.region})
         session = json.loads(command(["aws", "sts", "get-session-token", "--serial-number", args.mfa_serial, "--token-code", mfa_code_from_keychain(args.macos_keychain_service, args.macos_keychain_account), "--duration-seconds", str(args.duration_seconds), "--output", "json"], env=env))["Credentials"]
-        write_profiles(args.session_profile, args.role_profile, args.role_arn, args.region, {"aws_access_key_id": session["AccessKeyId"], "aws_secret_access_key": session["SecretAccessKey"], "aws_session_token": session["SessionToken"]})
+        write_profiles(
+            args.session_profile,
+            args.role_profile,
+            args.role_arn,
+            args.region,
+            {"aws_access_key_id": session["AccessKeyId"], "aws_secret_access_key": session["SecretAccessKey"], "aws_session_token": session["SessionToken"]},
+            credentials_path=credentials_path,
+            config_path=config_path,
+        )
         deleted = delete_source_key()
         if not deleted:
             raise RuntimeError("temporary source key deletion failed after retries")
         remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
         key_id = ""
-        role_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--output", "json"]))
+        role_identity = json.loads(
+            command(
+                ["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--region", args.region, "--output", "json"],
+                env=profile_verification_environment(credentials_path, config_path, args.region),
+            )
+        )
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:

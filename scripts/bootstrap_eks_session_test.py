@@ -6,6 +6,7 @@ from __future__ import annotations
 import configparser
 import importlib.util
 import json
+import os
 import stat
 import sys
 import tempfile
@@ -40,7 +41,7 @@ def bootstrap_argv(cleanup: Path) -> list[str]:
     ]
 
 
-def run_main_with_stubs(cleanup: Path, command) -> int:
+def run_main_with_stubs(cleanup: Path, command, *, stub_profiles: bool = True) -> int:
     original_argv = sys.argv
     original_command = MODULE.command
     original_mfa = MODULE.mfa_code_from_keychain
@@ -48,7 +49,8 @@ def run_main_with_stubs(cleanup: Path, command) -> int:
     sys.argv = bootstrap_argv(cleanup)
     MODULE.command = command
     MODULE.mfa_code_from_keychain = lambda service, account: "123456"
-    MODULE.write_profiles = lambda profile, role_profile, role_arn, region, credentials: None
+    if stub_profiles:
+        MODULE.write_profiles = lambda *args, **kwargs: None
     try:
         return MODULE.main()
     finally:
@@ -139,6 +141,105 @@ def assert_concurrent_reservation_is_exclusive(root: Path) -> None:
         raise AssertionError("concurrent bootstrap attempts changed the winning recovery reservation")
 
 
+def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
+    cleanup = root / "configured-profiles" / "recovery.json"
+    credentials_path = root / "custom-aws" / "credentials"
+    config_path = root / "custom-aws" / "config"
+    names = (
+        "AWS_CONFIG_FILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+        "AWS_PROFILE",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_ROLE_ARN",
+        "AWS_ROLE_SESSION_NAME",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+    )
+    original = {name: os.environ.get(name) for name in names}
+    os.environ.update(
+        {
+            "AWS_CONFIG_FILE": str(config_path),
+            "AWS_SHARED_CREDENTIALS_FILE": str(credentials_path),
+            "AWS_ACCESS_KEY_ID": "ambient-test-access-key",
+            "AWS_SECRET_ACCESS_KEY": "ambient-test-secret",
+            "AWS_SESSION_TOKEN": "ambient-test-session-token",
+            "AWS_SECURITY_TOKEN": "ambient-test-security-token",
+            "AWS_PROFILE": "ambient-profile",
+            "AWS_REGION": "us-west-2",
+            "AWS_DEFAULT_REGION": "us-west-2",
+            "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/ambient-role",
+            "AWS_ROLE_SESSION_NAME": "ambient-session",
+            "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/ambient-web-identity-token",
+        }
+    )
+    role_verification_seen = False
+
+    def command(args: list[str], *, env=None) -> str:
+        nonlocal role_verification_seen
+        if args[:3] == ["aws", "sts", "get-caller-identity"]:
+            profile = args[args.index("--profile") + 1]
+            if profile == "admin":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
+            if profile == "genai-smart-router-eks-discovery":
+                if env is None:
+                    raise AssertionError("role verification must use an explicitly pinned profile environment")
+                if env.get("AWS_CONFIG_FILE") != str(config_path) or env.get("AWS_SHARED_CREDENTIALS_FILE") != str(credentials_path):
+                    raise AssertionError("role verification did not use the files written by bootstrap")
+                if env.get("AWS_DEFAULT_REGION") != "us-east-1" or args[args.index("--region") + 1] != "us-east-1":
+                    raise AssertionError("role verification did not use the requested region")
+                if any(
+                    name in env
+                    for name in (
+                        "AWS_ACCESS_KEY_ID",
+                        "AWS_SECRET_ACCESS_KEY",
+                        "AWS_SESSION_TOKEN",
+                        "AWS_SECURITY_TOKEN",
+                        "AWS_PROFILE",
+                        "AWS_REGION",
+                        "AWS_ROLE_ARN",
+                        "AWS_ROLE_SESSION_NAME",
+                        "AWS_WEB_IDENTITY_TOKEN_FILE",
+                    )
+                ):
+                    raise AssertionError("role verification inherited ambient AWS credentials or role selection")
+                role_verification_seen = True
+                return json.dumps({"Arn": "arn:aws:sts::123456789012:assumed-role/genai-smart-router-eks-discovery/test"})
+        if args[:3] == ["aws", "iam", "create-access-key"]:
+            return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
+        if args[:3] == ["aws", "sts", "get-session-token"]:
+            return json.dumps({"Credentials": {"AccessKeyId": "ASIAEXAMPLEKEYID", "SecretAccessKey": "test-only-session-secret", "SessionToken": "test-only-session-token", "Expiration": "2030-01-01T00:00:00Z"}})
+        if args[:3] == ["aws", "iam", "delete-access-key"]:
+            return ""
+        raise AssertionError(f"unexpected command: {args}")
+
+    try:
+        if run_main_with_stubs(cleanup, command, stub_profiles=False) != 0:
+            raise AssertionError("bootstrap with configured AWS profile paths did not complete")
+    finally:
+        for name, value in original.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    if not role_verification_seen:
+        raise AssertionError("configured profile role verification was not attempted")
+    if mode(credentials_path) != 0o600 or mode(config_path) != 0o600:
+        raise AssertionError("configured AWS profile files must be atomically created with mode 0600")
+    credentials = configparser.RawConfigParser()
+    credentials.read(credentials_path)
+    if credentials["smartrouter"].get("aws_access_key_id") != "ASIAEXAMPLEKEYID":
+        raise AssertionError("bootstrap did not write the session to AWS_SHARED_CREDENTIALS_FILE")
+    config = configparser.RawConfigParser()
+    config.read(config_path)
+    if config["profile genai-smart-router-eks-discovery"].get("source_profile") != "smartrouter":
+        raise AssertionError("bootstrap did not write the role profile to AWS_CONFIG_FILE")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -193,6 +294,7 @@ def main() -> int:
         assert_precreate_reservation_order(root)
         assert_ambiguous_create_preserves_reservation(root)
         assert_concurrent_reservation_is_exclusive(root)
+        assert_configured_profile_paths_and_role_verification(root)
     print("EKS session bootstrap safety tests passed")
     return 0
 
