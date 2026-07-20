@@ -120,9 +120,10 @@ stale object. The delivery role therefore needs namespace-scoped `list` access
 to only those seven resource types, in addition to the existing rollout and
 pod read permissions.
 
-`EKS_CONFIRM=STAGING_APPLY` is the explicit reviewed reconciliation action for
-an existing managed object: its safe before-apply configuration fingerprint is
-recorded, then passed evidence requires the live configuration after apply,
+The protected policy/SSM match and reviewed change record authorize a
+reconciliation; `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator
+acknowledgement of the mutation. Its safe before-apply configuration fingerprint
+is recorded, then passed evidence requires the live configuration after apply,
 smoke, and promotion to match the reviewed manifest. Investigate unexpected
 pre-apply differences through change control; no caller-controlled bypass is
 provided.

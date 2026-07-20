@@ -194,14 +194,15 @@ context. See `make eks-help` for the complete target list and required inputs.
    NetworkPolicy), apply stops before mutation and the object must be removed
    through a separate reviewed recovery/migration.
 
-   A reviewed `EKS_CONFIRM=STAGING_APPLY` is the explicit desired-state
-   reconciliation authorization: it may repair a pre-existing configuration
-   difference so the approved manifest becomes live. The contract records
-   safe before-apply identity/configuration fingerprints, then refuses passed
-   apply, smoke, or promotion evidence unless the live objects exactly match
-   the reviewed configuration. Treat an unexpected pre-apply fingerprint
-   difference as an audit/change-control signal; do not add a caller-controlled
-   bypass for it.
+   A reviewed change record is the desired-state reconciliation authorization;
+   `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator acknowledgement of
+   the mutation, never a substitute for the protected policy/SSM boundary. The
+   apply may repair a pre-existing configuration difference so the approved
+   manifest becomes live. The contract records safe before-apply
+   identity/configuration fingerprints, then refuses passed apply, smoke, or
+   promotion evidence unless the live objects exactly match the reviewed
+   configuration. Treat an unexpected pre-apply fingerprint difference as an
+   audit/change-control signal; do not add a caller-controlled bypass for it.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
