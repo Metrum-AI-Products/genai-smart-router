@@ -34,8 +34,10 @@ such as versions, resource names, and policy presence—not secrets, endpoints,
 certificate bodies, DSNs, or rendered Secret data.
 
 Use distinct roles for discovery, registry push, staging deployment, production
-promotion, and workload access. GitHub Actions should use OIDC with repository,
-branch, and environment claims constrained in the AWS trust policy. Bind
+promotion, and workload access. GitHub Actions should use OIDC with repository
+and environment claims constrained in the AWS trust policy; configure the
+GitHub Environment itself to restrict deployment branches to the approved
+branch, because an environment-style OIDC subject does not constrain it. Bind
 deployment and tenant-provisioner identities only within their approved
 namespaces; they must not read arbitrary Secrets, alter cluster roles, or modify
 another tenant. Where Linkerd is used, verify its control plane, policy CRDs,
