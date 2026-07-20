@@ -20,7 +20,9 @@ from typing import Any
 
 
 class DiscoveryError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str = "") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def run(command: list[str], *, required: bool = True) -> str:
@@ -29,10 +31,11 @@ def run(command: list[str], *, required: bool = True) -> str:
     except FileNotFoundError as exc:
         raise DiscoveryError(f"required command is unavailable: {command[0]}") from exc
     except subprocess.CalledProcessError as exc:
-        detail = exc.stderr.strip().splitlines()[-1] if exc.stderr.strip() else "command failed"
-        # AWS and kubectl errors can contain endpoint details. Keep only a bounded
-        # status message; operators can inspect their local command separately.
-        raise DiscoveryError(f"{command[0]} command failed: {detail[:240]}") from exc
+        # Never copy command stderr into a report or error: AWS and kubectl can
+        # include endpoints, credentials, or request details there.  Preserve
+        # only the one safe AWS classification this read-only workflow needs.
+        code = "RepositoryPolicyNotFoundException" if "RepositoryPolicyNotFoundException" in (exc.stderr or "") else ""
+        raise DiscoveryError(f"{command[0]} command failed", code=code) from exc
 
 
 def aws_json(args: list[str], region: str, profile: str) -> dict[str, Any]:
@@ -44,7 +47,7 @@ def ecr_policy_present(repository: str, region: str, profile: str) -> bool:
     try:
         return bool(aws_json(["ecr", "get-repository-policy", "--repository-name", repository], region, profile).get("policyText"))
     except DiscoveryError as exc:
-        if "RepositoryPolicyNotFoundException" in str(exc):
+        if exc.code == "RepositoryPolicyNotFoundException":
             return False
         raise
 

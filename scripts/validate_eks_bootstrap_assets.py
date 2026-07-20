@@ -10,16 +10,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RBAC = ROOT / "deploy/kubernetes/bootstrap/tenant-provisioner-rbac.yaml"
 TRUST = ROOT / "deploy/aws/github-oidc-trust-policy.example.json"
+DISCOVERY_ROLE = ROOT / "deploy/aws/genai-smart-router-eks-discovery-role.example.json"
+LINKERD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-linkerd-policy.example.yaml"
 
 
 def main() -> int:
     content = RBAC.read_text(encoding="utf-8")
-    forbidden = ("resources: [\"secrets\"]", "kind: ClusterRole", "kind: ClusterRoleBinding", "pods/exec", "verbs: [\"*\"]")
+    forbidden = ("resources: [\"secrets\"]", "resources: [\"deployments\"]", "resources: [\"serviceaccounts\"]", "kind: ClusterRole", "kind: ClusterRoleBinding", "pods/exec", "verbs: [\"*\"]")
     for value in forbidden:
         if value in content:
             raise SystemExit(f"unsafe tenant provisioner permission: {value}")
     if "apiGroups: [\"policy.linkerd.io\"]" not in content or "serverauthorizations" not in content:
         raise SystemExit("tenant provisioner must retain namespace-scoped Linkerd policy support")
+
+    linkerd = LINKERD_POLICY.read_text(encoding="utf-8")
+    if "kind: Server\n" not in linkerd or "apiVersion: policy.linkerd.io/v1beta3\nkind: Server\n" not in linkerd:
+        raise SystemExit("Linkerd Server template must use the served v1beta3 API")
+    if "apiVersion: policy.linkerd.io/v1beta1\nkind: ServerAuthorization\n" not in linkerd:
+        raise SystemExit("Linkerd ServerAuthorization template must use the separately served v1beta1 API")
+
+    discovery = json.loads(DISCOVERY_ROLE.read_text(encoding="utf-8"))["InlinePolicy"]["Statement"]
+    eks = next(statement for statement in discovery if statement["Sid"] == "EksReadOnlyDiscovery")
+    if "eks:ListClusters" in eks["Action"] or eks["Resource"] == "*":
+        raise SystemExit("discovery EKS access must be scoped to the approved cluster")
+    ecr = next(statement for statement in discovery if statement["Sid"] == "EcrReadOnlyDiscovery")
+    if ecr["Resource"] == "*":
+        raise SystemExit("discovery ECR access must be scoped to the approved repository")
 
     policy = json.loads(TRUST.read_text(encoding="utf-8"))
     condition = policy["Statement"][0]["Condition"]["StringEquals"]

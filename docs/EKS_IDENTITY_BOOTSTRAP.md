@@ -74,6 +74,7 @@ Make target creates an AWS, EKS, or Kubernetes resource.
 
 ```bash
 python3 scripts/eks_discover.py \
+  --profile genai-smart-router-eks-discovery \
   --account-id 123456789012 \
   --region us-east-1 \
   --cluster approved-cluster \
@@ -118,15 +119,19 @@ it is never a CI role.
 `tenant-bootstrap-resources.example.yaml` are reviewed per-namespace templates.
 A platform administrator binds/applies them only in an approved tenant namespace.
 The provisioner cannot read Secrets, bind roles, operate in another namespace,
-or modify cluster-wide Linkerd policy. Verify with `kubectl auth can-i` for
-allowed resources and explicit denials for `secrets`, `clusterroles`, other
+modify cluster-wide Linkerd policy, create/mutate Deployments, or create/mutate
+service accounts. Router workload manifests use a distinct release identity and
+must be constrained by admission policy to approved service accounts and Secret
+references. Verify with `kubectl auth can-i` for allowed resources and explicit
+denials for `secrets`, `deployments`, `serviceaccounts`, `clusterroles`, other
 namespaces, and `pods/exec`.
 
 Before using `tenant-linkerd-policy.example.yaml`, verify the discovered
 Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
-labels, and trust/identity readiness. The template is intentionally an example:
-confirm its Server/ServerAuthorization API version and ingress identity against
-the cluster; do not infer either from this repository.
+labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
+and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
+discovery must still confirm both versions and the ingress identity against the
+cluster before rendering.
 
 ## Idempotence, Drift, And Rollback
 

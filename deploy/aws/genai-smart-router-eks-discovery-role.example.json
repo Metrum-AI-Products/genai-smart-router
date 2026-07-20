@@ -23,20 +23,19 @@
         "Sid": "EksReadOnlyDiscovery",
         "Effect": "Allow",
         "Action": [
-          "eks:ListClusters",
           "eks:DescribeCluster",
           "eks:ListAccessEntries",
           "eks:DescribeAccessEntry",
           "eks:ListAssociatedAccessPolicies",
           "eks:ListNodegroups"
         ],
-        "Resource": "*"
+        "Resource": "arn:aws:eks:<REGION>:<ACCOUNT_ID>:cluster/<APPROVED_CLUSTER>"
       },
       {
         "Sid": "EcrReadOnlyDiscovery",
         "Effect": "Allow",
         "Action": ["ecr:DescribeRepositories", "ecr:ListImages", "ecr:GetRepositoryPolicy"],
-        "Resource": "*"
+        "Resource": "arn:aws:ecr:<REGION>:<ACCOUNT_ID>:repository/<APPROVED_ECR_REPOSITORY>"
       }
     ]
   }
