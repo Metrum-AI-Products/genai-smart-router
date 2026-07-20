@@ -740,6 +740,16 @@ func TestLicenseFeatureGateBlocksDynamicScore(t *testing.T) {
 	}
 }
 
+func TestIntelligentRoutingRequiresDedicatedLicenseFeature(t *testing.T) {
+	features := licenseFeaturesForGroup(ModelGroup{Strategy: "intelligent"})
+	if !stringSliceContains(features, LicenseFeatureIntelligentRouting) {
+		t.Fatalf("license features = %#v, want %q", features, LicenseFeatureIntelligentRouting)
+	}
+	if !KnownLicenseFeatures()[LicenseFeatureIntelligentRouting] {
+		t.Fatalf("KnownLicenseFeatures() missing %q", LicenseFeatureIntelligentRouting)
+	}
+}
+
 func TestRejectedModelDoesNotConsumeLicenseRequestBudget(t *testing.T) {
 	pub, priv, err := GenerateLicenseKeypair()
 	if err != nil {

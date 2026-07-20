@@ -324,16 +324,17 @@ type ReasoningSupport struct {
 }
 
 type ModelGroup struct {
-	Strategy         string               `yaml:"strategy"`
-	Script           string               `yaml:"script"`
-	ScriptHTTP       ScriptHTTPConfig     `yaml:"script_http"`
-	ExternalPolicy   ExternalPolicyConfig `yaml:"external_policy"`
-	RoutingPolicy    RoutingPolicyConfig  `yaml:"routing_policy"`
-	Contract         *ModelGroupContract  `yaml:"contract" json:"contract,omitempty"`
-	PIIFilter        PIIFilterConfig      `yaml:"pii_filter"`
-	ContentCapture   ContentCaptureConfig `yaml:"content_capture"`
-	AttemptTimeoutMS int                  `yaml:"attempt_timeout_ms"`
-	Targets          []Target             `yaml:"targets"`
+	Strategy           string                   `yaml:"strategy"`
+	Script             string                   `yaml:"script"`
+	ScriptHTTP         ScriptHTTPConfig         `yaml:"script_http"`
+	ExternalPolicy     ExternalPolicyConfig     `yaml:"external_policy"`
+	IntelligentRouting IntelligentRoutingConfig `yaml:"intelligent_routing"`
+	RoutingPolicy      RoutingPolicyConfig      `yaml:"routing_policy"`
+	Contract           *ModelGroupContract      `yaml:"contract" json:"contract,omitempty"`
+	PIIFilter          PIIFilterConfig          `yaml:"pii_filter"`
+	ContentCapture     ContentCaptureConfig     `yaml:"content_capture"`
+	AttemptTimeoutMS   int                      `yaml:"attempt_timeout_ms"`
+	Targets            []Target                 `yaml:"targets"`
 }
 
 type ModelGroupContract struct {
@@ -529,6 +530,34 @@ type ExternalPolicyConfig struct {
 	Headers          map[string]string `yaml:"headers" json:"headers"`
 	OnError          string            `yaml:"on_error" json:"onError"`
 	IncludeRequest   bool              `yaml:"include_request" json:"includeRequest"`
+}
+
+// IntelligentRoutingConfig is intentionally limited to the configuration
+// contract for the built-in selector. Runtime decision-model invocation and
+// decision-overhead persistence are added in later increments. Keeping this
+// shape explicit prevents an intelligent group from borrowing a serving
+// target, provider credentials, or an arbitrary policy endpoint.
+type IntelligentRoutingConfig struct {
+	Mode                string                   `yaml:"mode" json:"mode"`
+	DecisionModel       IntelligentDecisionModel `yaml:"decision_model" json:"decisionModel"`
+	TimeoutMS           int                      `yaml:"timeout_ms" json:"timeoutMs"`
+	MaxOutputTokens     int                      `yaml:"max_output_tokens" json:"maxOutputTokens"`
+	MaxRetries          int                      `yaml:"max_retries" json:"maxRetries"`
+	MaxConcurrent       int                      `yaml:"max_concurrent" json:"maxConcurrent"`
+	MaxDecisionCostUSD  float64                  `yaml:"max_decision_cost_usd" json:"maxDecisionCostUsd"`
+	ConfidenceThreshold float64                  `yaml:"confidence_threshold" json:"confidenceThreshold"`
+	ContextMode         string                   `yaml:"context_mode" json:"contextMode"`
+	OnError             string                   `yaml:"on_error" json:"onError"`
+	SchemaVersion       string                   `yaml:"schema_version" json:"schemaVersion"`
+}
+
+// IntelligentDecisionModel names a catalogued upstream model. It is not a
+// model-group reference, so an intelligent decision cannot recursively route
+// through another group.
+type IntelligentDecisionModel struct {
+	Provider string `yaml:"provider" json:"provider"`
+	ModelRef string `yaml:"model_ref" json:"modelRef"`
+	Dialect  string `yaml:"dialect" json:"dialect"`
 }
 
 type Target struct {
@@ -1156,6 +1185,13 @@ func (c *Config) Validate() error {
 			if err := validateDynamicScorePolicy(name, m.RoutingPolicy.DynamicScore); err != nil {
 				return err
 			}
+		}
+		if strings.EqualFold(m.Strategy, "intelligent") {
+			if err := validateIntelligentRoutingPolicy(name, m.IntelligentRouting, c.Provider); err != nil {
+				return err
+			}
+		} else if !intelligentRoutingEmpty(m.IntelligentRouting) {
+			return fmt.Errorf("model group %s configures intelligent_routing but does not use intelligent strategy", name)
 		}
 		if err := validatePIIFilter(name, m.PIIFilter); err != nil {
 			return err
@@ -2196,6 +2232,68 @@ func validateDynamicScorePolicy(group string, cfg DynamicScoreConfig) error {
 	return nil
 }
 
+func validateIntelligentRoutingPolicy(group string, cfg IntelligentRoutingConfig, providers map[string]ProviderConfig) error {
+	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
+	case "shadow", "simulate":
+	default:
+		return fmt.Errorf("model group %s intelligent_routing mode must be shadow or simulate until enforce is implemented", group)
+	}
+	if strings.TrimSpace(cfg.DecisionModel.Provider) == "" || strings.TrimSpace(cfg.DecisionModel.ModelRef) == "" {
+		return fmt.Errorf("model group %s intelligent_routing decision_model requires provider and model_ref", group)
+	}
+	provider, ok := providers[cfg.DecisionModel.Provider]
+	if !ok {
+		return fmt.Errorf("model group %s intelligent_routing decision_model references unknown provider %s", group, cfg.DecisionModel.Provider)
+	}
+	model, ok := provider.Models[cfg.DecisionModel.ModelRef]
+	if !ok || strings.TrimSpace(model.Model) == "" {
+		return fmt.Errorf("model group %s intelligent_routing decision_model references unknown model_ref %s for provider %s", group, cfg.DecisionModel.ModelRef, cfg.DecisionModel.Provider)
+	}
+	dialect := cfg.DecisionModel.Dialect
+	if dialect == "" {
+		dialect = model.Dialect
+	}
+	if dialect == "" {
+		dialect = provider.Dialect
+	}
+	if normalizeDialect(dialect) == "" {
+		return fmt.Errorf("model group %s intelligent_routing decision_model has unsupported dialect %q", group, dialect)
+	}
+	if cfg.TimeoutMS <= 0 || cfg.TimeoutMS > 5000 {
+		return fmt.Errorf("model group %s intelligent_routing timeout_ms must be between 1 and 5000", group)
+	}
+	if cfg.MaxOutputTokens <= 0 || cfg.MaxOutputTokens > 1024 {
+		return fmt.Errorf("model group %s intelligent_routing max_output_tokens must be between 1 and 1024", group)
+	}
+	if cfg.MaxRetries < 0 || cfg.MaxRetries > 2 {
+		return fmt.Errorf("model group %s intelligent_routing max_retries must be between 0 and 2", group)
+	}
+	if cfg.MaxConcurrent <= 0 || cfg.MaxConcurrent > 1024 {
+		return fmt.Errorf("model group %s intelligent_routing max_concurrent must be between 1 and 1024", group)
+	}
+	if cfg.MaxDecisionCostUSD <= 0 {
+		return fmt.Errorf("model group %s intelligent_routing max_decision_cost_usd must be positive", group)
+	}
+	if cfg.ConfidenceThreshold < 0 || cfg.ConfidenceThreshold > 1 {
+		return fmt.Errorf("model group %s intelligent_routing confidence_threshold must be between 0 and 1", group)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.ContextMode)) {
+	case "scalar_only":
+	case "redacted_text":
+	default:
+		return fmt.Errorf("model group %s intelligent_routing context_mode must be scalar_only or redacted_text", group)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.OnError)) {
+	case "fallback", "fail_closed":
+	default:
+		return fmt.Errorf("model group %s intelligent_routing on_error must be fallback or fail_closed", group)
+	}
+	if strings.TrimSpace(cfg.SchemaVersion) == "" {
+		return fmt.Errorf("model group %s intelligent_routing schema_version is required", group)
+	}
+	return nil
+}
+
 func normalizeAuthScheme(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "default":
@@ -2889,6 +2987,16 @@ func externalPolicyEmpty(cfg ExternalPolicyConfig) bool {
 		len(cfg.Headers) == 0 &&
 		strings.TrimSpace(cfg.OnError) == "" &&
 		!cfg.IncludeRequest
+}
+
+func intelligentRoutingEmpty(cfg IntelligentRoutingConfig) bool {
+	return strings.TrimSpace(cfg.Mode) == "" &&
+		strings.TrimSpace(cfg.DecisionModel.Provider) == "" &&
+		strings.TrimSpace(cfg.DecisionModel.ModelRef) == "" &&
+		strings.TrimSpace(cfg.DecisionModel.Dialect) == "" &&
+		cfg.TimeoutMS == 0 && cfg.MaxOutputTokens == 0 && cfg.MaxRetries == 0 && cfg.MaxConcurrent == 0 &&
+		cfg.MaxDecisionCostUSD == 0 && cfg.ConfidenceThreshold == 0 && strings.TrimSpace(cfg.ContextMode) == "" &&
+		strings.TrimSpace(cfg.OnError) == "" && strings.TrimSpace(cfg.SchemaVersion) == ""
 }
 
 func validateModalities(values []string) error {

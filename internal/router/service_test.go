@@ -13934,6 +13934,36 @@ func assertJSONEquivalent(t *testing.T, name string, got, want any) {
 	}
 }
 
+func TestIntelligentRoutingServesEligibleBaselineInFoundationIncrement(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	provider := cfg.Provider["mock"]
+	provider.Models = map[string]ProviderModel{"selector": {Model: "selector-model", Dialect: "openai-chat"}}
+	cfg.Provider["mock"] = provider
+	group := ModelGroup{
+		Strategy: "intelligent",
+		IntelligentRouting: IntelligentRoutingConfig{
+			Mode: "shadow", DecisionModel: IntelligentDecisionModel{Provider: "mock", ModelRef: "selector"},
+			TimeoutMS: 250, MaxOutputTokens: 64, MaxConcurrent: 1, MaxDecisionCostUSD: 0.01,
+			ContextMode: "scalar_only", OnError: "fallback", SchemaVersion: "v1",
+		},
+		Targets: []Target{{Provider: "mock", Model: "first"}, {Provider: "mock", Model: "second"}},
+	}
+	cfg.Models["default"] = group
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	decision, err := svc.pick(nil, "default", svc.cfg.Models["default"], &IRRequest{}, "openai-chat", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Target.Model != "first" || decision.Strategy != "intelligent" || len(decision.PolicyExecutions) != 1 || decision.PolicyExecutions[0].Outcome != "baseline_only" {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
 func TestMain(m *testing.M) {
 	licenseRequired = false
 	os.Exit(m.Run())
