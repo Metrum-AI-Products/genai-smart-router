@@ -13,6 +13,20 @@ trust policy to `repo:*`, a branch wildcard, tags, pull requests, or a generic
 repository claim. The workflow must use a pinned action revision and request
 only `id-token: write` plus the minimum repository permissions.
 
+`genai-smart-router-eks-discovery-role.example.json` defines the separately
+named, read-only EKS discovery role. Replace the account and approved
+federated-operator role placeholders through reviewed infrastructure as code.
+Do not trust the account root, issue long-lived access keys, or use a root
+session as the role source: AWS root credentials cannot assume roles. The
+bootstrap administrator must nominate an existing MFA/federated non-root
+principal, grant that principal only `sts:AssumeRole` for this role, and then
+replace any temporary bootstrap trust before discovery begins.
+
+The discovery role intentionally grants no EKS/Kubernetes mutation. EKS access
+entries and namespace-scoped Kubernetes RBAC are separately required for
+read-only API discovery. A tenant provisioner is a distinct workload identity;
+it must be granted only the approved tenant namespace and bootstrap resources.
+
 Define separate policies/roles for:
 
 - discovery: `sts:GetCallerIdentity`, approved `eks:DescribeCluster`,

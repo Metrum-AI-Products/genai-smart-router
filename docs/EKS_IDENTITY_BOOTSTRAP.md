@@ -11,6 +11,30 @@ Use an authorized short-lived federated AWS session. Do not copy credentials or
 fall back to static keys. Supply every selection explicitly; the discovery
 primitive never selects a current kube context, first account, or first cluster.
 
+### Local Discovery Profile
+
+Create the `genai-smart-router-eks-discovery` role from
+`deploy/aws/genai-smart-router-eks-discovery-role.example.json` through
+reviewed infrastructure-as-code. Its trust must name the approved MFA/federated
+operator role explicitly. Account-root credentials cannot assume an AWS role,
+and must never be retained as a discovery source profile. The discovery policy
+is read-only: it cannot create EKS resources, change an access entry, or create
+a Kubernetes namespace.
+
+After the platform administrator grants the operator `sts:AssumeRole`, use a
+named local profile; do not add long-lived access keys:
+
+```ini
+[profile genai-smart-router-eks-discovery]
+role_arn = arn:aws:iam::<ACCOUNT_ID>:role/genai-smart-router-eks-discovery
+source_profile = <approved-federated-operator-profile>
+region = <approved-region>
+```
+
+Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discovery`
+session before running discovery. EKS access entries plus namespace-scoped
+Kubernetes RBAC remain separately required for `kubectl` reads.
+
 ```bash
 python3 scripts/eks_discover.py \
   --account-id 123456789012 \

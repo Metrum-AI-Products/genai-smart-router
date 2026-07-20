@@ -1,0 +1,42 @@
+{
+  "RoleName": "genai-smart-router-eks-discovery",
+  "MaxSessionDuration": 3600,
+  "Tags": [
+    {"Key": "application", "Value": "genai-smart-router"},
+    {"Key": "purpose", "Value": "eks-discovery"},
+    {"Key": "environment", "Value": "non-production"}
+  ],
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "ApprovedFederatedOperatorOnly",
+      "Effect": "Allow",
+      "Principal": {"AWS": "arn:aws:iam::<ACCOUNT_ID>:role/<APPROVED_FEDERATED_OPERATOR_ROLE>"},
+      "Action": "sts:AssumeRole",
+      "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
+    }]
+  },
+  "InlinePolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "EksReadOnlyDiscovery",
+        "Effect": "Allow",
+        "Action": [
+          "eks:ListClusters",
+          "eks:DescribeCluster",
+          "eks:ListAccessEntries",
+          "eks:DescribeAccessEntry",
+          "eks:ListAssociatedAccessPolicies"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "EcrReadOnlyDiscovery",
+        "Effect": "Allow",
+        "Action": ["ecr:DescribeRepositories", "ecr:ListImages"],
+        "Resource": "*"
+      }
+    ]
+  }
+}
