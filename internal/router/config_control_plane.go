@@ -7,6 +7,7 @@ package router
 // storage, PostgREST, or runtime hot reload.
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -82,7 +83,16 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 	if err := db.Where("config_set_id = ?", set.ID).First(&server).Error; err != nil {
 		return nil, fmt.Errorf("load server config: %w", err)
 	}
-	cfg := &Config{Server: ServerConfig{Listen: server.Listen, DefaultModelGroup: server.DefaultModelGroup}, StatePath: server.StatePath, Provider: map[string]ProviderConfig{}, Models: map[string]ModelGroup{}}
+	cfg := &Config{Server: ServerConfig{
+		Listen:            server.Listen,
+		DefaultModelGroup: server.DefaultModelGroup,
+		License: LicenseConfig{
+			Enabled:    server.LicenseEnabled,
+			Path:       server.LicensePath,
+			StatePath:  server.LicenseStatePath,
+			enabledSet: true,
+		},
+	}, StatePath: server.StatePath, Provider: map[string]ProviderConfig{}, Models: map[string]ModelGroup{}}
 	var providers []providerRow
 	if err := db.Where("config_set_id = ?", set.ID).Order("provider_name ASC").Find(&providers).Error; err != nil {
 		return nil, err
@@ -94,8 +104,8 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 			return nil, err
 		}
 		for _, h := range headers {
-			if controlPlaneSecretHeader(h.HeaderName) {
-				return nil, fmt.Errorf("provider %q uses credential-bearing header %q; use api_key_env or a deployment secret reference", row.ProviderName, h.HeaderName)
+			if !controlPlaneAllowedProviderHeader(h.HeaderName) {
+				return nil, fmt.Errorf("provider %q uses unsupported header %q; provider headers are limited to approved non-secret metadata headers and credentials must use api_key_env or a deployment secret reference", row.ProviderName, h.HeaderName)
 			}
 			p.Headers[h.HeaderName] = h.HeaderValue
 		}
@@ -119,7 +129,11 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 			return nil, err
 		}
 		for _, target := range targets {
-			group.Targets = append(group.Targets, Target{Provider: target.ProviderName, ModelRef: target.ModelRef, Model: target.Model, Dialect: target.Dialect, Weight: target.Weight, RPM: target.RPM, Tier: target.Tier, Cost: target.Cost})
+			modelRef := ""
+			if target.ModelRef.Valid {
+				modelRef = target.ModelRef.String
+			}
+			group.Targets = append(group.Targets, Target{Provider: target.ProviderName, ModelRef: modelRef, Model: target.Model, Dialect: target.Dialect, Weight: target.Weight, RPM: target.RPM, Tier: target.Tier, Cost: target.Cost})
 		}
 		cfg.Models[row.GroupName] = group
 	}
@@ -145,9 +159,9 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 	return cfg, nil
 }
 
-func controlPlaneSecretHeader(name string) bool {
+func controlPlaneAllowedProviderHeader(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "authorization", "proxy-authorization", "x-api-key", "x-api-token", "api-key":
+	case "http-referer", "user-agent", "x-title":
 		return true
 	default:
 		return false
@@ -204,7 +218,7 @@ var configControlPlaneTables = []string{"router_config_sets", "router_config_ser
 
 var configControlPlaneRequiredColumns = map[string][]string{
 	"router_config_sets":                  {"id", "runtime_scope", "name", "status", "validation_status", "created_by", "created_at", "activated_at"},
-	"router_config_server":                {"config_set_id", "listen", "default_model_group", "state_path"},
+	"router_config_server":                {"config_set_id", "listen", "default_model_group", "state_path", "license_enabled", "license_path", "license_state_path"},
 	"router_config_providers":             {"config_set_id", "provider_name", "base_url", "dialect", "api_key_env", "key_id", "auth_scheme"},
 	"router_config_provider_headers":      {"config_set_id", "provider_name", "header_name", "header_value"},
 	"router_config_provider_models":       {"config_set_id", "provider_name", "model_ref", "model", "dialect", "display_name", "context_tokens", "input_price_per_million_usd", "output_price_per_million_usd", "pricing_source", "pricing_updated_at", "pricing_notes"},
@@ -226,7 +240,7 @@ var configControlPlaneRequiredConstraints = map[string][]string{
 var configControlPlaneDDL = []string{
 	`CREATE TABLE IF NOT EXISTS router_config_sets (id TEXT PRIMARY KEY, runtime_scope TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, validation_status TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, activated_at TEXT NOT NULL DEFAULT '', UNIQUE (runtime_scope, name))`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS router_config_one_active_set_per_scope ON router_config_sets(runtime_scope) WHERE status = 'active'`,
-	`CREATE TABLE IF NOT EXISTS router_config_server (config_set_id TEXT PRIMARY KEY REFERENCES router_config_sets(id), listen TEXT NOT NULL DEFAULT '', default_model_group TEXT NOT NULL DEFAULT '', state_path TEXT NOT NULL DEFAULT '')`,
+	`CREATE TABLE IF NOT EXISTS router_config_server (config_set_id TEXT PRIMARY KEY REFERENCES router_config_sets(id), listen TEXT NOT NULL DEFAULT '', default_model_group TEXT NOT NULL DEFAULT '', state_path TEXT NOT NULL DEFAULT '', license_enabled BOOLEAN NOT NULL DEFAULT TRUE, license_path TEXT NOT NULL DEFAULT '', license_state_path TEXT NOT NULL DEFAULT '')`,
 	`CREATE TABLE IF NOT EXISTS router_config_providers (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), provider_name TEXT NOT NULL, base_url TEXT NOT NULL, dialect TEXT NOT NULL, api_key_env TEXT NOT NULL DEFAULT '', key_id TEXT NOT NULL DEFAULT '', auth_scheme TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name))`,
 	`CREATE TABLE IF NOT EXISTS router_config_provider_headers (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, header_name TEXT NOT NULL, header_value TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, header_name), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
 	`CREATE TABLE IF NOT EXISTS router_config_provider_models (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, model TEXT NOT NULL, dialect TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', context_tokens BIGINT NOT NULL DEFAULT 0, input_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, output_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, pricing_source TEXT NOT NULL DEFAULT '', pricing_updated_at TEXT NOT NULL DEFAULT '', pricing_notes TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name, model_ref), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
@@ -252,6 +266,9 @@ var configControlPlanePostgresComments = []string{
 	`COMMENT ON COLUMN router_config_server.listen IS 'Router listener address.'`,
 	`COMMENT ON COLUMN router_config_server.default_model_group IS 'Default deployment-defined model group.'`,
 	`COMMENT ON COLUMN router_config_server.state_path IS 'Runtime state path, not a secret.'`,
+	`COMMENT ON COLUMN router_config_server.license_enabled IS 'Whether license enforcement is enabled for this configuration set.'`,
+	`COMMENT ON COLUMN router_config_server.license_path IS 'Deployment-managed path to the signed license file.'`,
+	`COMMENT ON COLUMN router_config_server.license_state_path IS 'Deployment-managed path to non-secret license state.'`,
 	`COMMENT ON TABLE router_config_providers IS 'Provider endpoint and secret-reference metadata; no raw provider secret is stored.'`,
 	`COMMENT ON COLUMN router_config_providers.config_set_id IS 'Owning configuration-set identifier.'`,
 	`COMMENT ON COLUMN router_config_providers.provider_name IS 'Deployment-local provider reference.'`,
@@ -329,6 +346,9 @@ type serverConfigRow struct {
 	Listen            string `gorm:"column:listen"`
 	DefaultModelGroup string `gorm:"column:default_model_group"`
 	StatePath         string `gorm:"column:state_path"`
+	LicenseEnabled    bool   `gorm:"column:license_enabled"`
+	LicensePath       string `gorm:"column:license_path"`
+	LicenseStatePath  string `gorm:"column:license_state_path"`
 }
 
 func (serverConfigRow) TableName() string { return "router_config_server" }
@@ -376,15 +396,15 @@ type modelGroupRow struct {
 func (modelGroupRow) TableName() string { return "router_config_model_groups" }
 
 type modelGroupTargetRow struct {
-	Sequence     int    `gorm:"column:sequence"`
-	ProviderName string `gorm:"column:provider_name"`
-	ModelRef     string `gorm:"column:model_ref"`
-	Model        string `gorm:"column:model"`
-	Dialect      string `gorm:"column:dialect"`
-	Weight       int    `gorm:"column:weight"`
-	RPM          int    `gorm:"column:rpm"`
-	Tier         string `gorm:"column:tier"`
-	Cost         int    `gorm:"column:cost"`
+	Sequence     int            `gorm:"column:sequence"`
+	ProviderName string         `gorm:"column:provider_name"`
+	ModelRef     sql.NullString `gorm:"column:model_ref"`
+	Model        string         `gorm:"column:model"`
+	Dialect      string         `gorm:"column:dialect"`
+	Weight       int            `gorm:"column:weight"`
+	RPM          int            `gorm:"column:rpm"`
+	Tier         string         `gorm:"column:tier"`
+	Cost         int            `gorm:"column:cost"`
 }
 
 func (modelGroupTargetRow) TableName() string { return "router_config_model_group_targets" }

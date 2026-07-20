@@ -54,7 +54,7 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 		values []any
 	}{
 		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "initial", "active", "valid", now}},
-		{`INSERT INTO router_config_server (config_set_id, listen, default_model_group, state_path) VALUES (?, ?, ?, ?)`, []any{"set-1", ":8080", "default", "router-state.json"}},
+		{`INSERT INTO router_config_server (config_set_id, listen, default_model_group, state_path, license_enabled, license_path, license_state_path) VALUES (?, ?, ?, ?, ?, ?, ?)`, []any{"set-1", ":8080", "default", "router-state.json", true, "license.json", "license-state.json"}},
 		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect, api_key_env) VALUES (?, ?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai", "MOCK_API_KEY"}},
 		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "X-Title", "test"}},
 		{`INSERT INTO router_config_provider_models (config_set_id, provider_name, model_ref, model, context_tokens, input_price_per_million_usd, output_price_per_million_usd) VALUES (?, ?, ?, ?, ?, ?, ?)`, []any{"set-1", "mock", "small", "mock-small", 8192, 0.1, 0.2}},
@@ -71,6 +71,9 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 	}
 	if cfg.Server.DefaultModelGroup != "default" || cfg.Provider["mock"].Headers["X-Title"] != "test" {
 		t.Fatalf("server/provider projection mismatch: %+v", cfg)
+	}
+	if !cfg.Server.License.Enabled || cfg.Server.License.Path != "license.json" || cfg.Server.License.StatePath != "license-state.json" {
+		t.Fatalf("license projection mismatch: %+v", cfg.Server.License)
 	}
 	if target := cfg.Models["default"].Targets[0]; target.Provider != "mock" || target.ModelRef != "small" || target.Weight != 100 {
 		t.Fatalf("target projection mismatch: %+v", target)
@@ -153,7 +156,7 @@ func TestLoadActiveConfigFromDBRejectsCredentialBearingProviderHeader(t *testing
 		values []any
 	}{
 		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
-		{`INSERT INTO router_config_server (config_set_id, default_model_group) VALUES (?, ?)`, []any{"set-1", "default"}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
 		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
 		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "Authorization", "not-a-real-secret"}},
 	} {
@@ -161,7 +164,76 @@ func TestLoadActiveConfigFromDBRejectsCredentialBearingProviderHeader(t *testing
 			t.Fatal(err)
 		}
 	}
-	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "credential-bearing header") {
+	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "unsupported header") {
 		t.Fatalf("expected secret header rejection, got %v", err)
+	}
+}
+
+func TestLoadActiveConfigFromDBAllowsOnlyNonSecretProviderHeaders(t *testing.T) {
+	for _, headerName := range []string{"X-Goog-Api-Key", "Ocp-Apim-Subscription-Key", "Authorization"} {
+		r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.ApplyPending("test-runner"); err != nil {
+			_ = closeDB()
+			t.Fatal(err)
+		}
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		for _, seed := range []struct {
+			sql    string
+			values []any
+		}{
+			{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
+			{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
+			{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+			{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", headerName, "not-a-real-secret"}},
+		} {
+			if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+				_ = closeDB()
+				t.Fatal(err)
+			}
+		}
+		if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "unsupported header") {
+			_ = closeDB()
+			t.Fatalf("header %q must be rejected, got %v", headerName, err)
+		}
+		if err := closeDB(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestLoadActiveConfigFromDBAcceptsInlineTargetWithoutModelRef(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+		{`INSERT INTO router_config_model_groups (config_set_id, group_name, strategy) VALUES (?, ?, ?)`, []any{"set-1", "default", "static"}},
+		{`INSERT INTO router_config_model_group_targets (config_set_id, group_name, sequence, provider_name, model, weight) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "default", 1, "mock", "inline-model", 100}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := LoadActiveConfigFromDB(r.db, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := cfg.Models["default"].Targets[0]
+	if target.ModelRef != "" || target.Model != "inline-model" {
+		t.Fatalf("inline target = %+v, want empty model_ref and inline model", target)
 	}
 }
