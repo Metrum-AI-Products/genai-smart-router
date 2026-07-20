@@ -81,6 +81,14 @@ def main() -> int:
         parser.error("invalid MFA serial, role ARN, or region")
     if not 900 <= args.duration_seconds <= 43200 or not 0 <= args.propagation_wait_seconds <= 30:
         parser.error("invalid session duration or propagation wait")
+    if str(args.cleanup_record) in {"", "."} or args.cleanup_record.is_dir():
+        parser.error("--cleanup-record must be a non-directory protected file path")
+    approved_account = args.role_arn.split(":")[4]
+    if args.mfa_serial.split(":")[4] != approved_account:
+        parser.error("role ARN and MFA serial must use the same approved account")
+    admin_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.admin_profile, "--output", "json"]))
+    if str(admin_identity.get("Account", "")) != approved_account or str(admin_identity.get("Arn", "")).endswith(":root"):
+        raise RuntimeError("admin profile must be a non-root identity in the approved account before creating an access key")
 
     key_id = ""
     deleted = False
