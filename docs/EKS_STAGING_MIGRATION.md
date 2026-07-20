@@ -194,6 +194,13 @@ context. See `make eks-help` for the complete target list and required inputs.
    NetworkPolicy), apply stops before mutation and the object must be removed
    through a separate reviewed recovery/migration.
 
+   Rollback additionally needs namespace-scoped `list` permission for
+   `replicasets`. Before undoing anything, the contract resolves the highest
+   prior ReplicaSet revision owned by the approved Deployment that already uses
+   the requested immutable digest. If there is no matching prior revision, it
+   stops before mutation rather than letting `kubectl rollout undo` select an
+   arbitrary immediately previous revision.
+
    A reviewed change record is the desired-state reconciliation authorization;
    `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator acknowledgement of
    the mutation, never a substitute for the protected policy/SSM boundary. The
@@ -284,11 +291,12 @@ make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 ```
 
-It performs a bounded Deployment rollout undo, then verifies the named router
-container's exact digest and the observed Deployment identity before recording
-passed rollback evidence. A mutable, off-repository, or unexpected restored
-image fails closed. Removal of the Ingress or Deployment remains a separate
-approved recovery action. EC2 traffic and data remain unaffected.
+It resolves the matching owned ReplicaSet revision before mutating and uses
+`rollout undo --to-revision`; it then verifies the named router container's
+exact digest and the observed Deployment identity before recording passed
+rollback evidence. A mutable, off-repository, missing-history, or unexpected
+restored image fails closed. Removal of the Ingress or Deployment remains a
+separate approved recovery action. EC2 traffic and data remain unaffected.
 
 A future production cutover requires separate approval and a new runbook
 section covering an EC2 write freeze, logical Postgres export/import, row and

@@ -90,9 +90,6 @@ SERVICE_RUNTIME_SPEC_FIELDS = frozenset(
     {
         "clusterIP",
         "clusterIPs",
-        "healthCheckNodePort",
-        "ipFamilies",
-        "ipFamilyPolicy",
     }
 )
 PVC_RUNTIME_SPEC_FIELDS = frozenset({"volumeName"})
@@ -368,6 +365,7 @@ class Delivery:
             "live_managed_resource_count",
             "live_managed_resource_inventory_sha256",
             "live_managed_resource_spec_sha256",
+            "rollback_target_revision",
             "live_deployment_generation",
             "live_deployment_observed_generation",
             "live_pod_template_sha256",
@@ -508,6 +506,13 @@ class Delivery:
                     "Kubernetes RBAC does not allow list "
                     f"{resource_type} in the approved namespace"
                 )
+        if self.args.action == "rollback":
+            replica_sets_allowed = command(
+                ["kubectl", "auth", "can-i", "list", "replicasets", "-n", target.k8s_namespace],
+                env,
+            ).strip()
+            if replica_sets_allowed != "yes":
+                fail("Kubernetes RBAC does not allow list replicasets in the approved namespace")
         self.event(
             "preflight",
             aws_account_id=actual_account,
@@ -515,6 +520,7 @@ class Delivery:
             cluster_status="ACTIVE",
             rbac_get_pods=allowed,
             rbac_list_managed_resource_types=len(MANAGED_RESOURCE_TYPES),
+            rbac_list_replicasets=self.args.action != "rollback" or replica_sets_allowed == "yes",
         )
         return target
 
@@ -952,6 +958,123 @@ class Delivery:
         )
         return identity
 
+    def rollback_revision_for_digest(self, env: dict[str, str], target: TargetPolicy) -> int:
+        """Find a prior deployment revision that already uses IMAGE_DIGEST.
+
+        ``kubectl rollout undo`` otherwise selects whichever revision happens
+        to be immediately previous. Resolve the requested immutable artifact
+        before any mutation and use its explicit revision instead.
+        """
+
+        deployment_payload = command(
+            [
+                "kubectl",
+                "get",
+                f"deployment/{target.deployment_name}",
+                "-n",
+                target.k8s_namespace,
+                "-o",
+                "json",
+            ],
+            env,
+            raw=True,
+        )
+        try:
+            deployment = json.loads(deployment_payload)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("rollback deployment lookup returned invalid JSON") from exc
+        if not isinstance(deployment, dict):
+            fail("rollback deployment lookup returned an invalid resource")
+        metadata = deployment.get("metadata")
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("name") != target.deployment_name
+            or metadata.get("namespace") != target.k8s_namespace
+        ):
+            fail("rollback deployment lookup does not match the approved target")
+        deployment_uid = metadata.get("uid")
+        if not isinstance(deployment_uid, str) or not deployment_uid:
+            fail("rollback deployment lookup has no stable Deployment UID")
+        annotations = metadata.get("annotations")
+        revision_value = annotations.get("deployment.kubernetes.io/revision") if isinstance(annotations, dict) else None
+        if not isinstance(revision_value, str) or not revision_value.isdigit() or int(revision_value) < 2:
+            fail("rollback requires a current Deployment revision with prior history")
+        current_revision = int(revision_value)
+
+        replica_set_payload = command(
+            [
+                "kubectl",
+                "get",
+                "replicasets",
+                "-n",
+                target.k8s_namespace,
+                "-l",
+                f"{MANAGED_RESOURCE_LABEL}={MANAGED_RESOURCE_LABEL_VALUE}",
+                "-o",
+                "json",
+            ],
+            env,
+            raw=True,
+        )
+        replica_sets = self._json_objects(
+            replica_set_payload, source="rollback ReplicaSet lookup", allow_empty=True
+        )
+        candidates: list[int] = []
+        for replica_set in replica_sets:
+            if replica_set.get("kind") != "ReplicaSet":
+                fail("rollback ReplicaSet lookup returned an invalid resource")
+            replica_metadata = replica_set.get("metadata")
+            if (
+                not isinstance(replica_metadata, dict)
+                or replica_metadata.get("namespace") != target.k8s_namespace
+            ):
+                fail("rollback ReplicaSet lookup returned a resource outside the approved namespace")
+            owners = replica_metadata.get("ownerReferences")
+            if not isinstance(owners, list) or not any(
+                isinstance(owner, dict)
+                and owner.get("kind") == "Deployment"
+                and owner.get("name") == target.deployment_name
+                and owner.get("uid") == deployment_uid
+                and owner.get("controller") is True
+                for owner in owners
+            ):
+                continue
+            replica_annotations = replica_metadata.get("annotations")
+            replica_revision = (
+                replica_annotations.get("deployment.kubernetes.io/revision")
+                if isinstance(replica_annotations, dict)
+                else None
+            )
+            if (
+                not isinstance(replica_revision, str)
+                or not replica_revision.isdigit()
+                or int(replica_revision) < 1
+            ):
+                fail("rollback ReplicaSet has no valid Deployment revision")
+            revision = int(replica_revision)
+            if revision >= current_revision:
+                continue
+            spec = replica_set.get("spec") if isinstance(replica_set.get("spec"), dict) else {}
+            template = spec.get("template") if isinstance(spec.get("template"), dict) else {}
+            pod_spec = template.get("spec") if isinstance(template.get("spec"), dict) else {}
+            containers = pod_spec.get("containers") if isinstance(pod_spec.get("containers"), list) else []
+            router_container = next(
+                (
+                    item
+                    for item in containers
+                    if isinstance(item, dict) and item.get("name") == target.container_name
+                ),
+                None,
+            )
+            if router_container and router_container.get("image") == self.args.image_digest:
+                candidates.append(revision)
+        if not candidates:
+            fail("no prior Deployment revision uses the requested approved IMAGE_DIGEST")
+        revision = max(candidates)
+        self.evidence["rollback_target_revision"] = revision
+        self.event("rollback_target", revision=revision, result="approved_digest_revision_resolved")
+        return revision
+
     def run(self) -> None:
         env, temp = self.env_with_kubeconfig()
         try:
@@ -984,7 +1107,21 @@ class Delivery:
                 self.verify_live_deployment(env, target, "after_apply")
                 self.event("apply", result="passed")
             elif self.args.action == "rollback":
-                command(["kubectl", "rollout", "undo", f"deployment/{target.deployment_name}", "-n", target.k8s_namespace], env, quiet=True)
+                rollback_revision = self.rollback_revision_for_digest(env, target)
+                command(
+                    [
+                        "kubectl",
+                        "rollout",
+                        "undo",
+                        f"deployment/{target.deployment_name}",
+                        "-n",
+                        target.k8s_namespace,
+                        "--to-revision",
+                        str(rollback_revision),
+                    ],
+                    env,
+                    quiet=True,
+                )
                 self.verify_live_deployment(env, target, "after_rollback")
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":

@@ -21,6 +21,7 @@ sys.modules[SPEC.name] = EKS_DELIVERY
 SPEC.loader.exec_module(EKS_DELIVERY)
 TARGET_POLICY = json.loads((ROOT / "deploy" / "aws" / "genai-smart-router-eks-staging-target.json").read_text())
 DIGEST = str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "a" * 64
+DEPLOYMENT_UID = "smart-llmrouter-deployment-uid"
 
 
 def target_value(value: dict[str, object] | None = None) -> str:
@@ -94,8 +95,6 @@ def inventory_with_service_runtime_fields() -> str:
     payload["items"][1]["spec"] = {
         "clusterIP": "10.100.0.42",
         "clusterIPs": ["10.100.0.42"],
-        "ipFamilies": ["IPv4"],
-        "ipFamilyPolicy": "SingleStack",
     }
     payload["items"][1]["metadata"].update(
         {
@@ -146,7 +145,13 @@ def all_managed_configuration_objects() -> list[dict[str, object]]:
         resource(
             "Service",
             "smart-llmrouter",
-            spec={"ports": [{"port": 80, "targetPort": "http"}], "selector": labels},
+            spec={
+                "healthCheckNodePort": 32456,
+                "ipFamilies": ["IPv4"],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [{"port": 80, "targetPort": "http"}],
+                "selector": labels,
+            },
         ),
         resource(
             "Ingress",
@@ -181,6 +186,7 @@ def deployment_object(
     template_marker: str = "template-one",
     generation: int = 1,
     observed_generation: int | None = None,
+    revision: int = 2,
 ) -> str:
     return json.dumps(
         {
@@ -190,6 +196,8 @@ def deployment_object(
                 "name": "smart-llmrouter",
                 "namespace": TARGET_POLICY["k8s_namespace"],
                 "generation": generation,
+                "uid": DEPLOYMENT_UID,
+                "annotations": {"deployment.kubernetes.io/revision": str(revision)},
             },
             "status": {"observedGeneration": observed_generation if observed_generation is not None else generation},
             "spec": {
@@ -198,6 +206,47 @@ def deployment_object(
                     "spec": {"containers": [{"name": "router", "image": digest}]},
                 }
             },
+        }
+    )
+
+
+def replica_sets_object(
+    digest: str = DIGEST,
+    revision: int = 1,
+    owner_name: str = "smart-llmrouter",
+    owner_uid: str = DEPLOYMENT_UID,
+) -> str:
+    return json.dumps(
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "metadata": {
+                        "name": "smart-llmrouter-rollback-candidate",
+                        "namespace": TARGET_POLICY["k8s_namespace"],
+                        "annotations": {"deployment.kubernetes.io/revision": str(revision)},
+                        "ownerReferences": [
+                            {
+                                "apiVersion": "apps/v1",
+                                "kind": "Deployment",
+                                "name": owner_name,
+                                "uid": owner_uid,
+                                "controller": True,
+                            }
+                        ],
+                    },
+                    "spec": {
+                        "template": {
+                            "spec": {
+                                "containers": [{"name": "router", "image": digest}]
+                            }
+                        }
+                    },
+                }
+            ],
         }
     )
 
@@ -218,6 +267,7 @@ case "$0" in
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
+    *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
     *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE" ;;
@@ -250,6 +300,8 @@ def run(
     deployed_template_marker: str = "template-one",
     deployed_generation: int = 1,
     deployed_observed_generation: int | None = None,
+    deployed_revision: int = 2,
+    replica_sets: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     evidence = root / "tmp" / "evidence"
     command = [
@@ -290,7 +342,9 @@ def run(
             deployed_template_marker,
             deployed_generation,
             deployed_observed_generation,
+            deployed_revision,
         ),
+        "FAKE_REPLICA_SETS": replica_sets or replica_sets_object(),
     }
     return subprocess.run(command, cwd=root, text=True, capture_output=True, env=env)
 
@@ -330,6 +384,22 @@ def main() -> int:
             != expected_spec_fingerprint
         )
 
+    for field, value in (
+        ("healthCheckNodePort", 32457),
+        ("ipFamilies", ["IPv6"]),
+        ("ipFamilyPolicy", "RequireDualStack"),
+    ):
+        changed_resources = json.loads(json.dumps(expected_resources))
+        service = next(item for item in changed_resources if item["kind"] == "Service")
+        service["spec"][field] = value
+        changed_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+            changed_resources, target, source="Service networking configuration drift fixture"
+        )
+        assert (
+            EKS_DELIVERY.managed_resource_spec_fingerprint(changed_inventory)
+            != expected_spec_fingerprint
+        )
+
     runtime_only_resources = json.loads(json.dumps(expected_resources))
     runtime_service = next(item for item in runtime_only_resources if item["kind"] == "Service")
     runtime_service["metadata"].update(
@@ -345,8 +415,6 @@ def main() -> int:
         {
             "clusterIP": "10.100.0.42",
             "clusterIPs": ["10.100.0.42"],
-            "ipFamilies": ["IPv4"],
-            "ipFamilyPolicy": "SingleStack",
         }
     )
     runtime_pvc = next(item for item in runtime_only_resources if item["kind"] == "PersistentVolumeClaim")
@@ -414,6 +482,40 @@ def main() -> int:
         )
         assert no_digest_rollback.returncode != 0 and "IMAGE_DIGEST" in no_digest_rollback.stderr
 
+        before_unmatched_rollback = (bindir / "calls.log").read_text()
+        unmatched_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            replica_sets=replica_sets_object(
+                digest=str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "c" * 64
+            ),
+        )
+        assert (
+            unmatched_rollback.returncode != 0
+            and "no prior Deployment revision" in unmatched_rollback.stderr
+        )
+        unmatched_rollback_calls = (bindir / "calls.log").read_text()[
+            len(before_unmatched_rollback):
+        ]
+        assert "rollout undo" not in unmatched_rollback_calls
+
+        before_wrong_owner_rollback = (bindir / "calls.log").read_text()
+        wrong_owner_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            replica_sets=replica_sets_object(owner_uid="stale-deployment-uid"),
+        )
+        assert (
+            wrong_owner_rollback.returncode != 0
+            and "no prior Deployment revision" in wrong_owner_rollback.stderr
+        )
+        wrong_owner_rollback_calls = (bindir / "calls.log").read_text()[
+            len(before_wrong_owner_rollback):
+        ]
+        assert "rollout undo" not in wrong_owner_rollback_calls
+
         unexpected_rollback = run(
             "rollback",
             root,
@@ -422,11 +524,16 @@ def main() -> int:
         )
         assert unexpected_rollback.returncode != 0 and "does not use" in unexpected_rollback.stderr
 
+        before_rollback = (bindir / "calls.log").read_text()
         rollback = run("rollback", root, ["--confirm", "STAGING_APPLY"])
         assert rollback.returncode == 0, rollback.stderr
+        rollback_calls = (bindir / "calls.log").read_text()[len(before_rollback):]
+        assert "rollout undo deployment/smart-llmrouter" in rollback_calls
+        assert "--to-revision 1" in rollback_calls
         rollback_evidence = json.loads((root / "tmp/evidence/evidence-rollback.json").read_text())
         assert rollback_evidence["outcome"] == "passed"
         assert rollback_evidence["image_digest"] == DIGEST
+        assert rollback_evidence["rollback_target_revision"] == 1
         assert rollback_evidence["live_deployment_generation"] == 1
         assert any(
             event["name"] == "live_deployment" and event["phase"] == "after_rollback"

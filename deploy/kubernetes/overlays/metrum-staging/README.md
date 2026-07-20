@@ -118,7 +118,10 @@ Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
 Deployment requires a separately reviewed recovery/migration to remove the
 stale object. The delivery role therefore needs namespace-scoped `list` access
 to only those seven resource types, in addition to the existing rollout and
-pod read permissions.
+pod read permissions. Rollback also requires `list` access to `replicasets`:
+the contract resolves the requested digest to an owned prior revision before
+calling `rollout undo --to-revision`, so it never implicitly selects an
+unverified immediately previous revision.
 
 The protected policy/SSM match and reviewed change record authorize a
 reconciliation; `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator

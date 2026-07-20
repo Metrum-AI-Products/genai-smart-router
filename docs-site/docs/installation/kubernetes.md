@@ -252,8 +252,9 @@ Kubernetes runtime allocations, not routing or security settings. Verify both
 before smoke and promotion. Do not use a broad prune: a removed or renamed
 resource should fail delivery until it is removed through a separately approved
 migration. Treat rollback as an artifact deployment too: require an explicitly
-approved immutable digest and verify the restored workload's live digest and
-rollout identity before recording rollback success.
+approved immutable digest, resolve a matching owned historical revision before
+undoing, and verify the restored workload's live digest and rollout identity
+before recording rollback success.
 
 Check rollout:
 
