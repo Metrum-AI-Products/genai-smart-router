@@ -213,7 +213,7 @@ eks-discovery-validate:
 	python3 scripts/validate_eks_make_args.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
 
 eks-discover: eks-discovery-validate eks-identity-check
-	python3 scripts/eks_discover.py --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
+	python3 scripts/eks_discover.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
 
 e2e-mock:
 	$(MAKE) -C examples/cli-e2e-c clean test

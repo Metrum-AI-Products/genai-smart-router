@@ -48,6 +48,9 @@ def main() -> int:
             output = Path(args.output or "")
             if not output.is_absolute() or output.parent == Path("/"):
                 raise ValueError("output must be an explicit absolute path outside the repository")
+            repository_root = Path(__file__).resolve().parents[1]
+            if output.resolve().is_relative_to(repository_root):
+                raise ValueError("output must be outside the repository")
     except ValueError as error:
         print(f"EKS Make input error: {error}", file=sys.stderr)
         return 2

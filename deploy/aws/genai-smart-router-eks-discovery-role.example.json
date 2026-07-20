@@ -27,14 +27,15 @@
           "eks:DescribeCluster",
           "eks:ListAccessEntries",
           "eks:DescribeAccessEntry",
-          "eks:ListAssociatedAccessPolicies"
+          "eks:ListAssociatedAccessPolicies",
+          "eks:ListNodegroups"
         ],
         "Resource": "*"
       },
       {
         "Sid": "EcrReadOnlyDiscovery",
         "Effect": "Allow",
-        "Action": ["ecr:DescribeRepositories", "ecr:ListImages"],
+        "Action": ["ecr:DescribeRepositories", "ecr:ListImages", "ecr:GetRepositoryPolicy"],
         "Resource": "*"
       }
     ]
