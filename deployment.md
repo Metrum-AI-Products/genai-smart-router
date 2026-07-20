@@ -94,6 +94,25 @@ Validation:
   a completed response. An explicit Chat thinking request selected a non-K3
   target.
 
+## 2026-07-10 Aidan Daily Quota Increase
+
+Tripled the production daily token quota for caller `aidan-metrum-insights-prod` after recent `big-coder` and `high` traffic hit caller-side `429 quota-exhausted`.
+
+- Daily token quota: `100,000,000` -> `300,000,000`
+- Monthly token quota unchanged: `1,200,000,000`
+- Rate limits unchanged: `240 rpm`, `5,000,000 tpm`, `16` concurrent
+- Allowed model groups unchanged.
+
+Production backup: `/opt/smart-llmrouter/compose/config/config.yaml.bak.aidan-daily-quota-300m-20260710T134917Z`.
+
+Validation:
+
+- Production config parse/update completed for caller `aidan-metrum-insights-prod`.
+- Router restarted cleanly on `smart-llmrouter:f52a918-linux-amd64`.
+- Production `/readyz` returned 200 with version `f52a918`.
+- Quota state after restart showed current daily usage `99,894,138 / 300,000,000` tokens and key not disabled.
+- Ignored local `config.production.yaml` was resynced from the live config after rollout.
+
 ## 2026-07-09 Upstream Error And Documentation Package Refresh
 
 Package `smart-llmrouter:f52a918-linux-amd64` was deployed to production after upstream PRs #491, #495, #496, #497, and #498 merged.
