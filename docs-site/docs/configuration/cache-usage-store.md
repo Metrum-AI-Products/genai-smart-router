@@ -56,7 +56,7 @@ server:
 
 `usage_db` enables relational usage persistence. Usage rows store request-time cost inputs, calculated costs, upstream-reported billed costs where available, latency, throughput, cache status, attempts, fallbacks, caller/project dimensions, and provider/model/dialect dimensions.
 
-Use the non-serving `router-migrate` command to inspect a durable migration ledger before an upgrade. It reports only scope/version/compatibility and safe migration state; it never returns database connection values, SQL values, request content, or credentials. The initial framework ships the ledger and compatibility contract while the existing usage schema remains on its legacy initialization path, so follow the release-specific upgrade instructions before applying any future migration definition.
+Use the non-serving `router-migrate` command to inspect a durable migration ledger before an upgrade. It reports only scope/version/compatibility and safe migration state; it never returns database connection values, SQL values, request content, or credentials. The initial usage migration adopts an already initialized legacy usage database into the ledger after its schema is verified; it does not initialize an empty database or modify application tables. Follow the release-specific upgrade instructions before applying later migration definitions.
 
 `decision_telemetry` is optional and disabled by default. When enabled, it writes normalized scalar child rows for request shape, bounded candidates, filter reasons, routing decisions, score terms, script/external policy executions, fallback transitions, cache reasons, and non-secret fingerprints.
 

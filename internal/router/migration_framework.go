@@ -18,6 +18,30 @@ import (
 
 const usageMigrationScope = "usage"
 
+const usageLegacyBaselineMigrationID = 2026071901
+
+var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}
+
+// usageMigrationDefinitions starts the immutable usage manifest by adopting a
+// database created by the pre-ledger initializer. It intentionally contains no
+// DDL: a fresh database must continue through the legacy initializer until its
+// full reviewed replacement is shipped. This migration is therefore a guarded
+// one-time ledger adoption, not an implicit upgrade path.
+var usageMigrationDefinitions = []MigrationDefinition{{
+	ID:              usageLegacyBaselineMigrationID,
+	Scope:           usageMigrationScope,
+	Name:            "adopt legacy usage schema baseline",
+	Release:         "2026.7",
+	Checksum:        "1bbefd1d653dd50633bd050badc0dae65e87775cbb88dd27f350604dd46862b6",
+	SchemaVersion:   1,
+	DataVersion:     0,
+	Transactional:   true,
+	MaintenanceMode: "online",
+	RollbackClass:   "package-only",
+	Apply:           verifyUsageLegacyBaseline,
+	Verify:          verifyUsageLegacyBaseline,
+}}
+
 // MigrationCompatibility declares the inclusive schema/data versions a binary
 // can safely operate with. Versions are monotonically increasing integers.
 type MigrationCompatibility struct {
@@ -210,6 +234,29 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 	return status, nil
 }
 
+// Verify rechecks the immutable ledger and postconditions of applied
+// definitions. Pending definitions are reported but never executed.
+func (r *migrationRunner) Verify() (MigrationStatus, error) {
+	status, err := r.Status()
+	if err != nil || !status.Compatible {
+		return status, err
+	}
+	applied := make(map[int]bool, len(status.Entries))
+	for _, entry := range status.Entries {
+		if entry.State == "applied" {
+			applied[entry.MigrationID] = true
+		}
+	}
+	for _, d := range r.definitions {
+		if applied[d.ID] && d.Verify != nil {
+			if err := d.Verify(r.db); err != nil {
+				return status, fmt.Errorf("migration %d verification: %w", d.ID, err)
+			}
+		}
+	}
+	return status, nil
+}
+
 func ledgerEntry(rec migrationLedgerRecord) MigrationLedgerEntry {
 	started, _ := time.Parse(time.RFC3339Nano, rec.StartedAt)
 	completed, _ := time.Parse(time.RFC3339Nano, rec.CompletedAt)
@@ -305,7 +352,7 @@ func UsageMigrationRunner(cfg UsageDBConfig) (*migrationRunner, func() error, er
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewMigrationRunner(db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 0, MinData: 0, MaxData: 0}, nil)
+	r, err := NewMigrationRunner(db, usageMigrationScope, usageMigrationCompatibility, usageMigrationDefinitions)
 	if err != nil {
 		sqlDB, _ := db.DB()
 		if sqlDB != nil {

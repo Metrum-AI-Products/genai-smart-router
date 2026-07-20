@@ -101,3 +101,55 @@ func TestMigrationRunnerRejectsAnActiveScopeLease(t *testing.T) {
 		t.Fatal("second runner acquired active scope lease")
 	}
 }
+
+func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	store, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Compatible || status.State != "pending" || len(status.Pending) != 1 {
+		t.Fatalf("legacy usage database should be eligible for baseline adoption: %+v", status)
+	}
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	status, err = r.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != 1 || status.DataVersion != 0 || len(status.Entries) != 1 {
+		t.Fatalf("unexpected adopted usage status: %+v", status)
+	}
+}
+
+func TestUsageMigrationBaselineRejectsEmptyDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.sqlite")
+	r, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	if err := r.ApplyPending("test-runner"); err == nil {
+		t.Fatal("baseline adoption must not initialize an empty database")
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != 1 {
+		t.Fatalf("failed baseline adoption must leave no ledger entry: %+v", status)
+	}
+}

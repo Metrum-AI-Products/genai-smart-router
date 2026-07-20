@@ -31,8 +31,10 @@ func main() {
 	defer closeDB()
 	var status router.MigrationStatus
 	switch *action {
-	case "status", "plan", "verify":
+	case "status", "plan":
 		status, err = r.Status()
+	case "verify":
+		status, err = r.Verify()
 	case "apply":
 		err = r.ApplyPending(*runnerID)
 		if err == nil {

@@ -1566,66 +1566,30 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 		Type string
 	}
 	var columns []columnInfo
-	tables := []string{
-		"request_usage",
-		"request_attempts",
-		"request_trace_events",
-		"request_traffic_shape_events",
-		"request_upstream_shape_events",
-		"request_shapes",
-		"request_translation_shapes",
-		"request_token_estimates",
-		"request_translation_field_events",
-		"request_decision_shape_features",
-		"request_target_candidates",
-		"request_target_filter_reasons",
-		"request_routing_decisions",
-		"request_routing_signals",
-		"request_dynamic_score_terms",
-		"request_policy_executions",
-		"request_fallback_transitions",
-		"request_cache_reasons",
-		"request_errors",
-		"request_upstream_error_details",
-		"request_content_captures",
-		"request_content_headers",
-		"request_content_audit_events",
-		"authz_policy_sets",
-		"authz_policy_rules",
-		"authz_role_links",
-		"authz_policy_audit_events",
-		"security_access_events",
-		"usage_rollup_runs",
-		"usage_rollup_hourly",
-		"usage_rollup_daily",
-		"usage_rollup_monthly_billing",
-		"usage_rollup_audit_events",
-		"usage_rollup_decision_buckets",
-		"retention_policy_versions",
-		"retention_policy_rules",
-		"retention_jobs",
-		"retention_job_table_results",
-		"legal_holds",
-		"legal_hold_audit_events",
+	for _, table := range usageRelationalTables {
+		if !db.Migrator().HasTable(table) {
+			return fmt.Errorf("required usage table %q is missing", table)
+		}
 	}
-	switch db.Dialector.Name() {
-	case "sqlite":
-		for _, table := range tables {
-			var tableColumns []columnInfo
+	for _, table := range usageRelationalTables {
+		var tableColumns []columnInfo
+		switch db.Dialector.Name() {
+		case "sqlite":
 			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
 				return err
 			}
-			for i := range tableColumns {
-				tableColumns[i].Name = table + "." + tableColumns[i].Name
+		default:
+			if err := db.Raw(`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = ?`, table).Scan(&tableColumns).Error; err != nil {
+				return err
 			}
-			columns = append(columns, tableColumns...)
 		}
-	default:
-		if err := db.Raw(`SELECT column_name AS name, data_type AS type
-			FROM information_schema.columns
-			WHERE table_name IN ('request_usage', 'request_attempts', 'request_trace_events', 'request_traffic_shape_events', 'request_upstream_shape_events', 'request_shapes', 'request_translation_shapes', 'request_token_estimates', 'request_translation_field_events', 'request_decision_shape_features', 'request_target_candidates', 'request_target_filter_reasons', 'request_routing_decisions', 'request_routing_signals', 'request_dynamic_score_terms', 'request_policy_executions', 'request_fallback_transitions', 'request_cache_reasons', 'request_errors', 'request_upstream_error_details', 'request_content_captures', 'request_content_headers', 'request_content_audit_events', 'authz_policy_sets', 'authz_policy_rules', 'authz_role_links', 'authz_policy_audit_events', 'security_access_events', 'usage_rollup_runs', 'usage_rollup_hourly', 'usage_rollup_daily', 'usage_rollup_monthly_billing', 'usage_rollup_audit_events', 'usage_rollup_decision_buckets', 'retention_policy_versions', 'retention_policy_rules', 'retention_jobs', 'retention_job_table_results', 'legal_holds', 'legal_hold_audit_events')`).Scan(&columns).Error; err != nil {
-			return err
+		if len(tableColumns) == 0 {
+			return fmt.Errorf("required usage table %q has no columns", table)
 		}
+		for i := range tableColumns {
+			tableColumns[i].Name = table + "." + tableColumns[i].Name
+		}
+		columns = append(columns, tableColumns...)
 	}
 	for _, col := range columns {
 		t := strings.ToLower(col.Type)
@@ -1635,6 +1599,54 @@ func ensureUsageRelationalSchema(db *gorm.DB) error {
 	}
 	return nil
 }
+
+var usageRelationalTables = []string{
+	"request_usage",
+	"request_attempts",
+	"request_trace_events",
+	"request_traffic_shape_events",
+	"request_upstream_shape_events",
+	"request_shapes",
+	"request_translation_shapes",
+	"request_token_estimates",
+	"request_translation_field_events",
+	"request_decision_shape_features",
+	"request_target_candidates",
+	"request_target_filter_reasons",
+	"request_routing_decisions",
+	"request_routing_signals",
+	"request_dynamic_score_terms",
+	"request_policy_executions",
+	"request_fallback_transitions",
+	"request_cache_reasons",
+	"request_errors",
+	"request_upstream_error_details",
+	"request_content_captures",
+	"request_content_headers",
+	"request_content_audit_events",
+	"authz_policy_sets",
+	"authz_policy_rules",
+	"authz_role_links",
+	"authz_policy_audit_events",
+	"security_access_events",
+	"usage_rollup_runs",
+	"usage_rollup_hourly",
+	"usage_rollup_daily",
+	"usage_rollup_monthly_billing",
+	"usage_rollup_audit_events",
+	"usage_rollup_decision_buckets",
+	"retention_policy_versions",
+	"retention_policy_rules",
+	"retention_jobs",
+	"retention_job_table_results",
+	"legal_holds",
+	"legal_hold_audit_events",
+}
+
+// verifyUsageLegacyBaseline is the postcondition for the initial ledger
+// adoption. It is deliberately stricter than a table-exists probe, while the
+// complete explicit DDL manifest is prepared as a later migration slice.
+func verifyUsageLegacyBaseline(db *gorm.DB) error { return ensureUsageRelationalSchema(db) }
 
 func (s *usageStore) Emit(rec logRecord) {
 	if s == nil || s.db == nil || rec.RequestID == "" {
