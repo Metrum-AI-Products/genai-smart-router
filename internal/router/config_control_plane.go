@@ -1,0 +1,366 @@
+package router
+
+// Phase one of the configuration control plane deliberately provides a small,
+// read-only relational projection. YAML remains the serving default. The
+// projection is useful for validating the migration contract and loading a
+// simple active router configuration without introducing a write API, secret
+// storage, PostgREST, or runtime hot reload.
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+
+	"gorm.io/gorm"
+)
+
+const configControlPlaneScope = "router_config"
+
+const configControlPlanePhase1MigrationID = 2026072001
+
+var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}
+
+var configControlPlaneMigrationDefinitions = []MigrationDefinition{{
+	ID:              configControlPlanePhase1MigrationID,
+	Scope:           configControlPlaneScope,
+	Name:            "create relational read-only configuration projection",
+	Release:         "2026.7",
+	Checksum:        "a2c3e1ea4db3422e260a17b0b03ae67a8f7f07e0282ec2f39d0879b64f9d0f9a",
+	SchemaVersion:   1,
+	Transactional:   true,
+	MaintenanceMode: "online",
+	RollbackClass:   "restore-required",
+	Apply:           applyConfigControlPlanePhase1,
+	Verify:          verifyConfigControlPlanePhase1,
+}}
+
+// ConfigControlPlaneMigrationRunner opens a dedicated config-control-plane
+// database scope. It never initializes or changes the usage schema.
+func ConfigControlPlaneMigrationRunner(cfg UsageDBConfig) (*migrationRunner, func() error, error) {
+	db, err := openUsageDB(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	r, err := NewMigrationRunner(db, configControlPlaneScope, configControlPlaneCompatibility, configControlPlaneMigrationDefinitions)
+	if err != nil {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+		return nil, nil, err
+	}
+	return r, func() error {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
+	}, nil
+}
+
+// LoadActiveConfigFromDB loads the one validated active set for runtimeScope.
+// It is intentionally read-only and fails closed for unsupported relational
+// fields rather than silently dropping configuration. Caller token hashes are
+// retained for verification; raw caller tokens are never represented here.
+func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
+	if db == nil {
+		return nil, errors.New("config control-plane database is required")
+	}
+	runtimeScope = strings.TrimSpace(runtimeScope)
+	if runtimeScope == "" {
+		return nil, errors.New("config runtime scope is required")
+	}
+	var set configSetRow
+	if err := db.Where("runtime_scope = ? AND status = ? AND validation_status = ?", runtimeScope, "active", "valid").First(&set).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("no validated active config set for runtime scope %q", runtimeScope)
+		}
+		return nil, fmt.Errorf("load active config set: %w", err)
+	}
+	var server serverConfigRow
+	if err := db.Where("config_set_id = ?", set.ID).First(&server).Error; err != nil {
+		return nil, fmt.Errorf("load server config: %w", err)
+	}
+	cfg := &Config{Server: ServerConfig{Listen: server.Listen, DefaultModelGroup: server.DefaultModelGroup}, StatePath: server.StatePath, Provider: map[string]ProviderConfig{}, Models: map[string]ModelGroup{}}
+	var providers []providerRow
+	if err := db.Where("config_set_id = ?", set.ID).Order("provider_name ASC").Find(&providers).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range providers {
+		p := ProviderConfig{BaseURL: row.BaseURL, Dialect: row.Dialect, APIKeyEnv: row.APIKeyEnv, KeyID: row.KeyID, AuthScheme: row.AuthScheme, Headers: map[string]string{}, Models: map[string]ProviderModel{}}
+		var headers []providerHeaderRow
+		if err := db.Where("config_set_id = ? AND provider_name = ?", set.ID, row.ProviderName).Order("header_name ASC").Find(&headers).Error; err != nil {
+			return nil, err
+		}
+		for _, h := range headers {
+			p.Headers[h.HeaderName] = h.HeaderValue
+		}
+		var models []providerModelRow
+		if err := db.Where("config_set_id = ? AND provider_name = ?", set.ID, row.ProviderName).Order("model_ref ASC").Find(&models).Error; err != nil {
+			return nil, err
+		}
+		for _, model := range models {
+			p.Models[model.ModelRef] = ProviderModel{Model: model.Model, Dialect: model.Dialect, DisplayName: model.DisplayName, ContextTokens: model.ContextTokens, InputPricePerMillionUSD: model.InputPricePerMillionUSD, OutputPricePerMillionUSD: model.OutputPricePerMillionUSD, PricingSource: model.PricingSource, PricingUpdatedAt: model.PricingUpdatedAt, PricingNotes: model.PricingNotes}
+		}
+		cfg.Provider[row.ProviderName] = p
+	}
+	var groups []modelGroupRow
+	if err := db.Where("config_set_id = ?", set.ID).Order("group_name ASC").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range groups {
+		group := ModelGroup{Strategy: row.Strategy, AttemptTimeoutMS: row.AttemptTimeoutMS}
+		var targets []modelGroupTargetRow
+		if err := db.Where("config_set_id = ? AND group_name = ?", set.ID, row.GroupName).Order("sequence ASC").Find(&targets).Error; err != nil {
+			return nil, err
+		}
+		for _, target := range targets {
+			group.Targets = append(group.Targets, Target{Provider: target.ProviderName, ModelRef: target.ModelRef, Model: target.Model, Dialect: target.Dialect, Weight: target.Weight, RPM: target.RPM, Tier: target.Tier, Cost: target.Cost})
+		}
+		cfg.Models[row.GroupName] = group
+	}
+	var callers []callerRow
+	if err := db.Where("config_set_id = ?", set.ID).Order("caller_id ASC").Find(&callers).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range callers {
+		caller := CallerConfig{ID: row.CallerID, OwnerUser: row.OwnerUser, Project: row.Project, Environment: row.Environment, Status: row.Status, TokenSHA256: row.TokenSHA256, TokenID: row.TokenID, MetricsAdmin: row.MetricsAdmin, ContentAdmin: row.ContentAdmin, Rate: RateConfig{RPM: row.RPM, TPM: row.TPM, Concurrent: row.Concurrent}}
+		var allowed []callerAllowedGroupRow
+		if err := db.Where("config_set_id = ? AND caller_id = ?", set.ID, row.CallerID).Order("group_name ASC").Find(&allowed).Error; err != nil {
+			return nil, err
+		}
+		for _, allow := range allowed {
+			caller.Allow = append(caller.Allow, allow.GroupName)
+		}
+		cfg.Callers = append(cfg.Callers, caller)
+	}
+	cfg.setDefaults()
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("validate active config set %q: %w", set.ID, err)
+	}
+	return cfg, nil
+}
+
+func applyConfigControlPlanePhase1(tx *gorm.DB) error {
+	for _, stmt := range configControlPlaneDDL {
+		if err := tx.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("config control-plane bootstrap: %w", err)
+		}
+	}
+	if tx.Dialector.Name() == "postgres" {
+		for _, stmt := range configControlPlanePostgresComments {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("config control-plane comments: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
+	for _, table := range configControlPlaneTables {
+		if !tx.Migrator().HasTable(table) {
+			return fmt.Errorf("required control-plane table %s is missing", table)
+		}
+	}
+	return nil
+}
+
+var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}
+
+var configControlPlaneDDL = []string{
+	`CREATE TABLE IF NOT EXISTS router_config_sets (id TEXT PRIMARY KEY, runtime_scope TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, validation_status TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, activated_at TEXT NOT NULL DEFAULT '', UNIQUE (runtime_scope, name))`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS router_config_one_active_set_per_scope ON router_config_sets(runtime_scope) WHERE status = 'active'`,
+	`CREATE TABLE IF NOT EXISTS router_config_server (config_set_id TEXT PRIMARY KEY REFERENCES router_config_sets(id), listen TEXT NOT NULL DEFAULT '', default_model_group TEXT NOT NULL DEFAULT '', state_path TEXT NOT NULL DEFAULT '')`,
+	`CREATE TABLE IF NOT EXISTS router_config_providers (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), provider_name TEXT NOT NULL, base_url TEXT NOT NULL, dialect TEXT NOT NULL, api_key_env TEXT NOT NULL DEFAULT '', key_id TEXT NOT NULL DEFAULT '', auth_scheme TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_headers (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, header_name TEXT NOT NULL, header_value TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, header_name), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_provider_models (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, model TEXT NOT NULL, dialect TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', context_tokens BIGINT NOT NULL DEFAULT 0, input_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, output_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, pricing_source TEXT NOT NULL DEFAULT '', pricing_updated_at TEXT NOT NULL DEFAULT '', pricing_notes TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name, model_ref), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_model_groups (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), group_name TEXT NOT NULL, strategy TEXT NOT NULL DEFAULT '', attempt_timeout_ms BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, group_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_model_group_targets (config_set_id TEXT NOT NULL, group_name TEXT NOT NULL, sequence BIGINT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', dialect TEXT NOT NULL DEFAULT '', weight BIGINT NOT NULL DEFAULT 0, rpm BIGINT NOT NULL DEFAULT 0, tier TEXT NOT NULL DEFAULT '', cost BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, group_name, sequence), FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_callers (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), caller_id TEXT NOT NULL, owner_user TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', environment TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '', token_sha256 TEXT NOT NULL DEFAULT '', token_id TEXT NOT NULL DEFAULT '', metrics_admin BOOLEAN NOT NULL DEFAULT FALSE, content_admin BOOLEAN NOT NULL DEFAULT FALSE, rpm BIGINT NOT NULL DEFAULT 0, tpm BIGINT NOT NULL DEFAULT 0, concurrent BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, caller_id))`,
+	`CREATE TABLE IF NOT EXISTS router_config_caller_allowed_groups (config_set_id TEXT NOT NULL, caller_id TEXT NOT NULL, group_name TEXT NOT NULL, PRIMARY KEY (config_set_id, caller_id, group_name), FOREIGN KEY (config_set_id, caller_id) REFERENCES router_config_callers(config_set_id, caller_id), FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name))`,
+}
+
+var configControlPlanePostgresComments = []string{
+	`COMMENT ON TABLE router_config_sets IS 'Versioned configuration set metadata; exactly one validated active set is expected per runtime scope.'`,
+	`COMMENT ON COLUMN router_config_sets.id IS 'Opaque configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_sets.runtime_scope IS 'Deployment/runtime scope owning the active configuration.'`,
+	`COMMENT ON COLUMN router_config_sets.name IS 'Human-readable version name unique in the runtime scope.'`,
+	`COMMENT ON COLUMN router_config_sets.status IS 'Draft, active, or archived lifecycle state.'`,
+	`COMMENT ON COLUMN router_config_sets.validation_status IS 'Validation state; only valid sets may be read as active.'`,
+	`COMMENT ON COLUMN router_config_sets.created_by IS 'Sanitized actor identifier that created the set.'`,
+	`COMMENT ON COLUMN router_config_sets.created_at IS 'UTC creation timestamp.'`,
+	`COMMENT ON COLUMN router_config_sets.activated_at IS 'UTC activation timestamp when applicable.'`,
+	`COMMENT ON TABLE router_config_server IS 'Scalar server settings for one configuration set.'`,
+	`COMMENT ON COLUMN router_config_server.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_server.listen IS 'Router listener address.'`,
+	`COMMENT ON COLUMN router_config_server.default_model_group IS 'Default deployment-defined model group.'`,
+	`COMMENT ON COLUMN router_config_server.state_path IS 'Runtime state path, not a secret.'`,
+	`COMMENT ON TABLE router_config_providers IS 'Provider endpoint and secret-reference metadata; no raw provider secret is stored.'`,
+	`COMMENT ON COLUMN router_config_providers.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_providers.provider_name IS 'Deployment-local provider reference.'`,
+	`COMMENT ON COLUMN router_config_providers.base_url IS 'Provider API base URL.'`,
+	`COMMENT ON COLUMN router_config_providers.dialect IS 'Validated provider API dialect.'`,
+	`COMMENT ON COLUMN router_config_providers.api_key_env IS 'Environment-variable name for the provider credential.'`,
+	`COMMENT ON COLUMN router_config_providers.key_id IS 'Non-secret provider credential identifier.'`,
+	`COMMENT ON COLUMN router_config_providers.auth_scheme IS 'Provider authentication scheme.'`,
+	`COMMENT ON TABLE router_config_provider_headers IS 'One deployment-owned upstream header per provider.'`,
+	`COMMENT ON COLUMN router_config_provider_headers.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_headers.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_headers.header_name IS 'Configured non-secret upstream header name.'`,
+	`COMMENT ON COLUMN router_config_provider_headers.header_value IS 'Configured non-secret upstream header value.'`,
+	`COMMENT ON TABLE router_config_provider_models IS 'Catalogued provider models with scalar pricing metadata.'`,
+	`COMMENT ON COLUMN router_config_provider_models.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_models.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_provider_models.model_ref IS 'Deployment-local provider model reference.'`,
+	`COMMENT ON COLUMN router_config_provider_models.model IS 'Exact upstream model identifier.'`,
+	`COMMENT ON COLUMN router_config_provider_models.dialect IS 'Optional model-specific API dialect.'`,
+	`COMMENT ON COLUMN router_config_provider_models.display_name IS 'Non-secret operator display name.'`,
+	`COMMENT ON COLUMN router_config_provider_models.context_tokens IS 'Advertised context-window tokens.'`,
+	`COMMENT ON COLUMN router_config_provider_models.input_price_per_million_usd IS 'Input price per million tokens in USD.'`,
+	`COMMENT ON COLUMN router_config_provider_models.output_price_per_million_usd IS 'Output price per million tokens in USD.'`,
+	`COMMENT ON COLUMN router_config_provider_models.pricing_source IS 'Primary pricing evidence location.'`,
+	`COMMENT ON COLUMN router_config_provider_models.pricing_updated_at IS 'Pricing evidence date.'`,
+	`COMMENT ON COLUMN router_config_provider_models.pricing_notes IS 'Operator pricing caveats.'`,
+	`COMMENT ON TABLE router_config_model_groups IS 'Deployment-defined model-group routing metadata.'`,
+	`COMMENT ON COLUMN router_config_model_groups.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_model_groups.group_name IS 'Deployment-defined router model group.'`,
+	`COMMENT ON COLUMN router_config_model_groups.strategy IS 'Configured routing strategy.'`,
+	`COMMENT ON COLUMN router_config_model_groups.attempt_timeout_ms IS 'Per-attempt timeout in milliseconds.'`,
+	`COMMENT ON TABLE router_config_model_group_targets IS 'Ordered weighted targets for a model group.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.group_name IS 'Referenced model group.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.sequence IS 'Stable target ordering value.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.provider_name IS 'Referenced provider name.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.model_ref IS 'Referenced provider-model record when supplied.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.model IS 'Inline exact upstream model identifier when supplied.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.dialect IS 'Optional target-specific API dialect.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.weight IS 'Group-local routing weight.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.rpm IS 'Target rate limit in requests per minute.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.tier IS 'Deployment-local target tier.'`,
+	`COMMENT ON COLUMN router_config_model_group_targets.cost IS 'Deployment-local relative cost class.'`,
+	`COMMENT ON TABLE router_config_callers IS 'Caller identity and token hash metadata; raw caller tokens are never stored.'`,
+	`COMMENT ON COLUMN router_config_callers.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_callers.caller_id IS 'Stable caller identity.'`,
+	`COMMENT ON COLUMN router_config_callers.owner_user IS 'Normalized owning user identifier.'`,
+	`COMMENT ON COLUMN router_config_callers.project IS 'Normalized owning project identifier.'`,
+	`COMMENT ON COLUMN router_config_callers.environment IS 'Normalized deployment environment identifier.'`,
+	`COMMENT ON COLUMN router_config_callers.status IS 'Caller lifecycle status.'`,
+	`COMMENT ON COLUMN router_config_callers.token_sha256 IS 'Write-only SHA-256 hash of the caller token.'`,
+	`COMMENT ON COLUMN router_config_callers.token_id IS 'Non-secret public caller-token identifier.'`,
+	`COMMENT ON COLUMN router_config_callers.metrics_admin IS 'Whether caller may access global metrics.'`,
+	`COMMENT ON COLUMN router_config_callers.content_admin IS 'Whether caller may access governed content administration.'`,
+	`COMMENT ON COLUMN router_config_callers.rpm IS 'Caller request rate limit.'`,
+	`COMMENT ON COLUMN router_config_callers.tpm IS 'Caller token rate limit.'`,
+	`COMMENT ON COLUMN router_config_callers.concurrent IS 'Caller concurrent request limit.'`,
+	`COMMENT ON TABLE router_config_caller_allowed_groups IS 'One allowed model group per caller.'`,
+	`COMMENT ON COLUMN router_config_caller_allowed_groups.config_set_id IS 'Owning configuration-set identifier.'`,
+	`COMMENT ON COLUMN router_config_caller_allowed_groups.caller_id IS 'Referenced caller identifier.'`,
+	`COMMENT ON COLUMN router_config_caller_allowed_groups.group_name IS 'Referenced allowed model group.'`,
+}
+
+type configSetRow struct {
+	ID               string `gorm:"column:id"`
+	RuntimeScope     string `gorm:"column:runtime_scope"`
+	Status           string `gorm:"column:status"`
+	ValidationStatus string `gorm:"column:validation_status"`
+}
+
+func (configSetRow) TableName() string { return "router_config_sets" }
+
+type serverConfigRow struct {
+	ConfigSetID       string `gorm:"column:config_set_id"`
+	Listen            string `gorm:"column:listen"`
+	DefaultModelGroup string `gorm:"column:default_model_group"`
+	StatePath         string `gorm:"column:state_path"`
+}
+
+func (serverConfigRow) TableName() string { return "router_config_server" }
+
+type providerRow struct {
+	ConfigSetID  string `gorm:"column:config_set_id"`
+	ProviderName string `gorm:"column:provider_name"`
+	BaseURL      string `gorm:"column:base_url"`
+	Dialect      string `gorm:"column:dialect"`
+	APIKeyEnv    string `gorm:"column:api_key_env"`
+	KeyID        string `gorm:"column:key_id"`
+	AuthScheme   string `gorm:"column:auth_scheme"`
+}
+
+func (providerRow) TableName() string { return "router_config_providers" }
+
+type providerHeaderRow struct {
+	HeaderName  string `gorm:"column:header_name"`
+	HeaderValue string `gorm:"column:header_value"`
+}
+
+func (providerHeaderRow) TableName() string { return "router_config_provider_headers" }
+
+type providerModelRow struct {
+	ModelRef                 string  `gorm:"column:model_ref"`
+	Model                    string  `gorm:"column:model"`
+	Dialect                  string  `gorm:"column:dialect"`
+	DisplayName              string  `gorm:"column:display_name"`
+	ContextTokens            int     `gorm:"column:context_tokens"`
+	InputPricePerMillionUSD  float64 `gorm:"column:input_price_per_million_usd"`
+	OutputPricePerMillionUSD float64 `gorm:"column:output_price_per_million_usd"`
+	PricingSource            string  `gorm:"column:pricing_source"`
+	PricingUpdatedAt         string  `gorm:"column:pricing_updated_at"`
+	PricingNotes             string  `gorm:"column:pricing_notes"`
+}
+
+func (providerModelRow) TableName() string { return "router_config_provider_models" }
+
+type modelGroupRow struct {
+	GroupName        string `gorm:"column:group_name"`
+	Strategy         string `gorm:"column:strategy"`
+	AttemptTimeoutMS int    `gorm:"column:attempt_timeout_ms"`
+}
+
+func (modelGroupRow) TableName() string { return "router_config_model_groups" }
+
+type modelGroupTargetRow struct {
+	Sequence     int    `gorm:"column:sequence"`
+	ProviderName string `gorm:"column:provider_name"`
+	ModelRef     string `gorm:"column:model_ref"`
+	Model        string `gorm:"column:model"`
+	Dialect      string `gorm:"column:dialect"`
+	Weight       int    `gorm:"column:weight"`
+	RPM          int    `gorm:"column:rpm"`
+	Tier         string `gorm:"column:tier"`
+	Cost         int    `gorm:"column:cost"`
+}
+
+func (modelGroupTargetRow) TableName() string { return "router_config_model_group_targets" }
+
+type callerRow struct {
+	CallerID     string `gorm:"column:caller_id"`
+	OwnerUser    string `gorm:"column:owner_user"`
+	Project      string `gorm:"column:project"`
+	Environment  string `gorm:"column:environment"`
+	Status       string `gorm:"column:status"`
+	TokenSHA256  string `gorm:"column:token_sha256"`
+	TokenID      string `gorm:"column:token_id"`
+	MetricsAdmin bool   `gorm:"column:metrics_admin"`
+	ContentAdmin bool   `gorm:"column:content_admin"`
+	RPM          int    `gorm:"column:rpm"`
+	TPM          int    `gorm:"column:tpm"`
+	Concurrent   int    `gorm:"column:concurrent"`
+}
+
+func (callerRow) TableName() string { return "router_config_callers" }
+
+type callerAllowedGroupRow struct {
+	GroupName string `gorm:"column:group_name"`
+}
+
+func (callerAllowedGroupRow) TableName() string { return "router_config_caller_allowed_groups" }
+
+// ConfigControlPlaneTableNames returns a sorted copy for schema validation
+// tests and operator inspection without exposing configuration values.
+func ConfigControlPlaneTableNames() []string {
+	names := append([]string(nil), configControlPlaneTables...)
+	sort.Strings(names)
+	return names
+}
