@@ -111,6 +111,10 @@ def main() -> int:
         for crd in sorted(required_linkerd_resources):
             crd_payload = kubectl_json(kubeconfig, ["--context", context, "get", "customresourcedefinition", crd])
             linkerd_crd_versions[crd] = sorted(version.get("name", "") for version in crd_payload.get("spec", {}).get("versions", []) if version.get("served"))
+        required_versions = {"servers.policy.linkerd.io": "v1beta3", "serverauthorizations.policy.linkerd.io": "v1beta1"}
+        for crd, version in required_versions.items():
+            if version not in linkerd_crd_versions[crd]:
+                raise DiscoveryError(f"Linkerd {crd} does not serve required {version} API")
 
         report: dict[str, Any] = {
             "schema_version": 1,

@@ -22,8 +22,10 @@ kind: ClusterRoleBinding
 metadata:
   name: genai-smart-router-eks-discovery
 subjects:
-  - kind: User
-    name: replace-with-approved-eks-access-entry-principal
+  # Use the Kubernetes username or group configured on the EKS access entry;
+  # do not substitute the IAM principal ARN (RBAC never sees that ARN).
+  - kind: Group
+    name: replace-with-approved-eks-access-entry-kubernetes-group
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
