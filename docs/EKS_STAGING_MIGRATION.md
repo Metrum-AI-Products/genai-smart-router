@@ -193,6 +193,15 @@ context. See `make eks-help` for the complete target list and required inputs.
    manifest (for example, a removed or renamed Ingress, Service, or
    NetworkPolicy), apply stops before mutation and the object must be removed
    through a separate reviewed recovery/migration.
+
+   A reviewed `EKS_CONFIRM=STAGING_APPLY` is the explicit desired-state
+   reconciliation authorization: it may repair a pre-existing configuration
+   difference so the approved manifest becomes live. The contract records
+   safe before-apply identity/configuration fingerprints, then refuses passed
+   apply, smoke, or promotion evidence unless the live objects exactly match
+   the reviewed configuration. Treat an unexpected pre-apply fingerprint
+   difference as an audit/change-control signal; do not add a caller-controlled
+   bypass for it.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
@@ -265,10 +274,20 @@ context. See `make eks-help` for the complete target list and required inputs.
 ## Rollback And Deferred Cutover
 
 If staging fails, preserve the RDS and state PVC snapshot for diagnosis, then
-run `make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY` with the approved
-delivery profile. It performs a bounded Deployment rollout undo and records
-post-rollback evidence. Removal of the Ingress or Deployment remains a
-separate approved recovery action. EC2 traffic and data remain unaffected.
+run the rollback with the explicitly reviewed, approved-repository immutable
+digest expected after the undo:
+
+```bash
+make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
+  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+```
+
+It performs a bounded Deployment rollout undo, then verifies the named router
+container's exact digest and the observed Deployment identity before recording
+passed rollback evidence. A mutable, off-repository, or unexpected restored
+image fails closed. Removal of the Ingress or Deployment remains a separate
+approved recovery action. EC2 traffic and data remain unaffected.
 
 A future production cutover requires separate approval and a new runbook
 section covering an EC2 write freeze, logical Postgres export/import, row and

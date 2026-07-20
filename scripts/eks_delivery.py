@@ -325,7 +325,14 @@ class Delivery:
     def _validate_inputs(self) -> None:
         if not PROFILE.fullmatch(self.args.aws_profile):
             fail("EKS_AWS_PROFILE must be a documented AWS profile identifier")
-        if self.args.action in {"render", "plan", "apply", "smoke", "promotion-plan"}:
+        if self.args.action in {
+            "render",
+            "plan",
+            "apply",
+            "rollback",
+            "smoke",
+            "promotion-plan",
+        }:
             if not self.args.image_digest or not DIGEST.fullmatch(self.args.image_digest):
                 fail("IMAGE_DIGEST must be a lower-case immutable image@sha256:<64 hex> reference")
         if self.args.action in {"apply", "rollback"} and self.args.confirm != "STAGING_APPLY":
@@ -429,7 +436,14 @@ class Delivery:
     def verify_approved_image_repository(self, target: TargetPolicy) -> None:
         """Bind the requested immutable artifact to the protected ECR repo."""
 
-        if self.args.action not in {"render", "plan", "apply", "smoke", "promotion-plan"}:
+        if self.args.action not in {
+            "render",
+            "plan",
+            "apply",
+            "rollback",
+            "smoke",
+            "promotion-plan",
+        }:
             return
         expected_prefix = f"{target.ecr_repository_uri}@sha256:"
         if not self.args.image_digest.startswith(expected_prefix):
@@ -971,7 +985,7 @@ class Delivery:
                 self.event("apply", result="passed")
             elif self.args.action == "rollback":
                 command(["kubectl", "rollout", "undo", f"deployment/{target.deployment_name}", "-n", target.k8s_namespace], env, quiet=True)
-                command(["kubectl", "rollout", "status", f"deployment/{target.deployment_name}", "-n", target.k8s_namespace, "--timeout=5m"], env, quiet=True)
+                self.verify_live_deployment(env, target, "after_rollback")
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
                 if not self.args.smoke_command:

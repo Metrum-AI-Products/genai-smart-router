@@ -251,7 +251,9 @@ normalized declarative-configuration fingerprint; exclude only documented
 Kubernetes runtime allocations, not routing or security settings. Verify both
 before smoke and promotion. Do not use a broad prune: a removed or renamed
 resource should fail delivery until it is removed through a separately approved
-migration.
+migration. Treat rollback as an artifact deployment too: require an explicitly
+approved immutable digest and verify the restored workload's live digest and
+rollout identity before recording rollback success.
 
 Check rollout:
 

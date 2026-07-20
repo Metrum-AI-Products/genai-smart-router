@@ -217,10 +217,10 @@ case "$0" in
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
-    *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) printf '%s\\n' "$FAKE_LIVE_MANAGED_OBJECTS" ;;
+    *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
-    *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
+    *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE" ;;
   esac ;;
   *kustomize) case "$*" in
     *build*) printf '%s\\n' "$FAKE_RENDERED_MANIFEST" ;;
@@ -244,6 +244,7 @@ def run(
     render_objects: str | None = None,
     server_normalized_inventory: str | None = None,
     live_inventory: str | None = None,
+    live_inventory_after_apply: str | None = None,
     rendered_manifest_value: str | None = None,
     deployed_digest: str = DIGEST,
     deployed_template_marker: str = "template-one",
@@ -265,6 +266,9 @@ def run(
     if extra:
         command += extra
     bindir = root / "fake-bin"
+    live_inventory_file = root / "tmp" / "live-managed-inventory.json"
+    live_inventory_file.parent.mkdir(parents=True, exist_ok=True)
+    live_inventory_file.write_text(live_inventory or rendered_objects())
     env = {
         **os.environ,
         "PATH": f"{bindir}:{os.environ['PATH']}",
@@ -276,7 +280,10 @@ def run(
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
         "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),
-        "FAKE_LIVE_MANAGED_OBJECTS": live_inventory or rendered_objects(),
+        "FAKE_LIVE_INVENTORY_FILE": str(live_inventory_file),
+        "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": live_inventory_after_apply
+        or live_inventory
+        or rendered_objects(),
         "FAKE_RENDERED_MANIFEST": rendered_manifest_value or rendered_manifest(),
         "FAKE_DEPLOYMENT_OBJECT": deployment_object(
             deployed_digest,
@@ -385,6 +392,47 @@ def main() -> int:
         assert "update-kubeconfig" not in rejected_image_calls
         assert "kustomize" not in rejected_image_calls
 
+        before_unapproved_rollback = (bindir / "calls.log").read_text()
+        rejected_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            image_digest=unapproved_image,
+        )
+        assert (
+            rejected_rollback.returncode != 0
+            and "approved staging ECR repository" in rejected_rollback.stderr
+        )
+        rejected_rollback_calls = (bindir / "calls.log").read_text()[
+            len(before_unapproved_rollback):
+        ]
+        assert "describe-cluster" not in rejected_rollback_calls
+        assert "rollout undo" not in rejected_rollback_calls
+
+        no_digest_rollback = run(
+            "rollback", root, ["--confirm", "STAGING_APPLY"], include_digest=False
+        )
+        assert no_digest_rollback.returncode != 0 and "IMAGE_DIGEST" in no_digest_rollback.stderr
+
+        unexpected_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            deployed_digest=str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "b" * 64,
+        )
+        assert unexpected_rollback.returncode != 0 and "does not use" in unexpected_rollback.stderr
+
+        rollback = run("rollback", root, ["--confirm", "STAGING_APPLY"])
+        assert rollback.returncode == 0, rollback.stderr
+        rollback_evidence = json.loads((root / "tmp/evidence/evidence-rollback.json").read_text())
+        assert rollback_evidence["outcome"] == "passed"
+        assert rollback_evidence["image_digest"] == DIGEST
+        assert rollback_evidence["live_deployment_generation"] == 1
+        assert any(
+            event["name"] == "live_deployment" and event["phase"] == "after_rollback"
+            for event in rollback_evidence["events"]
+        )
+
         before_wrong_account = (bindir / "calls.log").read_text()
         wrong_account = run("preflight", root, account="999999999999")
         assert wrong_account.returncode != 0 and "approved staging account" in wrong_account.stderr
@@ -431,6 +479,28 @@ def main() -> int:
         )
         assert drift_apply.returncode != 0 and "configuration" in drift_apply.stderr
 
+        reconciled_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            live_inventory=inventory_with_service_configuration_drift(),
+            live_inventory_after_apply=rendered_objects(),
+        )
+        assert reconciled_apply.returncode == 0, reconciled_apply.stderr
+        reconciled_evidence = json.loads((root / "tmp/evidence/evidence-apply.json").read_text())
+        before_apply_event = next(
+            event
+            for event in reconciled_evidence["events"]
+            if event["name"] == "managed_inventory" and event["phase"] == "before_apply"
+        )
+        after_apply_event = next(
+            event
+            for event in reconciled_evidence["events"]
+            if event["name"] == "managed_inventory" and event["phase"] == "after_apply"
+        )
+        assert before_apply_event["expected_spec_sha256"] != before_apply_event["live_spec_sha256"]
+        assert after_apply_event["expected_spec_sha256"] == after_apply_event["live_spec_sha256"]
+
         server_defaulted_inventory = inventory_with_server_defaulted_service()
         server_defaulted_apply = run(
             "apply",
@@ -438,6 +508,7 @@ def main() -> int:
             ["--confirm", "STAGING_APPLY"],
             server_normalized_inventory=server_defaulted_inventory,
             live_inventory=server_defaulted_inventory,
+            live_inventory_after_apply=server_defaulted_inventory,
         )
         assert server_defaulted_apply.returncode == 0, server_defaulted_apply.stderr
         applied = run("apply", root, ["--confirm", "STAGING_APPLY"])
@@ -531,6 +602,8 @@ def main() -> int:
         failed_apply_evidence = json.loads(original_apply_evidence)
         failed_apply_evidence["outcome"] = "failed"
         apply_evidence_path.write_text(json.dumps(failed_apply_evidence))
+        release_live_inventory = root / "tmp/evidence/release-live-managed-inventory.json"
+        release_live_inventory.write_text(rendered_objects())
         release_evidence = subprocess.run(
             [
                 "make",
@@ -553,7 +626,8 @@ def main() -> int:
                 "FAKE_TARGET_POLICY_VALUE": target_value(),
                 "FAKE_RENDER_OBJECTS": rendered_objects(),
                 "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
-                "FAKE_LIVE_MANAGED_OBJECTS": rendered_objects(),
+                "FAKE_LIVE_INVENTORY_FILE": str(release_live_inventory),
+                "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
                 "FAKE_RENDERED_MANIFEST": rendered_manifest(),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
             },

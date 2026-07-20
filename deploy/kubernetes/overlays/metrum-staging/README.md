@@ -97,8 +97,9 @@ without `EKS_LINKERD_POLICY_OUTPUT`.
 
 The Make contract writes only scrubbed JSON and Markdown evidence below
 `tmp/eks-evidence/`; raw manifests are temporary kubectl inputs and evidence
-records only their safe checksum/size. It creates a temporary kubeconfig, rejects mutable images,
-and permits mutation only for its fixed staging target with
+records only their safe checksum/size. It creates a temporary kubeconfig,
+rejects mutable or off-repository images (including rollback), and permits
+mutation only for its fixed staging target with
 `EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
 The overlay deliberately omits the base `Namespace` resource: namespace
 creation and labels are an independently reviewed bootstrap action, and the
@@ -118,6 +119,13 @@ Deployment requires a separately reviewed recovery/migration to remove the
 stale object. The delivery role therefore needs namespace-scoped `list` access
 to only those seven resource types, in addition to the existing rollout and
 pod read permissions.
+
+`EKS_CONFIRM=STAGING_APPLY` is the explicit reviewed reconciliation action for
+an existing managed object: its safe before-apply configuration fingerprint is
+recorded, then passed evidence requires the live configuration after apply,
+smoke, and promotion to match the reviewed manifest. Investigate unexpected
+pre-apply differences through change control; no caller-controlled bypass is
+provided.
 
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.
