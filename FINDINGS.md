@@ -73,7 +73,7 @@ images, bearer tokens, provider keys, token hashes, or raw tool payloads.
 | --- | --- |
 | Control plane and tenant lifecycle | Extends #7; replaces the previously deferred hosted scope of closed #37 without editing it; consumes #169/#170 and #159. |
 | Commercial ledger / balance grants | Reopens the product need that closed #38 explicitly deferred; extends #508 and must not duplicate #511's enterprise spend-management reporting. |
-| Stripe payments and fulfillment | Replaces the self-service scope deferred in closed #37/#38; extends #171 and #170; separate from #506 x402. |
+| Stripe payments and fulfillment | Replaces the self-service scope deferred in closed #37/#38; extends #171 and #170; separate from the retired x402 proposal. |
 | Migration and rollout | Depends on #507 and extends #516--#519; does not duplicate their EKS delivery foundation. |
 | Canaries | Extends #505 (not duplicate #504) and must use the model-contract/diagnostic evidence already in the router. |
 | Console and customer reporting | Reuses router reports and extends closed #41's deferred portal scope; does not expose metrics-admin telemetry to ordinary callers. |
