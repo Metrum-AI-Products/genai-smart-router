@@ -240,15 +240,18 @@ reviewed environment target policy in an independently controlled store, give
 the delivery identity read-only access to that exact policy, verify its account
 and role before creating a kubeconfig, and reject any rendered resource outside
 the approved namespace. Bind smoke and promotion evidence to the exact
-immutable image digest, a digest-normalized fingerprint of the validated
-rendered configuration, and the live Deployment pod-template/generation state.
-Recheck that state before promotion so a rollback or replacement cannot reuse
-stale smoke evidence. For automated delivery, use a deployment-owned label to
-derive an allowlisted namespace inventory for the router Deployment, Service,
-Ingress, NetworkPolicy, PVC, PodDisruptionBudget, and ServiceAccount. Verify
-that exact inventory before smoke and promotion. Do not use a broad prune: a
-removed or renamed resource should fail delivery until it is removed through a
-separately approved migration.
+immutable image digest from the exact approved registry/repository, a
+digest-normalized fingerprint of the validated rendered configuration, and the
+live Deployment pod-template/generation state. Recheck that state before
+promotion so a rollback or replacement cannot reuse stale smoke evidence. For
+automated delivery, use a deployment-owned label to derive an allowlisted
+namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,
+PVC, PodDisruptionBudget, and ServiceAccount. Bind both resource identity and a
+normalized declarative-configuration fingerprint; exclude only documented
+Kubernetes runtime allocations, not routing or security settings. Verify both
+before smoke and promotion. Do not use a broad prune: a removed or renamed
+resource should fail delivery until it is removed through a separately approved
+migration.
 
 Check rollout:
 

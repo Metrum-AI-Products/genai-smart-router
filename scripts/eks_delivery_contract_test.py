@@ -14,13 +14,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "eks_delivery.py"
-DIGEST = "registry.example/router@sha256:" + "a" * 64
 SPEC = importlib.util.spec_from_file_location("eks_delivery", SCRIPT)
 EKS_DELIVERY = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 sys.modules[SPEC.name] = EKS_DELIVERY
 SPEC.loader.exec_module(EKS_DELIVERY)
 TARGET_POLICY = json.loads((ROOT / "deploy" / "aws" / "genai-smart-router-eks-staging-target.json").read_text())
+DIGEST = str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "a" * 64
 
 
 def target_value(value: dict[str, object] | None = None) -> str:
@@ -79,6 +79,99 @@ def inventory_with_stale_resource() -> str:
     return json.dumps(payload)
 
 
+def inventory_with_service_configuration_drift() -> str:
+    payload = json.loads(rendered_objects())
+    payload["items"][1]["spec"] = {
+        "ports": [{"port": 443, "targetPort": "https"}],
+        "selector": {"app.kubernetes.io/name": "different-workload"},
+        "type": "ClusterIP",
+    }
+    return json.dumps(payload)
+
+
+def inventory_with_service_runtime_fields() -> str:
+    payload = json.loads(rendered_objects())
+    payload["items"][1]["spec"] = {
+        "clusterIP": "10.100.0.42",
+        "clusterIPs": ["10.100.0.42"],
+        "ipFamilies": ["IPv4"],
+        "ipFamilyPolicy": "SingleStack",
+    }
+    payload["items"][1]["metadata"].update(
+        {
+            "resourceVersion": "12345",
+            "uid": "runtime-uid",
+            "annotations": {
+                "kubectl.kubernetes.io/last-applied-configuration": "runtime-only"
+            },
+        }
+    )
+    return json.dumps(payload)
+
+
+def inventory_with_server_defaulted_service() -> str:
+    payload = json.loads(rendered_objects())
+    payload["items"][1]["spec"] = {
+        "clusterIP": "10.100.0.42",
+        "clusterIPs": ["10.100.0.42"],
+        "internalTrafficPolicy": "Cluster",
+        "ipFamilies": ["IPv4"],
+        "ipFamilyPolicy": "SingleStack",
+        "ports": [{"port": 80, "protocol": "TCP", "targetPort": "http"}],
+        "selector": {"app.kubernetes.io/name": "smart-llmrouter"},
+        "sessionAffinity": "None",
+        "type": "ClusterIP",
+    }
+    return json.dumps(payload)
+
+
+def all_managed_configuration_objects() -> list[dict[str, object]]:
+    namespace = str(TARGET_POLICY["k8s_namespace"])
+    labels = {"app.kubernetes.io/name": "smart-llmrouter"}
+
+    def resource(kind: str, name: str, **fields: object) -> dict[str, object]:
+        return {
+            "apiVersion": "v1",
+            "kind": kind,
+            "metadata": {"name": name, "namespace": namespace, "labels": labels},
+            **fields,
+        }
+
+    return [
+        resource(
+            "Deployment",
+            "smart-llmrouter",
+            spec={"replicas": 1, "template": {"spec": {"containers": []}}},
+        ),
+        resource(
+            "Service",
+            "smart-llmrouter",
+            spec={"ports": [{"port": 80, "targetPort": "http"}], "selector": labels},
+        ),
+        resource(
+            "Ingress",
+            "smart-llmrouter",
+            spec={"rules": [{"host": "router.example.test"}]},
+        ),
+        resource(
+            "NetworkPolicy",
+            "smart-llmrouter-restrict",
+            spec={"egress": [{"ports": [{"port": 443}]}], "policyTypes": ["Egress"]},
+        ),
+        resource(
+            "PersistentVolumeClaim",
+            "smart-llmrouter-state",
+            spec={"accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "5Gi"}}},
+        ),
+        resource(
+            "PodDisruptionBudget",
+            "smart-llmrouter",
+            spec={"minAvailable": 1, "selector": {"matchLabels": labels}},
+        ),
+        resource("ServiceAccount", "smart-llmrouter", automountServiceAccountToken=False),
+    ]
+
+
 def rendered_manifest(configuration_marker: str = "configuration-one") -> str:
     return f"image: {DIGEST}\nsafe-rendered-configuration: {configuration_marker}\n" + "x" * 5000
 
@@ -123,6 +216,7 @@ case "$0" in
   *kubectl) case "$*" in
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
+    *"--dry-run=server"*" -o json"*) printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) printf '%s\\n' "$FAKE_LIVE_MANAGED_OBJECTS" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
@@ -144,9 +238,11 @@ def run(
     extra: list[str] | None = None,
     *,
     include_digest: bool = True,
+    image_digest: str = DIGEST,
     account: str | None = None,
     policy: dict[str, object] | None = None,
     render_objects: str | None = None,
+    server_normalized_inventory: str | None = None,
     live_inventory: str | None = None,
     rendered_manifest_value: str | None = None,
     deployed_digest: str = DIGEST,
@@ -165,7 +261,7 @@ def run(
         str(evidence),
     ]
     if include_digest:
-        command += ["--image-digest", DIGEST]
+        command += ["--image-digest", image_digest]
     if extra:
         command += extra
     bindir = root / "fake-bin"
@@ -179,6 +275,7 @@ def run(
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
+        "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),
         "FAKE_LIVE_MANAGED_OBJECTS": live_inventory or rendered_objects(),
         "FAKE_RENDERED_MANIFEST": rendered_manifest_value or rendered_manifest(),
         "FAKE_DEPLOYMENT_OBJECT": deployment_object(
@@ -199,6 +296,65 @@ def main() -> int:
         assert leaked not in scrubbed
     assert "abc123" not in EKS_DELIVERY.scrub("Authorization: Bearer abc123")
 
+    target = EKS_DELIVERY.parse_target_policy(TARGET_POLICY)
+    expected_resources = all_managed_configuration_objects()
+    expected_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+        expected_resources, target, source="configuration fingerprint fixture"
+    )
+    expected_identities = EKS_DELIVERY.managed_resource_identities(expected_inventory)
+    expected_spec_fingerprint = EKS_DELIVERY.managed_resource_spec_fingerprint(expected_inventory)
+    for kind, mutate in (
+        ("Service", lambda resource: resource["spec"].update({"selector": {"unexpected": "true"}})),
+        ("Ingress", lambda resource: resource["spec"].update({"rules": [{"host": "wrong.example.test"}]})),
+        ("NetworkPolicy", lambda resource: resource["spec"].update({"egress": [{"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}]}]})),
+        ("PersistentVolumeClaim", lambda resource: resource["spec"].update({"accessModes": ["ReadWriteMany"]})),
+        ("PodDisruptionBudget", lambda resource: resource["spec"].update({"minAvailable": 0})),
+        ("ServiceAccount", lambda resource: resource.update({"automountServiceAccountToken": True})),
+    ):
+        changed_resources = json.loads(json.dumps(expected_resources))
+        changed = next(item for item in changed_resources if item["kind"] == kind)
+        mutate(changed)
+        changed_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+            changed_resources, target, source="configuration drift fixture"
+        )
+        assert EKS_DELIVERY.managed_resource_identities(changed_inventory) == expected_identities
+        assert (
+            EKS_DELIVERY.managed_resource_spec_fingerprint(changed_inventory)
+            != expected_spec_fingerprint
+        )
+
+    runtime_only_resources = json.loads(json.dumps(expected_resources))
+    runtime_service = next(item for item in runtime_only_resources if item["kind"] == "Service")
+    runtime_service["metadata"].update(
+        {
+            "resourceVersion": "12345",
+            "uid": "runtime-uid",
+            "annotations": {
+                "kubectl.kubernetes.io/last-applied-configuration": "runtime-only"
+            },
+        }
+    )
+    runtime_service["spec"].update(
+        {
+            "clusterIP": "10.100.0.42",
+            "clusterIPs": ["10.100.0.42"],
+            "ipFamilies": ["IPv4"],
+            "ipFamilyPolicy": "SingleStack",
+        }
+    )
+    runtime_pvc = next(item for item in runtime_only_resources if item["kind"] == "PersistentVolumeClaim")
+    runtime_pvc["spec"]["volumeName"] = "pvc-runtime-volume"
+    runtime_service_account = next(item for item in runtime_only_resources if item["kind"] == "ServiceAccount")
+    runtime_service_account["secrets"] = [{"name": "runtime-token-secret"}]
+    runtime_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+        runtime_only_resources, target, source="runtime normalization fixture"
+    )
+    assert EKS_DELIVERY.managed_resource_identities(runtime_inventory) == expected_identities
+    assert (
+        EKS_DELIVERY.managed_resource_spec_fingerprint(runtime_inventory)
+        == expected_spec_fingerprint
+    )
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         bindir = root / "fake-bin"
@@ -214,6 +370,21 @@ def main() -> int:
         manifest_size = re.search(r"manifest-bytes=\s*(\d+)", calls)
         assert manifest_size and int(manifest_size.group(1)) > 4000
 
+        before_unapproved_image = (bindir / "calls.log").read_text()
+        unapproved_image = (
+            "121701826775.dkr.ecr.us-east-1.amazonaws.com/other-repository@sha256:"
+            + "b" * 64
+        )
+        rejected_image = run("plan", root, image_digest=unapproved_image)
+        assert (
+            rejected_image.returncode != 0
+            and "approved staging ECR repository" in rejected_image.stderr
+        )
+        rejected_image_calls = (bindir / "calls.log").read_text()[len(before_unapproved_image):]
+        assert "describe-cluster" not in rejected_image_calls
+        assert "update-kubeconfig" not in rejected_image_calls
+        assert "kustomize" not in rejected_image_calls
+
         before_wrong_account = (bindir / "calls.log").read_text()
         wrong_account = run("preflight", root, account="999999999999")
         assert wrong_account.returncode != 0 and "approved staging account" in wrong_account.stderr
@@ -223,6 +394,13 @@ def main() -> int:
         policy_drift["eks_cluster"] = "unapproved-cluster"
         drift = run("preflight", root, policy=policy_drift)
         assert drift.returncode != 0 and "does not match" in drift.stderr
+
+        malformed_ecr_policy = dict(TARGET_POLICY)
+        malformed_ecr_policy["ecr_repository_uri"] = (
+            "121701826775.dkr.ecr.us-west-2.amazonaws.com/smart-llmrouter"
+        )
+        malformed_ecr = run("preflight", root, policy=malformed_ecr_policy)
+        assert malformed_ecr.returncode != 0 and "ECR repository" in malformed_ecr.stderr
 
         wrong_namespace = run("plan", root, render_objects=rendered_objects("another-namespace"))
         assert wrong_namespace.returncode != 0 and "outside the approved namespace" in wrong_namespace.stderr
@@ -244,6 +422,24 @@ def main() -> int:
         stale_apply_calls = (bindir / "calls.log").read_text()[len(before_stale_apply):]
         assert "apply --server-side -f" not in stale_apply_calls
         assert "--prune" not in stale_apply_calls
+
+        drift_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            live_inventory=inventory_with_service_configuration_drift(),
+        )
+        assert drift_apply.returncode != 0 and "configuration" in drift_apply.stderr
+
+        server_defaulted_inventory = inventory_with_server_defaulted_service()
+        server_defaulted_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            server_normalized_inventory=server_defaulted_inventory,
+            live_inventory=server_defaulted_inventory,
+        )
+        assert server_defaulted_apply.returncode == 0, server_defaulted_apply.stderr
         applied = run("apply", root, ["--confirm", "STAGING_APPLY"])
         assert applied.returncode == 0, applied.stderr
 
@@ -291,6 +487,27 @@ def main() -> int:
         )
         assert not_observed.returncode != 0 and "not fully observed" in not_observed.stderr and not marker.exists()
 
+        runtime_only_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command", "sh -c 'exit 0'"],
+            live_inventory=inventory_with_service_runtime_fields(),
+        )
+        assert runtime_only_smoke.returncode == 0, runtime_only_smoke.stderr
+
+        configuration_marker = root / "configuration-drift-smoke-command-ran"
+        configuration_drift_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command", f"touch {configuration_marker}"],
+            live_inventory=inventory_with_service_configuration_drift(),
+        )
+        assert (
+            configuration_drift_smoke.returncode != 0
+            and "configuration" in configuration_drift_smoke.stderr
+        )
+        assert not configuration_marker.exists()
+
         smoke_passed = run("smoke", root, ["--smoke-command", "sh -c 'exit 0'"])
         assert smoke_passed.returncode == 0, smoke_passed.stderr
         apply_evidence = json.loads((root / "tmp/evidence/evidence-apply.json").read_text())
@@ -301,15 +518,62 @@ def main() -> int:
             assert evidence["managed_resource_count"] == evidence["live_managed_resource_count"] == 2
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["managed_resource_inventory_sha256"]))
             assert evidence["managed_resource_inventory_sha256"] == evidence["live_managed_resource_inventory_sha256"]
+            assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["managed_resource_spec_sha256"]))
+            assert evidence["managed_resource_spec_sha256"] == evidence["live_managed_resource_spec_sha256"]
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
             assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
+            assert "different-workload" not in json.dumps(evidence)
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+
+        apply_evidence_path = root / "tmp/evidence/evidence-apply.json"
+        original_apply_evidence = apply_evidence_path.read_text()
+        failed_apply_evidence = json.loads(original_apply_evidence)
+        failed_apply_evidence["outcome"] = "failed"
+        apply_evidence_path.write_text(json.dumps(failed_apply_evidence))
+        release_evidence = subprocess.run(
+            [
+                "make",
+                "eks-release-evidence",
+                "EKS_AWS_PROFILE=test-profile",
+                f"IMAGE_DIGEST={DIGEST}",
+                f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "PATH": f"{bindir}:{os.environ['PATH']}",
+                "KUBECONFIG": str(root / "must-not-be-used"),
+                "FAKE_AWS_ACCOUNT": str(TARGET_POLICY["aws_account_id"]),
+                "FAKE_AWS_REGION": str(TARGET_POLICY["aws_region"]),
+                "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
+                "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
+                "FAKE_TARGET_POLICY_VALUE": target_value(),
+                "FAKE_RENDER_OBJECTS": rendered_objects(),
+                "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
+                "FAKE_LIVE_MANAGED_OBJECTS": rendered_objects(),
+                "FAKE_RENDERED_MANIFEST": rendered_manifest(),
+                "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
+            },
+        )
+        assert release_evidence.returncode != 0
+        assert "Safe evidence:" not in release_evidence.stdout
+        apply_evidence_path.write_text(original_apply_evidence)
 
         stale_promotion = run(
             "promotion-plan", root, live_inventory=inventory_with_stale_resource()
         )
         assert stale_promotion.returncode != 0 and "managed-resource inventory" in stale_promotion.stderr
+
+        configuration_drift_promotion = run(
+            "promotion-plan", root, live_inventory=inventory_with_service_configuration_drift()
+        )
+        assert (
+            configuration_drift_promotion.returncode != 0
+            and "configuration" in configuration_drift_promotion.stderr
+        )
 
         configuration_drift = run(
             "promotion-plan",

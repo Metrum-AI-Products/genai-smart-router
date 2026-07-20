@@ -10,7 +10,8 @@ PYTHON ?= python3
 
 # Explicit inputs for all EKS commands. No target reads the current kubectl
 # context; scripts/eks_delivery.py creates and removes its own kubeconfig.
-# The AWS account, region, cluster, namespace, overlay, workload, and role are
+# The AWS account, region, ECR repository, cluster, namespace, overlay,
+# workload, and role are
 # not Make variables: they are pinned in the reviewed target policy and its
 # independently protected SSM copy.
 EKS_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
@@ -74,8 +75,8 @@ eks-help:
 	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
-	@echo "Render/plan/apply/smoke/promotion-plan require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
-	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource inventory, and live pod-template state."
+	@echo "Render/plan/apply/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
+	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."
 
 eks-preflight:
 	$(EKS_DELIVERY) preflight $(EKS_ARGS)

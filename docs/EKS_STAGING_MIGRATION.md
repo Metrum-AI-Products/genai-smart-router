@@ -66,20 +66,29 @@ authorize a production cutover.
    config, then validate the existing signed license from the staging pod. If
    the license policy or commercial terms require a distinct staging binding,
    obtain a replacement Metrum-issued license before exposing the endpoint.
-5. Push an immutable router image to the registry used by EKS, then replace
+5. Push an immutable router image only to the ECR repository named by the
+   protected staging target policy, then replace
    `replace-with-immutable-image-tag` in the overlay through a local,
-   reviewed image patch or Kustomize image override.
+   reviewed image patch or Kustomize image override. The Make contract rejects
+   every digest reference outside that exact account- and region-bound
+   repository before it selects the cluster, renders, or applies a manifest.
 6. Establish the protected staging delivery target before invoking a Make
    target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
-   reviewed canonical target: account, region, cluster, namespace, overlay,
-   Deployment, container, and delivery role. Provision the exact JSON as a
+   reviewed canonical target: account, region, ECR repository, cluster,
+   namespace, overlay, Deployment, container, and delivery role. The checked-in
+   repository URI is a bootstrap default, not proof of an approved live AWS/EKS
+   target. First renew a least-privilege non-root session and explicitly
+   reconcile the approved target. Then provision the exact JSON as a
    standard (not SecureString) AWS Systems Manager Parameter at the ARN in
    that file through reviewed infrastructure-as-code. The staging delivery
    role receives only `ssm:GetParameter` for that one parameter (see
    `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
    a separate platform configuration role owns `ssm:PutParameter`. The
    delivery contract reads both copies and fails unless their canonical JSON
-   hashes match.
+   hashes match. The current schema is version 2; update the reviewed file and
+   protected Parameter through the same approved infrastructure change. A
+   version or value mismatch fails closed. See `deploy/aws/README.md` for the
+   required protected-policy reconciliation.
 
 ## RDS Provisioning
 
@@ -148,7 +157,7 @@ the staging configuration as a general baseline.
 
 The root Makefile is the canonical EKS operator and CI interface. It accepts a
 short-lived AWS profile and immutable image digest, but never accepts an
-account, region, cluster, namespace, overlay, or environment as caller-set
+account, region, ECR repository, cluster, namespace, overlay, or environment as caller-set
 variables. Those values come from the reviewed target policy and its
 independently protected Parameter copy. It creates a temporary per-invocation
 kubeconfig, so it neither reads nor changes the operator's default kubectl
@@ -161,7 +170,7 @@ context. See `make eks-help` for the complete target list and required inputs.
    ```bash
    make eks-preflight eks-plan \
      EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-     IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+     IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
    Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. The raw
@@ -175,7 +184,11 @@ context. See `make eks-help` for the complete target list and required inputs.
    `deployments`, `ingresses`, `networkpolicies`,
    `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
    `serviceaccounts`. The delivery contract builds a label-selected inventory
-   of exactly those rendered resources and records only its count and digest.
+   of exactly those rendered resources and records only identity and normalized
+   declarative-configuration fingerprints. It removes only documented
+   API-owned runtime fields (for example Service cluster allocation and a PVC
+   binding name); routing, security, labels, annotations, and other declared
+   resource settings must exactly match the rendered manifest.
    It does not use broad prune. If an old managed object is absent from a new
    manifest (for example, a removed or renamed Ingress, Service, or
    NetworkPolicy), apply stops before mutation and the object must be removed
@@ -185,7 +198,7 @@ context. See `make eks-help` for the complete target list and required inputs.
    ```bash
    make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
      EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-     IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+     IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
 4. Re-run the explicit-target discovery after the router Pods are Ready, then
@@ -237,9 +250,10 @@ context. See `make eks-help` for the complete target list and required inputs.
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
    target, digest, rendered configuration fingerprint, live Deployment
-   pod-template/generation state, and exact label-selected managed-resource
-   inventory. It rechecks the current rollout and inventory before producing
-   review-only evidence and cannot apply to production.
+   pod-template/generation state, exact label-selected managed-resource
+   identity, and normalized configuration fingerprints. It rechecks the current
+   rollout and resource configuration before producing review-only evidence and
+   cannot apply to production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.

@@ -44,3 +44,24 @@ Require ECR tag immutability, private repository access, retention lifecycle,
 scan visibility, and digest retrieval before a deployment pipeline consumes an
 image. The pipeline story owns provenance, SBOM, signature enforcement, and the
 shared command contract.
+
+## EKS Staging Target Bootstrap
+
+`genai-smart-router-eks-staging-target.json` is a checked-in bootstrap policy
+for the delivery-contract test suite. Its ECR repository URI is **not** proof
+of a currently approved live AWS/EKS target.
+
+Before any EKS delivery command can be used outside the offline contract tests:
+
+1. Renew a least-privilege, non-root AWS session through the secure login
+   flow and confirm the approved non-production account, region, ECR
+   repository, cluster, namespace, overlay, workload, and delivery role.
+2. Update the reviewed JSON and the exact protected SSM Parameter named by the
+   policy through approved infrastructure-as-code in one reconciliation
+   change. The delivery role may read that Parameter but must not update it.
+3. Run `make eks-preflight` with the approved role. Any schema, value, or hash
+   mismatch fails closed before cluster selection, rendering, or mutation.
+
+Do not infer authorization from an account number, repository URI, local AWS
+profile, or this file alone. The protected Parameter and least-privilege
+identity are the live approval boundary.

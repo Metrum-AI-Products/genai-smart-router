@@ -30,21 +30,24 @@ platform wildcard certificate is available in this namespace as
 secret name before applying.
 
 Render, dry-run, apply, and rollback must use the root Make contract rather
-than an implicit kubectl context. The approved account, region, cluster,
-namespace, overlay, Deployment, container, and role are pinned in
+than an implicit kubectl context. The approved account, region, ECR repository,
+cluster, namespace, overlay, Deployment, container, and role are pinned in
 `deploy/aws/genai-smart-router-eks-staging-target.json` and must exactly match
 the separately protected AWS Systems Manager Parameter named by that file.
-The delivery role may only read that one parameter; it cannot update it. With
-an approved short-lived AWS identity:
+The checked-in repository URI is only a bootstrap default: it does not prove a
+live AWS/EKS approval. Reconcile the reviewed policy and protected Parameter
+with a renewed least-privilege non-root session before delivery. The delivery
+role may only read that one parameter; it cannot update it. With an approved
+short-lived AWS identity:
 
 ```bash
 make eks-preflight eks-plan \
   EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-  IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 
 make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
   EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-  IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 ```
 
 The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
@@ -102,10 +105,13 @@ creation and labels are an independently reviewed bootstrap action, and the
 delivery contract rejects cluster-scoped resources or any rendered resource
 outside the approved namespace.
 
-The contract also derives a canonical inventory from the allowlisted,
-namespace-scoped resources bearing `app.kubernetes.io/name=smart-llmrouter`.
-It verifies that exact inventory before smoke and promotion, and refuses an
-apply before mutation if an old label-selected resource is no longer rendered.
+The contract also derives a canonical identity and normalized configuration
+fingerprint from the allowlisted, namespace-scoped resources bearing
+`app.kubernetes.io/name=smart-llmrouter`. It verifies both before smoke and
+promotion, and refuses an apply before mutation if an old label-selected
+resource is no longer rendered. Kubernetes-owned runtime fields such as a
+Service cluster IP and PVC binding name are excluded; routing/security specs,
+labels, and annotations are not.
 It deliberately does **not** use Kubernetes prune: removal or renaming of a
 Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
 Deployment requires a separately reviewed recovery/migration to remove the

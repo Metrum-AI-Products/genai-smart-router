@@ -37,6 +37,10 @@ SECRET_PATTERNS = (
     re.compile(r"AKIA[0-9A-Z]{16}"),
 )
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$")
+ECR_REPOSITORY_URI = re.compile(
+    r"^([0-9]{12})\.dkr\.ecr\.([a-z0-9]+(?:-[a-z0-9]+)+)\.amazonaws\.com/"
+    r"([a-z0-9](?:[a-z0-9._/-]*[a-z0-9])?)$"
+)
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
@@ -67,6 +71,32 @@ MANAGED_RESOURCE_TYPES = (
     "services",
     "serviceaccounts",
 )
+# Kubernetes writes these fields after accepting a declarative resource. They
+# do not describe the reviewed configuration and are deliberately excluded
+# from the safe per-resource fingerprint below. Keep this allowlist narrow:
+# other metadata, annotations, labels, and declarative fields remain bound to
+# the rendered manifest and will fail closed on drift.
+DYNAMIC_MANAGED_ANNOTATIONS = frozenset(
+    {
+        "deployment.kubernetes.io/revision",
+        "kubectl.kubernetes.io/last-applied-configuration",
+        "pv.kubernetes.io/bind-completed",
+        "pv.kubernetes.io/bound-by-controller",
+        "volume.beta.kubernetes.io/storage-provisioner",
+        "volume.kubernetes.io/storage-provisioner",
+    }
+)
+SERVICE_RUNTIME_SPEC_FIELDS = frozenset(
+    {
+        "clusterIP",
+        "clusterIPs",
+        "healthCheckNodePort",
+        "ipFamilies",
+        "ipFamilyPolicy",
+    }
+)
+PVC_RUNTIME_SPEC_FIELDS = frozenset({"volumeName"})
+SERVICE_ACCOUNT_RUNTIME_FIELDS = frozenset({"secrets"})
 
 
 def scrub(value: str) -> str:
@@ -102,6 +132,7 @@ class TargetPolicy:
     container_name: str
     delivery_role_name: str
     deployment_name: str
+    ecr_repository_uri: str
     eks_cluster: str
     k8s_namespace: str
     kustomize_overlay: Path
@@ -130,6 +161,14 @@ class ManagedResource:
     name: str
 
 
+@dataclass(frozen=True, order=True)
+class ManagedResourceConfiguration:
+    """Safe identity plus a normalized declarative-configuration digest."""
+
+    resource: ManagedResource
+    configuration_sha256: str
+
+
 def inventory_fingerprint(inventory: tuple[ManagedResource, ...]) -> str:
     """Return a stable, non-sensitive digest for an allowlisted inventory."""
 
@@ -138,6 +177,31 @@ def inventory_fingerprint(inventory: tuple[ManagedResource, ...]) -> str:
             [{"kind": resource.kind, "name": resource.name} for resource in inventory]
         )
     ).hexdigest()
+
+
+def managed_resource_spec_fingerprint(
+    inventory: tuple[ManagedResourceConfiguration, ...],
+) -> str:
+    """Return a stable digest of each managed resource's normalized config."""
+
+    return hashlib.sha256(
+        canonical_json_bytes(
+            [
+                {
+                    "configuration_sha256": item.configuration_sha256,
+                    "kind": item.resource.kind,
+                    "name": item.resource.name,
+                }
+                for item in inventory
+            ]
+        )
+    ).hexdigest()
+
+
+def managed_resource_identities(
+    inventory: tuple[ManagedResourceConfiguration, ...],
+) -> tuple[ManagedResource, ...]:
+    return tuple(item.resource for item in inventory)
 
 
 def parse_target_policy(value: object) -> TargetPolicy:
@@ -149,6 +213,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "aws_account_id",
         "aws_region",
         "ssm_parameter_arn",
+        "ecr_repository_uri",
         "eks_cluster",
         "k8s_namespace",
         "kustomize_overlay",
@@ -158,7 +223,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     }
     if set(value) != required:
         fail("approved staging target policy has an unexpected schema")
-    if value.get("schema_version") != 1 or value.get("environment") != "staging":
+    if value.get("schema_version") != 2 or value.get("environment") != "staging":
         fail("approved staging target policy is not a supported staging policy")
 
     def string(name: str) -> str:
@@ -170,6 +235,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     account_id = string("aws_account_id")
     region = string("aws_region")
     cluster = string("eks_cluster")
+    ecr_repository_uri = string("ecr_repository_uri")
     namespace = string("k8s_namespace")
     deployment = string("deployment_name")
     container = string("container_name")
@@ -184,6 +250,13 @@ def parse_target_policy(value: object) -> TargetPolicy:
         fail("approved staging target policy has invalid EKS cluster")
     if not re.fullmatch(r"[A-Za-z0-9+=,.@_-]{1,64}", role):
         fail("approved staging target policy has invalid delivery role")
+    ecr_match = ECR_REPOSITORY_URI.fullmatch(ecr_repository_uri)
+    if (
+        not ecr_match
+        or ecr_match.group(1) != account_id
+        or ecr_match.group(2) != region
+    ):
+        fail("approved staging target policy ECR repository is not pinned to its account and region")
     parameter_match = SSM_PARAMETER_ARN.fullmatch(parameter_arn)
     if not parameter_match or parameter_match.group(1) != region or parameter_match.group(2) != account_id:
         fail("approved staging target policy SSM parameter is not pinned to its account and region")
@@ -201,11 +274,12 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "container_name": container,
         "delivery_role_name": role,
         "deployment_name": deployment,
+        "ecr_repository_uri": ecr_repository_uri,
         "environment": "staging",
         "eks_cluster": cluster,
         "k8s_namespace": namespace,
         "kustomize_overlay": overlay.as_posix(),
-        "schema_version": 1,
+        "schema_version": 2,
         "ssm_parameter_arn": parameter_arn,
     }
     return TargetPolicy(
@@ -214,6 +288,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         container_name=container,
         delivery_role_name=role,
         deployment_name=deployment,
+        ecr_repository_uri=ecr_repository_uri,
         eks_cluster=cluster,
         k8s_namespace=namespace,
         kustomize_overlay=resolved_overlay,
@@ -238,7 +313,7 @@ class Delivery:
         self.evidence_dir = Path(args.evidence_dir).resolve()
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
         self.target: TargetPolicy | None = None
-        self.managed_inventory: tuple[ManagedResource, ...] = ()
+        self.managed_inventory: tuple[ManagedResourceConfiguration, ...] = ()
         self.evidence: dict[str, object] = {
             "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
             "environment": "staging",
@@ -274,6 +349,7 @@ class Delivery:
             "environment",
             "aws_account_id",
             "aws_region",
+            "ecr_repository_uri",
             "eks_cluster",
             "k8s_namespace",
             "target_policy_sha256",
@@ -281,8 +357,10 @@ class Delivery:
             "configuration_fingerprint",
             "managed_resource_count",
             "managed_resource_inventory_sha256",
+            "managed_resource_spec_sha256",
             "live_managed_resource_count",
             "live_managed_resource_inventory_sha256",
+            "live_managed_resource_spec_sha256",
             "live_deployment_generation",
             "live_deployment_observed_generation",
             "live_pod_template_sha256",
@@ -336,6 +414,7 @@ class Delivery:
             {
                 "aws_account_id": checked_in.aws_account_id,
                 "aws_region": checked_in.aws_region,
+                "ecr_repository_uri": checked_in.ecr_repository_uri,
                 "eks_cluster": checked_in.eks_cluster,
                 "k8s_namespace": checked_in.k8s_namespace,
                 "kustomize_overlay": checked_in.kustomize_overlay.relative_to(REPO_ROOT).as_posix(),
@@ -347,6 +426,16 @@ class Delivery:
         )
         return checked_in
 
+    def verify_approved_image_repository(self, target: TargetPolicy) -> None:
+        """Bind the requested immutable artifact to the protected ECR repo."""
+
+        if self.args.action not in {"render", "plan", "apply", "smoke", "promotion-plan"}:
+            return
+        expected_prefix = f"{target.ecr_repository_uri}@sha256:"
+        if not self.args.image_digest.startswith(expected_prefix):
+            fail("IMAGE_DIGEST does not reference the approved staging ECR repository")
+        self.event("image_repository", result="approved_ecr_repository_verified")
+
     def preflight(self, env: dict[str, str]) -> TargetPolicy:
         for tool in ("aws", "kubectl", "kustomize"):
             if not shutil.which(tool):
@@ -355,6 +444,11 @@ class Delivery:
         # the reviewed copy in Git exactly; the delivery role gets only
         # ssm:GetParameter on this one Parameter, never PutParameter.
         target = self.load_target_policy(env)
+        # Validate the immutable artifact reference before selecting a cluster,
+        # creating kubeconfig, rendering, or applying any manifest. A caller
+        # cannot redirect a staging pod with mounted runtime secrets to another
+        # registry or repository merely by providing a digest-pinned image.
+        self.verify_approved_image_repository(target)
         identity = self.aws_json(["sts", "get-caller-identity"], env, target)
         actual_account = str(identity.get("Account", ""))
         assumed_role = ASSUMED_ROLE_ARN.fullmatch(str(identity.get("Arn", "")))
@@ -443,10 +537,83 @@ class Delivery:
         return objects
 
     @staticmethod
+    def normalized_managed_resource(
+        resource: dict[str, Any], identity: ManagedResource, *, source: str
+    ) -> dict[str, object]:
+        """Return the declarative, security-relevant configuration only.
+
+        The API server adds resource/version/status fields and a small set of
+        allocation values after apply. Those are intentionally removed before
+        hashing. Everything else in the manifest, including labels,
+        annotations, selectors, ingress rules, network policy, PVC settings,
+        disruption policy, and ServiceAccount controls, remains in the hash.
+        The function never emits the configuration; evidence records only its
+        SHA-256 aggregate.
+        """
+
+        metadata = resource.get("metadata")
+        if not isinstance(metadata, dict):
+            fail(f"{source} resource has invalid metadata")
+
+        def string_map(name: str) -> dict[str, str]:
+            value = metadata.get(name)
+            if value is None:
+                return {}
+            if not isinstance(value, dict) or any(
+                not isinstance(key, str) or not isinstance(item, str)
+                for key, item in value.items()
+            ):
+                fail(f"{source} resource has invalid metadata.{name}")
+            return dict(value)
+
+        annotations = {
+            key: value
+            for key, value in string_map("annotations").items()
+            if key not in DYNAMIC_MANAGED_ANNOTATIONS
+        }
+        labels = string_map("labels")
+        normalized_metadata: dict[str, object] = {
+            "name": identity.name,
+            "namespace": metadata.get("namespace"),
+        }
+        if labels:
+            normalized_metadata["labels"] = labels
+        if annotations:
+            normalized_metadata["annotations"] = annotations
+
+        normalized: dict[str, object] = {}
+        for key, value in resource.items():
+            if key in {"metadata", "status"}:
+                continue
+            normalized[key] = value
+        normalized["metadata"] = normalized_metadata
+
+        spec = normalized.get("spec")
+        if isinstance(spec, dict):
+            normalized_spec = dict(spec)
+            if identity.kind == "Service":
+                for field in SERVICE_RUNTIME_SPEC_FIELDS:
+                    normalized_spec.pop(field, None)
+            elif identity.kind == "PersistentVolumeClaim":
+                for field in PVC_RUNTIME_SPEC_FIELDS:
+                    normalized_spec.pop(field, None)
+            if normalized_spec:
+                normalized["spec"] = normalized_spec
+            else:
+                normalized.pop("spec", None)
+        elif spec is not None:
+            fail(f"{source} resource has invalid spec")
+
+        if identity.kind == "ServiceAccount":
+            for field in SERVICE_ACCOUNT_RUNTIME_FIELDS:
+                normalized.pop(field, None)
+        return normalized
+
+    @classmethod
     def inventory_from_resources(
-        resources: list[dict[str, Any]], target: TargetPolicy, *, source: str
-    ) -> tuple[ManagedResource, ...]:
-        inventory: list[ManagedResource] = []
+        cls, resources: list[dict[str, Any]], target: TargetPolicy, *, source: str
+    ) -> tuple[ManagedResourceConfiguration, ...]:
+        inventory: list[ManagedResourceConfiguration] = []
         seen: set[ManagedResource] = set()
         for resource in resources:
             kind = resource.get("kind")
@@ -463,12 +630,18 @@ class Delivery:
             if identity in seen:
                 fail(f"{source} contains a duplicate managed resource")
             seen.add(identity)
-            inventory.append(identity)
+            normalized = cls.normalized_managed_resource(resource, identity, source=source)
+            inventory.append(
+                ManagedResourceConfiguration(
+                    resource=identity,
+                    configuration_sha256=hashlib.sha256(canonical_json_bytes(normalized)).hexdigest(),
+                )
+            )
         return tuple(sorted(inventory))
 
     def validate_rendered_manifest(
         self, manifest: Path, env: dict[str, str], target: TargetPolicy
-    ) -> tuple[ManagedResource, ...]:
+    ) -> tuple[ManagedResourceConfiguration, ...]:
         # Client-side decoding reads the exact temporary manifest without making
         # an API mutation. Only the narrow namespaced workload surface is
         # permitted; namespace creation and Secrets are separately bootstrapped.
@@ -506,6 +679,44 @@ class Delivery:
             fail("rendered manifest must contain exactly one approved router Deployment")
         return inventory
 
+    def server_normalized_managed_inventory(
+        self, manifest: Path, env: dict[str, str], target: TargetPolicy
+    ) -> tuple[ManagedResourceConfiguration, ...]:
+        """Resolve API defaults/admission before fingerprinting live config.
+
+        Comparing raw client-rendered YAML with a live object would mistake
+        Kubernetes defaults (for example Deployment strategy defaults) for
+        drift. A server-side dry-run is non-mutating and gives the same
+        defaulted/admitted desired object shape that server-side apply uses.
+        """
+
+        payload = command(
+            [
+                "kubectl",
+                "apply",
+                "--server-side",
+                "--dry-run=server",
+                "--validate=true",
+                "-f",
+                str(manifest),
+                "-o",
+                "json",
+            ],
+            env,
+            raw=True,
+        )
+        resources = self._json_objects(
+            payload, source="kubectl server-side manifest normalization"
+        )
+        inventory = self.inventory_from_resources(
+            resources, target, source="server-normalized rendered manifest"
+        )
+        if managed_resource_identities(inventory) != managed_resource_identities(
+            self.managed_inventory
+        ):
+            fail("server-side manifest normalization changed the managed-resource inventory")
+        return inventory
+
     def render(self, env: dict[str, str], temporary_dir: Path, target: TargetPolicy) -> Path:
         source_root = target.kustomize_overlay.parents[2]
         with tempfile.TemporaryDirectory(prefix="smartrouter-kustomize-") as temporary:
@@ -530,6 +741,10 @@ class Delivery:
         output = temporary_dir / "rendered.yaml"
         output.write_bytes(rendered.encode("utf-8"))
         self.managed_inventory = self.validate_rendered_manifest(output, env, target)
+        if self.args.action in {"plan", "apply", "smoke", "promotion-plan"}:
+            self.managed_inventory = self.server_normalized_managed_inventory(
+                output, env, target
+            )
         # The manifest is only a temporary kubectl input. Evidence retains its
         # checksum, never its contents. The configuration fingerprint replaces
         # the exact router image digest with a fixed marker before hashing so
@@ -544,18 +759,26 @@ class Delivery:
         self.evidence["configuration_fingerprint"] = hashlib.sha256(configuration_bytes).hexdigest()
         self.evidence["rendered_manifest_bytes"] = len(rendered_bytes)
         self.evidence["managed_resource_count"] = len(self.managed_inventory)
-        self.evidence["managed_resource_inventory_sha256"] = inventory_fingerprint(self.managed_inventory)
+        self.evidence["managed_resource_inventory_sha256"] = inventory_fingerprint(
+            managed_resource_identities(self.managed_inventory)
+        )
+        self.evidence["managed_resource_spec_sha256"] = managed_resource_spec_fingerprint(
+            self.managed_inventory
+        )
         self.event(
             "render",
             artifact="temporary-manifest",
             managed_resource_count=len(self.managed_inventory),
-            managed_resource_inventory_sha256=inventory_fingerprint(self.managed_inventory),
+            managed_resource_inventory_sha256=inventory_fingerprint(
+                managed_resource_identities(self.managed_inventory)
+            ),
+            managed_resource_spec_sha256=managed_resource_spec_fingerprint(self.managed_inventory),
         )
         return output
 
     def live_managed_inventory(
         self, env: dict[str, str], target: TargetPolicy
-    ) -> tuple[ManagedResource, ...]:
+    ) -> tuple[ManagedResourceConfiguration, ...]:
         payload = command(
             [
                 "kubectl",
@@ -579,16 +802,20 @@ class Delivery:
         )
 
     def record_live_managed_inventory(
-        self, live_inventory: tuple[ManagedResource, ...], phase: str, result: str
+        self, live_inventory: tuple[ManagedResourceConfiguration, ...], phase: str, result: str
     ) -> None:
-        expected_fingerprint = inventory_fingerprint(self.managed_inventory)
-        live_fingerprint = inventory_fingerprint(live_inventory)
+        expected_fingerprint = inventory_fingerprint(managed_resource_identities(self.managed_inventory))
+        live_fingerprint = inventory_fingerprint(managed_resource_identities(live_inventory))
+        expected_spec_fingerprint = managed_resource_spec_fingerprint(self.managed_inventory)
+        live_spec_fingerprint = managed_resource_spec_fingerprint(live_inventory)
         self.evidence.update(
             {
                 "managed_resource_count": len(self.managed_inventory),
                 "managed_resource_inventory_sha256": expected_fingerprint,
+                "managed_resource_spec_sha256": expected_spec_fingerprint,
                 "live_managed_resource_count": len(live_inventory),
                 "live_managed_resource_inventory_sha256": live_fingerprint,
+                "live_managed_resource_spec_sha256": live_spec_fingerprint,
             }
         )
         self.event(
@@ -597,8 +824,10 @@ class Delivery:
             result=result,
             expected_count=len(self.managed_inventory),
             expected_sha256=expected_fingerprint,
+            expected_spec_sha256=expected_spec_fingerprint,
             live_count=len(live_inventory),
             live_sha256=live_fingerprint,
+            live_spec_sha256=live_spec_fingerprint,
         )
 
     def verify_no_stale_managed_resources(
@@ -607,8 +836,10 @@ class Delivery:
         if not self.managed_inventory:
             fail("rendered managed-resource inventory is unavailable")
         live_inventory = self.live_managed_inventory(env, target)
-        expected = set(self.managed_inventory)
-        stale = tuple(resource for resource in live_inventory if resource not in expected)
+        expected = set(managed_resource_identities(self.managed_inventory))
+        stale = tuple(
+            item.resource for item in live_inventory if item.resource not in expected
+        )
         if stale:
             self.record_live_managed_inventory(live_inventory, "before_apply", "stale_resources")
             fail("live managed-resource inventory contains stale resources not in the rendered staging manifest")
@@ -620,9 +851,16 @@ class Delivery:
         if not self.managed_inventory:
             fail("rendered managed-resource inventory is unavailable")
         live_inventory = self.live_managed_inventory(env, target)
-        if live_inventory != self.managed_inventory:
+        if managed_resource_identities(live_inventory) != managed_resource_identities(
+            self.managed_inventory
+        ):
             self.record_live_managed_inventory(live_inventory, phase, "mismatch")
             fail("live managed-resource inventory does not match the rendered staging manifest")
+        if managed_resource_spec_fingerprint(live_inventory) != managed_resource_spec_fingerprint(
+            self.managed_inventory
+        ):
+            self.record_live_managed_inventory(live_inventory, phase, "configuration_mismatch")
+            fail("live managed-resource configuration does not match the rendered staging manifest")
         self.record_live_managed_inventory(live_inventory, phase, "matched")
 
     def verify_live_deployment(self, env: dict[str, str], target: TargetPolicy, phase: str) -> LiveDeploymentIdentity:
@@ -771,6 +1009,7 @@ class Delivery:
                     "environment",
                     "aws_account_id",
                     "aws_region",
+                    "ecr_repository_uri",
                     "eks_cluster",
                     "k8s_namespace",
                     "kustomize_overlay",
@@ -782,8 +1021,10 @@ class Delivery:
                     "configuration_fingerprint",
                     "managed_resource_count",
                     "managed_resource_inventory_sha256",
+                    "managed_resource_spec_sha256",
                     "live_managed_resource_count",
                     "live_managed_resource_inventory_sha256",
+                    "live_managed_resource_spec_sha256",
                     "live_deployment_generation",
                     "live_deployment_observed_generation",
                     "live_pod_template_sha256",

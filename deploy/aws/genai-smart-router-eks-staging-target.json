@@ -4,10 +4,11 @@
   "container_name": "router",
   "delivery_role_name": "genai-smart-router-eks-staging-delivery",
   "deployment_name": "smart-llmrouter",
+  "ecr_repository_uri": "121701826775.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter",
   "environment": "staging",
   "eks_cluster": "metrum",
   "k8s_namespace": "smart-llmrouter-staging",
   "kustomize_overlay": "deploy/kubernetes/overlays/metrum-staging",
-  "schema_version": 1,
+  "schema_version": 2,
   "ssm_parameter_arn": "arn:aws:ssm:us-east-1:121701826775:parameter/metrum/genai-smart-router/staging-delivery-target"
 }
