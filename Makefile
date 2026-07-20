@@ -12,15 +12,18 @@ PYTHON ?= python3
 # context; scripts/eks_delivery.py creates and removes its own kubeconfig.
 AWS_REGION ?=
 EKS_CLUSTER ?=
+EKS_APPROVED_CLUSTER ?=
 K8S_NAMESPACE ?=
+EKS_APPROVED_NAMESPACE ?=
 KUSTOMIZE_OVERLAY ?=
+EKS_APPROVED_OVERLAY ?=
 ENVIRONMENT ?=
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 EKS_SMOKE_COMMAND ?=
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
-EKS_ARGS = --aws-region "$(AWS_REGION)" --eks-cluster "$(EKS_CLUSTER)" --k8s-namespace "$(K8S_NAMESPACE)" --kustomize-overlay "$(KUSTOMIZE_OVERLAY)" --environment "$(ENVIRONMENT)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
+EKS_ARGS = --aws-region "$(AWS_REGION)" --eks-cluster "$(EKS_CLUSTER)" --approved-eks-cluster "$(EKS_APPROVED_CLUSTER)" --k8s-namespace "$(K8S_NAMESPACE)" --approved-k8s-namespace "$(EKS_APPROVED_NAMESPACE)" --kustomize-overlay "$(KUSTOMIZE_OVERLAY)" --approved-kustomize-overlay "$(EKS_APPROVED_OVERLAY)" --environment "$(ENVIRONMENT)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -100,8 +103,7 @@ eks-rollback-staging:
 	$(EKS_DELIVERY) rollback $(EKS_ARGS)
 
 eks-release-evidence:
-	@test -f "$(EKS_EVIDENCE_DIR)/evidence-apply.json" || (echo "missing passed apply evidence" >&2; exit 2)
-	@test -f "$(EKS_EVIDENCE_DIR)/evidence-smoke.json" || (echo "missing passed smoke evidence" >&2; exit 2)
+	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
 	@echo "Safe evidence: $(EKS_EVIDENCE_DIR)/evidence-{apply,smoke}.json and matching Markdown summaries"
 
 eks-promotion-plan:

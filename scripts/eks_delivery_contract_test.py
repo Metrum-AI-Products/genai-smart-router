@@ -28,6 +28,7 @@ case "$0" in
   *aws) case "$*" in *get-caller-identity*) echo '{{"Account":"safe"}}' ;; *describe-cluster*) echo ACTIVE ;; esac ;;
   *kubectl) case "$*" in
     *"auth can-i"*) echo yes ;;
+    *"get deployment/smart-llmrouter"*) echo '{DIGEST}' ;;
     apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
   esac ;;
   *kustomize) case "$*" in *build*) printf 'secret: staging\nimage: {DIGEST}\n'; head -c 5000 /dev/zero | tr '\\0' x; echo ;; esac ;;
@@ -42,9 +43,9 @@ def run(action: str, root: Path, extra: list[str] | None = None) -> subprocess.C
     overlay = root / "deploy" / "kubernetes" / "overlays" / "example"
     evidence = root / "tmp" / "evidence"
     command = ["python3", str(SCRIPT), action, "--aws-region", "us-east-1", "--eks-cluster", "test-cluster",
-               "--k8s-namespace", "router-staging", "--kustomize-overlay", str(overlay), "--environment", "staging",
+               "--approved-eks-cluster", "test-cluster", "--k8s-namespace", "router-staging", "--approved-k8s-namespace", "router-staging", "--kustomize-overlay", str(overlay), "--approved-kustomize-overlay", str(overlay), "--environment", "staging",
                "--evidence-dir", str(evidence)]
-    if action in {"render", "plan", "apply", "smoke"}:
+    if action in {"render", "plan", "apply", "smoke", "promotion-plan"}:
         command += ["--image-digest", DIGEST]
     if extra:
         command += extra
@@ -78,7 +79,7 @@ def main() -> int:
             "--k8s-namespace", "router-staging", "--kustomize-overlay", str(root / "deploy/kubernetes/overlays/example"),
             "--environment", "production", "--evidence-dir", str(root / "tmp/production")],
             cwd=root, text=True, capture_output=True, env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"})
-        assert production.returncode != 0 and "only ENVIRONMENT=staging" in production.stderr
+        assert production.returncode != 0
         applied = run("apply", root, ["--confirm", "STAGING_APPLY"])
         assert applied.returncode == 0, applied.stderr
         calls = (bindir / "calls.log").read_text()

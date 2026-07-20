@@ -82,6 +82,10 @@ class Delivery:
             fail("missing required explicit input(s): " + ", ".join(missing))
         if self.args.environment != "staging":
             fail("only ENVIRONMENT=staging is supported; production mutation is unavailable")
+        if self.args.eks_cluster != self.args.approved_eks_cluster or self.args.k8s_namespace != self.args.approved_k8s_namespace:
+            fail("selected cluster/namespace does not match the approved staging target")
+        if Path(self.args.kustomize_overlay).resolve() != Path(self.args.approved_kustomize_overlay).resolve():
+            fail("selected kustomize overlay does not match the approved staging overlay")
         if not NAME.fullmatch(self.args.k8s_namespace):
             fail("K8S_NAMESPACE must be a DNS-label")
         overlay = Path(self.args.kustomize_overlay)
@@ -189,6 +193,9 @@ class Delivery:
                 proc = subprocess.run(self.args.smoke_command, shell=True, env=env, text=True, capture_output=True)
                 if proc.returncode:
                     fail(f"protected staging smoke failed (exit {proc.returncode}): {scrub(proc.stderr)}")
+                deployed = command(["kubectl", "get", "deployment/smart-llmrouter", "-n", self.args.k8s_namespace, "-o", "jsonpath={.spec.template.spec.containers[*].image}"], env).strip()
+                if self.args.image_digest not in deployed.split():
+                    fail("live deployment does not use the requested immutable IMAGE_DIGEST")
                 self.event("smoke", result="passed")
             elif self.args.action == "promotion-plan":
                 records: dict[str, dict[str, object]] = {}
@@ -204,7 +211,7 @@ class Delivery:
                         fail(f"staging {action} evidence is incomplete or not passed")
                     records[action] = record
                 for key in ("environment", "aws_region", "eks_cluster", "k8s_namespace", "image_digest"):
-                    if records["apply"].get(key) != records["smoke"].get(key):
+                    if records["apply"].get(key) != records["smoke"].get(key) or records["apply"].get(key) != self.evidence.get(key):
                         fail(f"apply and smoke evidence disagree on {key}")
                 self.event("promotion_plan", result="review_required_no_production_apply")
             self.write_evidence("passed")
@@ -220,8 +227,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=("preflight", "status", "render", "plan", "apply", "rollback", "smoke", "promotion-plan"))
     p.add_argument("--aws-region", required=True)
     p.add_argument("--eks-cluster", required=True)
+    p.add_argument("--approved-eks-cluster", required=True)
     p.add_argument("--k8s-namespace", required=True)
+    p.add_argument("--approved-k8s-namespace", required=True)
     p.add_argument("--kustomize-overlay", required=True)
+    p.add_argument("--approved-kustomize-overlay", required=True)
     p.add_argument("--environment", required=True)
     p.add_argument("--image-digest", default="")
     p.add_argument("--confirm", default="")
