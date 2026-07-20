@@ -103,9 +103,10 @@ aws iam delete-access-key --profile <approved-admin-profile> --user-name smartro
 
 Use the Make targets to prevent implicit target selection and root-profile
 access. They validate identifiers; `make eks-discover` then starts the locked
-read-only discovery script, which invalidates the selected evidence path before
-it rechecks the expected assumed role or makes any live probe. Keep the
-evidence output outside this repository:
+read-only discovery script. Before it rechecks the expected assumed role or
+makes any live probe, it invalidates only a bounded, structurally recognizable
+prior discovery report. An existing non-report file is refused and left
+untouched. Keep the evidence output outside this repository:
 
 ```bash
 make eks-discover \
@@ -175,12 +176,13 @@ a success report. When Linkerd was selected, missing Linkerd API/RBAC, a
 mismatched ingress Deployment service account, or an unready/non-meshed ingress
 Pod also fails before success; otherwise the report records Linkerd as not
 requested.
-Discovery locally serializes use of one output path, invalidates its previous
-report before its discovery-role check or any other live probe, and atomically
+Discovery locally serializes use of one output path, validates that an existing
+file is a bounded discovery report before invalidating it, and atomically
 publishes only a fully successful replacement. A failed role check, probe, or
-publish therefore leaves no reusable success report at that selected path.
-Preserve historical evidence under a different timestamped path before a rerun.
-Keep evidence outside Git.
+publish therefore leaves no reusable success report at that selected report
+path, while an accidental non-report output path is preserved. Preserve
+historical evidence under a different timestamped path before a rerun. Keep
+evidence outside Git.
 
 Review the report before bootstrap: EKS version/auth mode/access entries,
 endpoint exposure, audit logging, ingress/storage names, namespace labels and

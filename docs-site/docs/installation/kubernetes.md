@@ -33,10 +33,12 @@ store AWS access keys in CI. Keep discovery evidence limited to safe inventory
 such as versions, resource names, and policy presence—not secrets, endpoints,
 certificate bodies, DSNs, or rendered Secret data.
 
-For a selected discovery-evidence path, invalidate the previous report before
-live probes and publish a replacement atomically only after all checks pass.
-Do not use a report left behind by a failed or interrupted discovery attempt;
-retain historical evidence under a separate timestamped path when needed.
+For a selected discovery-evidence path, invalidate only a structurally
+recognizable prior discovery report before live probes and publish a replacement
+atomically only after all checks pass. An existing non-report file is refused
+and left untouched. Do not use a report left behind by a failed or interrupted
+discovery attempt; retain historical evidence under a separate timestamped path
+when needed.
 
 If deployment tooling creates a temporary source access key to establish a
 short-lived session, reserve durable local recovery state before that IAM call.

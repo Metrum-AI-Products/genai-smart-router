@@ -51,9 +51,25 @@ def discovery_argv(output: Path) -> list[str]:
     ]
 
 
+def stale_discovery_report() -> str:
+    return json.dumps({
+        "schema_version": 1,
+        "generated_at": "2026-07-20T00:00:00+00:00",
+        "intent": MODULE.DISCOVERY_REPORT_INTENT,
+        "selection": {},
+        "aws_identity": {},
+        "eks": {},
+        "namespace": {},
+        "cluster_resources": {},
+        "linkerd": {},
+        "ecr": {},
+        "evidence": {},
+    }) + "\n"
+
+
 def test_stale_output_is_invalidated_before_first_probe(root: Path) -> None:
     output = root / "eks-discovery.json"
-    output.write_text('{"schema_version": 1, "stale": true}\n', encoding="utf-8")
+    output.write_text(stale_discovery_report(), encoding="utf-8")
     original_argv = sys.argv
     original_which = MODULE.shutil.which
     original_aws_json = MODULE.aws_json
@@ -84,7 +100,7 @@ def test_stale_output_is_invalidated_before_first_probe(root: Path) -> None:
 
 def test_stale_output_is_invalidated_when_tools_are_missing(root: Path) -> None:
     output = root / "eks-discovery-no-tools.json"
-    output.write_text('{"schema_version": 1, "stale": true}\n', encoding="utf-8")
+    output.write_text(stale_discovery_report(), encoding="utf-8")
     original_argv = sys.argv
     original_which = MODULE.shutil.which
     sys.argv = discovery_argv(output)
@@ -108,7 +124,7 @@ def test_make_discover_invalidates_before_identity_failure(root: Path) -> None:
     """The canonical Make target must enter the script lock before its role probe."""
     output = root / "make-discovery" / "eks-discovery.json"
     output.parent.mkdir()
-    output.write_text('{"schema_version": 1, "stale": true}\n', encoding="utf-8")
+    output.write_text(stale_discovery_report(), encoding="utf-8")
     command_directory = root / "commands"
     command_directory.mkdir()
     for command in ("aws", "kubectl"):
@@ -163,7 +179,7 @@ def test_atomic_report_publish(root: Path) -> None:
 
 def test_failed_publish_leaves_no_report(root: Path) -> None:
     output = root / "eks-discovery.json"
-    output.write_text('{"schema_version": 1, "stale": true}\n', encoding="utf-8")
+    output.write_text(stale_discovery_report(), encoding="utf-8")
     MODULE.invalidate_output(output)
     original_replace = MODULE.os.replace
     MODULE.os.replace = lambda source, destination: (_ for _ in ()).throw(OSError("simulated publish failure"))  # type: ignore[method-assign]
@@ -206,6 +222,29 @@ def test_unsafe_output_paths_are_rejected_without_deletion(root: Path) -> None:
         raise AssertionError("unsafe discovery path validation modified repository content")
     if not directory.is_dir() or target.read_text(encoding="utf-8") != "do not delete\n" or not symlink.is_symlink():
         raise AssertionError("unsafe discovery path validation deleted an existing target")
+
+
+def test_unrecognized_existing_output_is_preserved_before_probes(root: Path) -> None:
+    output = root / "credentials"
+    original_content = "[default]\naws_access_key_id = not-a-discovery-report\n"
+    output.write_text(original_content, encoding="utf-8")
+    original_argv = sys.argv
+    original_which = MODULE.shutil.which
+    sys.argv = discovery_argv(output)
+    MODULE.shutil.which = lambda command: (_ for _ in ()).throw(AssertionError("tool probe ran before output safety validation"))  # type: ignore[method-assign]
+    try:
+        try:
+            MODULE.main()
+        except MODULE.DiscoveryError as exc:
+            if str(exc) != "existing discovery report is not recognizable and will not be replaced":
+                raise
+        else:
+            raise AssertionError("unrecognized existing output was accepted")
+    finally:
+        sys.argv = original_argv
+        MODULE.shutil.which = original_which  # type: ignore[method-assign]
+    if output.read_text(encoding="utf-8") != original_content:
+        raise AssertionError("unrecognized existing output was modified or deleted")
 
 
 def test_output_lock_is_exclusive(root: Path) -> None:
@@ -394,6 +433,7 @@ def main() -> int:
         test_atomic_report_publish(root)
         test_failed_publish_leaves_no_report(root)
         test_unsafe_output_paths_are_rejected_without_deletion(root)
+        test_unrecognized_existing_output_is_preserved_before_probes(root)
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
         test_linkerd_workload_names_accept_dns_subdomains()

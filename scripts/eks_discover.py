@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,9 @@ DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
 ROOT = Path(__file__).resolve().parents[1]
+DISCOVERY_REPORT_INTENT = "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values"
+DISCOVERY_REPORT_OBJECT_FIELDS = frozenset({"selection", "aws_identity", "eks", "namespace", "cluster_resources", "linkerd", "ecr", "evidence"})
+MAX_DISCOVERY_REPORT_BYTES = 1_000_000
 
 
 def run(command: list[str], *, required: bool = True) -> str:
@@ -292,6 +296,38 @@ def validate_output_path(path: Path) -> None:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     except (OSError, RuntimeError) as exc:
         raise DiscoveryError("discovery report output path could not be prepared safely") from exc
+    validate_existing_discovery_report(path)
+
+
+def validate_existing_discovery_report(path: Path) -> None:
+    """Refuse to replace anything except a previous report from this discovery.
+
+    The selected output can be a pre-existing operator file.  We must not
+    delete it merely to fail closed on stale discovery evidence: only a
+    bounded, structurally recognizable report produced by this script is safe
+    to invalidate before a new live probe.
+    """
+    try:
+        if path.is_symlink():
+            raise DiscoveryError("discovery report output must be a non-symlink file path")
+        if not path.exists():
+            return
+        metadata = path.stat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_DISCOVERY_REPORT_BYTES:
+            raise DiscoveryError("existing discovery report is not recognizable and will not be replaced")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except DiscoveryError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DiscoveryError("existing discovery report is not recognizable and will not be replaced") from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != 1
+        or payload.get("intent") != DISCOVERY_REPORT_INTENT
+        or not isinstance(payload.get("generated_at"), str)
+        or not all(isinstance(payload.get(field), dict) for field in DISCOVERY_REPORT_OBJECT_FIELDS)
+    ):
+        raise DiscoveryError("existing discovery report is not recognizable and will not be replaced")
 
 
 def fsync_parent(path: Path) -> None:
@@ -329,7 +365,8 @@ def output_lock(path: Path):
 
 
 def invalidate_output(path: Path) -> None:
-    """Remove evidence before live probes so a failed run cannot look current."""
+    """Remove only recognized prior evidence before live probes."""
+    validate_existing_discovery_report(path)
     try:
         path.unlink(missing_ok=True)
         fsync_parent(path)
@@ -496,7 +533,7 @@ def main() -> int:
             report: dict[str, Any] = {
                 "schema_version": 1,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
-                "intent": "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values",
+                "intent": DISCOVERY_REPORT_INTENT,
                 "selection": {"account_id": args.account_id, "region": args.region, "cluster": args.cluster, "namespace": args.namespace, "ecr_repository": args.ecr_repository},
                 "aws_identity": {"account_id": actual_account, "principal_type": actual_arn.split(":")[5].split("/")[0]},
                 "eks": {
