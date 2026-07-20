@@ -46,12 +46,17 @@ make eks-session-bootstrap \
   EKS_ACCOUNT_ID=123456789012 \
   EKS_REGION=us-east-1 \
   EKS_MFA_SERIAL=arn:aws:iam::123456789012:mfa/smartrouter \
-  EKS_MFA_KEYCHAIN_SERVICE=your-local-mfa-keychain-service
+  EKS_MFA_KEYCHAIN_SERVICE=your-local-mfa-keychain-service \
+  EKS_CLEANUP_RECORD=/secure/local/eks-source-key-cleanup.json
 ```
 
 Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discovery`
 session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
+
+Deletion is retried three times. If AWS remains unavailable, bootstrap fails
+and writes a mode-0600 cleanup record containing only the temporary access-key
+ID and required deletion action—never the secret key.
 
 Use the Make targets to prevent implicit target selection and root-profile
 access. They validate identifiers, require the expected assumed role, and only
@@ -101,11 +106,17 @@ certificates, policy/config payloads, DSNs, and secrets.
 
 Create distinct short-lived identities for read-only discovery, ECR build/push,
 staging reconciliation, production promotion, and the router workload. GitHub
-OIDC trust must pin repository, branch, and environment subject claims; reject
-other repositories, tags, pull requests, branches, and environments. Production
-uses a distinct environment-gated role. Prefer EKS access entries plus
+OIDC trust pins the repository/environment subject. The GitHub `staging`
+environment must separately restrict deployment branches to the approved branch
+before it grants an OIDC token. Production uses a distinct environment-gated
+role. Prefer EKS access entries plus
 namespace-scoped RBAC; document a dated migration plan if `aws-auth` is still
 required.
+
+Discovery requires a separate reviewed cluster-level read binding for exactly
+the approved discovery identity: get Namespaces and CRDs, and get/list
+IngressClasses and StorageClasses. Do not add those permissions to the tenant
+provisioner Role or grant wildcard cluster administration.
 
 The router workload uses EKS Pod Identity or IRSA only after discovery confirms
 cluster support. Its AWS policy may read only approved secret references and

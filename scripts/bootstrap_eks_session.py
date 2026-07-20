@@ -72,6 +72,7 @@ def main() -> int:
     parser.add_argument("--region", required=True)
     parser.add_argument("--duration-seconds", type=int, default=3600)
     parser.add_argument("--propagation-wait-seconds", type=int, default=8)
+    parser.add_argument("--cleanup-record", required=True, type=Path)
     args = parser.parse_args()
     for value in (args.admin_profile, args.source_user, args.macos_keychain_account, args.session_profile, args.role_profile):
         if not SAFE_NAME.fullmatch(value):
@@ -83,6 +84,14 @@ def main() -> int:
 
     key_id = ""
     deleted = False
+    def delete_source_key() -> bool:
+        for _ in range(3):
+            try:
+                command(["aws", "iam", "delete-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--access-key-id", key_id])
+                return True
+            except RuntimeError:
+                time.sleep(1)
+        return False
     try:
         access = json.loads(command(["aws", "iam", "create-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--output", "json"]))["AccessKey"]
         key_id = access["AccessKeyId"]
@@ -94,18 +103,20 @@ def main() -> int:
         env.update({"AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull, "AWS_ACCESS_KEY_ID": access["AccessKeyId"], "AWS_SECRET_ACCESS_KEY": access["SecretAccessKey"], "AWS_DEFAULT_REGION": args.region})
         session = json.loads(command(["aws", "sts", "get-session-token", "--serial-number", args.mfa_serial, "--token-code", mfa_code_from_keychain(args.macos_keychain_service, args.macos_keychain_account), "--duration-seconds", str(args.duration_seconds), "--output", "json"], env=env))["Credentials"]
         write_profiles(args.session_profile, args.role_profile, args.role_arn, args.region, {"aws_access_key_id": session["AccessKeyId"], "aws_secret_access_key": session["SecretAccessKey"], "aws_session_token": session["SessionToken"]})
-        command(["aws", "iam", "delete-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--access-key-id", key_id])
-        deleted, key_id = True, ""
+        deleted = delete_source_key()
+        if not deleted:
+            raise RuntimeError("temporary source key deletion failed after retries")
+        key_id = ""
         role_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--output", "json"]))
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:
         if key_id:
-            try:
-                command(["aws", "iam", "delete-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--access-key-id", key_id])
-            except RuntimeError:
-                if not deleted:
-                    print("WARNING: unable to delete temporary source access key", file=sys.stderr)
+            if not delete_source_key() and not deleted:
+                args.cleanup_record.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                args.cleanup_record.write_text(json.dumps({"source_user": args.source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n", encoding="utf-8")
+                args.cleanup_record.chmod(0o600)
+                raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
 
 if __name__ == "__main__":

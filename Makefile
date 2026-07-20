@@ -199,7 +199,7 @@ compose-security-check:
 	bash scripts/check_compose_security.sh
 
 eks-session-bootstrap:
-	python3 scripts/bootstrap_eks_session.py --admin-profile "$$EKS_ADMIN_PROFILE" --source-user "$$EKS_SOURCE_USER" --mfa-serial "$$EKS_MFA_SERIAL" --macos-keychain-service "$$EKS_MFA_KEYCHAIN_SERVICE" --macos-keychain-account "$$EKS_MFA_KEYCHAIN_ACCOUNT" --session-profile smartrouter --role-profile "$$EKS_AWS_PROFILE" --role-arn "arn:aws:iam::$$EKS_ACCOUNT_ID:role/genai-smart-router-eks-discovery" --region "$$EKS_REGION" --duration-seconds "$$EKS_SESSION_DURATION"
+	python3 scripts/bootstrap_eks_session.py --admin-profile "$$EKS_ADMIN_PROFILE" --source-user "$$EKS_SOURCE_USER" --mfa-serial "$$EKS_MFA_SERIAL" --macos-keychain-service "$$EKS_MFA_KEYCHAIN_SERVICE" --macos-keychain-account "$$EKS_MFA_KEYCHAIN_ACCOUNT" --session-profile smartrouter --role-profile "$$EKS_AWS_PROFILE" --role-arn "arn:aws:iam::$$EKS_ACCOUNT_ID:role/genai-smart-router-eks-discovery" --region "$$EKS_REGION" --duration-seconds "$$EKS_SESSION_DURATION" --cleanup-record "$$EKS_CLEANUP_RECORD"
 
 eks-identity-check:
 	python3 scripts/validate_eks_make_args.py --identity-only --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION"
