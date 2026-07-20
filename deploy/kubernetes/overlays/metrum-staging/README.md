@@ -30,21 +30,20 @@ platform wildcard certificate is available in this namespace as
 secret name before applying.
 
 Render, dry-run, apply, and rollback must use the root Make contract rather
-than an implicit kubectl context. With an approved short-lived AWS identity:
+than an implicit kubectl context. The approved account, region, cluster,
+namespace, overlay, Deployment, container, and role are pinned in
+`deploy/aws/genai-smart-router-eks-staging-target.json` and must exactly match
+the separately protected AWS Systems Manager Parameter named by that file.
+The delivery role may only read that one parameter; it cannot update it. With
+an approved short-lived AWS identity:
 
 ```bash
 make eks-preflight eks-plan \
-  AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
-  K8S_NAMESPACE='smart-llmrouter-staging' \
-  KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
-  ENVIRONMENT='staging' \
+  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
 
 make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-  AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
-  K8S_NAMESPACE='smart-llmrouter-staging' \
-  KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
-  ENVIRONMENT='staging' \
+  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
 ```
 
@@ -96,8 +95,12 @@ without `EKS_LINKERD_POLICY_OUTPUT`.
 The Make contract writes only scrubbed JSON and Markdown evidence below
 `tmp/eks-evidence/`; raw manifests are temporary kubectl inputs and evidence
 records only their safe checksum/size. It creates a temporary kubeconfig, rejects mutable images,
-and permits mutation only for `ENVIRONMENT=staging` with
+and permits mutation only for its fixed staging target with
 `EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
+The overlay deliberately omits the base `Namespace` resource: namespace
+creation and labels are an independently reviewed bootstrap action, and the
+delivery contract rejects cluster-scoped resources or any rendered resource
+outside the approved namespace.
 
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.

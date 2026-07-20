@@ -10,20 +10,16 @@ PYTHON ?= python3
 
 # Explicit inputs for all EKS commands. No target reads the current kubectl
 # context; scripts/eks_delivery.py creates and removes its own kubeconfig.
-AWS_REGION ?=
-EKS_CLUSTER ?=
-EKS_APPROVED_CLUSTER ?=
-K8S_NAMESPACE ?=
-EKS_APPROVED_NAMESPACE ?=
-KUSTOMIZE_OVERLAY ?=
-EKS_APPROVED_OVERLAY ?=
-ENVIRONMENT ?=
+# The AWS account, region, cluster, namespace, overlay, workload, and role are
+# not Make variables: they are pinned in the reviewed target policy and its
+# independently protected SSM copy.
+EKS_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 EKS_SMOKE_COMMAND ?=
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
-EKS_ARGS = --aws-region "$(AWS_REGION)" --eks-cluster "$(EKS_CLUSTER)" --approved-eks-cluster "$(EKS_APPROVED_CLUSTER)" --k8s-namespace "$(K8S_NAMESPACE)" --approved-k8s-namespace "$(EKS_APPROVED_NAMESPACE)" --kustomize-overlay "$(KUSTOMIZE_OVERLAY)" --approved-kustomize-overlay "$(EKS_APPROVED_OVERLAY)" --environment "$(ENVIRONMENT)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
+EKS_ARGS = --aws-profile "$(EKS_AWS_PROFILE)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -68,7 +64,7 @@ BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X sma
 help: eks-help
 
 eks-help:
-	@echo "EKS delivery targets (explicit inputs; no default kubeconfig/context):"
+	@echo "EKS delivery targets (approved target policy; no default kubeconfig/context):"
 	@echo "  eks-preflight          read-only: tools, AWS session, cluster, namespace RBAC"
 	@echo "  eks-render             read-only: deterministic digest-pinned manifest -> evidence"
 	@echo "  eks-plan               read-only: render plus server-side dry-run -> evidence"
@@ -77,8 +73,8 @@ eks-help:
 	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND"
 	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
-	@echo "Required: AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT"
-	@echo "Render/plan/apply/smoke also require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
+	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
+	@echo "Render/plan/apply/smoke/promotion-plan require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); JSON and Markdown are redacted."
 
 eks-preflight:

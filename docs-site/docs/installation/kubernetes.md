@@ -234,6 +234,14 @@ If server-side dry-run is unavailable, use client-side dry-run as a syntax check
 kubectl apply --dry-run=client -f /tmp/smart-llmrouter.yaml
 ```
 
+For automated staging or production delivery, do not treat CI or Make
+variables as approval for an account, cluster, namespace, or overlay. Keep a
+reviewed environment target policy in an independently controlled store, give
+the delivery identity read-only access to that exact policy, verify its account
+and role before creating a kubeconfig, and reject any rendered resource outside
+the approved namespace. Bind the smoke and promotion evidence to the exact
+immutable image digest that reached the live Deployment.
+
 Check rollout:
 
 ```bash

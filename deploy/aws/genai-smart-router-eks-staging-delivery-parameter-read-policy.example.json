@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyReviewedStagingTarget",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:121701826775:parameter/metrum/genai-smart-router/staging-delivery-target"
+    }
+  ]
+}

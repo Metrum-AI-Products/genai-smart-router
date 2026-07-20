@@ -5,7 +5,7 @@ resources:
   - ../../base
   - networkpolicy-ingress-guard.yaml
 patches:
-  - path: patch-namespace.yaml
+  - path: delete-namespace.yaml
   - path: delete-configmap.yaml
   - path: patch-deployment.yaml
   - path: patch-ingress.yaml

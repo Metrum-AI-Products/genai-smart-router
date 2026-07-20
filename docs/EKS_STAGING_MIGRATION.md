@@ -69,6 +69,17 @@ authorize a production cutover.
 5. Push an immutable router image to the registry used by EKS, then replace
    `replace-with-immutable-image-tag` in the overlay through a local,
    reviewed image patch or Kustomize image override.
+6. Establish the protected staging delivery target before invoking a Make
+   target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
+   reviewed canonical target: account, region, cluster, namespace, overlay,
+   Deployment, container, and delivery role. Provision the exact JSON as a
+   standard (not SecureString) AWS Systems Manager Parameter at the ARN in
+   that file through reviewed infrastructure-as-code. The staging delivery
+   role receives only `ssm:GetParameter` for that one parameter (see
+   `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
+   a separate platform configuration role owns `ssm:PutParameter`. The
+   delivery contract reads both copies and fails unless their canonical JSON
+   hashes match.
 
 ## RDS Provisioning
 
@@ -135,11 +146,13 @@ the staging configuration as a general baseline.
 
 ## Deployment And Validation
 
-The root Makefile is the canonical EKS operator and CI interface. It requires
-an explicit region, cluster, namespace, overlay, environment, and immutable
-image digest. It creates a temporary per-invocation kubeconfig, so it neither
-reads nor changes the operator's default kubectl context. See `make eks-help`
-for the complete target list and required inputs.
+The root Makefile is the canonical EKS operator and CI interface. It accepts a
+short-lived AWS profile and immutable image digest, but never accepts an
+account, region, cluster, namespace, overlay, or environment as caller-set
+variables. Those values come from the reviewed target policy and its
+independently protected Parameter copy. It creates a temporary per-invocation
+kubeconfig, so it neither reads nor changes the operator's default kubectl
+context. See `make eks-help` for the complete target list and required inputs.
 
 1. Create the `smart-llmrouter-staging` namespace, then create the runtime
    Secret and make the wildcard certificate Secret available in that namespace.
@@ -147,25 +160,20 @@ for the complete target list and required inputs.
 
    ```bash
    make eks-preflight eks-plan \
-     AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
-     K8S_NAMESPACE='smart-llmrouter-staging' \
-     KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
-     ENVIRONMENT='staging' \
+     EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
      IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
    ```
 
    Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. The raw
    manifest exists only in a per-invocation temporary directory for kubectl;
    evidence retains its checksum and safe scalar metadata. A missing session,
-   namespace RBAC, digest, or dry-run failure stops before mutation.
+   protected policy, matching account/role, namespace RBAC, digest, namespace
+   match, or dry-run failure stops before mutation.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
    make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-     AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
-     K8S_NAMESPACE='smart-llmrouter-staging' \
-     KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
-     ENVIRONMENT='staging' \
+     EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
      IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
    ```
 
@@ -209,14 +217,15 @@ for the complete target list and required inputs.
    targets without `EKS_LINKERD_POLICY_OUTPUT`.
 5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
-6. Invoke `make eks-smoke-staging` with the same explicit inputs and an
-   `EKS_SMOKE_COMMAND` that points to a protected local/CI script. Do not put a
-   caller credential in the Makefile, command line, evidence, or shell history.
-   Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
-   Service and `https://smartrouter.apps.metrum.ai`.
-7. Run `make eks-promotion-plan` only after review; it remains read-only and
-   requires both passed `evidence-apply.json` and `evidence-smoke.json` for the
-   same staging target. It cannot apply to production.
+6. Invoke `make eks-smoke-staging` with the same approved profile and immutable
+   digest plus an `EKS_SMOKE_COMMAND` that points to a protected local/CI
+   script. Do not put a caller credential in the Makefile, command line,
+   evidence, or shell history. Validate `/healthz`, `/readyz`, `/docs/`, and
+   `/version` through both the Service and `https://smartrouter.apps.metrum.ai`.
+7. Run `make eks-promotion-plan IMAGE_DIGEST='<the same immutable digest>'`
+   only after review. It remains read-only and requires both passed
+   `evidence-apply.json` and `evidence-smoke.json` for that exact protected
+   target and digest; it cannot apply to production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.
@@ -228,9 +237,9 @@ for the complete target list and required inputs.
 ## Rollback And Deferred Cutover
 
 If staging fails, preserve the RDS and state PVC snapshot for diagnosis, then
-run `make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY` with the same
-explicit target inputs. It performs a bounded Deployment rollout undo and
-records post-rollback evidence. Removal of the Ingress or Deployment remains a
+run `make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY` with the approved
+delivery profile. It performs a bounded Deployment rollout undo and records
+post-rollback evidence. Removal of the Ingress or Deployment remains a
 separate approved recovery action. EC2 traffic and data remain unaffected.
 
 A future production cutover requires separate approval and a new runbook
