@@ -2245,6 +2245,59 @@ func TestValidateExternalPolicyIncludeRequestRequiresExternalStrategy(t *testing
 	}
 }
 
+func TestIntelligentRoutingConfigValidation(t *testing.T) {
+	cfg := minimalConfig(t)
+	provider := cfg.Provider["mock"]
+	provider.Models = map[string]ProviderModel{"selector": {Model: "selector-model", Dialect: "openai-chat"}}
+	cfg.Provider["mock"] = provider
+	cfg.Models["default"] = ModelGroup{
+		Strategy: "intelligent",
+		IntelligentRouting: IntelligentRoutingConfig{
+			Mode:          "shadow",
+			DecisionModel: IntelligentDecisionModel{Provider: "mock", ModelRef: "selector"},
+			TimeoutMS:     250, MaxOutputTokens: 128, MaxConcurrent: 4, MaxDecisionCostUSD: 0.01,
+			ConfidenceThreshold: 0.7, ContextMode: "scalar_only", OnError: "fallback", SchemaVersion: "v1",
+		},
+		Targets: []Target{{Provider: "mock", Model: "serving-model"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	for name, mutate := range map[string]func(*IntelligentRoutingConfig){
+		"unknown model":     func(policy *IntelligentRoutingConfig) { policy.DecisionModel.ModelRef = "missing" },
+		"unsafe context":    func(policy *IntelligentRoutingConfig) { policy.ContextMode = "request_body" },
+		"unbounded timeout": func(policy *IntelligentRoutingConfig) { policy.TimeoutMS = 5001 },
+		"bad confidence":    func(policy *IntelligentRoutingConfig) { policy.ConfidenceThreshold = 1.1 },
+		"missing fallback":  func(policy *IntelligentRoutingConfig) { policy.OnError = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := minimalConfig(t)
+			candidateProvider := candidate.Provider["mock"]
+			candidateProvider.Models = map[string]ProviderModel{"selector": {Model: "selector-model", Dialect: "openai-chat"}}
+			candidate.Provider["mock"] = candidateProvider
+			group := cfg.Models["default"]
+			mutate(&group.IntelligentRouting)
+			candidate.Models["default"] = group
+			if err := candidate.Validate(); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+}
+
+func TestIntelligentRoutingConfigRequiresStrategy(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Models["default"] = ModelGroup{
+		Strategy:           "static",
+		IntelligentRouting: IntelligentRoutingConfig{Mode: "shadow"},
+		Targets:            []Target{{Provider: "mock", Model: "mock-model"}},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "configures intelligent_routing but does not use intelligent strategy") {
+		t.Fatalf("Validate() err=%v, want intelligent strategy error", err)
+	}
+}
+
 func minimalConfig(t *testing.T) *Config {
 	t.Helper()
 	return &Config{

@@ -33,6 +33,7 @@ const (
 	LicenseFeatureAdminReports         = "admin_reports"
 	LicenseFeatureAdminSecurityReports = "admin_security_reports"
 	LicenseFeatureDynamicScore         = "dynamic_score"
+	LicenseFeatureIntelligentRouting   = "intelligent_routing"
 	LicenseFeatureExternalPolicy       = "external_policy"
 	LicenseFeatureTypeScriptRouting    = "typescript_routing"
 	LicenseFeatureModelGroupContracts  = "model_group_contracts"
@@ -1003,6 +1004,7 @@ func KnownLicenseFeatures() map[string]bool {
 		LicenseFeatureAdminReports:         true,
 		LicenseFeatureAdminSecurityReports: true,
 		LicenseFeatureDynamicScore:         true,
+		LicenseFeatureIntelligentRouting:   true,
 		LicenseFeatureExternalPolicy:       true,
 		LicenseFeatureTypeScriptRouting:    true,
 		LicenseFeatureModelGroupContracts:  true,
@@ -1490,6 +1492,8 @@ func licenseFeaturesForGroup(group ModelGroup) []string {
 	switch strings.ToLower(strings.TrimSpace(group.Strategy)) {
 	case "dynamic_score":
 		features = append(features, LicenseFeatureDynamicScore)
+	case "intelligent":
+		features = append(features, LicenseFeatureIntelligentRouting)
 	case "script":
 		features = append(features, LicenseFeatureTypeScriptRouting)
 		if group.ScriptHTTP.Enabled {

@@ -1327,6 +1327,32 @@ func (s *Service) pick(rc *requestContext, groupName string, group ModelGroup, r
 		}
 		dec.DynamicScoreTerms = append(dec.DynamicScoreTerms, policyOutputRankingTelemetry(dec.Strategy, dec.Target, dec.Fallbacks, s.cfg.Provider)...)
 		return dec, nil
+	case "intelligent":
+		// The first intelligent-routing increment deliberately serves the
+		// deterministic eligible-target baseline. It validates and licenses the
+		// decision-model contract without issuing a second upstream request until
+		// the bounded selector and overhead accounting are available.
+		label := "intelligent:baseline-only"
+		return decision{
+			Target:      targets[0],
+			Fallbacks:   targets[1:],
+			ClassLabel:  &label,
+			Strategy:    "intelligent",
+			GroupName:   groupName,
+			TargetIndex: 0,
+			PolicyExecutions: []policyExecutionLogRecord{{
+				Seq:                    1,
+				Strategy:               "intelligent",
+				PolicyKind:             "intelligent",
+				Outcome:                "baseline_only",
+				EligibleTargetCount:    len(targets),
+				AllTargetCount:         len(group.Targets),
+				SelectedCandidateIndex: 0,
+				FallbackCount:          len(targets) - 1,
+				ClassLabel:             &label,
+			}},
+			DynamicScoreTerms: simpleStrategyRankingTelemetry("intelligent", targets, s.cfg.Provider),
+		}, nil
 	default:
 		return decision{}, fmt.Errorf("unknown strategy %s", strategy)
 	}
