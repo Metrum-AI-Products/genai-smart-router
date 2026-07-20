@@ -154,8 +154,10 @@ for the complete target list and required inputs.
      IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
    ```
 
-   Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. A missing
-   session, namespace RBAC, digest, or dry-run failure stops before mutation.
+   Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. The raw
+   manifest exists only in a per-invocation temporary directory for kubectl;
+   evidence retains its checksum and safe scalar metadata. A missing session,
+   namespace RBAC, digest, or dry-run failure stops before mutation.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
@@ -212,12 +214,15 @@ for the complete target list and required inputs.
    caller credential in the Makefile, command line, evidence, or shell history.
    Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
    Service and `https://smartrouter.apps.metrum.ai`.
-7. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
+7. Run `make eks-promotion-plan` only after review; it remains read-only and
+   requires both passed `evidence-apply.json` and `evidence-smoke.json` for the
+   same staging target. It cannot apply to production.
+8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.
-8. Verify fresh usage rows and authorized admin reports against RDS. Verify a
+9. Verify fresh usage rows and authorized admin reports against RDS. Verify a
    normal caller receives `403 metrics-forbidden` from `/metrics`.
-9. Record safe image version, RDS major version, readiness result, smoke
+10. Record safe image version, RDS major version, readiness result, smoke
    results, and rollback evidence in `deployment.md`.
 
 ## Rollback And Deferred Cutover

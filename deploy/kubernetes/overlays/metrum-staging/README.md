@@ -94,7 +94,8 @@ If Linkerd is intentionally not selected, use
 without `EKS_LINKERD_POLICY_OUTPUT`.
 
 The Make contract writes only scrubbed JSON and Markdown evidence below
-`tmp/eks-evidence/`, creates a temporary kubeconfig, rejects mutable images,
+`tmp/eks-evidence/`; raw manifests are temporary kubectl inputs and evidence
+records only their safe checksum/size. It creates a temporary kubeconfig, rejects mutable images,
 and permits mutation only for `ENVIRONMENT=staging` with
 `EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
 

@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
+import importlib.util
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "eks_delivery.py"
 DIGEST = "registry.example/router@sha256:" + "a" * 64
+SPEC = importlib.util.spec_from_file_location("eks_delivery", SCRIPT)
+EKS_DELIVERY = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader
+SPEC.loader.exec_module(EKS_DELIVERY)
 
 
 def fake_tools(directory: Path) -> None:
@@ -20,8 +26,11 @@ def fake_tools(directory: Path) -> None:
 echo "$0 $* KUBECONFIG=$KUBECONFIG" >> "{log}"
 case "$0" in
   *aws) case "$*" in *get-caller-identity*) echo '{{"Account":"safe"}}' ;; *describe-cluster*) echo ACTIVE ;; esac ;;
-  *kubectl) case "$*" in *"auth can-i"*) echo yes ;; esac ;;
-  *kustomize) case "$*" in *build*) echo 'image: {DIGEST}' ;; esac ;;
+  *kubectl) case "$*" in
+    *"auth can-i"*) echo yes ;;
+    apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
+  esac ;;
+  *kustomize) case "$*" in *build*) printf 'secret: staging\nimage: {DIGEST}\n'; head -c 5000 /dev/zero | tr '\\0' x; echo ;; esac ;;
 esac
 '''
         target = directory / name
@@ -45,6 +54,9 @@ def run(action: str, root: Path, extra: list[str] | None = None) -> subprocess.C
 
 
 def main() -> int:
+    scrubbed = EKS_DELIVERY.scrub('{"Authorization":"Bearer abc123","X-Api-Key":"key456","AWS_SECRET_ACCESS_KEY":"secret789"}')
+    for leaked in ("abc123", "key456", "secret789"):
+        assert leaked not in scrubbed
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         shutil = __import__("shutil")
@@ -56,6 +68,8 @@ def main() -> int:
         assert result.returncode == 0, result.stderr
         calls = (bindir / "calls.log").read_text()
         assert "must-not-be-used" not in calls and "update-kubeconfig" in calls and "--dry-run=server" in calls
+        manifest_size = re.search(r"manifest-bytes=\s*(\d+)", calls)
+        assert manifest_size and int(manifest_size.group(1)) > 4000
         assert run("apply", root).returncode != 0
         bad = run("render", root, ["--image-digest", "router:latest"])
         assert bad.returncode != 0 and "immutable" in bad.stderr
@@ -69,9 +83,16 @@ def main() -> int:
         assert applied.returncode == 0, applied.stderr
         calls = (bindir / "calls.log").read_text()
         assert "deployment/smart-llmrouter" in calls and "deployment/router" not in calls
-        smoke = run("smoke", root, ["--smoke-command", "sh -c 'echo token=leak >&2; exit 1'"])
-        assert smoke.returncode != 0 and "token=leak" not in smoke.stderr
-        assert "token=leak" not in (root / "tmp/evidence/evidence.json").read_text()
+        promotion = run("promotion-plan", root)
+        assert promotion.returncode != 0 and "smoke evidence" in promotion.stderr
+        smoke = run("smoke", root, ["--smoke-command", "sh -c 'echo Authorization: Bearer abc123 X-Api-Key=key456 AWS_SECRET_ACCESS_KEY=secret789 >&2; exit 1'"])
+        assert smoke.returncode != 0
+        for leaked in ("abc123", "key456", "secret789"):
+            assert leaked not in smoke.stderr and leaked not in (root / "tmp/evidence/evidence.json").read_text()
+        smoke_passed = run("smoke", root, ["--smoke-command", "sh -c 'exit 0'"])
+        assert smoke_passed.returncode == 0, smoke_passed.stderr
+        promotion = run("promotion-plan", root)
+        assert promotion.returncode == 0, promotion.stderr
     print("EKS delivery contract tests passed")
 
 

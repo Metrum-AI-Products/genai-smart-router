@@ -73,7 +73,7 @@ eks-help:
 	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
 	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND"
 	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
-	@echo "  eks-promotion-plan     read-only: validates passed staging evidence; never applies production"
+	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT"
 	@echo "Render/plan/apply/smoke also require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); JSON and Markdown are redacted."
@@ -100,8 +100,9 @@ eks-rollback-staging:
 	$(EKS_DELIVERY) rollback $(EKS_ARGS)
 
 eks-release-evidence:
-	@test -f "$(EKS_EVIDENCE_DIR)/evidence.json" || (echo "missing $(EKS_EVIDENCE_DIR)/evidence.json" >&2; exit 2)
-	@echo "Safe evidence: $(EKS_EVIDENCE_DIR)/evidence.json and $(EKS_EVIDENCE_DIR)/summary.md"
+	@test -f "$(EKS_EVIDENCE_DIR)/evidence-apply.json" || (echo "missing passed apply evidence" >&2; exit 2)
+	@test -f "$(EKS_EVIDENCE_DIR)/evidence-smoke.json" || (echo "missing passed smoke evidence" >&2; exit 2)
+	@echo "Safe evidence: $(EKS_EVIDENCE_DIR)/evidence-{apply,smoke}.json and matching Markdown summaries"
 
 eks-promotion-plan:
 	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)

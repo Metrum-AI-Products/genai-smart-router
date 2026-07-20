@@ -21,7 +21,11 @@ from pathlib import Path
 
 
 SECRET_PATTERNS = (
-    re.compile(r"(?i)(authorization|bearer|token|password|secret|apikey|api_key)\s*[:=]\s*[^\s,]+"),
+    # Keep the key/header name for useful diagnostics while replacing the
+    # complete value.  This covers shell assignments and common HTTP/JSON
+    # spellings, including ``Authorization: Bearer <credential>``.
+    re.compile(r"(?im)((?:[\"']?)(?:authorization|proxy-authorization|x-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|token|password|secret(?:[-_]?access[-_]?key)?|aws_secret_access_key)(?:[\"']?)\s*[:=]\s*)(?:bearer\s+)?(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)"),
+    re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
 )
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$")
@@ -31,7 +35,7 @@ NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 def scrub(value: str) -> str:
     result = value
     for pattern in SECRET_PATTERNS:
-        result = pattern.sub("[REDACTED]", result)
+        result = pattern.sub(lambda match: f"{match.group(1)}[REDACTED]" if match.lastindex else "[REDACTED]", result)
     return result[:4000]
 
 
@@ -39,12 +43,12 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def command(args: list[str], env: dict[str, str], *, quiet: bool = False) -> str:
+def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: bool = False) -> str:
     proc = subprocess.run(args, env=env, text=True, capture_output=True)
     if proc.returncode:
         detail = scrub(proc.stderr or proc.stdout)
         fail(f"{args[0]} failed (exit {proc.returncode}): {detail}")
-    return "" if quiet else scrub(proc.stdout)
+    return "" if quiet else (proc.stdout if raw else scrub(proc.stdout))
 
 
 class Delivery:
@@ -97,13 +101,19 @@ class Delivery:
         if error:
             self.evidence["error"] = scrub(error)
         payload = json.dumps(self.evidence, indent=2, sort_keys=True) + "\n"
+        # Keep immutable per-action records so a later smoke cannot overwrite
+        # the apply proof needed by promotion. evidence.json remains a concise
+        # convenience pointer to the most recent result.
+        (self.evidence_dir / f"evidence-{self.args.action}.json").write_text(payload)
         (self.evidence_dir / "evidence.json").write_text(payload)
         markdown = [f"# EKS {self.args.action} evidence", "", f"Outcome: **{outcome}**", ""]
         for key in ("environment", "aws_region", "eks_cluster", "k8s_namespace", "image_digest"):
             markdown.append(f"- {key}: `{self.evidence.get(key)}`")
         if error:
             markdown.extend(["", "## Safe failure", "", "```text", scrub(error), "```"])
-        (self.evidence_dir / "summary.md").write_text("\n".join(markdown) + "\n")
+        summary = "\n".join(markdown) + "\n"
+        (self.evidence_dir / f"summary-{self.args.action}.md").write_text(summary)
+        (self.evidence_dir / "summary.md").write_text(summary)
 
     def env_with_kubeconfig(self) -> tuple[dict[str, str], tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="smartrouter-eks-")
@@ -127,7 +137,7 @@ class Delivery:
             fail("Kubernetes RBAC does not allow get pods in the requested namespace")
         self.event("preflight", aws_identity=scrub(identity), cluster_status=cluster.strip(), rbac_get_pods=allowed)
 
-    def render(self, env: dict[str, str]) -> Path:
+    def render(self, env: dict[str, str], temporary_dir: Path) -> Path:
         source_root = Path(self.args.kustomize_overlay).resolve().parents[2]
         with tempfile.TemporaryDirectory(prefix="smartrouter-kustomize-") as temporary:
             copied_root = Path(temporary) / source_root.name
@@ -140,13 +150,16 @@ class Delivery:
                                   cwd=copied_overlay, env=env, text=True, capture_output=True)
             if proc.returncode:
                 fail(f"kustomize image override failed: {scrub(proc.stderr)}")
-            rendered = command(["kustomize", "build", str(copied_overlay)], env)
+            # This is an operational input, not an evidence/log value. Keep
+            # it byte-for-byte for kubectl, but only record its checksum below.
+            rendered = command(["kustomize", "build", str(copied_overlay)], env, raw=True)
         if self.args.image_digest not in rendered:
             fail("rendered manifest does not contain the requested immutable IMAGE_DIGEST")
-        output = self.evidence_dir / "rendered.yaml"
+        output = temporary_dir / "rendered.yaml"
         output.write_text(rendered)
         self.evidence["rendered_manifest_sha256"] = hashlib.sha256(rendered.encode()).hexdigest()
-        self.event("render", artifact=str(output))
+        self.evidence["rendered_manifest_bytes"] = len(rendered.encode())
+        self.event("render", artifact="temporary-manifest")
         return output
 
     def run(self) -> None:
@@ -154,7 +167,7 @@ class Delivery:
         try:
             if self.args.action in {"preflight", "status", "plan", "apply", "rollback", "smoke"}:
                 self.preflight(env)
-            manifest = self.render(env) if self.args.action in {"render", "plan", "apply", "smoke"} else None
+            manifest = self.render(env, Path(temp.name)) if self.args.action in {"render", "plan", "apply", "smoke"} else None
             if self.args.action == "status":
                 status = command(["kubectl", "get", "deployment,pods,service,ingress,pdb,networkpolicy,pvc",
                                   "-n", self.args.k8s_namespace, "-o", "name"], env)
@@ -178,12 +191,21 @@ class Delivery:
                     fail(f"protected staging smoke failed (exit {proc.returncode}): {scrub(proc.stderr)}")
                 self.event("smoke", result="passed")
             elif self.args.action == "promotion-plan":
-                evidence_file = self.evidence_dir / "evidence.json"
-                if not evidence_file.is_file():
-                    fail("staging evidence.json is required before a promotion plan can be produced")
-                prior = json.loads(evidence_file.read_text())
-                if prior.get("outcome") != "passed":
-                    fail("staging evidence is not a passed result")
+                records: dict[str, dict[str, object]] = {}
+                for action, required_event in (("apply", "apply"), ("smoke", "smoke")):
+                    evidence_file = self.evidence_dir / f"evidence-{action}.json"
+                    if not evidence_file.is_file():
+                        fail(f"passed staging {action} evidence is required before a promotion plan")
+                    record = json.loads(evidence_file.read_text())
+                    events = record.get("events", [])
+                    if record.get("action") != action or record.get("outcome") != "passed" or not any(
+                        isinstance(event, dict) and event.get("name") == required_event for event in events
+                    ):
+                        fail(f"staging {action} evidence is incomplete or not passed")
+                    records[action] = record
+                for key in ("environment", "aws_region", "eks_cluster", "k8s_namespace", "image_digest"):
+                    if records["apply"].get(key) != records["smoke"].get(key):
+                        fail(f"apply and smoke evidence disagree on {key}")
                 self.event("promotion_plan", result="review_required_no_production_apply")
             self.write_evidence("passed")
         except Exception as exc:
