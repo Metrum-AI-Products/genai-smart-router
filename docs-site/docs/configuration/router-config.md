@@ -55,6 +55,11 @@ Use these pages as the canonical homes for each configuration area:
 
 Change config with structured YAML tooling, validate the result, run the relevant smoke tests, and keep deployment-facing guidance current when behavior changes. For a strategy-by-strategy ownership guide that ties caller access, group-local routing, validation, policy services, and rollback evidence together, see [Customer-Controlled Routing](../routing/customer-controlled-routing).
 
+For managed configuration sources, keep exactly one validated active revision
+per runtime scope. Do not let a deployment select arbitrarily between competing
+active revisions; correct the configuration state or roll back to the reviewed
+revision before serving traffic.
+
 ## OpenAI Endpoint Compatibility
 
 `server.openai_compatibility.tolerate_responses_body_on_chat_endpoint` is disabled by default. Leave it disabled for deployments where clients use the normal API paths: Chat Completions bodies on `/v1/chat/completions` and Responses bodies on `/v1/responses`.

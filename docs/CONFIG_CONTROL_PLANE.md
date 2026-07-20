@@ -32,6 +32,11 @@ semantically on both SQLite and PostgreSQL: it must be unique and contain
 exactly `config_set_id`, `provider_name`, and `LOWER(header_name)` in that
 order.
 
+The active-set uniqueness boundary is verified semantically on SQLite and
+PostgreSQL, not only by index name. The named index must be unique, have
+exactly the `runtime_scope` key, and use the partial predicate `status =
+'active'`; a drifted index cannot make a configuration scope appear current.
+
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
 active set and reuses `Config.Validate`; missing active state and invalid
 relational data fail closed. For a provider with `api_key_env`, it resolves the

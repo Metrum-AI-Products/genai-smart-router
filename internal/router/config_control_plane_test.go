@@ -365,6 +365,34 @@ func TestConfigControlPlanePhase3VerifierRejectsIndexSemanticDrift(t *testing.T)
 	}
 }
 
+func TestConfigControlPlanePhase1VerifierRejectsActiveSetIndexSemanticDrift(t *testing.T) {
+	for name, statement := range map[string]string{
+		"non-unique":      `CREATE INDEX router_config_one_active_set_per_scope ON router_config_sets(runtime_scope) WHERE status = 'active'`,
+		"wrong-key":       `CREATE UNIQUE INDEX router_config_one_active_set_per_scope ON router_config_sets(name) WHERE status = 'active'`,
+		"extra-key":       `CREATE UNIQUE INDEX router_config_one_active_set_per_scope ON router_config_sets(runtime_scope, name) WHERE status = 'active'`,
+		"wrong-predicate": `CREATE UNIQUE INDEX router_config_one_active_set_per_scope ON router_config_sets(runtime_scope) WHERE status = 'valid'`,
+		"not-partial":     `CREATE UNIQUE INDEX router_config_one_active_set_per_scope ON router_config_sets(runtime_scope)`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = closeDB() }()
+			applyConfigControlPlaneMigrationsForTest(t, r)
+			if err := r.db.Exec(`DROP INDEX router_config_one_active_set_per_scope`).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := r.db.Exec(statement).Error; err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.Verify(); err == nil || !strings.Contains(err.Error(), configControlPlaneOneActiveSetPerScopeIndex) {
+				t.Fatalf("expected active-set index semantic verification failure, got %v", err)
+			}
+		})
+	}
+}
+
 func TestConfigControlPlanePostgresProviderHeaderCIIndexKeyVerification(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -386,6 +414,31 @@ func TestConfigControlPlanePostgresProviderHeaderCIIndexKeyVerification(t *testi
 			err := verifyConfigControlPlaneProviderHeaderCIIndexPostgresMetadata(test.metadata)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("PostgreSQL index metadata verification error = %v, wantErr %t", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestConfigControlPlanePostgresOneActiveSetIndexSemanticVerification(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		metadata configControlPlanePostgresOneActiveSetIndexMetadata
+		wantErr  bool
+	}{
+		{name: "expected", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: "(status = 'active'::text)", Keys: []string{"runtime_scope"}}},
+		{name: "expected-quoted", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: `(("status")::text = 'active'::text)`, Keys: []string{`"runtime_scope"`}}},
+		{name: "non-unique", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: "(status = 'active'::text)", Keys: []string{"runtime_scope"}}, wantErr: true},
+		{name: "wrong-key", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: "(status = 'active'::text)", Keys: []string{"name"}}, wantErr: true},
+		{name: "extra-key", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 2, AttributeCount: 2, Predicate: "(status = 'active'::text)", Keys: []string{"runtime_scope", "name"}}, wantErr: true},
+		{name: "wrong-predicate", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: "(status = 'valid'::text)", Keys: []string{"runtime_scope"}}, wantErr: true},
+		{name: "not-partial", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Keys: []string{"runtime_scope"}}, wantErr: true},
+		{name: "included-column", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 2, Predicate: "(status = 'active'::text)", Keys: []string{"runtime_scope"}}, wantErr: true},
+		{name: "invalid", metadata: configControlPlanePostgresOneActiveSetIndexMetadata{Unique: true, Ready: true, Live: true, KeyCount: 1, AttributeCount: 1, Predicate: "(status = 'active'::text)", Keys: []string{"runtime_scope"}}, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := verifyConfigControlPlaneOneActiveSetPerScopeIndexPostgresMetadata(test.metadata)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("PostgreSQL active-set index metadata verification error = %v, wantErr %t", err, test.wantErr)
 			}
 		})
 	}

@@ -31,6 +31,8 @@ const configControlPlaneProviderHeaderNameCheck = "header_name = TRIM(header_nam
 
 const configControlPlaneProviderHeaderNameCIIndex = "router_config_provider_headers_name_ci"
 
+const configControlPlaneOneActiveSetPerScopeIndex = "router_config_one_active_set_per_scope"
+
 var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 3, MinData: 0, MaxData: 0}
 
 var configControlPlaneMigrationDefinitions = []MigrationDefinition{
@@ -270,6 +272,9 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 			}
 		}
 	}
+	if err := verifyConfigControlPlaneOneActiveSetPerScopeIndex(tx); err != nil {
+		return err
+	}
 	for table, constraints := range configControlPlaneRequiredConstraints {
 		for _, constraint := range constraints {
 			if !tx.Migrator().HasConstraint(table, constraint) {
@@ -283,6 +288,116 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+func verifyConfigControlPlaneOneActiveSetPerScopeIndex(tx *gorm.DB) error {
+	switch tx.Dialector.Name() {
+	case "sqlite":
+		return verifyConfigControlPlaneOneActiveSetPerScopeIndexSQLite(tx)
+	case "postgres":
+		return verifyConfigControlPlaneOneActiveSetPerScopeIndexPostgres(tx)
+	default:
+		return fmt.Errorf("unsupported control-plane database driver %q", tx.Dialector.Name())
+	}
+}
+
+func verifyConfigControlPlaneOneActiveSetPerScopeIndexSQLite(tx *gorm.DB) error {
+	var unique, partial int
+	if err := tx.Raw(`SELECT "unique", partial FROM pragma_index_list('router_config_sets') WHERE name = ?`, configControlPlaneOneActiveSetPerScopeIndex).Row().Scan(&unique, &partial); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_sets.%s is missing", configControlPlaneOneActiveSetPerScopeIndex)
+		}
+		return fmt.Errorf("inspect control-plane index router_config_sets.%s: %w", configControlPlaneOneActiveSetPerScopeIndex, err)
+	}
+	if unique != 1 {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must be unique", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	if partial != 1 {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must be partial for active sets", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	var definition string
+	if err := tx.Raw(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, configControlPlaneOneActiveSetPerScopeIndex).Row().Scan(&definition); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_sets.%s is missing", configControlPlaneOneActiveSetPerScopeIndex)
+		}
+		return fmt.Errorf("inspect control-plane index definition router_config_sets.%s: %w", configControlPlaneOneActiveSetPerScopeIndex, err)
+	}
+	const expected = "createuniqueindexrouter_config_one_active_set_per_scopeonrouter_config_sets(runtime_scope)wherestatus='active'"
+	if normalizeConfigControlPlaneIndexDefinition(definition) != expected {
+		return fmt.Errorf("required control-plane index router_config_sets.%s has unexpected SQLite key or predicate", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	return nil
+}
+
+func verifyConfigControlPlaneOneActiveSetPerScopeIndexPostgres(tx *gorm.DB) error {
+	const query = `SELECT index_info.indisunique,
+		index_info.indisvalid,
+		index_info.indisready,
+		index_info.indislive,
+		index_info.indnkeyatts,
+		index_info.indnatts,
+		pg_get_expr(index_info.indpred, index_info.indrelid, false),
+		pg_get_indexdef(index_info.indexrelid, 1, false)
+	FROM pg_index AS index_info
+	JOIN pg_class AS index_class ON index_class.oid = index_info.indexrelid
+	JOIN pg_namespace AS index_namespace ON index_namespace.oid = index_class.relnamespace
+	JOIN pg_class AS table_class ON table_class.oid = index_info.indrelid
+	JOIN pg_namespace AS table_namespace ON table_namespace.oid = table_class.relnamespace
+	WHERE table_namespace.nspname = current_schema()
+		AND index_namespace.nspname = current_schema()
+		AND table_class.relname = 'router_config_sets'
+		AND index_class.relname = ?`
+	metadata := configControlPlanePostgresOneActiveSetIndexMetadata{}
+	var predicate, key sql.NullString
+	if err := tx.Raw(query, configControlPlaneOneActiveSetPerScopeIndex).Row().Scan(&metadata.Unique, &metadata.Valid, &metadata.Ready, &metadata.Live, &metadata.KeyCount, &metadata.AttributeCount, &predicate, &key); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_sets.%s is missing", configControlPlaneOneActiveSetPerScopeIndex)
+		}
+		return fmt.Errorf("inspect control-plane index router_config_sets.%s: %w", configControlPlaneOneActiveSetPerScopeIndex, err)
+	}
+	metadata.Predicate = predicate.String
+	metadata.Keys = []string{key.String}
+	return verifyConfigControlPlaneOneActiveSetPerScopeIndexPostgresMetadata(metadata)
+}
+
+type configControlPlanePostgresOneActiveSetIndexMetadata struct {
+	Unique         bool
+	Valid          bool
+	Ready          bool
+	Live           bool
+	KeyCount       int
+	AttributeCount int
+	Predicate      string
+	Keys           []string
+}
+
+func verifyConfigControlPlaneOneActiveSetPerScopeIndexPostgresMetadata(metadata configControlPlanePostgresOneActiveSetIndexMetadata) error {
+	if !metadata.Unique {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must be unique", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	if !metadata.Valid || !metadata.Ready || !metadata.Live {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must be valid, ready, and live", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	expected := []string{"runtime_scope"}
+	if metadata.KeyCount != len(expected) || metadata.AttributeCount != len(expected) || len(metadata.Keys) != len(expected) {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must have exactly %d key", configControlPlaneOneActiveSetPerScopeIndex, len(expected))
+	}
+	for index, key := range metadata.Keys {
+		if normalizeConfigControlPlaneIndexDefinition(key) != expected[index] {
+			return fmt.Errorf("required control-plane index router_config_sets.%s has unexpected key %d", configControlPlaneOneActiveSetPerScopeIndex, index+1)
+		}
+	}
+	if normalizeConfigControlPlaneOneActiveSetPredicate(metadata.Predicate) != "status='active'" {
+		return fmt.Errorf("required control-plane index router_config_sets.%s must use the exact predicate status = 'active'", configControlPlaneOneActiveSetPerScopeIndex)
+	}
+	return nil
+}
+
+func normalizeConfigControlPlaneOneActiveSetPredicate(value string) string {
+	value = normalizeConfigControlPlaneIndexDefinition(value)
+	value = strings.ReplaceAll(value, "::text", "")
+	value = strings.ReplaceAll(value, "(", "")
+	return strings.ReplaceAll(value, ")", "")
 }
 
 // applyConfigControlPlanePhase2 puts the provider-header allowlist in the
@@ -466,7 +581,7 @@ var configControlPlaneRequiredColumns = map[string][]string{
 }
 
 var configControlPlaneRequiredIndexes = map[string][]string{
-	"router_config_sets":                {"router_config_one_active_set_per_scope"},
+	"router_config_sets":                {configControlPlaneOneActiveSetPerScopeIndex},
 	"router_config_model_group_targets": {"router_config_targets_provider_model"},
 }
 
