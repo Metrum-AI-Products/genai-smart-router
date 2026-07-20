@@ -111,3 +111,29 @@ func TestConfigControlPlaneAllowsOnlyOneActiveSetPerScope(t *testing.T) {
 		t.Fatal("second active set in one runtime scope must be rejected")
 	}
 }
+
+func TestConfigControlPlaneEnforcesTargetProviderAndModelForeignKeys(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "draft", "valid", now}},
+		{`INSERT INTO router_config_model_groups (config_set_id, group_name) VALUES (?, ?)`, []any{"set-1", "group"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.db.Exec(`INSERT INTO router_config_model_group_targets (config_set_id, group_name, sequence, provider_name, model_ref) VALUES (?, ?, ?, ?, ?)`, "set-1", "group", 1, "missing", "small").Error; err == nil {
+		t.Fatal("target with missing provider/model must be rejected")
+	}
+}

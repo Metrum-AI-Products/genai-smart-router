@@ -164,10 +164,47 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 			return fmt.Errorf("required control-plane table %s is missing", table)
 		}
 	}
+	for table, columns := range configControlPlaneRequiredColumns {
+		for _, column := range columns {
+			if !tx.Migrator().HasColumn(table, column) {
+				return fmt.Errorf("required control-plane column %s.%s is missing", table, column)
+			}
+		}
+	}
+	for table, indexes := range configControlPlaneRequiredIndexes {
+		for _, index := range indexes {
+			if !tx.Migrator().HasIndex(table, index) {
+				return fmt.Errorf("required control-plane index %s.%s is missing", table, index)
+			}
+		}
+	}
+	for table, constraints := range configControlPlaneRequiredConstraints {
+		for _, constraint := range constraints {
+			if !tx.Migrator().HasConstraint(table, constraint) {
+				return fmt.Errorf("required control-plane foreign key %s.%s is missing", table, constraint)
+			}
+		}
+	}
 	return nil
 }
 
 var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}
+
+var configControlPlaneRequiredColumns = map[string][]string{
+	"router_config_sets":                {"id", "runtime_scope", "status", "validation_status"},
+	"router_config_providers":           {"config_set_id", "provider_name", "base_url", "dialect"},
+	"router_config_provider_models":     {"config_set_id", "provider_name", "model_ref", "model"},
+	"router_config_model_group_targets": {"config_set_id", "group_name", "provider_name", "model_ref", "model"},
+}
+
+var configControlPlaneRequiredIndexes = map[string][]string{
+	"router_config_sets":                {"router_config_one_active_set_per_scope"},
+	"router_config_model_group_targets": {"router_config_targets_provider_model"},
+}
+
+var configControlPlaneRequiredConstraints = map[string][]string{
+	"router_config_model_group_targets": {"router_config_targets_group_fk", "router_config_targets_provider_fk", "router_config_targets_provider_model_fk"},
+}
 
 var configControlPlaneDDL = []string{
 	`CREATE TABLE IF NOT EXISTS router_config_sets (id TEXT PRIMARY KEY, runtime_scope TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, validation_status TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, activated_at TEXT NOT NULL DEFAULT '', UNIQUE (runtime_scope, name))`,
@@ -177,7 +214,8 @@ var configControlPlaneDDL = []string{
 	`CREATE TABLE IF NOT EXISTS router_config_provider_headers (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, header_name TEXT NOT NULL, header_value TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, header_name), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
 	`CREATE TABLE IF NOT EXISTS router_config_provider_models (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL, model TEXT NOT NULL, dialect TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', context_tokens BIGINT NOT NULL DEFAULT 0, input_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, output_price_per_million_usd DOUBLE PRECISION NOT NULL DEFAULT 0, pricing_source TEXT NOT NULL DEFAULT '', pricing_updated_at TEXT NOT NULL DEFAULT '', pricing_notes TEXT NOT NULL DEFAULT '', PRIMARY KEY (config_set_id, provider_name, model_ref), FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name))`,
 	`CREATE TABLE IF NOT EXISTS router_config_model_groups (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), group_name TEXT NOT NULL, strategy TEXT NOT NULL DEFAULT '', attempt_timeout_ms BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, group_name))`,
-	`CREATE TABLE IF NOT EXISTS router_config_model_group_targets (config_set_id TEXT NOT NULL, group_name TEXT NOT NULL, sequence BIGINT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', dialect TEXT NOT NULL DEFAULT '', weight BIGINT NOT NULL DEFAULT 0, rpm BIGINT NOT NULL DEFAULT 0, tier TEXT NOT NULL DEFAULT '', cost BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, group_name, sequence), FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name))`,
+	`CREATE TABLE IF NOT EXISTS router_config_model_group_targets (config_set_id TEXT NOT NULL, group_name TEXT NOT NULL, sequence BIGINT NOT NULL, provider_name TEXT NOT NULL, model_ref TEXT, model TEXT NOT NULL DEFAULT '', dialect TEXT NOT NULL DEFAULT '', weight BIGINT NOT NULL DEFAULT 0, rpm BIGINT NOT NULL DEFAULT 0, tier TEXT NOT NULL DEFAULT '', cost BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, group_name, sequence), CONSTRAINT router_config_targets_group_fk FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name), CONSTRAINT router_config_targets_provider_fk FOREIGN KEY (config_set_id, provider_name) REFERENCES router_config_providers(config_set_id, provider_name), CONSTRAINT router_config_targets_provider_model_fk FOREIGN KEY (config_set_id, provider_name, model_ref) REFERENCES router_config_provider_models(config_set_id, provider_name, model_ref))`,
+	`CREATE INDEX IF NOT EXISTS router_config_targets_provider_model ON router_config_model_group_targets(config_set_id, provider_name, model_ref)`,
 	`CREATE TABLE IF NOT EXISTS router_config_callers (config_set_id TEXT NOT NULL REFERENCES router_config_sets(id), caller_id TEXT NOT NULL, owner_user TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', environment TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '', token_sha256 TEXT NOT NULL DEFAULT '', token_id TEXT NOT NULL DEFAULT '', metrics_admin BOOLEAN NOT NULL DEFAULT FALSE, content_admin BOOLEAN NOT NULL DEFAULT FALSE, rpm BIGINT NOT NULL DEFAULT 0, tpm BIGINT NOT NULL DEFAULT 0, concurrent BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (config_set_id, caller_id))`,
 	`CREATE TABLE IF NOT EXISTS router_config_caller_allowed_groups (config_set_id TEXT NOT NULL, caller_id TEXT NOT NULL, group_name TEXT NOT NULL, PRIMARY KEY (config_set_id, caller_id, group_name), FOREIGN KEY (config_set_id, caller_id) REFERENCES router_config_callers(config_set_id, caller_id), FOREIGN KEY (config_set_id, group_name) REFERENCES router_config_model_groups(config_set_id, group_name))`,
 }
