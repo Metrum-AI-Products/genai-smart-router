@@ -41,6 +41,23 @@ def main() -> int:
         payload = cleanup.read_text(encoding="utf-8")
         if "AKIAEXAMPLEKEYID" not in payload or "SecretAccessKey" in payload:
             raise AssertionError("cleanup record must contain only the actionable key identifier")
+        try:
+            MODULE.require_no_unresolved_cleanup_record(cleanup)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("an unresolved cleanup record must block a retry before IAM mutation")
+        try:
+            MODULE.write_cleanup_record(cleanup, "smartrouter", "AKIASECONDKEYID")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("cleanup record writes must not overwrite an unresolved key record")
+        if cleanup.read_text(encoding="utf-8") != payload:
+            raise AssertionError("an unresolved cleanup record was overwritten")
+        MODULE.remove_cleanup_record(cleanup, "smartrouter", "AKIAEXAMPLEKEYID")
+        if cleanup.exists():
+            raise AssertionError("confirmed source-key deletion must remove only its own cleanup record")
     print("EKS session bootstrap safety tests passed")
     return 0
 

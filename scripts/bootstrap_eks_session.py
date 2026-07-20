@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -69,20 +70,68 @@ def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> Non
             temporary.unlink()
 
 
+def cleanup_record_payload(source_user: str, key_id: str) -> str:
+    return json.dumps({"source_user": source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n"
+
+
+def cleanup_record_exists(path: Path) -> bool:
+    # Use lexists so a dangling symlink cannot bypass recovery protection.
+    return os.path.lexists(path)
+
+
+def require_no_unresolved_cleanup_record(path: Path) -> None:
+    if cleanup_record_exists(path):
+        raise RuntimeError(
+            "an unresolved temporary source access-key cleanup record already exists; "
+            "delete the recorded key, then remove the record before retrying"
+        )
+
+
+def fsync_parent(path: Path) -> None:
+    """Persist a directory entry after creating or deleting a recovery record."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(path.parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def write_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    payload = json.dumps({"source_user": source_user, "access_key_id": key_id, "required_action": "delete temporary source access key"}) + "\n"
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    require_no_unresolved_cleanup_record(path)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            file.write(payload)
+            os.fchmod(file.fileno(), 0o600)
+            file.write(cleanup_record_payload(source_user, key_id))
             file.flush()
             os.fsync(file.fileno())
-        os.replace(temporary, path)
+        # link(2) is an atomic create: unlike os.replace it can never replace
+        # a record for an earlier still-active source key.
+        os.link(temporary, path)
+        fsync_parent(path)
+    except FileExistsError as exc:
+        raise RuntimeError(
+            "an unresolved temporary source access-key cleanup record already exists; "
+            "refusing to overwrite it"
+        ) from exc
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def remove_cleanup_record(path: Path, source_user: str, key_id: str) -> None:
+    """Remove only the record this invocation created after confirmed deletion."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("temporary source key was deleted but its cleanup record could not be safely verified") from exc
+    if payload != json.loads(cleanup_record_payload(source_user, key_id)):
+        raise RuntimeError("temporary source key was deleted but its cleanup record changed; preserving it for operator review")
+    path.unlink()
+    fsync_parent(path)
 
 
 def main() -> int:
@@ -109,6 +158,7 @@ def main() -> int:
         parser.error("invalid session duration or propagation wait")
     if str(args.cleanup_record) in {"", "."} or args.cleanup_record.is_dir():
         parser.error("--cleanup-record must be a non-directory protected file path")
+    require_no_unresolved_cleanup_record(args.cleanup_record)
     approved_account = args.role_arn.split(":")[4]
     if args.mfa_serial.split(":")[4] != approved_account:
         parser.error("role ARN and MFA serial must use the same approved account")
@@ -118,6 +168,7 @@ def main() -> int:
 
     key_id = ""
     deleted = False
+    cleanup_record_persisted = False
     def delete_source_key() -> bool:
         for _ in range(3):
             try:
@@ -132,6 +183,7 @@ def main() -> int:
         # Persist this before any network call or profile write: a killed process
         # must leave an actionable key identifier, never durable credentials.
         write_cleanup_record(args.cleanup_record, args.source_user, key_id)
+        cleanup_record_persisted = True
         if args.propagation_wait_seconds:
             time.sleep(args.propagation_wait_seconds)
         env = os.environ.copy()
@@ -143,15 +195,26 @@ def main() -> int:
         deleted = delete_source_key()
         if not deleted:
             raise RuntimeError("temporary source key deletion failed after retries")
-        args.cleanup_record.unlink(missing_ok=True)
+        remove_cleanup_record(args.cleanup_record, args.source_user, key_id)
+        cleanup_record_persisted = False
         key_id = ""
         role_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--output", "json"]))
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": role_identity["Arn"], "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:
-        if key_id:
-            if not delete_source_key() and not deleted:
-                write_cleanup_record(args.cleanup_record, args.source_user, key_id)
+        if key_id and not deleted:
+            deleted = delete_source_key()
+            if deleted:
+                if cleanup_record_persisted:
+                    remove_cleanup_record(args.cleanup_record, args.source_user, key_id)
+                    cleanup_record_persisted = False
+                key_id = ""
+            else:
+                if not cleanup_record_persisted:
+                    # This path is reachable only if a filesystem race/error
+                    # prevented the initial record write. Never replace an
+                    # existing recovery record; surface that failure instead.
+                    write_cleanup_record(args.cleanup_record, args.source_user, key_id)
                 raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
 

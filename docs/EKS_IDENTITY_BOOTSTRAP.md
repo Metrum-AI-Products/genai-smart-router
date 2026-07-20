@@ -56,7 +56,10 @@ Kubernetes RBAC remain separately required for `kubectl` reads.
 
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
 and writes a mode-0600 cleanup record containing only the temporary access-key
-ID and required deletion action—never the secret key.
+ID and required deletion action—never the secret key. If that record already
+exists, bootstrap refuses to create another source key. Delete the recorded
+key through the approved admin path, then remove the record before retrying;
+the bootstrap tool never overwrites an unresolved record.
 
 Use the Make targets to prevent implicit target selection and root-profile
 access. They validate identifiers, require the expected assumed role, and only
@@ -73,6 +76,7 @@ make eks-discover \
   EKS_LINKERD_NAMESPACE=linkerd \
   EKS_INGRESS_NAMESPACE=ingress-nginx \
   EKS_INGRESS_SERVICE_ACCOUNT=ingress-nginx \
+  EKS_LINKERD_TRUST_DOMAIN=cluster.local \
   EKS_ECR_REPOSITORY=approved-router-repository \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json
 ```
@@ -90,6 +94,7 @@ python3 scripts/eks_discover.py \
   --linkerd-namespace linkerd \
   --ingress-namespace ingress-nginx \
   --ingress-service-account ingress-nginx \
+  --linkerd-trust-domain cluster.local \
   --ecr-repository approved-router-repository \
   --output /secure/evidence/eks-discovery.json
 ```
@@ -99,8 +104,12 @@ cluster that does not use Linkerd. When selected, it is the explicit
 control-plane namespace (not a product default), and discovery requires the
 Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
 `ServerAuthorization` APIs used by the checked-in template. Select the actual
-ingress namespace and service account as well; discovery proves that exact
-identity exists before reporting Linkerd readiness.
+ingress namespace, service account, and deployment trust domain as well;
+discovery proves that the selected service account exists, records the derived
+Linkerd identity, and only then reports Linkerd readiness. It deliberately does
+not read Linkerd trust configuration payloads; supply the current trust domain
+from the approved mesh deployment configuration and review the derived identity
+before rendering.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
@@ -170,7 +179,20 @@ Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
 labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
 discovery must still confirm both versions and the ingress identity against the
-cluster before rendering.
+cluster before rendering. The template deliberately contains unresolved
+namespace and ingress-identity placeholders. Render it only from the successful
+scrubbed discovery report, not from hand-copied values:
+
+```bash
+make eks-render-linkerd-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+```
+
+The renderer derives `service-account.namespace.serviceaccount.identity.linkerd.trust-domain`
+from the verified report and rejects mismatched identities or unrendered
+placeholders. Review and server-side dry-run the resulting outside-repository
+artifact before any apply.
 
 ## Idempotence, Drift, And Rollback
 

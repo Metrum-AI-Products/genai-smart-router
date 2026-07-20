@@ -45,7 +45,10 @@ namespace injection, and identity/trust readiness before applying namespace
 policy resources. Select the actual Linkerd control-plane namespace during
 read-only discovery; clusters that do not use Linkerd may omit it. Review RBAC,
 service-account, network-policy, quota, and
-Linkerd-policy drift before overwriting it.
+Linkerd-policy drift before overwriting it. Render each `ServerAuthorization`
+from the successful discovery evidence for the selected ingress namespace,
+service account, and mesh trust domain; never apply a template with a fixed or
+unresolved ingress identity.
 
 ## Image And Architecture
 

@@ -1,10 +1,12 @@
-# Apply only after discovery confirms the installed Linkerd policy API/version.
-# This example is namespace-scoped and contains no trust material or secrets.
+# Render only after discovery verifies the selected ingress service account and
+# installed Linkerd policy API/version. Do not apply this unrendered template: use
+# `make eks-render-linkerd-policy` to derive the identity from the scrubbed,
+# validated discovery report. This template contains no trust material or secrets.
 apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: router-http
-  namespace: replace-with-approved-tenant-namespace
+  namespace: __TENANT_NAMESPACE__
 spec:
   podSelector:
     matchLabels:
@@ -16,11 +18,11 @@ apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: router-from-ingress
-  namespace: replace-with-approved-tenant-namespace
+  namespace: __TENANT_NAMESPACE__
 spec:
   server:
     name: router-http
   client:
     meshTLS:
       identities:
-        - "ingress-nginx.ingress-nginx.serviceaccount.identity.linkerd.cluster.local"
+        - "__LINKERD_INGRESS_IDENTITY__"

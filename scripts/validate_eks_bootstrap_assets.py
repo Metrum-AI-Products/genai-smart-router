@@ -31,6 +31,10 @@ def main() -> int:
         raise SystemExit("Linkerd Server template must use the served v1beta3 API")
     if "apiVersion: policy.linkerd.io/v1beta1\nkind: ServerAuthorization\n" not in linkerd:
         raise SystemExit("Linkerd ServerAuthorization template must use the separately served v1beta1 API")
+    if linkerd.count("__TENANT_NAMESPACE__") != 2 or linkerd.count("__LINKERD_INGRESS_IDENTITY__") != 1:
+        raise SystemExit("Linkerd policy must retain exactly the validated render placeholders")
+    if "ingress-nginx.ingress-nginx.serviceaccount.identity.linkerd.cluster.local" in linkerd:
+        raise SystemExit("Linkerd policy must not retain a fixed ingress identity")
 
     for path, required_resources in (
         (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses")),

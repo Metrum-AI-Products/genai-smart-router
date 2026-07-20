@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,10 @@ class DiscoveryError(RuntimeError):
     def __init__(self, message: str, *, code: str = "") -> None:
         super().__init__(message)
         self.code = code
+
+
+DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
 def run(command: list[str], *, required: bool = True) -> str:
@@ -71,6 +76,10 @@ def linkerd_injection_annotation(payload: dict[str, Any]) -> str:
     return str(payload.get("metadata", {}).get("annotations", {}).get("linkerd.io/inject", ""))
 
 
+def linkerd_ingress_identity(namespace: str, service_account: str, trust_domain: str) -> str:
+    return f"{service_account}.{namespace}.serviceaccount.identity.linkerd.{trust_domain}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only, redacted EKS bootstrap discovery")
     parser.add_argument("--profile", required=True, help="validated AWS CLI profile for the discovery role")
@@ -84,16 +93,22 @@ def main() -> int:
     )
     parser.add_argument("--ingress-namespace", help="ingress namespace required with Linkerd policy discovery")
     parser.add_argument("--ingress-service-account", help="ingress service account required with Linkerd policy discovery")
+    parser.add_argument("--linkerd-trust-domain", help="explicit Linkerd trust domain required with Linkerd policy discovery")
     parser.add_argument("--ecr-repository", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
     if not args.account_id.isdigit() or len(args.account_id) != 12:
         parser.error("--account-id must be an explicit 12-digit account ID")
-    if bool(args.ingress_namespace) != bool(args.ingress_service_account):
-        parser.error("--ingress-namespace and --ingress-service-account must be supplied together")
-    if args.linkerd_namespace and not args.ingress_namespace:
-        parser.error("Linkerd discovery requires the explicit ingress namespace and service account")
+    linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
+    if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
+        parser.error("--ingress-namespace, --ingress-service-account, and --linkerd-trust-domain must be supplied together")
+    if args.linkerd_namespace and not all(linkerd_identity_inputs):
+        parser.error("Linkerd discovery requires the explicit ingress namespace, service account, and trust domain")
+    if not args.linkerd_namespace and any(linkerd_identity_inputs):
+        parser.error("ingress identity is valid only when Linkerd discovery is selected")
+    if args.linkerd_namespace and (not DNS_LABEL.fullmatch(args.ingress_namespace) or not DNS_LABEL.fullmatch(args.ingress_service_account) or not TRUST_DOMAIN.fullmatch(args.linkerd_trust_domain)):
+        parser.error("invalid Linkerd ingress namespace, service account, or trust domain")
     if shutil.which("aws") is None or shutil.which("kubectl") is None:
         raise DiscoveryError("aws and kubectl are both required")
 
@@ -124,8 +139,13 @@ def main() -> int:
             "namespace_injection_labels": {k: v for k, v in namespace_labels(namespace).items() if "linkerd.io" in k},
             "namespace_injection_annotation": linkerd_injection_annotation(namespace),
             "identity_service_accounts": [],
+            "ingress_namespace": args.ingress_namespace,
+            "ingress_service_account": args.ingress_service_account,
+            "trust_domain": args.linkerd_trust_domain,
+            "ingress_identity": "",
             "ingress_identity_verified": False,
             "trust_identity_config_payload_read": False,
+            "trust_domain_source": "explicit operator selection; Linkerd trust configuration payload not read",
         }
         if args.linkerd_namespace:
             api_resources = run(["kubectl", "--kubeconfig", str(kubeconfig), "--context", context, "api-resources", "--api-group=policy.linkerd.io", "-o", "name"]).splitlines()
@@ -137,6 +157,7 @@ def main() -> int:
             ingress_service_accounts = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "serviceaccounts"])
             if args.ingress_service_account not in item_names(ingress_service_accounts):
                 raise DiscoveryError("selected ingress service account is unavailable for Linkerd policy identity")
+            ingress_identity = linkerd_ingress_identity(args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
             linkerd_crd_versions: dict[str, list[str]] = {}
             for crd in sorted(required_linkerd_resources):
                 crd_payload = kubectl_json(kubeconfig, ["--context", context, "get", "customresourcedefinition", crd])
@@ -150,6 +171,7 @@ def main() -> int:
                 "policy_api_resources": sorted(api_resources),
                 "policy_crd_served_versions": linkerd_crd_versions,
                 "identity_service_accounts": item_names(linkerd_service_accounts),
+                "ingress_identity": ingress_identity,
                 "ingress_identity_verified": True,
             })
 

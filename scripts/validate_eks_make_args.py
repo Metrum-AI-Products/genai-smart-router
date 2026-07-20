@@ -15,6 +15,7 @@ PATTERNS = {
     "region": re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$"),
     "cluster": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"),
     "namespace": re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$"),
+    "trust-domain": re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"),
     "ecr-repository": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"),
 }
 
@@ -30,6 +31,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--linkerd-namespace")
     result.add_argument("--ingress-namespace")
     result.add_argument("--ingress-service-account")
+    result.add_argument("--linkerd-trust-domain")
     result.add_argument("--ecr-repository")
     result.add_argument("--output")
     return result
@@ -50,12 +52,14 @@ def main() -> int:
                 validate(name, value)
             if args.linkerd_namespace:
                 validate("namespace", args.linkerd_namespace)
-            if bool(args.ingress_namespace) != bool(args.ingress_service_account):
-                raise ValueError("ingress namespace and service account must be supplied together")
+            linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
+            if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
+                raise ValueError("ingress namespace, service account, and Linkerd trust domain must be supplied together")
             if args.linkerd_namespace:
                 validate("namespace", args.ingress_namespace)
                 validate("namespace", args.ingress_service_account)
-            elif args.ingress_namespace:
+                validate("trust-domain", args.linkerd_trust_domain)
+            elif any(linkerd_identity_inputs):
                 raise ValueError("ingress identity is only valid when Linkerd discovery is selected")
             output = Path(args.output or "")
             if not output.is_absolute() or output.parent == Path("/"):
