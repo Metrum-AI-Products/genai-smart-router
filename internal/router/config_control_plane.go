@@ -141,10 +141,16 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 		if err := db.Where("config_set_id = ? AND provider_name = ?", set.ID, row.ProviderName).Order("header_name ASC").Find(&headers).Error; err != nil {
 			return nil, err
 		}
+		canonicalHeaderNames := make(map[string]string, len(headers))
 		for _, h := range headers {
 			if !controlPlaneAllowedProviderHeader(h.HeaderName) {
 				return nil, fmt.Errorf("provider %q uses unsupported header %q; provider headers are limited to approved non-secret metadata headers and credentials must use api_key_env or a deployment secret reference", row.ProviderName, h.HeaderName)
 			}
+			canonicalHeaderName := strings.ToLower(h.HeaderName)
+			if existing, exists := canonicalHeaderNames[canonicalHeaderName]; exists {
+				return nil, fmt.Errorf("provider %q has case-insensitive duplicate header names %q and %q", row.ProviderName, existing, h.HeaderName)
+			}
+			canonicalHeaderNames[canonicalHeaderName] = h.HeaderName
 			p.Headers[h.HeaderName] = h.HeaderValue
 		}
 		var models []providerModelRow
@@ -321,10 +327,109 @@ func verifyConfigControlPlanePhase3(tx *gorm.DB) error {
 	if err := verifyConfigControlPlanePhase2(tx); err != nil {
 		return err
 	}
-	if !tx.Migrator().HasIndex("router_config_provider_headers", configControlPlaneProviderHeaderNameCIIndex) {
-		return fmt.Errorf("required control-plane index router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameCIIndex)
+	switch tx.Dialector.Name() {
+	case "sqlite":
+		return verifyConfigControlPlaneProviderHeaderCIIndexSQLite(tx)
+	case "postgres":
+		return verifyConfigControlPlaneProviderHeaderCIIndexPostgres(tx)
+	default:
+		return fmt.Errorf("unsupported control-plane database driver %q", tx.Dialector.Name())
+	}
+}
+
+func verifyConfigControlPlaneProviderHeaderCIIndexSQLite(tx *gorm.DB) error {
+	var unique int
+	if err := tx.Raw(`SELECT "unique" FROM pragma_index_list('router_config_provider_headers') WHERE name = ?`, configControlPlaneProviderHeaderNameCIIndex).Row().Scan(&unique); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameCIIndex)
+		}
+		return fmt.Errorf("inspect control-plane index router_config_provider_headers.%s: %w", configControlPlaneProviderHeaderNameCIIndex, err)
+	}
+	if unique != 1 {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s must be unique", configControlPlaneProviderHeaderNameCIIndex)
+	}
+	var definition string
+	if err := tx.Raw(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, configControlPlaneProviderHeaderNameCIIndex).Row().Scan(&definition); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameCIIndex)
+		}
+		return fmt.Errorf("inspect control-plane index definition router_config_provider_headers.%s: %w", configControlPlaneProviderHeaderNameCIIndex, err)
+	}
+	const expected = "createuniqueindexrouter_config_provider_headers_name_cionrouter_config_provider_headers(config_set_id,provider_name,lower(header_name))"
+	if normalizeConfigControlPlaneIndexDefinition(definition) != expected {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s has unexpected SQLite keys or expression", configControlPlaneProviderHeaderNameCIIndex)
 	}
 	return nil
+}
+
+func verifyConfigControlPlaneProviderHeaderCIIndexPostgres(tx *gorm.DB) error {
+	const query = `SELECT index_info.indisunique,
+		index_info.indisvalid,
+		index_info.indisready,
+		index_info.indislive,
+		index_info.indnkeyatts,
+		index_info.indnatts,
+		index_info.indpred IS NULL,
+		pg_get_indexdef(index_info.indexrelid, 1, false),
+		pg_get_indexdef(index_info.indexrelid, 2, false),
+		pg_get_indexdef(index_info.indexrelid, 3, false)
+	FROM pg_index AS index_info
+	JOIN pg_class AS index_class ON index_class.oid = index_info.indexrelid
+	JOIN pg_namespace AS index_namespace ON index_namespace.oid = index_class.relnamespace
+	JOIN pg_class AS table_class ON table_class.oid = index_info.indrelid
+	JOIN pg_namespace AS table_namespace ON table_namespace.oid = table_class.relnamespace
+	WHERE table_namespace.nspname = current_schema()
+		AND index_namespace.nspname = current_schema()
+		AND table_class.relname = 'router_config_provider_headers'
+		AND index_class.relname = ?`
+	metadata := configControlPlanePostgresIndexMetadata{}
+	var keyOne, keyTwo, keyThree sql.NullString
+	if err := tx.Raw(query, configControlPlaneProviderHeaderNameCIIndex).Row().Scan(&metadata.Unique, &metadata.Valid, &metadata.Ready, &metadata.Live, &metadata.KeyCount, &metadata.AttributeCount, &metadata.NoPredicate, &keyOne, &keyTwo, &keyThree); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("required control-plane index router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameCIIndex)
+		}
+		return fmt.Errorf("inspect control-plane index router_config_provider_headers.%s: %w", configControlPlaneProviderHeaderNameCIIndex, err)
+	}
+	metadata.Keys = []string{keyOne.String, keyTwo.String, keyThree.String}
+	return verifyConfigControlPlaneProviderHeaderCIIndexPostgresMetadata(metadata)
+}
+
+type configControlPlanePostgresIndexMetadata struct {
+	Unique         bool
+	Valid          bool
+	Ready          bool
+	Live           bool
+	KeyCount       int
+	AttributeCount int
+	NoPredicate    bool
+	Keys           []string
+}
+
+func verifyConfigControlPlaneProviderHeaderCIIndexPostgresMetadata(metadata configControlPlanePostgresIndexMetadata) error {
+	if !metadata.Unique {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s must be unique", configControlPlaneProviderHeaderNameCIIndex)
+	}
+	if !metadata.Valid || !metadata.Ready || !metadata.Live {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s must be valid, ready, and live", configControlPlaneProviderHeaderNameCIIndex)
+	}
+	if !metadata.NoPredicate {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s must not be partial", configControlPlaneProviderHeaderNameCIIndex)
+	}
+	expected := []string{"config_set_id", "provider_name", "lower(header_name)"}
+	if metadata.KeyCount != len(expected) || metadata.AttributeCount != len(expected) || len(metadata.Keys) != len(expected) {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s must have exactly %d keys", configControlPlaneProviderHeaderNameCIIndex, len(expected))
+	}
+	for index, key := range metadata.Keys {
+		if normalizeConfigControlPlaneIndexDefinition(key) != expected[index] {
+			return fmt.Errorf("required control-plane index router_config_provider_headers.%s has unexpected key %d", configControlPlaneProviderHeaderNameCIIndex, index+1)
+		}
+	}
+	return nil
+}
+
+func normalizeConfigControlPlaneIndexDefinition(value string) string {
+	value = strings.ReplaceAll(strings.ToLower(value), `"`, "")
+	return strings.Join(strings.Fields(value), "")
 }
 
 var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}

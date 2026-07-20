@@ -290,6 +290,102 @@ func TestConfigControlPlanePhase3FailsClosedOnExistingCaseInsensitiveHeaderDupli
 	}
 }
 
+func TestLoadActiveConfigFromDBRejectsCaseVariantHeadersBeforePhase3(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	phase2Runner, err := NewMigrationRunner(r.db, configControlPlaneScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, configControlPlaneMigrationDefinitions[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := phase2Runner.ApplyPending("test-online"); err == nil || !strings.Contains(err.Error(), "requires explicit maintenance runner") {
+		t.Fatalf("phase 2 must require explicit maintenance, got %v", err)
+	}
+	if err := phase2Runner.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group, license_enabled, license_path) VALUES (?, ?, ?, ?)`, []any{"set-1", "default", true, "license.json"}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "X-Title", "one"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "x-title", "two"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 2 || status.State != "pending" {
+		t.Fatalf("phase-2 migration status = %+v, want pending schema 2", status)
+	}
+	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "case-insensitive duplicate header") {
+		t.Fatalf("expected case-variant header read failure before phase 3, got %v", err)
+	}
+}
+
+func TestConfigControlPlanePhase3VerifierRejectsIndexSemanticDrift(t *testing.T) {
+	for name, statement := range map[string]string{
+		"non-unique":       `CREATE INDEX router_config_provider_headers_name_ci ON router_config_provider_headers(config_set_id, provider_name, LOWER(header_name))`,
+		"wrong-expression": `CREATE UNIQUE INDEX router_config_provider_headers_name_ci ON router_config_provider_headers(config_set_id, provider_name, LOWER(header_value))`,
+		"wrong-order":      `CREATE UNIQUE INDEX router_config_provider_headers_name_ci ON router_config_provider_headers(provider_name, config_set_id, LOWER(header_name))`,
+		"partial":          `CREATE UNIQUE INDEX router_config_provider_headers_name_ci ON router_config_provider_headers(config_set_id, provider_name, LOWER(header_name)) WHERE header_name IS NOT NULL`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = closeDB() }()
+			applyConfigControlPlaneMigrationsForTest(t, r)
+			if err := r.db.Exec(`DROP INDEX router_config_provider_headers_name_ci`).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := r.db.Exec(statement).Error; err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.Verify(); err == nil || !strings.Contains(err.Error(), configControlPlaneProviderHeaderNameCIIndex) {
+				t.Fatalf("expected phase-3 index semantic verification failure, got %v", err)
+			}
+		})
+	}
+}
+
+func TestConfigControlPlanePostgresProviderHeaderCIIndexKeyVerification(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		metadata configControlPlanePostgresIndexMetadata
+		wantErr  bool
+	}{
+		{name: "expected", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}},
+		{name: "expected-quoted", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{`"config_set_id"`, `"provider_name"`, `lower("header_name")`}}},
+		{name: "non-unique", metadata: configControlPlanePostgresIndexMetadata{Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "wrong-expression", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_value)"}}, wantErr: true},
+		{name: "partial", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "included-column", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 4, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "invalid", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "not-ready", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "not-live", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"config_set_id", "provider_name", "lower(header_name)"}}, wantErr: true},
+		{name: "wrong-order", metadata: configControlPlanePostgresIndexMetadata{Unique: true, Valid: true, Ready: true, Live: true, NoPredicate: true, KeyCount: 3, AttributeCount: 3, Keys: []string{"provider_name", "config_set_id", "lower(header_name)"}}, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := verifyConfigControlPlaneProviderHeaderCIIndexPostgresMetadata(test.metadata)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("PostgreSQL index metadata verification error = %v, wantErr %t", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadActiveConfigFromDBAcceptsInlineTargetWithoutModelRef(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {

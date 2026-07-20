@@ -24,6 +24,14 @@ configuration set cannot contain conflicting casing variants. Values in these
 metadata fields must remain non-secret. Use `api_key_env` or a
 deployment-managed secret reference for every upstream credential.
 
+The read path independently rejects case-insensitive duplicate provider-header
+names. That guard remains active when a database has only the phase-2 prefix or
+an unavailable migration ledger, so header-map iteration can never select an
+ambiguous upstream value. Phase 3 verifies the named unique expression index
+semantically on both SQLite and PostgreSQL: it must be unique and contain
+exactly `config_set_id`, `provider_name`, and `LOWER(header_name)` in that
+order.
+
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
 active set and reuses `Config.Validate`; missing active state and invalid
 relational data fail closed. Runtime DB mode, YAML import/export, write APIs,
