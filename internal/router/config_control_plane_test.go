@@ -47,6 +47,7 @@ func TestConfigControlPlanePhase1MigratesRelationalSchema(t *testing.T) {
 }
 
 func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
+	t.Setenv("MOCK_API_KEY", "test-only-control-plane-provider-key")
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +76,12 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.DefaultModelGroup != "default" || cfg.Provider["mock"].Headers["X-Title"] != "test" {
-		t.Fatalf("server/provider projection mismatch: %+v", cfg)
+	provider, ok := cfg.Provider["mock"]
+	if !ok || cfg.Server.DefaultModelGroup != "default" || provider.Headers["X-Title"] != "test" {
+		t.Fatal("server/provider projection mismatch")
+	}
+	if provider.APIKey != "test-only-control-plane-provider-key" || provider.APIKeyEnv != "MOCK_API_KEY" {
+		t.Fatal("provider credential environment reference was not resolved into the runtime config")
 	}
 	if !cfg.Server.License.Enabled || cfg.Server.License.Path != "license.json" || cfg.Server.License.StatePath != "license-state.json" {
 		t.Fatalf("license projection mismatch: %+v", cfg.Server.License)
@@ -84,7 +89,7 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 	if target := cfg.Models["default"].Targets[0]; target.Provider != "mock" || target.ModelRef != "small" || target.Weight != 100 {
 		t.Fatalf("target projection mismatch: %+v", target)
 	}
-	if model := cfg.Provider["mock"].Models["small"]; model.Model != "mock-small" || model.ContextTokens != 8192 {
+	if model := provider.Models["small"]; model.Model != "mock-small" || model.ContextTokens != 8192 {
 		t.Fatalf("model projection mismatch: %+v", model)
 	}
 }

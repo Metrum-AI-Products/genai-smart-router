@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -136,7 +137,11 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 		return nil, err
 	}
 	for _, row := range providers {
-		p := ProviderConfig{BaseURL: row.BaseURL, Dialect: row.Dialect, APIKeyEnv: row.APIKeyEnv, KeyID: row.KeyID, AuthScheme: row.AuthScheme, Headers: map[string]string{}, Models: map[string]ProviderModel{}}
+		apiKey, err := resolveControlPlaneProviderAPIKey(row.ProviderName, row.APIKeyEnv)
+		if err != nil {
+			return nil, err
+		}
+		p := ProviderConfig{BaseURL: row.BaseURL, Dialect: row.Dialect, APIKey: apiKey, APIKeyEnv: row.APIKeyEnv, KeyID: row.KeyID, AuthScheme: row.AuthScheme, Headers: map[string]string{}, Models: map[string]ProviderModel{}}
 		var headers []providerHeaderRow
 		if err := db.Where("config_set_id = ? AND provider_name = ?", set.ID, row.ProviderName).Order("header_name ASC").Find(&headers).Error; err != nil {
 			return nil, err
@@ -201,6 +206,20 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 		return nil, fmt.Errorf("validate active config set %q: %w", set.ID, err)
 	}
 	return cfg, nil
+}
+
+// resolveControlPlaneProviderAPIKey resolves only the deployment-local
+// environment reference. The relational projection never stores or logs the
+// credential value, and an unset value remains valid for catalog-only rows.
+func resolveControlPlaneProviderAPIKey(providerName, envName string) (string, error) {
+	if envName == "" {
+		return "", nil
+	}
+	if envName != strings.TrimSpace(envName) || !validEnvName(envName) {
+		return "", fmt.Errorf("provider %q has invalid api_key_env", providerName)
+	}
+	apiKey, _ := os.LookupEnv(envName)
+	return apiKey, nil
 }
 
 func controlPlaneAllowedProviderHeader(name string) bool {

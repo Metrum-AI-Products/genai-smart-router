@@ -34,7 +34,11 @@ order.
 
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
 active set and reuses `Config.Validate`; missing active state and invalid
-relational data fail closed. Runtime DB mode, YAML import/export, write APIs,
+relational data fail closed. For a provider with `api_key_env`, it resolves the
+named deployment environment variable only into the returned in-memory runtime
+configuration; it never writes or logs that value. An unset reference remains
+unconfigured so catalog-only providers can stay cataloged without an entitled
+credential. Runtime DB mode, YAML import/export, write APIs,
 activation/rollback actions, PostgREST, Caddy, secret persistence, and hot
 reload remain later issue #7 phases.
 
