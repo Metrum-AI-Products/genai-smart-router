@@ -126,6 +126,7 @@ def test_make_discover_invalidates_before_identity_failure(root: Path) -> None:
         "EKS_LINKERD_NAMESPACE": "",
         "EKS_INGRESS_NAMESPACE": "",
         "EKS_INGRESS_SERVICE_ACCOUNT": "",
+        "EKS_INGRESS_DEPLOYMENT": "",
         "EKS_LINKERD_TRUST_DOMAIN": "",
         "EKS_ECR_REPOSITORY": "approved-router-repository",
         "EKS_DISCOVERY_OUTPUT": str(output),
@@ -220,6 +221,73 @@ def test_output_lock_is_exclusive(root: Path) -> None:
             raise AssertionError("a second local discovery run acquired the same output lock")
 
 
+def ingress_workload_payloads() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    deployment = {
+        "metadata": {"uid": "deployment-uid"},
+        "spec": {"replicas": 2, "template": {"spec": {"serviceAccountName": "ingress-proxy"}}},
+        "status": {"availableReplicas": 2},
+    }
+    replica_sets = {
+        "items": [{
+            "metadata": {
+                "name": "ingress-controller-abc123",
+                "uid": "replicaset-uid",
+                "ownerReferences": [{"kind": "Deployment", "name": "ingress-controller", "uid": "deployment-uid", "controller": True}],
+            },
+        }],
+    }
+    pods = {
+        "items": [
+            {
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "ingress-controller-abc123", "uid": "replicaset-uid", "controller": True}]},
+                "spec": {"serviceAccountName": "ingress-proxy"},
+                "status": {
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "containerStatuses": [{"name": "controller", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
+                },
+            },
+            {
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "ingress-controller-abc123", "uid": "replicaset-uid", "controller": True}]},
+                "spec": {"serviceAccountName": "ingress-proxy"},
+                "status": {
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "containerStatuses": [{"name": "controller", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
+                },
+            },
+        ],
+    }
+    return deployment, replica_sets, pods
+
+
+def test_ingress_workload_requires_actual_meshed_service_account() -> None:
+    deployment, replica_sets, pods = ingress_workload_payloads()
+    evidence = MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+    if evidence != {
+        "ingress_workload_kind": "Deployment",
+        "ingress_workload_name": "ingress-controller",
+        "ingress_workload_desired_replicas": 2,
+        "ingress_workload_ready_pods": 2,
+        "ingress_workload_verified": True,
+        "ingress_workload_mesh_ready": True,
+    }:
+        raise AssertionError("ready Linkerd ingress deployment did not produce bounded scalar evidence")
+    deployment["spec"]["template"]["spec"]["serviceAccountName"] = "different-service-account"  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress identity verification accepted a deployment with a different service account")
+    deployment, replica_sets, pods = ingress_workload_payloads()
+    pods["items"][0]["status"]["containerStatuses"][1]["ready"] = False  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress identity verification accepted a Pod without a ready Linkerd proxy")
+
+
 def main() -> int:
     test_command_failure_never_copies_stderr()
     with tempfile.TemporaryDirectory() as directory:
@@ -231,6 +299,7 @@ def main() -> int:
         test_failed_publish_leaves_no_report(root)
         test_unsafe_output_paths_are_rejected_without_deletion(root)
         test_output_lock_is_exclusive(root)
+        test_ingress_workload_requires_actual_meshed_service_account()
     print("EKS discovery diagnostic safeguards passed")
     return 0
 

@@ -117,6 +117,7 @@ make eks-discover \
   EKS_LINKERD_NAMESPACE=linkerd \
   EKS_INGRESS_NAMESPACE=ingress-nginx \
   EKS_INGRESS_SERVICE_ACCOUNT=ingress-nginx \
+  EKS_INGRESS_DEPLOYMENT=ingress-nginx-controller \
   EKS_LINKERD_TRUST_DOMAIN=cluster.local \
   EKS_ECR_REPOSITORY=approved-router-repository \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json
@@ -135,6 +136,7 @@ python3 scripts/eks_discover.py \
   --linkerd-namespace linkerd \
   --ingress-namespace ingress-nginx \
   --ingress-service-account ingress-nginx \
+  --ingress-deployment ingress-nginx-controller \
   --linkerd-trust-domain cluster.local \
   --ecr-repository approved-router-repository \
   --output /secure/evidence/eks-discovery.json
@@ -145,20 +147,26 @@ cluster that does not use Linkerd. When selected, it is the explicit
 control-plane namespace (not a product default), and discovery requires the
 Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
 `ServerAuthorization` APIs used by the checked-in template. Select the actual
-ingress namespace, service account, and deployment trust domain as well;
-discovery proves that the selected service account exists, records the derived
-Linkerd identity, and only then reports Linkerd readiness. It deliberately does
-not read Linkerd trust configuration payloads; supply the current trust domain
-from the approved mesh deployment configuration and review the derived identity
-before rendering.
+ingress namespace, service account, Deployment, and deployment trust domain as
+well. Discovery proves that the selected Deployment uses that service account,
+has its declared replicas available, and has ready controller-owned Pods with a
+ready `linkerd-proxy` sidecar before it records the derived Linkerd identity as
+verified. This prevents a policy from authorizing an identity that the ingress
+does not actually present. The current contract supports an ingress
+`Deployment`; add a separately reviewed discovery contract before using a
+different workload kind. Discovery deliberately does not read Linkerd trust
+configuration payloads; supply the current trust domain from the approved mesh
+deployment configuration and review the derived identity before rendering.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
 containing only safe names, booleans, versions, labels needed for Linkerd
 injection, and policy presence. An expired session, wrong account, missing
 namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
-a success report. When Linkerd was selected, missing Linkerd API/RBAC also
-fails before success; otherwise the report records Linkerd as not requested.
+a success report. When Linkerd was selected, missing Linkerd API/RBAC, a
+mismatched ingress Deployment service account, or an unready/non-meshed ingress
+Pod also fails before success; otherwise the report records Linkerd as not
+requested.
 Discovery locally serializes use of one output path, invalidates its previous
 report before its discovery-role check or any other live probe, and atomically
 publishes only a fully successful replacement. A failed role check, probe, or
@@ -196,9 +204,11 @@ Services, PVCs, and Ingresses. If Linkerd discovery is selected, apply the
 separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
 Linkerd control-plane namespace and
 `eks-discovery-ingress-namespace-rbac.example.yaml` in the selected ingress
-namespace. All templates bind the EKS access entry's configured Kubernetes
-group, not its IAM principal ARN; none grants Secret or ConfigMap reads or any
-write verb.
+namespace. The ingress binding has only read access to ServiceAccounts,
+Deployments, ReplicaSets, and Pods in that one namespace so discovery can trace
+the selected Deployment to its ready Linkerd-proxy Pods; it grants no Secret or
+ConfigMap reads. All templates bind the EKS access entry's configured Kubernetes
+group, not its IAM principal ARN; none grants a write verb.
 
 The router workload uses EKS Pod Identity or IRSA only after discovery confirms
 cluster support. Its AWS policy may read only approved secret references and
@@ -224,8 +234,9 @@ control-plane namespace during discovery and verify the discovered
 Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
 labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
-discovery must still confirm both versions and the ingress identity against the
-cluster before rendering. The template deliberately contains unresolved
+discovery must still confirm both versions and the ingress Deployment's actual
+meshed service-account identity against the cluster before rendering. The
+template deliberately contains unresolved
 namespace and ingress-identity placeholders. Render it only from the successful
 scrubbed discovery report, not from hand-copied values:
 

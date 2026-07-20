@@ -1,7 +1,8 @@
 # Apply only when Linkerd policy discovery selects an ingress identity. Replace
 # the namespace and Kubernetes group with the values configured on the EKS
-# access entry. This intentionally permits only the service-account read used
-# to prove the selected Linkerd ingress identity exists.
+# access entry. This intentionally permits only the read-only workload,
+# service-account, and Pod state checks used to prove the selected Linkerd
+# ingress identity is actually presented by a ready meshed ingress Deployment.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -9,7 +10,10 @@ metadata:
   namespace: replace-with-approved-ingress-namespace
 rules:
   - apiGroups: [""]
-    resources: ["serviceaccounts"]
+    resources: ["serviceaccounts", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

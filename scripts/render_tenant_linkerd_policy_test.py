@@ -23,6 +23,8 @@ def discovery() -> dict[str, object]:
         "linkerd": {
             "requested": True,
             "ingress_identity_verified": True,
+            "ingress_workload_verified": True,
+            "ingress_workload_mesh_ready": True,
             "ingress_namespace": "gateway-system",
             "ingress_service_account": "gateway-proxy",
             "trust_domain": "mesh.example",
@@ -51,6 +53,16 @@ def main() -> int:
         pass
     else:
         raise AssertionError("renderer accepted an identity not derived from validated discovery values")
+    invalid_mesh = discovery()
+    invalid_mesh_linkerd = invalid_mesh["linkerd"]
+    assert isinstance(invalid_mesh_linkerd, dict)
+    invalid_mesh_linkerd["ingress_workload_mesh_ready"] = False
+    try:
+        MODULE.render(template, invalid_mesh)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("renderer accepted identity evidence without a ready meshed ingress workload")
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "tenant-linkerd-policy.yaml"
         MODULE.atomic_write(output, rendered)

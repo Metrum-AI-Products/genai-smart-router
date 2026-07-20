@@ -39,7 +39,7 @@ def main() -> int:
     for path, required_resources in (
         (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses")),
         (DISCOVERY_LINKERD_RBAC, ("serviceaccounts",)),
-        (DISCOVERY_INGRESS_RBAC, ("serviceaccounts",)),
+        (DISCOVERY_INGRESS_RBAC, ("serviceaccounts", "deployments", "replicasets", "pods")),
     ):
         content = path.read_text(encoding="utf-8")
         if "kind: Role\n" not in content or "kind: RoleBinding\n" not in content or "kind: Group\n" not in content:

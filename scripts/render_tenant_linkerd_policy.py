@@ -39,7 +39,12 @@ def render(template: str, discovery: dict[str, Any]) -> str:
     linkerd = discovery.get("linkerd")
     if not isinstance(selection, dict) or not isinstance(linkerd, dict):
         raise ValueError("discovery report is missing selection or Linkerd evidence")
-    if linkerd.get("requested") is not True or linkerd.get("ingress_identity_verified") is not True:
+    if (
+        linkerd.get("requested") is not True
+        or linkerd.get("ingress_identity_verified") is not True
+        or linkerd.get("ingress_workload_verified") is not True
+        or linkerd.get("ingress_workload_mesh_ready") is not True
+    ):
         raise ValueError("Linkerd ingress identity was not verified by discovery")
     tenant_namespace = require_label(selection.get("namespace"), "tenant namespace")
     ingress_namespace = require_label(linkerd.get("ingress_namespace"), "ingress namespace")

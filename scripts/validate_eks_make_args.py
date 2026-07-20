@@ -31,6 +31,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--linkerd-namespace")
     result.add_argument("--ingress-namespace")
     result.add_argument("--ingress-service-account")
+    result.add_argument("--ingress-deployment")
     result.add_argument("--linkerd-trust-domain")
     result.add_argument("--ecr-repository")
     result.add_argument("--output")
@@ -52,12 +53,13 @@ def main() -> int:
                 validate(name, value)
             if args.linkerd_namespace:
                 validate("namespace", args.linkerd_namespace)
-            linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
+            linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
             if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
-                raise ValueError("ingress namespace, service account, and Linkerd trust domain must be supplied together")
+                raise ValueError("ingress namespace, service account, deployment, and Linkerd trust domain must be supplied together")
             if args.linkerd_namespace:
                 validate("namespace", args.ingress_namespace)
                 validate("namespace", args.ingress_service_account)
+                validate("namespace", args.ingress_deployment)
                 validate("trust-domain", args.linkerd_trust_domain)
             elif any(linkerd_identity_inputs):
                 raise ValueError("ingress identity is only valid when Linkerd discovery is selected")

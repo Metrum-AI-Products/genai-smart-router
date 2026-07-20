@@ -84,6 +84,96 @@ def linkerd_ingress_identity(namespace: str, service_account: str, trust_domain:
     return f"{service_account}.{namespace}.serviceaccount.identity.linkerd.{trust_domain}"
 
 
+def controller_owned_by(payload: dict[str, Any], kind: str, name: str, uid: str) -> bool:
+    """Check the full controller owner reference, including UID across recreations."""
+    return any(
+        isinstance(owner, dict)
+        and owner.get("controller") is True
+        and owner.get("kind") == kind
+        and owner.get("name") == name
+        and owner.get("uid") == uid
+        for owner in payload.get("metadata", {}).get("ownerReferences", [])
+    )
+
+
+def non_terminating_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in payload.get("items", [])
+        if isinstance(item, dict) and not item.get("metadata", {}).get("deletionTimestamp")
+    ]
+
+
+def ready_linkerd_ingress_pod(payload: dict[str, Any], service_account: str) -> bool:
+    spec = payload.get("spec", {})
+    status = payload.get("status", {})
+    if not isinstance(spec, dict) or not isinstance(status, dict) or spec.get("serviceAccountName") != service_account:
+        return False
+    ready = any(
+        isinstance(condition, dict) and condition.get("type") == "Ready" and condition.get("status") == "True"
+        for condition in status.get("conditions", [])
+    )
+    proxy_ready = any(
+        isinstance(container, dict) and container.get("name") == "linkerd-proxy" and container.get("ready") is True
+        for container in status.get("containerStatuses", [])
+    )
+    return ready and proxy_ready
+
+
+def ingress_workload_evidence(
+    deployment: dict[str, Any], replica_sets: dict[str, Any], pods: dict[str, Any], deployment_name: str, service_account: str
+) -> dict[str, int | bool | str]:
+    """Fail closed unless the selected ingress Deployment really presents the mesh identity.
+
+    Service-account existence alone is insufficient: a stale or incorrectly
+    selected account would otherwise authorize an identity that no ingress pod
+    can present. We inspect only the selected Deployment and its controller
+    owned Pods, then retain safe scalar readiness evidence in the report.
+    """
+    deployment_metadata = deployment.get("metadata", {})
+    deployment_uid = deployment_metadata.get("uid") if isinstance(deployment_metadata, dict) else None
+    if not isinstance(deployment_uid, str) or not deployment_uid:
+        raise DiscoveryError("selected ingress deployment has no stable controller UID")
+    deployment_spec = deployment.get("spec", {})
+    deployment_status = deployment.get("status", {})
+    template = deployment_spec.get("template", {}) if isinstance(deployment_spec, dict) else {}
+    template_spec = template.get("spec", {}) if isinstance(template, dict) else {}
+    if not isinstance(template_spec, dict) or template_spec.get("serviceAccountName") != service_account:
+        raise DiscoveryError("selected ingress deployment does not use the selected service account")
+    desired = deployment_spec.get("replicas", 1) if isinstance(deployment_spec, dict) else 1
+    available = deployment_status.get("availableReplicas", 0) if isinstance(deployment_status, dict) else 0
+    if isinstance(desired, bool) or not isinstance(desired, int) or desired < 1:
+        raise DiscoveryError("selected ingress deployment does not declare a positive replica count")
+    if isinstance(available, bool) or not isinstance(available, int) or available < desired:
+        raise DiscoveryError("selected ingress deployment is not fully available")
+    replica_sets_by_name = {
+        str(item.get("metadata", {}).get("name")): str(item.get("metadata", {}).get("uid"))
+        for item in non_terminating_items(replica_sets)
+        if controller_owned_by(item, "Deployment", deployment_name, deployment_uid)
+        and isinstance(item.get("metadata", {}).get("name"), str)
+        and isinstance(item.get("metadata", {}).get("uid"), str)
+    }
+    if not replica_sets_by_name:
+        raise DiscoveryError("selected ingress deployment has no controller-owned ReplicaSet")
+    workload_pods = [
+        item
+        for item in non_terminating_items(pods)
+        if any(controller_owned_by(item, "ReplicaSet", replica_set_name, replica_set_uid) for replica_set_name, replica_set_uid in replica_sets_by_name.items())
+    ]
+    if len(workload_pods) < desired:
+        raise DiscoveryError("selected ingress deployment has fewer running workload pods than desired replicas")
+    if not all(ready_linkerd_ingress_pod(pod, service_account) for pod in workload_pods):
+        raise DiscoveryError("selected ingress workload is not Linkerd-injected and ready with the selected service account")
+    return {
+        "ingress_workload_kind": "Deployment",
+        "ingress_workload_name": deployment_name,
+        "ingress_workload_desired_replicas": desired,
+        "ingress_workload_ready_pods": len(workload_pods),
+        "ingress_workload_verified": True,
+        "ingress_workload_mesh_ready": True,
+    }
+
+
 def validate_discovery_identity(identity: dict[str, Any], account_id: str) -> tuple[str, str]:
     """Require the approved account and discovery role without echoing identity data."""
     actual_account = str(identity.get("Account", ""))
@@ -195,6 +285,7 @@ def main() -> int:
     )
     parser.add_argument("--ingress-namespace", help="ingress namespace required with Linkerd policy discovery")
     parser.add_argument("--ingress-service-account", help="ingress service account required with Linkerd policy discovery")
+    parser.add_argument("--ingress-deployment", help="ingress Deployment required with Linkerd policy discovery")
     parser.add_argument("--linkerd-trust-domain", help="explicit Linkerd trust domain required with Linkerd policy discovery")
     parser.add_argument("--ecr-repository", required=True)
     parser.add_argument("--output", required=True, type=Path)
@@ -202,19 +293,20 @@ def main() -> int:
 
     if not args.account_id.isdigit() or len(args.account_id) != 12:
         parser.error("--account-id must be an explicit 12-digit account ID")
-    linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
+    linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
     if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
-        parser.error("--ingress-namespace, --ingress-service-account, and --linkerd-trust-domain must be supplied together")
+        parser.error("--ingress-namespace, --ingress-service-account, --ingress-deployment, and --linkerd-trust-domain must be supplied together")
     if args.linkerd_namespace and not all(linkerd_identity_inputs):
-        parser.error("Linkerd discovery requires the explicit ingress namespace, service account, and trust domain")
+        parser.error("Linkerd discovery requires the explicit ingress namespace, service account, deployment, and trust domain")
     if not args.linkerd_namespace and any(linkerd_identity_inputs):
         parser.error("ingress identity is valid only when Linkerd discovery is selected")
     if args.linkerd_namespace and (
         not DNS_LABEL.fullmatch(args.ingress_namespace)
         or not DNS_LABEL.fullmatch(args.ingress_service_account)
+        or not DNS_LABEL.fullmatch(args.ingress_deployment)
         or not TRUST_DOMAIN.fullmatch(args.linkerd_trust_domain)
     ):
-        parser.error("invalid Linkerd ingress namespace, service account, or trust domain")
+        parser.error("invalid Linkerd ingress namespace, service account, deployment, or trust domain")
     validate_output_path(args.output)
 
     with output_lock(args.output):
@@ -250,9 +342,12 @@ def main() -> int:
                 "identity_service_accounts": [],
                 "ingress_namespace": args.ingress_namespace,
                 "ingress_service_account": args.ingress_service_account,
+                "ingress_deployment": args.ingress_deployment,
                 "trust_domain": args.linkerd_trust_domain,
                 "ingress_identity": "",
                 "ingress_identity_verified": False,
+                "ingress_workload_verified": False,
+                "ingress_workload_mesh_ready": False,
                 "trust_identity_config_payload_read": False,
                 "trust_domain_source": "explicit operator selection; Linkerd trust configuration payload not read",
             }
@@ -266,6 +361,16 @@ def main() -> int:
                 ingress_service_accounts = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "serviceaccounts"])
                 if args.ingress_service_account not in item_names(ingress_service_accounts):
                     raise DiscoveryError("selected ingress service account is unavailable for Linkerd policy identity")
+                ingress_deployment = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "deployment", args.ingress_deployment])
+                ingress_replica_sets = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "replicasets"])
+                ingress_pods = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "pods"])
+                workload_evidence = ingress_workload_evidence(
+                    ingress_deployment,
+                    ingress_replica_sets,
+                    ingress_pods,
+                    args.ingress_deployment,
+                    args.ingress_service_account,
+                )
                 ingress_identity = linkerd_ingress_identity(args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
                 linkerd_crd_versions: dict[str, list[str]] = {}
                 for crd in sorted(required_linkerd_resources):
@@ -282,6 +387,7 @@ def main() -> int:
                     "identity_service_accounts": item_names(linkerd_service_accounts),
                     "ingress_identity": ingress_identity,
                     "ingress_identity_verified": True,
+                    **workload_evidence,
                 })
 
             report: dict[str, Any] = {
