@@ -9,9 +9,9 @@
   "AssumeRolePolicyDocument": {
     "Version": "2012-10-17",
     "Statement": [{
-      "Sid": "ApprovedFederatedOperatorOnly",
+      "Sid": "DedicatedDiscoveryOperatorOnly",
       "Effect": "Allow",
-      "Principal": {"AWS": "arn:aws:iam::<ACCOUNT_ID>:role/<APPROVED_FEDERATED_OPERATOR_ROLE>"},
+      "Principal": {"AWS": "arn:aws:iam::<ACCOUNT_ID>:user/<APPROVED_IAM_USER>"},
       "Action": "sts:AssumeRole",
       "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
     }]

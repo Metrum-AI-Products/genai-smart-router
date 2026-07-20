@@ -15,12 +15,14 @@ only `id-token: write` plus the minimum repository permissions.
 
 `genai-smart-router-eks-discovery-role.example.json` defines the separately
 named, read-only EKS discovery role. Replace the account and approved
-federated-operator role placeholders through reviewed infrastructure as code.
+IAM-user placeholder through reviewed infrastructure as code. The approved
+local operator is named `smartrouter`; an organization may substitute a
+federated role only through a separately reviewed trust-policy change.
 Do not trust the account root, issue long-lived access keys, or use a root
 session as the role source: AWS root credentials cannot assume roles. The
-bootstrap administrator must nominate an existing MFA/federated non-root
-principal, grant that principal only `sts:AssumeRole` for this role, and then
-replace any temporary bootstrap trust before discovery begins.
+bootstrap administrator must create or nominate an MFA-protected non-root
+principal, grant it only `sts:AssumeRole` for this role, and then replace any
+temporary bootstrap trust before discovery begins.
 
 The discovery role intentionally grants no EKS/Kubernetes mutation. EKS access
 entries and namespace-scoped Kubernetes RBAC are separately required for

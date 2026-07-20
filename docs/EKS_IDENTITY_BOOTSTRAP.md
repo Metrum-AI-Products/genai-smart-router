@@ -15,22 +15,29 @@ primitive never selects a current kube context, first account, or first cluster.
 
 Create the `genai-smart-router-eks-discovery` role from
 `deploy/aws/genai-smart-router-eks-discovery-role.example.json` through
-reviewed infrastructure-as-code. Its trust must name the approved MFA/federated
-operator role explicitly. Account-root credentials cannot assume an AWS role,
-and must never be retained as a discovery source profile. The discovery policy
-is read-only: it cannot create EKS resources, change an access entry, or create
-a Kubernetes namespace.
+reviewed infrastructure-as-code. Its trust must name the approved MFA-protected
+non-root operator explicitly. The current approved local identity name is
+`smartrouter`; do not use an email address or account-root ARN as an IAM
+principal. Account-root credentials cannot assume an AWS role and must never
+be retained as a discovery source profile. The discovery policy is read-only:
+it cannot create EKS resources, change an access entry, or create a Kubernetes
+namespace.
 
-After the platform administrator grants the operator `sts:AssumeRole`, use a
-named local profile; do not add long-lived access keys:
+After the platform administrator creates the `smartrouter` console login,
+enrolls MFA, and grants only `sts:AssumeRole`, use named local profiles; do not
+add long-lived access keys:
 
 ```ini
+[profile smartrouter]
+region = <approved-region>
+
 [profile genai-smart-router-eks-discovery]
 role_arn = arn:aws:iam::<ACCOUNT_ID>:role/genai-smart-router-eks-discovery
-source_profile = <approved-federated-operator-profile>
+source_profile = smartrouter
 region = <approved-region>
 ```
 
+Start the short-lived local session with `aws login --profile smartrouter`.
 Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discovery`
 session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
