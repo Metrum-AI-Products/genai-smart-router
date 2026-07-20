@@ -75,7 +75,7 @@ eks-help:
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
 	@echo "Render/plan/apply/smoke/promotion-plan require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
-	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); JSON and Markdown are redacted."
+	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, and live pod-template state."
 
 eks-preflight:
 	$(EKS_DELIVERY) preflight $(EKS_ARGS)

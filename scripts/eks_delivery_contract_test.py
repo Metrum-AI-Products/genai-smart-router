@@ -54,7 +54,16 @@ def rendered_objects(namespace: str | None = None) -> str:
     )
 
 
-def deployment_object(digest: str = DIGEST) -> str:
+def rendered_manifest(configuration_marker: str = "configuration-one") -> str:
+    return f"image: {DIGEST}\nsafe-rendered-configuration: {configuration_marker}\n" + "x" * 5000
+
+
+def deployment_object(
+    digest: str = DIGEST,
+    template_marker: str = "template-one",
+    generation: int = 1,
+    observed_generation: int | None = None,
+) -> str:
     return json.dumps(
         {
             "apiVersion": "apps/v1",
@@ -62,8 +71,15 @@ def deployment_object(digest: str = DIGEST) -> str:
             "metadata": {
                 "name": "smart-llmrouter",
                 "namespace": TARGET_POLICY["k8s_namespace"],
+                "generation": generation,
             },
-            "spec": {"template": {"spec": {"containers": [{"name": "router", "image": digest}]}}},
+            "status": {"observedGeneration": observed_generation if observed_generation is not None else generation},
+            "spec": {
+                "template": {
+                    "metadata": {"annotations": {"example.metrum.ai/config-revision": template_marker}},
+                    "spec": {"containers": [{"name": "router", "image": digest}]},
+                }
+            },
         }
     )
 
@@ -87,7 +103,7 @@ case "$0" in
     *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
   esac ;;
   *kustomize) case "$*" in
-    *build*) printf 'secret: staging\\nimage: {DIGEST}\\n'; head -c 5000 /dev/zero | tr '\\0' x; echo ;;
+    *build*) printf '%s\\n' "$FAKE_RENDERED_MANIFEST" ;;
   esac ;;
 esac
 '''
@@ -105,7 +121,11 @@ def run(
     account: str | None = None,
     policy: dict[str, object] | None = None,
     render_objects: str | None = None,
+    rendered_manifest_value: str | None = None,
     deployed_digest: str = DIGEST,
+    deployed_template_marker: str = "template-one",
+    deployed_generation: int = 1,
+    deployed_observed_generation: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     evidence = root / "tmp" / "evidence"
     command = [
@@ -132,7 +152,13 @@ def run(
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
-        "FAKE_DEPLOYMENT_OBJECT": deployment_object(deployed_digest),
+        "FAKE_RENDERED_MANIFEST": rendered_manifest_value or rendered_manifest(),
+        "FAKE_DEPLOYMENT_OBJECT": deployment_object(
+            deployed_digest,
+            deployed_template_marker,
+            deployed_generation,
+            deployed_observed_generation,
+        ),
     }
     return subprocess.run(command, cwd=root, text=True, capture_output=True, env=env)
 
@@ -203,10 +229,40 @@ def main() -> int:
         )
         assert stale.returncode != 0 and "does not use" in stale.stderr and not marker.exists()
 
+        not_observed = run(
+            "smoke",
+            root,
+            ["--smoke-command", f"touch {marker}"],
+            deployed_observed_generation=0,
+        )
+        assert not_observed.returncode != 0 and "not fully observed" in not_observed.stderr and not marker.exists()
+
         smoke_passed = run("smoke", root, ["--smoke-command", "sh -c 'exit 0'"])
         assert smoke_passed.returncode == 0, smoke_passed.stderr
+        apply_evidence = json.loads((root / "tmp/evidence/evidence-apply.json").read_text())
+        smoke_evidence = json.loads((root / "tmp/evidence/evidence-smoke.json").read_text())
+        for evidence in (apply_evidence, smoke_evidence):
+            assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["configuration_fingerprint"]))
+            assert evidence["configuration_fingerprint"] != evidence["rendered_manifest_sha256"]
+            assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
+            assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+
+        configuration_drift = run(
+            "promotion-plan",
+            root,
+            rendered_manifest_value=rendered_manifest("configuration-two"),
+        )
+        assert configuration_drift.returncode != 0 and "configuration_fingerprint" in configuration_drift.stderr
+
+        rollout_drift = run(
+            "promotion-plan",
+            root,
+            deployed_template_marker="template-two",
+            deployed_generation=2,
+        )
+        assert rollout_drift.returncode != 0 and "live_deployment_generation" in rollout_drift.stderr
 
         make_dry_run = subprocess.run(["make", "-n", "eks-preflight"], cwd=ROOT, text=True, capture_output=True)
         assert make_dry_run.returncode == 0, make_dry_run.stderr

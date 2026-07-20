@@ -239,8 +239,11 @@ variables as approval for an account, cluster, namespace, or overlay. Keep a
 reviewed environment target policy in an independently controlled store, give
 the delivery identity read-only access to that exact policy, verify its account
 and role before creating a kubeconfig, and reject any rendered resource outside
-the approved namespace. Bind the smoke and promotion evidence to the exact
-immutable image digest that reached the live Deployment.
+the approved namespace. Bind smoke and promotion evidence to the exact
+immutable image digest, a digest-normalized fingerprint of the validated
+rendered configuration, and the live Deployment pod-template/generation state.
+Recheck that state before promotion so a rollback or replacement cannot reuse
+stale smoke evidence.
 
 Check rollout:
 

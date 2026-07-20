@@ -80,7 +80,7 @@ def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: b
     return "" if quiet else (proc.stdout if raw else scrub(proc.stdout))
 
 
-def canonical_policy_bytes(value: dict[str, object]) -> bytes:
+def canonical_json_bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
@@ -99,7 +99,16 @@ class TargetPolicy:
 
     @property
     def sha256(self) -> str:
-        return hashlib.sha256(canonical_policy_bytes(self.raw)).hexdigest()
+        return hashlib.sha256(canonical_json_bytes(self.raw)).hexdigest()
+
+
+@dataclass(frozen=True)
+class LiveDeploymentIdentity:
+    """Safe, stable identity for the live rollout tested by staging evidence."""
+
+    generation: int
+    observed_generation: int
+    pod_template_sha256: str
 
 
 def parse_target_policy(value: object) -> TargetPolicy:
@@ -239,6 +248,10 @@ class Delivery:
             "k8s_namespace",
             "target_policy_sha256",
             "image_digest",
+            "configuration_fingerprint",
+            "live_deployment_generation",
+            "live_deployment_observed_generation",
+            "live_pod_template_sha256",
         ):
             if key in self.evidence:
                 markdown.append(f"- {key}: `{self.evidence[key]}`")
@@ -445,12 +458,23 @@ class Delivery:
         output = temporary_dir / "rendered.yaml"
         output.write_bytes(rendered.encode("utf-8"))
         self.validate_rendered_manifest(output, env, target)
-        self.evidence["rendered_manifest_sha256"] = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
-        self.evidence["rendered_manifest_bytes"] = len(rendered.encode("utf-8"))
+        # The manifest is only a temporary kubectl input. Evidence retains its
+        # checksum, never its contents. The configuration fingerprint replaces
+        # the exact router image digest with a fixed marker before hashing so
+        # it captures deployment configuration independently of the promoted
+        # artifact; IMAGE_DIGEST is bound separately.
+        rendered_bytes = rendered.encode("utf-8")
+        rendered_manifest_sha256 = hashlib.sha256(rendered_bytes).hexdigest()
+        configuration_bytes = rendered_bytes.replace(
+            self.args.image_digest.encode("utf-8"), b"<ROUTER_IMAGE_DIGEST>"
+        )
+        self.evidence["rendered_manifest_sha256"] = rendered_manifest_sha256
+        self.evidence["configuration_fingerprint"] = hashlib.sha256(configuration_bytes).hexdigest()
+        self.evidence["rendered_manifest_bytes"] = len(rendered_bytes)
         self.event("render", artifact="temporary-manifest")
         return output
 
-    def verify_live_deployment(self, env: dict[str, str], target: TargetPolicy, phase: str) -> None:
+    def verify_live_deployment(self, env: dict[str, str], target: TargetPolicy, phase: str) -> LiveDeploymentIdentity:
         command(
             [
                 "kubectl",
@@ -486,8 +510,15 @@ class Delivery:
         metadata = deployment.get("metadata")
         if not isinstance(metadata, dict) or metadata.get("name") != target.deployment_name or metadata.get("namespace") != target.k8s_namespace:
             fail("live deployment lookup does not match the approved target")
+        generation = metadata.get("generation")
+        status = deployment.get("status") if isinstance(deployment.get("status"), dict) else {}
+        observed_generation = status.get("observedGeneration")
+        if type(generation) is not int or generation < 1 or type(observed_generation) is not int or observed_generation != generation:
+            fail("live deployment generation is not fully observed after rollout")
         spec = deployment.get("spec") if isinstance(deployment.get("spec"), dict) else {}
         template = spec.get("template") if isinstance(spec.get("template"), dict) else {}
+        if not template:
+            fail("live deployment lookup has no pod template")
         pod_spec = template.get("spec") if isinstance(template.get("spec"), dict) else {}
         containers = pod_spec.get("containers") if isinstance(pod_spec.get("containers"), list) else []
         router_container = next(
@@ -496,13 +527,33 @@ class Delivery:
         )
         if not router_container or router_container.get("image") != self.args.image_digest:
             fail("live router Deployment does not use the requested immutable IMAGE_DIGEST")
-        self.event("live_deployment", phase=phase, result="digest-and-rollout-verified")
+        identity = LiveDeploymentIdentity(
+            generation=generation,
+            observed_generation=observed_generation,
+            pod_template_sha256=hashlib.sha256(canonical_json_bytes(template)).hexdigest(),
+        )
+        self.evidence.update(
+            {
+                "live_deployment_generation": identity.generation,
+                "live_deployment_observed_generation": identity.observed_generation,
+                "live_pod_template_sha256": identity.pod_template_sha256,
+            }
+        )
+        self.event(
+            "live_deployment",
+            phase=phase,
+            result="digest-rollout-and-pod-template-verified",
+            generation=identity.generation,
+            observed_generation=identity.observed_generation,
+            pod_template_sha256=identity.pod_template_sha256,
+        )
+        return identity
 
     def run(self) -> None:
         env, temp = self.env_with_kubeconfig()
         try:
             target = self.preflight(env)
-            manifest = self.render(env, Path(temp.name), target) if self.args.action in {"render", "plan", "apply", "smoke"} else None
+            manifest = self.render(env, Path(temp.name), target) if self.args.action in {"render", "plan", "apply", "smoke", "promotion-plan"} else None
             if self.args.action == "status":
                 status = command(
                     [
@@ -531,11 +582,13 @@ class Delivery:
             elif self.args.action == "smoke":
                 if not self.args.smoke_command:
                     fail("EKS_SMOKE_COMMAND is required and is never logged")
-                self.verify_live_deployment(env, target, "before_smoke")
+                before_smoke = self.verify_live_deployment(env, target, "before_smoke")
                 proc = subprocess.run(self.args.smoke_command, shell=True, env=env, text=True, capture_output=True)
                 if proc.returncode:
                     fail(f"protected staging smoke failed (exit {proc.returncode}): {scrub(proc.stderr or proc.stdout)}")
-                self.verify_live_deployment(env, target, "after_smoke")
+                after_smoke = self.verify_live_deployment(env, target, "after_smoke")
+                if before_smoke != after_smoke:
+                    fail("live router Deployment changed during the protected staging smoke")
                 self.event("smoke", result="passed")
             elif self.args.action == "promotion-plan":
                 # Evidence alone cannot prove the staging workload was not
@@ -567,6 +620,10 @@ class Delivery:
                     "target_policy_arn",
                     "target_policy_sha256",
                     "image_digest",
+                    "configuration_fingerprint",
+                    "live_deployment_generation",
+                    "live_deployment_observed_generation",
+                    "live_pod_template_sha256",
                 ):
                     if records["apply"].get(key) != records["smoke"].get(key) or records["apply"].get(key) != self.evidence.get(key):
                         fail(f"apply and smoke evidence disagree on {key}")

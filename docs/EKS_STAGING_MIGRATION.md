@@ -166,7 +166,8 @@ context. See `make eks-help` for the complete target list and required inputs.
 
    Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. The raw
    manifest exists only in a per-invocation temporary directory for kubectl;
-   evidence retains its checksum and safe scalar metadata. A missing session,
+   evidence retains only its checksum, a digest-normalized non-secret rendered
+   configuration fingerprint, and safe scalar metadata. A missing session,
    protected policy, matching account/role, namespace RBAC, digest, namespace
    match, or dry-run failure stops before mutation.
 3. Apply only after review, using the explicit staging confirmation:
@@ -225,7 +226,9 @@ context. See `make eks-help` for the complete target list and required inputs.
 7. Run `make eks-promotion-plan IMAGE_DIGEST='<the same immutable digest>'`
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
-   target and digest; it cannot apply to production.
+   target, digest, rendered configuration fingerprint, and live Deployment
+   pod-template/generation state. It rechecks the current rollout before
+   producing review-only evidence and cannot apply to production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.
