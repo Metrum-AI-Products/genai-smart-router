@@ -226,7 +226,7 @@ eks-identity-check:
 eks-discovery-validate:
 	python3 scripts/validate_eks_make_args.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ingress-namespace "$$EKS_INGRESS_NAMESPACE" --ingress-service-account "$$EKS_INGRESS_SERVICE_ACCOUNT" --linkerd-trust-domain "$$EKS_LINKERD_TRUST_DOMAIN" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"
 
-eks-discover: eks-discovery-validate eks-identity-check
+eks-discover: eks-discovery-validate
 	if [ -n "$$EKS_LINKERD_NAMESPACE" ]; then \
 		python3 scripts/eks_discover.py --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION" --cluster "$$EKS_CLUSTER" --namespace "$$EKS_NAMESPACE" --linkerd-namespace "$$EKS_LINKERD_NAMESPACE" --ingress-namespace "$$EKS_INGRESS_NAMESPACE" --ingress-service-account "$$EKS_INGRESS_SERVICE_ACCOUNT" --linkerd-trust-domain "$$EKS_LINKERD_TRUST_DOMAIN" --ecr-repository "$$EKS_ECR_REPOSITORY" --output "$$EKS_DISCOVERY_OUTPUT"; \
 	else \

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
 import subprocess
 import sys
@@ -103,6 +104,49 @@ def test_stale_output_is_invalidated_when_tools_are_missing(root: Path) -> None:
         raise AssertionError("missing tools left stale evidence reusable at the selected path")
 
 
+def test_make_discover_invalidates_before_identity_failure(root: Path) -> None:
+    """The canonical Make target must enter the script lock before its role probe."""
+    output = root / "make-discovery" / "eks-discovery.json"
+    output.parent.mkdir()
+    output.write_text('{"schema_version": 1, "stale": true}\n', encoding="utf-8")
+    command_directory = root / "commands"
+    command_directory.mkdir()
+    for command in ("aws", "kubectl"):
+        path = command_directory / command
+        path.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        path.chmod(0o700)
+    environment = {
+        **os.environ,
+        "PATH": f"{command_directory}:{os.environ.get('PATH', '')}",
+        "EKS_AWS_PROFILE": "genai-smart-router-eks-discovery",
+        "EKS_ACCOUNT_ID": "123456789012",
+        "EKS_REGION": "us-east-1",
+        "EKS_CLUSTER": "approved-cluster",
+        "EKS_NAMESPACE": "tenant-acme",
+        "EKS_LINKERD_NAMESPACE": "",
+        "EKS_INGRESS_NAMESPACE": "",
+        "EKS_INGRESS_SERVICE_ACCOUNT": "",
+        "EKS_LINKERD_TRUST_DOMAIN": "",
+        "EKS_ECR_REPOSITORY": "approved-router-repository",
+        "EKS_DISCOVERY_OUTPUT": str(output),
+    }
+    completed = subprocess.run(
+        ["make", "eks-discover"],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode == 0:
+        raise AssertionError("simulated identity failure unexpectedly completed discovery")
+    if "EKS discovery failed safely: aws command failed" not in completed.stderr:
+        raise AssertionError("Make discovery did not reach the locked discovery identity check")
+    if output.exists():
+        raise AssertionError("Make identity failure left stale evidence reusable at the selected path")
+
+
 def test_atomic_report_publish(root: Path) -> None:
     output = root / "eks-discovery.json"
     MODULE.invalidate_output(output)
@@ -182,6 +226,7 @@ def main() -> int:
         root = Path(directory)
         test_stale_output_is_invalidated_before_first_probe(root)
         test_stale_output_is_invalidated_when_tools_are_missing(root)
+        test_make_discover_invalidates_before_identity_failure(root)
         test_atomic_report_publish(root)
         test_failed_publish_leaves_no_report(root)
         test_unsafe_output_paths_are_rejected_without_deletion(root)

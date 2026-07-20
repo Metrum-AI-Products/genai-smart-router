@@ -30,6 +30,7 @@ class DiscoveryError(RuntimeError):
 
 DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
+DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -81,6 +82,18 @@ def linkerd_injection_annotation(payload: dict[str, Any]) -> str:
 
 def linkerd_ingress_identity(namespace: str, service_account: str, trust_domain: str) -> str:
     return f"{service_account}.{namespace}.serviceaccount.identity.linkerd.{trust_domain}"
+
+
+def validate_discovery_identity(identity: dict[str, Any], account_id: str) -> tuple[str, str]:
+    """Require the approved account and discovery role without echoing identity data."""
+    actual_account = str(identity.get("Account", ""))
+    if actual_account != account_id:
+        raise DiscoveryError("AWS identity account does not match the explicitly approved account")
+    actual_arn = str(identity.get("Arn", ""))
+    expected_arn_prefix = f"arn:aws:sts::{account_id}:assumed-role/{DISCOVERY_ROLE_NAME}/"
+    if not actual_arn.startswith(expected_arn_prefix):
+        raise DiscoveryError("AWS identity is not the expected discovery role")
+    return actual_account, actual_arn
 
 
 def validate_output_path(path: Path) -> None:
@@ -211,9 +224,7 @@ def main() -> int:
         if shutil.which("aws") is None or shutil.which("kubectl") is None:
             raise DiscoveryError("aws and kubectl are both required")
         identity = aws_json(["sts", "get-caller-identity"], args.region, args.profile)
-        actual_account = str(identity.get("Account", ""))
-        if actual_account != args.account_id:
-            raise DiscoveryError("AWS identity account does not match the explicitly approved account")
+        actual_account, actual_arn = validate_discovery_identity(identity, args.account_id)
 
         cluster = aws_json(["eks", "describe-cluster", "--name", args.cluster], args.region, args.profile).get("cluster", {})
         if not cluster:
@@ -278,7 +289,7 @@ def main() -> int:
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "intent": "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values",
                 "selection": {"account_id": args.account_id, "region": args.region, "cluster": args.cluster, "namespace": args.namespace, "ecr_repository": args.ecr_repository},
-                "aws_identity": {"account_id": actual_account, "principal_type": str(identity.get("Arn", "")).split(":")[5].split("/")[0]},
+                "aws_identity": {"account_id": actual_account, "principal_type": actual_arn.split(":")[5].split("/")[0]},
                 "eks": {
                     "version": cluster.get("version"), "platform_version": cluster.get("platformVersion"),
                     "authentication_mode": cluster.get("accessConfig", {}).get("authenticationMode"),

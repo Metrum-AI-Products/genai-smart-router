@@ -211,6 +211,10 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
         if args[:3] == ["aws", "iam", "create-access-key"]:
             return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
         if args[:3] == ["aws", "sts", "get-session-token"]:
+            if env is None:
+                raise AssertionError("temporary-key STS exchange must use an explicit credential environment")
+            if any(name in env for name in ("AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN")):
+                raise AssertionError("temporary-key STS exchange inherited an ambient session token")
             return json.dumps({"Credentials": {"AccessKeyId": "ASIAEXAMPLEKEYID", "SecretAccessKey": "test-only-session-secret", "SessionToken": "test-only-session-token", "Expiration": "2030-01-01T00:00:00Z"}})
         if args[:3] == ["aws", "iam", "delete-access-key"]:
             return ""

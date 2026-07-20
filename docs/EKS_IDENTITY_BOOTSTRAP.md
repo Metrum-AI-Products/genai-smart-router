@@ -102,9 +102,10 @@ aws iam delete-access-key --profile <approved-admin-profile> --user-name smartro
 ```
 
 Use the Make targets to prevent implicit target selection and root-profile
-access. They validate identifiers, require the expected assumed role, and only
-then run the read-only discovery script. Keep the evidence output outside this
-repository:
+access. They validate identifiers; `make eks-discover` then starts the locked
+read-only discovery script, which invalidates the selected evidence path before
+it rechecks the expected assumed role or makes any live probe. Keep the
+evidence output outside this repository:
 
 ```bash
 make eks-discover \
@@ -159,10 +160,11 @@ namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
 a success report. When Linkerd was selected, missing Linkerd API/RBAC also
 fails before success; otherwise the report records Linkerd as not requested.
 Discovery locally serializes use of one output path, invalidates its previous
-report before the first live probe, and atomically publishes only a fully
-successful replacement. A failed probe or publish therefore leaves no reusable
-success report at that selected path. Preserve historical evidence under a
-different timestamped path before a rerun. Keep evidence outside Git.
+report before its discovery-role check or any other live probe, and atomically
+publishes only a fully successful replacement. A failed role check, probe, or
+publish therefore leaves no reusable success report at that selected path.
+Preserve historical evidence under a different timestamped path before a rerun.
+Keep evidence outside Git.
 
 Review the report before bootstrap: EKS version/auth mode/access entries,
 endpoint exposure, audit logging, ingress/storage names, namespace labels and

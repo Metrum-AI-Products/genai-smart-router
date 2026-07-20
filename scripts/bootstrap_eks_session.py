@@ -330,7 +330,7 @@ def main() -> int:
         if args.propagation_wait_seconds:
             time.sleep(args.propagation_wait_seconds)
         env = os.environ.copy()
-        for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN"):
+        for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN"):
             env.pop(name, None)
         env.update({"AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull, "AWS_ACCESS_KEY_ID": access["AccessKeyId"], "AWS_SECRET_ACCESS_KEY": access["SecretAccessKey"], "AWS_DEFAULT_REGION": args.region})
         session = json.loads(command(["aws", "sts", "get-session-token", "--serial-number", args.mfa_serial, "--token-code", mfa_code_from_keychain(args.macos_keychain_service, args.macos_keychain_account), "--duration-seconds", str(args.duration_seconds), "--output", "json"], env=env))["Credentials"]
