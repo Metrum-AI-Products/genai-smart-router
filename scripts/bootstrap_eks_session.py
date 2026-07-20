@@ -47,16 +47,26 @@ def write_profiles(profile: str, role_profile: str, role_arn: str, region: str, 
     creds = configparser.RawConfigParser()
     creds.read(credentials_path)
     creds[profile] = credentials
-    with credentials_path.open("w", encoding="utf-8") as file:
-        creds.write(file)
-    credentials_path.chmod(0o600)
+    atomic_write_config(credentials_path, creds)
     config = configparser.RawConfigParser()
     config.read(config_path)
     config[f"profile {profile}"] = {"region": region}
     config[f"profile {role_profile}"] = {"role_arn": role_arn, "source_profile": profile, "region": region}
-    with config_path.open("w", encoding="utf-8") as file:
-        config.write(file)
-    config_path.chmod(0o600)
+    atomic_write_config(config_path, config)
+
+
+def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> None:
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as file:
+            config.write(file)
+            file.flush()
+            os.fsync(file.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def main() -> int:
