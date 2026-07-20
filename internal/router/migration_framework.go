@@ -263,10 +263,23 @@ func ledgerEntry(rec migrationLedgerRecord) MigrationLedgerEntry {
 	return MigrationLedgerEntry{rec.Scope, rec.MigrationID, rec.Checksum, rec.State, started, completed, rec.Runner, rec.DurationMS, rec.ErrorCode, rec.ErrorText}
 }
 
-// ApplyPending executes only transactional, online definitions. Maintenance or
-// non-transactional work is deliberately left for an explicit future runner
-// command with an operator acknowledgement.
+// ApplyPending executes only transactional, online definitions. It is safe for
+// a serving-process startup policy because it stops before any definition that
+// requires a maintenance window or a non-transactional operation.
 func (r *migrationRunner) ApplyPending(runner string) error {
+	return r.applyPending(runner, "online")
+}
+
+// ApplyMaintenancePending is an explicit non-serving maintenance operation.
+// It executes only transactional definitions marked maintenance. Callers must
+// first apply the online prefix and schedule the required maintenance window;
+// non-transactional definitions (for example, a PostgreSQL concurrent index
+// build) still require a dedicated non-transactional runner.
+func (r *migrationRunner) ApplyMaintenancePending(runner string) error {
+	return r.applyPending(runner, "maintenance")
+}
+
+func (r *migrationRunner) applyPending(runner, maintenanceMode string) error {
 	status, err := r.Status()
 	if err != nil {
 		return err
@@ -279,8 +292,11 @@ func (r *migrationRunner) ApplyPending(runner string) error {
 	}
 	defer r.releaseLock(runner)
 	for _, d := range status.Pending {
-		if !d.Transactional || d.MaintenanceMode != "online" {
-			return fmt.Errorf("migration %d requires explicit maintenance runner", d.ID)
+		if !d.Transactional || d.MaintenanceMode != maintenanceMode {
+			if maintenanceMode == "online" {
+				return fmt.Errorf("migration %d requires explicit maintenance runner", d.ID)
+			}
+			return fmt.Errorf("migration %d requires the online runner or a dedicated non-transactional runner", d.ID)
 		}
 		if d.Apply == nil {
 			return fmt.Errorf("migration %d has no apply step", d.ID)

@@ -7,20 +7,28 @@ import (
 	"time"
 )
 
+func applyConfigControlPlaneMigrationsForTest(t *testing.T, r *migrationRunner) {
+	t.Helper()
+	if err := r.ApplyPending("test-online"); err == nil || !strings.Contains(err.Error(), "requires explicit maintenance runner") {
+		t.Fatalf("online control-plane migration must stop before maintenance DDL, got %v", err)
+	}
+	if err := r.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatalf("explicit control-plane maintenance migration: %v", err)
+	}
+}
+
 func TestConfigControlPlanePhase1MigratesRelationalSchema(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	status, err := r.Verify()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != 2 {
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != 3 {
 		t.Fatalf("unexpected migration status: %+v", status)
 	}
 	for _, table := range ConfigControlPlaneTableNames() {
@@ -44,9 +52,7 @@ func TestLoadActiveConfigFromDBReadsValidatedCoreProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	db := r.db
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, seed := range []struct {
@@ -89,9 +95,7 @@ func TestLoadActiveConfigFromDBFailsClosedWithoutValidatedActiveSet(t *testing.T
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "no validated active") {
 		t.Fatalf("expected closed failure, got %v", err)
 	}
@@ -103,9 +107,7 @@ func TestConfigControlPlaneAllowsOnlyOneActiveSetPerScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if err := r.db.Exec(`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, "set-1", "staging", "one", "active", "valid", now).Error; err != nil {
 		t.Fatal(err)
@@ -121,9 +123,7 @@ func TestConfigControlPlaneEnforcesTargetProviderAndModelForeignKeys(t *testing.
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, seed := range []struct {
 		sql    string
@@ -141,15 +141,37 @@ func TestConfigControlPlaneEnforcesTargetProviderAndModelForeignKeys(t *testing.
 	}
 }
 
+func TestConfigControlPlaneVerifierRejectsMissingProviderHeaderForeignKey(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	phase1Runner, err := NewMigrationRunner(r.db, configControlPlaneScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, configControlPlaneMigrationDefinitions[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := phase1Runner.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.db.Exec(`DROP TABLE router_config_provider_headers`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := r.db.Exec(`CREATE TABLE router_config_provider_headers (config_set_id TEXT NOT NULL, provider_name TEXT NOT NULL, header_name TEXT NOT NULL, header_value TEXT NOT NULL, PRIMARY KEY (config_set_id, provider_name, header_name))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := phase1Runner.Verify(); err == nil || !strings.Contains(err.Error(), "router_config_provider_headers") {
+		t.Fatalf("expected missing provider-header foreign key verification failure, got %v", err)
+	}
+}
+
 func TestConfigControlPlaneRejectsCredentialBearingProviderHeadersAtDatabaseBoundary(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, seed := range []struct {
 		sql    string
@@ -169,6 +191,15 @@ func TestConfigControlPlaneRejectsCredentialBearingProviderHeadersAtDatabaseBoun
 	}
 	if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", "X-Title", "non-secret-metadata").Error; err != nil {
 		t.Fatalf("database rejected approved non-secret header: %v", err)
+	}
+	if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", "x-title", "conflicting-non-secret-metadata").Error; err == nil {
+		t.Fatal("database accepted case-insensitive duplicate provider header")
+	}
+	if err := r.db.Exec(`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, "set-1", "mock", "User-Agent", "non-secret-metadata").Error; err != nil {
+		t.Fatalf("database rejected second approved non-secret header: %v", err)
+	}
+	if err := r.db.Exec(`UPDATE router_config_provider_headers SET header_name = ? WHERE config_set_id = ? AND provider_name = ? AND header_name = ?`, "X-TITLE", "set-1", "mock", "User-Agent").Error; err == nil {
+		t.Fatal("database accepted a case-insensitive duplicate provider header through update")
 	}
 	if err := r.db.Exec(`UPDATE router_config_provider_headers SET header_name = ? WHERE config_set_id = ? AND provider_name = ? AND header_name = ?`, "Authorization", "set-1", "mock", "X-Title").Error; err == nil {
 		t.Fatal("database accepted credential-bearing provider header through update")
@@ -201,9 +232,7 @@ func TestConfigControlPlanePhase2UpgradesExistingAllowedProviderHeaders(t *testi
 			t.Fatal(err)
 		}
 	}
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	if _, err := r.Verify(); err != nil {
 		t.Fatal(err)
 	}
@@ -219,15 +248,55 @@ func TestConfigControlPlanePhase2UpgradesExistingAllowedProviderHeaders(t *testi
 	}
 }
 
+func TestConfigControlPlanePhase3FailsClosedOnExistingCaseInsensitiveHeaderDuplicates(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	phase2Runner, err := NewMigrationRunner(r.db, configControlPlaneScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, configControlPlaneMigrationDefinitions[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := phase2Runner.ApplyPending("test-online"); err == nil || !strings.Contains(err.Error(), "requires explicit maintenance runner") {
+		t.Fatalf("phase 2 must require explicit maintenance, got %v", err)
+	}
+	if err := phase2Runner.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "draft", "valid", now}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "X-Title", "one"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "x-title", "two"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.ApplyMaintenancePending("test-maintenance"); err == nil {
+		t.Fatal("phase 3 must fail closed instead of silently choosing a duplicate provider header")
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 2 || status.State != "pending" {
+		t.Fatalf("duplicate header migration status = %+v, want pending schema 2", status)
+	}
+}
+
 func TestLoadActiveConfigFromDBAcceptsInlineTargetWithoutModelRef(t *testing.T) {
 	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err != nil {
-		t.Fatal(err)
-	}
+	applyConfigControlPlaneMigrationsForTest(t, r)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, seed := range []struct {
 		sql    string

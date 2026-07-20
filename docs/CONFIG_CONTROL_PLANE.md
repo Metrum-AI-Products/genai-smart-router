@@ -19,7 +19,9 @@ only an existing SHA-256 token hash and public token ID.
 The database enforces the provider-header boundary on both inserts and
 updates. Only `HTTP-Referer`, `User-Agent`, and `X-Title` metadata headers are
 representable; standard or provider-specific credential headers are rejected.
-Values in these metadata fields must remain non-secret. Use `api_key_env` or a
+Each allowed header name is unique case-insensitively for a provider, so a
+configuration set cannot contain conflicting casing variants. Values in these
+metadata fields must remain non-secret. Use `api_key_env` or a
 deployment-managed secret reference for every upstream credential.
 
 `LoadActiveConfigFromDB` is deliberately read-only. It loads only a validated
@@ -30,4 +32,12 @@ reload remain later issue #7 phases.
 
 For migration tests, use `ConfigControlPlaneMigrationRunner` with a dedicated
 database. Do not point it at a production usage database until a reviewed
-deployment migration and backup/restore procedure are available.
+deployment migration and backup/restore procedure are available. The initial
+table creation is an online migration, but the provider-header hardening
+phases are transactional **maintenance** migrations: PostgreSQL must lock the
+existing header table while adding the allowlist constraint and building the
+unique expression index, while SQLite rebuilds that table. `ApplyPending`
+stops before those phases. A non-serving deployment job must first apply the
+online prefix, take the approved backup, then explicitly invoke
+`ApplyMaintenancePending` in a scheduled maintenance window and finish with
+`Verify`; it must never be run by router startup.

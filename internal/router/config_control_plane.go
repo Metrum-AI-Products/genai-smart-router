@@ -22,11 +22,15 @@ const configControlPlanePhase1MigrationID = 2026072001
 
 const configControlPlanePhase2MigrationID = 2026072002
 
+const configControlPlanePhase3MigrationID = 2026072003
+
 const configControlPlaneProviderHeaderNameConstraint = "router_config_provider_headers_non_secret_name_ck"
 
 const configControlPlaneProviderHeaderNameCheck = "header_name = TRIM(header_name) AND LOWER(header_name) IN ('http-referer', 'user-agent', 'x-title')"
 
-var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}
+const configControlPlaneProviderHeaderNameCIIndex = "router_config_provider_headers_name_ci"
+
+var configControlPlaneCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 3, MinData: 0, MaxData: 0}
 
 var configControlPlaneMigrationDefinitions = []MigrationDefinition{
 	{
@@ -47,13 +51,26 @@ var configControlPlaneMigrationDefinitions = []MigrationDefinition{
 		Scope:           configControlPlaneScope,
 		Name:            "enforce non-secret provider header names at database boundary",
 		Release:         "2026.7",
-		Checksum:        "9237debd70c0ee58c674f96e3a43fe8fcec7cbf05b3a674a04db4d90d831c1ad",
+		Checksum:        "714e7b191083cbb9ca0490990e394dfe54a0acc4a9da54760e4f85e0ba5f9baf",
 		SchemaVersion:   2,
 		Transactional:   true,
-		MaintenanceMode: "online",
+		MaintenanceMode: "maintenance",
 		RollbackClass:   "restore-required",
 		Apply:           applyConfigControlPlanePhase2,
 		Verify:          verifyConfigControlPlanePhase2,
+	},
+	{
+		ID:              configControlPlanePhase3MigrationID,
+		Scope:           configControlPlaneScope,
+		Name:            "enforce case-insensitive provider header uniqueness",
+		Release:         "2026.7",
+		Checksum:        "c2b317747db0dd6b43fee33e113ef4574d5304ffc24085b37c3ac7cf95f86959",
+		SchemaVersion:   3,
+		Transactional:   true,
+		MaintenanceMode: "maintenance",
+		RollbackClass:   "restore-required",
+		Apply:           applyConfigControlPlanePhase3,
+		Verify:          verifyConfigControlPlanePhase3,
 	},
 }
 
@@ -235,6 +252,11 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 			}
 		}
 	}
+	for _, foreignKey := range configControlPlaneRequiredForeignKeys {
+		if err := verifyConfigControlPlaneForeignKey(tx, foreignKey); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -282,6 +304,29 @@ func verifyConfigControlPlanePhase2(tx *gorm.DB) error {
 	return nil
 }
 
+// applyConfigControlPlanePhase3 prevents case variants such as X-Title and
+// x-title from becoming two map keys that later collapse to one HTTP header.
+// The expression is supported by both PostgreSQL and SQLite. Existing
+// ambiguous rows make this migration fail and require an explicit reviewed
+// cleanup rather than silently selecting one metadata value.
+func applyConfigControlPlanePhase3(tx *gorm.DB) error {
+	stmt := fmt.Sprintf(`CREATE UNIQUE INDEX %s ON router_config_provider_headers(config_set_id, provider_name, LOWER(header_name))`, configControlPlaneProviderHeaderNameCIIndex)
+	if err := tx.Exec(stmt).Error; err != nil {
+		return fmt.Errorf("add case-insensitive provider-header uniqueness: %w", err)
+	}
+	return nil
+}
+
+func verifyConfigControlPlanePhase3(tx *gorm.DB) error {
+	if err := verifyConfigControlPlanePhase2(tx); err != nil {
+		return err
+	}
+	if !tx.Migrator().HasIndex("router_config_provider_headers", configControlPlaneProviderHeaderNameCIIndex) {
+		return fmt.Errorf("required control-plane index router_config_provider_headers.%s is missing", configControlPlaneProviderHeaderNameCIIndex)
+	}
+	return nil
+}
+
 var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}
 
 var configControlPlaneRequiredColumns = map[string][]string{
@@ -303,6 +348,91 @@ var configControlPlaneRequiredIndexes = map[string][]string{
 
 var configControlPlaneRequiredConstraints = map[string][]string{
 	"router_config_model_group_targets": {"router_config_targets_group_fk", "router_config_targets_provider_fk", "router_config_targets_provider_model_fk"},
+}
+
+type configControlPlaneForeignKey struct {
+	Table             string
+	Columns           []string
+	ReferencedTable   string
+	ReferencedColumns []string
+}
+
+type configControlPlaneForeignKeyRow struct {
+	ConstraintID     string `gorm:"column:constraint_id"`
+	Sequence         int    `gorm:"column:sequence"`
+	ReferencedTable  string `gorm:"column:referenced_table"`
+	LocalColumn      string `gorm:"column:local_column"`
+	ReferencedColumn string `gorm:"column:referenced_column"`
+}
+
+var configControlPlaneRequiredForeignKeys = []configControlPlaneForeignKey{
+	{Table: "router_config_server", Columns: []string{"config_set_id"}, ReferencedTable: "router_config_sets", ReferencedColumns: []string{"id"}},
+	{Table: "router_config_providers", Columns: []string{"config_set_id"}, ReferencedTable: "router_config_sets", ReferencedColumns: []string{"id"}},
+	{Table: "router_config_provider_headers", Columns: []string{"config_set_id", "provider_name"}, ReferencedTable: "router_config_providers", ReferencedColumns: []string{"config_set_id", "provider_name"}},
+	{Table: "router_config_provider_models", Columns: []string{"config_set_id", "provider_name"}, ReferencedTable: "router_config_providers", ReferencedColumns: []string{"config_set_id", "provider_name"}},
+	{Table: "router_config_model_groups", Columns: []string{"config_set_id"}, ReferencedTable: "router_config_sets", ReferencedColumns: []string{"id"}},
+	{Table: "router_config_model_group_targets", Columns: []string{"config_set_id", "group_name"}, ReferencedTable: "router_config_model_groups", ReferencedColumns: []string{"config_set_id", "group_name"}},
+	{Table: "router_config_model_group_targets", Columns: []string{"config_set_id", "provider_name"}, ReferencedTable: "router_config_providers", ReferencedColumns: []string{"config_set_id", "provider_name"}},
+	{Table: "router_config_model_group_targets", Columns: []string{"config_set_id", "provider_name", "model_ref"}, ReferencedTable: "router_config_provider_models", ReferencedColumns: []string{"config_set_id", "provider_name", "model_ref"}},
+	{Table: "router_config_callers", Columns: []string{"config_set_id"}, ReferencedTable: "router_config_sets", ReferencedColumns: []string{"id"}},
+	{Table: "router_config_caller_allowed_groups", Columns: []string{"config_set_id", "caller_id"}, ReferencedTable: "router_config_callers", ReferencedColumns: []string{"config_set_id", "caller_id"}},
+	{Table: "router_config_caller_allowed_groups", Columns: []string{"config_set_id", "group_name"}, ReferencedTable: "router_config_model_groups", ReferencedColumns: []string{"config_set_id", "group_name"}},
+}
+
+func verifyConfigControlPlaneForeignKey(tx *gorm.DB, required configControlPlaneForeignKey) error {
+	var rows []configControlPlaneForeignKeyRow
+	switch tx.Dialector.Name() {
+	case "sqlite":
+		// required.Table comes from the checked-in allowlist above, never a caller
+		// value. SQLite reports every foreign-key column with a stable numeric id
+		// and zero-based sequence.
+		query := fmt.Sprintf(`SELECT id AS constraint_id, seq AS sequence, "table" AS referenced_table, "from" AS local_column, "to" AS referenced_column FROM pragma_foreign_key_list('%s')`, required.Table)
+		if err := tx.Raw(query).Scan(&rows).Error; err != nil {
+			return fmt.Errorf("inspect control-plane foreign keys for %s: %w", required.Table, err)
+		}
+	case "postgres":
+		const query = `SELECT con.conname AS constraint_id,
+			local_key.ordinality AS sequence,
+			referenced_table.relname AS referenced_table,
+			local_column.attname AS local_column,
+			referenced_column.attname AS referenced_column
+		FROM pg_constraint con
+		JOIN pg_class local_table ON local_table.oid = con.conrelid
+		JOIN pg_namespace local_namespace ON local_namespace.oid = local_table.relnamespace
+		JOIN pg_class referenced_table ON referenced_table.oid = con.confrelid
+		JOIN unnest(con.conkey) WITH ORDINALITY AS local_key(attnum, ordinality) ON TRUE
+		JOIN unnest(con.confkey) WITH ORDINALITY AS referenced_key(attnum, ordinality) ON referenced_key.ordinality = local_key.ordinality
+		JOIN pg_attribute local_column ON local_column.attrelid = con.conrelid AND local_column.attnum = local_key.attnum
+		JOIN pg_attribute referenced_column ON referenced_column.attrelid = con.confrelid AND referenced_column.attnum = referenced_key.attnum
+		WHERE con.contype = 'f' AND local_namespace.nspname = current_schema() AND local_table.relname = ?
+		ORDER BY con.conname, local_key.ordinality`
+		if err := tx.Raw(query, required.Table).Scan(&rows).Error; err != nil {
+			return fmt.Errorf("inspect control-plane foreign keys for %s: %w", required.Table, err)
+		}
+	default:
+		return fmt.Errorf("unsupported control-plane database driver %q", tx.Dialector.Name())
+	}
+	byConstraint := map[string][]configControlPlaneForeignKeyRow{}
+	for _, row := range rows {
+		byConstraint[row.ConstraintID] = append(byConstraint[row.ConstraintID], row)
+	}
+	for _, candidate := range byConstraint {
+		sort.Slice(candidate, func(i, j int) bool { return candidate[i].Sequence < candidate[j].Sequence })
+		if len(candidate) != len(required.Columns) || candidate[0].ReferencedTable != required.ReferencedTable {
+			continue
+		}
+		matched := true
+		for index, row := range candidate {
+			if row.LocalColumn != required.Columns[index] || row.ReferencedColumn != required.ReferencedColumns[index] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return nil
+		}
+	}
+	return fmt.Errorf("required control-plane foreign key %s(%s) -> %s(%s) is missing", required.Table, strings.Join(required.Columns, ","), required.ReferencedTable, strings.Join(required.ReferencedColumns, ","))
 }
 
 var configControlPlaneDDL = []string{
