@@ -1,0 +1,35 @@
+1
+00:00:00,000 --> 00:00:14,675
+A customer starts by creating an organization, selecting a subscription plan, and completing hosted payment. A verified payment event activates the entitlement; a browser redirect alone never does.
+
+2
+00:00:15,425 --> 00:00:32,190
+For the launch tier, Metrum activates a logical tenant on a shared regional EKS router fleet. Customers get isolated access, quotas, model-group permissions, and usage views without waiting for a separate cluster.
+
+3
+00:00:32,940 --> 00:00:46,315
+A Metrum-managed runtime license is installed before router readiness. The customer sees safe activation status, while the signed license and Metrum signing keys remain outside the console.
+
+4
+00:00:47,065 --> 00:01:02,250
+Organization owners can invite teammates, create projects, and issue multiple scoped downstream API keys. Each key discovers only its permitted model groups through slash-v-one-models.
+
+5
+00:01:03,000 --> 00:01:17,536
+To use a private upstream, an owner adds a provider connection. The secret goes directly to tenant-scoped vault storage; the router receives only an authorized reference, never a visible provider key.
+
+6
+00:01:18,286 --> 00:01:36,026
+The connection validator tests the chosen endpoint and model capabilities. Failed authentication, invalid URLs, unsupported API shapes, or unavailable models return safe, actionable errors before traffic is activated.
+
+7
+00:01:36,776 --> 00:01:54,145
+Routing changes start as a versioned draft. An imported policy or Config Copilot proposal is schema-checked, capability-checked, simulated, reviewed, and activated atomically, with rollback to the previous version.
+
+8
+00:01:54,895 --> 00:02:11,009
+Config Copilot can use Codex inside an isolated server-side sandbox with a short-lived Metrum credential. It may generate a draft and explain errors, but it cannot read secrets or deploy without customer approval.
+
+9
+00:02:11,759 --> 00:02:26,016
+The result is a running, governed router: customers control their upstreams and routing policy, while Metrum enforces isolation, licensing, validation, and recoverable operations.
