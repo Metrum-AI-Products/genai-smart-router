@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Validate explicit, non-secret inputs for the read-only EKS Make targets."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+
+PATTERNS = {
+    "profile": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"),
+    "account-id": re.compile(r"^[0-9]{12}$"),
+    "region": re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$"),
+    "cluster": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"),
+    "namespace": re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$"),
+    "ecr-repository": re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"),
+}
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser()
+    result.add_argument("--identity-only", action="store_true")
+    result.add_argument("--profile", required=True)
+    result.add_argument("--account-id", required=True)
+    result.add_argument("--region", required=True)
+    result.add_argument("--cluster")
+    result.add_argument("--namespace")
+    result.add_argument("--ecr-repository")
+    result.add_argument("--output")
+    return result
+
+
+def validate(name: str, value: str | None) -> None:
+    if not value or not PATTERNS[name].fullmatch(value):
+        raise ValueError(f"invalid {name}; use the documented explicit identifier format")
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        for name, value in (("profile", args.profile), ("account-id", args.account_id), ("region", args.region)):
+            validate(name, value)
+        if not args.identity_only:
+            for name, value in (("cluster", args.cluster), ("namespace", args.namespace), ("ecr-repository", args.ecr_repository)):
+                validate(name, value)
+            output = Path(args.output or "")
+            if not output.is_absolute() or output.parent == Path("/"):
+                raise ValueError("output must be an explicit absolute path outside the repository")
+    except ValueError as error:
+        print(f"EKS Make input error: {error}", file=sys.stderr)
+        return 2
+    print("EKS Make inputs validated")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

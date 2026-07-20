@@ -35,6 +35,25 @@ Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discove
 session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
 
+Use the Make targets to prevent implicit target selection and root-profile
+access. They validate identifiers, require the expected assumed role, and only
+then run the read-only discovery script. Keep the evidence output outside this
+repository:
+
+```bash
+make eks-discover \
+  EKS_AWS_PROFILE=genai-smart-router-eks-discovery \
+  EKS_ACCOUNT_ID=123456789012 \
+  EKS_REGION=us-east-1 \
+  EKS_CLUSTER=approved-cluster \
+  EKS_NAMESPACE=tenant-approved-customer \
+  EKS_ECR_REPOSITORY=approved-router-repository \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json
+```
+
+`make eks-identity-check` is available for an identity-only preflight. Neither
+Make target creates an AWS, EKS, or Kubernetes resource.
+
 ```bash
 python3 scripts/eks_discover.py \
   --account-id 123456789012 \
