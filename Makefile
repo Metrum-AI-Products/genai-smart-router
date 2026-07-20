@@ -75,7 +75,7 @@ eks-help:
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
 	@echo "Render/plan/apply/smoke/promotion-plan require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
-	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, and live pod-template state."
+	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource inventory, and live pod-template state."
 
 eks-preflight:
 	$(EKS_DELIVERY) preflight $(EKS_ARGS)
@@ -129,6 +129,7 @@ secret-check:
 	python3 scripts/render_tenant_ingress_network_policy_test.py
 	python3 scripts/render_tenant_linkerd_policy_test.py
 	python3 scripts/apply_tenant_network_policies_test.py
+	python3 scripts/eks_delivery_contract_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata
 

@@ -56,6 +56,17 @@ NAMESPACED_KINDS = frozenset(
         "ServiceAccount",
     }
 )
+MANAGED_RESOURCE_LABEL = "app.kubernetes.io/name"
+MANAGED_RESOURCE_LABEL_VALUE = "smart-llmrouter"
+MANAGED_RESOURCE_TYPES = (
+    "deployments",
+    "ingresses",
+    "networkpolicies",
+    "persistentvolumeclaims",
+    "poddisruptionbudgets",
+    "services",
+    "serviceaccounts",
+)
 
 
 def scrub(value: str) -> str:
@@ -109,6 +120,24 @@ class LiveDeploymentIdentity:
     generation: int
     observed_generation: int
     pod_template_sha256: str
+
+
+@dataclass(frozen=True, order=True)
+class ManagedResource:
+    """A safe identity for one allowlisted, label-selected staging resource."""
+
+    kind: str
+    name: str
+
+
+def inventory_fingerprint(inventory: tuple[ManagedResource, ...]) -> str:
+    """Return a stable, non-sensitive digest for an allowlisted inventory."""
+
+    return hashlib.sha256(
+        canonical_json_bytes(
+            [{"kind": resource.kind, "name": resource.name} for resource in inventory]
+        )
+    ).hexdigest()
 
 
 def parse_target_policy(value: object) -> TargetPolicy:
@@ -209,6 +238,7 @@ class Delivery:
         self.evidence_dir = Path(args.evidence_dir).resolve()
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
         self.target: TargetPolicy | None = None
+        self.managed_inventory: tuple[ManagedResource, ...] = ()
         self.evidence: dict[str, object] = {
             "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
             "environment": "staging",
@@ -249,6 +279,10 @@ class Delivery:
             "target_policy_sha256",
             "image_digest",
             "configuration_fingerprint",
+            "managed_resource_count",
+            "managed_resource_inventory_sha256",
+            "live_managed_resource_count",
+            "live_managed_resource_inventory_sha256",
             "live_deployment_generation",
             "live_deployment_observed_generation",
             "live_pod_template_sha256",
@@ -357,17 +391,29 @@ class Delivery:
         ).strip()
         if allowed != "yes":
             fail("Kubernetes RBAC does not allow get pods in the approved namespace")
+        for resource_type in MANAGED_RESOURCE_TYPES:
+            list_allowed = command(
+                ["kubectl", "auth", "can-i", "list", resource_type, "-n", target.k8s_namespace], env
+            ).strip()
+            if list_allowed != "yes":
+                fail(
+                    "Kubernetes RBAC does not allow list "
+                    f"{resource_type} in the approved namespace"
+                )
         self.event(
             "preflight",
             aws_account_id=actual_account,
             aws_principal_type="assumed-role",
             cluster_status="ACTIVE",
             rbac_get_pods=allowed,
+            rbac_list_managed_resource_types=len(MANAGED_RESOURCE_TYPES),
         )
         return target
 
     @staticmethod
-    def _json_objects(value: str) -> list[dict[str, Any]]:
+    def _json_objects(
+        value: str, *, source: str, allow_empty: bool = False
+    ) -> list[dict[str, Any]]:
         decoder = json.JSONDecoder()
         objects: list[dict[str, Any]] = []
         index = 0
@@ -379,24 +425,50 @@ class Delivery:
             try:
                 payload, index = decoder.raw_decode(value, index)
             except json.JSONDecodeError as exc:
-                raise RuntimeError("kubectl client validation returned invalid JSON") from exc
+                raise RuntimeError(f"{source} returned invalid JSON") from exc
             if not isinstance(payload, dict):
-                fail("kubectl client validation returned an invalid resource")
+                fail(f"{source} returned an invalid resource")
             if payload.get("kind") == "List":
                 items = payload.get("items")
                 if not isinstance(items, list):
-                    fail("kubectl client validation returned an invalid resource list")
+                    fail(f"{source} returned an invalid resource list")
                 count_before = len(objects)
                 objects.extend(item for item in items if isinstance(item, dict))
                 if len(objects) - count_before != len(items):
-                    fail("kubectl client validation returned an invalid resource list")
+                    fail(f"{source} returned an invalid resource list")
             else:
                 objects.append(payload)
-        if not objects:
-            fail("rendered manifest contains no Kubernetes resources")
+        if not objects and not allow_empty:
+            fail(f"{source} contains no Kubernetes resources")
         return objects
 
-    def validate_rendered_manifest(self, manifest: Path, env: dict[str, str], target: TargetPolicy) -> None:
+    @staticmethod
+    def inventory_from_resources(
+        resources: list[dict[str, Any]], target: TargetPolicy, *, source: str
+    ) -> tuple[ManagedResource, ...]:
+        inventory: list[ManagedResource] = []
+        seen: set[ManagedResource] = set()
+        for resource in resources:
+            kind = resource.get("kind")
+            metadata = resource.get("metadata")
+            if kind not in NAMESPACED_KINDS or not isinstance(metadata, dict):
+                fail(f"{source} contains a forbidden cluster-scoped or unsupported resource")
+            name = metadata.get("name")
+            if metadata.get("namespace") != target.k8s_namespace or not isinstance(name, str) or not NAME.fullmatch(name):
+                fail(f"{source} contains a resource outside the approved namespace")
+            labels = metadata.get("labels")
+            if not isinstance(labels, dict) or labels.get(MANAGED_RESOURCE_LABEL) != MANAGED_RESOURCE_LABEL_VALUE:
+                fail(f"{source} resource is missing the required managed-resource label")
+            identity = ManagedResource(kind=kind, name=name)
+            if identity in seen:
+                fail(f"{source} contains a duplicate managed resource")
+            seen.add(identity)
+            inventory.append(identity)
+        return tuple(sorted(inventory))
+
+    def validate_rendered_manifest(
+        self, manifest: Path, env: dict[str, str], target: TargetPolicy
+    ) -> tuple[ManagedResource, ...]:
         # Client-side decoding reads the exact temporary manifest without making
         # an API mutation. Only the narrow namespaced workload surface is
         # permitted; namespace creation and Secrets are separately bootstrapped.
@@ -405,14 +477,13 @@ class Delivery:
             env,
             raw=True,
         )
+        resources = self._json_objects(decoded, source="kubectl client validation")
+        inventory = self.inventory_from_resources(resources, target, source="rendered manifest")
         deployments = 0
-        for resource in self._json_objects(decoded):
+        for resource in resources:
             kind = resource.get("kind")
             metadata = resource.get("metadata")
-            if kind not in NAMESPACED_KINDS or not isinstance(metadata, dict):
-                fail("rendered manifest contains a forbidden cluster-scoped or unsupported resource")
-            if metadata.get("namespace") != target.k8s_namespace or not isinstance(metadata.get("name"), str):
-                fail("rendered manifest contains a resource outside the approved namespace")
+            assert isinstance(metadata, dict)
             if kind == "Deployment":
                 deployments += 1
                 if metadata.get("name") != target.deployment_name:
@@ -433,6 +504,7 @@ class Delivery:
                     fail("rendered Deployment does not pin the approved router container to IMAGE_DIGEST")
         if deployments != 1:
             fail("rendered manifest must contain exactly one approved router Deployment")
+        return inventory
 
     def render(self, env: dict[str, str], temporary_dir: Path, target: TargetPolicy) -> Path:
         source_root = target.kustomize_overlay.parents[2]
@@ -457,7 +529,7 @@ class Delivery:
             rendered = command(["kustomize", "build", str(copied_overlay)], env, raw=True)
         output = temporary_dir / "rendered.yaml"
         output.write_bytes(rendered.encode("utf-8"))
-        self.validate_rendered_manifest(output, env, target)
+        self.managed_inventory = self.validate_rendered_manifest(output, env, target)
         # The manifest is only a temporary kubectl input. Evidence retains its
         # checksum, never its contents. The configuration fingerprint replaces
         # the exact router image digest with a fixed marker before hashing so
@@ -471,8 +543,87 @@ class Delivery:
         self.evidence["rendered_manifest_sha256"] = rendered_manifest_sha256
         self.evidence["configuration_fingerprint"] = hashlib.sha256(configuration_bytes).hexdigest()
         self.evidence["rendered_manifest_bytes"] = len(rendered_bytes)
-        self.event("render", artifact="temporary-manifest")
+        self.evidence["managed_resource_count"] = len(self.managed_inventory)
+        self.evidence["managed_resource_inventory_sha256"] = inventory_fingerprint(self.managed_inventory)
+        self.event(
+            "render",
+            artifact="temporary-manifest",
+            managed_resource_count=len(self.managed_inventory),
+            managed_resource_inventory_sha256=inventory_fingerprint(self.managed_inventory),
+        )
         return output
+
+    def live_managed_inventory(
+        self, env: dict[str, str], target: TargetPolicy
+    ) -> tuple[ManagedResource, ...]:
+        payload = command(
+            [
+                "kubectl",
+                "get",
+                ",".join(MANAGED_RESOURCE_TYPES),
+                "-n",
+                target.k8s_namespace,
+                "-l",
+                f"{MANAGED_RESOURCE_LABEL}={MANAGED_RESOURCE_LABEL_VALUE}",
+                "-o",
+                "json",
+            ],
+            env,
+            raw=True,
+        )
+        resources = self._json_objects(
+            payload, source="live managed-resource inventory", allow_empty=True
+        )
+        return self.inventory_from_resources(
+            resources, target, source="live managed-resource inventory"
+        )
+
+    def record_live_managed_inventory(
+        self, live_inventory: tuple[ManagedResource, ...], phase: str, result: str
+    ) -> None:
+        expected_fingerprint = inventory_fingerprint(self.managed_inventory)
+        live_fingerprint = inventory_fingerprint(live_inventory)
+        self.evidence.update(
+            {
+                "managed_resource_count": len(self.managed_inventory),
+                "managed_resource_inventory_sha256": expected_fingerprint,
+                "live_managed_resource_count": len(live_inventory),
+                "live_managed_resource_inventory_sha256": live_fingerprint,
+            }
+        )
+        self.event(
+            "managed_inventory",
+            phase=phase,
+            result=result,
+            expected_count=len(self.managed_inventory),
+            expected_sha256=expected_fingerprint,
+            live_count=len(live_inventory),
+            live_sha256=live_fingerprint,
+        )
+
+    def verify_no_stale_managed_resources(
+        self, env: dict[str, str], target: TargetPolicy
+    ) -> None:
+        if not self.managed_inventory:
+            fail("rendered managed-resource inventory is unavailable")
+        live_inventory = self.live_managed_inventory(env, target)
+        expected = set(self.managed_inventory)
+        stale = tuple(resource for resource in live_inventory if resource not in expected)
+        if stale:
+            self.record_live_managed_inventory(live_inventory, "before_apply", "stale_resources")
+            fail("live managed-resource inventory contains stale resources not in the rendered staging manifest")
+        self.record_live_managed_inventory(live_inventory, "before_apply", "no_stale_resources")
+
+    def verify_managed_inventory(
+        self, env: dict[str, str], target: TargetPolicy, phase: str
+    ) -> None:
+        if not self.managed_inventory:
+            fail("rendered managed-resource inventory is unavailable")
+        live_inventory = self.live_managed_inventory(env, target)
+        if live_inventory != self.managed_inventory:
+            self.record_live_managed_inventory(live_inventory, phase, "mismatch")
+            fail("live managed-resource inventory does not match the rendered staging manifest")
+        self.record_live_managed_inventory(live_inventory, phase, "matched")
 
     def verify_live_deployment(self, env: dict[str, str], target: TargetPolicy, phase: str) -> LiveDeploymentIdentity:
         command(
@@ -572,7 +723,12 @@ class Delivery:
                 command(["kubectl", "apply", "--server-side", "--dry-run=server", "-f", str(manifest)], env, quiet=True)
                 self.event("server_side_dry_run", result="passed")
             elif self.args.action == "apply":
+                # Never use broad prune. If a previous overlay left an
+                # allowlisted, label-selected object behind, stop before this
+                # mutating apply and require an explicit reviewed recovery.
+                self.verify_no_stale_managed_resources(env, target)
                 command(["kubectl", "apply", "--server-side", "-f", str(manifest)], env, quiet=True)
+                self.verify_managed_inventory(env, target, "after_apply")
                 self.verify_live_deployment(env, target, "after_apply")
                 self.event("apply", result="passed")
             elif self.args.action == "rollback":
@@ -582,10 +738,12 @@ class Delivery:
             elif self.args.action == "smoke":
                 if not self.args.smoke_command:
                     fail("EKS_SMOKE_COMMAND is required and is never logged")
+                self.verify_managed_inventory(env, target, "before_smoke")
                 before_smoke = self.verify_live_deployment(env, target, "before_smoke")
                 proc = subprocess.run(self.args.smoke_command, shell=True, env=env, text=True, capture_output=True)
                 if proc.returncode:
                     fail(f"protected staging smoke failed (exit {proc.returncode}): {scrub(proc.stderr or proc.stdout)}")
+                self.verify_managed_inventory(env, target, "after_smoke")
                 after_smoke = self.verify_live_deployment(env, target, "after_smoke")
                 if before_smoke != after_smoke:
                     fail("live router Deployment changed during the protected staging smoke")
@@ -595,6 +753,7 @@ class Delivery:
                 # rolled back or replaced after the smoke. Re-check the live
                 # rollout and named router container before it can support a
                 # promotion decision.
+                self.verify_managed_inventory(env, target, "promotion_plan")
                 self.verify_live_deployment(env, target, "promotion_plan")
                 records: dict[str, dict[str, object]] = {}
                 for action, required_event in (("apply", "apply"), ("smoke", "smoke")):
@@ -621,6 +780,10 @@ class Delivery:
                     "target_policy_sha256",
                     "image_digest",
                     "configuration_fingerprint",
+                    "managed_resource_count",
+                    "managed_resource_inventory_sha256",
+                    "live_managed_resource_count",
+                    "live_managed_resource_inventory_sha256",
                     "live_deployment_generation",
                     "live_deployment_observed_generation",
                     "live_pod_template_sha256",

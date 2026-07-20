@@ -243,7 +243,12 @@ the approved namespace. Bind smoke and promotion evidence to the exact
 immutable image digest, a digest-normalized fingerprint of the validated
 rendered configuration, and the live Deployment pod-template/generation state.
 Recheck that state before promotion so a rollback or replacement cannot reuse
-stale smoke evidence.
+stale smoke evidence. For automated delivery, use a deployment-owned label to
+derive an allowlisted namespace inventory for the router Deployment, Service,
+Ingress, NetworkPolicy, PVC, PodDisruptionBudget, and ServiceAccount. Verify
+that exact inventory before smoke and promotion. Do not use a broad prune: a
+removed or renamed resource should fail delivery until it is removed through a
+separately approved migration.
 
 Check rollout:
 

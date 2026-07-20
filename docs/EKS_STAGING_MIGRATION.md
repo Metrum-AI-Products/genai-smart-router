@@ -170,6 +170,16 @@ context. See `make eks-help` for the complete target list and required inputs.
    configuration fingerprint, and safe scalar metadata. A missing session,
    protected policy, matching account/role, namespace RBAC, digest, namespace
    match, or dry-run failure stops before mutation.
+
+   The delivery role must also have namespace-scoped `list` permission only on
+   `deployments`, `ingresses`, `networkpolicies`,
+   `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
+   `serviceaccounts`. The delivery contract builds a label-selected inventory
+   of exactly those rendered resources and records only its count and digest.
+   It does not use broad prune. If an old managed object is absent from a new
+   manifest (for example, a removed or renamed Ingress, Service, or
+   NetworkPolicy), apply stops before mutation and the object must be removed
+   through a separate reviewed recovery/migration.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
@@ -226,9 +236,10 @@ context. See `make eks-help` for the complete target list and required inputs.
 7. Run `make eks-promotion-plan IMAGE_DIGEST='<the same immutable digest>'`
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
-   target, digest, rendered configuration fingerprint, and live Deployment
-   pod-template/generation state. It rechecks the current rollout before
-   producing review-only evidence and cannot apply to production.
+   target, digest, rendered configuration fingerprint, live Deployment
+   pod-template/generation state, and exact label-selected managed-resource
+   inventory. It rechecks the current rollout and inventory before producing
+   review-only evidence and cannot apply to production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.

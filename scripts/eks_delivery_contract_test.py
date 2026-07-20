@@ -29,6 +29,7 @@ def target_value(value: dict[str, object] | None = None) -> str:
 
 def rendered_objects(namespace: str | None = None) -> str:
     namespace = namespace or str(TARGET_POLICY["k8s_namespace"])
+    labels = {"app.kubernetes.io/name": "smart-llmrouter"}
     return json.dumps(
         {
             "apiVersion": "v1",
@@ -37,7 +38,11 @@ def rendered_objects(namespace: str | None = None) -> str:
                 {
                     "apiVersion": "apps/v1",
                     "kind": "Deployment",
-                    "metadata": {"name": "smart-llmrouter", "namespace": namespace},
+                    "metadata": {
+                        "name": "smart-llmrouter",
+                        "namespace": namespace,
+                        "labels": labels,
+                    },
                     "spec": {
                         "template": {
                             "spec": {"containers": [{"name": "router", "image": DIGEST}]}
@@ -47,11 +52,31 @@ def rendered_objects(namespace: str | None = None) -> str:
                 {
                     "apiVersion": "v1",
                     "kind": "Service",
-                    "metadata": {"name": "smart-llmrouter", "namespace": namespace},
+                    "metadata": {
+                        "name": "smart-llmrouter",
+                        "namespace": namespace,
+                        "labels": labels,
+                    },
                 },
             ],
         }
     )
+
+
+def inventory_with_stale_resource() -> str:
+    payload = json.loads(rendered_objects())
+    payload["items"].append(
+        {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": {
+                "name": "stale-router-ingress",
+                "namespace": TARGET_POLICY["k8s_namespace"],
+                "labels": {"app.kubernetes.io/name": "smart-llmrouter"},
+            },
+        }
+    )
+    return json.dumps(payload)
 
 
 def rendered_manifest(configuration_marker: str = "configuration-one") -> str:
@@ -98,6 +123,7 @@ case "$0" in
   *kubectl) case "$*" in
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
+    *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) printf '%s\\n' "$FAKE_LIVE_MANAGED_OBJECTS" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
     *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
@@ -121,6 +147,7 @@ def run(
     account: str | None = None,
     policy: dict[str, object] | None = None,
     render_objects: str | None = None,
+    live_inventory: str | None = None,
     rendered_manifest_value: str | None = None,
     deployed_digest: str = DIGEST,
     deployed_template_marker: str = "template-one",
@@ -152,6 +179,7 @@ def run(
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
+        "FAKE_LIVE_MANAGED_OBJECTS": live_inventory or rendered_objects(),
         "FAKE_RENDERED_MANIFEST": rendered_manifest_value or rendered_manifest(),
         "FAKE_DEPLOYMENT_OBJECT": deployment_object(
             deployed_digest,
@@ -199,7 +227,23 @@ def main() -> int:
         wrong_namespace = run("plan", root, render_objects=rendered_objects("another-namespace"))
         assert wrong_namespace.returncode != 0 and "outside the approved namespace" in wrong_namespace.stderr
 
+        unlabeled_objects = json.loads(rendered_objects())
+        del unlabeled_objects["items"][1]["metadata"]["labels"]
+        unlabeled = run("plan", root, render_objects=json.dumps(unlabeled_objects))
+        assert unlabeled.returncode != 0 and "managed-resource label" in unlabeled.stderr
+
         assert run("apply", root).returncode != 0
+        before_stale_apply = (bindir / "calls.log").read_text()
+        stale_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            live_inventory=inventory_with_stale_resource(),
+        )
+        assert stale_apply.returncode != 0 and "stale resources" in stale_apply.stderr
+        stale_apply_calls = (bindir / "calls.log").read_text()[len(before_stale_apply):]
+        assert "apply --server-side -f" not in stale_apply_calls
+        assert "--prune" not in stale_apply_calls
         applied = run("apply", root, ["--confirm", "STAGING_APPLY"])
         assert applied.returncode == 0, applied.stderr
 
@@ -207,6 +251,16 @@ def main() -> int:
         assert promotion.returncode != 0 and "smoke evidence" in promotion.stderr
         no_digest = run("promotion-plan", root, include_digest=False)
         assert no_digest.returncode != 0 and "IMAGE_DIGEST" in no_digest.stderr
+
+        stale_smoke_marker = root / "stale-smoke-command-ran"
+        stale_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command", f"touch {stale_smoke_marker}"],
+            live_inventory=inventory_with_stale_resource(),
+        )
+        assert stale_smoke.returncode != 0 and "managed-resource inventory" in stale_smoke.stderr
+        assert not stale_smoke_marker.exists()
 
         smoke = run(
             "smoke",
@@ -244,10 +298,18 @@ def main() -> int:
         for evidence in (apply_evidence, smoke_evidence):
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["configuration_fingerprint"]))
             assert evidence["configuration_fingerprint"] != evidence["rendered_manifest_sha256"]
+            assert evidence["managed_resource_count"] == evidence["live_managed_resource_count"] == 2
+            assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["managed_resource_inventory_sha256"]))
+            assert evidence["managed_resource_inventory_sha256"] == evidence["live_managed_resource_inventory_sha256"]
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
             assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+
+        stale_promotion = run(
+            "promotion-plan", root, live_inventory=inventory_with_stale_resource()
+        )
+        assert stale_promotion.returncode != 0 and "managed-resource inventory" in stale_promotion.stderr
 
         configuration_drift = run(
             "promotion-plan",

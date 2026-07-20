@@ -102,5 +102,16 @@ creation and labels are an independently reviewed bootstrap action, and the
 delivery contract rejects cluster-scoped resources or any rendered resource
 outside the approved namespace.
 
+The contract also derives a canonical inventory from the allowlisted,
+namespace-scoped resources bearing `app.kubernetes.io/name=smart-llmrouter`.
+It verifies that exact inventory before smoke and promotion, and refuses an
+apply before mutation if an old label-selected resource is no longer rendered.
+It deliberately does **not** use Kubernetes prune: removal or renaming of a
+Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
+Deployment requires a separately reviewed recovery/migration to remove the
+stale object. The delivery role therefore needs namespace-scoped `list` access
+to only those seven resource types, in addition to the existing rollout and
+pod read permissions.
+
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.
