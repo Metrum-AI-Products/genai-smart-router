@@ -20,6 +20,12 @@ PATTERNS = {
 }
 
 
+def is_kubernetes_dns_subdomain(value: str | None) -> bool:
+    """Accept Kubernetes object names, which may be dotted DNS subdomains."""
+    label = PATTERNS["namespace"]
+    return bool(value) and len(value) <= 253 and all(label.fullmatch(part) for part in value.split("."))
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     result.add_argument("--identity-only", action="store_true")
@@ -39,7 +45,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def validate(name: str, value: str | None) -> None:
-    if not value or not PATTERNS[name].fullmatch(value):
+    valid = is_kubernetes_dns_subdomain(value) if name == "kubernetes-object-name" else bool(value and PATTERNS[name].fullmatch(value))
+    if not valid:
         raise ValueError(f"invalid {name}; use the documented explicit identifier format")
 
 
@@ -58,8 +65,8 @@ def main() -> int:
                 raise ValueError("ingress namespace, service account, deployment, and Linkerd trust domain must be supplied together")
             if args.linkerd_namespace:
                 validate("namespace", args.ingress_namespace)
-                validate("namespace", args.ingress_service_account)
-                validate("namespace", args.ingress_deployment)
+                validate("kubernetes-object-name", args.ingress_service_account)
+                validate("kubernetes-object-name", args.ingress_deployment)
                 validate("trust-domain", args.linkerd_trust_domain)
             elif any(linkerd_identity_inputs):
                 raise ValueError("ingress identity is only valid when Linkerd discovery is selected")

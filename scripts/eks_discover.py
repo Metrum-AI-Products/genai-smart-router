@@ -80,8 +80,17 @@ def linkerd_injection_annotation(payload: dict[str, Any]) -> str:
     return str(payload.get("metadata", {}).get("annotations", {}).get("linkerd.io/inject", ""))
 
 
-def linkerd_ingress_identity(namespace: str, service_account: str, trust_domain: str) -> str:
-    return f"{service_account}.{namespace}.serviceaccount.identity.linkerd.{trust_domain}"
+def is_dns_subdomain(value: Any) -> bool:
+    """Return whether a Kubernetes object name is a DNS subdomain."""
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 253
+        and all(DNS_LABEL.fullmatch(label) for label in value.split("."))
+    )
+
+
+def linkerd_ingress_identity(namespace: str, service_account: str, control_plane_namespace: str, trust_domain: str) -> str:
+    return f"{service_account}.{namespace}.serviceaccount.identity.{control_plane_namespace}.{trust_domain}"
 
 
 def controller_owned_by(payload: dict[str, Any], kind: str, name: str, uid: str) -> bool:
@@ -104,11 +113,55 @@ def non_terminating_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def ready_linkerd_ingress_pod(payload: dict[str, Any], service_account: str) -> bool:
+def proxy_environment_value(container: dict[str, Any], name: str) -> str | None:
+    """Return exactly one literal safe proxy environment value, if present."""
+    environment = container.get("env")
+    if not isinstance(environment, list):
+        return None
+    values = [entry.get("value") for entry in environment if isinstance(entry, dict) and entry.get("name") == name]
+    return values[0] if len(values) == 1 and isinstance(values[0], str) else None
+
+
+def proxy_local_identity_matches(
+    container: dict[str, Any],
+    ingress_namespace: str,
+    service_account: str,
+    control_plane_namespace: str,
+    trust_domain: str,
+) -> bool:
+    """Require the proxy's safe local-identity value to match observed trust config.
+
+    Linkerd injects this non-secret value into every proxy. Discovery derives
+    the trust domain from the separate literal `_l5d_trustdomain` value, then
+    requires this identity template to agree with it. Trust anchors,
+    certificates, tokens, and arbitrary environment values remain outside
+    discovery scope.
+    """
+    local_identity = proxy_environment_value(container, "LINKERD2_PROXY_IDENTITY_LOCAL_NAME")
+    if local_identity is None:
+        return False
+    expected_identity = linkerd_ingress_identity(
+        ingress_namespace,
+        service_account,
+        control_plane_namespace,
+        trust_domain,
+    )
+    expected_injected_template = (
+        f"$(_pod_sa).$(_pod_ns).serviceaccount.identity.{control_plane_namespace}.{trust_domain}"
+    )
+    return local_identity in (expected_identity, expected_injected_template)
+
+
+def ready_linkerd_ingress_pod(
+    payload: dict[str, Any],
+    ingress_namespace: str,
+    service_account: str,
+    control_plane_namespace: str,
+) -> str | None:
     spec = payload.get("spec", {})
     status = payload.get("status", {})
     if not isinstance(spec, dict) or not isinstance(status, dict) or spec.get("serviceAccountName") != service_account:
-        return False
+        return None
     ready = any(
         isinstance(condition, dict) and condition.get("type") == "Ready" and condition.get("status") == "True"
         for condition in status.get("conditions", [])
@@ -117,11 +170,36 @@ def ready_linkerd_ingress_pod(payload: dict[str, Any], service_account: str) -> 
         isinstance(container, dict) and container.get("name") == "linkerd-proxy" and container.get("ready") is True
         for container in status.get("containerStatuses", [])
     )
-    return ready and proxy_ready
+    proxy_containers = [
+        container
+        for container in spec.get("containers", [])
+        if isinstance(container, dict) and container.get("name") == "linkerd-proxy"
+    ]
+    if not ready or not proxy_ready or len(proxy_containers) != 1:
+        return None
+    observed_trust_domain = proxy_environment_value(proxy_containers[0], "_l5d_trustdomain")
+    if not isinstance(observed_trust_domain, str) or not TRUST_DOMAIN.fullmatch(observed_trust_domain):
+        return None
+    if not proxy_local_identity_matches(
+        proxy_containers[0],
+        ingress_namespace,
+        service_account,
+        control_plane_namespace,
+        observed_trust_domain,
+    ):
+        return None
+    return observed_trust_domain
 
 
 def ingress_workload_evidence(
-    deployment: dict[str, Any], replica_sets: dict[str, Any], pods: dict[str, Any], deployment_name: str, service_account: str
+    deployment: dict[str, Any],
+    replica_sets: dict[str, Any],
+    pods: dict[str, Any],
+    deployment_name: str,
+    ingress_namespace: str,
+    service_account: str,
+    control_plane_namespace: str,
+    trust_domain: str,
 ) -> dict[str, int | bool | str]:
     """Fail closed unless the selected ingress Deployment really presents the mesh identity.
 
@@ -162,8 +240,24 @@ def ingress_workload_evidence(
     ]
     if len(workload_pods) < desired:
         raise DiscoveryError("selected ingress deployment has fewer running workload pods than desired replicas")
-    if not all(ready_linkerd_ingress_pod(pod, service_account) for pod in workload_pods):
-        raise DiscoveryError("selected ingress workload is not Linkerd-injected and ready with the selected service account")
+    observed_trust_domains = [
+        ready_linkerd_ingress_pod(
+            pod,
+            ingress_namespace,
+            service_account,
+            control_plane_namespace,
+        )
+        for pod in workload_pods
+    ]
+    if any(domain is None for domain in observed_trust_domains):
+        raise DiscoveryError(
+            "selected ingress workload is not Linkerd-injected, identity-configured, and ready with the selected service account"
+        )
+    actual_trust_domains = {domain for domain in observed_trust_domains if domain is not None}
+    if len(actual_trust_domains) != 1:
+        raise DiscoveryError("selected ingress workload has inconsistent Linkerd proxy trust-domain evidence")
+    if actual_trust_domains != {trust_domain}:
+        raise DiscoveryError("selected Linkerd trust domain does not match the ready ingress proxy identity evidence")
     return {
         "ingress_workload_kind": "Deployment",
         "ingress_workload_name": deployment_name,
@@ -301,9 +395,10 @@ def main() -> int:
     if not args.linkerd_namespace and any(linkerd_identity_inputs):
         parser.error("ingress identity is valid only when Linkerd discovery is selected")
     if args.linkerd_namespace and (
-        not DNS_LABEL.fullmatch(args.ingress_namespace)
-        or not DNS_LABEL.fullmatch(args.ingress_service_account)
-        or not DNS_LABEL.fullmatch(args.ingress_deployment)
+        not DNS_LABEL.fullmatch(args.linkerd_namespace)
+        or not DNS_LABEL.fullmatch(args.ingress_namespace)
+        or not is_dns_subdomain(args.ingress_service_account)
+        or not is_dns_subdomain(args.ingress_deployment)
         or not TRUST_DOMAIN.fullmatch(args.linkerd_trust_domain)
     ):
         parser.error("invalid Linkerd ingress namespace, service account, deployment, or trust domain")
@@ -369,9 +464,17 @@ def main() -> int:
                     ingress_replica_sets,
                     ingress_pods,
                     args.ingress_deployment,
+                    args.ingress_namespace,
                     args.ingress_service_account,
+                    args.linkerd_namespace,
+                    args.linkerd_trust_domain,
                 )
-                ingress_identity = linkerd_ingress_identity(args.ingress_namespace, args.ingress_service_account, args.linkerd_trust_domain)
+                ingress_identity = linkerd_ingress_identity(
+                    args.ingress_namespace,
+                    args.ingress_service_account,
+                    args.linkerd_namespace,
+                    args.linkerd_trust_domain,
+                )
                 linkerd_crd_versions: dict[str, list[str]] = {}
                 for crd in sorted(required_linkerd_resources):
                     crd_payload = kubectl_json(kubeconfig, ["--context", context, "get", "customresourcedefinition", crd])

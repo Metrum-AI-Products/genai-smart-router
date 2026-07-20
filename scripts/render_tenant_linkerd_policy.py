@@ -18,12 +18,23 @@ DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
-def linkerd_ingress_identity(namespace: str, service_account: str, trust_domain: str) -> str:
-    return f"{service_account}.{namespace}.serviceaccount.identity.linkerd.{trust_domain}"
+def linkerd_ingress_identity(namespace: str, service_account: str, control_plane_namespace: str, trust_domain: str) -> str:
+    return f"{service_account}.{namespace}.serviceaccount.identity.{control_plane_namespace}.{trust_domain}"
 
 
 def require_label(value: Any, name: str) -> str:
     if not isinstance(value, str) or not DNS_LABEL.fullmatch(value):
+        raise ValueError(f"discovery report has invalid {name}")
+    return value
+
+
+def require_dns_subdomain(value: Any, name: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 253
+        or not all(DNS_LABEL.fullmatch(label) for label in value.split("."))
+    ):
         raise ValueError(f"discovery report has invalid {name}")
     return value
 
@@ -48,9 +59,15 @@ def render(template: str, discovery: dict[str, Any]) -> str:
         raise ValueError("Linkerd ingress identity was not verified by discovery")
     tenant_namespace = require_label(selection.get("namespace"), "tenant namespace")
     ingress_namespace = require_label(linkerd.get("ingress_namespace"), "ingress namespace")
-    ingress_service_account = require_label(linkerd.get("ingress_service_account"), "ingress service account")
+    ingress_service_account = require_dns_subdomain(linkerd.get("ingress_service_account"), "ingress service account")
+    control_plane_namespace = require_label(linkerd.get("control_plane_namespace"), "Linkerd control-plane namespace")
     trust_domain = require_trust_domain(linkerd.get("trust_domain"))
-    expected_identity = linkerd_ingress_identity(ingress_namespace, ingress_service_account, trust_domain)
+    expected_identity = linkerd_ingress_identity(
+        ingress_namespace,
+        ingress_service_account,
+        control_plane_namespace,
+        trust_domain,
+    )
     if linkerd.get("ingress_identity") != expected_identity:
         raise ValueError("discovery report ingress identity does not match its validated namespace, service account, and trust domain")
     if template.count("__TENANT_NAMESPACE__") != 2 or template.count("__LINKERD_INGRESS_IDENTITY__") != 1:

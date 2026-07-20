@@ -147,16 +147,24 @@ cluster that does not use Linkerd. When selected, it is the explicit
 control-plane namespace (not a product default), and discovery requires the
 Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
 `ServerAuthorization` APIs used by the checked-in template. Select the actual
-ingress namespace, service account, Deployment, and deployment trust domain as
-well. Discovery proves that the selected Deployment uses that service account,
-has its declared replicas available, and has ready controller-owned Pods with a
-ready `linkerd-proxy` sidecar before it records the derived Linkerd identity as
+ingress namespace, service account, Deployment, and mesh trust domain as well.
+Namespaces remain DNS labels; the selected ServiceAccount and Deployment use
+their Kubernetes DNS-subdomain object names (up to 253 characters). Discovery
+proves that the selected Deployment uses that service account, has its declared
+replicas available, and has ready controller-owned Pods with a ready
+`linkerd-proxy` sidecar. It derives the trust domain only from each ready
+proxy's safe literal `_l5d_trustdomain` value and requires every selected Pod
+to agree. It then requires the safe injected
+`LINKERD2_PROXY_IDENTITY_LOCAL_NAME` value to exactly match that observed
+domain, the service account, ingress namespace, and selected Linkerd
+control-plane namespace before it records the derived Linkerd identity as
 verified. This prevents a policy from authorizing an identity that the ingress
-does not actually present. The current contract supports an ingress
+does not actually present, including one with an operator-supplied but incorrect
+trust domain. The current contract supports an ingress
 `Deployment`; add a separately reviewed discovery contract before using a
 different workload kind. Discovery deliberately does not read Linkerd trust
-configuration payloads; supply the current trust domain from the approved mesh
-deployment configuration and review the derived identity before rendering.
+configuration payloads, trust anchors, certificates, or tokens; review the
+derived identity before rendering.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
@@ -246,7 +254,8 @@ make eks-render-linkerd-policy \
   EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
 ```
 
-The renderer derives `service-account.namespace.serviceaccount.identity.linkerd.trust-domain`
+The renderer derives
+`service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
 placeholders. Review and server-side dry-run the resulting outside-repository
 artifact before any apply.

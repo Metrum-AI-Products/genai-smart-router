@@ -240,7 +240,19 @@ def ingress_workload_payloads() -> tuple[dict[str, object], dict[str, object], d
         "items": [
             {
                 "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "ingress-controller-abc123", "uid": "replicaset-uid", "controller": True}]},
-                "spec": {"serviceAccountName": "ingress-proxy"},
+                "spec": {
+                    "serviceAccountName": "ingress-proxy",
+                    "containers": [{
+                        "name": "linkerd-proxy",
+                        "env": [{
+                            "name": "_l5d_trustdomain",
+                            "value": "mesh.example",
+                        }, {
+                            "name": "LINKERD2_PROXY_IDENTITY_LOCAL_NAME",
+                            "value": "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.mesh.example",
+                        }],
+                    }],
+                },
                 "status": {
                     "conditions": [{"type": "Ready", "status": "True"}],
                     "containerStatuses": [{"name": "controller", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
@@ -248,7 +260,19 @@ def ingress_workload_payloads() -> tuple[dict[str, object], dict[str, object], d
             },
             {
                 "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "ingress-controller-abc123", "uid": "replicaset-uid", "controller": True}]},
-                "spec": {"serviceAccountName": "ingress-proxy"},
+                "spec": {
+                    "serviceAccountName": "ingress-proxy",
+                    "containers": [{
+                        "name": "linkerd-proxy",
+                        "env": [{
+                            "name": "_l5d_trustdomain",
+                            "value": "mesh.example",
+                        }, {
+                            "name": "LINKERD2_PROXY_IDENTITY_LOCAL_NAME",
+                            "value": "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.mesh.example",
+                        }],
+                    }],
+                },
                 "status": {
                     "conditions": [{"type": "Ready", "status": "True"}],
                     "containerStatuses": [{"name": "controller", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
@@ -261,7 +285,16 @@ def ingress_workload_payloads() -> tuple[dict[str, object], dict[str, object], d
 
 def test_ingress_workload_requires_actual_meshed_service_account() -> None:
     deployment, replica_sets, pods = ingress_workload_payloads()
-    evidence = MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+    evidence = MODULE.ingress_workload_evidence(
+        deployment,
+        replica_sets,
+        pods,
+        "ingress-controller",
+        "gateway-system",
+        "ingress-proxy",
+        "linkerd",
+        "mesh.example",
+    )
     if evidence != {
         "ingress_workload_kind": "Deployment",
         "ingress_workload_name": "ingress-controller",
@@ -273,7 +306,16 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
         raise AssertionError("ready Linkerd ingress deployment did not produce bounded scalar evidence")
     deployment["spec"]["template"]["spec"]["serviceAccountName"] = "different-service-account"  # type: ignore[index]
     try:
-        MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+        MODULE.ingress_workload_evidence(
+            deployment,
+            replica_sets,
+            pods,
+            "ingress-controller",
+            "gateway-system",
+            "ingress-proxy",
+            "linkerd",
+            "mesh.example",
+        )
     except MODULE.DiscoveryError:
         pass
     else:
@@ -281,11 +323,65 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
     deployment, replica_sets, pods = ingress_workload_payloads()
     pods["items"][0]["status"]["containerStatuses"][1]["ready"] = False  # type: ignore[index]
     try:
-        MODULE.ingress_workload_evidence(deployment, replica_sets, pods, "ingress-controller", "ingress-proxy")
+        MODULE.ingress_workload_evidence(
+            deployment,
+            replica_sets,
+            pods,
+            "ingress-controller",
+            "gateway-system",
+            "ingress-proxy",
+            "linkerd",
+            "mesh.example",
+        )
     except MODULE.DiscoveryError:
         pass
     else:
         raise AssertionError("ingress identity verification accepted a Pod without a ready Linkerd proxy")
+    deployment, replica_sets, pods = ingress_workload_payloads()
+    for pod in pods["items"]:  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][0]["value"] = "wrong.example"  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.wrong.example"  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_evidence(
+            deployment,
+            replica_sets,
+            pods,
+            "ingress-controller",
+            "gateway-system",
+            "ingress-proxy",
+            "linkerd",
+            "mesh.example",
+        )
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress identity verification accepted a Pod with a mismatched Linkerd trust domain")
+    deployment, replica_sets, pods = ingress_workload_payloads()
+    pods["items"][0]["spec"]["containers"][0]["env"][0]["value"] = "different.example"  # type: ignore[index]
+    pods["items"][0]["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.different.example"  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_evidence(
+            deployment,
+            replica_sets,
+            pods,
+            "ingress-controller",
+            "gateway-system",
+            "ingress-proxy",
+            "linkerd",
+            "mesh.example",
+        )
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress identity verification accepted inconsistent Linkerd trust-domain evidence")
+
+
+def test_linkerd_workload_names_accept_dns_subdomains() -> None:
+    maximum_length_name = f"{'a' * 63}.{'b' * 63}.{'c' * 63}.{'d' * 61}"
+    if not MODULE.is_dns_subdomain(maximum_length_name):
+        raise AssertionError("Kubernetes DNS-subdomain workload name at the 253-character limit was rejected")
+    if MODULE.is_dns_subdomain(f"{'a' * 64}.example") or MODULE.is_dns_subdomain("invalid..example"):
+        raise AssertionError("invalid Kubernetes DNS-subdomain workload name was accepted")
 
 
 def main() -> int:
@@ -300,6 +396,7 @@ def main() -> int:
         test_unsafe_output_paths_are_rejected_without_deletion(root)
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
+        test_linkerd_workload_names_accept_dns_subdomains()
     print("EKS discovery diagnostic safeguards passed")
     return 0
 

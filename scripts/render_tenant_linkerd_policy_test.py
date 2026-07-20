@@ -26,9 +26,10 @@ def discovery() -> dict[str, object]:
             "ingress_workload_verified": True,
             "ingress_workload_mesh_ready": True,
             "ingress_namespace": "gateway-system",
-            "ingress_service_account": "gateway-proxy",
+            "ingress_service_account": "gateway.proxy",
+            "control_plane_namespace": "linkerd-control",
             "trust_domain": "mesh.example",
-            "ingress_identity": "gateway-proxy.gateway-system.serviceaccount.identity.linkerd.mesh.example",
+            "ingress_identity": "gateway.proxy.gateway-system.serviceaccount.identity.linkerd-control.mesh.example",
         },
     }
 
@@ -40,7 +41,7 @@ def main() -> int:
         raise AssertionError("rendered policy retained a placeholder")
     if "namespace: tenant-acme" not in rendered:
         raise AssertionError("renderer did not derive the tenant namespace from discovery")
-    expected = "gateway-proxy.gateway-system.serviceaccount.identity.linkerd.mesh.example"
+    expected = "gateway.proxy.gateway-system.serviceaccount.identity.linkerd-control.mesh.example"
     if expected not in rendered:
         raise AssertionError("renderer did not derive the Linkerd identity from validated discovery values")
     invalid = discovery()
@@ -63,6 +64,16 @@ def main() -> int:
         pass
     else:
         raise AssertionError("renderer accepted identity evidence without a ready meshed ingress workload")
+    invalid_control_plane = discovery()
+    invalid_control_plane_linkerd = invalid_control_plane["linkerd"]
+    assert isinstance(invalid_control_plane_linkerd, dict)
+    invalid_control_plane_linkerd["control_plane_namespace"] = "different-linkerd"
+    try:
+        MODULE.render(template, invalid_control_plane)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("renderer accepted an identity that does not match its verified Linkerd control-plane namespace")
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "tenant-linkerd-policy.yaml"
         MODULE.atomic_write(output, rendered)

@@ -59,8 +59,10 @@ service-account, network-policy, quota, and
 Linkerd-policy drift before overwriting it. Render each `ServerAuthorization`
 only after discovery verifies the selected ingress Deployment uses the selected
 service account and its controller-owned Pods are ready with a `linkerd-proxy`
-sidecar. Bind the identity to the selected ingress namespace and mesh trust
-domain; never apply a template with a fixed, unresolved, or merely
+sidecar. Discovery derives the domain from every selected proxy's safe literal
+trust-domain configuration and compares its safe local-identity configuration
+with the selected ingress namespace and Linkerd control-plane namespace before
+rendering; never apply a template with a fixed, unresolved, or merely
 service-account-existence-based ingress identity.
 
 ## Image And Architecture
