@@ -24,8 +24,8 @@ it cannot create EKS resources, change an access entry, or create a Kubernetes
 namespace.
 
 After the platform administrator creates the `smartrouter` console login,
-enrolls MFA, and grants only `sts:AssumeRole`, use named local profiles; do not
-add long-lived access keys:
+enrolls MFA, and grants only `sts:AssumeRole`, use a bounded local session; do
+not retain a long-lived access key:
 
 ```ini
 [profile smartrouter]
@@ -37,7 +37,18 @@ source_profile = smartrouter
 region = <approved-region>
 ```
 
-Start the short-lived local session with `aws login --profile smartrouter`.
+Run the canonical bootstrap target. It creates a one-time source key, exchanges
+it with the macOS Keychain MFA seed for a one-hour STS session, verifies the
+discovery-role identity, and deletes the source key even when bootstrap fails:
+
+```bash
+make eks-session-bootstrap \
+  EKS_ACCOUNT_ID=123456789012 \
+  EKS_REGION=us-east-1 \
+  EKS_MFA_SERIAL=arn:aws:iam::123456789012:mfa/smartrouter \
+  EKS_MFA_KEYCHAIN_SERVICE=your-local-mfa-keychain-service
+```
+
 Verify the resulting identity is an `assumed-role/genai-smart-router-eks-discovery`
 session before running discovery. EKS access entries plus namespace-scoped
 Kubernetes RBAC remain separately required for `kubectl` reads.
@@ -60,21 +71,6 @@ make eks-discover \
 
 `make eks-identity-check` is available for an identity-only preflight. Neither
 Make target creates an AWS, EKS, or Kubernetes resource.
-
-### Browser-Login Fallback
-
-If the local AWS CLI browser callback cannot complete, a bootstrap administrator
-may use a time-boxed recovery path: create one access key for the approved
-`smartrouter` IAM user, exchange it together with that user's enrolled MFA code
-for a one-hour `sts:GetSessionToken` session, configure the session—not the
-source key—as the `smartrouter` local profile, and delete the source access key
-before the discovery profile is used. Verify `list-access-keys` is empty after
-the exchange. Do not put the source key, session secret, session token, MFA
-seed, or MFA code in Git, shell history, chat, or persistent configuration.
-
-This is a local break-glass bootstrap only, not the normal deployment flow.
-Record the actor, time, account, session expiry, discovery-role identity, and
-source-key deletion result as safe operational evidence.
 
 ```bash
 python3 scripts/eks_discover.py \

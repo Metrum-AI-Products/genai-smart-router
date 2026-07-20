@@ -22,14 +22,20 @@ EKS_CLUSTER ?=
 EKS_NAMESPACE ?=
 EKS_ECR_REPOSITORY ?=
 EKS_DISCOVERY_OUTPUT ?=
+EKS_ADMIN_PROFILE ?= default
+EKS_SOURCE_USER ?= smartrouter
+EKS_MFA_SERIAL ?=
+EKS_MFA_KEYCHAIN_SERVICE ?=
+EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
+EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-identity-check eks-discovery-validate eks-discover e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-identity-check eks-discovery-validate eks-discover e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test: secret-check
 	go test ./...
@@ -191,6 +197,9 @@ package-docker-all: docs-build admin-build
 
 compose-security-check:
 	bash scripts/check_compose_security.sh
+
+eks-session-bootstrap:
+	python3 scripts/bootstrap_eks_session.py --admin-profile "$$EKS_ADMIN_PROFILE" --source-user "$$EKS_SOURCE_USER" --mfa-serial "$$EKS_MFA_SERIAL" --macos-keychain-service "$$EKS_MFA_KEYCHAIN_SERVICE" --macos-keychain-account "$$EKS_MFA_KEYCHAIN_ACCOUNT" --session-profile smartrouter --role-profile "$$EKS_AWS_PROFILE" --role-arn "arn:aws:iam::$$EKS_ACCOUNT_ID:role/genai-smart-router-eks-discovery" --region "$$EKS_REGION" --duration-seconds "$$EKS_SESSION_DURATION"
 
 eks-identity-check:
 	python3 scripts/validate_eks_make_args.py --identity-only --profile "$$EKS_AWS_PROFILE" --account-id "$$EKS_ACCOUNT_ID" --region "$$EKS_REGION"
