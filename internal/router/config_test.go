@@ -35,6 +35,19 @@ func TestLoadEnvJSONSetsMissingValuesOnly(t *testing.T) {
 	}
 }
 
+func TestUsageDBMigrationPolicyValidation(t *testing.T) {
+	cfg := minimalConfig(t)
+	cfg.Server.UsageDB.MigrationPolicy = "not-a-policy"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "usage_db migration_policy") {
+		t.Fatalf("invalid usage migration policy error = %v", err)
+	}
+	cfg.Server.UsageDB.MigrationPolicy = ""
+	cfg.setDefaults()
+	if cfg.Server.UsageDB.MigrationPolicy != usageDBMigrationPolicyLegacyAutoMigrate {
+		t.Fatalf("migration policy default = %q", cfg.Server.UsageDB.MigrationPolicy)
+	}
+}
+
 func TestEnvExampleContainsOnlySafePlaceholders(t *testing.T) {
 	root := filepath.Join("..", "..")
 	raw, err := os.ReadFile(filepath.Join(root, "env.example.json"))

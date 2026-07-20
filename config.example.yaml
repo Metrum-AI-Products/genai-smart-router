@@ -19,6 +19,10 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
+    # legacy-auto-migrate preserves existing installations until the reviewed
+    # fresh-install DDL manifest ships. New production deployments should use
+    # validate or deployment-job after router-migrate has verified the ledger.
+    migration_policy: legacy-auto-migrate
   # Offline signed JSON license enforcement. Normal builds always enforce a
   # Metrum-issued license.json; runtime config cannot disable licensing.
   # Internal developers who need temporary no-license local testing must build
