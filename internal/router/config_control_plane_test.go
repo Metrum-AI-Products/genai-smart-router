@@ -137,3 +137,31 @@ func TestConfigControlPlaneEnforcesTargetProviderAndModelForeignKeys(t *testing.
 		t.Fatal("target with missing provider/model must be rejected")
 	}
 }
+
+func TestLoadActiveConfigFromDBRejectsCredentialBearingProviderHeader(t *testing.T) {
+	r, closeDB, err := ConfigControlPlaneMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "config.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closeDB() }()
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, seed := range []struct {
+		sql    string
+		values []any
+	}{
+		{`INSERT INTO router_config_sets (id, runtime_scope, name, status, validation_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`, []any{"set-1", "staging", "one", "active", "valid", now}},
+		{`INSERT INTO router_config_server (config_set_id, default_model_group) VALUES (?, ?)`, []any{"set-1", "default"}},
+		{`INSERT INTO router_config_providers (config_set_id, provider_name, base_url, dialect) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "https://mock.example/v1", "openai"}},
+		{`INSERT INTO router_config_provider_headers (config_set_id, provider_name, header_name, header_value) VALUES (?, ?, ?, ?)`, []any{"set-1", "mock", "Authorization", "not-a-real-secret"}},
+	} {
+		if err := r.db.Exec(seed.sql, seed.values...).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := LoadActiveConfigFromDB(r.db, "staging"); err == nil || !strings.Contains(err.Error(), "credential-bearing header") {
+		t.Fatalf("expected secret header rejection, got %v", err)
+	}
+}

@@ -94,6 +94,9 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 			return nil, err
 		}
 		for _, h := range headers {
+			if controlPlaneSecretHeader(h.HeaderName) {
+				return nil, fmt.Errorf("provider %q uses credential-bearing header %q; use api_key_env or a deployment secret reference", row.ProviderName, h.HeaderName)
+			}
 			p.Headers[h.HeaderName] = h.HeaderValue
 		}
 		var models []providerModelRow
@@ -140,6 +143,15 @@ func LoadActiveConfigFromDB(db *gorm.DB, runtimeScope string) (*Config, error) {
 		return nil, fmt.Errorf("validate active config set %q: %w", set.ID, err)
 	}
 	return cfg, nil
+}
+
+func controlPlaneSecretHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "authorization", "proxy-authorization", "x-api-key", "x-api-token", "api-key":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyConfigControlPlanePhase1(tx *gorm.DB) error {
@@ -191,10 +203,15 @@ func verifyConfigControlPlanePhase1(tx *gorm.DB) error {
 var configControlPlaneTables = []string{"router_config_sets", "router_config_server", "router_config_providers", "router_config_provider_headers", "router_config_provider_models", "router_config_model_groups", "router_config_model_group_targets", "router_config_callers", "router_config_caller_allowed_groups"}
 
 var configControlPlaneRequiredColumns = map[string][]string{
-	"router_config_sets":                {"id", "runtime_scope", "status", "validation_status"},
-	"router_config_providers":           {"config_set_id", "provider_name", "base_url", "dialect"},
-	"router_config_provider_models":     {"config_set_id", "provider_name", "model_ref", "model"},
-	"router_config_model_group_targets": {"config_set_id", "group_name", "provider_name", "model_ref", "model"},
+	"router_config_sets":                  {"id", "runtime_scope", "name", "status", "validation_status", "created_by", "created_at", "activated_at"},
+	"router_config_server":                {"config_set_id", "listen", "default_model_group", "state_path"},
+	"router_config_providers":             {"config_set_id", "provider_name", "base_url", "dialect", "api_key_env", "key_id", "auth_scheme"},
+	"router_config_provider_headers":      {"config_set_id", "provider_name", "header_name", "header_value"},
+	"router_config_provider_models":       {"config_set_id", "provider_name", "model_ref", "model", "dialect", "display_name", "context_tokens", "input_price_per_million_usd", "output_price_per_million_usd", "pricing_source", "pricing_updated_at", "pricing_notes"},
+	"router_config_model_groups":          {"config_set_id", "group_name", "strategy", "attempt_timeout_ms"},
+	"router_config_model_group_targets":   {"config_set_id", "group_name", "sequence", "provider_name", "model_ref", "model", "dialect", "weight", "rpm", "tier", "cost"},
+	"router_config_callers":               {"config_set_id", "caller_id", "owner_user", "project", "environment", "status", "token_sha256", "token_id", "metrics_admin", "content_admin", "rpm", "tpm", "concurrent"},
+	"router_config_caller_allowed_groups": {"config_set_id", "caller_id", "group_name"},
 }
 
 var configControlPlaneRequiredIndexes = map[string][]string{
