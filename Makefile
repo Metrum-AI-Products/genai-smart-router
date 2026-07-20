@@ -6,6 +6,21 @@ DIST_DIR ?= dist
 PKG_NAME ?= smart-llmrouter
 GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
+PYTHON ?= python3
+
+# Explicit inputs for all EKS commands. No target reads the current kubectl
+# context; scripts/eks_delivery.py creates and removes its own kubeconfig.
+AWS_REGION ?=
+EKS_CLUSTER ?=
+K8S_NAMESPACE ?=
+KUSTOMIZE_OVERLAY ?=
+ENVIRONMENT ?=
+IMAGE_DIGEST ?=
+EKS_CONFIRM ?=
+EKS_EVIDENCE_DIR ?= tmp/eks-evidence
+EKS_SMOKE_COMMAND ?=
+EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
+EKS_ARGS = --aws-region "$(AWS_REGION)" --eks-cluster "$(EKS_CLUSTER)" --k8s-namespace "$(K8S_NAMESPACE)" --kustomize-overlay "$(KUSTOMIZE_OVERLAY)" --environment "$(ENVIRONMENT)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -18,7 +33,6 @@ PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
 EKS_AWS_PROFILE ?= genai-smart-router-eks-discovery
 EKS_ACCOUNT_ID ?=
 EKS_REGION ?=
-EKS_CLUSTER ?=
 EKS_NAMESPACE ?=
 EKS_LINKERD_NAMESPACE ?=
 EKS_INGRESS_NAMESPACE ?=
@@ -40,13 +54,57 @@ EKS_MFA_KEYCHAIN_SERVICE ?=
 EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
 EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG PYTHON AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT IMAGE_DIGEST EKS_CONFIRM EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+
+help: eks-help
+
+eks-help:
+	@echo "EKS delivery targets (explicit inputs; no default kubeconfig/context):"
+	@echo "  eks-preflight          read-only: tools, AWS session, cluster, namespace RBAC"
+	@echo "  eks-render             read-only: deterministic digest-pinned manifest -> evidence"
+	@echo "  eks-plan               read-only: render plus server-side dry-run -> evidence"
+	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
+	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
+	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND"
+	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
+	@echo "  eks-promotion-plan     read-only: validates passed staging evidence; never applies production"
+	@echo "Required: AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT"
+	@echo "Render/plan/apply/smoke also require IMAGE_DIGEST=registry/image@sha256:<64 hex>."
+	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); JSON and Markdown are redacted."
+
+eks-preflight:
+	$(EKS_DELIVERY) preflight $(EKS_ARGS)
+
+eks-render:
+	$(EKS_DELIVERY) render $(EKS_ARGS)
+
+eks-plan:
+	$(EKS_DELIVERY) plan $(EKS_ARGS)
+
+eks-apply-staging:
+	$(EKS_DELIVERY) apply $(EKS_ARGS)
+
+eks-rollout-status:
+	$(EKS_DELIVERY) status $(EKS_ARGS)
+
+eks-smoke-staging:
+	$(EKS_DELIVERY) smoke $(EKS_ARGS) --smoke-command "$(EKS_SMOKE_COMMAND)"
+
+eks-rollback-staging:
+	$(EKS_DELIVERY) rollback $(EKS_ARGS)
+
+eks-release-evidence:
+	@test -f "$(EKS_EVIDENCE_DIR)/evidence.json" || (echo "missing $(EKS_EVIDENCE_DIR)/evidence.json" >&2; exit 2)
+	@echo "Safe evidence: $(EKS_EVIDENCE_DIR)/evidence.json and $(EKS_EVIDENCE_DIR)/summary.md"
+
+eks-promotion-plan:
+	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
 
 test: secret-check
 	go test ./...

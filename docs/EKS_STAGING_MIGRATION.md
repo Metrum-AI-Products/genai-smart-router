@@ -135,11 +135,38 @@ the staging configuration as a general baseline.
 
 ## Deployment And Validation
 
+The root Makefile is the canonical EKS operator and CI interface. It requires
+an explicit region, cluster, namespace, overlay, environment, and immutable
+image digest. It creates a temporary per-invocation kubeconfig, so it neither
+reads nor changes the operator's default kubectl context. See `make eks-help`
+for the complete target list and required inputs.
+
 1. Create the `smart-llmrouter-staging` namespace, then create the runtime
    Secret and make the wildcard certificate Secret available in that namespace.
-2. Render `deploy/kubernetes/overlays/metrum-staging` and run a server-side
-   dry run.
-3. Apply the overlay and wait for the router Deployment to become ready.
+2. With a short-lived, approved AWS identity, run the read-only contract:
+
+   ```bash
+   make eks-preflight eks-plan \
+     AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
+     K8S_NAMESPACE='smart-llmrouter-staging' \
+     KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
+     ENVIRONMENT='staging' \
+     IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+   ```
+
+   Inspect the scrubbed JSON and Markdown in `tmp/eks-evidence/`. A missing
+   session, namespace RBAC, digest, or dry-run failure stops before mutation.
+3. Apply only after review, using the explicit staging confirmation:
+
+   ```bash
+   make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
+     AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
+     K8S_NAMESPACE='smart-llmrouter-staging' \
+     KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
+     ENVIRONMENT='staging' \
+     IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+   ```
+
 4. Re-run the explicit-target discovery after the router Pods are Ready, then
    render and activate the companion ingress NetworkPolicy through the
    selection-bound target. It verifies the discovery account and selected EKS
@@ -180,7 +207,10 @@ the staging configuration as a general baseline.
    targets without `EKS_LINKERD_POLICY_OUTPUT`.
 5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
-6. Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
+6. Invoke `make eks-smoke-staging` with the same explicit inputs and an
+   `EKS_SMOKE_COMMAND` that points to a protected local/CI script. Do not put a
+   caller credential in the Makefile, command line, evidence, or shell history.
+   Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
    Service and `https://smartrouter.apps.metrum.ai`.
 7. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
@@ -193,8 +223,10 @@ the staging configuration as a general baseline.
 ## Rollback And Deferred Cutover
 
 If staging fails, preserve the RDS and state PVC snapshot for diagnosis, then
-remove the staging Ingress and Deployment. EC2 traffic and data remain
-unaffected.
+run `make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY` with the same
+explicit target inputs. It performs a bounded Deployment rollout undo and
+records post-rollback evidence. Removal of the Ingress or Deployment remains a
+separate approved recovery action. EC2 traffic and data remain unaffected.
 
 A future production cutover requires separate approval and a new runbook
 section covering an EC2 write freeze, logical Postgres export/import, row and

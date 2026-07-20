@@ -15,22 +15,13 @@ create the deployment-specific `smartrouter-gp3` StorageClass from
 `storageclass.yaml`. It uses the Metrum cluster's EKS Auto Mode EBS CSI driver;
 other deployments must select their own storage provisioner and class.
 
-Before applying it, create the `smartrouter-staging-runtime` Secret in the
-`smart-llmrouter-staging` namespace from ignored local files. The mounted
-`config.yaml` must be derived from the live production config but must use a
-dedicated staging caller, the EKS-bound license, `/app/state` paths, and the
-new RDS DSN. Keep all files and the DSN outside Git.
-
-```bash
-kubectl create namespace smart-llmrouter-staging --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n smart-llmrouter-staging create secret generic smartrouter-staging-runtime \
-  --from-file=config.yaml=/secure/staging/config.yaml \
-  --from-file=env.json=/secure/staging/env.json \
-  --from-file=license.json=/secure/staging/license.json \
-  --from-file=rds-ca.pem=/secure/staging/rds-ca.pem \
-  --from-file=router.ts=/secure/staging/router.ts \
-  --from-literal=ROUTER_USAGE_DB_DSN="$(cat /secure/staging/rds-dsn)"
-```
+Before applying it, use the separately approved namespace/Secret bootstrap
+procedure to create `smartrouter-staging-runtime` from ignored secure files.
+That privileged bootstrap is deliberately outside this Make delivery contract;
+never place DSNs, token values, provider keys, or runtime Secret creation
+commands in this repository or shell history. The mounted `config.yaml` must
+use a dedicated staging caller, the EKS-bound license, `/app/state` paths, and
+the new RDS DSN.
 
 The RDS DSN must use TLS hostname verification and the mounted CA file, for
 example `sslmode=verify-full sslrootcert=/app/config/rds-ca.pem`. Confirm the
@@ -38,12 +29,23 @@ platform wildcard certificate is available in this namespace as
 `apps-metrum-ai-wildcard-tls`, or update the overlay to the platform-provided
 secret name before applying.
 
-Render and validate before deployment:
+Render, dry-run, apply, and rollback must use the root Make contract rather
+than an implicit kubectl context. With an approved short-lived AWS identity:
 
 ```bash
-kubectl kustomize deploy/kubernetes/overlays/metrum-staging >/tmp/smartrouter-staging.yaml
-kubectl apply --dry-run=server -f /tmp/smartrouter-staging.yaml
-kubectl apply -f /tmp/smartrouter-staging.yaml
+make eks-preflight eks-plan \
+  AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
+  K8S_NAMESPACE='smart-llmrouter-staging' \
+  KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
+  ENVIRONMENT='staging' \
+  IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
+
+make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
+  AWS_REGION='<approved-region>' EKS_CLUSTER='<approved-cluster>' \
+  K8S_NAMESPACE='smart-llmrouter-staging' \
+  KUSTOMIZE_OVERLAY='deploy/kubernetes/overlays/metrum-staging' \
+  ENVIRONMENT='staging' \
+  IMAGE_DIGEST='registry.example/smart-llmrouter@sha256:<64-hex>'
 ```
 
 The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
@@ -90,6 +92,11 @@ make eks-apply-tenant-network-policies \
 If Linkerd is intentionally not selected, use
 `make eks-render-ingress-network-policy`, then the same validate/apply targets
 without `EKS_LINKERD_POLICY_OUTPUT`.
+
+The Make contract writes only scrubbed JSON and Markdown evidence below
+`tmp/eks-evidence/`, creates a temporary kubeconfig, rejects mutable images,
+and permits mutation only for `ENVIRONMENT=staging` with
+`EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
 
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.
