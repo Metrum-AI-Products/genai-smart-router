@@ -41,6 +41,44 @@ func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	}
 }
 
+func TestMigrationRunnerRequiresExplicitMaintenanceOperation(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	online := MigrationDefinition{ID: 1, Scope: "test", Name: "online marker", Release: "test", Checksum: MigrationChecksum("online marker"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(tx *gorm.DB) error {
+		return tx.Exec("CREATE TABLE online_marker (id INTEGER PRIMARY KEY)").Error
+	}}
+	maintenance := MigrationDefinition{ID: 2, Scope: "test", Name: "maintenance marker", Release: "test", Checksum: MigrationChecksum("maintenance marker"), SchemaVersion: 2, Transactional: true, MaintenanceMode: "maintenance", RollbackClass: "restore-required", Apply: func(tx *gorm.DB) error {
+		return tx.Exec("CREATE TABLE maintenance_marker (id INTEGER PRIMARY KEY)").Error
+	}}
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{online, maintenance})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("test-online"); err == nil {
+		t.Fatal("online runner must stop before a maintenance migration")
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 1 || status.State != "pending" || len(status.Pending) != 1 || status.Pending[0].ID != maintenance.ID {
+		t.Fatalf("online runner status = %+v, want only maintenance migration pending", status)
+	}
+	if err := r.ApplyMaintenancePending("test-maintenance"); err != nil {
+		t.Fatalf("explicit maintenance operation: %v", err)
+	}
+	status, err = r.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 2 || status.State != "current" || !status.Compatible {
+		t.Fatalf("maintenance operation status = %+v", status)
+	}
+}
+
 func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {

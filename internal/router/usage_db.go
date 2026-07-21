@@ -1508,7 +1508,11 @@ func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
 		if err := ensureSQLitePrivateMode(cfg.Path); err != nil {
 			return nil, err
 		}
-		db, err := gorm.Open(sqlite.Open(cfg.Path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		// Foreign keys are a required part of the relational usage and control
+		// plane contracts.  The SQLite driver applies this pragma to every
+		// connection opened through the DSN, rather than only to whichever
+		// connection happens to execute a one-time PRAGMA statement.
+		db, err := gorm.Open(sqlite.Open(sqliteDSNWithForeignKeys(cfg.Path)), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 		if err != nil {
 			return nil, err
 		}
@@ -1528,6 +1532,14 @@ func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
 	default:
 		return nil, fmt.Errorf("unsupported usage db driver %q", cfg.Driver)
 	}
+}
+
+func sqliteDSNWithForeignKeys(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_pragma=foreign_keys(1)"
 }
 
 func ensureSQLitePrivateMode(path string) error {
