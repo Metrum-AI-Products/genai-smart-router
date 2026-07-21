@@ -197,6 +197,21 @@ the database DSN and any private CA material in the same protected runtime
 secret or equivalent secret-manager integration; do not render those values
 into checked-in manifests.
 
+For automated delivery evidence, bind a runtime Secret by its Kubernetes UID
+and `resourceVersion`, never by its data or a captured content checksum. A
+replacement or update must invalidate prior apply/smoke proof and require a
+fresh reviewed rollout and smoke before promotion. Do **not** grant the
+delivery identity any Secret verb: Kubernetes cannot authorize a
+metadata-only Secret `get`. Instead, have a separate secret-bootstrap identity
+publish a policy-pinned, immutable, non-secret ConfigMap containing only a
+schema version, Secret name, UID, and resourceVersion, with a same-namespace
+Secret owner reference matching the attested UID. Grant delivery only
+name-scoped `get` on that ConfigMap; do not allow any other ConfigMap or
+Secret verb. Keep
+the attestation outside the workload Kustomize inventory. Delete it before a
+Secret mutation and recreate it only after bootstrap has read the new Secret
+metadata, so a partial rotation fails closed.
+
 For managed PostgreSQL, use TLS with hostname verification. Mount the
 provider's CA bundle when the container trust store does not already contain
 the required root, and reference that file from the DSN. Validate the database
@@ -233,6 +248,56 @@ If server-side dry-run is unavailable, use client-side dry-run as a syntax check
 ```bash
 kubectl apply --dry-run=client -f /tmp/smart-llmrouter.yaml
 ```
+
+For automated staging or production delivery, do not treat CI or Make
+variables as approval for an account, cluster, namespace, or overlay. Keep a
+reviewed environment target policy in an independently controlled store, give
+the delivery identity read-only access to that exact policy, verify its account
+and role before creating a kubeconfig, and reject any rendered resource outside
+the approved namespace. Bind smoke and promotion evidence to the exact
+immutable image digest from the exact approved registry/repository, a
+digest-normalized fingerprint of the validated rendered configuration, live
+Deployment pod-template/generation state, attested runtime Secret
+UID/resourceVersion, and the immutable attestation ConfigMap identity.
+Recheck that state before
+promotion so a rollback or replacement cannot reuse stale smoke evidence. For
+automated delivery, use a deployment-owned label to derive an allowlisted
+namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,
+PVC, PodDisruptionBudget, and ServiceAccount. Bind both resource identity and a
+normalized declarative-configuration fingerprint derived from the isolated
+client-rendered manifest. Treat server-side dry-run output only as a candidate
+live object to validate against that desired fingerprint; never let fields
+preserved by another field manager become expected configuration. Exclude only
+documented Kubernetes runtime allocations, not routing or security settings,
+and reject unexpected live labels, annotations, owner references, finalizers,
+or spec fields before a mutation. For a `WaitForFirstConsumer` PVC, document
+and normalize only the Kubernetes-owned selected-node annotation and
+PVC-protection finalizer; do not broadly ignore PVC metadata. A discovery-owned
+ingress allow policy may use the router label only in `spec.podSelector`, never
+in its metadata, so it remains outside the delivery inventory; delivery has no
+name-based exception for label-selected resources. Reapply a legacy companion
+policy with the reviewed discovery workflow before the next delivery run;
+delivery deliberately treats the legacy label-selected object as stale. Verify
+both before smoke and promotion. Do
+not use a broad prune: a
+removed or renamed resource should fail delivery until it is removed through a
+separately approved migration. Treat rollback as an artifact deployment too:
+require an explicitly approved immutable digest and full pod-template SHA-256
+from approved release evidence, resolve a matching owned historical revision
+before undoing, and verify the restored workload's complete template, digest,
+and rollout identity before recording rollback success.
+
+For a credentialed deployment smoke, keep the command in an owner-only
+mode-`0600` shell script or equivalent protected CI file, and pass only its
+path to the runner. Treat an arbitrary smoke script as a potentially mutating
+staging action: it requires the same explicit confirmation and protected target
+boundary as apply and rollback. The EKS runner opens the validated non-symlink
+file once and executes that bound descriptor, so a later path replacement
+cannot alter the command. Smoke evidence must bind to a passed apply that
+predates it; any later apply invalidates the smoke for promotion. Do not
+interpolate command content, router tokens, or
+authorization headers into Make recipes, command arguments, CI logs, or
+evidence files. Capture diagnostic output only in the protected runner.
 
 Check rollout:
 

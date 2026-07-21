@@ -6,6 +6,37 @@ DIST_DIR ?= dist
 PKG_NAME ?= smart-llmrouter
 GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
+PYTHON ?= python3
+
+# Keep the repository's historical validation contract for bare `make` even
+# though the EKS help target appears earlier in this file.
+.DEFAULT_GOAL := test
+
+# Explicit inputs for all EKS commands. No target reads the current kubectl
+# context; scripts/eks_delivery.py creates and removes its own kubeconfig.
+# The AWS account, region, ECR repository, cluster, namespace, overlay,
+# workload, and role are
+# not Make variables: they are pinned in the reviewed target policy and its
+# independently protected SSM copy.
+# Delivery and discovery use different AWS profiles. Keep the legacy
+# EKS_AWS_PROFILE default below for discovery/session bootstrap; delivery must
+# never overwrite it because those targets create the discovery-role profile.
+EKS_DELIVERY_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
+IMAGE_DIGEST ?=
+EKS_CONFIRM ?=
+ROLLBACK_POD_TEMPLATE_SHA256 ?=
+EKS_EVIDENCE_DIR ?= tmp/eks-evidence
+# Export only the path to an owner-only (0600) local/CI shell script. Its
+# contents must never be passed through Make expansion or a Python argv value;
+# the runner opens the validated file once and executes that bound descriptor.
+EKS_SMOKE_COMMAND_FILE ?=
+# EKS inputs can originate in CI/environment values. Export them and expand
+# only in the recipe shell: Make interpolation inside shell quotes would allow
+# a malicious value to alter shell syntax before Python can validate it.
+export EKS_DELIVERY_AWS_PROFILE IMAGE_DIGEST EKS_CONFIRM ROLLBACK_POD_TEMPLATE_SHA256 \
+	EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND_FILE
+EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
+EKS_ARGS = --aws-profile "$${EKS_DELIVERY_AWS_PROFILE}" --image-digest "$${IMAGE_DIGEST}" --confirm "$${EKS_CONFIRM}" --rollback-pod-template-sha256 "$${ROLLBACK_POD_TEMPLATE_SHA256}" --evidence-dir "$${EKS_EVIDENCE_DIR}"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -18,7 +49,6 @@ PACKAGE_DOC_ALLOWLIST ?= scripts/package_docs_allowlist.txt
 EKS_AWS_PROFILE ?= genai-smart-router-eks-discovery
 EKS_ACCOUNT_ID ?=
 EKS_REGION ?=
-EKS_CLUSTER ?=
 EKS_NAMESPACE ?=
 EKS_LINKERD_NAMESPACE ?=
 EKS_INGRESS_NAMESPACE ?=
@@ -40,13 +70,59 @@ EKS_MFA_KEYCHAIN_SERVICE ?=
 EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
 EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG PYTHON AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT IMAGE_DIGEST EKS_CONFIRM EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND EKS_DELIVERY_AWS_PROFILE EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+
+help: eks-help
+
+eks-help:
+	@echo "EKS delivery targets (approved target policy; no default kubeconfig/context):"
+	@echo "  eks-preflight          read-only: tools, AWS session, cluster, namespace RBAC"
+	@echo "  eks-render             read-only: deterministic digest-pinned manifest -> evidence"
+	@echo "  eks-plan               read-only: render plus server-side dry-run -> evidence"
+	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
+	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
+	@echo "  eks-smoke-staging      protected arbitrary-script smoke; requires EKS_CONFIRM=STAGING_APPLY"
+	@echo "  eks-rollback-staging   mutating staging only: requires confirmation, digest, approved pod-template SHA-256"
+	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
+	@echo "Required: an approved EKS_DELIVERY_AWS_PROFILE and protected staging target policy Parameter."
+	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
+	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY; rollback also requires ROLLBACK_POD_TEMPLATE_SHA256."
+	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."
+
+eks-preflight:
+	$(EKS_DELIVERY) preflight $(EKS_ARGS)
+
+eks-render:
+	$(EKS_DELIVERY) render $(EKS_ARGS)
+
+eks-plan:
+	$(EKS_DELIVERY) plan $(EKS_ARGS)
+
+eks-apply-staging:
+	$(EKS_DELIVERY) apply $(EKS_ARGS)
+
+eks-rollout-status:
+	$(EKS_DELIVERY) status $(EKS_ARGS)
+
+eks-smoke-staging:
+	@test -n "$${EKS_SMOKE_COMMAND_FILE:-}" || { echo "EKS_SMOKE_COMMAND_FILE must name a protected mode-0600 smoke script" >&2; exit 2; }
+	@$(EKS_DELIVERY) smoke $(EKS_ARGS) --smoke-command-file "$${EKS_SMOKE_COMMAND_FILE}"
+
+eks-rollback-staging:
+	$(EKS_DELIVERY) rollback $(EKS_ARGS)
+
+eks-release-evidence:
+	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
+	@printf '%s\n' 'Safe evidence: evidence-{apply,smoke}.json and matching Markdown summaries are in the requested EKS_EVIDENCE_DIR.'
+
+eks-promotion-plan:
+	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
 
 test: secret-check
 	go test ./...
@@ -72,6 +148,7 @@ secret-check:
 	python3 scripts/render_tenant_ingress_network_policy_test.py
 	python3 scripts/render_tenant_linkerd_policy_test.py
 	python3 scripts/apply_tenant_network_policies_test.py
+	python3 scripts/eks_delivery_contract_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata
 

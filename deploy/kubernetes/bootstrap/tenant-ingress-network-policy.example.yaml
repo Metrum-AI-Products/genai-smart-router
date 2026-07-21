@@ -11,8 +11,9 @@ kind: NetworkPolicy
 metadata:
   name: smart-llmrouter-discovered-ingress
   namespace: __TENANT_NAMESPACE__
-  labels:
-    app.kubernetes.io/name: smart-llmrouter
+# This discovery-owned policy deliberately has no delivery-inventory metadata
+# label. The router label remains below in spec.podSelector, which controls the
+# selected workload without making this separate policy overlay-managed.
 spec:
   podSelector:
     matchLabels:

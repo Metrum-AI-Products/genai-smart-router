@@ -30,6 +30,7 @@ smart-llmrouter
 usage.sqlite
 examples/cli-e2e-c/cli-e2e
 dist/
+tmp/eks-evidence/
 tmp/
 jobs/
 examples/harbor-algotune-pca/generated/

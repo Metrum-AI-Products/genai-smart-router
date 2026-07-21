@@ -10,10 +10,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MALICIOUS_VERSION = "x; id >/tmp/smart-llmrouter-make-poc #"
+MALICIOUS_EKS_INPUT = '"; id >/tmp/smart-llmrouter-eks-make-poc; echo "'
 
 
 def run_make(*args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
+    env.pop("EKS_AWS_PROFILE", None)
+    env.pop("EKS_DELIVERY_AWS_PROFILE", None)
     env.update(
         {
             "VERSION": "v1.2.3-4-gabcdef0-dirty",
@@ -56,6 +59,60 @@ def main() -> int:
     combined = package_dry_run.stdout + package_dry_run.stderr + docker_dry_run.stdout + docker_dry_run.stderr
     require("id >/tmp/smart-llmrouter-make-poc" not in combined, f"dry-run exposed executable payload:\n{combined}")
     require("$VERSION" in combined or "${VERSION}" in combined, "dry-run should defer metadata to shell environment expansion")
+
+    eks_profile_dry_run = run_make(
+        "-n", "eks-preflight", f"EKS_DELIVERY_AWS_PROFILE={MALICIOUS_EKS_INPUT}"
+    )
+    eks_evidence_dry_run = run_make(
+        "-n", "eks-release-evidence", f"EKS_EVIDENCE_DIR={MALICIOUS_EKS_INPUT}"
+    )
+    eks_combined = (
+        eks_profile_dry_run.stdout
+        + eks_profile_dry_run.stderr
+        + eks_evidence_dry_run.stdout
+        + eks_evidence_dry_run.stderr
+    )
+    require(
+        "id >/tmp/smart-llmrouter-eks-make-poc" not in eks_combined,
+        f"EKS dry-run exposed executable payload:\n{eks_combined}",
+    )
+    require(
+        "$EKS_DELIVERY_AWS_PROFILE" in eks_combined
+        or "${EKS_DELIVERY_AWS_PROFILE}" in eks_combined,
+        "EKS delivery profile must defer expansion to the recipe shell",
+    )
+    require(
+        "$EKS_EVIDENCE_DIR" in eks_combined or "${EKS_EVIDENCE_DIR}" in eks_combined,
+        "EKS evidence directory must defer expansion to the recipe shell",
+    )
+
+    discovery_dry_run = run_make("-n", "eks-session-bootstrap")
+    discovery_combined = discovery_dry_run.stdout + discovery_dry_run.stderr
+    require(
+        "$EKS_AWS_PROFILE" in discovery_combined or "${EKS_AWS_PROFILE}" in discovery_combined,
+        "legacy discovery/session bootstrap must retain the discovery profile variable",
+    )
+    require(
+        "$EKS_DELIVERY_AWS_PROFILE" not in discovery_combined
+        and "${EKS_DELIVERY_AWS_PROFILE}" not in discovery_combined,
+        "legacy discovery/session bootstrap must not use the delivery profile variable",
+    )
+
+    make_database = run_make("-pn")
+    require(make_database.returncode == 0, f"Make database inspection failed:\n{make_database.stderr}")
+    require(
+        "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" in make_database.stdout,
+        "legacy discovery targets must retain their discovery profile default",
+    )
+    require(
+        "EKS_DELIVERY_AWS_PROFILE = genai-smart-router-eks-staging-delivery"
+        in make_database.stdout,
+        "delivery targets must use a separate staging delivery profile default",
+    )
+
+    default_dry_run = run_make("-n")
+    require(default_dry_run.returncode == 0, f"bare make dry-run failed:\n{default_dry_run.stderr}")
+    require("go test ./..." in default_dry_run.stdout, "bare make must retain the test target")
 
     print("Makefile security self-test passed")
     return 0

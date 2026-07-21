@@ -323,6 +323,11 @@ make eks-apply-tenant-network-policies \
 
 This is the complete ingress path for a non-Linkerd installation.
 
+The discovery-owned companion policy keeps `app.kubernetes.io/name=smart-llmrouter`
+only in `spec.podSelector`, not metadata. This keeps it outside the delivery
+contract's label-selected overlay inventory; do not add a name-based inventory
+exception or reuse the delivery label for separately managed resources.
+
 Before using `tenant-linkerd-policy.example.yaml`, select the Linkerd
 control-plane namespace during discovery and verify the discovered
 Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection

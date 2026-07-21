@@ -15,22 +15,23 @@ create the deployment-specific `smartrouter-gp3` StorageClass from
 `storageclass.yaml`. It uses the Metrum cluster's EKS Auto Mode EBS CSI driver;
 other deployments must select their own storage provisioner and class.
 
-Before applying it, create the `smartrouter-staging-runtime` Secret in the
-`smart-llmrouter-staging` namespace from ignored local files. The mounted
-`config.yaml` must be derived from the live production config but must use a
-dedicated staging caller, the EKS-bound license, `/app/state` paths, and the
-new RDS DSN. Keep all files and the DSN outside Git.
+Before applying it, use the separately approved namespace/Secret bootstrap
+procedure to create `smartrouter-staging-runtime` from ignored secure files.
+That privileged bootstrap is deliberately outside this Make delivery contract;
+never place DSNs, token values, provider keys, or runtime Secret creation
+commands in this repository or shell history. The mounted `config.yaml` must
+use a dedicated staging caller, the EKS-bound license, `/app/state` paths, and
+the new RDS DSN.
 
-```bash
-kubectl create namespace smart-llmrouter-staging --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n smart-llmrouter-staging create secret generic smartrouter-staging-runtime \
-  --from-file=config.yaml=/secure/staging/config.yaml \
-  --from-file=env.json=/secure/staging/env.json \
-  --from-file=license.json=/secure/staging/license.json \
-  --from-file=rds-ca.pem=/secure/staging/rds-ca.pem \
-  --from-file=router.ts=/secure/staging/router.ts \
-  --from-literal=ROUTER_USAGE_DB_DSN="$(cat /secure/staging/rds-dsn)"
-```
+The same bootstrap identity must also own the policy-pinned, non-secret
+`smartrouter-staging-runtime-attestation` ConfigMap. Before changing the
+runtime Secret, delete the old attestation. After the Secret write, create a
+fresh immutable ConfigMap with only `schema_version: v1`, `secret_name`,
+`secret_uid`, and `secret_resource_version` in `data`, no `binaryData`, and
+one same-namespace `v1` `Secret` owner reference matching the attested name
+and UID. The delivery role reads that exact ConfigMap but has no Secret verbs
+or other ConfigMap verbs. Do not put the attestation ConfigMap in this
+Kustomize overlay: it is bootstrap-owned evidence, not workload desired state.
 
 The RDS DSN must use TLS hostname verification and the mounted CA file, for
 example `sslmode=verify-full sslrootcert=/app/config/rds-ca.pem`. Confirm the
@@ -38,12 +39,26 @@ platform wildcard certificate is available in this namespace as
 `apps-metrum-ai-wildcard-tls`, or update the overlay to the platform-provided
 secret name before applying.
 
-Render and validate before deployment:
+Render, dry-run, apply, and rollback must use the root Make contract rather
+than an implicit kubectl context. The approved account, region, ECR repository,
+cluster, namespace, runtime Secret attestation ConfigMap, overlay, Deployment,
+container, and role are pinned in
+`deploy/aws/genai-smart-router-eks-staging-target.json` and must exactly match
+the separately protected AWS Systems Manager Parameter named by that file.
+The checked-in repository URI is only a bootstrap default: it does not prove a
+live AWS/EKS approval. Reconcile the reviewed policy and protected Parameter
+with a renewed least-privilege non-root session before delivery. The delivery
+role may only read that one parameter; it cannot update it. With an approved
+short-lived AWS identity:
 
 ```bash
-kubectl kustomize deploy/kubernetes/overlays/metrum-staging >/tmp/smartrouter-staging.yaml
-kubectl apply --dry-run=server -f /tmp/smartrouter-staging.yaml
-kubectl apply -f /tmp/smartrouter-staging.yaml
+make eks-preflight eks-plan \
+  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+
+make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
+  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 ```
 
 The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
@@ -90,6 +105,52 @@ make eks-apply-tenant-network-policies \
 If Linkerd is intentionally not selected, use
 `make eks-render-ingress-network-policy`, then the same validate/apply targets
 without `EKS_LINKERD_POLICY_OUTPUT`.
+
+The Make contract writes only scrubbed JSON and Markdown evidence below
+`tmp/eks-evidence/`; raw manifests are temporary kubectl inputs and evidence
+records only their safe checksum/size. It creates a temporary kubeconfig,
+rejects mutable or off-repository images (including rollback), and permits
+mutation only for its fixed staging target with
+`EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
+The overlay deliberately omits the base `Namespace` resource: namespace
+creation and labels are an independently reviewed bootstrap action, and the
+delivery contract rejects cluster-scoped resources or any rendered resource
+outside the approved namespace.
+
+The contract also derives a canonical identity and normalized configuration
+fingerprint from the allowlisted, namespace-scoped resources bearing
+`app.kubernetes.io/name=smart-llmrouter`. It verifies both before smoke and
+promotion, and refuses an apply before mutation if an old label-selected
+resource is no longer rendered. Kubernetes-owned runtime fields such as a
+Service cluster IP and PVC binding name are excluded; routing/security specs,
+labels, annotations, owner references, and finalizers are not, except the
+Kubernetes-owned `volume.kubernetes.io/selected-node` annotation and
+`kubernetes.io/pvc-protection` finalizer added to this overlay's
+`WaitForFirstConsumer` PVC.
+The separately authorized discovery workflow owns the exact
+`NetworkPolicy/smart-llmrouter-discovered-ingress` companion policy. It keeps
+the router label only in `spec.podSelector`, never in metadata, so the delivery
+inventory does not select it. Delivery has no name-based exclusion: every
+label-selected object remains fail-closed. Re-render and activate any legacy
+companion policy that still carries the delivery label before its next delivery
+run; the delivery contract deliberately reports that legacy object as stale.
+It deliberately does **not** use Kubernetes prune: removal or renaming of a
+Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
+Deployment requires a separately reviewed recovery/migration to remove the
+stale object. The delivery role therefore needs namespace-scoped `list` access
+to only those seven resource types, in addition to the existing rollout and
+pod read permissions. Rollback also requires `list` access to `replicasets`:
+the contract resolves the requested digest to an owned prior revision before
+calling `rollout undo --to-revision`, so it never implicitly selects an
+unverified immediately previous revision.
+
+The protected policy/SSM match and reviewed change record authorize a
+reconciliation; `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator
+acknowledgement of the mutation. Its safe before-apply configuration fingerprint
+is recorded, then passed evidence requires the live configuration after apply,
+smoke, and promotion to match the reviewed manifest. Investigate unexpected
+pre-apply differences through change control; no caller-controlled bypass is
+provided.
 
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.

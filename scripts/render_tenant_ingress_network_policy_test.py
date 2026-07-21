@@ -130,6 +130,16 @@ def main() -> int:
     rendered = MODULE.render(template, discovery(), eks_guard)
     if "namespace: tenant-acme" not in rendered or "kubernetes.io/metadata.name: gateway-system" not in rendered:
         raise AssertionError("renderer did not bind the NetworkPolicy to verified discovery namespaces")
+    metadata, spec = rendered.split("\nspec:\n", 1)
+    delivery_label = "app.kubernetes.io/name: smart-llmrouter"
+    if (
+        delivery_label in metadata
+        or delivery_label not in spec
+        or rendered.count(delivery_label) != 1
+    ):
+        raise AssertionError(
+            "discovery-owned ingress policy must keep the delivery label only in spec.podSelector"
+        )
     if "ingress-nginx" in rendered:
         raise AssertionError("rendered NetworkPolicy retained a fixed ingress namespace")
     expect_rejected(lambda: MODULE.render(template, discovery(), generic_base))
