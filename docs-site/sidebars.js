@@ -116,6 +116,7 @@ const sidebars = {
       collapsed: false,
       items: [
         "operations/deployment-patterns",
+        "operations/production-promotion",
         "operations/observability",
         "operations/report-examples",
       ],

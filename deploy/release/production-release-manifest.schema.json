@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Smart Router production promotion manifest",
+  "description": "Safe metadata only. This manifest authorizes review, never an apply, migration, DNS, database, or cloud operation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "environment",
+    "artifact",
+    "staging_evidence",
+    "supply_chain",
+    "configuration",
+    "migration",
+    "canary",
+    "rollback",
+    "approval"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "release_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,62}$"},
+    "environment": {"const": "production"},
+    "artifact": {"$ref": "#/$defs/artifact"},
+    "staging_evidence": {"$ref": "#/$defs/stagingEvidence"},
+    "supply_chain": {"$ref": "#/$defs/supplyChain"},
+    "configuration": {"$ref": "#/$defs/configuration"},
+    "migration": {"$ref": "#/$defs/migration"},
+    "canary": {"$ref": "#/$defs/canary"},
+    "rollback": {"$ref": "#/$defs/rollback"},
+    "approval": {"$ref": "#/$defs/approval"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$"},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "safeRef": {"type": "string", "pattern": "^[A-Za-z0-9._:/#-]{3,200}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image_digest"],
+      "properties": {"image_digest": {"$ref": "#/$defs/digest"}}
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "reference", "sha256"],
+      "properties": {
+        "result": {"const": "passed"},
+        "reference": {"$ref": "#/$defs/safeRef"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "stagingEvidence": {
+      "description": "Hash reference to the fixed safe EKS promotion-plan projection. Its external payload has an exact allowlisted schema: schema_version 1, passed outcome, RFC3339 timestamp, staging environment, promotion-plan action, immutable image digest, configuration fingerprint, and review_required_no_production_apply result. Raw EKS evidence is not a promotion-gate input.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "reference", "sha256"],
+      "properties": {
+        "result": {"const": "passed"},
+        "reference": {"type": "string", "const": "evidence-promotion-plan.safe.json"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "supplyChain": {
+      "description": "One hash reference to the protected, safe result emitted after the staging release-binding validator passes. The result carries the image digest, policy-derived architecture, release-binding/SBOM/provenance/scan hashes, signature result, scan verdict, and fresh timestamp; raw supply-chain artifacts stay in the protected build boundary.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validation_result"],
+      "properties": {"validation_result": {"$ref": "#/$defs/evidence"}}
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "fingerprint"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,80}$"},
+        "fingerprint": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "compatibility", "rehearsal_evidence"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,80}$"},
+        "compatibility": {"enum": ["none", "backward-compatible", "expand-contract"]},
+        "rehearsal_evidence": {"$ref": "#/$defs/migrationRehearsalEvidence"}
+      }
+    },
+    "migrationRehearsalEvidence": {
+      "description": "Hash reference to a passed rehearsal payload that binds the artifact digest, declared migration ID, and configuration fingerprint, and includes a fresh RFC3339 timestamp.",
+      "allOf": [{"$ref": "#/$defs/evidence"}]
+    },
+    "canary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_id", "max_traffic_percent", "observation_minutes"],
+      "properties": {
+        "scope_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
+        "max_traffic_percent": {"type": "integer", "minimum": 1, "maximum": 10},
+        "observation_minutes": {"type": "integer", "minimum": 15, "maximum": 240}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "known_good_image_digest"],
+      "properties": {
+        "class": {"enum": ["traffic-only", "compatible-schema"]},
+        "known_good_image_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_reference", "release_approved_by", "operations_approved_by", "issued_at", "expires_at"],
+      "properties": {
+        "change_reference": {"$ref": "#/$defs/safeRef"},
+        "release_approved_by": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
+        "operations_approved_by": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
+        "issued_at": {"$ref": "#/$defs/timestamp"},
+        "expires_at": {"$ref": "#/$defs/timestamp"}
+      }
+    }
+  }
+}

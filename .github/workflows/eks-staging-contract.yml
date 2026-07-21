@@ -12,10 +12,16 @@ on:
       - scripts/validate_staging_supply_chain_test.py
       - scripts/validate_eks_staging_workflow.py
       - scripts/validate_eks_staging_workflow_test.py
+      - scripts/validate_production_promotion.py
+      - scripts/validate_production_promotion_test.py
+      - scripts/eks_promotion_evidence_integration_test.py
+      - deploy/release/production-release-manifest.schema.json
+      - deploy/release/fixtures/production-release-manifest.valid.json
       - deploy/aws/github-oidc-staging-role-trust-policy.example.json
       - deploy/aws/genai-smart-router-eks-staging-target.json
       - deploy/kubernetes/base/**
       - deploy/kubernetes/overlays/metrum-staging/**
+      - deploy/release/fixtures/evidence/**
   push:
     branches:
       - main
@@ -29,10 +35,16 @@ on:
       - scripts/validate_staging_supply_chain_test.py
       - scripts/validate_eks_staging_workflow.py
       - scripts/validate_eks_staging_workflow_test.py
+      - scripts/validate_production_promotion.py
+      - scripts/validate_production_promotion_test.py
+      - scripts/eks_promotion_evidence_integration_test.py
+      - deploy/release/production-release-manifest.schema.json
+      - deploy/release/fixtures/production-release-manifest.valid.json
       - deploy/aws/github-oidc-staging-role-trust-policy.example.json
       - deploy/aws/genai-smart-router-eks-staging-target.json
       - deploy/kubernetes/base/**
       - deploy/kubernetes/overlays/metrum-staging/**
+      - deploy/release/fixtures/evidence/**
   workflow_dispatch:
 
 permissions:

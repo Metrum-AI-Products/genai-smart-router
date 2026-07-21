@@ -67,6 +67,7 @@ def main() -> int:
         "sudo -u runner kustomize build deploy/kubernetes": {"kustomize"},
         "command kubectl get pods": {"kubectl"},
         "timeout -k 5 30 aws sts get-caller-identity": {"aws"},
+        "stdbuf -oL kubectl apply -f manifest.yaml": {"kubectl"},
         "sh -c 'echo preparing && kubectl apply -f manifest.yaml'": {"kubectl"},
         "eval 'kustomize build deploy/kubernetes'": {"kustomize"},
         "echo $(kubectl get namespace default)": {"kubectl"},

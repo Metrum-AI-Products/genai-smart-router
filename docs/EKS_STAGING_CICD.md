@@ -30,6 +30,13 @@ order:
    override it.
 4. `make eks-rollout-status eks-smoke-staging` — retain scrubbed rollout and
    smoke evidence.
+5. `make eks-promotion-plan` — after the validated live checks pass, write the
+   raw operational record only to `EKS_EVIDENCE_DIR` and atomically emit the
+   fixed `evidence-promotion-plan.safe.json` handoff only to the separate,
+   non-overlapping `EKS_PROMOTION_EVIDENCE_DIR`. The protected release workflow
+   copies only that safe file into its separately assembled production evidence
+   bundle alongside the safe supply-chain and migration-rehearsal results; the
+   production review identity never receives the raw EKS directory.
 
 `make eks-rollback-staging` is also a mutating release path and has the same
 `eks-supply-chain-validate` prerequisite. Its evidence bundle must bind the
@@ -110,11 +117,44 @@ Parameter copy before it can reconcile. Do not pass `EKS_IMAGE_ARCHITECTURE`,
 or add an equivalent workflow input: caller-controlled architecture would
 weaken the target-policy boundary.
 
+On success, the verifier writes one safe JSON result to standard output. Its
+only fields are the passed outcome, immutable image digest, policy-derived architecture,
+the raw SHA-256 values for the release binding, SBOM, provenance, and scan,
+the passed signature/scan verdicts, and a UTC timestamp. The protected release
+system—not a caller-controlled Make argument—must capture that exact output in
+a protected evidence file and hash-reference it as
+`supply_chain.validation_result` for the production review gate. Raw evidence
+files, signature material, scanner output, credentials, and configuration stay
+in the protected build/release boundary and never appear in that result.
+
 Do not commit evidence bundles. They must not contain runtime secrets, caller
 tokens, provider keys, DSNs, router config, or raw scan logs. The validator is
 a completeness and redaction gate; the protected build/signing/verifier system
 remains responsible for actual SBOM/provenance generation, scanner policy
 enforcement, DSSE/signature handling, and cryptographic verification.
+
+## Promotion binding
+
+Every digest-pinned `eks-render`, `eks-plan`, `eks-apply-staging`, and
+`eks-smoke-staging` evidence result records `configuration_fingerprint`. It is
+the SHA-256 hash of the rendered manifest with the immutable image normalized,
+not a copy of router configuration or a secret. A passed `eks-promotion-plan`
+first writes its detailed operational evidence in `EKS_EVIDENCE_DIR`, then
+reduces the already-verified result to the separate safe handoff
+`EKS_PROMOTION_EVIDENCE_DIR/evidence-promotion-plan.safe.json`.
+
+That file contains exactly `schema_version: 1`, `outcome: passed`, `timestamp`,
+`environment: staging`, `action: promotion-plan`, `image_digest`,
+`configuration_fingerprint`, and
+`promotion_plan_result: review_required_no_production_apply`. It intentionally
+does not contain events, cloud/RBAC/resource metadata, command text, rendered
+configuration, or raw tool output. A failed or invalid subsequent
+`promotion-plan` invocation removes the previous safe handoff before input
+validation, so it cannot remain usable after a failed recheck. The production
+manifest must hash-reference this fixed filename and use its fingerprint. The
+protected staging workflow and its safe-directory upload are the trust root;
+the reducer is a sanitizer, not a substitute for that workflow's authorization
+or evidence integrity controls.
 
 ## GitHub controls required before enabling deploy
 

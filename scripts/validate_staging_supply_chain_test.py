@@ -123,7 +123,35 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary) / "evidence"
         write_evidence(directory)
-        assert run(directory).returncode == 0
+        successful = run(directory)
+        assert successful.returncode == 0, successful.stderr
+        result = json.loads(successful.stdout)
+        assert set(result) == {"outcome", "timestamp", "image_digest", "supply_chain"}
+        assert result["outcome"] == "passed"
+        assert result["image_digest"] == DIGEST
+        assert isinstance(result["timestamp"], str) and result["timestamp"].endswith("Z")
+        summary = result["supply_chain"]
+        assert isinstance(summary, dict)
+        assert set(summary) == {
+            "image_digest",
+            "architecture",
+            "release_binding_sha256",
+            "sbom_sha256",
+            "provenance_sha256",
+            "scan_sha256",
+            "signature_verified",
+            "scan_verdict",
+        }
+        assert summary == {
+            "image_digest": DIGEST,
+            "architecture": ARCHITECTURE,
+            "release_binding_sha256": sha256((directory / BINDING_FILENAME).read_bytes()),
+            "sbom_sha256": sha256((directory / "sbom.json").read_bytes()),
+            "provenance_sha256": sha256((directory / "provenance.json").read_bytes()),
+            "scan_sha256": sha256((directory / "scan.json").read_bytes()),
+            "signature_verified": True,
+            "scan_verdict": "pass",
+        }
         caller_architecture = run(directory, "--architecture", MISMATCHED_ARCHITECTURE)
         assert caller_architecture.returncode != 0 and "unrecognized arguments" in caller_architecture.stderr
         write_evidence(directory, sbom=cyclonedx_sbom())
