@@ -39,6 +39,9 @@ SECRET_PATTERNS = (
     ),
     re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(
+        r"\b(?:sk-[A-Za-z0-9_-]{20,}|sk_(?:live|test|org)_[A-Za-z0-9_]{20,}|xai-[A-Za-z0-9_-]{20,}|rtr_metrum_[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{20,})\b"
+    ),
 )
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -115,6 +118,19 @@ EVIDENCE_BINDING_FIELDS = (
     "runtime_secret_resource_version",
     "runtime_secret_attestation_uid",
     "runtime_secret_attestation_resource_version",
+)
+PROMOTION_PLAN_SAFE_EVIDENCE_FILE = "evidence-promotion-plan.safe.json"
+PROMOTION_PLAN_SAFE_EVIDENCE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "outcome",
+        "timestamp",
+        "environment",
+        "action",
+        "image_digest",
+        "configuration_fingerprint",
+        "promotion_plan_result",
+    }
 )
 # Kubernetes writes these fields after accepting a declarative resource. They
 # do not describe the reviewed configuration and are deliberately excluded
@@ -599,9 +615,16 @@ class Delivery:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.smoke_command_fd: int | None = None
+        self.evidence_dir: Path | None = None
+        self.promotion_evidence_dir: Path | None = None
+        self._prepare_promotion_evidence_dir()
         self._validate_inputs()
-        self.evidence_dir = Path(args.evidence_dir).resolve()
-        self.evidence_dir.mkdir(parents=True, exist_ok=True)
+        if self.evidence_dir is None:
+            try:
+                self.evidence_dir = Path(args.evidence_dir).resolve()
+                self.evidence_dir.mkdir(parents=True, exist_ok=True)
+            except (OSError, RuntimeError) as exc:
+                raise RuntimeError("--evidence-dir is unavailable") from exc
         self.target: TargetPolicy | None = None
         self.managed_inventory: tuple[ManagedResourceConfiguration, ...] = ()
         self.evidence: dict[str, object] = {
@@ -611,6 +634,42 @@ class Delivery:
             "action": args.action,
             "events": [],
         }
+
+    def _prepare_promotion_evidence_dir(self) -> None:
+        """Revoke an old handoff before any promotion invocation can fail."""
+        if self.args.action != "promotion-plan" or not self.args.promotion_evidence_dir:
+            return
+        try:
+            promotion_evidence_dir = Path(self.args.promotion_evidence_dir).resolve()
+            promotion_evidence_dir.mkdir(parents=True, exist_ok=True)
+            (promotion_evidence_dir / PROMOTION_PLAN_SAFE_EVIDENCE_FILE).unlink(
+                missing_ok=True
+            )
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError("--promotion-evidence-dir is unavailable") from exc
+
+        # Revoke the former handoff before looking at any raw EKS evidence.
+        # A malformed, inaccessible, or looping raw path must not preserve a
+        # prior passing handoff that another protected workflow could reuse.
+        try:
+            evidence_dir = Path(self.args.evidence_dir).resolve()
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError("--evidence-dir is unavailable") from exc
+        try:
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            evidence_dir_is_directory = evidence_dir.is_dir()
+        except OSError as exc:
+            raise RuntimeError("--evidence-dir is unavailable") from exc
+        if not evidence_dir_is_directory:
+            fail("--evidence-dir must be a directory")
+        if (
+            promotion_evidence_dir == evidence_dir
+            or promotion_evidence_dir in evidence_dir.parents
+            or evidence_dir in promotion_evidence_dir.parents
+        ):
+            fail("--promotion-evidence-dir must be separate from --evidence-dir")
+        self.evidence_dir = evidence_dir
+        self.promotion_evidence_dir = promotion_evidence_dir
 
     def _validate_inputs(self) -> None:
         if not PROFILE.fullmatch(self.args.aws_profile):
@@ -631,6 +690,8 @@ class Delivery:
             self.args.rollback_pod_template_sha256
         ):
             fail("ROLLBACK_POD_TEMPLATE_SHA256 must be an explicitly approved 64-character lower-case SHA-256")
+        if self.args.action == "promotion-plan" and not self.args.promotion_evidence_dir:
+            fail("--promotion-evidence-dir is required for promotion-plan")
         if self.args.action == "smoke":
             self.smoke_command_fd = open_protected_smoke_command_file(self.args.smoke_command_file)
 
@@ -704,8 +765,71 @@ class Delivery:
             apply_evidence_sha256=apply_sha256,
         )
 
+    def write_promotion_plan_safe_evidence(self) -> None:
+        """Atomically publish the fixed, non-secret promotion handoff only."""
+        if self.args.action != "promotion-plan" or self.promotion_evidence_dir is None:
+            fail("promotion safe evidence is only available for promotion-plan")
+        timestamp = self.evidence.get("timestamp")
+        image_digest = self.evidence.get("image_digest")
+        configuration_fingerprint = self.evidence.get("configuration_fingerprint")
+        events = self.evidence.get("events")
+        if (
+            not isinstance(timestamp, str)
+            or not isinstance(image_digest, str)
+            or not DIGEST.fullmatch(image_digest)
+            or not isinstance(configuration_fingerprint, str)
+            or not SHA256.fullmatch(configuration_fingerprint)
+            or not isinstance(events, list)
+            or not any(
+                isinstance(event, dict)
+                and event.get("name") == "promotion_plan"
+                and event.get("result") == "review_required_no_production_apply"
+                for event in events
+            )
+        ):
+            fail("validated promotion-plan cannot produce safe evidence")
+        safe_evidence = {
+            "schema_version": 1,
+            "outcome": "passed",
+            "timestamp": timestamp,
+            "environment": "staging",
+            "action": "promotion-plan",
+            "image_digest": image_digest,
+            "configuration_fingerprint": configuration_fingerprint,
+            "promotion_plan_result": "review_required_no_production_apply",
+        }
+        if set(safe_evidence) != PROMOTION_PLAN_SAFE_EVIDENCE_FIELDS:
+            fail("promotion safe evidence projection has an unexpected schema")
+        output_path = self.promotion_evidence_dir / PROMOTION_PLAN_SAFE_EVIDENCE_FILE
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.promotion_evidence_dir,
+                prefix=f".{PROMOTION_PLAN_SAFE_EVIDENCE_FILE}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                json.dump(safe_evidence, temporary, sort_keys=True, separators=(",", ":"))
+                temporary.write("\n")
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            os.replace(temporary_path, output_path)
+            temporary_path = None
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
     def write_evidence(self, outcome: str, error: str | None = None) -> None:
         self.evidence["outcome"] = outcome
+        if self.args.action == "promotion-plan" and self.promotion_evidence_dir is not None:
+            # A failed or superseded promotion-plan must never leave an older
+            # passing handoff usable by the separate production evidence root.
+            (self.promotion_evidence_dir / PROMOTION_PLAN_SAFE_EVIDENCE_FILE).unlink(
+                missing_ok=True
+            )
         if error:
             self.evidence["error"] = scrub(error)
         payload = json.dumps(self.evidence, indent=2, sort_keys=True) + "\n"
@@ -754,6 +878,8 @@ class Delivery:
         summary = "\n".join(markdown) + "\n"
         (self.evidence_dir / f"summary-{self.args.action}.md").write_text(summary, encoding="utf-8")
         (self.evidence_dir / "summary.md").write_text(summary, encoding="utf-8")
+        if self.args.action == "promotion-plan" and outcome == "passed":
+            self.write_promotion_plan_safe_evidence()
 
     def env_with_kubeconfig(self) -> tuple[dict[str, str], tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="smartrouter-eks-")
@@ -2172,6 +2298,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--confirm", default="")
     p.add_argument("--rollback-pod-template-sha256", default="")
     p.add_argument("--evidence-dir", required=True)
+    p.add_argument("--promotion-evidence-dir", default="")
     p.add_argument("--smoke-command-file", default="")
     return p
 
@@ -2180,8 +2307,13 @@ def main() -> int:
     args = parser().parse_args()
     try:
         Delivery(args).run()
-        print(json.dumps({"action": args.action, "outcome": "passed", "evidence_dir": args.evidence_dir}))
+        print(json.dumps({"action": args.action, "outcome": "passed"}))
         return 0
+    except OSError:
+        # Evidence paths are operator-controlled. Never allow a filesystem
+        # exception to echo a credential-shaped directory or file name.
+        print("EKS delivery contract failed: unable to access protected evidence", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"EKS delivery contract failed: {scrub(str(exc))}", file=sys.stderr)
         return 2

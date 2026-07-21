@@ -9,6 +9,7 @@ and free of obvious secret material before any Kubernetes operation begins.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
 import json
 import re
@@ -296,7 +297,15 @@ def approved_target_architecture() -> str:
         raise ValueError("approved staging target policy is invalid") from exc
 
 
-def validate(args: argparse.Namespace) -> str:
+def validate(args: argparse.Namespace) -> dict[str, object]:
+    """Validate raw protected evidence and return its safe, promotable result.
+
+    The returned object intentionally contains only digest-pinned result
+    fields. A protected release system may retain that JSON as the sole
+    supply-chain reference consumed by the production promotion review gate;
+    the raw SBOM, provenance, scan, release binding, and signature report stay
+    inside the protected build/release boundary.
+    """
     if not DIGEST.fullmatch(args.image_digest):
         fail("IMAGE_DIGEST must be a lower-case immutable image@sha256:<64 hex> reference")
     architecture = approved_target_architecture()
@@ -328,7 +337,22 @@ def validate(args: argparse.Namespace) -> str:
     scan = evidence["scan.json"]
     if scan.get("verdict") != "pass":
         fail("scan.json must record verdict: pass under the approved severity/exception policy")
-    return architecture
+    timestamp = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return {
+        "outcome": "passed",
+        "timestamp": timestamp,
+        "image_digest": args.image_digest,
+        "supply_chain": {
+            "image_digest": args.image_digest,
+            "architecture": architecture,
+            "release_binding_sha256": sha256_hex(raw_evidence[BINDING_FILENAME]),
+            "sbom_sha256": sha256_hex(raw_evidence["sbom.json"]),
+            "provenance_sha256": sha256_hex(raw_evidence["provenance.json"]),
+            "scan_sha256": sha256_hex(raw_evidence["scan.json"]),
+            "signature_verified": True,
+            "scan_verdict": "pass",
+        },
+    }
 
 
 def main() -> int:
@@ -337,11 +361,11 @@ def main() -> int:
     parser.add_argument("--evidence-dir", required=True)
     args = parser.parse_args()
     try:
-        architecture = validate(args)
+        result = validate(args)
     except ValueError as exc:
         print(f"staging supply-chain validation failed: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps({"outcome": "passed", "image_digest": args.image_digest, "architecture": architecture}))
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 

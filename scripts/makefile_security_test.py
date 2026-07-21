@@ -67,11 +67,18 @@ def main() -> int:
     eks_evidence_dry_run = run_make(
         "-n", "eks-release-evidence", f"EKS_EVIDENCE_DIR={MALICIOUS_EKS_INPUT}"
     )
+    eks_promotion_evidence_dry_run = run_make(
+        "-n",
+        "eks-release-evidence",
+        f"EKS_PROMOTION_EVIDENCE_DIR={MALICIOUS_EKS_INPUT}",
+    )
     eks_combined = (
         eks_profile_dry_run.stdout
         + eks_profile_dry_run.stderr
         + eks_evidence_dry_run.stdout
         + eks_evidence_dry_run.stderr
+        + eks_promotion_evidence_dry_run.stdout
+        + eks_promotion_evidence_dry_run.stderr
     )
     require(
         "id >/tmp/smart-llmrouter-eks-make-poc" not in eks_combined,
@@ -85,6 +92,11 @@ def main() -> int:
     require(
         "$EKS_EVIDENCE_DIR" in eks_combined or "${EKS_EVIDENCE_DIR}" in eks_combined,
         "EKS evidence directory must defer expansion to the recipe shell",
+    )
+    require(
+        "$EKS_PROMOTION_EVIDENCE_DIR" in eks_combined
+        or "${EKS_PROMOTION_EVIDENCE_DIR}" in eks_combined,
+        "EKS promotion evidence directory must defer expansion to the recipe shell",
     )
 
     supply_chain_dry_run = run_make(

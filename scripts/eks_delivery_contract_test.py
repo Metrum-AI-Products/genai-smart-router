@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -594,18 +595,28 @@ def run(
     rollback_pod_template_sha256: str | None = None,
     include_rollback_pod_template_sha256: bool = True,
     confirm_smoke: bool = True,
+    include_promotion_evidence: bool = True,
+    promotion_evidence_dir: Path | None = None,
+    aws_profile: str = "test-profile",
+    evidence_dir: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    evidence = root / "tmp" / "evidence"
+    evidence = evidence_dir or root / "tmp" / "evidence"
+    promotion_evidence = root / "tmp" / "promotion-evidence"
     replica_sets_payload = replica_sets or replica_sets_object()
     command = [
         "python3",
         str(SCRIPT),
         action,
         "--aws-profile",
-        "test-profile",
+        aws_profile,
         "--evidence-dir",
         str(evidence),
     ]
+    if action == "promotion-plan" and include_promotion_evidence:
+        command += [
+            "--promotion-evidence-dir",
+            str(promotion_evidence_dir or promotion_evidence),
+        ]
     if include_digest:
         command += ["--image-digest", image_digest]
     if action == "smoke" and confirm_smoke:
@@ -1204,6 +1215,29 @@ def main() -> int:
 
         promotion = run("promotion-plan", root)
         assert promotion.returncode != 0 and "smoke evidence" in promotion.stderr
+        safe_promotion_path = (
+            root
+            / "tmp"
+            / "promotion-evidence"
+            / EKS_DELIVERY.PROMOTION_PLAN_SAFE_EVIDENCE_FILE
+        )
+        assert not safe_promotion_path.exists()
+        missing_promotion_evidence = run(
+            "promotion-plan", root, include_promotion_evidence=False
+        )
+        assert (
+            missing_promotion_evidence.returncode != 0
+            and "promotion-evidence-dir" in missing_promotion_evidence.stderr
+        )
+        overlapping_promotion_evidence = run(
+            "promotion-plan",
+            root,
+            promotion_evidence_dir=root / "tmp" / "evidence",
+        )
+        assert (
+            overlapping_promotion_evidence.returncode != 0
+            and "must be separate" in overlapping_promotion_evidence.stderr
+        )
         no_digest = run("promotion-plan", root, include_digest=False)
         assert no_digest.returncode != 0 and "IMAGE_DIGEST" in no_digest.stderr
 
@@ -1578,8 +1612,81 @@ def main() -> int:
             assert evidence["runtime_secret_attestation_uid"] == "runtime-secret-attestation-uid-one"
             assert evidence["runtime_secret_attestation_resource_version"] == "201"
             assert "different-workload" not in json.dumps(evidence)
+        secret_shaped_evidence_dir = root / "tmp" / "evidence-token=redacted-test-material"
+        shutil.copytree(root / "tmp" / "evidence", secret_shaped_evidence_dir)
+        secret_path_promotion = run(
+            "promotion-plan", root, evidence_dir=secret_shaped_evidence_dir
+        )
+        secret_path_output = secret_path_promotion.stdout + secret_path_promotion.stderr
+        assert secret_path_promotion.returncode == 0, secret_path_promotion.stderr
+        assert json.loads(secret_path_promotion.stdout) == {
+            "action": "promotion-plan",
+            "outcome": "passed",
+        }
+        assert str(secret_shaped_evidence_dir) not in secret_path_output
+        assert "redacted-test-material" not in secret_path_output
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+        raw_promotion = json.loads(
+            (root / "tmp/evidence/evidence-promotion-plan.json").read_text()
+        )
+        safe_promotion = json.loads(safe_promotion_path.read_text())
+        assert set(safe_promotion) == EKS_DELIVERY.PROMOTION_PLAN_SAFE_EVIDENCE_FIELDS
+        assert safe_promotion == {
+            "schema_version": 1,
+            "outcome": "passed",
+            "timestamp": raw_promotion["timestamp"],
+            "environment": "staging",
+            "action": "promotion-plan",
+            "image_digest": DIGEST,
+            "configuration_fingerprint": raw_promotion["configuration_fingerprint"],
+            "promotion_plan_result": "review_required_no_production_apply",
+        }
+        assert "events" in raw_promotion and "events" not in safe_promotion
+        assert raw_promotion["aws_account_id"] == TARGET_POLICY["aws_account_id"]
+        assert "aws_account_id" not in safe_promotion
+
+        invalid_after_success = run("promotion-plan", root, include_digest=False)
+        assert (
+            invalid_after_success.returncode != 0
+            and "IMAGE_DIGEST" in invalid_after_success.stderr
+        )
+        assert not safe_promotion_path.exists()
+        replacement_promotion = run("promotion-plan", root)
+        assert replacement_promotion.returncode == 0, replacement_promotion.stderr
+        assert safe_promotion_path.exists()
+        invalid_profile_after_success = run(
+            "promotion-plan", root, aws_profile="invalid profile"
+        )
+        assert (
+            invalid_profile_after_success.returncode != 0
+            and "aws-profile" in invalid_profile_after_success.stderr
+        )
+        assert not safe_promotion_path.exists()
+        replacement_promotion = run("promotion-plan", root)
+        assert replacement_promotion.returncode == 0, replacement_promotion.stderr
+        assert safe_promotion_path.exists()
+
+        # A raw evidence path can become unreadable after a prior successful
+        # promotion-plan. The next attempt must revoke the former safe handoff
+        # before trying to resolve that raw path, without leaking it in the
+        # generic protected-input error.
+        looping_evidence_name = "raw-evidence-sk_test_aaaaaaaaaaaaaaaaaaaa"
+        looping_evidence_dir = root / "tmp" / looping_evidence_name
+        looping_evidence_dir.symlink_to(looping_evidence_name)
+        looping_promotion = run(
+            "promotion-plan", root, evidence_dir=looping_evidence_dir
+        )
+        looping_output = looping_promotion.stdout + looping_promotion.stderr
+        assert looping_promotion.returncode != 0
+        assert not safe_promotion_path.exists()
+        assert "Traceback" not in looping_output
+        assert str(looping_evidence_dir) not in looping_output
+        assert looping_evidence_name not in looping_output
+
+        replacement_promotion = run("promotion-plan", root)
+        assert replacement_promotion.returncode == 0, replacement_promotion.stderr
+        assert safe_promotion_path.exists()
 
         finalizer_drift_promotion = run(
             "promotion-plan", root, live_inventory=inventory_with_foreign_manager_service_finalizer()
@@ -1588,6 +1695,7 @@ def main() -> int:
             finalizer_drift_promotion.returncode != 0
             and "configuration" in finalizer_drift_promotion.stderr
         )
+        assert not safe_promotion_path.exists()
 
         # A runtime Secret update does not change the Deployment template. Its
         # resourceVersion must nevertheless invalidate prior apply/smoke proof
@@ -1625,6 +1733,7 @@ def main() -> int:
                 "EKS_DELIVERY_AWS_PROFILE=test-profile",
                 f"IMAGE_DIGEST={DIGEST}",
                 f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
+                f"EKS_PROMOTION_EVIDENCE_DIR={root / 'tmp/promotion-evidence'}",
             ],
             cwd=ROOT,
             text=True,
@@ -1656,7 +1765,8 @@ def main() -> int:
             },
         )
         assert release_evidence.returncode != 0
-        assert "Safe evidence:" not in release_evidence.stdout
+        assert "Safe promotion handoff:" not in release_evidence.stdout
+        assert not safe_promotion_path.exists()
         apply_evidence_path.write_text(original_apply_evidence)
 
         stale_promotion = run(

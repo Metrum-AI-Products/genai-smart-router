@@ -57,10 +57,16 @@ WORKFLOW_WATCHED_PATHS = (
     "scripts/validate_staging_supply_chain_test.py",
     "scripts/validate_eks_staging_workflow.py",
     "scripts/validate_eks_staging_workflow_test.py",
+    "scripts/validate_production_promotion.py",
+    "scripts/validate_production_promotion_test.py",
+    "scripts/eks_promotion_evidence_integration_test.py",
+    "deploy/release/production-release-manifest.schema.json",
+    "deploy/release/fixtures/production-release-manifest.valid.json",
     "deploy/aws/github-oidc-staging-role-trust-policy.example.json",
     "deploy/aws/genai-smart-router-eks-staging-target.json",
     "deploy/kubernetes/base/**",
     "deploy/kubernetes/overlays/metrum-staging/**",
+    "deploy/release/fixtures/evidence/**",
 )
 
 YAML_MAPPING_KEY = re.compile(
@@ -497,7 +503,7 @@ def _shell_command_fragments(args: list[str]) -> list[str]:
     return []
 
 
-def _forbidden_in_argv(argv: list[str]) -> set[str]:
+def _forbidden_in_argv(argv: list[str], forbidden_executables: frozenset[str]) -> set[str]:
     while argv and ASSIGNMENT.match(argv[0]):
         argv = argv[1:]
     if not argv:
@@ -508,42 +514,73 @@ def _forbidden_in_argv(argv: list[str]) -> set[str]:
     if "$" in argv[0] or "`" in argv[0]:
         return {DYNAMIC_EXECUTABLE}
     command = _program_name(argv[0])
-    if command in FORBIDDEN_DEPLOYMENT_COMMANDS:
+    if command in forbidden_executables:
         return {command}
     args = argv[1:]
     if command == "env":
         target, split_strings = _env_target(args)
-        found = _forbidden_in_argv(target)
+        found = _forbidden_in_argv(target, forbidden_executables)
         for split_string in split_strings:
-            found.update(forbidden_deployment_commands(split_string))
+            found.update(forbidden_commands(split_string, forbidden_executables))
         return found
     if command == "command":
         # command -v/-V only asks the shell to locate a name; it does not run it.
         if any(argument in {"-v", "-V"} for argument in args):
             return set()
-        return _forbidden_in_argv(_after_options(args))
+        return _forbidden_in_argv(_after_options(args), forbidden_executables)
     if command == "sudo":
-        return _forbidden_in_argv(_after_options(args, frozenset({"-C", "-D", "-g", "-h", "-p", "-r", "-R", "-t", "-T", "-u", "--chdir", "--close-from", "--group", "--host", "--prompt", "--role", "--type", "--user"})))
+        return _forbidden_in_argv(
+            _after_options(
+                args,
+                frozenset(
+                    {
+                        "-C", "-D", "-g", "-h", "-p", "-r", "-R", "-t", "-T", "-u",
+                        "--chdir", "--close-from", "--group", "--host", "--prompt", "--role",
+                        "--type", "--user",
+                    }
+                ),
+            ),
+            forbidden_executables,
+        )
     if command in {"exec", "nice"}:
-        return _forbidden_in_argv(_after_options(args, frozenset({"-a", "-n", "--adjustment"})))
+        return _forbidden_in_argv(
+            _after_options(args, frozenset({"-a", "-n", "--adjustment"})), forbidden_executables
+        )
+    if command == "stdbuf":
+        return _forbidden_in_argv(
+            _after_options(args, frozenset({"-i", "-o", "-e", "--input", "--output", "--error"})),
+            forbidden_executables,
+        )
     if command in {"time", "nohup", "setsid", "chronic"}:
-        return _forbidden_in_argv(_after_options(args))
+        return _forbidden_in_argv(_after_options(args), forbidden_executables)
     if command == "timeout":
         target = _after_options(args, frozenset({"-k", "--kill-after", "-s", "--signal"}))
-        return _forbidden_in_argv(target[1:]) if target else set()
+        return _forbidden_in_argv(target[1:], forbidden_executables) if target else set()
     if command == "xargs":
-        return _forbidden_in_argv(_after_options(args, frozenset({"-a", "-d", "-E", "-I", "-L", "-n", "-P", "-s", "--arg-file", "--delimiter", "--eof", "--max-args", "--max-lines", "--max-procs", "--max-chars", "--replace"})))
+        return _forbidden_in_argv(
+            _after_options(
+                args,
+                frozenset(
+                    {
+                        "-a", "-d", "-E", "-I", "-L", "-n", "-P", "-s", "--arg-file",
+                        "--delimiter", "--eof", "--max-args", "--max-lines", "--max-procs",
+                        "--max-chars", "--replace",
+                    }
+                ),
+            ),
+            forbidden_executables,
+        )
     if command in SHELLS:
         found: set[str] = set()
         for fragment in _shell_command_fragments(args):
-            found.update(forbidden_deployment_commands(fragment))
+            found.update(forbidden_commands(fragment, forbidden_executables))
         return found
     if command == "eval":
-        return forbidden_deployment_commands(" ".join(args))
+        return forbidden_commands(" ".join(args), forbidden_executables)
     if command == "find":
         for index, argument in enumerate(args):
             if argument in {"-exec", "-execdir", "-ok", "-okdir"}:
-                return _forbidden_in_argv(args[index + 1:])
+                return _forbidden_in_argv(args[index + 1:], forbidden_executables)
     return set()
 
 
@@ -669,20 +706,27 @@ def _command_argvs(tokens: list[str]) -> list[list[str]]:
     return commands
 
 
-def _forbidden_in_tokens(tokens: list[str]) -> set[str]:
+def _forbidden_in_tokens(tokens: list[str], forbidden_executables: frozenset[str]) -> set[str]:
     found: set[str] = set()
     for argv in _command_argvs(tokens):
-        found.update(_forbidden_in_argv(argv))
+        found.update(_forbidden_in_argv(argv, forbidden_executables))
+    return found
+
+
+def forbidden_commands(script: str, forbidden_executables: frozenset[str]) -> set[str]:
+    """Return selected executables actually invoked by a shell run body."""
+    source, heredoc_fragments = _without_heredoc_bodies(script)
+    found = _forbidden_in_tokens(
+        _consume_parameter_and_arithmetic_expansions(_tokens_for_script(source)), forbidden_executables
+    )
+    for fragment in [*heredoc_fragments, *_command_substitutions(source)]:
+        found.update(forbidden_commands(fragment, forbidden_executables))
     return found
 
 
 def forbidden_deployment_commands(script: str) -> set[str]:
-    """Return forbidden executables actually invoked by a shell run body."""
-    source, heredoc_fragments = _without_heredoc_bodies(script)
-    found = _forbidden_in_tokens(_consume_parameter_and_arithmetic_expansions(_tokens_for_script(source)))
-    for fragment in [*heredoc_fragments, *_command_substitutions(source)]:
-        found.update(forbidden_deployment_commands(fragment))
-    return found
+    """Return forbidden EKS deployment executables actually invoked by a shell run body."""
+    return forbidden_commands(script, FORBIDDEN_DEPLOYMENT_COMMANDS)
 
 
 def _is_contract_make_argv(argv: list[str]) -> bool:
