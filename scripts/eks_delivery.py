@@ -29,6 +29,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TARGET_POLICY_PATH = REPO_ROOT / "deploy" / "aws" / "genai-smart-router-eks-staging-target.json"
+TARGET_POLICY_SCHEMA_VERSION = 6
 SECRET_PATTERNS = (
     # Keep the key/header name for useful diagnostics while replacing the
     # complete value. This covers shell assignments and common HTTP/JSON
@@ -52,6 +53,7 @@ KUSTOMIZE_IMAGE_NAME = re.compile(
     r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?::[0-9]{1,5})?"
     r"(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)+$"
 )
+SUPPORTED_IMAGE_ARCHITECTURES = frozenset({"linux/amd64", "linux/arm64"})
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 SAFE_ATTESTATION_VALUE = re.compile(r"^[A-Za-z0-9._:-]{1,255}$")
 PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -361,6 +363,7 @@ class TargetPolicy:
     deployment_name: str
     ecr_repository_uri: str
     eks_cluster: str
+    image_architecture: str
     k8s_namespace: str
     kustomize_overlay: Path
     kustomize_router_image_name: str
@@ -470,6 +473,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "ssm_parameter_arn",
         "ecr_repository_uri",
         "eks_cluster",
+        "image_architecture",
         "k8s_namespace",
         "kustomize_overlay",
         "kustomize_router_image_name",
@@ -481,7 +485,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     }
     if set(value) != required:
         fail("approved staging target policy has an unexpected schema")
-    if value.get("schema_version") != 5 or value.get("environment") != "staging":
+    if value.get("schema_version") != TARGET_POLICY_SCHEMA_VERSION or value.get("environment") != "staging":
         fail("approved staging target policy is not a supported staging policy")
 
     def string(name: str) -> str:
@@ -494,6 +498,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     region = string("aws_region")
     cluster = string("eks_cluster")
     ecr_repository_uri = string("ecr_repository_uri")
+    image_architecture = string("image_architecture")
     namespace = string("k8s_namespace")
     deployment = string("deployment_name")
     container = string("container_name")
@@ -524,6 +529,8 @@ def parse_target_policy(value: object) -> TargetPolicy:
         fail("approved staging target policy has invalid delivery role")
     if not KUSTOMIZE_IMAGE_NAME.fullmatch(kustomize_router_image_name):
         fail("approved staging target policy has invalid Kustomize source image name")
+    if image_architecture not in SUPPORTED_IMAGE_ARCHITECTURES:
+        fail("approved staging target policy has an unsupported image architecture")
     ecr_match = ECR_REPOSITORY_URI.fullmatch(ecr_repository_uri)
     if (
         not ecr_match
@@ -551,12 +558,13 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "ecr_repository_uri": ecr_repository_uri,
         "environment": "staging",
         "eks_cluster": cluster,
+        "image_architecture": image_architecture,
         "k8s_namespace": namespace,
         "kustomize_overlay": overlay.as_posix(),
         "kustomize_router_image_name": kustomize_router_image_name,
         "runtime_secret_name": runtime_secret_name,
         "runtime_secret_attestation_configmap_name": runtime_secret_attestation_configmap_name,
-        "schema_version": 5,
+        "schema_version": TARGET_POLICY_SCHEMA_VERSION,
         "ssm_parameter_arn": parameter_arn,
     }
     return TargetPolicy(
@@ -567,6 +575,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         deployment_name=deployment,
         ecr_repository_uri=ecr_repository_uri,
         eks_cluster=cluster,
+        image_architecture=image_architecture,
         k8s_namespace=namespace,
         kustomize_overlay=resolved_overlay,
         kustomize_router_image_name=kustomize_router_image_name,
@@ -712,6 +721,7 @@ class Delivery:
             "aws_region",
             "ecr_repository_uri",
             "eks_cluster",
+            "image_architecture",
             "k8s_namespace",
             "kustomize_router_image_name",
             "runtime_secret_name",
@@ -788,6 +798,7 @@ class Delivery:
                 "aws_region": checked_in.aws_region,
                 "ecr_repository_uri": checked_in.ecr_repository_uri,
                 "eks_cluster": checked_in.eks_cluster,
+                "image_architecture": checked_in.image_architecture,
                 "k8s_namespace": checked_in.k8s_namespace,
                 "kustomize_overlay": checked_in.kustomize_overlay.relative_to(REPO_ROOT).as_posix(),
                 "kustomize_router_image_name": checked_in.kustomize_router_image_name,

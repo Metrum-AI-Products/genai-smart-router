@@ -41,8 +41,8 @@ secret name before applying.
 
 Render, dry-run, apply, and rollback must use the root Make contract rather
 than an implicit kubectl context. The approved account, region, ECR repository,
-cluster, namespace, runtime Secret attestation ConfigMap, overlay, Deployment,
-container, and role are pinned in
+cluster, namespace, runtime Secret attestation ConfigMap, overlay,
+`image_architecture`, Deployment, container, and role are pinned in
 `deploy/aws/genai-smart-router-eks-staging-target.json` and must exactly match
 the separately protected AWS Systems Manager Parameter named by that file.
 The checked-in repository URI is only a bootstrap default: it does not prove a
@@ -58,8 +58,16 @@ make eks-preflight eks-plan \
 
 make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
   EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
+  EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain'
 ```
+
+The supply-chain verifier obtains the expected image architecture only from
+`image_architecture` in the reviewed checked-in target policy and requires the
+evidence to bind it exactly. Delivery then requires the complete policy's
+canonical hash to match the protected Parameter before reconciliation. Do not
+supply `EKS_IMAGE_ARCHITECTURE`, or an equivalent CI input; architecture is not
+a caller-selected deployment property.
 
 The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
 at this point; the generic base policy remains ingress-neutral for non-EKS
@@ -112,6 +120,9 @@ records only their safe checksum/size. It creates a temporary kubeconfig,
 rejects mutable or off-repository images (including rollback), and permits
 mutation only for its fixed staging target with
 `EKS_CONFIRM=STAGING_APPLY`. Production apply is intentionally unavailable.
+Rollback has the same `eks-supply-chain-validate` prerequisite as apply, so
+its protected evidence must bind the requested historical image digest and the
+target-policy architecture before Kubernetes mutation can begin.
 The overlay deliberately omits the base `Namespace` resource: namespace
 creation and labels are an independently reviewed bootstrap action, and the
 delivery contract rejects cluster-scoped resources or any rendered resource
@@ -153,4 +164,5 @@ pre-apply differences through change control; no caller-controlled bypass is
 provided.
 
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
-rollback runbook.
+rollback runbook. See `docs/EKS_STAGING_CICD.md` for the required immutable
+image supply-chain evidence and protected GitHub staging-environment boundary.

@@ -78,9 +78,10 @@ authorize a production cutover.
    target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
    reviewed canonical target: account, region, ECR repository, cluster,
    namespace, runtime Secret, runtime Secret attestation ConfigMap, overlay,
-   Kustomize source image name, Deployment, container, and delivery role. The checked-in
-   repository URI is a bootstrap default, not proof of an approved live AWS/EKS
-   target. First renew a least-privilege non-root session and explicitly
+   Kustomize source image name, `image_architecture`, Deployment, container,
+   and delivery role. The checked-in repository URI is a bootstrap default, not
+   proof of an approved live AWS/EKS target. First renew a
+   least-privilege non-root session and explicitly
    reconcile the approved target. Then provision the exact JSON as a
    standard (not SecureString) AWS Systems Manager Parameter at the ARN in
    that file through reviewed infrastructure-as-code. The staging delivery
@@ -88,7 +89,7 @@ authorize a production cutover.
    `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
    a separate platform configuration role owns `ssm:PutParameter`. The
    delivery contract reads both copies and fails unless their canonical JSON
-   hashes match. The current schema is version 5; update the reviewed file and
+   hashes match. The current schema is version 6; update the reviewed file and
    protected Parameter through the same approved infrastructure change. The
    `kustomize_router_image_name` field is the full tagless source image in the
    overlay, not the ECR destination; the contract replaces exactly that name
@@ -189,11 +190,20 @@ the staging configuration as a general baseline.
 
 The root Makefile is the canonical EKS operator and CI interface. It accepts a
 short-lived AWS profile and immutable image digest, but never accepts an
-account, region, ECR repository, cluster, namespace, overlay, or environment as caller-set
-variables. Those values come from the reviewed target policy and its
-independently protected Parameter copy. It creates a temporary per-invocation
-kubeconfig, so it neither reads nor changes the operator's default kubectl
-context. See `make eks-help` for the complete target list and required inputs.
+account, region, ECR repository, cluster, namespace, overlay, environment, or
+`image_architecture` as caller-set variables. Those values come from the
+reviewed checked-in target policy; delivery requires that complete policy's
+canonical hash to match its independently protected Parameter copy. The
+supply-chain verifier validates the image-bound release-binding statement, its
+raw SBOM/provenance/scan hashes, and signature-verifier result against the
+policy-selected `image_architecture`. It creates a
+temporary per-invocation kubeconfig, so it neither reads nor changes the
+operator's default kubectl context. See `make eks-help` for the complete target
+list and required inputs.
+
+For signed-image evidence, protected-environment prerequisites, and the future
+GitHub Actions release boundary, see `docs/EKS_STAGING_CICD.md`. This runbook
+continues to own runtime-secret, RDS, license, smoke, and rollback procedures.
 
 1. Create the `smart-llmrouter-staging` namespace, then create the runtime
    Secret and make the wildcard certificate Secret available in that namespace.
@@ -266,7 +276,8 @@ context. See `make eks-help` for the complete target list and required inputs.
    ```bash
    make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
      EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-     IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+     IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
+     EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain'
    ```
 
 4. Re-run the explicit-target discovery after the router Pods are Ready, then
@@ -375,13 +386,17 @@ safe apply evidence (`live_pod_template_sha256`):
 make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
   EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
+  EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain' \
   ROLLBACK_POD_TEMPLATE_SHA256='<approved prior live_pod_template_sha256>'
 ```
 
-It resolves only a matching owned ReplicaSet revision whose named router
-container has that exact digest **and** whose complete normalized pod template
-matches the approved SHA-256 before mutating; it then verifies the restored
-Deployment against the same hash. This binds Secret references, service
+The same supply-chain validation prerequisite runs before rollback delivery;
+the protected evidence bundle must bind this exact historical image digest and
+the architecture from the approved target policy. It resolves only a matching
+owned ReplicaSet revision whose named router container has that exact digest
+**and** whose complete normalized pod template matches the approved SHA-256
+before mutating; it then verifies the restored Deployment against the same
+hash. This binds Secret references, service
 account, security settings, volumes, sidecars, and init containers—not merely
 the router image. A mutable, off-repository, missing-history, template-mismatch,
 or unexpected restored image fails closed. Removal of the Ingress or Deployment
