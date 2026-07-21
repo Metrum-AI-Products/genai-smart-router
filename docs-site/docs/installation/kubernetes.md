@@ -272,8 +272,13 @@ documented Kubernetes runtime allocations, not routing or security settings,
 and reject unexpected live labels, annotations, owner references, finalizers,
 or spec fields before a mutation. For a `WaitForFirstConsumer` PVC, document
 and normalize only the Kubernetes-owned selected-node annotation and
-PVC-protection finalizer; do not broadly ignore PVC metadata. Verify both
-before smoke and promotion. Do
+PVC-protection finalizer; do not broadly ignore PVC metadata. A discovery-owned
+ingress allow policy may use the router label only in `spec.podSelector`, never
+in its metadata, so it remains outside the delivery inventory; delivery has no
+name-based exception for label-selected resources. Reapply a legacy companion
+policy with the reviewed discovery workflow before the next delivery run;
+delivery deliberately treats the legacy label-selected object as stale. Verify
+both before smoke and promotion. Do
 not use a broad prune: a
 removed or renamed resource should fail delivery until it is removed through a
 separately approved migration. Treat rollback as an artifact deployment too:

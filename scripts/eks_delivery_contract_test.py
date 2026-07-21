@@ -131,6 +131,31 @@ def inventory_with_stale_resource() -> str:
     return json.dumps(payload)
 
 
+def inventory_with_discovered_ingress_policy() -> str:
+    """Add the exact discovery-owned ingress policy to a live inventory."""
+
+    payload = json.loads(rendered_objects())
+    payload["items"].append(
+        {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": "smart-llmrouter-discovered-ingress",
+                "namespace": TARGET_POLICY["k8s_namespace"],
+                "labels": {"app.kubernetes.io/name": "smart-llmrouter"},
+            },
+            "spec": {
+                "podSelector": {
+                    "matchLabels": {"app.kubernetes.io/name": "smart-llmrouter"}
+                },
+                "policyTypes": ["Ingress"],
+                "ingress": [],
+            },
+        }
+    )
+    return json.dumps(payload)
+
+
 def inventory_with_service_configuration_drift() -> str:
     payload = json.loads(rendered_objects())
     payload["items"][1]["spec"] = {
@@ -1113,6 +1138,18 @@ def main() -> int:
         assert "apply --server-side -f" not in stale_apply_calls
         assert "--prune" not in stale_apply_calls
 
+        label_selected_discovered_ingress = inventory_with_discovered_ingress_policy()
+        label_selected_discovered_ingress_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            live_inventory=label_selected_discovered_ingress,
+        )
+        assert (
+            label_selected_discovered_ingress_apply.returncode != 0
+            and "stale resources" in label_selected_discovered_ingress_apply.stderr
+        )
+
         drift_apply = run(
             "apply",
             root,
@@ -1470,7 +1507,7 @@ def main() -> int:
             [
                 "make",
                 "eks-smoke-staging",
-                "EKS_AWS_PROFILE=test-profile",
+                "EKS_DELIVERY_AWS_PROFILE=test-profile",
                 "EKS_CONFIRM=STAGING_APPLY",
                 f"IMAGE_DIGEST={DIGEST}",
                 f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
@@ -1574,7 +1611,7 @@ def main() -> int:
             [
                 "make",
                 "eks-release-evidence",
-                "EKS_AWS_PROFILE=test-profile",
+                "EKS_DELIVERY_AWS_PROFILE=test-profile",
                 f"IMAGE_DIGEST={DIGEST}",
                 f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
             ],

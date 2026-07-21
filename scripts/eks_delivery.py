@@ -605,7 +605,7 @@ class Delivery:
 
     def _validate_inputs(self) -> None:
         if not PROFILE.fullmatch(self.args.aws_profile):
-            fail("EKS_AWS_PROFILE must be a documented AWS profile identifier")
+            fail("--aws-profile must be a documented AWS profile identifier")
         if self.args.action in {
             "render",
             "plan",

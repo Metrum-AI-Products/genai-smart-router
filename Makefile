@@ -18,7 +18,10 @@ PYTHON ?= python3
 # workload, and role are
 # not Make variables: they are pinned in the reviewed target policy and its
 # independently protected SSM copy.
-EKS_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
+# Delivery and discovery use different AWS profiles. Keep the legacy
+# EKS_AWS_PROFILE default below for discovery/session bootstrap; delivery must
+# never overwrite it because those targets create the discovery-role profile.
+EKS_DELIVERY_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 ROLLBACK_POD_TEMPLATE_SHA256 ?=
@@ -30,10 +33,10 @@ EKS_SMOKE_COMMAND_FILE ?=
 # EKS inputs can originate in CI/environment values. Export them and expand
 # only in the recipe shell: Make interpolation inside shell quotes would allow
 # a malicious value to alter shell syntax before Python can validate it.
-export EKS_AWS_PROFILE IMAGE_DIGEST EKS_CONFIRM ROLLBACK_POD_TEMPLATE_SHA256 \
+export EKS_DELIVERY_AWS_PROFILE IMAGE_DIGEST EKS_CONFIRM ROLLBACK_POD_TEMPLATE_SHA256 \
 	EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND_FILE
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
-EKS_ARGS = --aws-profile "$${EKS_AWS_PROFILE}" --image-digest "$${IMAGE_DIGEST}" --confirm "$${EKS_CONFIRM}" --rollback-pod-template-sha256 "$${ROLLBACK_POD_TEMPLATE_SHA256}" --evidence-dir "$${EKS_EVIDENCE_DIR}"
+EKS_ARGS = --aws-profile "$${EKS_DELIVERY_AWS_PROFILE}" --image-digest "$${IMAGE_DIGEST}" --confirm "$${EKS_CONFIRM}" --rollback-pod-template-sha256 "$${ROLLBACK_POD_TEMPLATE_SHA256}" --evidence-dir "$${EKS_EVIDENCE_DIR}"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -67,7 +70,7 @@ EKS_MFA_KEYCHAIN_SERVICE ?=
 EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
 EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG PYTHON AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT IMAGE_DIGEST EKS_CONFIRM EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG PYTHON AWS_REGION EKS_CLUSTER K8S_NAMESPACE KUSTOMIZE_OVERLAY ENVIRONMENT IMAGE_DIGEST EKS_CONFIRM EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND EKS_DELIVERY_AWS_PROFILE EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
@@ -87,7 +90,7 @@ eks-help:
 	@echo "  eks-smoke-staging      protected arbitrary-script smoke; requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollback-staging   mutating staging only: requires confirmation, digest, approved pod-template SHA-256"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
-	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
+	@echo "Required: an approved EKS_DELIVERY_AWS_PROFILE and protected staging target policy Parameter."
 	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
 	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY; rollback also requires ROLLBACK_POD_TEMPLATE_SHA256."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."

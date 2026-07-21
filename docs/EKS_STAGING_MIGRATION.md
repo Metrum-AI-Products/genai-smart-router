@@ -201,7 +201,7 @@ context. See `make eks-help` for the complete target list and required inputs.
 
    ```bash
    make eks-preflight eks-plan \
-     EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
      IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
@@ -265,7 +265,7 @@ context. See `make eks-help` for the complete target list and required inputs.
 
    ```bash
    make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-     EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
      IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
@@ -278,7 +278,13 @@ context. See `make eks-help` for the complete target list and required inputs.
    injection evidence, then server-side dry-runs and applies its `Server` and
    `ServerAuthorization` before the namespace allow policy. Discovery evidence
    is valid for 15 minutes only, so rerun it immediately if that window expires
-   before activation:
+   before activation. The exact companion
+   `NetworkPolicy/smart-llmrouter-discovered-ingress` is discovery-owned rather
+   than overlay-owned. It retains the router label only in `spec.podSelector`,
+   not metadata, so delivery never selects it; every label-selected resource
+   remains fail-closed. Re-render and activate any legacy companion policy that
+   still carries the delivery label before its next delivery run; delivery
+   deliberately reports that object as stale:
 
    ```bash
    make eks-render-linkerd-policy \
@@ -323,7 +329,7 @@ context. See `make eks-help` for the complete target list and required inputs.
    EKS_SMOKE_COMMAND_FILE=/secure/ci/smartrouter-staging-smoke.sh \
      make eks-smoke-staging \
        EKS_CONFIRM=STAGING_APPLY \
-       EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+       EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
        IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
@@ -367,7 +373,7 @@ safe apply evidence (`live_pod_template_sha256`):
 
 ```bash
 make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
-  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
   ROLLBACK_POD_TEMPLATE_SHA256='<approved prior live_pod_template_sha256>'
 ```

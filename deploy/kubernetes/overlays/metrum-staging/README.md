@@ -53,11 +53,11 @@ short-lived AWS identity:
 
 ```bash
 make eks-preflight eks-plan \
-  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 
 make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-  EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 ```
 
@@ -127,6 +127,13 @@ labels, annotations, owner references, and finalizers are not, except the
 Kubernetes-owned `volume.kubernetes.io/selected-node` annotation and
 `kubernetes.io/pvc-protection` finalizer added to this overlay's
 `WaitForFirstConsumer` PVC.
+The separately authorized discovery workflow owns the exact
+`NetworkPolicy/smart-llmrouter-discovered-ingress` companion policy. It keeps
+the router label only in `spec.podSelector`, never in metadata, so the delivery
+inventory does not select it. Delivery has no name-based exclusion: every
+label-selected object remains fail-closed. Re-render and activate any legacy
+companion policy that still carries the delivery label before its next delivery
+run; the delivery contract deliberately reports that legacy object as stale.
 It deliberately does **not** use Kubernetes prune: removal or renaming of a
 Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
 Deployment requires a separately reviewed recovery/migration to remove the

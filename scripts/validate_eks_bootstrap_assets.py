@@ -78,6 +78,14 @@ def main() -> int:
         raise SystemExit("ingress NetworkPolicy must retain exactly the validated render placeholders")
     if "kubernetes.io/metadata.name: __INGRESS_NAMESPACE__" not in ingress_network_policy or "ingress-nginx" in ingress_network_policy:
         raise SystemExit("ingress NetworkPolicy template must derive its namespace from discovery")
+    ingress_metadata, ingress_spec = ingress_network_policy.split("\nspec:\n", 1)
+    delivery_label = "app.kubernetes.io/name: smart-llmrouter"
+    if (
+        delivery_label in ingress_metadata
+        or delivery_label not in ingress_spec
+        or ingress_network_policy.count(delivery_label) != 1
+    ):
+        raise SystemExit("discovery-owned ingress NetworkPolicy must keep the delivery label only in spec.podSelector")
 
     makefile = MAKEFILE.read_text(encoding="utf-8")
     if "eks-render-linkerd-policy: eks-render-ingress-network-policy" not in makefile or "scripts/render_tenant_ingress_network_policy.py" not in makefile:
