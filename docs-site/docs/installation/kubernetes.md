@@ -206,7 +206,8 @@ metadata-only Secret `get`. Instead, have a separate secret-bootstrap identity
 publish a policy-pinned, immutable, non-secret ConfigMap containing only a
 schema version, Secret name, UID, and resourceVersion, with a same-namespace
 Secret owner reference matching the attested UID. Grant delivery only
-name-scoped `get` on that ConfigMap; do not allow it to write ConfigMaps. Keep
+name-scoped `get` on that ConfigMap; do not allow any other ConfigMap or
+Secret verb. Keep
 the attestation outside the workload Kustomize inventory. Delete it before a
 Secret mutation and recreate it only after bootstrap has read the new Secret
 metadata, so a partial rotation fails closed.
@@ -269,7 +270,10 @@ live object to validate against that desired fingerprint; never let fields
 preserved by another field manager become expected configuration. Exclude only
 documented Kubernetes runtime allocations, not routing or security settings,
 and reject unexpected live labels, annotations, owner references, finalizers,
-or spec fields before a mutation. Verify both before smoke and promotion. Do
+or spec fields before a mutation. For a `WaitForFirstConsumer` PVC, document
+and normalize only the Kubernetes-owned selected-node annotation and
+PVC-protection finalizer; do not broadly ignore PVC metadata. Verify both
+before smoke and promotion. Do
 not use a broad prune: a
 removed or renamed resource should fail delivery until it is removed through a
 separately approved migration. Treat rollback as an artifact deployment too:

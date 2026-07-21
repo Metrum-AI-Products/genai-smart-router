@@ -30,7 +30,7 @@ fresh immutable ConfigMap with only `schema_version: v1`, `secret_name`,
 `secret_uid`, and `secret_resource_version` in `data`, no `binaryData`, and
 one same-namespace `v1` `Secret` owner reference matching the attested name
 and UID. The delivery role reads that exact ConfigMap but has no Secret verbs
-or ConfigMap write access. Do not put the attestation ConfigMap in this
+or other ConfigMap verbs. Do not put the attestation ConfigMap in this
 Kustomize overlay: it is bootstrap-owned evidence, not workload desired state.
 
 The RDS DSN must use TLS hostname verification and the mounted CA file, for
@@ -123,7 +123,10 @@ fingerprint from the allowlisted, namespace-scoped resources bearing
 promotion, and refuses an apply before mutation if an old label-selected
 resource is no longer rendered. Kubernetes-owned runtime fields such as a
 Service cluster IP and PVC binding name are excluded; routing/security specs,
-labels, annotations, owner references, and finalizers are not.
+labels, annotations, owner references, and finalizers are not, except the
+Kubernetes-owned `volume.kubernetes.io/selected-node` annotation and
+`kubernetes.io/pvc-protection` finalizer added to this overlay's
+`WaitForFirstConsumer` PVC.
 It deliberately does **not** use Kubernetes prune: removal or renaming of a
 Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
 Deployment requires a separately reviewed recovery/migration to remove the

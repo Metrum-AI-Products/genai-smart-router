@@ -503,7 +503,7 @@ case "$0" in
   *kubectl) case "$*" in
     *"auth can-i"*secret*) echo "$FAKE_SECRET_RBAC" ;;
     *"auth can-i get configmap/$FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) echo yes ;;
-    *"auth can-i"*configmap*) echo no ;;
+    *"auth can-i"*configmap*) echo "$FAKE_CONFIGMAP_RBAC" ;;
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
@@ -564,6 +564,7 @@ def run(
     runtime_secret_attestation_payload: str | None = None,
     runtime_secret_attestation_after_apply_payload: str | None = None,
     secret_rbac: str = "no",
+    configmap_rbac: str = "no",
     replica_sets: str | None = None,
     rollback_pod_template_sha256: str | None = None,
     include_rollback_pod_template_sha256: bool = True,
@@ -615,6 +616,7 @@ def run(
         "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
         "FAKE_SECRET_RBAC": secret_rbac,
+        "FAKE_CONFIGMAP_RBAC": configmap_rbac,
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
         "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),
@@ -770,6 +772,10 @@ def main() -> int:
     )
     runtime_pvc = next(item for item in runtime_only_resources if item["kind"] == "PersistentVolumeClaim")
     runtime_pvc["spec"]["volumeName"] = "pvc-runtime-volume"
+    runtime_pvc["metadata"]["annotations"] = {
+        "volume.kubernetes.io/selected-node": "ip-10-0-0-10"
+    }
+    runtime_pvc["metadata"]["finalizers"] = ["kubernetes.io/pvc-protection"]
     runtime_service_account = next(item for item in runtime_only_resources if item["kind"] == "ServiceAccount")
     runtime_service_account["secrets"] = [{"name": "runtime-token-secret"}]
     runtime_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
@@ -779,6 +785,25 @@ def main() -> int:
     assert (
         EKS_DELIVERY.managed_resource_spec_fingerprint(runtime_inventory)
         == expected_spec_fingerprint
+    )
+
+    unexpected_pvc_metadata = json.loads(json.dumps(expected_resources))
+    unexpected_pvc = next(
+        item for item in unexpected_pvc_metadata if item["kind"] == "PersistentVolumeClaim"
+    )
+    unexpected_pvc["metadata"]["annotations"] = {
+        "external.example.test/unreviewed": "true"
+    }
+    unexpected_pvc["metadata"]["finalizers"] = [
+        "kubernetes.io/pvc-protection",
+        "external.example.test/unreviewed-finalizer",
+    ]
+    unexpected_pvc_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+        unexpected_pvc_metadata, target, source="unreviewed PVC metadata fixture"
+    )
+    assert (
+        EKS_DELIVERY.managed_resource_spec_fingerprint(unexpected_pvc_inventory)
+        != expected_spec_fingerprint
     )
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -829,6 +854,14 @@ def main() -> int:
         assert (
             inherited_secret_access.returncode != 0
             and "forbidden Secret permission" in inherited_secret_access.stderr
+        )
+        inherited_configmap_write_access = run(
+            "preflight", root, configmap_rbac="yes"
+        )
+        assert (
+            inherited_configmap_write_access.returncode != 0
+            and "forbidden ConfigMap permission"
+            in inherited_configmap_write_access.stderr
         )
 
         # The delivery contract fails before a mutating apply if the
@@ -1455,6 +1488,7 @@ def main() -> int:
                 "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
                 "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
                 "FAKE_SECRET_RBAC": "no",
+                "FAKE_CONFIGMAP_RBAC": "no",
                 "FAKE_TARGET_POLICY_VALUE": target_value(),
                 "FAKE_RENDER_OBJECTS": rendered_objects(),
                 "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
@@ -1556,6 +1590,7 @@ def main() -> int:
                 "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
                 "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
                 "FAKE_SECRET_RBAC": "no",
+                "FAKE_CONFIGMAP_RBAC": "no",
                 "FAKE_TARGET_POLICY_VALUE": target_value(),
                 "FAKE_RENDER_OBJECTS": rendered_objects(),
                 "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),

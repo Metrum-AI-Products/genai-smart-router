@@ -129,10 +129,17 @@ DYNAMIC_MANAGED_ANNOTATIONS = frozenset(
         "volume.kubernetes.io/storage-provisioner",
     }
 )
+# These PVC fields are set by Kubernetes for the reviewed staging StorageClass
+# (`WaitForFirstConsumer`) after a PVC is accepted. Keep them separate from
+# the general metadata allowlists: the same annotation/finalizer on another
+# resource remains part of the reviewed configuration fingerprint.
+PVC_RUNTIME_ANNOTATIONS = frozenset({"volume.kubernetes.io/selected-node"})
+PVC_RUNTIME_FINALIZERS = frozenset({"kubernetes.io/pvc-protection"})
 # These ObjectMeta values are allocated or maintained by the Kubernetes API
 # after accepting a resource. Everything else in metadata remains in the
 # fingerprint, including lifecycle and authorization-relevant ownerReferences
-# and finalizers. Keep this list narrow and explicit.
+# and finalizers. The exact PVC runtime finalizer is handled separately below.
+# Keep these lists narrow and explicit.
 DYNAMIC_MANAGED_METADATA_FIELDS = frozenset(
     {
         "creationTimestamp",
@@ -917,6 +924,37 @@ class Delivery:
                 fail(
                     "Kubernetes RBAC grants a forbidden Secret permission to the delivery role"
                 )
+        # The attestation is the independent bootstrap boundary. A delivery
+        # identity that can rewrite ConfigMaps could forge an immutable-looking
+        # replacement, so require its read permission to be name-scoped and
+        # reject all ConfigMap mutation/list/watch capabilities.
+        attestation_configmap_forbidden_probes = (
+            ("get", "configmap/non-attestation-read-probe"),
+            ("list", "configmaps"),
+            ("watch", "configmaps"),
+            ("create", "configmaps"),
+            ("update", f"configmap/{target.runtime_secret_attestation_configmap_name}"),
+            ("patch", f"configmap/{target.runtime_secret_attestation_configmap_name}"),
+            ("delete", f"configmap/{target.runtime_secret_attestation_configmap_name}"),
+            ("deletecollection", "configmaps"),
+        )
+        for verb, resource in attestation_configmap_forbidden_probes:
+            configmap_permission = command(
+                [
+                    "kubectl",
+                    "auth",
+                    "can-i",
+                    verb,
+                    resource,
+                    "-n",
+                    target.k8s_namespace,
+                ],
+                env,
+            ).strip()
+            if configmap_permission != "no":
+                fail(
+                    "Kubernetes RBAC grants a forbidden ConfigMap permission to the delivery role"
+                )
         if self.args.action == "rollback":
             replica_sets_allowed = command(
                 ["kubectl", "auth", "can-i", "list", "replicasets", "-n", target.k8s_namespace],
@@ -933,6 +971,9 @@ class Delivery:
             rbac_list_managed_resource_types=len(MANAGED_RESOURCE_TYPES),
             rbac_get_runtime_secret_attestation=runtime_secret_attestation_allowed,
             rbac_denied_runtime_secret_verbs=len(secret_permission_probes),
+            rbac_denied_runtime_secret_attestation_configmap_verbs=len(
+                attestation_configmap_forbidden_probes
+            ),
             rbac_list_replicasets=self.args.action != "rollback" or replica_sets_allowed == "yes",
         )
         self.runtime_secret_attestation(env, target, "preflight")
@@ -981,7 +1022,9 @@ class Delivery:
         hashing. Everything else in the manifest, including labels,
         annotations, owner references, finalizers, selectors, ingress rules,
         network policy, PVC settings, disruption policy, and ServiceAccount
-        controls, remains in the hash.
+        controls remain in the hash, except the exact Kubernetes-owned
+        `WaitForFirstConsumer` PVC placement annotation and PVC-protection
+        finalizer listed above.
         The function never emits the configuration; evidence records only its
         SHA-256 aggregate.
         """
@@ -1005,10 +1048,13 @@ class Delivery:
         for field_name in DYNAMIC_MANAGED_METADATA_FIELDS:
             normalized_metadata.pop(field_name, None)
 
+        dynamic_annotations = DYNAMIC_MANAGED_ANNOTATIONS
+        if identity.kind == "PersistentVolumeClaim":
+            dynamic_annotations = dynamic_annotations | PVC_RUNTIME_ANNOTATIONS
         annotations = {
             key: value
             for key, value in string_map("annotations").items()
-            if key not in DYNAMIC_MANAGED_ANNOTATIONS
+            if key not in dynamic_annotations
         }
         labels = string_map("labels")
         if labels:
@@ -1019,6 +1065,20 @@ class Delivery:
             normalized_metadata["annotations"] = annotations
         else:
             normalized_metadata.pop("annotations", None)
+        if identity.kind == "PersistentVolumeClaim":
+            finalizers = normalized_metadata.get("finalizers")
+            if finalizers is not None:
+                if not isinstance(finalizers, list) or any(
+                    not isinstance(value, str) for value in finalizers
+                ):
+                    fail(f"{source} resource has invalid metadata.finalizers")
+                retained_finalizers = [
+                    value for value in finalizers if value not in PVC_RUNTIME_FINALIZERS
+                ]
+                if retained_finalizers:
+                    normalized_metadata["finalizers"] = retained_finalizers
+                else:
+                    normalized_metadata.pop("finalizers", None)
 
         normalized: dict[str, object] = {}
         for key, value in resource.items():

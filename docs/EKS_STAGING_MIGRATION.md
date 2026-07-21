@@ -147,7 +147,8 @@ after the full credential-bearing Secret had been authorized and returned.
 A separate, privileged Secret-bootstrap identity owns both the runtime Secret
 and the policy-pinned non-secret ConfigMap
 `smartrouter-staging-runtime-attestation`; the delivery identity gets
-name-scoped `get` only on that ConfigMap and no ConfigMap write access. Before
+name-scoped `get` only on that ConfigMap and no other ConfigMap or Secret
+verbs. Before
 any Secret mutation, bootstrap deletes the existing attestation. After the
 Secret write succeeds, bootstrap reads its metadata and creates a fresh
 `immutable: true` ConfigMap with exactly these non-secret `data` keys:
@@ -217,7 +218,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    `serviceaccounts`, plus name-scoped `get` permission only for the approved
    runtime Secret attestation ConfigMap. It must have no `get`, `list`,
    `watch`, `create`, `update`, `patch`, `delete`, or `deletecollection`
-   permissions for Secrets, and no ConfigMap write permission. The delivery
+   permissions for Secrets, and no `get` on other ConfigMaps, `list`, `watch`,
+   `create`, `update`, `patch`, `delete`, or `deletecollection` permission for
+   ConfigMaps. The delivery
    contract builds its expected inventory from
    the isolated client-rendered manifest, not from Server-Side Apply output.
    Server-side dry-run is an acceptance/field-ownership check only: its object
@@ -228,7 +231,10 @@ context. See `make eks-help` for the complete target list and required inputs.
    and a PVC binding name) and exact, omitted Kubernetes defaults.
    Routing, security, labels, annotations, owner references, finalizers,
    admission additions, and all other declared resource settings must exactly
-   match the reviewed manifest. A new
+   match the reviewed manifest, except the Kubernetes-owned
+   `volume.kubernetes.io/selected-node` annotation and
+   `kubernetes.io/pvc-protection` finalizer on the reviewed
+   `WaitForFirstConsumer` state PVC. A new
    admission-managed field must be represented in the reviewed manifest or it
    will fail closed rather than being absorbed into the expected fingerprint.
    It does not use broad prune. If an old managed object is absent from a new

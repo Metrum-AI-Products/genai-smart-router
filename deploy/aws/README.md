@@ -67,9 +67,9 @@ The current schema is version 5. It pins the full tagless source image name
 that Kustomize must replace, the single runtime Secret name, the separately
 bootstrap-owned runtime Secret attestation ConfigMap, and the workload target.
 The delivery identity receives name-scoped `get` access only to that ConfigMap
-and must have **no** Secret verbs. Kubernetes RBAC cannot make a Secret `get`
-metadata-only: JSONPath filters output after the API has authorized and
-returned the complete Secret.
+and must have **no** other ConfigMap or Secret verbs. Kubernetes RBAC cannot
+make a Secret `get` metadata-only: JSONPath filters output after the API has
+authorized and returned the complete Secret.
 
 The bootstrap identity alone creates a fresh immutable attestation ConfigMap
 after it creates or updates the Secret. Its `data` must contain exactly the
