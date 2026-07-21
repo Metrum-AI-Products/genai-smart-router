@@ -73,9 +73,9 @@ For built-in adaptive routing, prefer `strategy: dynamic_score` before adding cu
 
 Normal release builds require `server.license` enforcement. Mount the Metrum-issued signed JSON license file and durable license state path before startup; runtime YAML cannot disable licensing. `/readyz` reflects license readiness. Replace or renew the license file before expiry, then restart the router or wait for `recheck_interval`. License errors use `license-*` codes and expose only request IDs plus safe error types.
 
-Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, portal/Stripe fulfillment planning, and acceptance checklists. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
+Metrum operators should use `docs/LICENSE_OPERATIONS.md` for issuance, renewal, replacement, volume top-up, offline customer support, commercial/control-plane boundaries, and acceptance checklists. GitHub issue #545 owns the product flow and #42 owns customer-facing commercial/package copy. That source-tree runbook is not part of the public hosted docs and must not contain real licenses, signing keys, customer identifiers, router tokens, provider keys, or full production config.
 
-Enterprise self-hosted packages support offline signed-license operation. Private managed deployments use the same runtime licensing model but are operated for a single customer or customer-specific HA environment. Planned portal-issued evaluation, pilot, renewal, and top-up flows should still deliver a signed license or online lease through approved commercial systems; do not add card-processing, billing-ledger, or public API-credit-wallet behavior to the router runtime.
+Enterprise self-hosted packages support offline signed-license operation. Private managed deployments use the same runtime licensing model but are operated for a single customer or customer-specific HA environment. Approved commercial/control-plane flows must deliver a signed license or online lease through the approved system; do not add card-processing, billing-ledger, or public API-credit-wallet behavior to the router runtime.
 
 Docker Compose packages are built separately:
 
