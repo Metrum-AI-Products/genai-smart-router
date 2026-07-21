@@ -1,0 +1,41 @@
+# Namespace-scoped binding template. A platform administrator creates one copy
+# in each approved tenant namespace after discovery validates Linkerd policy CRDs.
+# It intentionally cannot create or mutate workloads: a constrained platform
+# release identity applies router workloads after admission policy validation.
+# This prevents a bootstrap credential from mounting or impersonating Secrets.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-provisioner
+  namespace: replace-with-approved-tenant-namespace
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tenant-bootstrap-provisioner
+  namespace: replace-with-approved-tenant-namespace
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "resourcequotas", "limitranges", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["policy.linkerd.io"]
+    resources: ["servers", "serverauthorizations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-bootstrap-provisioner
+  namespace: replace-with-approved-tenant-namespace
+subjects:
+  - kind: ServiceAccount
+    name: tenant-provisioner
+    namespace: replace-with-approved-tenant-namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tenant-bootstrap-provisioner

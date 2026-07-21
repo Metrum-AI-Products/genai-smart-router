@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: smart-llmrouter-staging
 resources:
   - ../../base
+  - networkpolicy-ingress-guard.yaml
 patches:
   - path: patch-namespace.yaml
   - path: delete-configmap.yaml

@@ -46,5 +46,50 @@ kubectl apply --dry-run=server -f /tmp/smartrouter-staging.yaml
 kubectl apply -f /tmp/smartrouter-staging.yaml
 ```
 
+The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
+at this point; the generic base policy remains ingress-neutral for non-EKS
+deployments.
+After the router Deployment is Ready, rerun the approved staging discovery and
+render the companion policy from that evidence; it is not checked into this
+overlay because the ingress namespace is deployment-specific. Activate it only
+through the selection-bound Make target, which verifies the discovery account
+and EKS endpoint against the named deployment profile and explicit kubeconfig/
+context rather than an ambient `kubectl` context. It snapshots that kubeconfig
+and the exact renderer-generated policy bytes privately before validation, so
+it never applies a caller artifact after that path changes. For Linkerd staging, it
+dry-runs both artifacts, then applies the Linkerd policy before the namespace
+allow policy. The staging Deployment template explicitly requests Linkerd
+injection so future rollouts remain meshed; do not remove that annotation while
+Linkerd policy is selected. Discovery evidence is valid for 15 minutes only;
+rerun it if the window expires before activation:
+
+```bash
+make eks-render-linkerd-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+make eks-validate-tenant-network-policies \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-staging-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-staging.yaml \
+  EKS_POLICY_CONTEXT=<approved-staging-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+make eks-apply-tenant-network-policies \
+  EKS_POLICY_APPLY_CONFIRM=apply \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-staging-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-staging.yaml \
+  EKS_POLICY_CONTEXT=<approved-staging-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+```
+
+If Linkerd is intentionally not selected, use
+`make eks-render-ingress-network-policy`, then the same validate/apply targets
+without `EKS_LINKERD_POLICY_OUTPUT`.
+
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.

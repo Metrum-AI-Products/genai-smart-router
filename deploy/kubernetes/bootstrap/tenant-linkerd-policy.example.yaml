@@ -1,0 +1,29 @@
+# Render only after discovery verifies the selected ingress service account and
+# installed Linkerd policy API/version. Do not apply this unrendered template: use
+# `make eks-render-linkerd-policy` to derive the identity and companion ingress
+# NetworkPolicy from the scrubbed, validated discovery report. This template
+# contains no trust material or secrets.
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: router-http
+  namespace: __TENANT_NAMESPACE__
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: smart-llmrouter
+  port: http
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta1
+kind: ServerAuthorization
+metadata:
+  name: router-from-ingress
+  namespace: __TENANT_NAMESPACE__
+spec:
+  server:
+    name: router-http
+  client:
+    meshTLS:
+      identities:
+        - "__LINKERD_INGRESS_IDENTITY__"

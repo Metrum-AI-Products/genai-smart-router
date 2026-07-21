@@ -1,0 +1,13 @@
+# Copy this strategic-merge patch into a Linkerd-enabled EKS overlay. It makes
+# injection durable across future Deployment rollouts. Discovery rejects a
+# Linkerd policy activation unless this template-level setting or a reviewed
+# namespace-level `linkerd.io/inject: enabled` annotation is present.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-llmrouter
+spec:
+  template:
+    metadata:
+      annotations:
+        linkerd.io/inject: enabled

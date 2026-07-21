@@ -9,16 +9,10 @@ spec:
     matchLabels:
       app.kubernetes.io/name: smart-llmrouter
   policyTypes:
-    - Ingress
     - Egress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 8080
+  # This generic base stays ingress-neutral so it remains usable outside EKS.
+  # EKS overlays add the reviewed deny-ingress guard before selected discovery
+  # renders and activates their companion allow policy.
   egress:
     - to:
         - namespaceSelector: {}
