@@ -9,7 +9,8 @@
   "eks_cluster": "metrum",
   "k8s_namespace": "smart-llmrouter-staging",
   "kustomize_overlay": "deploy/kubernetes/overlays/metrum-staging",
+  "kustomize_router_image_name": "registry.example.com/smart-llmrouter",
   "runtime_secret_name": "smartrouter-staging-runtime",
-  "schema_version": 3,
+  "schema_version": 4,
   "ssm_parameter_arn": "arn:aws:ssm:us-east-1:121701826775:parameter/metrum/genai-smart-router/staging-delivery-target"
 }

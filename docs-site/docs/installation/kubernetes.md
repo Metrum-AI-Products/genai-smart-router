@@ -260,8 +260,9 @@ client-rendered manifest. Treat server-side dry-run output only as a candidate
 live object to validate against that desired fingerprint; never let fields
 preserved by another field manager become expected configuration. Exclude only
 documented Kubernetes runtime allocations, not routing or security settings,
-and reject unexpected live labels, annotations, or spec fields before a
-mutation. Verify both before smoke and promotion. Do not use a broad prune: a
+and reject unexpected live labels, annotations, owner references, finalizers,
+or spec fields before a mutation. Verify both before smoke and promotion. Do
+not use a broad prune: a
 removed or renamed resource should fail delivery until it is removed through a
 separately approved migration. Treat rollback as an artifact deployment too:
 require an explicitly approved immutable digest and full pod-template SHA-256

@@ -243,6 +243,27 @@ def inventory_with_foreign_manager_ingress_label() -> str:
     return json.dumps(payload)
 
 
+def inventory_with_foreign_manager_service_owner_reference() -> str:
+    payload = json.loads(rendered_objects())
+    service = next(item for item in payload["items"] if item["kind"] == "Service")
+    service["metadata"]["ownerReferences"] = [
+        {
+            "apiVersion": "example.test/v1",
+            "kind": "ExternalManager",
+            "name": "unreviewed-live-owner",
+            "uid": "unreviewed-live-owner-uid",
+        }
+    ]
+    return json.dumps(payload)
+
+
+def inventory_with_foreign_manager_service_finalizer() -> str:
+    payload = json.loads(rendered_objects())
+    service = next(item for item in payload["items"] if item["kind"] == "Service")
+    service["metadata"]["finalizers"] = ["external.example.test/unreviewed-live-finalizer"]
+    return json.dumps(payload)
+
+
 def all_managed_configuration_objects() -> list[dict[str, object]]:
     namespace = str(TARGET_POLICY["k8s_namespace"])
     labels = {"app.kubernetes.io/name": "smart-llmrouter"}
@@ -461,7 +482,9 @@ case "$0" in
     *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE" ;;
   esac ;;
   *kustomize) case "$*" in
-    *build*) printf '%s\\n' "$FAKE_RENDERED_MANIFEST" ;;
+    "edit set image $FAKE_KUSTOMIZE_SOURCE_IMAGE=$FAKE_IMAGE_DIGEST") : > "$FAKE_KUSTOMIZE_EDIT_MARKER" ;;
+    *"edit set image"*) echo "unexpected kustomize image override" >&2; exit 44 ;;
+    *build*) if test ! -f "$FAKE_KUSTOMIZE_EDIT_MARKER"; then echo "missing exact kustomize image override" >&2; exit 45; fi; printf '%s\\n' "$FAKE_RENDERED_MANIFEST" ;;
   esac ;;
 esac
 '''
@@ -549,6 +572,9 @@ def run(
         or live_inventory
         or rendered_objects(),
         "FAKE_RENDERED_MANIFEST": rendered_manifest_value or rendered_manifest(),
+        "FAKE_IMAGE_DIGEST": image_digest,
+        "FAKE_KUSTOMIZE_EDIT_MARKER": str(root / "tmp" / "kustomize-image-overridden"),
+        "FAKE_KUSTOMIZE_SOURCE_IMAGE": str(TARGET_POLICY["kustomize_router_image_name"]),
         "FAKE_DEPLOYMENT_OBJECT": deployment_object(
             deployed_digest,
             deployed_template_marker,
@@ -573,12 +599,28 @@ def main() -> int:
     assert "abc123" not in EKS_DELIVERY.scrub("Authorization: Bearer abc123")
 
     target = EKS_DELIVERY.parse_target_policy(TARGET_POLICY)
+    staging_deployment_patch = (target.kustomize_overlay / "patch-deployment.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        f"image: {target.kustomize_router_image_name}:replace-with-immutable-image-tag"
+        in staging_deployment_patch
+    )
     expected_resources = all_managed_configuration_objects()
     expected_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
         expected_resources, target, source="configuration fingerprint fixture"
     )
     expected_identities = EKS_DELIVERY.managed_resource_identities(expected_inventory)
     expected_spec_fingerprint = EKS_DELIVERY.managed_resource_spec_fingerprint(expected_inventory)
+    invalid_source_image_policy = dict(TARGET_POLICY)
+    invalid_source_image_policy["kustomize_router_image_name"] = "smart-llmrouter:mutable"
+    try:
+        EKS_DELIVERY.parse_target_policy(invalid_source_image_policy)
+    except RuntimeError as exc:
+        assert "Kustomize source image" in str(exc)
+    else:
+        raise AssertionError("target policy accepted a tagged Kustomize source image")
+
     for kind, mutate in (
         ("Service", lambda resource: resource["spec"].update({"selector": {"unexpected": "true"}})),
         ("Ingress", lambda resource: resource["spec"].update({"rules": [{"host": "wrong.example.test"}]})),
@@ -594,6 +636,32 @@ def main() -> int:
             changed_resources, target, source="configuration drift fixture"
         )
         assert EKS_DELIVERY.managed_resource_identities(changed_inventory) == expected_identities
+        assert (
+            EKS_DELIVERY.managed_resource_spec_fingerprint(changed_inventory)
+            != expected_spec_fingerprint
+        )
+
+    for metadata_name, metadata_value in (
+        (
+            "ownerReferences",
+            [
+                {
+                    "apiVersion": "example.test/v1",
+                    "kind": "ExternalManager",
+                    "name": "reviewed-owner",
+                    "uid": "reviewed-owner-uid",
+                }
+            ],
+        ),
+        ("finalizers", ["external.example.test/reviewed-finalizer"]),
+        ("deletionTimestamp", "2026-07-20T00:00:00Z"),
+    ):
+        changed_resources = json.loads(json.dumps(expected_resources))
+        service = next(item for item in changed_resources if item["kind"] == "Service")
+        service["metadata"][metadata_name] = metadata_value
+        changed_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+            changed_resources, target, source="metadata configuration drift fixture"
+        )
         assert (
             EKS_DELIVERY.managed_resource_spec_fingerprint(changed_inventory)
             != expected_spec_fingerprint
@@ -619,7 +687,11 @@ def main() -> int:
     runtime_service = next(item for item in runtime_only_resources if item["kind"] == "Service")
     runtime_service["metadata"].update(
         {
+            "creationTimestamp": "2026-07-20T00:00:00Z",
+            "generation": 7,
+            "managedFields": [{"manager": "kube-controller-manager"}],
             "resourceVersion": "12345",
+            "selfLink": "/api/v1/namespaces/staging/services/smart-llmrouter",
             "uid": "runtime-uid",
             "annotations": {
                 "kubectl.kubernetes.io/last-applied-configuration": "runtime-only"
@@ -670,6 +742,12 @@ def main() -> int:
             and "approved runtime Secret" in rejected_runtime_secret.stderr
         )
         calls = (bindir / "calls.log").read_text()
+        expected_kustomize_override = (
+            "kustomize edit set image "
+            f"{TARGET_POLICY['kustomize_router_image_name']}={DIGEST}"
+        )
+        assert expected_kustomize_override in calls
+        assert f"kustomize edit set image smart-llmrouter={DIGEST}" not in calls
         assert "must-not-be-used" not in calls and "update-kubeconfig" in calls and "--dry-run=server" in calls
         assert calls.index("ssm get-parameter") < calls.index("describe-cluster")
         manifest_size = re.search(r"manifest-bytes=\s*(\d+)", calls)
@@ -1029,6 +1107,24 @@ def main() -> int:
         )
         assert not foreign_manager_label_marker.exists()
 
+        foreign_manager_finalizer_marker = root / "foreign-manager-finalizer-smoke-command-ran"
+        foreign_manager_finalizer_script = protected_smoke_script(
+            root,
+            "foreign-manager-finalizer-smoke.sh",
+            f"touch '{foreign_manager_finalizer_marker}'\n",
+        )
+        foreign_manager_finalizer_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(foreign_manager_finalizer_script)],
+            live_inventory=inventory_with_foreign_manager_service_finalizer(),
+        )
+        assert (
+            foreign_manager_finalizer_smoke.returncode != 0
+            and "configuration" in foreign_manager_finalizer_smoke.stderr
+        )
+        assert not foreign_manager_finalizer_marker.exists()
+
         before_foreign_manager_apply = (bindir / "calls.log").read_text()
         foreign_manager_apply = run(
             "apply",
@@ -1052,6 +1148,28 @@ def main() -> int:
         assert (
             reapplied_after_foreign_manager_rejection.returncode == 0
         ), reapplied_after_foreign_manager_rejection.stderr
+
+        before_foreign_owner_reference_apply = (bindir / "calls.log").read_text()
+        foreign_owner_reference_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            live_inventory=inventory_with_foreign_manager_service_owner_reference(),
+        )
+        assert (
+            foreign_owner_reference_apply.returncode != 0
+            and "fields absent from the reviewed" in foreign_owner_reference_apply.stderr
+        )
+        foreign_owner_reference_apply_calls = (bindir / "calls.log").read_text()[
+            len(before_foreign_owner_reference_apply):
+        ]
+        assert "apply --server-side -f" not in foreign_owner_reference_apply_calls
+        reapplied_after_owner_reference_rejection = run(
+            "apply", root, ["--confirm", "STAGING_APPLY"]
+        )
+        assert (
+            reapplied_after_owner_reference_rejection.returncode == 0
+        ), reapplied_after_owner_reference_rejection.stderr
 
         stale_smoke_marker = root / "stale-smoke-command-ran"
         stale_smoke_script = protected_smoke_script(
@@ -1217,6 +1335,9 @@ def main() -> int:
                 "FAKE_LIVE_INVENTORY_FILE": str(root / "tmp/live-managed-inventory.json"),
                 "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
                 "FAKE_RENDERED_MANIFEST": rendered_manifest(),
+                "FAKE_IMAGE_DIGEST": DIGEST,
+                "FAKE_KUSTOMIZE_EDIT_MARKER": str(root / "tmp" / "kustomize-image-overridden"),
+                "FAKE_KUSTOMIZE_SOURCE_IMAGE": str(TARGET_POLICY["kustomize_router_image_name"]),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
                 "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
             },
@@ -1242,6 +1363,14 @@ def main() -> int:
             assert "different-workload" not in json.dumps(evidence)
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+
+        finalizer_drift_promotion = run(
+            "promotion-plan", root, live_inventory=inventory_with_foreign_manager_service_finalizer()
+        )
+        assert (
+            finalizer_drift_promotion.returncode != 0
+            and "configuration" in finalizer_drift_promotion.stderr
+        )
 
         # A runtime Secret update does not change the Deployment template. Its
         # resourceVersion must nevertheless invalidate prior apply/smoke proof
@@ -1286,6 +1415,9 @@ def main() -> int:
                 "FAKE_LIVE_INVENTORY_FILE": str(release_live_inventory),
                 "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
                 "FAKE_RENDERED_MANIFEST": rendered_manifest(),
+                "FAKE_IMAGE_DIGEST": DIGEST,
+                "FAKE_KUSTOMIZE_EDIT_MARKER": str(root / "tmp" / "kustomize-image-overridden"),
+                "FAKE_KUSTOMIZE_SOURCE_IMAGE": str(TARGET_POLICY["kustomize_router_image_name"]),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
                 "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
             },

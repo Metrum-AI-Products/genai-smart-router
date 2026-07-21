@@ -75,8 +75,8 @@ authorize a production cutover.
 6. Establish the protected staging delivery target before invoking a Make
    target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
    reviewed canonical target: account, region, ECR repository, cluster,
-   namespace, runtime Secret, overlay, Deployment, container, and delivery
-   role. The checked-in
+   namespace, runtime Secret, overlay, Kustomize source image name, Deployment,
+   container, and delivery role. The checked-in
    repository URI is a bootstrap default, not proof of an approved live AWS/EKS
    target. First renew a least-privilege non-root session and explicitly
    reconcile the approved target. Then provision the exact JSON as a
@@ -86,8 +86,11 @@ authorize a production cutover.
    `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
    a separate platform configuration role owns `ssm:PutParameter`. The
    delivery contract reads both copies and fails unless their canonical JSON
-   hashes match. The current schema is version 3; update the reviewed file and
-   protected Parameter through the same approved infrastructure change. A
+   hashes match. The current schema is version 4; update the reviewed file and
+   protected Parameter through the same approved infrastructure change. The
+   `kustomize_router_image_name` field is the full tagless source image in the
+   overlay, not the ECR destination; the contract replaces exactly that name
+   with the approved immutable digest. A
    version or value mismatch fails closed. See `deploy/aws/README.md` for the
    required protected-policy reconciliation.
 
@@ -202,8 +205,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    objects are compared with that desired baseline after removing only
    documented API-owned runtime fields (for example Service cluster allocation
    and a PVC binding name) and exact, omitted Kubernetes defaults.
-   Routing, security, labels, annotations, admission additions, and all other
-   declared resource settings must exactly match the reviewed manifest. A new
+   Routing, security, labels, annotations, owner references, finalizers,
+   admission additions, and all other declared resource settings must exactly
+   match the reviewed manifest. A new
    admission-managed field must be represented in the reviewed manifest or it
    will fail closed rather than being absorbed into the expected fingerprint.
    It does not use broad prune. If an old managed object is absent from a new
@@ -223,8 +227,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    the mutation, never a substitute for the protected policy/SSM boundary. The
    apply may repair a changed value at a field already represented by the
    reviewed manifest, but it stops before mutation when live state contains an
-   additional label, annotation, spec field, or list item. The contract records
-   safe before-apply identity/configuration fingerprints, then refuses passed
+   additional label, annotation, owner reference, finalizer, spec field, or
+   list item. The contract records safe before-apply identity/configuration
+   fingerprints, then refuses passed
    apply, smoke, or promotion evidence unless the live objects exactly match
    the reviewed configuration. Treat an unexpected pre-apply fingerprint
    difference as an audit/change-control signal; do not add a caller-controlled

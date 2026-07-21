@@ -112,7 +112,7 @@ fingerprint from the allowlisted, namespace-scoped resources bearing
 promotion, and refuses an apply before mutation if an old label-selected
 resource is no longer rendered. Kubernetes-owned runtime fields such as a
 Service cluster IP and PVC binding name are excluded; routing/security specs,
-labels, and annotations are not.
+labels, annotations, owner references, and finalizers are not.
 It deliberately does **not** use Kubernetes prune: removal or renaming of a
 Service, Ingress, NetworkPolicy, PVC, PodDisruptionBudget, ServiceAccount, or
 Deployment requires a separately reviewed recovery/migration to remove the

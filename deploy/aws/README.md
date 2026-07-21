@@ -63,11 +63,12 @@ Before any EKS delivery command can be used outside the offline contract tests:
 3. Run `make eks-preflight` with the approved role. Any schema, value, or hash
    mismatch fails closed before cluster selection, rendering, or mutation.
 
-The current schema is version 3. It pins the single runtime Secret name as
-well as the workload target, so the delivery contract can verify only that
-Secret's Kubernetes UID and resourceVersion without reading or recording its
-contents. Reconcile the reviewed JSON and protected Parameter together before
-using this contract against a cluster.
+The current schema is version 4. It pins the full tagless source image name
+that Kustomize must replace, the single runtime Secret name, and the workload
+target. The delivery contract can therefore verify only that Secret's
+Kubernetes UID and resourceVersion without reading or recording its contents.
+Reconcile the reviewed JSON and protected Parameter together before using this
+contract against a cluster.
 
 Do not infer authorization from an account number, repository URI, local AWS
 profile, or this file alone. The protected Parameter and least-privilege

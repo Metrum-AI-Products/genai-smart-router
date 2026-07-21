@@ -45,6 +45,13 @@ ECR_REPOSITORY_URI = re.compile(
     r"^([0-9]{12})\.dkr\.ecr\.([a-z0-9]+(?:-[a-z0-9]+)+)\.amazonaws\.com/"
     r"([a-z0-9](?:[a-z0-9._/-]*[a-z0-9])?)$"
 )
+# The full, tagless source image name used by ``kustomize edit set image``.
+# A registry port is allowed only on the first path component, so a mutable
+# tag or digest cannot be supplied as a source-image policy value.
+KUSTOMIZE_IMAGE_NAME = re.compile(
+    r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?::[0-9]{1,5})?"
+    r"(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)+$"
+)
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
@@ -83,6 +90,7 @@ EVIDENCE_BINDING_FIELDS = (
     "eks_cluster",
     "k8s_namespace",
     "kustomize_overlay",
+    "kustomize_router_image_name",
     "deployment_name",
     "container_name",
     "runtime_secret_name",
@@ -115,6 +123,20 @@ DYNAMIC_MANAGED_ANNOTATIONS = frozenset(
         "pv.kubernetes.io/bound-by-controller",
         "volume.beta.kubernetes.io/storage-provisioner",
         "volume.kubernetes.io/storage-provisioner",
+    }
+)
+# These ObjectMeta values are allocated or maintained by the Kubernetes API
+# after accepting a resource. Everything else in metadata remains in the
+# fingerprint, including lifecycle and authorization-relevant ownerReferences
+# and finalizers. Keep this list narrow and explicit.
+DYNAMIC_MANAGED_METADATA_FIELDS = frozenset(
+    {
+        "creationTimestamp",
+        "generation",
+        "managedFields",
+        "resourceVersion",
+        "selfLink",
+        "uid",
     }
 )
 SERVICE_RUNTIME_SPEC_FIELDS = frozenset(
@@ -330,6 +352,7 @@ class TargetPolicy:
     eks_cluster: str
     k8s_namespace: str
     kustomize_overlay: Path
+    kustomize_router_image_name: str
     runtime_secret_name: str
     ssm_parameter_arn: str
     raw: dict[str, object]
@@ -432,6 +455,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "eks_cluster",
         "k8s_namespace",
         "kustomize_overlay",
+        "kustomize_router_image_name",
         "deployment_name",
         "container_name",
         "runtime_secret_name",
@@ -439,7 +463,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     }
     if set(value) != required:
         fail("approved staging target policy has an unexpected schema")
-    if value.get("schema_version") != 3 or value.get("environment") != "staging":
+    if value.get("schema_version") != 4 or value.get("environment") != "staging":
         fail("approved staging target policy is not a supported staging policy")
 
     def string(name: str) -> str:
@@ -459,6 +483,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
     role = string("delivery_role_name")
     parameter_arn = string("ssm_parameter_arn")
     overlay_value = string("kustomize_overlay")
+    kustomize_router_image_name = string("kustomize_router_image_name")
     if not ACCOUNT_ID.fullmatch(account_id) or not REGION.fullmatch(region):
         fail("approved staging target policy has invalid AWS account or region")
     if not all(
@@ -470,6 +495,8 @@ def parse_target_policy(value: object) -> TargetPolicy:
         fail("approved staging target policy has invalid EKS cluster")
     if not re.fullmatch(r"[A-Za-z0-9+=,.@_-]{1,64}", role):
         fail("approved staging target policy has invalid delivery role")
+    if not KUSTOMIZE_IMAGE_NAME.fullmatch(kustomize_router_image_name):
+        fail("approved staging target policy has invalid Kustomize source image name")
     ecr_match = ECR_REPOSITORY_URI.fullmatch(ecr_repository_uri)
     if (
         not ecr_match
@@ -499,8 +526,9 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "eks_cluster": cluster,
         "k8s_namespace": namespace,
         "kustomize_overlay": overlay.as_posix(),
+        "kustomize_router_image_name": kustomize_router_image_name,
         "runtime_secret_name": runtime_secret_name,
-        "schema_version": 3,
+        "schema_version": 4,
         "ssm_parameter_arn": parameter_arn,
     }
     return TargetPolicy(
@@ -513,6 +541,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         eks_cluster=cluster,
         k8s_namespace=namespace,
         kustomize_overlay=resolved_overlay,
+        kustomize_router_image_name=kustomize_router_image_name,
         runtime_secret_name=runtime_secret_name,
         ssm_parameter_arn=parameter_arn,
         raw=normalized,
@@ -655,6 +684,7 @@ class Delivery:
             "ecr_repository_uri",
             "eks_cluster",
             "k8s_namespace",
+            "kustomize_router_image_name",
             "runtime_secret_name",
             "target_policy_sha256",
             "image_digest",
@@ -728,6 +758,7 @@ class Delivery:
                 "eks_cluster": checked_in.eks_cluster,
                 "k8s_namespace": checked_in.k8s_namespace,
                 "kustomize_overlay": checked_in.kustomize_overlay.relative_to(REPO_ROOT).as_posix(),
+                "kustomize_router_image_name": checked_in.kustomize_router_image_name,
                 "deployment_name": checked_in.deployment_name,
                 "container_name": checked_in.container_name,
                 "runtime_secret_name": checked_in.runtime_secret_name,
@@ -886,8 +917,9 @@ class Delivery:
         The API server adds resource/version/status fields and a small set of
         allocation values after apply. Those are intentionally removed before
         hashing. Everything else in the manifest, including labels,
-        annotations, selectors, ingress rules, network policy, PVC settings,
-        disruption policy, and ServiceAccount controls, remains in the hash.
+        annotations, owner references, finalizers, selectors, ingress rules,
+        network policy, PVC settings, disruption policy, and ServiceAccount
+        controls, remains in the hash.
         The function never emits the configuration; evidence records only its
         SHA-256 aggregate.
         """
@@ -907,20 +939,24 @@ class Delivery:
                 fail(f"{source} resource has invalid metadata.{name}")
             return dict(value)
 
+        normalized_metadata: dict[str, object] = copy.deepcopy(metadata)
+        for field_name in DYNAMIC_MANAGED_METADATA_FIELDS:
+            normalized_metadata.pop(field_name, None)
+
         annotations = {
             key: value
             for key, value in string_map("annotations").items()
             if key not in DYNAMIC_MANAGED_ANNOTATIONS
         }
         labels = string_map("labels")
-        normalized_metadata: dict[str, object] = {
-            "name": identity.name,
-            "namespace": metadata.get("namespace"),
-        }
         if labels:
             normalized_metadata["labels"] = labels
+        else:
+            normalized_metadata.pop("labels", None)
         if annotations:
             normalized_metadata["annotations"] = annotations
+        else:
+            normalized_metadata.pop("annotations", None)
 
         normalized: dict[str, object] = {}
         for key, value in resource.items():
@@ -1368,7 +1404,13 @@ class Delivery:
             # kustomize edit operates on the process working directory; run it only
             # in the copied overlay so a render cannot modify tracked manifests.
             proc = subprocess.run(
-                ["kustomize", "edit", "set", "image", f"smart-llmrouter={self.args.image_digest}"],
+                [
+                    "kustomize",
+                    "edit",
+                    "set",
+                    "image",
+                    f"{target.kustomize_router_image_name}={self.args.image_digest}",
+                ],
                 cwd=copied_overlay,
                 env=env,
                 text=True,
