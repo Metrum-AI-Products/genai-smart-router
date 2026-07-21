@@ -30,6 +30,7 @@ def discovery() -> dict[str, object]:
             "ingress_workload_mesh_ready": True,
             "router_workload_verified": True,
             "router_workload_mesh_ready": True,
+            "router_workload_identity_verified": True,
             "ingress_namespace": "gateway-system",
         },
     }
@@ -136,6 +137,11 @@ def main() -> int:
     assert isinstance(invalid_router_linkerd, dict)
     invalid_router_linkerd["router_workload_mesh_ready"] = False
     expect_rejected(lambda: MODULE.render(template, invalid_router, base))
+    invalid_router_identity = discovery()
+    invalid_router_identity_linkerd = invalid_router_identity["linkerd"]
+    assert isinstance(invalid_router_identity_linkerd, dict)
+    invalid_router_identity_linkerd["router_workload_identity_verified"] = False
+    expect_rejected(lambda: MODULE.render(template, invalid_router_identity, base))
     non_linkerd = {"selection": {"namespace": "tenant-acme", "ingress_namespace": "external-gateway"}, "linkerd": {"requested": False}}
     non_linkerd_rendered = MODULE.render(template, non_linkerd, base)
     if "kubernetes.io/metadata.name: external-gateway" not in non_linkerd_rendered:

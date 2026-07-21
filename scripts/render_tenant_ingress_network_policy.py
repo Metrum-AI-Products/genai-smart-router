@@ -38,6 +38,7 @@ def validated_namespaces(discovery: dict[str, Any]) -> tuple[str, str]:
             or linkerd.get("ingress_workload_mesh_ready") is not True
             or linkerd.get("router_workload_verified") is not True
             or linkerd.get("router_workload_mesh_ready") is not True
+            or linkerd.get("router_workload_identity_verified") is not True
             or linkerd.get("ingress_namespace") != ingress_namespace
         ):
             raise ValueError("Linkerd ingress and router workload identity evidence was not verified by discovery")

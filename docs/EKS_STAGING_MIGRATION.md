@@ -48,8 +48,9 @@ authorize a production cutover.
    namespace-local wildcard certificate Secret named
    `apps-metrum-ai-wildcard-tls`. Render the discovery-derived ingress
    NetworkPolicy for that namespace after the router Pods are Ready. When
-   Linkerd is selected, prove ready router and ingress proxies, then render and
-   activate its policy with the NetworkPolicy; do not restore a fixed ingress
+   Linkerd is selected, prove ready router and ingress proxies whose safe local
+   identity and trust-domain fields match the selected control plane, then render
+   and activate its policy with the NetworkPolicy; do not restore a fixed ingress
    namespace in the overlay.
 3. Create `deploy/kubernetes/overlays/metrum-staging/storageclass.yaml` with a
    cluster-admin identity before applying the overlay. It defines the internal

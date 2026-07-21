@@ -434,24 +434,44 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
         raise AssertionError("ingress identity verification accepted inconsistent Linkerd trust-domain evidence")
 
 
-def test_router_workload_requires_ready_meshed_pods() -> None:
+def test_router_workload_requires_ready_identity_matched_pods() -> None:
     _, _, pods = ingress_workload_payloads()
-    evidence = MODULE.router_workload_evidence(pods)
+    evidence = MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
     if evidence != {
         "router_workload_verified": True,
         "router_workload_mesh_ready": True,
+        "router_workload_identity_verified": True,
         "router_workload_ready_pods": 2,
     }:
-        raise AssertionError("ready meshed router Pods did not produce bounded readiness evidence")
+        raise AssertionError("ready identity-matched router Pods did not produce bounded scalar evidence")
     pods["items"][0]["status"]["containerStatuses"][1]["ready"] = False  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence(pods)
+        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
         raise AssertionError("router workload verification accepted a Pod without a ready Linkerd proxy")
+    _, _, pods = ingress_workload_payloads()
+    for pod in pods["items"]:  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][0]["value"] = "wrong.example"  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.wrong.example"  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence({"items": []})
+        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router workload verification accepted a proxy from a different Linkerd trust domain")
+    _, _, pods = ingress_workload_payloads()
+    for pod in pods["items"]:  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.other-linkerd.mesh.example"  # type: ignore[index]
+    try:
+        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router workload verification accepted a proxy from a different Linkerd control plane")
+    try:
+        MODULE.router_workload_evidence({"items": []}, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
@@ -480,7 +500,7 @@ def main() -> int:
         test_unrecognized_existing_output_is_preserved_before_probes(root)
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
-        test_router_workload_requires_ready_meshed_pods()
+        test_router_workload_requires_ready_identity_matched_pods()
         test_linkerd_workload_names_accept_dns_subdomains()
     print("EKS discovery diagnostic safeguards passed")
     return 0

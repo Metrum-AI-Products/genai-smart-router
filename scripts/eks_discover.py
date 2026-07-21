@@ -93,7 +93,7 @@ def is_dns_subdomain(value: Any) -> bool:
     )
 
 
-def linkerd_ingress_identity(namespace: str, service_account: str, control_plane_namespace: str, trust_domain: str) -> str:
+def linkerd_service_account_identity(namespace: str, service_account: str, control_plane_namespace: str, trust_domain: str) -> str:
     return f"{service_account}.{namespace}.serviceaccount.identity.{control_plane_namespace}.{trust_domain}"
 
 
@@ -128,7 +128,7 @@ def proxy_environment_value(container: dict[str, Any], name: str) -> str | None:
 
 def proxy_local_identity_matches(
     container: dict[str, Any],
-    ingress_namespace: str,
+    workload_namespace: str,
     service_account: str,
     control_plane_namespace: str,
     trust_domain: str,
@@ -144,8 +144,8 @@ def proxy_local_identity_matches(
     local_identity = proxy_environment_value(container, "LINKERD2_PROXY_IDENTITY_LOCAL_NAME")
     if local_identity is None:
         return False
-    expected_identity = linkerd_ingress_identity(
-        ingress_namespace,
+    expected_identity = linkerd_service_account_identity(
+        workload_namespace,
         service_account,
         control_plane_namespace,
         trust_domain,
@@ -156,9 +156,9 @@ def proxy_local_identity_matches(
     return local_identity in (expected_identity, expected_injected_template)
 
 
-def ready_linkerd_ingress_pod(
+def ready_linkerd_workload_pod(
     payload: dict[str, Any],
-    ingress_namespace: str,
+    workload_namespace: str,
     service_account: str,
     control_plane_namespace: str,
 ) -> str | None:
@@ -186,7 +186,7 @@ def ready_linkerd_ingress_pod(
         return None
     if not proxy_local_identity_matches(
         proxy_containers[0],
-        ingress_namespace,
+        workload_namespace,
         service_account,
         control_plane_namespace,
         observed_trust_domain,
@@ -245,7 +245,7 @@ def ingress_workload_evidence(
     if len(workload_pods) < desired:
         raise DiscoveryError("selected ingress deployment has fewer running workload pods than desired replicas")
     observed_trust_domains = [
-        ready_linkerd_ingress_pod(
+        ready_linkerd_workload_pod(
             pod,
             ingress_namespace,
             service_account,
@@ -272,41 +272,52 @@ def ingress_workload_evidence(
     }
 
 
-def router_workload_evidence(pods: dict[str, Any]) -> dict[str, int | bool]:
-    """Fail closed unless every selected router Pod has a ready Linkerd proxy.
+def router_workload_evidence(
+    pods: dict[str, Any],
+    router_namespace: str,
+    control_plane_namespace: str,
+    trust_domain: str,
+) -> dict[str, int | bool]:
+    """Fail closed unless every selected router Pod has a matching Linkerd identity.
 
     The selected ingress identity is only meaningful when the router endpoint
     itself is meshed: otherwise the companion ServerAuthorization cannot enforce
     its service-account restriction. The discovery query is label scoped to the
-    router workload and this helper retains only bounded scalar readiness
-    evidence.
+    router workload. Every ready proxy must present a safe local-identity value
+    and literal trust-domain value consistent with the selected Linkerd control
+    plane and trust domain; container readiness alone could otherwise accept a
+    stale or incorrectly injected sidecar.
     """
     router_pods = non_terminating_items(pods)
     if not router_pods:
         raise DiscoveryError("selected router workload has no running Pods to verify Linkerd readiness")
+    observed_trust_domains: list[str | None] = []
     for pod in router_pods:
-        status = pod.get("status", {})
         spec = pod.get("spec", {})
-        if not isinstance(status, dict) or not isinstance(spec, dict):
-            raise DiscoveryError("selected router workload is not Linkerd-injected and ready")
-        ready = any(
-            isinstance(condition, dict) and condition.get("type") == "Ready" and condition.get("status") == "True"
-            for condition in status.get("conditions", [])
+        service_account = spec.get("serviceAccountName") if isinstance(spec, dict) else None
+        if not is_dns_subdomain(service_account):
+            raise DiscoveryError("selected router workload does not have a valid service-account identity")
+        observed_trust_domains.append(
+            ready_linkerd_workload_pod(
+                pod,
+                router_namespace,
+                service_account,
+                control_plane_namespace,
+            )
         )
-        proxy_ready = any(
-            isinstance(container, dict) and container.get("name") == "linkerd-proxy" and container.get("ready") is True
-            for container in status.get("containerStatuses", [])
+    if any(domain is None for domain in observed_trust_domains):
+        raise DiscoveryError(
+            "selected router workload is not Linkerd-injected, identity-configured, and ready with the selected control-plane namespace"
         )
-        proxy_containers = [
-            container
-            for container in spec.get("containers", [])
-            if isinstance(container, dict) and container.get("name") == "linkerd-proxy"
-        ]
-        if not ready or not proxy_ready or len(proxy_containers) != 1:
-            raise DiscoveryError("selected router workload is not Linkerd-injected and ready")
+    actual_trust_domains = {domain for domain in observed_trust_domains if domain is not None}
+    if len(actual_trust_domains) != 1:
+        raise DiscoveryError("selected router workload has inconsistent Linkerd proxy trust-domain evidence")
+    if actual_trust_domains != {trust_domain}:
+        raise DiscoveryError("selected Linkerd trust domain does not match the ready router proxy identity evidence")
     return {
         "router_workload_verified": True,
         "router_workload_mesh_ready": True,
+        "router_workload_identity_verified": True,
         "router_workload_ready_pods": len(router_pods),
     }
 
@@ -527,6 +538,7 @@ def main() -> int:
                 "ingress_workload_mesh_ready": False,
                 "router_workload_verified": False,
                 "router_workload_mesh_ready": False,
+                "router_workload_identity_verified": False,
                 "router_workload_ready_pods": 0,
                 "trust_identity_config_payload_read": False,
                 "trust_domain_source": "explicit operator selection; Linkerd trust configuration payload not read",
@@ -567,8 +579,13 @@ def main() -> int:
                         "app.kubernetes.io/name=smart-llmrouter",
                     ],
                 )
-                router_evidence = router_workload_evidence(router_pods)
-                ingress_identity = linkerd_ingress_identity(
+                router_evidence = router_workload_evidence(
+                    router_pods,
+                    args.namespace,
+                    args.linkerd_namespace,
+                    args.linkerd_trust_domain,
+                )
+                ingress_identity = linkerd_service_account_identity(
                     args.ingress_namespace,
                     args.ingress_service_account,
                     args.linkerd_namespace,

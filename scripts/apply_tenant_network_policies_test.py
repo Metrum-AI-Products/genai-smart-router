@@ -40,6 +40,7 @@ def discovery(*, linkerd: bool = False) -> dict[str, object]:
                 "ingress_workload_mesh_ready": True,
                 "router_workload_verified": True,
                 "router_workload_mesh_ready": True,
+                "router_workload_identity_verified": True,
                 "ingress_namespace": "gateway-system",
                 "ingress_service_account": "gateway-proxy",
                 "control_plane_namespace": "linkerd-control",

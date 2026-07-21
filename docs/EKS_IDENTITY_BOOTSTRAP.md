@@ -169,9 +169,13 @@ to agree. It then requires the safe injected
 `LINKERD2_PROXY_IDENTITY_LOCAL_NAME` value to exactly match that observed
 domain, the service account, ingress namespace, and selected Linkerd
 control-plane namespace before it records the derived Linkerd identity as
-verified. This prevents a policy from authorizing an identity that the ingress
-does not actually present, including one with an operator-supplied but incorrect
-trust domain. The current contract supports an ingress
+verified. It applies the same per-Pod trust-domain and local-identity checks to
+the selected router workload, using each router Pod's service account and the
+selected tenant namespace; readiness alone is not mesh evidence. This prevents
+a policy from authorizing an identity that the ingress does not actually
+present, including one with an operator-supplied but incorrect trust domain or a
+router proxy injected by a different Linkerd control plane. The current contract
+supports an ingress
 `Deployment`; add a separately reviewed discovery contract before using a
 different workload kind. Discovery deliberately does not read Linkerd trust
 configuration payloads, trust anchors, certificates, or tokens; review the
@@ -184,8 +188,9 @@ injection, and policy presence. An expired session, wrong account, missing
 namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
 a success report. When Linkerd was selected, missing Linkerd API/RBAC, a
 mismatched ingress Deployment service account, an unready/non-meshed ingress
-Pod, or a selected router Pod without a ready `linkerd-proxy` also fails before
-success; otherwise the report records Linkerd as not requested.
+Pod, or a selected router Pod without a ready identity- and trust-domain-matched
+`linkerd-proxy` also fails before success; otherwise the report records Linkerd
+as not requested.
 Discovery locally serializes use of one output path, validates that an existing
 file is a bounded discovery report before invalidating it, and atomically
 publishes only a fully successful replacement. A failed role check, probe, or
@@ -221,7 +226,8 @@ It also requires the reviewed namespace-scoped read-only binding in
 `deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml` for
 the selected tenant namespace: ServiceAccounts, NetworkPolicies, Deployments,
 Services, PVCs, Ingresses, and Pods. The Pod read is used only to prove the
-selected router workload has a ready `linkerd-proxy` when Linkerd is selected.
+selected router workload has ready Linkerd proxies whose safe identity and
+trust-domain fields match the selected control plane when Linkerd is selected.
 If Linkerd discovery is selected, apply the
 separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
 Linkerd control-plane namespace and
@@ -315,7 +321,8 @@ verified ingress namespace, then renders the Linkerd policy. It refuses a base
 policy with a fixed namespace or one that does not deny ingress while the
 discovery-derived policy is absent. In Linkerd mode it also refuses discovery
 evidence unless both the selected ingress workload and selected router Pods
-have ready `linkerd-proxy` sidecars. The Linkerd renderer derives
+have ready `linkerd-proxy` sidecars with identity and trust-domain evidence
+matching the selected Linkerd control plane. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
 placeholders. Add `EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml`
