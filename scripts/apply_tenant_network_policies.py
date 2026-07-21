@@ -14,10 +14,12 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DISCOVERY_REPORT_INTENT = "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values"
 MAX_DISCOVERY_REPORT_BYTES = 1_000_000
+MAX_RENDERED_POLICY_BYTES = 64 * 1024
+MAX_KUBECONFIG_BYTES = 1_000_000
 # Policy artifacts are rendered only after the router workload is Ready. A
 # short fixed lifetime keeps the discovered ingress/Linkerd identity from being
 # reused after ordinary rollout or controller drift.
@@ -73,29 +77,58 @@ LINKERD_RENDERER = load_script_module(
 )
 
 
-def safe_existing_file(path: Path, label: str, *, max_bytes: int | None = None) -> None:
-    """Require an explicit, regular, non-repository file without exposing its path."""
+def read_safe_file(path: Path, label: str, *, max_bytes: int) -> bytes:
+    """Read one bounded, regular, non-repository input without path TOCTOU."""
     try:
-        if not path.is_absolute() or path.is_symlink() or not path.exists():
+        if not path.is_absolute() or path.is_symlink():
             raise PolicyActivationError(f"{label} must be an existing absolute non-symlink file")
-        metadata = path.stat()
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except PolicyActivationError:
+        raise
+    except OSError as exc:
+        raise PolicyActivationError(f"{label} could not be inspected safely") from exc
+    try:
+        metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise PolicyActivationError(f"{label} must be a regular file")
-        if max_bytes is not None and metadata.st_size > max_bytes:
+        if metadata.st_size > max_bytes:
             raise PolicyActivationError(f"{label} exceeds the safe maximum size")
         if path.resolve().is_relative_to(ROOT.resolve()):
             raise PolicyActivationError(f"{label} must remain outside the repository")
+        with os.fdopen(descriptor, "rb") as file:
+            descriptor = -1
+            content = file.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise PolicyActivationError(f"{label} exceeds the safe maximum size")
+        return content
     except PolicyActivationError:
         raise
     except (OSError, RuntimeError) as exc:
         raise PolicyActivationError(f"{label} could not be inspected safely") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def write_private_snapshot(directory: Path, name: str, content: bytes) -> Path:
+    """Write a 0600 immutable activation input that kubectl can safely consume."""
+    path = directory / name
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as file:
+            os.fchmod(file.fileno(), 0o600)
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+    except OSError as exc:
+        raise PolicyActivationError("private activation input could not be prepared safely") from exc
+    return path
 
 
 def read_discovery_report(path: Path) -> dict[str, Any]:
-    safe_existing_file(path, "discovery report", max_bytes=MAX_DISCOVERY_REPORT_BYTES)
     try:
-        report = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        report = json.loads(read_safe_file(path, "discovery report", max_bytes=MAX_DISCOVERY_REPORT_BYTES).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise PolicyActivationError("discovery report is not a recognized JSON document") from exc
     if not isinstance(report, dict) or report.get("schema_version") != 1 or report.get("intent") != DISCOVERY_REPORT_INTENT:
         raise PolicyActivationError("discovery report is not a recognized successful discovery result")
@@ -140,16 +173,17 @@ def selection_from_report(report: dict[str, Any]) -> Selection:
 
 
 def read_exact_rendered_policy(path: Path, expected: str, label: str) -> None:
-    safe_existing_file(path, label)
+    if len(expected.encode("utf-8")) > MAX_RENDERED_POLICY_BYTES:
+        raise PolicyActivationError(f"{label} exceeds the safe maximum size")
     try:
-        actual = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
+        actual = read_safe_file(path, label, max_bytes=MAX_RENDERED_POLICY_BYTES).decode("utf-8")
+    except UnicodeError as exc:
         raise PolicyActivationError(f"{label} could not be read safely") from exc
     if actual != expected:
         raise PolicyActivationError(f"{label} does not exactly match the selected discovery evidence")
 
 
-def validate_rendered_policies(report: dict[str, Any], ingress_policy: Path, linkerd_policy: Path | None) -> list[Path]:
+def validate_rendered_policies(report: dict[str, Any], ingress_policy: Path, linkerd_policy: Path | None) -> list[tuple[str, str]]:
     """Accept only the exact artifacts generated from the supplied report.
 
     Re-rendering here prevents a same-named policy or an appended YAML document
@@ -160,7 +194,7 @@ def validate_rendered_policies(report: dict[str, Any], ingress_policy: Path, lin
         ingress_expected = INGRESS_RENDERER.render(
             INGRESS_RENDERER.DEFAULT_TEMPLATE.read_text(encoding="utf-8"),
             report,
-            INGRESS_RENDERER.BASE_NETWORK_POLICY.read_text(encoding="utf-8"),
+            INGRESS_RENDERER.EKS_INGRESS_GUARD_POLICY.read_text(encoding="utf-8"),
         )
     except (OSError, ValueError) as exc:
         raise PolicyActivationError("discovery evidence cannot safely render the ingress policy") from exc
@@ -172,7 +206,7 @@ def validate_rendered_policies(report: dict[str, Any], ingress_policy: Path, lin
     if linkerd["requested"] is False:
         if linkerd_policy is not None:
             raise PolicyActivationError("a Linkerd policy was supplied for a non-Linkerd discovery selection")
-        return [ingress_policy]
+        return [("tenant-ingress-network-policy.yaml", ingress_expected)]
     if linkerd_policy is None:
         raise PolicyActivationError("Linkerd discovery requires the rendered Linkerd policy")
     try:
@@ -184,7 +218,10 @@ def validate_rendered_policies(report: dict[str, Any], ingress_policy: Path, lin
         raise PolicyActivationError("discovery evidence cannot safely render the Linkerd policy") from exc
     read_exact_rendered_policy(linkerd_policy, linkerd_expected, "rendered Linkerd policy")
     # Preserve Linkerd-before-NetworkPolicy ordering for both dry-run and apply.
-    return [linkerd_policy, ingress_policy]
+    return [
+        ("tenant-linkerd-policy.yaml", linkerd_expected),
+        ("tenant-ingress-network-policy.yaml", ingress_expected),
+    ]
 
 
 def run(command: list[str]) -> str:
@@ -241,7 +278,6 @@ def validate_selected_target(selection: Selection, profile: str, kubeconfig: Pat
         raise PolicyActivationError("AWS profile has an invalid format")
     if not CONTEXT.fullmatch(context):
         raise PolicyActivationError("Kubernetes context has an invalid format")
-    safe_existing_file(kubeconfig, "Kubernetes kubeconfig")
     identity = aws_json(["sts", "get-caller-identity"], selection, profile)
     if identity.get("Account") != selection.account_id:
         raise PolicyActivationError("AWS profile account does not match the discovery selection")
@@ -276,12 +312,20 @@ def activate(
     require_fresh_discovery_evidence(report, now=now)
     selection = selection_from_report(report)
     policies = validate_rendered_policies(report, ingress_policy, linkerd_policy)
-    validate_selected_target(selection, profile, kubeconfig, context)
-    for policy in policies:
-        kubectl_apply(kubeconfig, context, policy, dry_run=True)
-    if apply:
-        for policy in policies:
-            kubectl_apply(kubeconfig, context, policy, dry_run=False)
+    kubeconfig_bytes = read_safe_file(kubeconfig, "Kubernetes kubeconfig", max_bytes=MAX_KUBECONFIG_BYTES)
+    with tempfile.TemporaryDirectory(prefix="smartrouter-tenant-policy-") as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        kubeconfig_snapshot = write_private_snapshot(temporary_root, "kubeconfig", kubeconfig_bytes)
+        policy_snapshots = [
+            write_private_snapshot(temporary_root, name, content.encode("utf-8"))
+            for name, content in policies
+        ]
+        validate_selected_target(selection, profile, kubeconfig_snapshot, context)
+        for policy_snapshot in policy_snapshots:
+            kubectl_apply(kubeconfig_snapshot, context, policy_snapshot, dry_run=True)
+        if apply:
+            for policy_snapshot in policy_snapshots:
+                kubectl_apply(kubeconfig_snapshot, context, policy_snapshot, dry_run=False)
 
 
 def parser() -> argparse.ArgumentParser:

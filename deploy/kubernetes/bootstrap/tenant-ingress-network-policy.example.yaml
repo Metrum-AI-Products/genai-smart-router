@@ -1,8 +1,11 @@
 # Render this template only through `make eks-render-ingress-network-policy`
-# after successful discovery. The base NetworkPolicy denies ingress until this
-# selected-namespace allow policy is reviewed and applied. In Linkerd mode,
+# after successful discovery. An EKS deployment first adds the reviewed
+# `tenant-router-ingress-guard.example.yaml`; this selected-namespace allow
+# policy is then the only ingress exception. The generic base stays
+# ingress-neutral for non-EKS deployments. In Linkerd mode,
 # `make eks-render-linkerd-policy` renders this companion policy first and
-# requires verified ingress and router mesh-readiness evidence.
+# requires verified ingress identity, durable router injection, and router mesh
+# evidence.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

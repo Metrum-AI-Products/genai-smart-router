@@ -46,16 +46,22 @@ kubectl apply --dry-run=server -f /tmp/smartrouter-staging.yaml
 kubectl apply -f /tmp/smartrouter-staging.yaml
 ```
 
-The overlay's base NetworkPolicy intentionally denies ingress at this point.
+The overlay's `networkpolicy-ingress-guard.yaml` intentionally denies ingress
+at this point; the generic base policy remains ingress-neutral for non-EKS
+deployments.
 After the router Deployment is Ready, rerun the approved staging discovery and
 render the companion policy from that evidence; it is not checked into this
 overlay because the ingress namespace is deployment-specific. Activate it only
 through the selection-bound Make target, which verifies the discovery account
 and EKS endpoint against the named deployment profile and explicit kubeconfig/
-context rather than an ambient `kubectl` context. For Linkerd staging, it
+context rather than an ambient `kubectl` context. It snapshots that kubeconfig
+and the exact renderer-generated policy bytes privately before validation, so
+it never applies a caller artifact after that path changes. For Linkerd staging, it
 dry-runs both artifacts, then applies the Linkerd policy before the namespace
-allow policy. Discovery evidence is valid for 15 minutes only; rerun it if the
-window expires before activation:
+allow policy. The staging Deployment template explicitly requests Linkerd
+injection so future rollouts remain meshed; do not remove that annotation while
+Linkerd policy is selected. Discovery evidence is valid for 15 minutes only;
+rerun it if the window expires before activation:
 
 ```bash
 make eks-render-linkerd-policy \

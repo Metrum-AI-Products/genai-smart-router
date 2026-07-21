@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -434,9 +435,71 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
         raise AssertionError("ingress identity verification accepted inconsistent Linkerd trust-domain evidence")
 
 
+def router_workload_payloads() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    deployment = {
+        "metadata": {"name": "smart-llmrouter", "uid": "router-deployment-uid"},
+        "spec": {
+            "replicas": 2,
+            "template": {
+                "metadata": {"annotations": {"linkerd.io/inject": "enabled"}},
+                "spec": {"serviceAccountName": "router"},
+            },
+        },
+        "status": {"availableReplicas": 2},
+    }
+    replica_sets = {
+        "items": [{
+            "metadata": {
+                "name": "smart-llmrouter-abc123",
+                "uid": "router-replicaset-uid",
+                "ownerReferences": [{"kind": "Deployment", "name": "smart-llmrouter", "uid": "router-deployment-uid", "controller": True}],
+            },
+        }],
+    }
+    pods = {
+        "items": [
+            {
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "smart-llmrouter-abc123", "uid": "router-replicaset-uid", "controller": True}]},
+                "spec": {
+                    "serviceAccountName": "router",
+                    "containers": [{
+                        "name": "linkerd-proxy",
+                        "env": [{"name": "_l5d_trustdomain", "value": "mesh.example"}, {
+                            "name": "LINKERD2_PROXY_IDENTITY_LOCAL_NAME",
+                            "value": "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.mesh.example",
+                        }],
+                    }],
+                },
+                "status": {
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "containerStatuses": [{"name": "router", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
+                },
+            },
+            {
+                "metadata": {"ownerReferences": [{"kind": "ReplicaSet", "name": "smart-llmrouter-abc123", "uid": "router-replicaset-uid", "controller": True}]},
+                "spec": {
+                    "serviceAccountName": "router",
+                    "containers": [{
+                        "name": "linkerd-proxy",
+                        "env": [{"name": "_l5d_trustdomain", "value": "mesh.example"}, {
+                            "name": "LINKERD2_PROXY_IDENTITY_LOCAL_NAME",
+                            "value": "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.mesh.example",
+                        }],
+                    }],
+                },
+                "status": {
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "containerStatuses": [{"name": "router", "ready": True}, {"name": "linkerd-proxy", "ready": True}],
+                },
+            },
+        ],
+    }
+    return deployment, replica_sets, pods
+
+
 def test_router_workload_requires_ready_identity_matched_pods() -> None:
-    _, _, pods = ingress_workload_payloads()
-    evidence = MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+    deployment, replica_sets, pods = router_workload_payloads()
+    evidence = MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
     if evidence != {
         "router_workload_verified": True,
         "router_workload_mesh_ready": True,
@@ -446,36 +509,115 @@ def test_router_workload_requires_ready_identity_matched_pods() -> None:
         raise AssertionError("ready identity-matched router Pods did not produce bounded scalar evidence")
     pods["items"][0]["status"]["containerStatuses"][1]["ready"] = False  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+        MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
         raise AssertionError("router workload verification accepted a Pod without a ready Linkerd proxy")
-    _, _, pods = ingress_workload_payloads()
+    deployment, replica_sets, pods = router_workload_payloads()
     for pod in pods["items"]:  # type: ignore[index]
         pod["spec"]["containers"][0]["env"][0]["value"] = "wrong.example"  # type: ignore[index]
         pod["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.linkerd.wrong.example"  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+        MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
         raise AssertionError("router workload verification accepted a proxy from a different Linkerd trust domain")
-    _, _, pods = ingress_workload_payloads()
+    deployment, replica_sets, pods = router_workload_payloads()
     for pod in pods["items"]:  # type: ignore[index]
         pod["spec"]["containers"][0]["env"][1]["value"] = "$(_pod_sa).$(_pod_ns).serviceaccount.identity.other-linkerd.mesh.example"  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence(pods, "gateway-system", "linkerd", "mesh.example")
+        MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
         raise AssertionError("router workload verification accepted a proxy from a different Linkerd control plane")
+    deployment, replica_sets, pods = router_workload_payloads()
+    decoy = deepcopy(pods["items"][0])  # type: ignore[index]
+    decoy["metadata"]["ownerReferences"][0]["uid"] = "decoy-replicaset-uid"  # type: ignore[index]
+    pods["items"].append(decoy)  # type: ignore[index]
     try:
-        MODULE.router_workload_evidence({"items": []}, "gateway-system", "linkerd", "mesh.example")
+        MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
     except MODULE.DiscoveryError:
         pass
     else:
-        raise AssertionError("router workload verification accepted an empty Pod selection")
+        raise AssertionError("router workload verification accepted a label-selected Pod not owned by the selected Deployment")
+
+
+def router_deployment_payloads() -> tuple[dict[str, object], dict[str, object]]:
+    deployment, _, _ = router_workload_payloads()
+    deployments = {"items": [deployment]}
+    namespace = {"metadata": {"annotations": {}}}
+    return deployments, namespace
+
+
+def test_router_workload_requires_durable_linkerd_injection() -> None:
+    deployments, namespace = router_deployment_payloads()
+    evidence = MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    if evidence != {
+        "router_workload_kind": "Deployment",
+        "router_workload_name": "smart-llmrouter",
+        "router_workload_injection_verified": True,
+        "router_workload_injection_source": "deployment-template",
+    }:
+        raise AssertionError("router Deployment template injection did not produce bounded durable evidence")
+    deployments, namespace = router_deployment_payloads()
+    del deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"]  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    evidence = MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    if evidence.get("router_workload_injection_source") != "namespace":
+        raise AssertionError("namespace-level Linkerd injection was not accepted as durable evidence")
+    deployments, namespace = router_deployment_payloads()
+    deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "disabled"  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    try:
+        MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router Deployment template opt-out overrode durable Linkerd injection evidence")
+    deployments, namespace = router_deployment_payloads()
+    deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "unexpected"  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    try:
+        MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router Deployment template accepted an unrecognized Linkerd injection setting")
+    deployments, namespace = router_deployment_payloads()
+    del deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"]  # type: ignore[index]
+    try:
+        MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router workload without namespace or template injection was accepted")
+    deployments, namespace = router_deployment_payloads()
+    deployments["items"].append(deployments["items"][0].copy())  # type: ignore[index]
+    try:
+        MODULE.selected_router_deployment(deployments)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("multiple selected router Deployments were accepted as one durable workload")
+
+
+def test_namespace_report_evidence_is_scrubbed() -> None:
+    sentinel = "https://private.example/secret-like-value"
+    namespace = {
+        "metadata": {
+            "labels": {"example.com/customer-note": sentinel},
+            "annotations": {"linkerd.io/inject": sentinel},
+        },
+    }
+    evidence = MODULE.namespace_discovery_evidence(namespace)
+    if evidence != {"linkerd_injection_annotation_state": "other"}:
+        raise AssertionError("namespace report evidence did not normalize an unknown Linkerd injection annotation")
+    serialized = json.dumps({"namespace": evidence, "linkerd": {"namespace_injection_annotation_state": evidence["linkerd_injection_annotation_state"]}})
+    if sentinel in serialized or "customer-note" in serialized:
+        raise AssertionError("scrubbed discovery evidence retained raw namespace annotation or label data")
 
 
 def test_linkerd_workload_names_accept_dns_subdomains() -> None:
@@ -501,6 +643,8 @@ def main() -> int:
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
         test_router_workload_requires_ready_identity_matched_pods()
+        test_router_workload_requires_durable_linkerd_injection()
+        test_namespace_report_evidence_is_scrubbed()
         test_linkerd_workload_names_accept_dns_subdomains()
     print("EKS discovery diagnostic safeguards passed")
     return 0

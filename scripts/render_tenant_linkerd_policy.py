@@ -58,6 +58,7 @@ def render(template: str, discovery: dict[str, Any]) -> str:
         or linkerd.get("router_workload_verified") is not True
         or linkerd.get("router_workload_mesh_ready") is not True
         or linkerd.get("router_workload_identity_verified") is not True
+        or linkerd.get("router_workload_injection_verified") is not True
     ):
         raise ValueError("Linkerd ingress and router workload identity evidence was not verified by discovery")
     tenant_namespace = require_label(selection.get("namespace"), "tenant namespace")

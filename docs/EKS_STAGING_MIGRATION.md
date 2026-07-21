@@ -47,11 +47,17 @@ authorize a production cutover.
 2. Confirm the `nginx` ingress class, selected ingress namespace, and the
    namespace-local wildcard certificate Secret named
    `apps-metrum-ai-wildcard-tls`. Render the discovery-derived ingress
-   NetworkPolicy for that namespace after the router Pods are Ready. When
-   Linkerd is selected, prove ready router and ingress proxies whose safe local
-   identity and trust-domain fields match the selected control plane, then render
-   and activate its policy with the NetworkPolicy; do not restore a fixed ingress
-   namespace in the overlay.
+   NetworkPolicy for that namespace after the router Pods are Ready. The staging
+   overlay's `networkpolicy-ingress-guard.yaml` denies ingress until that companion policy is
+   activated; the generic base remains usable without an ingress policy on
+   non-EKS clusters. When Linkerd is selected, retain the router Deployment
+   template's `linkerd.io/inject: enabled` setting and prove ready router and
+   ingress proxies whose safe local identity and trust-domain fields match the
+   selected control plane, then render and activate its policy with the
+   NetworkPolicy; do not restore a fixed ingress namespace in the overlay.
+   The activation helper snapshots the named kubeconfig and exact rendered
+   policy bytes privately before target validation and apply, so do not replace
+   those caller files during an activation run.
 3. Create `deploy/kubernetes/overlays/metrum-staging/storageclass.yaml` with a
    cluster-admin identity before applying the overlay. It defines the internal
    `smartrouter-gp3` class using this EKS cluster's Auto Mode EBS CSI driver;
@@ -139,7 +145,8 @@ the staging configuration as a general baseline.
    selection-bound target. It verifies the discovery account and selected EKS
    endpoint against the named deployment AWS profile and explicit kubeconfig/
    context; do not use an ambient `kubectl` context. For the selected Linkerd
-   deployment, it server-side dry-runs and applies its `Server` and
+   deployment, it requires durable namespace or Deployment-template Linkerd
+   injection evidence, then server-side dry-runs and applies its `Server` and
    `ServerAuthorization` before the namespace allow policy. Discovery evidence
    is valid for 15 minutes only, so rerun it immediately if that window expires
    before activation:

@@ -47,8 +47,11 @@ reconciled the dedicated source user's keys; never create a second key merely
 because the first process did not return a key identifier.
 The bootstrap must verify the exact approved account and discovery assumed-role
 identity before it reports success. If a paired local AWS profile update cannot
-publish its role-config file, it restores the previous credentials profile and
-fails rather than leaving a new source session paired with stale role settings.
+publish its role-config file, it restores both prior profile files and fails
+rather than leaving a new source session paired with stale role settings.
+Use only absolute, non-symlink local profile files outside the repository with
+non-writable-by-others parent directories; a failed post-publication verification
+or cleanup restores both prior profile files (or removes newly created ones).
 
 Use distinct roles for discovery, registry push, staging deployment, production
 promotion, and workload access. GitHub Actions should use OIDC with repository
@@ -69,15 +72,19 @@ only after discovery verifies the selected ingress Deployment uses the selected
 service account and its controller-owned Pods are ready with a `linkerd-proxy`
 sidecar, and verifies the selected router Pods also have ready `linkerd-proxy`
 sidecars whose safe local identity and literal trust domain match the selected
-Linkerd control plane. Discovery derives the domain from every selected ingress proxy's safe
+Linkerd control plane. It also requires durable router injection evidence from
+the selected Namespace or router Deployment Pod template before policy can rely
+on those current sidecars. Discovery derives the domain from every selected ingress proxy's safe
 literal trust-domain configuration and compares its safe local-identity
 configuration with the selected ingress namespace and Linkerd control-plane
 namespace before rendering; never apply a template with a fixed, unresolved,
 or merely service-account-existence-based ingress identity. The base router
-`NetworkPolicy` denies ingress until the same verified report renders its
-companion selected-namespace allow policy; review, dry-run, and apply that
-policy alone for non-Linkerd deployment, or together with the Linkerd
-authorization rather than restoring a fixed ingress namespace.
+`NetworkPolicy` is egress-only so generic and non-EKS deployments retain their
+deployment-owned ingress path. An EKS overlay adds the reviewed
+`tenant-router-ingress-guard.example.yaml` before exposure; the same verified
+report then renders its companion selected-namespace allow policy. Review,
+dry-run, and apply that policy alone for non-Linkerd EKS deployment, or together
+with the Linkerd authorization rather than restoring a fixed ingress namespace.
 
 ## Image And Architecture
 
@@ -132,7 +139,7 @@ They include:
 - `ConfigMap` for non-secret router config;
 - placeholder `Secret` example for provider env, license JSON, and Postgres DSN;
 - `Deployment` with `/readyz` readiness/startup probes and `/healthz` liveness probe;
-- `Service`, example `Ingress`, base deny-ingress `NetworkPolicy`, `PersistentVolumeClaim`, and `PodDisruptionBudget`;
+- `Service`, example `Ingress`, egress-focused base `NetworkPolicy`, `PersistentVolumeClaim`, and `PodDisruptionBudget`;
 - an example overlay for image and ingress replacement.
 
 The suggested layout is:
@@ -232,14 +239,19 @@ kubectl -n smart-llmrouter rollout status deploy/smart-llmrouter
 kubectl -n smart-llmrouter get pods,svc,ingress
 ```
 
-The base `NetworkPolicy` intentionally keeps the hostname unreachable until
-discovery selects the real ingress namespace. After the rollout is Ready,
-rerun the explicit-target discovery so Linkerd mode can also verify the router
-Pods, then use the matching deployment bundle to render and activate that
-companion policy. Do not substitute a fixed namespace in the overlay or use an
-ambient `kubectl` context. The activation target verifies the discovery account
-and selected EKS endpoint against the named AWS profile and explicit
-kubeconfig/context before every server-side dry-run or apply. It accepts only
+The generic base `NetworkPolicy` does not constrain ingress, so non-EKS users
+must apply their own reviewed client/ingress policy before exposure. For EKS,
+copy the reviewed `tenant-router-ingress-guard.example.yaml` into the
+deployment-owned overlay before exposure; it denies ingress until discovery
+selects the real ingress namespace. After the rollout is Ready, rerun the
+explicit-target discovery so Linkerd mode can also verify durable injection and
+router Pods, then use the matching deployment bundle to render and activate
+that companion policy. Do not substitute a fixed namespace in the overlay or
+use an ambient `kubectl` context. The activation target verifies the discovery
+account and selected EKS endpoint against the named AWS profile and explicit
+kubeconfig/context snapshot before every server-side dry-run or apply, and uses
+private copies of the exact rendered policy bytes rather than rereading caller
+paths. It accepts only
 discovery evidence generated within the preceding 15 minutes; rerun discovery
 after that window rather than applying a stale ingress or Linkerd identity.
 
@@ -296,9 +308,11 @@ make eks-apply-tenant-network-policies \
 
 ## Network Policy
 
-The base policy denies ingress until the discovery-derived companion policy is
-applied. Its egress rules allow HTTPS for external model providers, DNS, and
-Postgres to an example private CIDR. Update the deployment for:
+The generic base policy limits egress for HTTPS, DNS, and an example private
+Postgres CIDR but intentionally leaves ingress to the deployment. On EKS, add
+the reviewed deny-ingress guard to the deployment-owned overlay before exposure;
+the discovery-derived companion policy then becomes the selected ingress allow.
+Update the deployment for:
 
 - approved provider endpoints or private upstream ranges;
 - external Postgres address ranges;

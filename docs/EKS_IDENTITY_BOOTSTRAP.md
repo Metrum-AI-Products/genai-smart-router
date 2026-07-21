@@ -64,9 +64,11 @@ session and role profiles to those exact selected files (otherwise the standard
 ~/.aws files) and pins its verification command to them. It ignores ambient AWS
 credentials, profile selection, and web-identity overrides while performing
 that verification, so it cannot validate an older same-named profile. Keep the
-selected local files protected and distinct. If the paired role-config update
-fails after writing the credentials profile, bootstrap atomically restores the
-prior credentials file (or removes the newly created one) before it fails; it
+selected local files protected and distinct: they must be absolute,
+non-symlink paths outside this repository with a parent directory that is not
+group- or world-writable. If paired publication, exact-role verification, or
+later source-key cleanup fails after profile publication, bootstrap restores
+both prior profile files (or removes newly created ones) before it fails; it
 never leaves a new source session paired with stale role configuration.
 
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
@@ -177,14 +179,20 @@ present, including one with an operator-supplied but incorrect trust domain or a
 router proxy injected by a different Linkerd control plane. The current contract
 supports an ingress
 `Deployment`; add a separately reviewed discovery contract before using a
-different workload kind. Discovery deliberately does not read Linkerd trust
-configuration payloads, trust anchors, certificates, or tokens; review the
-derived identity before rendering.
+different workload kind. For the router `Deployment`, discovery also requires
+durable injection evidence: either its Pod template explicitly sets
+`linkerd.io/inject: enabled`, or the selected tenant Namespace does so without
+a template-level opt-out. The checked-in
+`tenant-router-linkerd-injection-patch.example.yaml` is the recommended
+deployment-template patch for a Linkerd EKS overlay. Discovery deliberately
+does not read Linkerd trust configuration payloads, trust anchors, certificates,
+or tokens; review the derived identity before rendering.
 
 The command creates a temporary kubeconfig and removes it on exit. It reads no
 Kubernetes Secrets or ConfigMap payloads, and writes a machine-readable report
-containing only safe names, booleans, versions, labels needed for Linkerd
-injection, and policy presence. An expired session, wrong account, missing
+containing only safe names, booleans, versions, bounded Linkerd injection
+state, and policy presence. It never retains arbitrary Namespace label or
+annotation values. An expired session, wrong account, missing
 namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
 a success report. When Linkerd was selected, missing Linkerd API/RBAC, a
 mismatched ingress Deployment service account, an unready/non-meshed ingress
@@ -200,8 +208,8 @@ historical evidence under a different timestamped path before a rerun. Keep
 evidence outside Git.
 
 Review the report before bootstrap: EKS version/auth mode/access entries,
-endpoint exposure, audit logging, ingress/storage names, namespace labels and
-network policies, router resource names, ECR immutability/encryption/policy
+endpoint exposure, audit logging, ingress/storage names, bounded Linkerd
+injection state and network policies, router resource names, ECR immutability/encryption/policy
 presence, and Linkerd control-plane/policy API/identity service-account
 inventory. It deliberately excludes endpoint values, trust-root bodies,
 certificates, policy/config payloads, DSNs, and secrets.
@@ -225,9 +233,10 @@ provisioner Role or grant wildcard cluster administration.
 It also requires the reviewed namespace-scoped read-only binding in
 `deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml` for
 the selected tenant namespace: ServiceAccounts, NetworkPolicies, Deployments,
-Services, PVCs, Ingresses, and Pods. The Pod read is used only to prove the
-selected router workload has ready Linkerd proxies whose safe identity and
-trust-domain fields match the selected control plane when Linkerd is selected.
+ReplicaSets, Services, PVCs, Ingresses, and Pods. The Pod and ReplicaSet reads
+are used only to prove the selected router Deployment owns ready Linkerd
+proxies whose safe identity and trust-domain fields match the selected control
+plane when Linkerd is selected.
 If Linkerd discovery is selected, apply the
 separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
 Linkerd control-plane namespace and
@@ -258,11 +267,15 @@ denials for `secrets`, `deployments`, `serviceaccounts`, `clusterroles`, other
 namespaces, and `pods/exec`.
 
 Before rendering ingress access, deploy the router base resources and wait for
-the selected router Pods to be Ready. The base NetworkPolicy intentionally
+the selected router Pods to be Ready. The generic base NetworkPolicy is
+egress-only so non-EKS deployments retain their deployment-owned ingress path.
+An EKS overlay must add the reviewed
+`tenant-router-ingress-guard.example.yaml` before the router is exposed; it
 denies ingress during this state. Rerun the explicit-target discovery after
-that readiness check; in Linkerd mode it records the router proxy evidence
-needed by both renderers. For every cluster, render the companion
-selected-namespace allow policy from the successful scrubbed report:
+that readiness check; in Linkerd mode it records both durable injection and
+router proxy evidence needed by both renderers. For every EKS cluster, render
+the companion selected-namespace allow policy from the successful scrubbed
+report:
 
 ```bash
 make eks-render-ingress-network-policy \
@@ -271,11 +284,13 @@ make eks-render-ingress-network-policy \
 ```
 
 Review it, then activate it with an explicit deployment kubeconfig/context;
-never use an ambient `kubectl` context. The validation target compares the
-discovery-selected AWS account and EKS endpoint with the named deployment AWS
-profile and explicit kubeconfig context before it issues a server-side dry-run.
-The apply target repeats that validation, dry-runs again, and requires an
-explicit confirmation. It accepts discovery evidence only for 15 minutes after
+never use an ambient `kubectl` context. The validation target snapshots the
+bounded kubeconfig and exact renderer-generated policy bytes into private local
+files, then compares the discovery-selected AWS account and EKS endpoint with
+that snapshot before it issues a server-side dry-run. The apply target repeats
+that validation, dry-runs again, and requires an explicit confirmation; it
+never rereads mutable caller artifact paths after validation. It accepts
+discovery evidence only for 15 minutes after
 its timestamp; rerun discovery after the window instead of activating stale
 ingress or Linkerd identity evidence:
 
@@ -304,10 +319,12 @@ Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
 labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
 discovery must still confirm both versions and the ingress Deployment's actual
-meshed service-account identity against the cluster before rendering. The base
-router NetworkPolicy intentionally denies ingress until a companion, selected-
-namespace allow policy is rendered. Both artifacts must come only from the
-successful scrubbed discovery report, never from hand-copied values:
+meshed service-account identity against the cluster before rendering. It also
+requires durable router Namespace or Deployment-template injection evidence
+before a policy can rely on current sidecars. The EKS ingress guard intentionally
+denies ingress until a companion, selected-namespace allow policy is rendered.
+Both artifacts must come only from the successful scrubbed discovery report,
+never from hand-copied values:
 
 ```bash
 make eks-render-linkerd-policy \
@@ -317,12 +334,13 @@ make eks-render-linkerd-policy \
 ```
 
 The Make target first renders the additive ingress NetworkPolicy for the
-verified ingress namespace, then renders the Linkerd policy. It refuses a base
-policy with a fixed namespace or one that does not deny ingress while the
-discovery-derived policy is absent. In Linkerd mode it also refuses discovery
-evidence unless both the selected ingress workload and selected router Pods
+verified ingress namespace, then renders the Linkerd policy. It validates that
+the reviewed EKS ingress guard retains its deny-ingress shape and rejects an
+ingress policy template with a fixed namespace. In Linkerd mode it also refuses
+discovery evidence unless both the selected ingress workload and selected router Pods
 have ready `linkerd-proxy` sidecars with identity and trust-domain evidence
-matching the selected Linkerd control plane. The Linkerd renderer derives
+matching the selected Linkerd control plane, plus durable router injection
+evidence. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
 placeholders. Add `EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml`

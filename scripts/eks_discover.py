@@ -73,15 +73,28 @@ def item_names(payload: dict[str, Any]) -> list[str]:
     return sorted(item.get("metadata", {}).get("name", "") for item in payload.get("items", []) if item.get("metadata", {}).get("name"))
 
 
-def namespace_labels(payload: dict[str, Any]) -> dict[str, str]:
-    labels = payload.get("metadata", {}).get("labels", {})
-    # Labels are required for injection-policy discovery. Do not include arbitrary
-    # annotations, which commonly contain endpoints or secret-manager references.
-    return {str(k): str(v) for k, v in sorted(labels.items())}
-
-
 def linkerd_injection_annotation(payload: dict[str, Any]) -> str:
-    return str(payload.get("metadata", {}).get("annotations", {}).get("linkerd.io/inject", ""))
+    metadata = payload.get("metadata", {})
+    annotations = metadata.get("annotations", {}) if isinstance(metadata, dict) else {}
+    return str(annotations.get("linkerd.io/inject", "")) if isinstance(annotations, dict) else ""
+
+
+def linkerd_injection_annotation_state(payload: dict[str, Any]) -> str:
+    """Expose only a bounded Linkerd-injection state in discovery evidence."""
+    setting = linkerd_injection_annotation(payload).strip().lower()
+    if setting in {"enabled", "disabled"}:
+        return setting
+    return "other" if setting else "absent"
+
+
+def namespace_discovery_evidence(payload: dict[str, Any]) -> dict[str, str]:
+    """Return the only namespace injection detail safe to persist in the report."""
+    return {"linkerd_injection_annotation_state": linkerd_injection_annotation_state(payload)}
+
+
+def linkerd_injection_enabled(payload: dict[str, Any]) -> bool:
+    """Return whether a Namespace or Pod template explicitly enables Linkerd injection."""
+    return linkerd_injection_annotation(payload).strip().lower() == "enabled"
 
 
 def is_dns_subdomain(value: Any) -> bool:
@@ -272,39 +285,84 @@ def ingress_workload_evidence(
     }
 
 
+def selected_router_deployment(deployments: dict[str, Any]) -> dict[str, Any]:
+    """Return the sole label-selected router Deployment or fail closed."""
+    router_deployments = non_terminating_items(deployments)
+    if len(router_deployments) != 1:
+        raise DiscoveryError("selected router workload must have exactly one Deployment")
+    deployment = router_deployments[0]
+    metadata = deployment.get("metadata", {})
+    deployment_name = metadata.get("name") if isinstance(metadata, dict) else None
+    deployment_uid = metadata.get("uid") if isinstance(metadata, dict) else None
+    if not is_dns_subdomain(deployment_name) or not isinstance(deployment_uid, str) or not deployment_uid:
+        raise DiscoveryError("selected router Deployment has an invalid stable controller identity")
+    return deployment
+
+
 def router_workload_evidence(
+    deployment: dict[str, Any],
+    replica_sets: dict[str, Any],
     pods: dict[str, Any],
     router_namespace: str,
     control_plane_namespace: str,
     trust_domain: str,
 ) -> dict[str, int | bool]:
-    """Fail closed unless every selected router Pod has a matching Linkerd identity.
+    """Require ready mesh identity from Pods owned by the selected router Deployment.
 
-    The selected ingress identity is only meaningful when the router endpoint
-    itself is meshed: otherwise the companion ServerAuthorization cannot enforce
-    its service-account restriction. The discovery query is label scoped to the
-    router workload. Every ready proxy must present a safe local-identity value
-    and literal trust-domain value consistent with the selected Linkerd control
-    plane and trust domain; container readiness alone could otherwise accept a
-    stale or incorrectly injected sidecar.
+    Label selection alone cannot prove that the current Pods will be replaced
+    by the reviewed Deployment.  Trace the selected Deployment through its
+    controller-owned ReplicaSets and reject any extra label-selected Pod so a
+    decoy cannot satisfy readiness for an unrelated rollout.
     """
-    router_pods = non_terminating_items(pods)
-    if not router_pods:
-        raise DiscoveryError("selected router workload has no running Pods to verify Linkerd readiness")
-    observed_trust_domains: list[str | None] = []
-    for pod in router_pods:
-        spec = pod.get("spec", {})
-        service_account = spec.get("serviceAccountName") if isinstance(spec, dict) else None
-        if not is_dns_subdomain(service_account):
-            raise DiscoveryError("selected router workload does not have a valid service-account identity")
-        observed_trust_domains.append(
-            ready_linkerd_workload_pod(
-                pod,
-                router_namespace,
-                service_account,
-                control_plane_namespace,
-            )
+    metadata = deployment.get("metadata", {})
+    deployment_name = metadata.get("name") if isinstance(metadata, dict) else None
+    deployment_uid = metadata.get("uid") if isinstance(metadata, dict) else None
+    if not is_dns_subdomain(deployment_name) or not isinstance(deployment_uid, str) or not deployment_uid:
+        raise DiscoveryError("selected router Deployment has an invalid stable controller identity")
+    spec = deployment.get("spec", {})
+    status = deployment.get("status", {})
+    template = spec.get("template", {}) if isinstance(spec, dict) else {}
+    template_spec = template.get("spec", {}) if isinstance(template, dict) else {}
+    service_account = template_spec.get("serviceAccountName") if isinstance(template_spec, dict) else None
+    desired = spec.get("replicas", 1) if isinstance(spec, dict) else 1
+    available = status.get("availableReplicas", 0) if isinstance(status, dict) else 0
+    if not DNS_LABEL.fullmatch(service_account):
+        raise DiscoveryError("selected router Deployment does not declare a valid service-account identity")
+    if isinstance(desired, bool) or not isinstance(desired, int) or desired < 1:
+        raise DiscoveryError("selected router Deployment does not declare a positive replica count")
+    if isinstance(available, bool) or not isinstance(available, int) or available < desired:
+        raise DiscoveryError("selected router Deployment is not fully available")
+    replica_sets_by_name = {
+        str(item.get("metadata", {}).get("name")): str(item.get("metadata", {}).get("uid"))
+        for item in non_terminating_items(replica_sets)
+        if controller_owned_by(item, "Deployment", deployment_name, deployment_uid)
+        and isinstance(item.get("metadata", {}).get("name"), str)
+        and isinstance(item.get("metadata", {}).get("uid"), str)
+    }
+    if not replica_sets_by_name:
+        raise DiscoveryError("selected router Deployment has no controller-owned ReplicaSet")
+    selected_pods = non_terminating_items(pods)
+    router_pods = [
+        item
+        for item in selected_pods
+        if any(
+            controller_owned_by(item, "ReplicaSet", replica_set_name, replica_set_uid)
+            for replica_set_name, replica_set_uid in replica_sets_by_name.items()
         )
+    ]
+    if len(router_pods) < desired:
+        raise DiscoveryError("selected router Deployment has fewer running workload Pods than desired replicas")
+    if len(router_pods) != len(selected_pods):
+        raise DiscoveryError("router label selection includes a Pod not owned by the selected Deployment")
+    observed_trust_domains = [
+        ready_linkerd_workload_pod(
+            pod,
+            router_namespace,
+            service_account,
+            control_plane_namespace,
+        )
+        for pod in router_pods
+    ]
     if any(domain is None for domain in observed_trust_domains):
         raise DiscoveryError(
             "selected router workload is not Linkerd-injected, identity-configured, and ready with the selected control-plane namespace"
@@ -319,6 +377,44 @@ def router_workload_evidence(
         "router_workload_mesh_ready": True,
         "router_workload_identity_verified": True,
         "router_workload_ready_pods": len(router_pods),
+    }
+
+
+def router_workload_injection_evidence(
+    deployment: dict[str, Any],
+    namespace: dict[str, Any],
+) -> dict[str, bool | str]:
+    """Require durable router injection before policy can rely on a sidecar.
+
+    A ready proxy proves only the Pods that exist during discovery.  Future
+    rollout Pods must still request Linkerd injection, either through the
+    selected router Deployment's Pod template or the tenant Namespace's
+    injection annotation.  A template opt-out overrides namespace injection
+    and is always rejected.  The report retains only a bounded source label,
+    not arbitrary annotation content.
+    """
+    metadata = deployment.get("metadata", {})
+    deployment_name = metadata.get("name") if isinstance(metadata, dict) else None
+    if not is_dns_subdomain(deployment_name):
+        raise DiscoveryError("selected router Deployment has an invalid name")
+    spec = deployment.get("spec", {})
+    template = spec.get("template", {}) if isinstance(spec, dict) else {}
+    if not isinstance(template, dict):
+        raise DiscoveryError("selected router Deployment has no Pod template for Linkerd injection evidence")
+    template_setting = linkerd_injection_annotation(template).strip().lower()
+    if template_setting and template_setting != "enabled":
+        raise DiscoveryError("selected router Deployment does not explicitly enable Linkerd injection in its Pod template")
+    if template_setting == "enabled":
+        source = "deployment-template"
+    elif linkerd_injection_enabled(namespace):
+        source = "namespace"
+    else:
+        raise DiscoveryError("selected router workload lacks durable Linkerd namespace or Pod-template injection evidence")
+    return {
+        "router_workload_kind": "Deployment",
+        "router_workload_name": deployment_name,
+        "router_workload_injection_verified": True,
+        "router_workload_injection_source": source,
     }
 
 
@@ -525,8 +621,7 @@ def main() -> int:
                 "control_plane_namespace_present": False,
                 "policy_api_resources": [],
                 "policy_crd_served_versions": {},
-                "namespace_injection_labels": {k: v for k, v in namespace_labels(namespace).items() if "linkerd.io" in k},
-                "namespace_injection_annotation": linkerd_injection_annotation(namespace),
+                "namespace_injection_annotation_state": namespace_discovery_evidence(namespace)["linkerd_injection_annotation_state"],
                 "identity_service_accounts": [],
                 "ingress_namespace": args.ingress_namespace,
                 "ingress_service_account": args.ingress_service_account,
@@ -539,6 +634,8 @@ def main() -> int:
                 "router_workload_verified": False,
                 "router_workload_mesh_ready": False,
                 "router_workload_identity_verified": False,
+                "router_workload_injection_verified": False,
+                "router_workload_injection_source": "",
                 "router_workload_ready_pods": 0,
                 "trust_identity_config_payload_read": False,
                 "trust_domain_source": "explicit operator selection; Linkerd trust configuration payload not read",
@@ -579,7 +676,37 @@ def main() -> int:
                         "app.kubernetes.io/name=smart-llmrouter",
                     ],
                 )
+                router_deployments = kubectl_json(
+                    kubeconfig,
+                    [
+                        "--context",
+                        context,
+                        "-n",
+                        args.namespace,
+                        "get",
+                        "deployments",
+                        "-l",
+                        "app.kubernetes.io/name=smart-llmrouter",
+                    ],
+                )
+                router_replica_sets = kubectl_json(
+                    kubeconfig,
+                    [
+                        "--context",
+                        context,
+                        "-n",
+                        args.namespace,
+                        "get",
+                        "replicasets",
+                        "-l",
+                        "app.kubernetes.io/name=smart-llmrouter",
+                    ],
+                )
+                router_deployment = selected_router_deployment(router_deployments)
+                router_injection_evidence = router_workload_injection_evidence(router_deployment, namespace)
                 router_evidence = router_workload_evidence(
+                    router_deployment,
+                    router_replica_sets,
                     router_pods,
                     args.namespace,
                     args.linkerd_namespace,
@@ -607,6 +734,7 @@ def main() -> int:
                     "ingress_identity": ingress_identity,
                     "ingress_identity_verified": True,
                     **workload_evidence,
+                    **router_injection_evidence,
                     **router_evidence,
                 })
 
@@ -626,7 +754,7 @@ def main() -> int:
                     "managed_nodegroups": sorted(aws_json(["eks", "list-nodegroups", "--cluster-name", args.cluster], args.region, args.profile).get("nodegroups", [])),
                     "auto_mode_capabilities": sorted(key for key, value in cluster.get("computeConfig", {}).items() if value is True),
                 },
-                "namespace": {"name": args.namespace, "labels": namespace_labels(namespace), "service_accounts": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "serviceaccounts"])), "network_policies": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "networkpolicies"])), "rds_connectivity_boundary": "review namespace NetworkPolicy names and approved private database boundary outside this report", "router_resources": {}},
+                "namespace": {"name": args.namespace, **namespace_discovery_evidence(namespace), "service_accounts": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "serviceaccounts"])), "network_policies": item_names(kubectl_json(kubeconfig, ["--context", context, "-n", args.namespace, "get", "networkpolicies"])), "rds_connectivity_boundary": "review namespace NetworkPolicy names and approved private database boundary outside this report", "router_resources": {}},
                 "cluster_resources": {"ingress_classes": item_names(kubectl_json(kubeconfig, ["--context", context, "get", "ingressclasses"])), "storage_classes": item_names(kubectl_json(kubeconfig, ["--context", context, "get", "storageclasses"]))},
                 "linkerd": linkerd,
                 "ecr": {},

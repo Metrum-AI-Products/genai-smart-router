@@ -29,6 +29,7 @@ RECOVERY_RECORD_VERSION = 1
 RESERVED_BEFORE_CREATE = "reserved_before_create"
 ACCESS_KEY_CREATED = "access_key_created"
 DISCOVERY_ROLE_NAME = "genai-smart-router-eks-discovery"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def command(args: list[str], *, env: dict[str, str] | None = None) -> str:
@@ -48,12 +49,44 @@ def mfa_code_from_keychain(service: str, account: str) -> str:
     return f"{value % 1_000_000:06d}"
 
 
+def validate_profile_file_path(path: Path, label: str) -> Path:
+    """Require a private, non-repository file target before writing STS credentials."""
+    if not path.is_absolute() or path.parent == Path("/"):
+        raise RuntimeError(f"{label} must be an absolute non-root file path")
+    try:
+        # Reject the selected file and immediate directory when either is a
+        # symlink.  Ancestor aliases such as macOS /var -> /private/var are
+        # permitted after resolving the final path outside this repository.
+        if path.is_symlink() or path.parent.is_symlink():
+            raise RuntimeError(f"{label} must not be a symlink")
+        resolved = path.resolve(strict=False)
+        if resolved.is_relative_to(ROOT.resolve()):
+            raise RuntimeError(f"{label} must remain outside the repository")
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        parent_metadata = path.parent.stat()
+        if not stat.S_ISDIR(parent_metadata.st_mode) or stat.S_IMODE(parent_metadata.st_mode) & 0o022:
+            raise RuntimeError(f"{label} parent directory must not be group- or world-writable")
+        if path.exists() and not stat.S_ISREG(path.stat().st_mode):
+            raise RuntimeError(f"{label} must be a regular file when it already exists")
+    except RuntimeError:
+        raise
+    except OSError as exc:
+        raise RuntimeError(f"{label} could not be prepared safely") from exc
+    return path
+
+
 def configured_aws_profile_paths() -> tuple[Path, Path]:
-    """Return the exact AWS CLI profile files selected for this process."""
+    """Return private AWS CLI profile files selected for this process."""
     aws_dir = Path.home() / ".aws"
-    credentials_path = Path(os.environ.get("AWS_SHARED_CREDENTIALS_FILE") or aws_dir / "credentials").expanduser()
-    config_path = Path(os.environ.get("AWS_CONFIG_FILE") or aws_dir / "config").expanduser()
-    if credentials_path == config_path:
+    credentials_path = validate_profile_file_path(
+        Path(os.environ.get("AWS_SHARED_CREDENTIALS_FILE") or aws_dir / "credentials").expanduser(),
+        "AWS shared credentials path",
+    )
+    config_path = validate_profile_file_path(
+        Path(os.environ.get("AWS_CONFIG_FILE") or aws_dir / "config").expanduser(),
+        "AWS config path",
+    )
+    if credentials_path.resolve(strict=False) == config_path.resolve(strict=False):
         raise RuntimeError("AWS config and shared credentials paths must be different")
     return credentials_path, config_path
 
@@ -70,7 +103,7 @@ def write_profiles(
 ) -> None:
     for directory in {credentials_path.parent, config_path.parent}:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    prior_credentials = profile_file_snapshot(credentials_path)
+    prior_profiles = profile_files_snapshot(credentials_path, config_path)
     creds = configparser.RawConfigParser()
     creds.read(credentials_path)
     creds[profile] = credentials
@@ -83,10 +116,10 @@ def write_profiles(
         atomic_write_config(config_path, config)
     except Exception:
         try:
-            restore_profile_file(credentials_path, prior_credentials)
+            restore_profile_files(credentials_path, config_path, prior_profiles)
         except OSError as rollback_error:
             raise RuntimeError(
-                "AWS profile update failed and the prior credentials profile could not be restored; do not use the profile"
+                "AWS profile update failed and prior profile files could not be restored; do not use either profile"
             ) from rollback_error
         raise
 
@@ -144,12 +177,19 @@ def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> Non
 
 def profile_file_snapshot(path: Path) -> tuple[bytes, int] | None:
     """Retain only the previous local credentials bytes long enough to roll back a paired write."""
+    if path.is_symlink():
+        raise RuntimeError("AWS profile file must not be a symlink")
     if not path.exists():
         return None
     metadata = path.stat()
     if not stat.S_ISREG(metadata.st_mode):
         raise RuntimeError("AWS shared credentials path must be a regular file")
     return path.read_bytes(), stat.S_IMODE(metadata.st_mode)
+
+
+def profile_files_snapshot(credentials_path: Path, config_path: Path) -> tuple[tuple[bytes, int] | None, tuple[bytes, int] | None]:
+    """Capture both profile files before an operation that may publish local authority."""
+    return profile_file_snapshot(credentials_path), profile_file_snapshot(config_path)
 
 
 def atomic_write_bytes(path: Path, content: bytes, mode: int) -> None:
@@ -176,6 +216,17 @@ def restore_profile_file(path: Path, snapshot: tuple[bytes, int] | None) -> None
         return
     content, mode = snapshot
     atomic_write_bytes(path, content, mode)
+
+
+def restore_profile_files(
+    credentials_path: Path,
+    config_path: Path,
+    snapshots: tuple[tuple[bytes, int] | None, tuple[bytes, int] | None],
+) -> None:
+    """Restore both AWS profile files after any failed authority publication."""
+    credentials_snapshot, config_snapshot = snapshots
+    restore_profile_file(config_path, config_snapshot)
+    restore_profile_file(credentials_path, credentials_snapshot)
 
 
 def reservation_payload(source_user: str, reservation_id: str) -> dict[str, object]:
@@ -360,6 +411,7 @@ def main() -> int:
     admin_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.admin_profile, "--output", "json"]))
     if str(admin_identity.get("Account", "")) != approved_account or str(admin_identity.get("Arn", "")).endswith(":root"):
         raise RuntimeError("admin profile must be a non-root identity in the approved account before creating an access key")
+    profile_snapshots = profile_files_snapshot(credentials_path, config_path)
 
     # This atomic reservation is intentionally immediately before the only IAM
     # mutation. If this process is killed or the create result is ambiguous, it
@@ -367,6 +419,9 @@ def main() -> int:
     reservation = reserve_recovery_record(args.cleanup_record, args.source_user)
     key_id = ""
     deleted = False
+    profiles_published = False
+    completed = False
+
     def delete_source_key() -> bool:
         for _ in range(3):
             try:
@@ -405,6 +460,7 @@ def main() -> int:
             credentials_path=credentials_path,
             config_path=config_path,
         )
+        profiles_published = True
         role_identity = json.loads(
             command(
                 ["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--region", args.region, "--output", "json"],
@@ -417,16 +473,25 @@ def main() -> int:
             raise RuntimeError("temporary source key deletion failed after retries")
         remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
         key_id = ""
+        completed = True
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": verified_role_arn, "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:
+        rollback_error: OSError | None = None
         if key_id and not deleted:
             deleted = delete_source_key()
             if deleted:
                 remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
                 key_id = ""
-            else:
-                raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
+        if profiles_published and not completed:
+            try:
+                restore_profile_files(credentials_path, config_path, profile_snapshots)
+            except OSError as exc:
+                rollback_error = exc
+        if rollback_error is not None:
+            raise RuntimeError("failed EKS bootstrap could not restore prior AWS profile files; do not use either profile") from rollback_error
+        if key_id and not deleted:
+            raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
 
 if __name__ == "__main__":

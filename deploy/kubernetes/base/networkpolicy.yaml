@@ -9,11 +9,10 @@ spec:
     matchLabels:
       app.kubernetes.io/name: smart-llmrouter
   policyTypes:
-    - Ingress
     - Egress
-  # Ingress is denied until the reviewed discovery-derived policy is rendered
-  # for the selected ingress namespace. Do not restore a fixed namespace here.
-  ingress: []
+  # This generic base stays ingress-neutral so it remains usable outside EKS.
+  # EKS overlays add the reviewed deny-ingress guard before selected discovery
+  # renders and activates their companion allow policy.
   egress:
     - to:
         - namespaceSelector: {}

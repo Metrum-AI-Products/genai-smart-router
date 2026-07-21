@@ -31,6 +31,7 @@ def discovery() -> dict[str, object]:
             "router_workload_verified": True,
             "router_workload_mesh_ready": True,
             "router_workload_identity_verified": True,
+            "router_workload_injection_verified": True,
             "ingress_namespace": "gateway-system",
         },
     }
@@ -121,33 +122,42 @@ def assert_make_renders_non_linkerd_ingress_policy() -> None:
 
 def main() -> int:
     template = (ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-network-policy.example.yaml").read_text(encoding="utf-8")
-    base = (ROOT / "deploy/kubernetes/base/networkpolicy.yaml").read_text(encoding="utf-8")
-    rendered = MODULE.render(template, discovery(), base)
+    generic_base = (ROOT / "deploy/kubernetes/base/networkpolicy.yaml").read_text(encoding="utf-8")
+    if "\n    - Ingress\n" in generic_base or "\n  ingress:" in generic_base:
+        raise AssertionError("generic base NetworkPolicy must remain ingress-neutral for non-EKS deployments")
+    eks_guard = (ROOT / "deploy/kubernetes/bootstrap/tenant-router-ingress-guard.example.yaml").read_text(encoding="utf-8")
+    rendered = MODULE.render(template, discovery(), eks_guard)
     if "namespace: tenant-acme" not in rendered or "kubernetes.io/metadata.name: gateway-system" not in rendered:
         raise AssertionError("renderer did not bind the NetworkPolicy to verified discovery namespaces")
     if "ingress-nginx" in rendered:
         raise AssertionError("rendered NetworkPolicy retained a fixed ingress namespace")
+    expect_rejected(lambda: MODULE.render(template, discovery(), generic_base))
     invalid = discovery()
     invalid_linkerd = invalid["linkerd"]
     assert isinstance(invalid_linkerd, dict)
     invalid_linkerd["ingress_workload_mesh_ready"] = False
-    expect_rejected(lambda: MODULE.render(template, invalid, base))
+    expect_rejected(lambda: MODULE.render(template, invalid, eks_guard))
     invalid_router = discovery()
     invalid_router_linkerd = invalid_router["linkerd"]
     assert isinstance(invalid_router_linkerd, dict)
     invalid_router_linkerd["router_workload_mesh_ready"] = False
-    expect_rejected(lambda: MODULE.render(template, invalid_router, base))
+    expect_rejected(lambda: MODULE.render(template, invalid_router, eks_guard))
     invalid_router_identity = discovery()
     invalid_router_identity_linkerd = invalid_router_identity["linkerd"]
     assert isinstance(invalid_router_identity_linkerd, dict)
     invalid_router_identity_linkerd["router_workload_identity_verified"] = False
-    expect_rejected(lambda: MODULE.render(template, invalid_router_identity, base))
+    expect_rejected(lambda: MODULE.render(template, invalid_router_identity, eks_guard))
+    invalid_router_injection = discovery()
+    invalid_router_injection_linkerd = invalid_router_injection["linkerd"]
+    assert isinstance(invalid_router_injection_linkerd, dict)
+    invalid_router_injection_linkerd["router_workload_injection_verified"] = False
+    expect_rejected(lambda: MODULE.render(template, invalid_router_injection, eks_guard))
     non_linkerd = {"selection": {"namespace": "tenant-acme", "ingress_namespace": "external-gateway"}, "linkerd": {"requested": False}}
-    non_linkerd_rendered = MODULE.render(template, non_linkerd, base)
+    non_linkerd_rendered = MODULE.render(template, non_linkerd, eks_guard)
     if "kubernetes.io/metadata.name: external-gateway" not in non_linkerd_rendered:
         raise AssertionError("renderer rejected or changed the explicit non-Linkerd ingress namespace")
-    expect_rejected(lambda: MODULE.render(template, discovery(), base.replace("  ingress: []", "  ingress:\n    - from: []")))
-    expect_rejected(lambda: MODULE.render(template, discovery(), base + "\n  ingress:\n    - from: []\n"))
+    expect_rejected(lambda: MODULE.render(template, discovery(), eks_guard.replace("  ingress: []", "  ingress:\n    - from: []")))
+    expect_rejected(lambda: MODULE.render(template, discovery(), eks_guard.replace("smart-llmrouter-restrict-ingress", "wrong-ingress-guard")))
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "tenant-ingress-network-policy.yaml"
         MODULE.atomic_write(output, rendered)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render an ingress Namespace NetworkPolicy from verified Linkerd discovery."""
+"""Render a selected-ingress NetworkPolicy from verified EKS discovery."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEMPLATE = ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-network-policy.example.yaml"
-BASE_NETWORK_POLICY = ROOT / "deploy/kubernetes/base/networkpolicy.yaml"
+EKS_INGRESS_GUARD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-router-ingress-guard.example.yaml"
 DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
 
@@ -39,6 +39,7 @@ def validated_namespaces(discovery: dict[str, Any]) -> tuple[str, str]:
             or linkerd.get("router_workload_verified") is not True
             or linkerd.get("router_workload_mesh_ready") is not True
             or linkerd.get("router_workload_identity_verified") is not True
+            or linkerd.get("router_workload_injection_verified") is not True
             or linkerd.get("ingress_namespace") != ingress_namespace
         ):
             raise ValueError("Linkerd ingress and router workload identity evidence was not verified by discovery")
@@ -47,17 +48,17 @@ def validated_namespaces(discovery: dict[str, Any]) -> tuple[str, str]:
     return tenant_namespace, ingress_namespace
 
 
-def validate_base_network_policy(content: str) -> None:
-    """Require the checked-in base to deny ingress pending this rendered policy."""
-    if "metadata:\n  name: smart-llmrouter-restrict\n" not in content:
-        raise ValueError("base NetworkPolicy is not the reviewed smart-router policy")
-    if len(re.findall(r"(?m)^  ingress:", content)) != 1 or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", content):
-        raise ValueError("base NetworkPolicy must deny ingress until the selected namespace policy is rendered")
+def validate_eks_ingress_guard_policy(content: str) -> None:
+    """Require the EKS-only guard to deny ingress pending selected-policy activation."""
+    if "metadata:\n  name: smart-llmrouter-restrict-ingress\n" not in content:
+        raise ValueError("EKS ingress guard is not the reviewed smart-router policy")
+    if "    - Ingress\n" not in content or len(re.findall(r"(?m)^  ingress:", content)) != 1 or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", content):
+        raise ValueError("EKS ingress guard must deny ingress until the selected namespace policy is rendered")
 
 
-def render(template: str, discovery: dict[str, Any], base_network_policy: str) -> str:
+def render(template: str, discovery: dict[str, Any], eks_ingress_guard_policy: str) -> str:
     tenant_namespace, ingress_namespace = validated_namespaces(discovery)
-    validate_base_network_policy(base_network_policy)
+    validate_eks_ingress_guard_policy(eks_ingress_guard_policy)
     if template.count("__TENANT_NAMESPACE__") != 1 or template.count("__INGRESS_NAMESPACE__") != 1:
         raise ValueError("ingress NetworkPolicy template has unexpected render placeholders")
     if "ingress-nginx" in template:
@@ -90,7 +91,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--discovery-report", required=True, type=Path)
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
-    parser.add_argument("--base-network-policy", type=Path, default=BASE_NETWORK_POLICY)
+    parser.add_argument("--eks-ingress-guard-policy", type=Path, default=EKS_INGRESS_GUARD_POLICY)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
@@ -100,7 +101,7 @@ def main() -> int:
         rendered = render(
             args.template.read_text(encoding="utf-8"),
             discovery,
-            args.base_network_policy.read_text(encoding="utf-8"),
+            args.eks_ingress_guard_policy.read_text(encoding="utf-8"),
         )
         atomic_write(args.output, rendered)
     except (OSError, json.JSONDecodeError, ValueError) as exc:

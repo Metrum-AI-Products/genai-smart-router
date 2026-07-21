@@ -28,6 +28,7 @@ def discovery() -> dict[str, object]:
             "router_workload_verified": True,
             "router_workload_mesh_ready": True,
             "router_workload_identity_verified": True,
+            "router_workload_injection_verified": True,
             "ingress_namespace": "gateway-system",
             "ingress_service_account": "gateway.proxy",
             "control_plane_namespace": "linkerd-control",
@@ -87,6 +88,16 @@ def main() -> int:
         pass
     else:
         raise AssertionError("renderer accepted router evidence without a verified Linkerd identity and trust domain")
+    invalid_router_injection = discovery()
+    invalid_router_injection_linkerd = invalid_router_injection["linkerd"]
+    assert isinstance(invalid_router_injection_linkerd, dict)
+    invalid_router_injection_linkerd["router_workload_injection_verified"] = False
+    try:
+        MODULE.render(template, invalid_router_injection)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("renderer accepted router evidence without durable Linkerd injection proof")
     invalid_control_plane = discovery()
     invalid_control_plane_linkerd = invalid_control_plane["linkerd"]
     assert isinstance(invalid_control_plane_linkerd, dict)

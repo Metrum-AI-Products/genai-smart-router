@@ -4,6 +4,9 @@ metadata:
   name: smart-llmrouter
 spec:
   template:
+    metadata:
+      annotations:
+        linkerd.io/inject: enabled
     spec:
       containers:
         - name: router

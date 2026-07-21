@@ -41,6 +41,7 @@ def discovery(*, linkerd: bool = False) -> dict[str, object]:
                 "router_workload_verified": True,
                 "router_workload_mesh_ready": True,
                 "router_workload_identity_verified": True,
+                "router_workload_injection_verified": True,
                 "ingress_namespace": "gateway-system",
                 "ingress_service_account": "gateway-proxy",
                 "control_plane_namespace": "linkerd-control",
@@ -67,7 +68,7 @@ def write_artifacts(root: Path, report: dict[str, object], *, linkerd: bool = Fa
         MODULE.INGRESS_RENDERER.render(
             MODULE.INGRESS_RENDERER.DEFAULT_TEMPLATE.read_text(encoding="utf-8"),
             report,
-            MODULE.INGRESS_RENDERER.BASE_NETWORK_POLICY.read_text(encoding="utf-8"),
+            MODULE.INGRESS_RENDERER.EKS_INGRESS_GUARD_POLICY.read_text(encoding="utf-8"),
         ),
         encoding="utf-8",
     )
@@ -134,16 +135,19 @@ def test_explicit_context_is_bound_and_server_dry_run_only(root: Path) -> None:
     finally:
         MODULE.run = original_run  # type: ignore[method-assign]
     context_reads = [command for command in calls if command[0] == "kubectl" and "config" in command]
-    if len(context_reads) != 1 or context_reads[0][:5] != ["kubectl", "--kubeconfig", str(kubeconfig), "--context", "approved-deployment-context"]:
-        raise AssertionError("activation did not inspect the explicit kubeconfig/context")
+    if len(context_reads) != 1 or context_reads[0][:2] != ["kubectl", "--kubeconfig"] or context_reads[0][3:5] != ["--context", "approved-deployment-context"]:
+        raise AssertionError("activation did not inspect a private kubeconfig snapshot with the explicit context")
+    kubeconfig_snapshot = Path(context_reads[0][2])
+    if kubeconfig_snapshot == kubeconfig or kubeconfig_snapshot.name != "kubeconfig":
+        raise AssertionError("activation did not replace the mutable kubeconfig with its private snapshot")
     apply_calls = [command for command in calls if command[0] == "kubectl" and "apply" in command]
     if len(apply_calls) != 1:
         raise AssertionError("non-Linkerd activation did not invoke exactly one policy validation")
     command = apply_calls[0]
-    if command[:5] != ["kubectl", "--kubeconfig", str(kubeconfig), "--context", "approved-deployment-context"]:
-        raise AssertionError("policy validation did not bind kubectl to the explicit kubeconfig/context")
-    if "--dry-run=server" not in command or command[-2:] != ["-f", str(ingress_policy)]:
-        raise AssertionError("default activation must only server-side dry-run the discovery-bound policy")
+    if command[:5] != ["kubectl", "--kubeconfig", str(kubeconfig_snapshot), "--context", "approved-deployment-context"]:
+        raise AssertionError("policy validation did not reuse the verified kubeconfig snapshot")
+    if "--dry-run=server" not in command or command[-2] != "-f" or Path(command[-1]) == ingress_policy or Path(command[-1]).name != "tenant-ingress-network-policy.yaml":
+        raise AssertionError("default activation must server-side dry-run only the private discovery-bound policy snapshot")
 
 
 def test_cluster_context_mismatch_prevents_any_apply(root: Path) -> None:
@@ -244,13 +248,13 @@ def test_linkerd_policy_order_requires_dry_run_before_apply(root: Path) -> None:
     if len(apply_calls) != 4:
         raise AssertionError("Linkerd activation must dry-run and apply both discovery-bound policies")
     expected = [
-        (True, linkerd_policy),
-        (True, ingress_policy),
-        (False, linkerd_policy),
-        (False, ingress_policy),
+        (True, "tenant-linkerd-policy.yaml"),
+        (True, "tenant-ingress-network-policy.yaml"),
+        (False, "tenant-linkerd-policy.yaml"),
+        (False, "tenant-ingress-network-policy.yaml"),
     ]
-    actual = [("--dry-run=server" in command, Path(command[-1])) for command in apply_calls]
-    if actual != expected:
+    actual = [("--dry-run=server" in command, Path(command[-1]).name) for command in apply_calls]
+    if actual != expected or any(Path(command[-1]) in {linkerd_policy, ingress_policy} for command in apply_calls):
         raise AssertionError("Linkerd policy activation did not preserve dry-run and policy ordering")
 
 
@@ -275,6 +279,96 @@ def test_tampered_policy_is_rejected_before_target_commands(root: Path) -> None:
         )
     finally:
         MODULE.run = original_run  # type: ignore[method-assign]
+
+
+def test_oversized_policy_is_rejected_before_target_commands(root: Path) -> None:
+    report = discovery()
+    report_path, kubeconfig, linkerd_policy, ingress_policy = write_artifacts(root, report)
+    ingress_policy.write_bytes(b"x" * (MODULE.MAX_RENDERED_POLICY_BYTES + 1))
+    original_run = MODULE.run
+    MODULE.run = lambda command: (_ for _ in ()).throw(AssertionError("target command must not run for an oversized policy"))  # type: ignore[method-assign]
+    try:
+        expect_failure(
+            lambda: MODULE.activate(
+                report_path,
+                "approved-profile",
+                kubeconfig,
+                "approved-deployment-context",
+                ingress_policy,
+                linkerd_policy,
+                apply=False,
+            ),
+            "rendered ingress NetworkPolicy exceeds the safe maximum size",
+        )
+    finally:
+        MODULE.run = original_run  # type: ignore[method-assign]
+
+
+def test_oversized_kubeconfig_is_rejected_before_target_commands(root: Path) -> None:
+    report = discovery()
+    report_path, kubeconfig, linkerd_policy, ingress_policy = write_artifacts(root, report)
+    kubeconfig.write_bytes(b"x" * (MODULE.MAX_KUBECONFIG_BYTES + 1))
+    original_run = MODULE.run
+    MODULE.run = lambda command: (_ for _ in ()).throw(AssertionError("target command must not run for an oversized kubeconfig"))  # type: ignore[method-assign]
+    try:
+        expect_failure(
+            lambda: MODULE.activate(
+                report_path,
+                "approved-profile",
+                kubeconfig,
+                "approved-deployment-context",
+                ingress_policy,
+                linkerd_policy,
+                apply=False,
+            ),
+            "Kubernetes kubeconfig exceeds the safe maximum size",
+        )
+    finally:
+        MODULE.run = original_run  # type: ignore[method-assign]
+
+
+def test_activation_uses_immutable_kubeconfig_and_policy_snapshots(root: Path) -> None:
+    report = discovery()
+    report_path, kubeconfig, linkerd_policy, ingress_policy = write_artifacts(root, report)
+    expected_policy = ingress_policy.read_text(encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def run(command: list[str]) -> str:
+        calls.append(command)
+        if command[0] == "aws" and "sts" in command:
+            return json.dumps({"Account": "123456789012"})
+        if command[0] == "aws" and "eks" in command:
+            return json.dumps({"cluster": {"endpoint": "https://approved.example"}})
+        if command[0] == "kubectl" and "config" in command:
+            kubeconfig.write_text("apiVersion: v1\nclusters: changed-after-snapshot\n", encoding="utf-8")
+            ingress_policy.write_text("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: tampered\n", encoding="utf-8")
+            return json.dumps({"clusters": [{"cluster": {"server": "https://approved.example"}}]})
+        if command[0] == "kubectl" and "apply" in command:
+            snapshot_kubeconfig = Path(command[2])
+            snapshot_policy = Path(command[-1])
+            if snapshot_kubeconfig == kubeconfig or snapshot_policy == ingress_policy:
+                raise AssertionError("activation passed a mutable caller path to kubectl")
+            if snapshot_policy.read_text(encoding="utf-8") != expected_policy:
+                raise AssertionError("activation did not apply the renderer-generated policy snapshot")
+            return "networkpolicy/smart-llmrouter-discovered-ingress configured\n"
+        raise AssertionError(f"unexpected command shape: {command!r}")
+
+    original_run = MODULE.run
+    MODULE.run = run  # type: ignore[method-assign]
+    try:
+        MODULE.activate(
+            report_path,
+            "approved-profile",
+            kubeconfig,
+            "approved-deployment-context",
+            ingress_policy,
+            linkerd_policy,
+            apply=True,
+        )
+    finally:
+        MODULE.run = original_run  # type: ignore[method-assign]
+    if len([command for command in calls if command[0] == "kubectl" and "apply" in command]) != 2:
+        raise AssertionError("snapshot regression did not execute both dry-run and apply")
 
 
 def test_make_apply_requires_explicit_confirmation(root: Path) -> None:
@@ -355,10 +449,10 @@ def test_make_validation_binds_the_explicit_context(root: Path) -> None:
     commands = command_log.read_text(encoding="utf-8").splitlines()
     if len(commands) != 2:
         raise AssertionError("Make validation did not invoke exactly the context check and policy dry-run")
-    if f"--kubeconfig {kubeconfig} --context approved-deployment-context config view" not in commands[0]:
-        raise AssertionError("Make validation did not bind the context inspection to the supplied kubeconfig/context")
-    if f"--kubeconfig {kubeconfig} --context approved-deployment-context apply --dry-run=server -f {ingress_policy}" not in commands[1]:
-        raise AssertionError("Make validation did not bind the policy dry-run to the supplied kubeconfig/context")
+    if "--context approved-deployment-context config view" not in commands[0] or str(kubeconfig) in commands[0]:
+        raise AssertionError("Make validation did not bind the context inspection to a private kubeconfig snapshot")
+    if "--context approved-deployment-context apply --dry-run=server -f " not in commands[1] or str(ingress_policy) in commands[1]:
+        raise AssertionError("Make validation did not dry-run a private policy snapshot")
 
 
 def main() -> int:
@@ -370,6 +464,9 @@ def main() -> int:
         test_stale_discovery_evidence_prevents_any_target_command(root)
         test_linkerd_policy_order_requires_dry_run_before_apply(root)
         test_tampered_policy_is_rejected_before_target_commands(root)
+        test_oversized_policy_is_rejected_before_target_commands(root)
+        test_oversized_kubeconfig_is_rejected_before_target_commands(root)
+        test_activation_uses_immutable_kubeconfig_and_policy_snapshots(root)
         test_make_apply_requires_explicit_confirmation(root)
         test_make_validation_binds_the_explicit_context(root)
     print("Tenant network policy activation safeguards passed")

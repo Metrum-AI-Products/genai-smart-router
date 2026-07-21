@@ -14,9 +14,16 @@ TRUST = ROOT / "deploy/aws/github-oidc-trust-policy.example.json"
 DISCOVERY_ROLE = ROOT / "deploy/aws/genai-smart-router-eks-discovery-role.example.json"
 LINKERD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-linkerd-policy.example.yaml"
 INGRESS_NETWORK_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-network-policy.example.yaml"
+EKS_INGRESS_GUARD = ROOT / "deploy/kubernetes/bootstrap/tenant-router-ingress-guard.example.yaml"
+LINKERD_INJECTION_PATCH = ROOT / "deploy/kubernetes/bootstrap/tenant-router-linkerd-injection-patch.example.yaml"
 POLICY_ACTIVATOR = ROOT / "scripts/apply_tenant_network_policies.py"
+INGRESS_RENDERER = ROOT / "scripts/render_tenant_ingress_network_policy.py"
+DISCOVERY_SCRIPT = ROOT / "scripts/eks_discover.py"
 BASE_NETWORK_POLICY = ROOT / "deploy/kubernetes/base/networkpolicy.yaml"
 STAGING_NETWORK_POLICY_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-networkpolicy.yaml"
+STAGING_INGRESS_GUARD = ROOT / "deploy/kubernetes/overlays/metrum-staging/networkpolicy-ingress-guard.yaml"
+STAGING_DEPLOYMENT_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-deployment.yaml"
+STAGING_KUSTOMIZATION = ROOT / "deploy/kubernetes/overlays/metrum-staging/kustomization.yaml"
 MAKEFILE = ROOT / "Makefile"
 PUBLIC_KUBERNETES_DOC = ROOT / "docs-site/docs/installation/kubernetes.md"
 STAGING_RUNBOOK = ROOT / "docs/EKS_STAGING_MIGRATION.md"
@@ -47,11 +54,22 @@ def main() -> int:
         raise SystemExit("Linkerd policy must not retain a fixed ingress identity")
 
     base_network_policy = BASE_NETWORK_POLICY.read_text(encoding="utf-8")
-    if len(re.findall(r"(?m)^  ingress:", base_network_policy)) != 1 or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", base_network_policy):
-        raise SystemExit("base NetworkPolicy must deny ingress until discovery renders an allow policy")
+    if "    - Egress\n" not in base_network_policy or "    - Ingress\n" in base_network_policy or re.search(r"(?m)^  ingress:", base_network_policy):
+        raise SystemExit("generic base NetworkPolicy must remain egress-only for non-EKS deployment")
+    eks_ingress_guard = EKS_INGRESS_GUARD.read_text(encoding="utf-8")
+    if "metadata:\n  name: smart-llmrouter-restrict-ingress\n" not in eks_ingress_guard or "    - Ingress\n" not in eks_ingress_guard or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", eks_ingress_guard):
+        raise SystemExit("EKS ingress guard must deny ingress until discovery renders an allow policy")
     staging_network_policy_patch = STAGING_NETWORK_POLICY_PATCH.read_text(encoding="utf-8")
-    if re.search(r"(?m)^  ingress:", staging_network_policy_patch) or "ingress-nginx" in staging_network_policy_patch:
-        raise SystemExit("staging NetworkPolicy patch must not restore a fixed ingress namespace")
+    if "    - Egress\n" not in staging_network_policy_patch or "    - Ingress\n" in staging_network_policy_patch or re.search(r"(?m)^  ingress:", staging_network_policy_patch):
+        raise SystemExit("staging egress NetworkPolicy patch must not create a generic ingress policy")
+    staging_ingress_guard = STAGING_INGRESS_GUARD.read_text(encoding="utf-8")
+    if "metadata:\n  name: smart-llmrouter-restrict-ingress\n" not in staging_ingress_guard or "    - Ingress\n" not in staging_ingress_guard or not re.search(r"(?m)^  ingress:\s*\[\]\s*$", staging_ingress_guard) or "ingress-nginx" in staging_ingress_guard:
+        raise SystemExit("staging must include a fixed-free deny-ingress EKS guard")
+    if "networkpolicy-ingress-guard.yaml" not in STAGING_KUSTOMIZATION.read_text(encoding="utf-8"):
+        raise SystemExit("staging EKS overlay must include the deny-ingress guard")
+    for path in (LINKERD_INJECTION_PATCH, STAGING_DEPLOYMENT_PATCH):
+        if "linkerd.io/inject: enabled" not in path.read_text(encoding="utf-8"):
+            raise SystemExit(f"{path.name} must retain durable Linkerd Pod-template injection")
 
     ingress_network_policy = INGRESS_NETWORK_POLICY.read_text(encoding="utf-8")
     if "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\n" not in ingress_network_policy:
@@ -67,9 +85,14 @@ def main() -> int:
     if "eks-validate-tenant-network-policies" not in makefile or "eks-apply-tenant-network-policies" not in makefile or "scripts/apply_tenant_network_policies.py" not in makefile:
         raise SystemExit("tenant policy activation must use the selection-bound validation and apply targets")
     activator = POLICY_ACTIVATOR.read_text(encoding="utf-8")
-    for required in ("--kubeconfig", "--context", "get-caller-identity", "describe-cluster", "--dry-run=server", "MAX_DISCOVERY_EVIDENCE_AGE_SECONDS"):
+    for required in ("--kubeconfig", "--context", "get-caller-identity", "describe-cluster", "--dry-run=server", "MAX_DISCOVERY_EVIDENCE_AGE_SECONDS", "EKS_INGRESS_GUARD_POLICY"):
         if required not in activator:
             raise SystemExit("tenant policy activation must bind explicit Kubernetes context to the discovered AWS target")
+    ingress_renderer = INGRESS_RENDERER.read_text(encoding="utf-8")
+    if "EKS_INGRESS_GUARD_POLICY" not in ingress_renderer or "router_workload_injection_verified" not in ingress_renderer:
+        raise SystemExit("selected-ingress rendering must require the EKS guard and durable router injection evidence")
+    if "router_workload_injection_evidence" not in DISCOVERY_SCRIPT.read_text(encoding="utf-8"):
+        raise SystemExit("Linkerd discovery must verify durable router injection before policy rendering")
 
     for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README, IDENTITY_BOOTSTRAP):
         deployment_path = path.read_text(encoding="utf-8")
@@ -83,7 +106,7 @@ def main() -> int:
             raise SystemExit(f"{path.name} must not apply the rendered ingress policy through an ambient kubectl context")
 
     for path, required_resources in (
-        (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses", "pods")),
+        (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "replicasets", "services", "persistentvolumeclaims", "ingresses", "pods")),
         (DISCOVERY_LINKERD_RBAC, ("serviceaccounts",)),
         (DISCOVERY_INGRESS_RBAC, ("serviceaccounts", "deployments", "replicasets", "pods")),
     ):
@@ -97,11 +120,11 @@ def main() -> int:
 
     discovery = json.loads(DISCOVERY_ROLE.read_text(encoding="utf-8"))["InlinePolicy"]["Statement"]
     eks = next(statement for statement in discovery if statement["Sid"] == "EksReadOnlyDiscovery")
-    if "eks:ListClusters" in eks["Action"] or eks["Resource"] == "*":
-        raise SystemExit("discovery EKS access must be scoped to the approved cluster")
+    if set(eks["Action"]) != {"eks:DescribeCluster", "eks:ListAccessEntries", "eks:ListNodegroups"} or eks["Resource"] == "*":
+        raise SystemExit("discovery EKS access must be exactly the required reads on the approved cluster")
     ecr = next(statement for statement in discovery if statement["Sid"] == "EcrReadOnlyDiscovery")
-    if ecr["Resource"] == "*":
-        raise SystemExit("discovery ECR access must be scoped to the approved repository")
+    if set(ecr["Action"]) != {"ecr:DescribeRepositories", "ecr:GetRepositoryPolicy"} or ecr["Resource"] == "*":
+        raise SystemExit("discovery ECR access must be exactly the required reads on the approved repository")
 
     policy = json.loads(TRUST.read_text(encoding="utf-8"))
     condition = policy["Statement"][0]["Condition"]["StringEquals"]
