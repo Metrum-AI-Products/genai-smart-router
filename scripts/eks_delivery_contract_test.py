@@ -58,6 +58,11 @@ def rendered_objects(namespace: str | None = None) -> str:
                         "namespace": namespace,
                         "labels": labels,
                     },
+                    "spec": {
+                        "ports": [{"port": 80, "targetPort": "http"}],
+                        "selector": {"app.kubernetes.io/name": "smart-llmrouter"},
+                        "type": "ClusterIP",
+                    },
                 },
             ],
         }
@@ -92,10 +97,12 @@ def inventory_with_service_configuration_drift() -> str:
 
 def inventory_with_service_runtime_fields() -> str:
     payload = json.loads(rendered_objects())
-    payload["items"][1]["spec"] = {
-        "clusterIP": "10.100.0.42",
-        "clusterIPs": ["10.100.0.42"],
-    }
+    payload["items"][1]["spec"].update(
+        {
+            "clusterIP": "10.100.0.42",
+            "clusterIPs": ["10.100.0.42"],
+        }
+    )
     payload["items"][1]["metadata"].update(
         {
             "resourceVersion": "12345",
@@ -110,17 +117,70 @@ def inventory_with_service_runtime_fields() -> str:
 
 def inventory_with_server_defaulted_service() -> str:
     payload = json.loads(rendered_objects())
-    payload["items"][1]["spec"] = {
-        "clusterIP": "10.100.0.42",
-        "clusterIPs": ["10.100.0.42"],
-        "internalTrafficPolicy": "Cluster",
-        "ipFamilies": ["IPv4"],
-        "ipFamilyPolicy": "SingleStack",
-        "ports": [{"port": 80, "protocol": "TCP", "targetPort": "http"}],
-        "selector": {"app.kubernetes.io/name": "smart-llmrouter"},
-        "sessionAffinity": "None",
-        "type": "ClusterIP",
+    payload["items"][1]["spec"].update(
+        {
+            "clusterIP": "10.100.0.42",
+            "clusterIPs": ["10.100.0.42"],
+            "internalTrafficPolicy": "Cluster",
+            "ipFamilies": ["IPv4"],
+            "ipFamilyPolicy": "SingleStack",
+            "ports": [{"port": 80, "protocol": "TCP", "targetPort": "http"}],
+            "sessionAffinity": "None",
+        }
+    )
+    return json.dumps(payload)
+
+
+def rendered_objects_with_ingress() -> str:
+    payload = json.loads(rendered_objects())
+    payload["items"].append(
+        {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": {
+                "name": "smart-llmrouter",
+                "namespace": TARGET_POLICY["k8s_namespace"],
+                "labels": {"app.kubernetes.io/name": "smart-llmrouter"},
+            },
+            "spec": {
+                "rules": [
+                    {
+                        "host": "router.example.test",
+                        "http": {
+                            "paths": [
+                                {
+                                    "backend": {
+                                        "service": {
+                                            "name": "smart-llmrouter",
+                                            "port": {"number": 80},
+                                        }
+                                    },
+                                    "path": "/",
+                                    "pathType": "Prefix",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            },
+        }
+    )
+    return json.dumps(payload)
+
+
+def inventory_with_foreign_manager_ingress_annotation() -> str:
+    payload = json.loads(rendered_objects_with_ingress())
+    ingress = next(item for item in payload["items"] if item["kind"] == "Ingress")
+    ingress["metadata"]["annotations"] = {
+        "external.example.test/managed": "unreviewed-live-drift"
     }
+    return json.dumps(payload)
+
+
+def inventory_with_foreign_manager_ingress_label() -> str:
+    payload = json.loads(rendered_objects_with_ingress())
+    ingress = next(item for item in payload["items"] if item["kind"] == "Ingress")
+    ingress["metadata"]["labels"]["external.example.test/managed"] = "unreviewed-live-drift"
     return json.dumps(payload)
 
 
@@ -265,7 +325,8 @@ case "$0" in
   *kubectl) case "$*" in
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
-    *"--dry-run=server"*" -o json"*) printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
+    *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
+    *"apply --server-side --dry-run=server"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
@@ -280,6 +341,15 @@ esac
         target = directory / name
         target.write_text(body)
         target.chmod(0o755)
+
+
+def protected_smoke_script(root: Path, name: str, body: str, mode: int = 0o600) -> Path:
+    """Write a mode-controlled shell source without placing it in CLI argv."""
+
+    script = root / name
+    script.write_text(body, encoding="utf-8")
+    script.chmod(mode)
+    return script
 
 
 def run(
@@ -613,7 +683,6 @@ def main() -> int:
             "apply",
             root,
             ["--confirm", "STAGING_APPLY"],
-            server_normalized_inventory=server_defaulted_inventory,
             live_inventory=server_defaulted_inventory,
             live_inventory_after_apply=server_defaulted_inventory,
         )
@@ -626,33 +695,158 @@ def main() -> int:
         no_digest = run("promotion-plan", root, include_digest=False)
         assert no_digest.returncode != 0 and "IMAGE_DIGEST" in no_digest.stderr
 
+        passing_smoke_script = protected_smoke_script(root, "passing-smoke.sh", "exit 0\n")
+        assert passing_smoke_script.stat().st_mode & 0o777 == 0o600
+
+        server_defaulted_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(passing_smoke_script)],
+            server_normalized_inventory=server_defaulted_inventory,
+            live_inventory=server_defaulted_inventory,
+        )
+        assert server_defaulted_smoke.returncode == 0, server_defaulted_smoke.stderr
+        client_inventory = EKS_DELIVERY.Delivery.inventory_from_resources(
+            json.loads(rendered_objects())["items"],
+            target,
+            source="client baseline fixture",
+        )
+        server_defaulted_smoke_evidence = json.loads(
+            (root / "tmp/evidence/evidence-smoke.json").read_text()
+        )
+        assert (
+            server_defaulted_smoke_evidence["managed_resource_spec_sha256"]
+            == EKS_DELIVERY.managed_resource_spec_fingerprint(client_inventory)
+        )
+
+        ingress_rendered = rendered_objects_with_ingress()
+        foreign_manager_ingress = inventory_with_foreign_manager_ingress_annotation()
+        foreign_manager_dry_run_marker = root / "foreign-manager-dry-run-script-ran"
+        foreign_manager_dry_run_script = protected_smoke_script(
+            root,
+            "foreign-manager-dry-run.sh",
+            f"touch '{foreign_manager_dry_run_marker}'\n",
+        )
+        foreign_manager_dry_run = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(foreign_manager_dry_run_script)],
+            render_objects=ingress_rendered,
+            server_normalized_inventory=foreign_manager_ingress,
+            live_inventory=ingress_rendered,
+        )
+        assert (
+            foreign_manager_dry_run.returncode != 0
+            and "server-side manifest validation" in foreign_manager_dry_run.stderr
+        )
+        assert not foreign_manager_dry_run_marker.exists()
+
+        foreign_manager_marker = root / "foreign-manager-smoke-command-ran"
+        foreign_manager_script = protected_smoke_script(
+            root, "foreign-manager-smoke.sh", f"touch '{foreign_manager_marker}'\n"
+        )
+        foreign_manager_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(foreign_manager_script)],
+            render_objects=ingress_rendered,
+            server_normalized_inventory=ingress_rendered,
+            live_inventory=foreign_manager_ingress,
+        )
+        assert (
+            foreign_manager_smoke.returncode != 0
+            and "configuration" in foreign_manager_smoke.stderr
+        )
+        assert not foreign_manager_marker.exists()
+
+        foreign_manager_label_marker = root / "foreign-manager-label-smoke-command-ran"
+        foreign_manager_label_script = protected_smoke_script(
+            root,
+            "foreign-manager-label-smoke.sh",
+            f"touch '{foreign_manager_label_marker}'\n",
+        )
+        foreign_manager_label_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(foreign_manager_label_script)],
+            render_objects=ingress_rendered,
+            server_normalized_inventory=ingress_rendered,
+            live_inventory=inventory_with_foreign_manager_ingress_label(),
+        )
+        assert (
+            foreign_manager_label_smoke.returncode != 0
+            and "configuration" in foreign_manager_label_smoke.stderr
+        )
+        assert not foreign_manager_label_marker.exists()
+
+        before_foreign_manager_apply = (bindir / "calls.log").read_text()
+        foreign_manager_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            render_objects=ingress_rendered,
+            server_normalized_inventory=ingress_rendered,
+            live_inventory=foreign_manager_ingress,
+        )
+        assert (
+            foreign_manager_apply.returncode != 0
+            and "fields absent from the reviewed" in foreign_manager_apply.stderr
+        )
+        foreign_manager_apply_calls = (bindir / "calls.log").read_text()[
+            len(before_foreign_manager_apply):
+        ]
+        assert "apply --server-side -f" not in foreign_manager_apply_calls
+        reapplied_after_foreign_manager_rejection = run(
+            "apply", root, ["--confirm", "STAGING_APPLY"]
+        )
+        assert (
+            reapplied_after_foreign_manager_rejection.returncode == 0
+        ), reapplied_after_foreign_manager_rejection.stderr
+
         stale_smoke_marker = root / "stale-smoke-command-ran"
+        stale_smoke_script = protected_smoke_script(
+            root, "stale-smoke.sh", f"touch '{stale_smoke_marker}'\n"
+        )
         stale_smoke = run(
             "smoke",
             root,
-            ["--smoke-command", f"touch {stale_smoke_marker}"],
+            ["--smoke-command-file", str(stale_smoke_script)],
             live_inventory=inventory_with_stale_resource(),
         )
         assert stale_smoke.returncode != 0 and "managed-resource inventory" in stale_smoke.stderr
         assert not stale_smoke_marker.exists()
 
+        failing_smoke_script = protected_smoke_script(
+            root,
+            "failing-smoke.sh",
+            "printf '%s\\n' 'Authorization: Bearer abc123 X-Api-Key=key456 AWS_SECRET_ACCESS_KEY=secret789' >&2\nexit 1\n",
+        )
         smoke = run(
             "smoke",
             root,
-            [
-                "--smoke-command",
-                "sh -c 'echo Authorization: Bearer abc123 X-Api-Key=key456 AWS_SECRET_ACCESS_KEY=secret789 >&2; exit 1'",
-            ],
+            ["--smoke-command-file", str(failing_smoke_script)],
         )
         assert smoke.returncode != 0
         for leaked in ("abc123", "key456", "secret789"):
+            assert leaked not in str(smoke.args)
             assert leaked not in smoke.stderr and leaked not in (root / "tmp/evidence/evidence.json").read_text()
 
+        insecure_smoke_script = protected_smoke_script(
+            root, "insecure-smoke.sh", "exit 0\n", mode=0o644
+        )
+        insecure_smoke = run(
+            "smoke", root, ["--smoke-command-file", str(insecure_smoke_script)]
+        )
+        assert insecure_smoke.returncode != 0 and "mode 0600" in insecure_smoke.stderr
+
         marker = root / "smoke-command-ran"
+        marker_smoke_script = protected_smoke_script(
+            root, "marker-smoke.sh", f"touch '{marker}'\n"
+        )
         stale = run(
             "smoke",
             root,
-            ["--smoke-command", f"touch {marker}"],
+            ["--smoke-command-file", str(marker_smoke_script)],
             deployed_digest="registry.example/router@sha256:" + "b" * 64,
         )
         assert stale.returncode != 0 and "does not use" in stale.stderr and not marker.exists()
@@ -660,7 +854,7 @@ def main() -> int:
         not_observed = run(
             "smoke",
             root,
-            ["--smoke-command", f"touch {marker}"],
+            ["--smoke-command-file", str(marker_smoke_script)],
             deployed_observed_generation=0,
         )
         assert not_observed.returncode != 0 and "not fully observed" in not_observed.stderr and not marker.exists()
@@ -668,7 +862,7 @@ def main() -> int:
         runtime_only_smoke = run(
             "smoke",
             root,
-            ["--smoke-command", "sh -c 'exit 0'"],
+            ["--smoke-command-file", str(passing_smoke_script)],
             live_inventory=inventory_with_service_runtime_fields(),
         )
         assert runtime_only_smoke.returncode == 0, runtime_only_smoke.stderr
@@ -677,7 +871,16 @@ def main() -> int:
         configuration_drift_smoke = run(
             "smoke",
             root,
-            ["--smoke-command", f"touch {configuration_marker}"],
+            [
+                "--smoke-command-file",
+                str(
+                    protected_smoke_script(
+                        root,
+                        "configuration-drift-smoke.sh",
+                        f"touch '{configuration_marker}'\n",
+                    )
+                ),
+            ],
             live_inventory=inventory_with_service_configuration_drift(),
         )
         assert (
@@ -686,14 +889,54 @@ def main() -> int:
         )
         assert not configuration_marker.exists()
 
-        smoke_passed = run("smoke", root, ["--smoke-command", "sh -c 'exit 0'"])
+        smoke_passed = run(
+            "smoke", root, ["--smoke-command-file", str(passing_smoke_script)]
+        )
         assert smoke_passed.returncode == 0, smoke_passed.stderr
+
+        make_smoke_script = protected_smoke_script(
+            root,
+            "make-smoke.sh",
+            "private_header='Authorization: Bearer make-smoke-token'\nexit 0\n",
+        )
+        make_smoke = subprocess.run(
+            [
+                "make",
+                "eks-smoke-staging",
+                "EKS_AWS_PROFILE=test-profile",
+                f"IMAGE_DIGEST={DIGEST}",
+                f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "PATH": f"{bindir}:{os.environ['PATH']}",
+                "KUBECONFIG": str(root / "must-not-be-used"),
+                "EKS_SMOKE_COMMAND_FILE": str(make_smoke_script),
+                "FAKE_AWS_ACCOUNT": str(TARGET_POLICY["aws_account_id"]),
+                "FAKE_AWS_REGION": str(TARGET_POLICY["aws_region"]),
+                "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
+                "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
+                "FAKE_TARGET_POLICY_VALUE": target_value(),
+                "FAKE_RENDER_OBJECTS": rendered_objects(),
+                "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
+                "FAKE_LIVE_INVENTORY_FILE": str(root / "tmp/live-managed-inventory.json"),
+                "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
+                "FAKE_RENDERED_MANIFEST": rendered_manifest(),
+                "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
+            },
+        )
+        assert make_smoke.returncode == 0, make_smoke.stderr
+        assert "make-smoke-token" not in make_smoke.stdout and "make-smoke-token" not in make_smoke.stderr
+
         apply_evidence = json.loads((root / "tmp/evidence/evidence-apply.json").read_text())
         smoke_evidence = json.loads((root / "tmp/evidence/evidence-smoke.json").read_text())
         for evidence in (apply_evidence, smoke_evidence):
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["configuration_fingerprint"]))
             assert evidence["configuration_fingerprint"] != evidence["rendered_manifest_sha256"]
-            assert evidence["managed_resource_count"] == evidence["live_managed_resource_count"] == 2
+            assert evidence["managed_resource_count"] == evidence["live_managed_resource_count"] == 2, evidence
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["managed_resource_inventory_sha256"]))
             assert evidence["managed_resource_inventory_sha256"] == evidence["live_managed_resource_inventory_sha256"]
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["managed_resource_spec_sha256"]))
@@ -774,6 +1017,20 @@ def main() -> int:
         make_dry_run = subprocess.run(["make", "-n", "eks-preflight"], cwd=ROOT, text=True, capture_output=True)
         assert make_dry_run.returncode == 0, make_dry_run.stderr
         assert "--eks-cluster" not in make_dry_run.stdout and "--approved-eks-cluster" not in make_dry_run.stdout
+        make_smoke_dry_run = subprocess.run(
+            ["make", "-n", "eks-smoke-staging"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "EKS_SMOKE_COMMAND_FILE": "/secure/ci/smoke-script.sh",
+            },
+        )
+        assert make_smoke_dry_run.returncode == 0, make_smoke_dry_run.stderr
+        assert "--smoke-command-file" in make_smoke_dry_run.stdout
+        assert "EKS_SMOKE_COMMAND_FILE" in make_smoke_dry_run.stdout
+        assert "Authorization:" not in make_smoke_dry_run.stdout
         legacy_target = subprocess.run(
             [
                 "python3",
@@ -790,6 +1047,11 @@ def main() -> int:
             capture_output=True,
         )
         assert legacy_target.returncode != 0 and "unrecognized arguments" in legacy_target.stderr
+        legacy_smoke_command = run("smoke", root, ["--smoke-command", "exit 0"])
+        assert (
+            legacy_smoke_command.returncode != 0
+            and "unrecognized arguments" in legacy_smoke_command.stderr
+        )
     print("EKS delivery contract tests passed")
 
 

@@ -247,14 +247,24 @@ promotion so a rollback or replacement cannot reuse stale smoke evidence. For
 automated delivery, use a deployment-owned label to derive an allowlisted
 namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,
 PVC, PodDisruptionBudget, and ServiceAccount. Bind both resource identity and a
-normalized declarative-configuration fingerprint; exclude only documented
-Kubernetes runtime allocations, not routing or security settings. Verify both
-before smoke and promotion. Do not use a broad prune: a removed or renamed
-resource should fail delivery until it is removed through a separately approved
-migration. Treat rollback as an artifact deployment too: require an explicitly
-approved immutable digest, resolve a matching owned historical revision before
-undoing, and verify the restored workload's live digest and rollout identity
-before recording rollback success.
+normalized declarative-configuration fingerprint derived from the isolated
+client-rendered manifest. Treat server-side dry-run output only as a candidate
+live object to validate against that desired fingerprint; never let fields
+preserved by another field manager become expected configuration. Exclude only
+documented Kubernetes runtime allocations, not routing or security settings,
+and reject unexpected live labels, annotations, or spec fields before a
+mutation. Verify both before smoke and promotion. Do not use a broad prune: a
+removed or renamed resource should fail delivery until it is removed through a
+separately approved migration. Treat rollback as an artifact deployment too:
+require an explicitly approved immutable digest, resolve a matching owned
+historical revision before undoing, and verify the restored workload's live
+digest and rollout identity before recording rollback success.
+
+For a credentialed deployment smoke, keep the command in an owner-only
+mode-`0600` shell script or equivalent protected CI file, and pass only its
+path to the runner. Do not interpolate command content, router tokens, or
+authorization headers into Make recipes, command arguments, CI logs, or
+evidence files. Capture diagnostic output only in the protected runner.
 
 Check rollout:
 

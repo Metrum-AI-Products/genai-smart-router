@@ -18,7 +18,10 @@ EKS_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 EKS_EVIDENCE_DIR ?= tmp/eks-evidence
-EKS_SMOKE_COMMAND ?=
+# Export only the path to an owner-only (0600) local/CI shell script. Its
+# contents must never be passed through Make expansion or a Python argv value.
+EKS_SMOKE_COMMAND_FILE ?=
+export EKS_SMOKE_COMMAND_FILE
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
 EKS_ARGS = --aws-profile "$(EKS_AWS_PROFILE)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
 
@@ -71,7 +74,7 @@ eks-help:
 	@echo "  eks-plan               read-only: render plus server-side dry-run -> evidence"
 	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
-	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND"
+	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND_FILE (mode 0600)"
 	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY and IMAGE_DIGEST"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
@@ -94,7 +97,8 @@ eks-rollout-status:
 	$(EKS_DELIVERY) status $(EKS_ARGS)
 
 eks-smoke-staging:
-	$(EKS_DELIVERY) smoke $(EKS_ARGS) --smoke-command "$(EKS_SMOKE_COMMAND)"
+	@test -n "$${EKS_SMOKE_COMMAND_FILE:-}" || { echo "EKS_SMOKE_COMMAND_FILE must name a protected mode-0600 smoke script" >&2; exit 2; }
+	@$(EKS_DELIVERY) smoke $(EKS_ARGS) --smoke-command-file "$${EKS_SMOKE_COMMAND_FILE}"
 
 eks-rollback-staging:
 	$(EKS_DELIVERY) rollback $(EKS_ARGS)

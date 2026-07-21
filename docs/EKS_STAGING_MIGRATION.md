@@ -183,12 +183,18 @@ context. See `make eks-help` for the complete target list and required inputs.
    The delivery role must also have namespace-scoped `list` permission only on
    `deployments`, `ingresses`, `networkpolicies`,
    `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
-   `serviceaccounts`. The delivery contract builds a label-selected inventory
-   of exactly those rendered resources and records only identity and normalized
-   declarative-configuration fingerprints. It removes only documented
-   API-owned runtime fields (for example Service cluster allocation and a PVC
-   binding name); routing, security, labels, annotations, and other declared
-   resource settings must exactly match the rendered manifest.
+   `serviceaccounts`. The delivery contract builds its expected inventory from
+   the isolated client-rendered manifest, not from Server-Side Apply output.
+   Server-side dry-run is an acceptance/field-ownership check only: its object
+   output is compared as a candidate live object and never becomes the expected
+   inventory because it can include fields preserved from another manager. Live
+   objects are compared with that desired baseline after removing only
+   documented API-owned runtime fields (for example Service cluster allocation
+   and a PVC binding name) and exact, omitted Kubernetes defaults.
+   Routing, security, labels, annotations, admission additions, and all other
+   declared resource settings must exactly match the reviewed manifest. A new
+   admission-managed field must be represented in the reviewed manifest or it
+   will fail closed rather than being absorbed into the expected fingerprint.
    It does not use broad prune. If an old managed object is absent from a new
    manifest (for example, a removed or renamed Ingress, Service, or
    NetworkPolicy), apply stops before mutation and the object must be removed
@@ -204,12 +210,14 @@ context. See `make eks-help` for the complete target list and required inputs.
    A reviewed change record is the desired-state reconciliation authorization;
    `EKS_CONFIRM=STAGING_APPLY` is only an explicit operator acknowledgement of
    the mutation, never a substitute for the protected policy/SSM boundary. The
-   apply may repair a pre-existing configuration difference so the approved
-   manifest becomes live. The contract records safe before-apply
-   identity/configuration fingerprints, then refuses passed apply, smoke, or
-   promotion evidence unless the live objects exactly match the reviewed
-   configuration. Treat an unexpected pre-apply fingerprint difference as an
-   audit/change-control signal; do not add a caller-controlled bypass for it.
+   apply may repair a changed value at a field already represented by the
+   reviewed manifest, but it stops before mutation when live state contains an
+   additional label, annotation, spec field, or list item. The contract records
+   safe before-apply identity/configuration fingerprints, then refuses passed
+   apply, smoke, or promotion evidence unless the live objects exactly match
+   the reviewed configuration. Treat an unexpected pre-apply fingerprint
+   difference as an audit/change-control signal; do not add a caller-controlled
+   bypass for it.
 3. Apply only after review, using the explicit staging confirmation:
 
    ```bash
@@ -258,19 +266,37 @@ context. See `make eks-help` for the complete target list and required inputs.
    targets without `EKS_LINKERD_POLICY_OUTPUT`.
 5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
-6. Invoke `make eks-smoke-staging` with the same approved profile and immutable
-   digest plus an `EKS_SMOKE_COMMAND` that points to a protected local/CI
-   script. Do not put a caller credential in the Makefile, command line,
-   evidence, or shell history. Validate `/healthz`, `/readyz`, `/docs/`, and
-   `/version` through both the Service and `https://smartrouter.apps.metrum.ai`.
+6. Create an owner-only, non-symlink mode-`0600` POSIX shell script in the
+   protected local/CI workspace, then invoke `make eks-smoke-staging` with the
+   same approved profile and immutable digest plus its path in the inherited
+   `EKS_SMOKE_COMMAND_FILE` environment variable:
+
+   ```bash
+   chmod 600 /secure/ci/smartrouter-staging-smoke.sh
+   EKS_SMOKE_COMMAND_FILE=/secure/ci/smartrouter-staging-smoke.sh \
+     make eks-smoke-staging \
+       EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+       IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+   ```
+
+   The Make recipe is non-echoed and passes only the script path to the
+   delivery process, which invokes `/bin/sh <path>` without reading, printing,
+   hashing, or storing the command content. Smoke stdout/stderr is not copied
+   into evidence on failure. Keep credentials in the secure runner/secret
+   source rather than an inline command, and use that private runner log for
+   diagnostics; do not put a caller credential in Make variables, command
+   lines, evidence, or shell history.
+   Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
+   Service and `https://smartrouter.apps.metrum.ai`.
 7. Run `make eks-promotion-plan IMAGE_DIGEST='<the same immutable digest>'`
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
-   target, digest, rendered configuration fingerprint, live Deployment
-   pod-template/generation state, exact label-selected managed-resource
-   identity, and normalized configuration fingerprints. It rechecks the current
-   rollout and resource configuration before producing review-only evidence and
-   cannot apply to production.
+   target, digest, rendered
+   configuration fingerprint, and live Deployment pod-template/generation
+   state plus the exact label-selected managed-resource identity and normalized
+   configuration fingerprints. It rechecks the current rollout and resource
+   configuration before producing review-only evidence and cannot apply to
+   production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.

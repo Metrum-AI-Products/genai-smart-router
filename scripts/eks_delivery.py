@@ -10,16 +10,18 @@ the protected smoke command.  There is no production action.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +112,34 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
+def protected_smoke_command_file(value: str) -> Path:
+    """Return an owner-only shell script path without reading its contents.
+
+    Smoke requests can require caller credentials, so command content is never
+    a Make expansion or Python argument. The delivery process invokes `/bin/sh`
+    with this protected file path, never with its content. The file must be a
+    real owner-only regular file; a symlink or broader mode could redirect a
+    privileged delivery invocation or expose its command content.
+    """
+
+    if not value:
+        fail("EKS_SMOKE_COMMAND_FILE is required and must name a protected mode 0600 shell script")
+    path = Path(value).expanduser()
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise RuntimeError("EKS_SMOKE_COMMAND_FILE is not an accessible protected file") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        fail("EKS_SMOKE_COMMAND_FILE must be a regular non-symlink file")
+    if stat.S_IMODE(metadata.st_mode) != 0o600:
+        fail("EKS_SMOKE_COMMAND_FILE must have mode 0600")
+    if metadata.st_uid != os.geteuid():
+        fail("EKS_SMOKE_COMMAND_FILE must be owned by the invoking user")
+    if metadata.st_size == 0:
+        fail("EKS_SMOKE_COMMAND_FILE must not be empty")
+    return path.resolve()
+
+
 def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: bool = False) -> str:
     proc = subprocess.run(args, env=env, text=True, capture_output=True)
     if proc.returncode:
@@ -164,6 +194,11 @@ class ManagedResourceConfiguration:
 
     resource: ManagedResource
     configuration_sha256: str
+    # This exists only while the local delivery process is running. It lets the
+    # live-read path strip a very small, reviewed set of API-owned defaults
+    # only when the reviewed client-rendered manifest omitted them. It is never
+    # logged, placed in evidence, or used for ordering/hashing this value.
+    normalized_configuration: dict[str, object] = field(compare=False, repr=False)
 
 
 def inventory_fingerprint(inventory: tuple[ManagedResource, ...]) -> str:
@@ -306,6 +341,7 @@ def read_checked_in_target_policy() -> TargetPolicy:
 class Delivery:
     def __init__(self, args: argparse.Namespace):
         self.args = args
+        self.smoke_command_file: Path | None = None
         self._validate_inputs()
         self.evidence_dir = Path(args.evidence_dir).resolve()
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -334,6 +370,8 @@ class Delivery:
                 fail("IMAGE_DIGEST must be a lower-case immutable image@sha256:<64 hex> reference")
         if self.args.action in {"apply", "rollback"} and self.args.confirm != "STAGING_APPLY":
             fail("mutating action requires EKS_CONFIRM=STAGING_APPLY")
+        if self.args.action == "smoke":
+            self.smoke_command_file = protected_smoke_command_file(self.args.smoke_command_file)
 
     def event(self, name: str, **fields: object) -> None:
         self.evidence["events"].append({"name": name, **fields})
@@ -629,9 +667,229 @@ class Delivery:
                 normalized.pop(field, None)
         return normalized
 
+    @staticmethod
+    def _mapping_at(value: dict[str, object], path: tuple[str, ...]) -> dict[str, object] | None:
+        current: object = value
+        for segment in path:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(segment)
+        return current if isinstance(current, dict) else None
+
+    @classmethod
+    def _drop_defaulted_mapping_field(
+        cls,
+        live: dict[str, object],
+        expected: dict[str, object],
+        path: tuple[str, ...],
+        default: object,
+    ) -> None:
+        """Drop one exact API default only when the manifest omitted it.
+
+        This is deliberately not a generic "ignore unknown fields" helper.
+        Any live label, annotation, or spec field that is not an exact entry in
+        this small reviewed list remains in the hash and therefore fails
+        closed.  The expected value always comes from client-rendered manifest
+        content, never from a server-side apply response.
+        """
+
+        live_parent = cls._mapping_at(live, path[:-1])
+        expected_parent = cls._mapping_at(expected, path[:-1])
+        field_name = path[-1]
+        if (
+            live_parent is not None
+            and expected_parent is not None
+            and field_name not in expected_parent
+            and live_parent.get(field_name) == default
+        ):
+            live_parent.pop(field_name)
+
+    @classmethod
+    def normalized_live_managed_resource(
+        cls,
+        resource: dict[str, Any],
+        identity: ManagedResource,
+        expected: dict[str, object],
+        *,
+        source: str,
+    ) -> dict[str, object]:
+        """Normalize a live resource against the isolated desired baseline.
+
+        `kubectl apply --server-side --dry-run=server` is intentionally not
+        used as that baseline: Server-Side Apply can return fields preserved
+        from other field managers.  The reviewed client-rendered manifest is
+        authoritative.  This function removes only exact Kubernetes API
+        defaults that were absent from that manifest; all other additions and
+        changes, including foreign-manager labels/annotations, remain visible
+        to the configuration fingerprint.
+        """
+
+        normalized = copy.deepcopy(
+            cls.normalized_managed_resource(resource, identity, source=source)
+        )
+
+        if identity.kind == "Service":
+            for path, default in (
+                (("spec", "internalTrafficPolicy"), "Cluster"),
+                (("spec", "ipFamilyPolicy"), "SingleStack"),
+                (("spec", "sessionAffinity"), "None"),
+            ):
+                cls._drop_defaulted_mapping_field(normalized, expected, path, default)
+            live_spec = cls._mapping_at(normalized, ("spec",))
+            expected_spec = cls._mapping_at(expected, ("spec",))
+            if (
+                live_spec is not None
+                and expected_spec is not None
+                and "ipFamilies" not in expected_spec
+                and live_spec.get("ipFamilies") in (["IPv4"], ["IPv6"])
+            ):
+                # The allocation family is chosen by the cluster when omitted.
+                # An explicit manifest value stays in the fingerprint.
+                live_spec.pop("ipFamilies")
+            live_ports = live_spec.get("ports") if live_spec is not None else None
+            expected_ports = expected_spec.get("ports") if expected_spec is not None else None
+            if (
+                isinstance(live_ports, list)
+                and isinstance(expected_ports, list)
+                and len(live_ports) == len(expected_ports)
+            ):
+                for live_port, expected_port in zip(live_ports, expected_ports):
+                    if (
+                        isinstance(live_port, dict)
+                        and isinstance(expected_port, dict)
+                        and "protocol" not in expected_port
+                        and live_port.get("protocol") == "TCP"
+                    ):
+                        live_port.pop("protocol")
+        elif identity.kind == "Deployment":
+            for path, default in (
+                (("spec", "progressDeadlineSeconds"), 600),
+                (("spec", "revisionHistoryLimit"), 10),
+                (("spec", "paused"), False),
+                (("spec", "template", "spec", "dnsPolicy"), "ClusterFirst"),
+                (("spec", "template", "spec", "enableServiceLinks"), True),
+                (("spec", "template", "spec", "hostIPC"), False),
+                (("spec", "template", "spec", "hostNetwork"), False),
+                (("spec", "template", "spec", "hostPID"), False),
+                (("spec", "template", "spec", "preemptionPolicy"), "PreemptLowerPriority"),
+                (("spec", "template", "spec", "priority"), 0),
+                (("spec", "template", "spec", "restartPolicy"), "Always"),
+                (("spec", "template", "spec", "schedulerName"), "default-scheduler"),
+                (("spec", "template", "spec", "terminationGracePeriodSeconds"), 30),
+            ):
+                cls._drop_defaulted_mapping_field(normalized, expected, path, default)
+            live_spec = cls._mapping_at(normalized, ("spec",))
+            expected_spec = cls._mapping_at(expected, ("spec",))
+            default_strategy = {
+                "rollingUpdate": {"maxSurge": "25%", "maxUnavailable": "25%"},
+                "type": "RollingUpdate",
+            }
+            if (
+                live_spec is not None
+                and expected_spec is not None
+                and "strategy" not in expected_spec
+                and live_spec.get("strategy") == default_strategy
+            ):
+                live_spec.pop("strategy")
+            live_pod_spec = cls._mapping_at(normalized, ("spec", "template", "spec"))
+            expected_pod_spec = cls._mapping_at(expected, ("spec", "template", "spec"))
+            live_containers = live_pod_spec.get("containers") if live_pod_spec is not None else None
+            expected_containers = (
+                expected_pod_spec.get("containers") if expected_pod_spec is not None else None
+            )
+            if isinstance(live_containers, list) and isinstance(expected_containers, list):
+                expected_by_name = {
+                    item.get("name"): item
+                    for item in expected_containers
+                    if isinstance(item, dict) and isinstance(item.get("name"), str)
+                }
+                for live_container in live_containers:
+                    if not isinstance(live_container, dict):
+                        continue
+                    expected_container = expected_by_name.get(live_container.get("name"))
+                    if not isinstance(expected_container, dict):
+                        continue
+                    for field_name, default in (
+                        ("terminationMessagePath", "/dev/termination-log"),
+                        ("terminationMessagePolicy", "File"),
+                    ):
+                        if (
+                            field_name not in expected_container
+                            and live_container.get(field_name) == default
+                        ):
+                            live_container.pop(field_name)
+        elif identity.kind == "PersistentVolumeClaim":
+            cls._drop_defaulted_mapping_field(
+                normalized, expected, ("spec", "volumeMode"), "Filesystem"
+            )
+        elif identity.kind == "PodDisruptionBudget":
+            cls._drop_defaulted_mapping_field(
+                normalized, expected, ("spec", "unhealthyPodEvictionPolicy"), "IfHealthyBudget"
+            )
+        elif identity.kind == "NetworkPolicy":
+            live_spec = cls._mapping_at(normalized, ("spec",))
+            expected_spec = cls._mapping_at(expected, ("spec",))
+            if (
+                live_spec is not None
+                and expected_spec is not None
+                and "policyTypes" not in expected_spec
+            ):
+                default_policy_types: list[str] = []
+                if "ingress" in expected_spec or "egress" not in expected_spec:
+                    default_policy_types.append("Ingress")
+                if "egress" in expected_spec:
+                    default_policy_types.append("Egress")
+                if live_spec.get("policyTypes") == default_policy_types:
+                    live_spec.pop("policyTypes")
+
+        return normalized
+
+    @staticmethod
+    def first_unreviewed_live_configuration_path(
+        live: object, expected: object, path: str = "$"
+    ) -> str | None:
+        """Return the first live-only configuration path, if any.
+
+        Before an apply, changed values at a field already represented by the
+        reviewed manifest may be reconciled. A new label, annotation, spec
+        field, or list item is different: Server-Side Apply may preserve it
+        under another manager, so the delivery contract rejects it rather than
+        letting the field become an implicit part of the deployment.
+        """
+
+        if isinstance(live, dict):
+            if not isinstance(expected, dict):
+                return path
+            for key in sorted(live):
+                if key not in expected:
+                    return f"{path}.{key}"
+                nested = Delivery.first_unreviewed_live_configuration_path(
+                    live[key], expected[key], f"{path}.{key}"
+                )
+                if nested is not None:
+                    return nested
+            return None
+        if isinstance(live, list):
+            if not isinstance(expected, list):
+                return path
+            if len(live) > len(expected):
+                return path
+            for index, value in enumerate(live):
+                nested = Delivery.first_unreviewed_live_configuration_path(
+                    value, expected[index], f"{path}[{index}]"
+                )
+                if nested is not None:
+                    return nested
+        return None
+
     @classmethod
     def inventory_from_resources(
-        cls, resources: list[dict[str, Any]], target: TargetPolicy, *, source: str
+        cls,
+        resources: list[dict[str, Any]],
+        target: TargetPolicy,
+        *,
+        source: str,
+        expected_configurations: dict[ManagedResource, dict[str, object]] | None = None,
     ) -> tuple[ManagedResourceConfiguration, ...]:
         inventory: list[ManagedResourceConfiguration] = []
         seen: set[ManagedResource] = set()
@@ -651,10 +909,18 @@ class Delivery:
                 fail(f"{source} contains a duplicate managed resource")
             seen.add(identity)
             normalized = cls.normalized_managed_resource(resource, identity, source=source)
+            if expected_configurations is not None and identity in expected_configurations:
+                normalized = cls.normalized_live_managed_resource(
+                    resource,
+                    identity,
+                    expected_configurations[identity],
+                    source=source,
+                )
             inventory.append(
                 ManagedResourceConfiguration(
                     resource=identity,
                     configuration_sha256=hashlib.sha256(canonical_json_bytes(normalized)).hexdigest(),
+                    normalized_configuration=normalized,
                 )
             )
         return tuple(sorted(inventory))
@@ -699,15 +965,18 @@ class Delivery:
             fail("rendered manifest must contain exactly one approved router Deployment")
         return inventory
 
-    def server_normalized_managed_inventory(
+    def verify_server_side_manifest(
         self, manifest: Path, env: dict[str, str], target: TargetPolicy
-    ) -> tuple[ManagedResourceConfiguration, ...]:
-        """Resolve API defaults/admission before fingerprinting live config.
+    ) -> None:
+        """Verify server acceptance without using its object output as desired state.
 
-        Comparing raw client-rendered YAML with a live object would mistake
-        Kubernetes defaults (for example Deployment strategy defaults) for
-        drift. A server-side dry-run is non-mutating and gives the same
-        defaulted/admitted desired object shape that server-side apply uses.
+        Server-Side Apply dry-run is useful for detecting API validation and
+        field-ownership conflicts before a mutation. It is not a source of
+        truth for the desired fingerprint because the API may merge fields
+        owned by other managers into its response. The client-rendered
+        inventory remains authoritative; dry-run output is treated only as a
+        candidate live object that must already match it after narrow API
+        default normalization.
         """
 
         payload = command(
@@ -725,17 +994,27 @@ class Delivery:
             env,
             raw=True,
         )
-        resources = self._json_objects(
-            payload, source="kubectl server-side manifest normalization"
+        resources = self._json_objects(payload, source="kubectl server-side manifest validation")
+        expected_configurations = {
+            item.resource: item.normalized_configuration for item in self.managed_inventory
+        }
+        candidate_inventory = self.inventory_from_resources(
+            resources,
+            target,
+            source="kubectl server-side manifest validation",
+            expected_configurations=expected_configurations,
         )
-        inventory = self.inventory_from_resources(
-            resources, target, source="server-normalized rendered manifest"
-        )
-        if managed_resource_identities(inventory) != managed_resource_identities(
+        if managed_resource_identities(candidate_inventory) != managed_resource_identities(
             self.managed_inventory
         ):
-            fail("server-side manifest normalization changed the managed-resource inventory")
-        return inventory
+            fail("server-side manifest validation changed the managed-resource inventory")
+        if managed_resource_spec_fingerprint(candidate_inventory) != managed_resource_spec_fingerprint(
+            self.managed_inventory
+        ):
+            fail(
+                "server-side manifest validation contains configuration absent from the reviewed staging manifest"
+            )
+        self.event("server_side_manifest_validation", result="passed")
 
     def render(self, env: dict[str, str], temporary_dir: Path, target: TargetPolicy) -> Path:
         source_root = target.kustomize_overlay.parents[2]
@@ -762,9 +1041,7 @@ class Delivery:
         output.write_bytes(rendered.encode("utf-8"))
         self.managed_inventory = self.validate_rendered_manifest(output, env, target)
         if self.args.action in {"plan", "apply", "smoke", "promotion-plan"}:
-            self.managed_inventory = self.server_normalized_managed_inventory(
-                output, env, target
-            )
+            self.verify_server_side_manifest(output, env, target)
         # The manifest is only a temporary kubectl input. Evidence retains its
         # checksum, never its contents. The configuration fingerprint replaces
         # the exact router image digest with a fixed marker before hashing so
@@ -817,8 +1094,14 @@ class Delivery:
         resources = self._json_objects(
             payload, source="live managed-resource inventory", allow_empty=True
         )
+        expected_configurations = {
+            item.resource: item.normalized_configuration for item in self.managed_inventory
+        }
         return self.inventory_from_resources(
-            resources, target, source="live managed-resource inventory"
+            resources,
+            target,
+            source="live managed-resource inventory",
+            expected_configurations=expected_configurations,
         )
 
     def record_live_managed_inventory(
@@ -863,6 +1146,19 @@ class Delivery:
         if stale:
             self.record_live_managed_inventory(live_inventory, "before_apply", "stale_resources")
             fail("live managed-resource inventory contains stale resources not in the rendered staging manifest")
+        expected_configurations = {
+            item.resource: item.normalized_configuration for item in self.managed_inventory
+        }
+        for item in live_inventory:
+            unexpected_path = self.first_unreviewed_live_configuration_path(
+                item.normalized_configuration,
+                expected_configurations[item.resource],
+            )
+            if unexpected_path is not None:
+                self.record_live_managed_inventory(live_inventory, "before_apply", "unreviewed_fields")
+                fail(
+                    "live managed-resource configuration contains fields absent from the reviewed staging manifest"
+                )
         self.record_live_managed_inventory(live_inventory, "before_apply", "no_stale_resources")
 
     def verify_managed_inventory(
@@ -1095,7 +1391,6 @@ class Delivery:
                 )
                 self.event("rollout_status", resources=scrub(status))
             elif self.args.action == "plan":
-                command(["kubectl", "apply", "--server-side", "--dry-run=server", "-f", str(manifest)], env, quiet=True)
                 self.event("server_side_dry_run", result="passed")
             elif self.args.action == "apply":
                 # Never use broad prune. If a previous overlay left an
@@ -1125,13 +1420,22 @@ class Delivery:
                 self.verify_live_deployment(env, target, "after_rollback")
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
-                if not self.args.smoke_command:
-                    fail("EKS_SMOKE_COMMAND is required and is never logged")
+                if self.smoke_command_file is None:
+                    fail("EKS_SMOKE_COMMAND_FILE is required")
                 self.verify_managed_inventory(env, target, "before_smoke")
                 before_smoke = self.verify_live_deployment(env, target, "before_smoke")
-                proc = subprocess.run(self.args.smoke_command, shell=True, env=env, text=True, capture_output=True)
+                proc = subprocess.run(
+                    ["/bin/sh", str(self.smoke_command_file)],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
                 if proc.returncode:
-                    fail(f"protected staging smoke failed (exit {proc.returncode}): {scrub(proc.stderr or proc.stdout)}")
+                    # Do not persist or print output from a credential-bearing
+                    # protected smoke script.  Its private runner/CI log is the
+                    # diagnostic source; contract evidence records only the
+                    # exit status through this redacted error.
+                    fail(f"protected staging smoke failed (exit {proc.returncode}); output is not recorded")
                 self.verify_managed_inventory(env, target, "after_smoke")
                 after_smoke = self.verify_live_deployment(env, target, "after_smoke")
                 if before_smoke != after_smoke:
@@ -1192,13 +1496,15 @@ class Delivery:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__)
+    # Do not let the removed --smoke-command form abbreviate the protected
+    # --smoke-command-file argument and reintroduce command content in argv.
+    p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     p.add_argument("action", choices=("preflight", "status", "render", "plan", "apply", "rollback", "smoke", "promotion-plan"))
     p.add_argument("--aws-profile", required=True)
     p.add_argument("--image-digest", default="")
     p.add_argument("--confirm", default="")
     p.add_argument("--evidence-dir", required=True)
-    p.add_argument("--smoke-command", default="")
+    p.add_argument("--smoke-command-file", default="")
     return p
 
 
