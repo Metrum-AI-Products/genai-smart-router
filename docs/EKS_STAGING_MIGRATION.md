@@ -266,15 +266,20 @@ context. See `make eks-help` for the complete target list and required inputs.
    targets without `EKS_LINKERD_POLICY_OUTPUT`.
 5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
-6. Create an owner-only, non-symlink mode-`0600` POSIX shell script in the
-   protected local/CI workspace, then invoke `make eks-smoke-staging` with the
-   same approved profile and immutable digest plus its path in the inherited
+6. A protected smoke script is arbitrary operator-supplied code, so treat it
+   as a potentially mutating staging action—not a read-only command. It uses
+   the same approved delivery identity and therefore requires the same explicit
+   `EKS_CONFIRM=STAGING_APPLY` acknowledgement as apply and rollback. Create an
+   owner-only, non-symlink mode-`0600` POSIX shell script in the protected
+   local/CI workspace, then invoke `make eks-smoke-staging` with the same
+   approved profile and immutable digest plus its path in the inherited
    `EKS_SMOKE_COMMAND_FILE` environment variable:
 
    ```bash
    chmod 600 /secure/ci/smartrouter-staging-smoke.sh
    EKS_SMOKE_COMMAND_FILE=/secure/ci/smartrouter-staging-smoke.sh \
      make eks-smoke-staging \
+       EKS_CONFIRM=STAGING_APPLY \
        EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
        IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
@@ -296,9 +301,11 @@ context. See `make eks-help` for the complete target list and required inputs.
    target, digest, rendered
    configuration fingerprint, and live Deployment pod-template/generation
    state plus the exact label-selected managed-resource identity and normalized
-   configuration fingerprints. It rechecks the current rollout and resource
-   configuration before producing review-only evidence and cannot apply to
-   production.
+   configuration fingerprints. A smoke must accept the exact passed apply
+   evidence first; a later apply invalidates it, so promotion can use only a
+   smoke that ran after its accepted apply. It rechecks the current rollout and
+   resource configuration before producing review-only evidence and cannot
+   apply to production.
 8. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.

@@ -262,9 +262,13 @@ digest and rollout identity before recording rollback success.
 
 For a credentialed deployment smoke, keep the command in an owner-only
 mode-`0600` shell script or equivalent protected CI file, and pass only its
-path to the runner. The EKS runner opens the validated non-symlink file once
-and executes that bound descriptor, so a later path replacement cannot alter
-the command. Do not interpolate command content, router tokens, or
+path to the runner. Treat an arbitrary smoke script as a potentially mutating
+staging action: it requires the same explicit confirmation and protected target
+boundary as apply and rollback. The EKS runner opens the validated non-symlink
+file once and executes that bound descriptor, so a later path replacement
+cannot alter the command. Smoke evidence must bind to a passed apply that
+predates it; any later apply invalidates the smoke for promotion. Do not
+interpolate command content, router tokens, or
 authorization headers into Make recipes, command arguments, CI logs, or
 evidence files. Capture diagnostic output only in the protected runner.
 

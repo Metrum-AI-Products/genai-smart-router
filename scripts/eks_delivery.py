@@ -74,6 +74,30 @@ MANAGED_RESOURCE_TYPES = (
     "services",
     "serviceaccounts",
 )
+EVIDENCE_BINDING_FIELDS = (
+    "environment",
+    "aws_account_id",
+    "aws_region",
+    "ecr_repository_uri",
+    "eks_cluster",
+    "k8s_namespace",
+    "kustomize_overlay",
+    "deployment_name",
+    "container_name",
+    "target_policy_arn",
+    "target_policy_sha256",
+    "image_digest",
+    "configuration_fingerprint",
+    "managed_resource_count",
+    "managed_resource_inventory_sha256",
+    "managed_resource_spec_sha256",
+    "live_managed_resource_count",
+    "live_managed_resource_inventory_sha256",
+    "live_managed_resource_spec_sha256",
+    "live_deployment_generation",
+    "live_deployment_observed_generation",
+    "live_pod_template_sha256",
+)
 # Kubernetes writes these fields after accepting a declarative resource. They
 # do not describe the reviewed configuration and are deliberately excluded
 # from the safe per-resource fingerprint below. Keep this allowlist narrow:
@@ -383,13 +407,80 @@ class Delivery:
         }:
             if not self.args.image_digest or not DIGEST.fullmatch(self.args.image_digest):
                 fail("IMAGE_DIGEST must be a lower-case immutable image@sha256:<64 hex> reference")
-        if self.args.action in {"apply", "rollback"} and self.args.confirm != "STAGING_APPLY":
-            fail("mutating action requires EKS_CONFIRM=STAGING_APPLY")
+        if self.args.action in {"apply", "rollback", "smoke"} and self.args.confirm != "STAGING_APPLY":
+            fail("potentially mutating action requires EKS_CONFIRM=STAGING_APPLY")
         if self.args.action == "smoke":
             self.smoke_command_fd = open_protected_smoke_command_file(self.args.smoke_command_file)
 
     def event(self, name: str, **fields: object) -> None:
         self.evidence["events"].append({"name": name, **fields})
+
+    @staticmethod
+    def evidence_sha256(record: dict[str, object]) -> str:
+        """Return a stable, non-secret binding for one evidence record."""
+
+        return hashlib.sha256(canonical_json_bytes(record)).hexdigest()
+
+    @staticmethod
+    def evidence_timestamp(record: dict[str, object], action: str) -> dt.datetime:
+        value = record.get("timestamp")
+        if not isinstance(value, str):
+            fail(f"staging {action} evidence has no valid timestamp")
+        try:
+            timestamp = dt.datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise RuntimeError(f"staging {action} evidence has an invalid timestamp") from exc
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            fail(f"staging {action} evidence timestamp must include a timezone")
+        return timestamp.astimezone(dt.timezone.utc)
+
+    def passed_action_evidence(self, action: str, required_event: str) -> dict[str, object]:
+        evidence_file = self.evidence_dir / f"evidence-{action}.json"
+        if not evidence_file.is_file():
+            fail(f"passed staging {action} evidence is required")
+        try:
+            record = json.loads(evidence_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"staging {action} evidence is invalid JSON") from exc
+        if not isinstance(record, dict):
+            fail(f"staging {action} evidence is not an object")
+        events = record.get("events", [])
+        if record.get("action") != action or record.get("outcome") != "passed" or not any(
+            isinstance(event, dict) and event.get("name") == required_event for event in events
+        ):
+            fail(f"staging {action} evidence is incomplete or not passed")
+        self.evidence_timestamp(record, action)
+        return record
+
+    def require_accepted_apply_evidence(self) -> None:
+        """Bind a smoke to the exact passed apply it is about to exercise.
+
+        A later apply rewrites ``evidence-apply.json`` and therefore changes
+        this digest. Promotion then fails until a smoke completes after that
+        apply; matching resource fingerprints alone are not sufficient proof
+        of ordering.
+        """
+
+        apply_record = self.passed_action_evidence("apply", "apply")
+        for key in EVIDENCE_BINDING_FIELDS:
+            if apply_record.get(key) != self.evidence.get(key):
+                fail(f"accepted staging apply evidence disagrees on {key}")
+        apply_timestamp = self.evidence_timestamp(apply_record, "apply")
+        smoke_timestamp = self.evidence_timestamp(self.evidence, "smoke")
+        if apply_timestamp >= smoke_timestamp:
+            fail("accepted staging apply evidence must predate the protected smoke")
+        apply_sha256 = self.evidence_sha256(apply_record)
+        self.evidence.update(
+            {
+                "accepted_apply_evidence_sha256": apply_sha256,
+                "accepted_apply_timestamp": apply_record["timestamp"],
+            }
+        )
+        self.event(
+            "accepted_apply_evidence",
+            result="matched-and-predates-smoke",
+            apply_evidence_sha256=apply_sha256,
+        )
 
     def write_evidence(self, outcome: str, error: str | None = None) -> None:
         self.evidence["outcome"] = outcome
@@ -418,6 +509,8 @@ class Delivery:
             "live_managed_resource_count",
             "live_managed_resource_inventory_sha256",
             "live_managed_resource_spec_sha256",
+            "accepted_apply_evidence_sha256",
+            "accepted_apply_timestamp",
             "rollback_target_revision",
             "live_deployment_generation",
             "live_deployment_observed_generation",
@@ -808,31 +901,77 @@ class Delivery:
                 live_spec.pop("strategy")
             live_pod_spec = cls._mapping_at(normalized, ("spec", "template", "spec"))
             expected_pod_spec = cls._mapping_at(expected, ("spec", "template", "spec"))
-            live_containers = live_pod_spec.get("containers") if live_pod_spec is not None else None
-            expected_containers = (
-                expected_pod_spec.get("containers") if expected_pod_spec is not None else None
-            )
-            if isinstance(live_containers, list) and isinstance(expected_containers, list):
-                expected_by_name = {
-                    item.get("name"): item
-                    for item in expected_containers
-                    if isinstance(item, dict) and isinstance(item.get("name"), str)
-                }
-                for live_container in live_containers:
-                    if not isinstance(live_container, dict):
+            if live_pod_spec is not None and expected_pod_spec is not None:
+                # Keep this list deliberately small and exact.  These are API
+                # defaults for nested Container/Probe fields; an unlisted
+                # field, a non-default value, or an additional list item still
+                # remains in the fingerprint and fails closed.
+                for container_field in ("containers", "initContainers"):
+                    live_containers = live_pod_spec.get(container_field)
+                    expected_containers = expected_pod_spec.get(container_field)
+                    if not isinstance(live_containers, list) or not isinstance(expected_containers, list):
                         continue
-                    expected_container = expected_by_name.get(live_container.get("name"))
-                    if not isinstance(expected_container, dict):
-                        continue
-                    for field_name, default in (
-                        ("terminationMessagePath", "/dev/termination-log"),
-                        ("terminationMessagePolicy", "File"),
-                    ):
-                        if (
-                            field_name not in expected_container
-                            and live_container.get(field_name) == default
+                    expected_by_name = {
+                        item.get("name"): item
+                        for item in expected_containers
+                        if isinstance(item, dict) and isinstance(item.get("name"), str)
+                    }
+                    for live_container in live_containers:
+                        if not isinstance(live_container, dict):
+                            continue
+                        expected_container = expected_by_name.get(live_container.get("name"))
+                        if not isinstance(expected_container, dict):
+                            continue
+                        for field_name, default in (
+                            ("terminationMessagePath", "/dev/termination-log"),
+                            ("terminationMessagePolicy", "File"),
                         ):
-                            live_container.pop(field_name)
+                            if (
+                                field_name not in expected_container
+                                and live_container.get(field_name) == default
+                            ):
+                                live_container.pop(field_name)
+                        live_ports = live_container.get("ports")
+                        expected_ports = expected_container.get("ports")
+                        if (
+                            isinstance(live_ports, list)
+                            and isinstance(expected_ports, list)
+                            and len(live_ports) == len(expected_ports)
+                        ):
+                            for live_port, expected_port in zip(live_ports, expected_ports):
+                                if (
+                                    isinstance(live_port, dict)
+                                    and isinstance(expected_port, dict)
+                                    and "protocol" not in expected_port
+                                    and live_port.get("protocol") == "TCP"
+                                ):
+                                    live_port.pop("protocol")
+                        for probe_name in ("livenessProbe", "readinessProbe", "startupProbe"):
+                            live_probe = live_container.get(probe_name)
+                            expected_probe = expected_container.get(probe_name)
+                            if not isinstance(live_probe, dict) or not isinstance(expected_probe, dict):
+                                continue
+                            for field_name, default in (
+                                ("initialDelaySeconds", 0),
+                                ("periodSeconds", 10),
+                                ("timeoutSeconds", 1),
+                                ("successThreshold", 1),
+                                ("failureThreshold", 3),
+                            ):
+                                if (
+                                    field_name not in expected_probe
+                                    and live_probe.get(field_name) == default
+                                ):
+                                    live_probe.pop(field_name)
+                            live_http_get = live_probe.get("httpGet")
+                            expected_http_get = expected_probe.get("httpGet")
+                            if (
+                                isinstance(live_http_get, dict)
+                                and isinstance(expected_http_get, dict)
+                                and "scheme" not in expected_http_get
+                                and live_http_get.get("scheme") == "HTTP"
+                            ):
+                                live_http_get.pop("scheme")
         elif identity.kind == "PersistentVolumeClaim":
             cls._drop_defaulted_mapping_field(
                 normalized, expected, ("spec", "volumeMode"), "Filesystem"
@@ -1439,6 +1578,7 @@ class Delivery:
                     fail("EKS_SMOKE_COMMAND_FILE is required")
                 self.verify_managed_inventory(env, target, "before_smoke")
                 before_smoke = self.verify_live_deployment(env, target, "before_smoke")
+                self.require_accepted_apply_evidence()
                 proc = subprocess.run(
                     ["/bin/sh", "-s"],
                     stdin=self.smoke_command_fd,
@@ -1464,44 +1604,22 @@ class Delivery:
                 # promotion decision.
                 self.verify_managed_inventory(env, target, "promotion_plan")
                 self.verify_live_deployment(env, target, "promotion_plan")
-                records: dict[str, dict[str, object]] = {}
-                for action, required_event in (("apply", "apply"), ("smoke", "smoke")):
-                    evidence_file = self.evidence_dir / f"evidence-{action}.json"
-                    if not evidence_file.is_file():
-                        fail(f"passed staging {action} evidence is required before a promotion plan")
-                    record = json.loads(evidence_file.read_text(encoding="utf-8"))
-                    events = record.get("events", [])
-                    if record.get("action") != action or record.get("outcome") != "passed" or not any(
-                        isinstance(event, dict) and event.get("name") == required_event for event in events
-                    ):
-                        fail(f"staging {action} evidence is incomplete or not passed")
-                    records[action] = record
-                for key in (
-                    "environment",
-                    "aws_account_id",
-                    "aws_region",
-                    "ecr_repository_uri",
-                    "eks_cluster",
-                    "k8s_namespace",
-                    "kustomize_overlay",
-                    "deployment_name",
-                    "container_name",
-                    "target_policy_arn",
-                    "target_policy_sha256",
-                    "image_digest",
-                    "configuration_fingerprint",
-                    "managed_resource_count",
-                    "managed_resource_inventory_sha256",
-                    "managed_resource_spec_sha256",
-                    "live_managed_resource_count",
-                    "live_managed_resource_inventory_sha256",
-                    "live_managed_resource_spec_sha256",
-                    "live_deployment_generation",
-                    "live_deployment_observed_generation",
-                    "live_pod_template_sha256",
-                ):
+                records = {
+                    "apply": self.passed_action_evidence("apply", "apply"),
+                    "smoke": self.passed_action_evidence("smoke", "smoke"),
+                }
+                for key in EVIDENCE_BINDING_FIELDS:
                     if records["apply"].get(key) != records["smoke"].get(key) or records["apply"].get(key) != self.evidence.get(key):
                         fail(f"apply and smoke evidence disagree on {key}")
+                apply_timestamp = self.evidence_timestamp(records["apply"], "apply")
+                smoke_timestamp = self.evidence_timestamp(records["smoke"], "smoke")
+                if smoke_timestamp <= apply_timestamp:
+                    fail("smoke evidence must postdate the accepted apply evidence")
+                apply_sha256 = self.evidence_sha256(records["apply"])
+                if records["smoke"].get("accepted_apply_evidence_sha256") != apply_sha256:
+                    fail("smoke evidence is not bound to the current accepted apply evidence")
+                if records["smoke"].get("accepted_apply_timestamp") != records["apply"].get("timestamp"):
+                    fail("smoke evidence does not retain the accepted apply timestamp")
                 self.event("promotion_plan", result="review_required_no_production_apply")
             self.write_evidence("passed")
         except Exception as exc:

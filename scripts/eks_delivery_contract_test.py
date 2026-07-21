@@ -46,7 +46,35 @@ def rendered_objects(namespace: str | None = None) -> str:
                     },
                     "spec": {
                         "template": {
-                            "spec": {"containers": [{"name": "router", "image": DIGEST}]}
+                            "spec": {
+                                "containers": [
+                                    {
+                                        "name": "router",
+                                        "image": DIGEST,
+                                        "ports": [
+                                            {"name": "http", "containerPort": 8080}
+                                        ],
+                                        "readinessProbe": {
+                                            "httpGet": {"path": "/readyz", "port": "http"},
+                                            "periodSeconds": 10,
+                                            "timeoutSeconds": 3,
+                                            "failureThreshold": 3,
+                                        },
+                                        "livenessProbe": {
+                                            "httpGet": {"path": "/healthz", "port": "http"},
+                                            "periodSeconds": 30,
+                                            "timeoutSeconds": 3,
+                                            "failureThreshold": 3,
+                                        },
+                                        "startupProbe": {
+                                            "httpGet": {"path": "/readyz", "port": "http"},
+                                            "periodSeconds": 5,
+                                            "timeoutSeconds": 3,
+                                            "failureThreshold": 24,
+                                        },
+                                    }
+                                ]
+                            }
                         }
                     },
                 },
@@ -128,6 +156,19 @@ def inventory_with_server_defaulted_service() -> str:
             "sessionAffinity": "None",
         }
     )
+    return json.dumps(payload)
+
+
+def inventory_with_server_defaulted_deployment() -> str:
+    """Return the API-defaulted nested fields omitted by the checked-in base."""
+
+    payload = json.loads(rendered_objects())
+    container = payload["items"][0]["spec"]["template"]["spec"]["containers"][0]
+    container["ports"][0]["protocol"] = "TCP"
+    for probe_name in ("readinessProbe", "livenessProbe", "startupProbe"):
+        probe = container[probe_name]
+        probe["httpGet"]["scheme"] = "HTTP"
+        probe["successThreshold"] = 1
     return json.dumps(payload)
 
 
@@ -372,6 +413,7 @@ def run(
     deployed_observed_generation: int | None = None,
     deployed_revision: int = 2,
     replica_sets: str | None = None,
+    confirm_smoke: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     evidence = root / "tmp" / "evidence"
     command = [
@@ -385,6 +427,8 @@ def run(
     ]
     if include_digest:
         command += ["--image-digest", image_digest]
+    if action == "smoke" and confirm_smoke:
+        command += ["--confirm", "STAGING_APPLY"]
     if extra:
         command += extra
     bindir = root / "fake-bin"
@@ -514,6 +558,26 @@ def main() -> int:
         assert calls.index("ssm get-parameter") < calls.index("describe-cluster")
         manifest_size = re.search(r"manifest-bytes=\s*(\d+)", calls)
         assert manifest_size and int(manifest_size.group(1)) > 4000
+
+        # Server-side dry-run/live JSON includes API-defaulted nested container
+        # and probe fields that are absent from the reviewed manifest. Exact
+        # defaults normalize; non-default values remain fail-closed.
+        server_defaulted_deployment = inventory_with_server_defaulted_deployment()
+        nested_default_plan = run(
+            "plan", root, server_normalized_inventory=server_defaulted_deployment
+        )
+        assert nested_default_plan.returncode == 0, nested_default_plan.stderr
+        nondefault_nested_deployment = json.loads(server_defaulted_deployment)
+        nondefault_nested_deployment["items"][0]["spec"]["template"]["spec"]["containers"][0][
+            "readinessProbe"
+        ]["httpGet"]["scheme"] = "HTTPS"
+        nested_drift_plan = run(
+            "plan", root, server_normalized_inventory=json.dumps(nondefault_nested_deployment)
+        )
+        assert (
+            nested_drift_plan.returncode != 0
+            and "server-side manifest validation" in nested_drift_plan.stderr
+        )
 
         before_unapproved_image = (bindir / "calls.log").read_text()
         unapproved_image = (
@@ -697,6 +761,27 @@ def main() -> int:
 
         passing_smoke_script = protected_smoke_script(root, "passing-smoke.sh", "exit 0\n")
         assert passing_smoke_script.stat().st_mode & 0o777 == 0o600
+
+        unconfirmed_smoke_marker = root / "unconfirmed-smoke-command-ran"
+        unconfirmed_smoke_script = protected_smoke_script(
+            root, "unconfirmed-smoke.sh", f"touch '{unconfirmed_smoke_marker}'\n"
+        )
+        before_unconfirmed_smoke = (bindir / "calls.log").read_text()
+        unconfirmed_smoke = run(
+            "smoke",
+            root,
+            ["--smoke-command-file", str(unconfirmed_smoke_script)],
+            confirm_smoke=False,
+        )
+        assert (
+            unconfirmed_smoke.returncode != 0
+            and "EKS_CONFIRM=STAGING_APPLY" in unconfirmed_smoke.stderr
+            and not unconfirmed_smoke_marker.exists()
+        )
+        unconfirmed_smoke_calls = (bindir / "calls.log").read_text()[
+            len(before_unconfirmed_smoke):
+        ]
+        assert "describe-cluster" not in unconfirmed_smoke_calls
 
         server_defaulted_smoke = run(
             "smoke",
@@ -917,6 +1002,24 @@ def main() -> int:
         )
         assert smoke_passed.returncode == 0, smoke_passed.stderr
 
+        # A later apply changes the accepted evidence record even when its
+        # resource fingerprints are identical. Promotion must reject the
+        # earlier smoke until a new smoke binds to that latest apply.
+        apply_after_smoke = run("apply", root, ["--confirm", "STAGING_APPLY"])
+        assert apply_after_smoke.returncode == 0, apply_after_smoke.stderr
+        stale_smoke_evidence = run("promotion-plan", root)
+        assert (
+            stale_smoke_evidence.returncode != 0
+            and (
+                "smoke evidence must postdate" in stale_smoke_evidence.stderr
+                or "not bound to the current accepted apply" in stale_smoke_evidence.stderr
+            )
+        )
+        smoke_after_apply = run(
+            "smoke", root, ["--smoke-command-file", str(passing_smoke_script)]
+        )
+        assert smoke_after_apply.returncode == 0, smoke_after_apply.stderr
+
         make_smoke_script = protected_smoke_script(
             root,
             "make-smoke.sh",
@@ -927,6 +1030,7 @@ def main() -> int:
                 "make",
                 "eks-smoke-staging",
                 "EKS_AWS_PROFILE=test-profile",
+                "EKS_CONFIRM=STAGING_APPLY",
                 f"IMAGE_DIGEST={DIGEST}",
                 f"EKS_EVIDENCE_DIR={root / 'tmp/evidence'}",
             ],

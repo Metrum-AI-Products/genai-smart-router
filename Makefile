@@ -75,11 +75,12 @@ eks-help:
 	@echo "  eks-plan               read-only: render plus server-side dry-run -> evidence"
 	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
-	@echo "  eks-smoke-staging      read-only smoke using protected EKS_SMOKE_COMMAND_FILE (mode 0600)"
+	@echo "  eks-smoke-staging      protected arbitrary-script smoke; requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY and IMAGE_DIGEST"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
 	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
+	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."
 
 eks-preflight:
