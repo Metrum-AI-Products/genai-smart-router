@@ -74,7 +74,9 @@ sidecar, and verifies the selected router Pods also have ready `linkerd-proxy`
 sidecars whose safe local identity and literal trust domain match the selected
 Linkerd control plane. It also requires durable ingress and router injection
 evidence from each selected Namespace or Deployment Pod template before policy
-can rely on those current sidecars. Discovery derives the domain from every selected ingress proxy's safe
+can rely on those current sidecars. A selected ingress Deployment may use
+`linkerd.io/inject: ingress`; router workloads require ordinary
+`linkerd.io/inject: enabled`. Discovery derives the domain from every selected ingress proxy's safe
 literal trust-domain configuration and compares its safe local-identity
 configuration with the selected ingress namespace and Linkerd control-plane
 namespace before rendering; never apply a template with a fixed, unresolved,

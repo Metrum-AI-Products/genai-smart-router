@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import base64
 import configparser
+import fcntl
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -17,6 +19,8 @@ import sys
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 
 
@@ -91,6 +95,82 @@ def configured_aws_profile_paths() -> tuple[Path, Path]:
     return credentials_path, config_path
 
 
+def profile_pair_lock_path(credentials_path: Path, config_path: Path) -> Path:
+    """Return the private, deterministic advisory lock for one AWS profile pair."""
+    resolved_paths = sorted(
+        (str(credentials_path.resolve(strict=False)), str(config_path.resolve(strict=False)))
+    )
+    pair_identity = "\0".join(resolved_paths).encode("utf-8")
+    digest = hashlib.sha256(pair_identity).hexdigest()
+    return credentials_path.resolve(strict=False).parent / f".genai-smart-router-profile-{digest}.lock"
+
+
+@contextmanager
+def locked_profile_pair(credentials_path: Path, config_path: Path) -> Iterator[None]:
+    """Serialize one profile pair from snapshot through publication or rollback.
+
+    The lock is a separate file because profile publication uses atomic rename;
+    locking either profile inode would cease protecting its replacement.
+    """
+    lock_path = profile_pair_lock_path(credentials_path, config_path)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    acquired = False
+    try:
+        if lock_path.is_symlink():
+            raise RuntimeError("AWS profile lock must not be a symlink")
+        descriptor = os.open(lock_path, flags, 0o600)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise RuntimeError("AWS profile lock must be a private regular file")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        acquired = True
+        yield
+    except RuntimeError:
+        raise
+    except OSError as exc:
+        raise RuntimeError("AWS profile lock could not be acquired safely") from exc
+    finally:
+        if descriptor >= 0:
+            try:
+                if acquired:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+
+def validate_cleanup_record_path(path: Path) -> Path:
+    """Require durable local recovery state before any IAM mutation."""
+    if not path.is_absolute() or path.parent == Path("/"):
+        raise RuntimeError("cleanup record must be an absolute non-root file path")
+    try:
+        # Reject the record and its immediate parent when either is a symlink.
+        # Existing platform aliases such as macOS /var are permitted after
+        # resolving the final record outside this repository.
+        if path.is_symlink() or path.parent.is_symlink():
+            raise RuntimeError("cleanup record must not be a symlink")
+        resolved = path.resolve(strict=False)
+        if resolved.is_relative_to(ROOT.resolve()):
+            raise RuntimeError("cleanup record must remain outside the repository")
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        parent_metadata = path.parent.stat()
+        if not stat.S_ISDIR(parent_metadata.st_mode) or stat.S_IMODE(parent_metadata.st_mode) & 0o022:
+            raise RuntimeError("cleanup record parent directory must not be group- or world-writable")
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            return path
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeError("cleanup record must be a regular non-symlink file when it already exists")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise RuntimeError("cleanup record must be private when it already exists")
+    except RuntimeError:
+        raise
+    except OSError as exc:
+        raise RuntimeError("cleanup record could not be prepared safely") from exc
+    return path
+
+
 def write_profiles(
     profile: str,
     role_profile: str,
@@ -100,24 +180,34 @@ def write_profiles(
     *,
     credentials_path: Path,
     config_path: Path,
-) -> None:
+) -> tuple[tuple[bytes, int] | None, tuple[bytes, int] | None]:
     for directory in {credentials_path.parent, config_path.parent}:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     prior_profiles = profile_files_snapshot(credentials_path, config_path)
     creds = configparser.RawConfigParser()
     creds.read(credentials_path)
     creds[profile] = credentials
+    published_profiles = prior_profiles
     try:
-        atomic_write_config(credentials_path, creds)
+        published_credentials = atomic_write_config(credentials_path, creds)
+        published_profiles = (published_credentials, prior_profiles[1])
+        if profile_files_snapshot(credentials_path, config_path) != published_profiles:
+            raise RuntimeError("AWS profile files changed concurrently; refusing to publish paired profiles")
         config = configparser.RawConfigParser()
         config.read(config_path)
         config[f"profile {profile}"] = {"region": region}
         config[f"profile {role_profile}"] = {"role_arn": role_arn, "source_profile": profile, "region": region}
-        atomic_write_config(config_path, config)
+        published_config = atomic_write_config(config_path, config)
+        return published_credentials, published_config
     except Exception:
         try:
-            restore_profile_files(credentials_path, config_path, prior_profiles)
-        except OSError as rollback_error:
+            restore_profile_files(
+                credentials_path,
+                config_path,
+                prior_profiles,
+                expected_current=published_profiles,
+            )
+        except Exception as rollback_error:
             raise RuntimeError(
                 "AWS profile update failed and prior profile files could not be restored; do not use either profile"
             ) from rollback_error
@@ -161,15 +251,20 @@ def validate_discovery_role_identity(identity: object, approved_account: str) ->
     return arn
 
 
-def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> None:
+def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> tuple[bytes, int]:
+    serialized = io.StringIO()
+    config.write(serialized)
+    content = serialized.getvalue().encode("utf-8")
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            config.write(file)
+        with os.fdopen(descriptor, "wb") as file:
+            os.fchmod(file.fileno(), 0o600)
+            file.write(content)
             file.flush()
             os.fsync(file.fileno())
         os.replace(temporary, path)
+        return content, 0o600
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -222,8 +317,12 @@ def restore_profile_files(
     credentials_path: Path,
     config_path: Path,
     snapshots: tuple[tuple[bytes, int] | None, tuple[bytes, int] | None],
+    *,
+    expected_current: tuple[tuple[bytes, int] | None, tuple[bytes, int] | None] | None = None,
 ) -> None:
     """Restore both AWS profile files after any failed authority publication."""
+    if expected_current is not None and profile_files_snapshot(credentials_path, config_path) != expected_current:
+        raise RuntimeError("AWS profile files changed concurrently; refusing to overwrite them during rollback")
     credentials_snapshot, config_snapshot = snapshots
     restore_profile_file(config_path, config_snapshot)
     restore_profile_file(credentials_path, credentials_snapshot)
@@ -369,6 +468,174 @@ def recovery_status(path: Path) -> dict[str, object]:
     raise RuntimeError("recovery record has an unknown format; preserve it and reconcile before retrying")
 
 
+def bootstrap_with_locked_profile_pair(
+    args: argparse.Namespace,
+    credentials_path: Path,
+    config_path: Path,
+    approved_account: str,
+    cleanup_record: Path,
+) -> int:
+    """Publish and verify local AWS profiles without racing a paired invocation."""
+    # The lock begins before the rollback snapshot and remains held until this
+    # invocation either succeeds or completes its rollback in the finally block.
+    with locked_profile_pair(credentials_path, config_path):
+        profile_snapshots = profile_files_snapshot(credentials_path, config_path)
+
+        # This atomic reservation is intentionally immediately before the only IAM
+        # mutation. If this process is killed or the create result is ambiguous, it
+        # remains in place and blocks a retry until an operator reconciles it.
+        reservation = reserve_recovery_record(cleanup_record, args.source_user)
+        key_id = ""
+        deleted = False
+        profiles_published = False
+        published_profiles: tuple[tuple[bytes, int] | None, tuple[bytes, int] | None] | None = None
+        completed = False
+
+        def delete_source_key() -> bool:
+            for _ in range(3):
+                try:
+                    command([
+                        "aws",
+                        "iam",
+                        "delete-access-key",
+                        "--profile",
+                        args.admin_profile,
+                        "--user-name",
+                        args.source_user,
+                        "--access-key-id",
+                        key_id,
+                    ])
+                    return True
+                except RuntimeError:
+                    time.sleep(1)
+            return False
+
+        try:
+            try:
+                access = json.loads(command([
+                    "aws",
+                    "iam",
+                    "create-access-key",
+                    "--profile",
+                    args.admin_profile,
+                    "--user-name",
+                    args.source_user,
+                    "--output",
+                    "json",
+                ]))["AccessKey"]
+                candidate_key_id = access["AccessKeyId"]
+                if not isinstance(candidate_key_id, str) or not ACCESS_KEY_ID.fullmatch(candidate_key_id):
+                    raise ValueError("create-access-key did not return a safe access-key identifier")
+                key_id = candidate_key_id
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
+                raise RuntimeError(
+                    f"source key creation outcome is unknown; do not retry until recovery record is reconciled: {cleanup_record}"
+                ) from exc
+            # The reservation already protects the narrow create-result window.
+            # Promote it to an exact key-ID record before any later network call.
+            promote_recovery_reservation(cleanup_record, reservation, args.source_user, key_id)
+            if args.propagation_wait_seconds:
+                time.sleep(args.propagation_wait_seconds)
+            env = os.environ.copy()
+            for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN"):
+                env.pop(name, None)
+            env.update({
+                "AWS_CONFIG_FILE": os.devnull,
+                "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+                "AWS_ACCESS_KEY_ID": access["AccessKeyId"],
+                "AWS_SECRET_ACCESS_KEY": access["SecretAccessKey"],
+                "AWS_DEFAULT_REGION": args.region,
+            })
+            session = json.loads(command([
+                "aws",
+                "sts",
+                "get-session-token",
+                "--serial-number",
+                args.mfa_serial,
+                "--token-code",
+                mfa_code_from_keychain(args.macos_keychain_service, args.macos_keychain_account),
+                "--duration-seconds",
+                str(args.duration_seconds),
+                "--output",
+                "json",
+            ], env=env))["Credentials"]
+            published_profiles = write_profiles(
+                args.session_profile,
+                args.role_profile,
+                args.role_arn,
+                args.region,
+                {
+                    "aws_access_key_id": session["AccessKeyId"],
+                    "aws_secret_access_key": session["SecretAccessKey"],
+                    "aws_session_token": session["SessionToken"],
+                },
+                credentials_path=credentials_path,
+                config_path=config_path,
+            )
+            profiles_published = True
+            role_identity = json.loads(
+                command(
+                    [
+                        "aws",
+                        "sts",
+                        "get-caller-identity",
+                        "--profile",
+                        args.role_profile,
+                        "--region",
+                        args.region,
+                        "--output",
+                        "json",
+                    ],
+                    env=profile_verification_environment(credentials_path, config_path, args.region),
+                )
+            )
+            verified_role_arn = validate_discovery_role_identity(role_identity, approved_account)
+            deleted = delete_source_key()
+            if not deleted:
+                raise RuntimeError("temporary source key deletion failed after retries")
+            remove_own_recovery_record(cleanup_record, reservation, args.source_user, key_id)
+            key_id = ""
+            completed = True
+            print(json.dumps({
+                "session_profile": args.session_profile,
+                "role_profile": args.role_profile,
+                "role_identity": verified_role_arn,
+                "session_expiration": session["Expiration"],
+                "source_access_key_deleted": True,
+            }))
+            return 0
+        finally:
+            cleanup_error: Exception | None = None
+            rollback_error: Exception | None = None
+            if key_id and not deleted:
+                deleted = delete_source_key()
+                if deleted:
+                    try:
+                        remove_own_recovery_record(cleanup_record, reservation, args.source_user, key_id)
+                    except Exception as exc:
+                        cleanup_error = exc
+                    else:
+                        key_id = ""
+            if profiles_published and not completed:
+                try:
+                    if published_profiles is None:
+                        raise RuntimeError("AWS profile publication state was not captured; refusing unsafe rollback")
+                    restore_profile_files(
+                        credentials_path,
+                        config_path,
+                        profile_snapshots,
+                        expected_current=published_profiles,
+                    )
+                except Exception as exc:
+                    rollback_error = exc
+            if rollback_error is not None:
+                raise RuntimeError("failed EKS bootstrap could not restore prior AWS profile files; do not use either profile") from rollback_error
+            if cleanup_error is not None:
+                raise RuntimeError("temporary source key was deleted but its cleanup record could not be removed; preserve it for operator reconciliation") from cleanup_error
+            if key_id and not deleted:
+                raise RuntimeError(f"temporary source key deletion failed; cleanup record: {cleanup_record}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--admin-profile", default="default")
@@ -399,8 +666,7 @@ def main() -> int:
     if not 900 <= args.duration_seconds <= 43200 or not 0 <= args.propagation_wait_seconds <= 30:
         parser.error("invalid session duration or propagation wait")
     assert args.cleanup_record is not None
-    if str(args.cleanup_record) in {"", "."} or args.cleanup_record.is_dir():
-        parser.error("--cleanup-record must be a non-directory protected file path")
+    cleanup_record = validate_cleanup_record_path(args.cleanup_record)
     credentials_path, config_path = configured_aws_profile_paths()
     approved_account = args.role_arn.split(":")[4]
     if args.mfa_serial.split(":")[4] != approved_account:
@@ -411,94 +677,13 @@ def main() -> int:
     admin_identity = json.loads(command(["aws", "sts", "get-caller-identity", "--profile", args.admin_profile, "--output", "json"]))
     if str(admin_identity.get("Account", "")) != approved_account or str(admin_identity.get("Arn", "")).endswith(":root"):
         raise RuntimeError("admin profile must be a non-root identity in the approved account before creating an access key")
-    profile_snapshots = profile_files_snapshot(credentials_path, config_path)
-
-    # This atomic reservation is intentionally immediately before the only IAM
-    # mutation. If this process is killed or the create result is ambiguous, it
-    # remains in place and blocks a retry until an operator reconciles it.
-    reservation = reserve_recovery_record(args.cleanup_record, args.source_user)
-    key_id = ""
-    deleted = False
-    profiles_published = False
-    completed = False
-
-    def delete_source_key() -> bool:
-        for _ in range(3):
-            try:
-                command(["aws", "iam", "delete-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--access-key-id", key_id])
-                return True
-            except RuntimeError:
-                time.sleep(1)
-        return False
-    try:
-        try:
-            access = json.loads(command(["aws", "iam", "create-access-key", "--profile", args.admin_profile, "--user-name", args.source_user, "--output", "json"]))["AccessKey"]
-            candidate_key_id = access["AccessKeyId"]
-            if not isinstance(candidate_key_id, str) or not ACCESS_KEY_ID.fullmatch(candidate_key_id):
-                raise ValueError("create-access-key did not return a safe access-key identifier")
-            key_id = candidate_key_id
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
-            raise RuntimeError(
-                f"source key creation outcome is unknown; do not retry until recovery record is reconciled: {args.cleanup_record}"
-            ) from exc
-        # The reservation already protects the narrow create-result window.
-        # Promote it to an exact key-ID record before any later network call.
-        promote_recovery_reservation(args.cleanup_record, reservation, args.source_user, key_id)
-        if args.propagation_wait_seconds:
-            time.sleep(args.propagation_wait_seconds)
-        env = os.environ.copy()
-        for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN"):
-            env.pop(name, None)
-        env.update({"AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull, "AWS_ACCESS_KEY_ID": access["AccessKeyId"], "AWS_SECRET_ACCESS_KEY": access["SecretAccessKey"], "AWS_DEFAULT_REGION": args.region})
-        session = json.loads(command(["aws", "sts", "get-session-token", "--serial-number", args.mfa_serial, "--token-code", mfa_code_from_keychain(args.macos_keychain_service, args.macos_keychain_account), "--duration-seconds", str(args.duration_seconds), "--output", "json"], env=env))["Credentials"]
-        write_profiles(
-            args.session_profile,
-            args.role_profile,
-            args.role_arn,
-            args.region,
-            {"aws_access_key_id": session["AccessKeyId"], "aws_secret_access_key": session["SecretAccessKey"], "aws_session_token": session["SessionToken"]},
-            credentials_path=credentials_path,
-            config_path=config_path,
-        )
-        profiles_published = True
-        role_identity = json.loads(
-            command(
-                ["aws", "sts", "get-caller-identity", "--profile", args.role_profile, "--region", args.region, "--output", "json"],
-                env=profile_verification_environment(credentials_path, config_path, args.region),
-            )
-        )
-        verified_role_arn = validate_discovery_role_identity(role_identity, approved_account)
-        deleted = delete_source_key()
-        if not deleted:
-            raise RuntimeError("temporary source key deletion failed after retries")
-        remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
-        key_id = ""
-        completed = True
-        print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": verified_role_arn, "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
-        return 0
-    finally:
-        cleanup_error: Exception | None = None
-        rollback_error: OSError | None = None
-        if key_id and not deleted:
-            deleted = delete_source_key()
-            if deleted:
-                try:
-                    remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
-                except Exception as exc:
-                    cleanup_error = exc
-                else:
-                    key_id = ""
-        if profiles_published and not completed:
-            try:
-                restore_profile_files(credentials_path, config_path, profile_snapshots)
-            except OSError as exc:
-                rollback_error = exc
-        if rollback_error is not None:
-            raise RuntimeError("failed EKS bootstrap could not restore prior AWS profile files; do not use either profile") from rollback_error
-        if cleanup_error is not None:
-            raise RuntimeError("temporary source key was deleted but its cleanup record could not be removed; preserve it for operator reconciliation") from cleanup_error
-        if key_id and not deleted:
-            raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
+    return bootstrap_with_locked_profile_pair(
+        args,
+        credentials_path,
+        config_path,
+        approved_account,
+        cleanup_record,
+    )
 
 
 if __name__ == "__main__":

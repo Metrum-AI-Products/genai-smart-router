@@ -8,9 +8,11 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 
@@ -24,6 +26,60 @@ SPEC.loader.exec_module(MODULE)
 
 def mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
+
+
+def wait_for_path(path: Path, description: str, timeout_seconds: float = 5) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"timed out waiting for {description}")
+        time.sleep(0.01)
+
+
+def start_profile_lock_contender(lock_path: Path, root: Path) -> tuple[subprocess.Popen[bytes], Path, Path, Path]:
+    attempted = root / "lock-contender-attempted"
+    acquired = root / "lock-contender-acquired"
+    release = root / "lock-contender-release"
+    script = """
+import fcntl
+import os
+from pathlib import Path
+import sys
+import time
+
+lock_path = Path(sys.argv[1])
+attempted = Path(sys.argv[2])
+acquired = Path(sys.argv[3])
+release = Path(sys.argv[4])
+descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+try:
+    attempted.write_text("attempted", encoding="utf-8")
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    acquired.write_text("acquired", encoding="utf-8")
+    while not release.exists():
+        time.sleep(0.01)
+finally:
+    fcntl.flock(descriptor, fcntl.LOCK_UN)
+    os.close(descriptor)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(lock_path), str(attempted), str(acquired), str(release)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return process, attempted, acquired, release
+
+
+def finish_lock_contender(process: subprocess.Popen[bytes], release: Path) -> None:
+    release.touch()
+    try:
+        _, stderr = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        _, stderr = process.communicate(timeout=5)
+        raise AssertionError("profile lock contender did not exit")
+    if process.returncode:
+        raise AssertionError(f"profile lock contender failed: {stderr.decode('utf-8', errors='replace')}")
 
 
 def bootstrap_argv(cleanup: Path) -> list[str]:
@@ -50,7 +106,10 @@ def run_main_with_stubs(cleanup: Path, command, *, stub_profiles: bool = True) -
     MODULE.command = command
     MODULE.mfa_code_from_keychain = lambda service, account: "123456"
     if stub_profiles:
-        MODULE.write_profiles = lambda *args, **kwargs: None
+        MODULE.write_profiles = lambda *args, **kwargs: MODULE.profile_files_snapshot(  # type: ignore[method-assign]
+            kwargs["credentials_path"],
+            kwargs["config_path"],
+        )
     try:
         return MODULE.main()
     finally:
@@ -256,10 +315,10 @@ def assert_profile_write_rolls_back_credentials_when_config_write_fails(root: Pa
     config_path.chmod(0o600)
     original_atomic_write = MODULE.atomic_write_config
 
-    def fail_only_config(path: Path, config: configparser.RawConfigParser) -> None:
+    def fail_only_config(path: Path, config: configparser.RawConfigParser) -> tuple[bytes, int]:
         if path == config_path:
             raise OSError("simulated config publication failure")
-        original_atomic_write(path, config)
+        return original_atomic_write(path, config)
 
     MODULE.atomic_write_config = fail_only_config  # type: ignore[method-assign]
     try:
@@ -339,6 +398,136 @@ def assert_unsafe_profile_paths_fail_before_iam(root: Path) -> None:
                 os.environ[name] = value
     if commands:
         raise AssertionError("unsafe AWS profile paths were not rejected before IAM or STS commands")
+
+
+def assert_unsafe_cleanup_paths_fail_before_aws(root: Path) -> None:
+    safe_directory = root / "safe-cleanup-paths"
+    safe_directory.mkdir(mode=0o700)
+    safe_credentials = safe_directory / "credentials"
+    safe_config = safe_directory / "config"
+    writable_parent = root / "writable-cleanup-parent"
+    writable_parent.mkdir(mode=0o700)
+    writable_parent.chmod(0o777)
+    symlink_target = root / "cleanup-symlink-target"
+    symlink_target.write_text("not-a-record", encoding="utf-8")
+    symlink_record = safe_directory / "cleanup-symlink.json"
+    symlink_record.symlink_to(symlink_target)
+    symlink_parent_target = root / "cleanup-parent-target"
+    symlink_parent_target.mkdir(mode=0o700)
+    symlink_parent = root / "cleanup-parent-symlink"
+    symlink_parent.symlink_to(symlink_parent_target, target_is_directory=True)
+    existing_directory = safe_directory / "cleanup-directory"
+    existing_directory.mkdir(mode=0o700)
+    broad_record = safe_directory / "cleanup-broad.json"
+    broad_record.write_text("{}", encoding="utf-8")
+    broad_record.chmod(0o644)
+    unsafe_paths = (
+        ROOT / "unsafe-cleanup-record.json",
+        Path("relative-cleanup-record.json"),
+        writable_parent / "cleanup.json",
+        symlink_record,
+        symlink_parent / "cleanup.json",
+        existing_directory,
+        broad_record,
+    )
+    names = ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE")
+    original = {name: os.environ.get(name) for name in names}
+    commands: list[list[str]] = []
+
+    def command(args: list[str], *, env=None) -> str:
+        commands.append(args)
+        raise AssertionError("unsafe cleanup path reached an AWS command")
+
+    try:
+        os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(safe_credentials)
+        os.environ["AWS_CONFIG_FILE"] = str(safe_config)
+        for unsafe in unsafe_paths:
+            try:
+                run_main_with_stubs(unsafe, command)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError(f"unsafe cleanup path was accepted: {unsafe}")
+        absent = root / "new-private-cleanup-parent" / "nested" / "cleanup.json"
+        if MODULE.validate_cleanup_record_path(absent) != absent:
+            raise AssertionError("private absent cleanup path was not accepted")
+        if mode(absent.parent) & 0o022:
+            raise AssertionError("new cleanup-record parent must be private")
+    finally:
+        for name, value in original.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    if commands:
+        raise AssertionError("unsafe cleanup paths were not rejected before AWS identity or IAM calls")
+
+
+def assert_profile_pair_lock_blocks_a_concurrent_process(root: Path) -> None:
+    profile_root = root / "profile-lock"
+    profile_root.mkdir(mode=0o700)
+    credentials_path = profile_root / "credentials"
+    config_path = profile_root / "config"
+    lock_path = MODULE.profile_pair_lock_path(credentials_path, config_path)
+    contender = None
+    release = None
+    try:
+        with MODULE.locked_profile_pair(credentials_path, config_path):
+            if mode(lock_path) != 0o600:
+                raise AssertionError("profile-pair lock must be created with mode 0600")
+            contender, attempted, acquired, release = start_profile_lock_contender(lock_path, root)
+            wait_for_path(attempted, "concurrent profile-lock attempt")
+            time.sleep(0.1)
+            if acquired.exists():
+                raise AssertionError("concurrent profile writer acquired the lock before the protected operation ended")
+        wait_for_path(acquired, "concurrent profile-lock acquisition after release")
+    finally:
+        if contender is not None and release is not None:
+            finish_lock_contender(contender, release)
+
+
+def assert_concurrent_profile_update_is_not_overwritten(root: Path) -> None:
+    profile_root = root / "concurrent-profile-update"
+    profile_root.mkdir(mode=0o700)
+    credentials_path = profile_root / "credentials"
+    config_path = profile_root / "config"
+    original_credentials = b"[smartrouter]\naws_access_key_id = prior-session\n"
+    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    credentials_path.write_bytes(original_credentials)
+    config_path.write_bytes(original_config)
+    credentials_path.chmod(0o600)
+    config_path.chmod(0o600)
+    prior = MODULE.profile_files_snapshot(credentials_path, config_path)
+    published = MODULE.write_profiles(
+        "smartrouter",
+        "genai-smart-router-eks-discovery",
+        "arn:aws:iam::123456789012:role/genai-smart-router-eks-discovery",
+        "us-east-1",
+        {
+            "aws_access_key_id": "new-test-session",
+            "aws_secret_access_key": "new-test-secret",
+            "aws_session_token": "new-test-token",
+        },
+        credentials_path=credentials_path,
+        config_path=config_path,
+    )
+    concurrent_credentials = b"[other-session]\naws_access_key_id = concurrent-session\n"
+    credentials_path.write_bytes(concurrent_credentials)
+    credentials_path.chmod(0o600)
+    try:
+        MODULE.restore_profile_files(
+            credentials_path,
+            config_path,
+            prior,
+            expected_current=published,
+        )
+    except RuntimeError as exc:
+        if str(exc) != "AWS profile files changed concurrently; refusing to overwrite them during rollback":
+            raise
+    else:
+        raise AssertionError("rollback overwrote a concurrent profile update")
+    if credentials_path.read_bytes() != concurrent_credentials:
+        raise AssertionError("conditional rollback discarded a concurrent profile update")
 
 
 def assert_failed_role_verification_restores_profile_files(root: Path) -> None:
@@ -559,6 +748,9 @@ def main() -> int:
         assert_configured_profile_paths_and_role_verification(root)
         assert_profile_write_rolls_back_credentials_when_config_write_fails(root)
         assert_unsafe_profile_paths_fail_before_iam(root)
+        assert_unsafe_cleanup_paths_fail_before_aws(root)
+        assert_profile_pair_lock_blocks_a_concurrent_process(root)
+        assert_concurrent_profile_update_is_not_overwritten(root)
         assert_failed_role_verification_restores_profile_files(root)
         assert_cleanup_record_failure_still_restores_profiles(root)
         assert_unexpected_role_identity_is_rejected(root)

@@ -326,7 +326,7 @@ def router_workload_evidence(
     service_account = template_spec.get("serviceAccountName") if isinstance(template_spec, dict) else None
     desired = spec.get("replicas", 1) if isinstance(spec, dict) else 1
     available = status.get("availableReplicas", 0) if isinstance(status, dict) else 0
-    if not DNS_LABEL.fullmatch(service_account):
+    if not is_dns_subdomain(service_account):
         raise DiscoveryError("selected router Deployment does not declare a valid service-account identity")
     if isinstance(desired, bool) or not isinstance(desired, int) or desired < 1:
         raise DiscoveryError("selected router Deployment does not declare a positive replica count")
@@ -402,9 +402,14 @@ def deployment_linkerd_injection_evidence(
     if not isinstance(template, dict):
         raise DiscoveryError(f"selected {workload} Deployment has no Pod template for Linkerd injection evidence")
     template_setting = linkerd_injection_annotation(template).strip().lower()
-    if template_setting and template_setting != "enabled":
-        raise DiscoveryError(f"selected {workload} Deployment does not explicitly enable Linkerd injection in its Pod template")
-    if template_setting == "enabled":
+    accepted_template_settings = {"enabled"}
+    if workload == "ingress":
+        # Linkerd's dedicated ingress mode is valid only for the selected
+        # ingress Deployment. Router workloads must retain ordinary injection.
+        accepted_template_settings.add("ingress")
+    if template_setting and template_setting not in accepted_template_settings:
+        raise DiscoveryError(f"selected {workload} Deployment does not explicitly enable a supported Linkerd injection mode in its Pod template")
+    if template_setting in accepted_template_settings:
         source = "deployment-template"
     elif linkerd_injection_enabled(namespace):
         source = "namespace"

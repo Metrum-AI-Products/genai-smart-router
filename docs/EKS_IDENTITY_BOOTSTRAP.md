@@ -66,10 +66,17 @@ credentials, profile selection, and web-identity overrides while performing
 that verification, so it cannot validate an older same-named profile. Keep the
 selected local files protected and distinct: they must be absolute,
 non-symlink paths outside this repository with a parent directory that is not
-group- or world-writable. If paired publication, exact-role verification, or
-later source-key cleanup fails after profile publication, bootstrap restores
-both prior profile files (or removes newly created ones) before it fails; it
-never leaves a new source session paired with stale role configuration.
+group- or world-writable. Bootstrap takes an exclusive local lock tied to that
+exact profile pair from its rollback snapshot through verification and rollback;
+do not edit the same files concurrently. If another non-cooperating process has
+changed either file, bootstrap refuses to overwrite it during rollback and
+requires reconciliation instead. EKS_CLEANUP_RECORD is likewise an absolute,
+non-symlink, repository-external file path under a non-group/world-writable
+parent; bootstrap creates a missing parent privately before any AWS call. If
+paired publication, exact-role verification, or later source-key cleanup fails
+after profile publication, bootstrap restores both prior profile files (or
+removes newly created ones) before it fails when they remain the exact files it
+published; it never overwrites a concurrent update with stale rollback bytes.
 
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
 with a mode-0600 recovery record containing only safe state: either an exact
@@ -180,9 +187,11 @@ router proxy injected by a different Linkerd control plane. The current contract
 supports an ingress
 `Deployment`; add a separately reviewed discovery contract before using a
 different workload kind. For both the selected ingress and router
-`Deployment`, discovery also requires durable injection evidence: either its
-Pod template explicitly sets `linkerd.io/inject: enabled`, or its selected
-Namespace does so without a template-level opt-out. The checked-in
+`Deployment`, discovery also requires durable injection evidence: the router
+Pod template must explicitly set `linkerd.io/inject: enabled`; the selected
+ingress Pod template may set `enabled` or Linkerd's `ingress` mode; or the
+selected Namespace may set `enabled` when the template has no opt-out. The
+checked-in
 `tenant-router-linkerd-injection-patch.example.yaml` is the recommended router
 deployment-template patch for a Linkerd EKS overlay; the platform-owned ingress
 Deployment must retain equivalent template or Namespace evidence. Discovery deliberately
@@ -322,7 +331,9 @@ and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
 discovery must still confirm both versions and the ingress Deployment's actual
 meshed service-account identity against the cluster before rendering. It also
 requires durable ingress and router Namespace or Deployment-template injection
-evidence before a policy can rely on current sidecars. The EKS ingress guard intentionally
+evidence before a policy can rely on current sidecars. The selected ingress
+Deployment may use Linkerd's `linkerd.io/inject: ingress` template mode; router
+workloads require ordinary `linkerd.io/inject: enabled` injection. The EKS ingress guard intentionally
 denies ingress until a companion, selected-namespace allow policy is rendered.
 Both artifacts must come only from the successful scrubbed discovery report,
 never from hand-copied values:

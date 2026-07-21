@@ -459,6 +459,11 @@ def test_ingress_workload_requires_durable_linkerd_injection() -> None:
     if evidence.get("ingress_workload_injection_source") != "namespace":
         raise AssertionError("namespace-level ingress injection was not accepted as durable evidence")
     deployment, _, _ = ingress_workload_payloads()
+    deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "ingress"  # type: ignore[index]
+    evidence = MODULE.ingress_workload_injection_evidence(deployment, {"metadata": {"annotations": {}}})
+    if evidence.get("ingress_workload_injection_source") != "deployment-template":
+        raise AssertionError("Linkerd ingress-mode template injection was not accepted for the ingress Deployment")
+    deployment, _, _ = ingress_workload_payloads()
     deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "disabled"  # type: ignore[index]
     namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
     try:
@@ -593,6 +598,15 @@ def test_router_workload_requires_ready_identity_matched_pods() -> None:
         pass
     else:
         raise AssertionError("router workload verification accepted a label-selected Pod not owned by the selected Deployment")
+    deployment, replica_sets, pods = router_workload_payloads()
+    dotted_service_account = "router.runtime"
+    deployment["spec"]["template"]["spec"]["serviceAccountName"] = dotted_service_account  # type: ignore[index]
+    for pod in pods["items"]:  # type: ignore[index]
+        pod["spec"]["serviceAccountName"] = dotted_service_account  # type: ignore[index]
+        pod["spec"]["containers"][0]["env"][1]["value"] = f"{dotted_service_account}.gateway-system.serviceaccount.identity.linkerd.mesh.example"  # type: ignore[index]
+    dotted_evidence = MODULE.router_workload_evidence(deployment, replica_sets, pods, "gateway-system", "linkerd", "mesh.example")
+    if dotted_evidence.get("router_workload_identity_verified") is not True:
+        raise AssertionError("router workload rejected a valid DNS-subdomain service-account name")
 
 
 def router_deployment_payloads() -> tuple[dict[str, object], dict[str, object]]:
@@ -636,6 +650,15 @@ def test_router_workload_requires_durable_linkerd_injection() -> None:
         pass
     else:
         raise AssertionError("router Deployment template accepted an unrecognized Linkerd injection setting")
+    deployments, namespace = router_deployment_payloads()
+    deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "ingress"  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    try:
+        MODULE.router_workload_injection_evidence(MODULE.selected_router_deployment(deployments), namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router Deployment accepted ingress-only Linkerd injection mode")
     deployments, namespace = router_deployment_payloads()
     del deployments["items"][0]["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"]  # type: ignore[index]
     try:
