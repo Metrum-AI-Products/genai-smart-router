@@ -681,6 +681,7 @@ def main() -> int:
     assert "abc123" not in EKS_DELIVERY.scrub("Authorization: Bearer abc123")
 
     target = EKS_DELIVERY.parse_target_policy(TARGET_POLICY)
+    assert target.image_architecture == TARGET_POLICY["image_architecture"]
     staging_deployment_patch = (target.kustomize_overlay / "patch-deployment.yaml").read_text(
         encoding="utf-8"
     )
@@ -702,6 +703,15 @@ def main() -> int:
         assert "Kustomize source image" in str(exc)
     else:
         raise AssertionError("target policy accepted a tagged Kustomize source image")
+
+    invalid_architecture_policy = dict(TARGET_POLICY)
+    invalid_architecture_policy["image_architecture"] = "linux/s390x"
+    try:
+        EKS_DELIVERY.parse_target_policy(invalid_architecture_policy)
+    except RuntimeError as exc:
+        assert "image architecture" in str(exc)
+    else:
+        raise AssertionError("target policy accepted an unsupported image architecture")
 
     missing_attestation_policy = dict(TARGET_POLICY)
     del missing_attestation_policy["runtime_secret_attestation_configmap_name"]
@@ -1557,6 +1567,7 @@ def main() -> int:
             assert evidence["managed_resource_spec_sha256"] == evidence["live_managed_resource_spec_sha256"]
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
             assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
+            assert evidence["image_architecture"] == TARGET_POLICY["image_architecture"]
             assert evidence["runtime_secret_name"] == TARGET_POLICY["runtime_secret_name"]
             assert (
                 evidence["runtime_secret_attestation_configmap_name"]
@@ -1679,6 +1690,18 @@ def main() -> int:
         make_dry_run = subprocess.run(["make", "-n", "eks-preflight"], cwd=ROOT, text=True, capture_output=True)
         assert make_dry_run.returncode == 0, make_dry_run.stderr
         assert "--eks-cluster" not in make_dry_run.stdout and "--approved-eks-cluster" not in make_dry_run.stdout
+        make_rollback_dry_run = subprocess.run(
+            ["make", "-n", "eks-rollback-staging"], cwd=ROOT, text=True, capture_output=True
+        )
+        assert make_rollback_dry_run.returncode == 0, make_rollback_dry_run.stderr
+        rollback_validate = "scripts/validate_staging_supply_chain.py"
+        rollback_delivery = "scripts/eks_delivery.py rollback"
+        assert rollback_validate in make_rollback_dry_run.stdout
+        assert rollback_delivery in make_rollback_dry_run.stdout
+        assert (
+            make_rollback_dry_run.stdout.index(rollback_validate)
+            < make_rollback_dry_run.stdout.index(rollback_delivery)
+        )
         make_smoke_dry_run = subprocess.run(
             ["make", "-n", "eks-smoke-staging"],
             cwd=ROOT,

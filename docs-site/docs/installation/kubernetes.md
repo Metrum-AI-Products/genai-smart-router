@@ -24,69 +24,10 @@ not belong in public manifests or package documentation.
 - Provider credentials stored in a Kubernetes Secret or external secret manager.
 - A router config reviewed for the deployment's model groups, callers, admin auth, and reporting settings.
 
-## EKS Identity And Bootstrap
-
-For EKS, begin with an explicitly selected account, region, cluster, namespace,
-and repository. Use a short-lived federated identity to perform read-only
-discovery before applying manifests; do not rely on a current kube context or
-store AWS access keys in CI. Keep discovery evidence limited to safe inventory
-such as versions, resource names, and policy presence—not secrets, endpoints,
-certificate bodies, DSNs, or rendered Secret data.
-
-For a selected discovery-evidence path, invalidate only a structurally
-recognizable prior discovery report before live probes and publish a replacement
-atomically only after all checks pass. An existing non-report file is refused
-and left untouched. Do not use a report left behind by a failed or interrupted
-discovery attempt; retain historical evidence under a separate timestamped path
-when needed.
-
-If deployment tooling creates a temporary source access key to establish a
-short-lived session, reserve durable local recovery state before that IAM call.
-An interrupted or ambiguous creation must block retries until an operator has
-reconciled the dedicated source user's keys; never create a second key merely
-because the first process did not return a key identifier.
-The bootstrap must verify the exact approved account and discovery assumed-role
-identity before it reports success. If a paired local AWS profile update cannot
-publish its role-config file, it restores both prior profile files and fails
-rather than leaving a new source session paired with stale role settings.
-Use only absolute, non-symlink local profile files outside the repository with
-non-writable-by-others parent directories; a failed post-publication verification
-or cleanup restores both prior profile files (or removes newly created ones).
-
-Use distinct roles for discovery, registry push, staging deployment, production
-promotion, and workload access. GitHub Actions should use OIDC with repository
-and environment claims constrained in the AWS trust policy; configure the
-GitHub Environment itself to restrict deployment branches to the approved
-branch, because an environment-style OIDC subject does not constrain it. Bind
-deployment and tenant-provisioner identities only within their approved
-namespaces; they must not read arbitrary Secrets, alter cluster roles, or modify
-another tenant. Where Linkerd is used, verify its control plane, policy CRDs,
-namespace injection, and identity/trust readiness before applying namespace
-policy resources. Select the actual Linkerd control-plane namespace during
-read-only discovery; clusters that do not use Linkerd may omit it. Review RBAC,
-service-account, network-policy, quota, and
-Linkerd-policy drift before overwriting it. Discovery always selects the
-ingress namespace and can render its companion `NetworkPolicy` for a
-non-Linkerd installation. Render each `ServerAuthorization`
-only after discovery verifies the selected ingress Deployment uses the selected
-service account and its controller-owned Pods are ready with a `linkerd-proxy`
-sidecar, and verifies the selected router Pods also have ready `linkerd-proxy`
-sidecars whose safe local identity and literal trust domain match the selected
-Linkerd control plane. It also requires durable ingress and router injection
-evidence from each selected Namespace or Deployment Pod template before policy
-can rely on those current sidecars. A selected ingress Deployment may use
-`linkerd.io/inject: ingress`; router workloads require ordinary
-`linkerd.io/inject: enabled`. Discovery derives the domain from every selected ingress proxy's safe
-literal trust-domain configuration and compares its safe local-identity
-configuration with the selected ingress namespace and Linkerd control-plane
-namespace before rendering; never apply a template with a fixed, unresolved,
-or merely service-account-existence-based ingress identity. The base router
-`NetworkPolicy` is egress-only so generic and non-EKS deployments retain their
-deployment-owned ingress path. An EKS overlay adds the reviewed
-`tenant-router-ingress-guard.example.yaml` before exposure; the same verified
-report then renders its companion selected-namespace allow policy. Review,
-dry-run, and apply that policy alone for non-Linkerd EKS deployment, or together
-with the Linkerd authorization rather than restoring a fixed ingress namespace.
+For a managed deployment, Metrum's delivery team owns the environment-specific
+automation and access controls. Customers should agree the target cluster,
+namespace, registry, network, and approval requirements with that team before
+release activation.
 
 ## Image And Architecture
 
@@ -298,6 +239,12 @@ predates it; any later apply invalidates the smoke for promotion. Do not
 interpolate command content, router tokens, or
 authorization headers into Make recipes, command arguments, CI logs, or
 evidence files. Capture diagnostic output only in the protected runner.
+
+Supply-chain evidence for automated delivery should use recognized document
+formats, not marker fields alone: a supported SPDX or CycloneDX SBOM and an
+in-toto SLSA provenance statement with its structured build definition and run
+details. Bind every artifact to the exact immutable image digest and target
+architecture before it can authorize delivery.
 
 Check rollout:
 

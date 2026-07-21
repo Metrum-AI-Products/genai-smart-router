@@ -30,11 +30,12 @@ EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 # contents must never be passed through Make expansion or a Python argv value;
 # the runner opens the validated file once and executes that bound descriptor.
 EKS_SMOKE_COMMAND_FILE ?=
+EKS_SUPPLY_CHAIN_DIR ?= tmp/eks-supply-chain
 # EKS inputs can originate in CI/environment values. Export them and expand
 # only in the recipe shell: Make interpolation inside shell quotes would allow
 # a malicious value to alter shell syntax before Python can validate it.
 export EKS_DELIVERY_AWS_PROFILE IMAGE_DIGEST EKS_CONFIRM ROLLBACK_POD_TEMPLATE_SHA256 \
-	EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND_FILE
+	EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND_FILE EKS_SUPPLY_CHAIN_DIR
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
 EKS_ARGS = --aws-profile "$${EKS_DELIVERY_AWS_PROFILE}" --image-digest "$${IMAGE_DIGEST}" --confirm "$${EKS_CONFIRM}" --rollback-pod-template-sha256 "$${ROLLBACK_POD_TEMPLATE_SHA256}" --evidence-dir "$${EKS_EVIDENCE_DIR}"
 
@@ -76,7 +77,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 help: eks-help
 
@@ -88,9 +89,11 @@ eks-help:
 	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
 	@echo "  eks-smoke-staging      protected arbitrary-script smoke; requires EKS_CONFIRM=STAGING_APPLY"
-	@echo "  eks-rollback-staging   mutating staging only: requires confirmation, digest, approved pod-template SHA-256"
+	@echo "  eks-rollback-staging   mutating staging only: requires validated supply-chain evidence, confirmation, digest, approved pod-template SHA-256"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_DELIVERY_AWS_PROFILE and protected staging target policy Parameter."
+	@echo "  eks-supply-chain-validate read-only: validates digest/release-binding/SBOM/provenance/signature/scan evidence"
+	@echo "eks-supply-chain-validate also requires EKS_SUPPLY_CHAIN_DIR; architecture comes only from the approved target policy."
 	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
 	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY; rollback also requires ROLLBACK_POD_TEMPLATE_SHA256."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."
@@ -104,7 +107,7 @@ eks-render:
 eks-plan:
 	$(EKS_DELIVERY) plan $(EKS_ARGS)
 
-eks-apply-staging:
+eks-apply-staging: eks-supply-chain-validate
 	$(EKS_DELIVERY) apply $(EKS_ARGS)
 
 eks-rollout-status:
@@ -114,7 +117,7 @@ eks-smoke-staging:
 	@test -n "$${EKS_SMOKE_COMMAND_FILE:-}" || { echo "EKS_SMOKE_COMMAND_FILE must name a protected mode-0600 smoke script" >&2; exit 2; }
 	@$(EKS_DELIVERY) smoke $(EKS_ARGS) --smoke-command-file "$${EKS_SMOKE_COMMAND_FILE}"
 
-eks-rollback-staging:
+eks-rollback-staging: eks-supply-chain-validate
 	$(EKS_DELIVERY) rollback $(EKS_ARGS)
 
 eks-release-evidence:
@@ -123,6 +126,19 @@ eks-release-evidence:
 
 eks-promotion-plan:
 	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
+
+# Release automation must provide independently generated, safe evidence in this
+# ignored directory. This target performs no image build, registry, AWS, or
+# Kubernetes operation; it fails closed before the Make delivery contract runs.
+eks-supply-chain-validate:
+	$(PYTHON) scripts/validate_staging_supply_chain.py --image-digest "$${IMAGE_DIGEST}" --evidence-dir "$${EKS_SUPPLY_CHAIN_DIR}"
+
+ci-eks-staging-contract:
+	$(PYTHON) scripts/eks_delivery_contract_test.py
+	$(PYTHON) scripts/makefile_security_test.py
+	$(PYTHON) scripts/validate_staging_supply_chain_test.py
+	$(PYTHON) scripts/validate_eks_staging_workflow_test.py
+	$(PYTHON) scripts/validate_eks_staging_workflow.py
 
 test: secret-check
 	go test ./...

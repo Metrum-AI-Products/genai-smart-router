@@ -56,16 +56,22 @@ Before any EKS delivery command can be used outside the offline contract tests:
 1. Renew a least-privilege, non-root AWS session through the secure login
    flow and confirm the approved non-production account, region, ECR
    repository, cluster, namespace, runtime Secret, non-secret Secret
-   attestation ConfigMap, overlay, workload, and delivery role.
+   attestation ConfigMap, overlay, `image_architecture`, workload, and delivery
+   role.
 2. Update the reviewed JSON and the exact protected SSM Parameter named by the
    policy through approved infrastructure-as-code in one reconciliation
    change. The delivery role may read that Parameter but must not update it.
 3. Run `make eks-preflight` with the approved role. Any schema, value, or hash
    mismatch fails closed before cluster selection, rendering, or mutation.
 
-The current schema is version 5. It pins the full tagless source image name
-that Kustomize must replace, the single runtime Secret name, the separately
-bootstrap-owned runtime Secret attestation ConfigMap, and the workload target.
+The current schema is version 6. It pins the full tagless source image name
+that Kustomize must replace, `image_architecture` used to validate the
+release-binding statement and its SBOM/provenance/signature/scan evidence, the
+single runtime Secret name, the separately bootstrap-owned runtime Secret
+attestation ConfigMap, and the workload target. The supply-chain verifier
+derives architecture only from the reviewed JSON; delivery then requires its
+complete canonical policy hash to match the protected Parameter. Never accept
+`EKS_IMAGE_ARCHITECTURE` or any other caller-controlled architecture input.
 The delivery identity receives name-scoped `get` access only to that ConfigMap
 and must have **no** other ConfigMap or Secret verbs. Kubernetes RBAC cannot
 make a Secret `get` metadata-only: JSONPath filters output after the API has

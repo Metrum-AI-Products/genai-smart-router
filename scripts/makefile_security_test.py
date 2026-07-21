@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -85,6 +86,43 @@ def main() -> int:
         "$EKS_EVIDENCE_DIR" in eks_combined or "${EKS_EVIDENCE_DIR}" in eks_combined,
         "EKS evidence directory must defer expansion to the recipe shell",
     )
+
+    supply_chain_dry_run = run_make(
+        "-n",
+        "eks-supply-chain-validate",
+        f"IMAGE_DIGEST={MALICIOUS_EKS_INPUT}",
+        f"EKS_IMAGE_ARCHITECTURE={MALICIOUS_EKS_INPUT}",
+        f"EKS_SUPPLY_CHAIN_DIR={MALICIOUS_EKS_INPUT}",
+    )
+    supply_chain_output = supply_chain_dry_run.stdout + supply_chain_dry_run.stderr
+    require(
+        "id >/tmp/smart-llmrouter-eks-make-poc" not in supply_chain_output,
+        f"supply-chain dry-run exposed executable payload:\n{supply_chain_output}",
+    )
+    for variable in ("IMAGE_DIGEST", "EKS_SUPPLY_CHAIN_DIR"):
+        require(
+            f"${variable}" in supply_chain_output or f"${{{variable}}}" in supply_chain_output,
+            f"supply-chain {variable} must defer expansion to the recipe shell",
+        )
+    require(
+        "EKS_IMAGE_ARCHITECTURE" not in supply_chain_output,
+        "supply-chain architecture must come from the reviewed target policy, not a Make input",
+    )
+
+    with tempfile.TemporaryDirectory() as temporary:
+        marker = Path(temporary) / "make-shell-injection"
+        executed = run_make(
+            "eks-supply-chain-validate",
+            f'IMAGE_DIGEST="; touch {marker}; #',
+            "EKS_IMAGE_ARCHITECTURE=linux/arm64",
+            f"EKS_SUPPLY_CHAIN_DIR={temporary}",
+        )
+        require(executed.returncode != 0, "malicious IMAGE_DIGEST was accepted")
+        require(not marker.exists(), "supply-chain recipe evaluated IMAGE_DIGEST as shell syntax")
+        require(
+            "IMAGE_DIGEST must be a lower-case immutable" in executed.stderr,
+            f"supply-chain validation did not receive the hostile value safely:\n{executed.stderr}",
+        )
 
     discovery_dry_run = run_make("-n", "eks-session-bootstrap")
     discovery_combined = discovery_dry_run.stdout + discovery_dry_run.stderr
