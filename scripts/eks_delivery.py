@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime as dt
+import errno
 import hashlib
 import json
 import os
@@ -112,32 +113,46 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def protected_smoke_command_file(value: str) -> Path:
-    """Return an owner-only shell script path without reading its contents.
+def open_protected_smoke_command_file(value: str) -> int:
+    """Open an owner-only smoke script and return its bound descriptor.
 
     Smoke requests can require caller credentials, so command content is never
-    a Make expansion or Python argument. The delivery process invokes `/bin/sh`
-    with this protected file path, never with its content. The file must be a
-    real owner-only regular file; a symlink or broader mode could redirect a
-    privileged delivery invocation or expose its command content.
+    a Make expansion or Python argument.  Opening the file once with
+    ``O_NOFOLLOW`` and executing that descriptor through ``/bin/sh -s`` also
+    prevents a path replacement between validation and execution.  The file
+    must be a real owner-only regular file; a symlink or broader mode could
+    redirect a privileged delivery invocation or expose its command content.
     """
 
     if not value:
         fail("EKS_SMOKE_COMMAND_FILE is required and must name a protected mode 0600 shell script")
     path = Path(value).expanduser()
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    if not no_follow:
+        fail("EKS_SMOKE_COMMAND_FILE cannot be opened safely on this platform")
     try:
-        metadata = path.lstat()
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | no_follow | getattr(os, "O_CLOEXEC", 0),
+        )
     except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            fail("EKS_SMOKE_COMMAND_FILE must be a regular non-symlink file")
         raise RuntimeError("EKS_SMOKE_COMMAND_FILE is not an accessible protected file") from exc
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-        fail("EKS_SMOKE_COMMAND_FILE must be a regular non-symlink file")
-    if stat.S_IMODE(metadata.st_mode) != 0o600:
-        fail("EKS_SMOKE_COMMAND_FILE must have mode 0600")
-    if metadata.st_uid != os.geteuid():
-        fail("EKS_SMOKE_COMMAND_FILE must be owned by the invoking user")
-    if metadata.st_size == 0:
-        fail("EKS_SMOKE_COMMAND_FILE must not be empty")
-    return path.resolve()
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            fail("EKS_SMOKE_COMMAND_FILE must be a regular non-symlink file")
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            fail("EKS_SMOKE_COMMAND_FILE must have mode 0600")
+        if metadata.st_uid != os.geteuid():
+            fail("EKS_SMOKE_COMMAND_FILE must be owned by the invoking user")
+        if metadata.st_size == 0:
+            fail("EKS_SMOKE_COMMAND_FILE must not be empty")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: bool = False) -> str:
@@ -341,7 +356,7 @@ def read_checked_in_target_policy() -> TargetPolicy:
 class Delivery:
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        self.smoke_command_file: Path | None = None
+        self.smoke_command_fd: int | None = None
         self._validate_inputs()
         self.evidence_dir = Path(args.evidence_dir).resolve()
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -371,7 +386,7 @@ class Delivery:
         if self.args.action in {"apply", "rollback"} and self.args.confirm != "STAGING_APPLY":
             fail("mutating action requires EKS_CONFIRM=STAGING_APPLY")
         if self.args.action == "smoke":
-            self.smoke_command_file = protected_smoke_command_file(self.args.smoke_command_file)
+            self.smoke_command_fd = open_protected_smoke_command_file(self.args.smoke_command_file)
 
     def event(self, name: str, **fields: object) -> None:
         self.evidence["events"].append({"name": name, **fields})
@@ -1420,12 +1435,13 @@ class Delivery:
                 self.verify_live_deployment(env, target, "after_rollback")
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
-                if self.smoke_command_file is None:
+                if self.smoke_command_fd is None:
                     fail("EKS_SMOKE_COMMAND_FILE is required")
                 self.verify_managed_inventory(env, target, "before_smoke")
                 before_smoke = self.verify_live_deployment(env, target, "before_smoke")
                 proc = subprocess.run(
-                    ["/bin/sh", str(self.smoke_command_file)],
+                    ["/bin/sh", "-s"],
+                    stdin=self.smoke_command_fd,
                     env=env,
                     text=True,
                     capture_output=True,
@@ -1493,6 +1509,9 @@ class Delivery:
             raise
         finally:
             temp.cleanup()
+            if self.smoke_command_fd is not None:
+                os.close(self.smoke_command_fd)
+                self.smoke_command_fd = None
 
 
 def parser() -> argparse.ArgumentParser:

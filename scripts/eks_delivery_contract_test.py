@@ -839,6 +839,29 @@ def main() -> int:
         )
         assert insecure_smoke.returncode != 0 and "mode 0600" in insecure_smoke.stderr
 
+        # Bind the checked file descriptor before execution.  Replacing the
+        # path after validation must not substitute a different smoke script.
+        descriptor_smoke_script = protected_smoke_script(
+            root, "descriptor-smoke.sh", "exit 0\n"
+        )
+        descriptor = EKS_DELIVERY.open_protected_smoke_command_file(
+            str(descriptor_smoke_script)
+        )
+        try:
+            replacement = protected_smoke_script(
+                root, "descriptor-smoke-replacement.sh", "exit 37\n"
+            )
+            replacement.replace(descriptor_smoke_script)
+            descriptor_smoke = subprocess.run(
+                ["/bin/sh", "-s"],
+                stdin=descriptor,
+                text=True,
+                capture_output=True,
+            )
+            assert descriptor_smoke.returncode == 0, descriptor_smoke.stderr
+        finally:
+            os.close(descriptor)
+
         marker = root / "smoke-command-ran"
         marker_smoke_script = protected_smoke_script(
             root, "marker-smoke.sh", f"touch '{marker}'\n"

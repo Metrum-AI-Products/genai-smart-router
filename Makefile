@@ -19,7 +19,8 @@ IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
 EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 # Export only the path to an owner-only (0600) local/CI shell script. Its
-# contents must never be passed through Make expansion or a Python argv value.
+# contents must never be passed through Make expansion or a Python argv value;
+# the runner opens the validated file once and executes that bound descriptor.
 EKS_SMOKE_COMMAND_FILE ?=
 export EKS_SMOKE_COMMAND_FILE
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py

@@ -280,8 +280,10 @@ context. See `make eks-help` for the complete target list and required inputs.
    ```
 
    The Make recipe is non-echoed and passes only the script path to the
-   delivery process, which invokes `/bin/sh <path>` without reading, printing,
-   hashing, or storing the command content. Smoke stdout/stderr is not copied
+   delivery process. The process opens that exact non-symlink file once with a
+   no-follow descriptor and invokes `/bin/sh -s` from the descriptor, so a
+   later path replacement cannot change the validated script. It never reads,
+   prints, hashes, or stores command content. Smoke stdout/stderr is not copied
    into evidence on failure. Keep credentials in the secure runner/secret
    source rather than an inline command, and use that private runner log for
    diagnostics; do not put a caller credential in Make variables, command
