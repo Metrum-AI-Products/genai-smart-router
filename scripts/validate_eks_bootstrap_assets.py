@@ -89,10 +89,11 @@ def main() -> int:
         if required not in activator:
             raise SystemExit("tenant policy activation must bind explicit Kubernetes context to the discovered AWS target")
     ingress_renderer = INGRESS_RENDERER.read_text(encoding="utf-8")
-    if "EKS_INGRESS_GUARD_POLICY" not in ingress_renderer or "router_workload_injection_verified" not in ingress_renderer:
-        raise SystemExit("selected-ingress rendering must require the EKS guard and durable router injection evidence")
-    if "router_workload_injection_evidence" not in DISCOVERY_SCRIPT.read_text(encoding="utf-8"):
-        raise SystemExit("Linkerd discovery must verify durable router injection before policy rendering")
+    if "EKS_INGRESS_GUARD_POLICY" not in ingress_renderer or "router_workload_injection_verified" not in ingress_renderer or "ingress_workload_injection_verified" not in ingress_renderer:
+        raise SystemExit("selected-ingress rendering must require the EKS guard and durable workload injection evidence")
+    discovery_script = DISCOVERY_SCRIPT.read_text(encoding="utf-8")
+    if "router_workload_injection_evidence" not in discovery_script or "ingress_workload_injection_evidence" not in discovery_script:
+        raise SystemExit("Linkerd discovery must verify durable ingress and router injection before policy rendering")
 
     for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README, IDENTITY_BOOTSTRAP):
         deployment_path = path.read_text(encoding="utf-8")

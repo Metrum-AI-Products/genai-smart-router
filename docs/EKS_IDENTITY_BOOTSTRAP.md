@@ -179,12 +179,13 @@ present, including one with an operator-supplied but incorrect trust domain or a
 router proxy injected by a different Linkerd control plane. The current contract
 supports an ingress
 `Deployment`; add a separately reviewed discovery contract before using a
-different workload kind. For the router `Deployment`, discovery also requires
-durable injection evidence: either its Pod template explicitly sets
-`linkerd.io/inject: enabled`, or the selected tenant Namespace does so without
-a template-level opt-out. The checked-in
-`tenant-router-linkerd-injection-patch.example.yaml` is the recommended
-deployment-template patch for a Linkerd EKS overlay. Discovery deliberately
+different workload kind. For both the selected ingress and router
+`Deployment`, discovery also requires durable injection evidence: either its
+Pod template explicitly sets `linkerd.io/inject: enabled`, or its selected
+Namespace does so without a template-level opt-out. The checked-in
+`tenant-router-linkerd-injection-patch.example.yaml` is the recommended router
+deployment-template patch for a Linkerd EKS overlay; the platform-owned ingress
+Deployment must retain equivalent template or Namespace evidence. Discovery deliberately
 does not read Linkerd trust configuration payloads, trust anchors, certificates,
 or tokens; review the derived identity before rendering.
 
@@ -272,8 +273,8 @@ egress-only so non-EKS deployments retain their deployment-owned ingress path.
 An EKS overlay must add the reviewed
 `tenant-router-ingress-guard.example.yaml` before the router is exposed; it
 denies ingress during this state. Rerun the explicit-target discovery after
-that readiness check; in Linkerd mode it records both durable injection and
-router proxy evidence needed by both renderers. For every EKS cluster, render
+that readiness check; in Linkerd mode it records durable ingress and router
+injection plus router proxy evidence needed by both renderers. For every EKS cluster, render
 the companion selected-namespace allow policy from the successful scrubbed
 report:
 
@@ -320,8 +321,8 @@ labels, and trust/identity readiness. The template uses `v1beta3` for `Server`
 and `v1beta1` for `ServerAuthorization`, the separately served standard CRDs;
 discovery must still confirm both versions and the ingress Deployment's actual
 meshed service-account identity against the cluster before rendering. It also
-requires durable router Namespace or Deployment-template injection evidence
-before a policy can rely on current sidecars. The EKS ingress guard intentionally
+requires durable ingress and router Namespace or Deployment-template injection
+evidence before a policy can rely on current sidecars. The EKS ingress guard intentionally
 denies ingress until a companion, selected-namespace allow policy is rendered.
 Both artifacts must come only from the successful scrubbed discovery report,
 never from hand-copied values:
@@ -339,8 +340,8 @@ the reviewed EKS ingress guard retains its deny-ingress shape and rejects an
 ingress policy template with a fixed namespace. In Linkerd mode it also refuses
 discovery evidence unless both the selected ingress workload and selected router Pods
 have ready `linkerd-proxy` sidecars with identity and trust-domain evidence
-matching the selected Linkerd control plane, plus durable router injection
-evidence. The Linkerd renderer derives
+matching the selected Linkerd control plane, plus durable ingress and router
+injection evidence. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
 placeholders. Add `EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml`

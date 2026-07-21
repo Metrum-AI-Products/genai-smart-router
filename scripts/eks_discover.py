@@ -380,42 +380,58 @@ def router_workload_evidence(
     }
 
 
-def router_workload_injection_evidence(
+def deployment_linkerd_injection_evidence(
     deployment: dict[str, Any],
     namespace: dict[str, Any],
+    workload: str,
 ) -> dict[str, bool | str]:
-    """Require durable router injection before policy can rely on a sidecar.
+    """Require durable Deployment injection before policy can rely on a sidecar.
 
-    A ready proxy proves only the Pods that exist during discovery.  Future
+    A ready proxy proves only the Pods that exist during discovery. Future
     rollout Pods must still request Linkerd injection, either through the
-    selected router Deployment's Pod template or the tenant Namespace's
-    injection annotation.  A template opt-out overrides namespace injection
-    and is always rejected.  The report retains only a bounded source label,
-    not arbitrary annotation content.
+    selected Deployment's Pod template or the selected Namespace injection
+    annotation. A template opt-out or unrecognized value overrides namespace
+    injection and is rejected. The report retains only a bounded source label.
     """
     metadata = deployment.get("metadata", {})
     deployment_name = metadata.get("name") if isinstance(metadata, dict) else None
     if not is_dns_subdomain(deployment_name):
-        raise DiscoveryError("selected router Deployment has an invalid name")
+        raise DiscoveryError(f"selected {workload} Deployment has an invalid name")
     spec = deployment.get("spec", {})
     template = spec.get("template", {}) if isinstance(spec, dict) else {}
     if not isinstance(template, dict):
-        raise DiscoveryError("selected router Deployment has no Pod template for Linkerd injection evidence")
+        raise DiscoveryError(f"selected {workload} Deployment has no Pod template for Linkerd injection evidence")
     template_setting = linkerd_injection_annotation(template).strip().lower()
     if template_setting and template_setting != "enabled":
-        raise DiscoveryError("selected router Deployment does not explicitly enable Linkerd injection in its Pod template")
+        raise DiscoveryError(f"selected {workload} Deployment does not explicitly enable Linkerd injection in its Pod template")
     if template_setting == "enabled":
         source = "deployment-template"
     elif linkerd_injection_enabled(namespace):
         source = "namespace"
     else:
-        raise DiscoveryError("selected router workload lacks durable Linkerd namespace or Pod-template injection evidence")
+        raise DiscoveryError(f"selected {workload} workload lacks durable Linkerd namespace or Pod-template injection evidence")
     return {
-        "router_workload_kind": "Deployment",
-        "router_workload_name": deployment_name,
-        "router_workload_injection_verified": True,
-        "router_workload_injection_source": source,
+        f"{workload}_workload_kind": "Deployment",
+        f"{workload}_workload_name": deployment_name,
+        f"{workload}_workload_injection_verified": True,
+        f"{workload}_workload_injection_source": source,
     }
+
+
+def ingress_workload_injection_evidence(
+    deployment: dict[str, Any],
+    namespace: dict[str, Any],
+) -> dict[str, bool | str]:
+    """Require durable injection for the selected ingress Deployment rollout."""
+    return deployment_linkerd_injection_evidence(deployment, namespace, "ingress")
+
+
+def router_workload_injection_evidence(
+    deployment: dict[str, Any],
+    namespace: dict[str, Any],
+) -> dict[str, bool | str]:
+    """Require durable injection for the selected router Deployment rollout."""
+    return deployment_linkerd_injection_evidence(deployment, namespace, "router")
 
 
 def validate_discovery_identity(identity: dict[str, Any], account_id: str) -> tuple[str, str]:
@@ -631,6 +647,8 @@ def main() -> int:
                 "ingress_identity_verified": False,
                 "ingress_workload_verified": False,
                 "ingress_workload_mesh_ready": False,
+                "ingress_workload_injection_verified": False,
+                "ingress_workload_injection_source": "",
                 "router_workload_verified": False,
                 "router_workload_mesh_ready": False,
                 "router_workload_identity_verified": False,
@@ -653,6 +671,7 @@ def main() -> int:
                 ingress_deployment = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "deployment", args.ingress_deployment])
                 ingress_replica_sets = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "replicasets"])
                 ingress_pods = kubectl_json(kubeconfig, ["--context", context, "-n", args.ingress_namespace, "get", "pods"])
+                ingress_injection_evidence = ingress_workload_injection_evidence(ingress_deployment, ingress_namespace)
                 workload_evidence = ingress_workload_evidence(
                     ingress_deployment,
                     ingress_replica_sets,
@@ -733,6 +752,7 @@ def main() -> int:
                     "identity_service_accounts": item_names(linkerd_service_accounts),
                     "ingress_identity": ingress_identity,
                     "ingress_identity_verified": True,
+                    **ingress_injection_evidence,
                     **workload_evidence,
                     **router_injection_evidence,
                     **router_evidence,

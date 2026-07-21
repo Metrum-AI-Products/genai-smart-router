@@ -282,8 +282,14 @@ def test_output_lock_is_exclusive(root: Path) -> None:
 
 def ingress_workload_payloads() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
     deployment = {
-        "metadata": {"uid": "deployment-uid"},
-        "spec": {"replicas": 2, "template": {"spec": {"serviceAccountName": "ingress-proxy"}}},
+        "metadata": {"name": "ingress-controller", "uid": "deployment-uid"},
+        "spec": {
+            "replicas": 2,
+            "template": {
+                "metadata": {"annotations": {"linkerd.io/inject": "enabled"}},
+                "spec": {"serviceAccountName": "ingress-proxy"},
+            },
+        },
         "status": {"availableReplicas": 2},
     }
     replica_sets = {
@@ -433,6 +439,50 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
         pass
     else:
         raise AssertionError("ingress identity verification accepted inconsistent Linkerd trust-domain evidence")
+
+
+def test_ingress_workload_requires_durable_linkerd_injection() -> None:
+    deployment, _, _ = ingress_workload_payloads()
+    namespace = {"metadata": {"annotations": {}}}
+    evidence = MODULE.ingress_workload_injection_evidence(deployment, namespace)
+    if evidence != {
+        "ingress_workload_kind": "Deployment",
+        "ingress_workload_name": "ingress-controller",
+        "ingress_workload_injection_verified": True,
+        "ingress_workload_injection_source": "deployment-template",
+    }:
+        raise AssertionError("ingress Deployment template injection did not produce bounded durable evidence")
+    deployment, _, _ = ingress_workload_payloads()
+    del deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"]  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    evidence = MODULE.ingress_workload_injection_evidence(deployment, namespace)
+    if evidence.get("ingress_workload_injection_source") != "namespace":
+        raise AssertionError("namespace-level ingress injection was not accepted as durable evidence")
+    deployment, _, _ = ingress_workload_payloads()
+    deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "disabled"  # type: ignore[index]
+    namespace["metadata"]["annotations"]["linkerd.io/inject"] = "enabled"  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_injection_evidence(deployment, namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress Deployment template opt-out overrode durable Linkerd injection evidence")
+    deployment, _, _ = ingress_workload_payloads()
+    deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"] = "unexpected"  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_injection_evidence(deployment, namespace)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress Deployment template accepted an unrecognized Linkerd injection setting")
+    deployment, _, _ = ingress_workload_payloads()
+    del deployment["spec"]["template"]["metadata"]["annotations"]["linkerd.io/inject"]  # type: ignore[index]
+    try:
+        MODULE.ingress_workload_injection_evidence(deployment, {"metadata": {"annotations": {}}})
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("ingress workload without namespace or template injection was accepted")
 
 
 def router_workload_payloads() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
@@ -642,6 +692,7 @@ def main() -> int:
         test_unrecognized_existing_output_is_preserved_before_probes(root)
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
+        test_ingress_workload_requires_durable_linkerd_injection()
         test_router_workload_requires_ready_identity_matched_pods()
         test_router_workload_requires_durable_linkerd_injection()
         test_namespace_report_evidence_is_scrubbed()

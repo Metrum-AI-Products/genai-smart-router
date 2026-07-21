@@ -72,9 +72,9 @@ only after discovery verifies the selected ingress Deployment uses the selected
 service account and its controller-owned Pods are ready with a `linkerd-proxy`
 sidecar, and verifies the selected router Pods also have ready `linkerd-proxy`
 sidecars whose safe local identity and literal trust domain match the selected
-Linkerd control plane. It also requires durable router injection evidence from
-the selected Namespace or router Deployment Pod template before policy can rely
-on those current sidecars. Discovery derives the domain from every selected ingress proxy's safe
+Linkerd control plane. It also requires durable ingress and router injection
+evidence from each selected Namespace or Deployment Pod template before policy
+can rely on those current sidecars. Discovery derives the domain from every selected ingress proxy's safe
 literal trust-domain configuration and compares its safe local-identity
 configuration with the selected ingress namespace and Linkerd control-plane
 namespace before rendering; never apply a template with a fixed, unresolved,
@@ -244,8 +244,8 @@ must apply their own reviewed client/ingress policy before exposure. For EKS,
 copy the reviewed `tenant-router-ingress-guard.example.yaml` into the
 deployment-owned overlay before exposure; it denies ingress until discovery
 selects the real ingress namespace. After the rollout is Ready, rerun the
-explicit-target discovery so Linkerd mode can also verify durable injection and
-router Pods, then use the matching deployment bundle to render and activate
+explicit-target discovery so Linkerd mode can also verify durable ingress/router
+injection and router Pods, then use the matching deployment bundle to render and activate
 that companion policy. Do not substitute a fixed namespace in the overlay or
 use an ambient `kubectl` context. The activation target verifies the discovery
 account and selected EKS endpoint against the named AWS profile and explicit

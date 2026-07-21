@@ -25,6 +25,7 @@ def discovery() -> dict[str, object]:
             "ingress_identity_verified": True,
             "ingress_workload_verified": True,
             "ingress_workload_mesh_ready": True,
+            "ingress_workload_injection_verified": True,
             "router_workload_verified": True,
             "router_workload_mesh_ready": True,
             "router_workload_identity_verified": True,
@@ -68,6 +69,16 @@ def main() -> int:
         pass
     else:
         raise AssertionError("renderer accepted identity evidence without a ready meshed ingress workload")
+    invalid_ingress_injection = discovery()
+    invalid_ingress_injection_linkerd = invalid_ingress_injection["linkerd"]
+    assert isinstance(invalid_ingress_injection_linkerd, dict)
+    invalid_ingress_injection_linkerd["ingress_workload_injection_verified"] = False
+    try:
+        MODULE.render(template, invalid_ingress_injection)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("renderer accepted ingress evidence without durable Linkerd injection proof")
     invalid_router = discovery()
     invalid_router_linkerd = invalid_router["linkerd"]
     assert isinstance(invalid_router_linkerd, dict)

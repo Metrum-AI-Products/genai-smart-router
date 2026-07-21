@@ -4,8 +4,8 @@
 # policy is then the only ingress exception. The generic base stays
 # ingress-neutral for non-EKS deployments. In Linkerd mode,
 # `make eks-render-linkerd-policy` renders this companion policy first and
-# requires verified ingress identity, durable router injection, and router mesh
-# evidence.
+# requires verified ingress identity, durable ingress/router injection, and
+# router mesh evidence.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -405,6 +405,61 @@ def assert_failed_role_verification_restores_profile_files(root: Path) -> None:
         raise AssertionError("failed role verification did not remove newly published AWS profile files")
 
 
+def assert_cleanup_record_failure_still_restores_profiles(root: Path) -> None:
+    profile_root = root / "cleanup-record-profile-rollback"
+    profile_root.mkdir(mode=0o700)
+    credentials_path = profile_root / "credentials"
+    config_path = profile_root / "config"
+    original_credentials = b"[smartrouter]\naws_access_key_id = prior-session\n"
+    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    credentials_path.write_bytes(original_credentials)
+    config_path.write_bytes(original_config)
+    credentials_path.chmod(0o640)
+    config_path.chmod(0o600)
+    cleanup = root / "cleanup-record-profile-rollback.json"
+    names = ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE")
+    original_environment = {name: os.environ.get(name) for name in names}
+    original_remove = MODULE.remove_own_recovery_record
+
+    def command(args: list[str], *, env=None) -> str:
+        if args[:3] == ["aws", "sts", "get-caller-identity"]:
+            profile = args[args.index("--profile") + 1]
+            if profile == "admin":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/smartrouter"})
+            if profile == "genai-smart-router-eks-discovery":
+                return json.dumps({"Account": "123456789012", "Arn": "arn:aws:sts::123456789012:assumed-role/wrong-role/test"})
+        if args[:3] == ["aws", "iam", "create-access-key"]:
+            return json.dumps({"AccessKey": {"AccessKeyId": "AKIAEXAMPLEKEYID", "SecretAccessKey": "test-only-secret"}})
+        if args[:3] == ["aws", "sts", "get-session-token"]:
+            return json.dumps({"Credentials": {"AccessKeyId": "ASIAEXAMPLEKEYID", "SecretAccessKey": "test-only-session-secret", "SessionToken": "test-only-session-token", "Expiration": "2030-01-01T00:00:00Z"}})
+        if args[:3] == ["aws", "iam", "delete-access-key"]:
+            return ""
+        raise AssertionError(f"unexpected command: {args}")
+
+    os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(credentials_path)
+    os.environ["AWS_CONFIG_FILE"] = str(config_path)
+    MODULE.remove_own_recovery_record = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("simulated cleanup record failure"))  # type: ignore[method-assign]
+    try:
+        try:
+            run_main_with_stubs(cleanup, command, stub_profiles=False)
+        except RuntimeError as exc:
+            if str(exc) != "temporary source key was deleted but its cleanup record could not be removed; preserve it for operator reconciliation":
+                raise
+        else:
+            raise AssertionError("bootstrap accepted a failed cleanup-record removal")
+    finally:
+        MODULE.remove_own_recovery_record = original_remove  # type: ignore[method-assign]
+        for name, value in original_environment.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    if credentials_path.read_bytes() != original_credentials or mode(credentials_path) != 0o640:
+        raise AssertionError("cleanup-record failure did not restore the prior credentials profile")
+    if config_path.read_bytes() != original_config or mode(config_path) != 0o600:
+        raise AssertionError("cleanup-record failure did not restore the prior config profile")
+
+
 def assert_unexpected_role_identity_is_rejected(root: Path) -> None:
     cleanup = root / "unexpected-role" / "recovery.json"
     source_key_deleted = False
@@ -505,6 +560,7 @@ def main() -> int:
         assert_profile_write_rolls_back_credentials_when_config_write_fails(root)
         assert_unsafe_profile_paths_fail_before_iam(root)
         assert_failed_role_verification_restores_profile_files(root)
+        assert_cleanup_record_failure_still_restores_profiles(root)
         assert_unexpected_role_identity_is_rejected(root)
     print("EKS session bootstrap safety tests passed")
     return 0

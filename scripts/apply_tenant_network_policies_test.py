@@ -38,6 +38,7 @@ def discovery(*, linkerd: bool = False) -> dict[str, object]:
                 "ingress_identity_verified": True,
                 "ingress_workload_verified": True,
                 "ingress_workload_mesh_ready": True,
+                "ingress_workload_injection_verified": True,
                 "router_workload_verified": True,
                 "router_workload_mesh_ready": True,
                 "router_workload_identity_verified": True,

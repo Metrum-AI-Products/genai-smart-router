@@ -28,6 +28,7 @@ def discovery() -> dict[str, object]:
             "ingress_identity_verified": True,
             "ingress_workload_verified": True,
             "ingress_workload_mesh_ready": True,
+            "ingress_workload_injection_verified": True,
             "router_workload_verified": True,
             "router_workload_mesh_ready": True,
             "router_workload_identity_verified": True,
@@ -137,6 +138,11 @@ def main() -> int:
     assert isinstance(invalid_linkerd, dict)
     invalid_linkerd["ingress_workload_mesh_ready"] = False
     expect_rejected(lambda: MODULE.render(template, invalid, eks_guard))
+    invalid_ingress_injection = discovery()
+    invalid_ingress_injection_linkerd = invalid_ingress_injection["linkerd"]
+    assert isinstance(invalid_ingress_injection_linkerd, dict)
+    invalid_ingress_injection_linkerd["ingress_workload_injection_verified"] = False
+    expect_rejected(lambda: MODULE.render(template, invalid_ingress_injection, eks_guard))
     invalid_router = discovery()
     invalid_router_linkerd = invalid_router["linkerd"]
     assert isinstance(invalid_router_linkerd, dict)

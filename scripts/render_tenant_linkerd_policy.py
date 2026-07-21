@@ -55,6 +55,7 @@ def render(template: str, discovery: dict[str, Any]) -> str:
         or linkerd.get("ingress_identity_verified") is not True
         or linkerd.get("ingress_workload_verified") is not True
         or linkerd.get("ingress_workload_mesh_ready") is not True
+        or linkerd.get("ingress_workload_injection_verified") is not True
         or linkerd.get("router_workload_verified") is not True
         or linkerd.get("router_workload_mesh_ready") is not True
         or linkerd.get("router_workload_identity_verified") is not True

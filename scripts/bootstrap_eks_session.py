@@ -477,12 +477,17 @@ def main() -> int:
         print(json.dumps({"session_profile": args.session_profile, "role_profile": args.role_profile, "role_identity": verified_role_arn, "session_expiration": session["Expiration"], "source_access_key_deleted": True}))
         return 0
     finally:
+        cleanup_error: Exception | None = None
         rollback_error: OSError | None = None
         if key_id and not deleted:
             deleted = delete_source_key()
             if deleted:
-                remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
-                key_id = ""
+                try:
+                    remove_own_recovery_record(args.cleanup_record, reservation, args.source_user, key_id)
+                except Exception as exc:
+                    cleanup_error = exc
+                else:
+                    key_id = ""
         if profiles_published and not completed:
             try:
                 restore_profile_files(credentials_path, config_path, profile_snapshots)
@@ -490,6 +495,8 @@ def main() -> int:
                 rollback_error = exc
         if rollback_error is not None:
             raise RuntimeError("failed EKS bootstrap could not restore prior AWS profile files; do not use either profile") from rollback_error
+        if cleanup_error is not None:
+            raise RuntimeError("temporary source key was deleted but its cleanup record could not be removed; preserve it for operator reconciliation") from cleanup_error
         if key_id and not deleted:
             raise RuntimeError(f"temporary source key deletion failed; cleanup record: {args.cleanup_record}")
 
