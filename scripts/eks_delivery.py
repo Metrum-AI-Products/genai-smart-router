@@ -40,6 +40,7 @@ SECRET_PATTERNS = (
     re.compile(r"AKIA[0-9A-Z]{16}"),
 )
 DIGEST = re.compile(r"^[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 ECR_REPOSITORY_URI = re.compile(
     r"^([0-9]{12})\.dkr\.ecr\.([a-z0-9]+(?:-[a-z0-9]+)+)\.amazonaws\.com/"
     r"([a-z0-9](?:[a-z0-9._/-]*[a-z0-9])?)$"
@@ -189,6 +190,29 @@ def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: b
 
 def canonical_json_bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def pod_template_sha256(template: dict[str, object]) -> str:
+    """Fingerprint the full pod template, excluding only controller-owned hash.
+
+    A Deployment controller adds ``pod-template-hash`` to ReplicaSet templates.
+    It is an implementation label rather than a reviewed workload setting, so
+    exclude only that one value. Secret references, service accounts, security
+    context, sidecars, init containers, volumes, and every other template field
+    remain part of this approval fingerprint.
+    """
+
+    normalized = copy.deepcopy(template)
+    metadata = normalized.get("metadata")
+    if isinstance(metadata, dict):
+        labels = metadata.get("labels")
+        if isinstance(labels, dict) and "pod-template-hash" in labels:
+            labels.pop("pod-template-hash")
+            if not labels:
+                metadata.pop("labels")
+        if not metadata:
+            normalized.pop("metadata")
+    return hashlib.sha256(canonical_json_bytes(normalized)).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -409,6 +433,10 @@ class Delivery:
                 fail("IMAGE_DIGEST must be a lower-case immutable image@sha256:<64 hex> reference")
         if self.args.action in {"apply", "rollback", "smoke"} and self.args.confirm != "STAGING_APPLY":
             fail("potentially mutating action requires EKS_CONFIRM=STAGING_APPLY")
+        if self.args.action == "rollback" and not SHA256.fullmatch(
+            self.args.rollback_pod_template_sha256
+        ):
+            fail("ROLLBACK_POD_TEMPLATE_SHA256 must be an explicitly approved 64-character lower-case SHA-256")
         if self.args.action == "smoke":
             self.smoke_command_fd = open_protected_smoke_command_file(self.args.smoke_command_file)
 
@@ -512,6 +540,7 @@ class Delivery:
             "accepted_apply_evidence_sha256",
             "accepted_apply_timestamp",
             "rollback_target_revision",
+            "rollback_target_pod_template_sha256",
             "live_deployment_generation",
             "live_deployment_observed_generation",
             "live_pod_template_sha256",
@@ -1333,7 +1362,14 @@ class Delivery:
             fail("live managed-resource configuration does not match the rendered staging manifest")
         self.record_live_managed_inventory(live_inventory, phase, "matched")
 
-    def verify_live_deployment(self, env: dict[str, str], target: TargetPolicy, phase: str) -> LiveDeploymentIdentity:
+    def verify_live_deployment(
+        self,
+        env: dict[str, str],
+        target: TargetPolicy,
+        phase: str,
+        *,
+        expected_pod_template_sha256: str | None = None,
+    ) -> LiveDeploymentIdentity:
         command(
             [
                 "kubectl",
@@ -1389,8 +1425,13 @@ class Delivery:
         identity = LiveDeploymentIdentity(
             generation=generation,
             observed_generation=observed_generation,
-            pod_template_sha256=hashlib.sha256(canonical_json_bytes(template)).hexdigest(),
+            pod_template_sha256=pod_template_sha256(template),
         )
+        if (
+            expected_pod_template_sha256 is not None
+            and identity.pod_template_sha256 != expected_pod_template_sha256
+        ):
+            fail("live router Deployment does not use the explicitly approved rollback pod template")
         self.evidence.update(
             {
                 "live_deployment_generation": identity.generation,
@@ -1409,11 +1450,12 @@ class Delivery:
         return identity
 
     def rollback_revision_for_digest(self, env: dict[str, str], target: TargetPolicy) -> int:
-        """Find a prior deployment revision that already uses IMAGE_DIGEST.
+        """Find a prior deployment revision with the approved artifact/template.
 
         ``kubectl rollout undo`` otherwise selects whichever revision happens
         to be immediately previous. Resolve the requested immutable artifact
-        before any mutation and use its explicit revision instead.
+        *and* its explicitly approved complete pod template before any mutation
+        and use that exact revision instead.
         """
 
         deployment_payload = command(
@@ -1516,13 +1558,23 @@ class Delivery:
                 ),
                 None,
             )
-            if router_container and router_container.get("image") == self.args.image_digest:
+            if (
+                router_container
+                and router_container.get("image") == self.args.image_digest
+                and pod_template_sha256(template) == self.args.rollback_pod_template_sha256
+            ):
                 candidates.append(revision)
         if not candidates:
-            fail("no prior Deployment revision uses the requested approved IMAGE_DIGEST")
+            fail("no prior Deployment revision uses the requested approved IMAGE_DIGEST and pod template")
         revision = max(candidates)
         self.evidence["rollback_target_revision"] = revision
-        self.event("rollback_target", revision=revision, result="approved_digest_revision_resolved")
+        self.evidence["rollback_target_pod_template_sha256"] = self.args.rollback_pod_template_sha256
+        self.event(
+            "rollback_target",
+            revision=revision,
+            pod_template_sha256=self.args.rollback_pod_template_sha256,
+            result="approved_digest_and_template_revision_resolved",
+        )
         return revision
 
     def run(self) -> None:
@@ -1571,7 +1623,12 @@ class Delivery:
                     env,
                     quiet=True,
                 )
-                self.verify_live_deployment(env, target, "after_rollback")
+                self.verify_live_deployment(
+                    env,
+                    target,
+                    "after_rollback",
+                    expected_pod_template_sha256=self.args.rollback_pod_template_sha256,
+                )
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
                 if self.smoke_command_fd is None:
@@ -1640,6 +1697,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--aws-profile", required=True)
     p.add_argument("--image-digest", default="")
     p.add_argument("--confirm", default="")
+    p.add_argument("--rollback-pod-template-sha256", default="")
     p.add_argument("--evidence-dir", required=True)
     p.add_argument("--smoke-command-file", default="")
     return p

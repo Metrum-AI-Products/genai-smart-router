@@ -17,6 +17,7 @@ PYTHON ?= python3
 EKS_AWS_PROFILE ?= genai-smart-router-eks-staging-delivery
 IMAGE_DIGEST ?=
 EKS_CONFIRM ?=
+ROLLBACK_POD_TEMPLATE_SHA256 ?=
 EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 # Export only the path to an owner-only (0600) local/CI shell script. Its
 # contents must never be passed through Make expansion or a Python argv value;
@@ -24,7 +25,7 @@ EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 EKS_SMOKE_COMMAND_FILE ?=
 export EKS_SMOKE_COMMAND_FILE
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
-EKS_ARGS = --aws-profile "$(EKS_AWS_PROFILE)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
+EKS_ARGS = --aws-profile "$(EKS_AWS_PROFILE)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --rollback-pod-template-sha256 "$(ROLLBACK_POD_TEMPLATE_SHA256)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -76,11 +77,11 @@ eks-help:
 	@echo "  eks-apply-staging      mutating staging only: requires EKS_CONFIRM=STAGING_APPLY"
 	@echo "  eks-rollout-status     read-only: namespace workload status -> evidence"
 	@echo "  eks-smoke-staging      protected arbitrary-script smoke; requires EKS_CONFIRM=STAGING_APPLY"
-	@echo "  eks-rollback-staging   mutating staging only: requires EKS_CONFIRM=STAGING_APPLY and IMAGE_DIGEST"
+	@echo "  eks-rollback-staging   mutating staging only: requires confirmation, digest, approved pod-template SHA-256"
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "Required: an approved EKS_AWS_PROFILE and protected staging target policy Parameter."
 	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."
-	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY."
+	@echo "Apply, rollback, and protected smoke require EKS_CONFIRM=STAGING_APPLY; rollback also requires ROLLBACK_POD_TEMPLATE_SHA256."
 	@echo "Evidence: EKS_EVIDENCE_DIR (default tmp/eks-evidence); redacted JSON/Markdown bind digest, rendered config fingerprint, managed-resource identity/configuration fingerprints, and live pod-template state."
 
 eks-preflight:

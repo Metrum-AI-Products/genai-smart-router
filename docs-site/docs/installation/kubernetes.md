@@ -256,9 +256,10 @@ and reject unexpected live labels, annotations, or spec fields before a
 mutation. Verify both before smoke and promotion. Do not use a broad prune: a
 removed or renamed resource should fail delivery until it is removed through a
 separately approved migration. Treat rollback as an artifact deployment too:
-require an explicitly approved immutable digest, resolve a matching owned
-historical revision before undoing, and verify the restored workload's live
-digest and rollout identity before recording rollback success.
+require an explicitly approved immutable digest and full pod-template SHA-256
+from approved release evidence, resolve a matching owned historical revision
+before undoing, and verify the restored workload's complete template, digest,
+and rollout identity before recording rollback success.
 
 For a credentialed deployment smoke, keep the command in an owner-only
 mode-`0600` shell script or equivalent protected CI file, and pass only its

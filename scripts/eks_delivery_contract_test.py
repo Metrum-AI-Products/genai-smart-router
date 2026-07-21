@@ -316,6 +316,7 @@ def replica_sets_object(
     revision: int = 1,
     owner_name: str = "smart-llmrouter",
     owner_uid: str = DEPLOYMENT_UID,
+    template_marker: str = "template-one",
 ) -> str:
     return json.dumps(
         {
@@ -341,6 +342,15 @@ def replica_sets_object(
                     },
                     "spec": {
                         "template": {
+                            "metadata": {
+                                "annotations": {
+                                    "example.metrum.ai/config-revision": template_marker
+                                },
+                                # Controller-owned, not an approved workload
+                                # setting; the production fingerprint removes
+                                # only this label.
+                                "labels": {"pod-template-hash": "historical-revision"},
+                            },
                             "spec": {
                                 "containers": [{"name": "router", "image": digest}]
                             }
@@ -413,9 +423,12 @@ def run(
     deployed_observed_generation: int | None = None,
     deployed_revision: int = 2,
     replica_sets: str | None = None,
+    rollback_pod_template_sha256: str | None = None,
+    include_rollback_pod_template_sha256: bool = True,
     confirm_smoke: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     evidence = root / "tmp" / "evidence"
+    replica_sets_payload = replica_sets or replica_sets_object()
     command = [
         "python3",
         str(SCRIPT),
@@ -429,6 +442,13 @@ def run(
         command += ["--image-digest", image_digest]
     if action == "smoke" and confirm_smoke:
         command += ["--confirm", "STAGING_APPLY"]
+    if action == "rollback" and include_rollback_pod_template_sha256:
+        candidate_template = json.loads(replica_sets_payload)["items"][0]["spec"]["template"]
+        command += [
+            "--rollback-pod-template-sha256",
+            rollback_pod_template_sha256
+            or EKS_DELIVERY.pod_template_sha256(candidate_template),
+        ]
     if extra:
         command += extra
     bindir = root / "fake-bin"
@@ -458,7 +478,7 @@ def run(
             deployed_observed_generation,
             deployed_revision,
         ),
-        "FAKE_REPLICA_SETS": replica_sets or replica_sets_object(),
+        "FAKE_REPLICA_SETS": replica_sets_payload,
     }
     return subprocess.run(command, cwd=root, text=True, capture_output=True, env=env)
 
@@ -616,6 +636,21 @@ def main() -> int:
         )
         assert no_digest_rollback.returncode != 0 and "IMAGE_DIGEST" in no_digest_rollback.stderr
 
+        before_missing_rollback_template = (bindir / "calls.log").read_text()
+        missing_rollback_template = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            include_rollback_pod_template_sha256=False,
+        )
+        assert (
+            missing_rollback_template.returncode != 0
+            and "ROLLBACK_POD_TEMPLATE_SHA256" in missing_rollback_template.stderr
+        )
+        assert "rollout undo" not in (bindir / "calls.log").read_text()[
+            len(before_missing_rollback_template):
+        ]
+
         before_unmatched_rollback = (bindir / "calls.log").read_text()
         unmatched_rollback = run(
             "rollback",
@@ -633,6 +668,26 @@ def main() -> int:
             len(before_unmatched_rollback):
         ]
         assert "rollout undo" not in unmatched_rollback_calls
+
+        # A same-digest historical ReplicaSet must still match the explicitly
+        # approved complete pod template before rollback can mutate anything.
+        approved_template = json.loads(replica_sets_object())["items"][0]["spec"]["template"]
+        stale_template = replica_sets_object(template_marker="stale-template")
+        before_stale_template_rollback = (bindir / "calls.log").read_text()
+        stale_template_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            replica_sets=stale_template,
+            rollback_pod_template_sha256=EKS_DELIVERY.pod_template_sha256(approved_template),
+        )
+        assert (
+            stale_template_rollback.returncode != 0
+            and "approved IMAGE_DIGEST and pod template" in stale_template_rollback.stderr
+        )
+        assert "rollout undo" not in (bindir / "calls.log").read_text()[
+            len(before_stale_template_rollback):
+        ]
 
         before_wrong_owner_rollback = (bindir / "calls.log").read_text()
         wrong_owner_rollback = run(
@@ -658,6 +713,17 @@ def main() -> int:
         )
         assert unexpected_rollback.returncode != 0 and "does not use" in unexpected_rollback.stderr
 
+        template_mismatch_rollback = run(
+            "rollback",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            deployed_template_marker="template-two",
+        )
+        assert (
+            template_mismatch_rollback.returncode != 0
+            and "approved rollback pod template" in template_mismatch_rollback.stderr
+        )
+
         before_rollback = (bindir / "calls.log").read_text()
         rollback = run("rollback", root, ["--confirm", "STAGING_APPLY"])
         assert rollback.returncode == 0, rollback.stderr
@@ -668,6 +734,9 @@ def main() -> int:
         assert rollback_evidence["outcome"] == "passed"
         assert rollback_evidence["image_digest"] == DIGEST
         assert rollback_evidence["rollback_target_revision"] == 1
+        assert rollback_evidence["rollback_target_pod_template_sha256"] == EKS_DELIVERY.pod_template_sha256(
+            json.loads(replica_sets_object())["items"][0]["spec"]["template"]
+        )
         assert rollback_evidence["live_deployment_generation"] == 1
         assert any(
             event["name"] == "live_deployment" and event["phase"] == "after_rollback"

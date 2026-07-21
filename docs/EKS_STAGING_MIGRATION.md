@@ -318,20 +318,25 @@ context. See `make eks-help` for the complete target list and required inputs.
 
 If staging fails, preserve the RDS and state PVC snapshot for diagnosis, then
 run the rollback with the explicitly reviewed, approved-repository immutable
-digest expected after the undo:
+digest and the approved full pod-template SHA-256 from the prior release's
+safe apply evidence (`live_pod_template_sha256`):
 
 ```bash
 make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
   EKS_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
-  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
+  IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
+  ROLLBACK_POD_TEMPLATE_SHA256='<approved prior live_pod_template_sha256>'
 ```
 
-It resolves the matching owned ReplicaSet revision before mutating and uses
-`rollout undo --to-revision`; it then verifies the named router container's
-exact digest and the observed Deployment identity before recording passed
-rollback evidence. A mutable, off-repository, missing-history, or unexpected
-restored image fails closed. Removal of the Ingress or Deployment remains a
-separate approved recovery action. EC2 traffic and data remain unaffected.
+It resolves only a matching owned ReplicaSet revision whose named router
+container has that exact digest **and** whose complete normalized pod template
+matches the approved SHA-256 before mutating; it then verifies the restored
+Deployment against the same hash. This binds Secret references, service
+account, security settings, volumes, sidecars, and init containers—not merely
+the router image. A mutable, off-repository, missing-history, template-mismatch,
+or unexpected restored image fails closed. Removal of the Ingress or Deployment
+remains a separate approved recovery action. EC2 traffic and data remain
+unaffected.
 
 A future production cutover requires separate approval and a new runbook
 section covering an EC2 write freeze, logical Postgres export/import, row and
