@@ -55,12 +55,19 @@ Before any EKS delivery command can be used outside the offline contract tests:
 
 1. Renew a least-privilege, non-root AWS session through the secure login
    flow and confirm the approved non-production account, region, ECR
-   repository, cluster, namespace, overlay, workload, and delivery role.
+   repository, cluster, namespace, runtime Secret, overlay, workload, and
+   delivery role.
 2. Update the reviewed JSON and the exact protected SSM Parameter named by the
    policy through approved infrastructure-as-code in one reconciliation
    change. The delivery role may read that Parameter but must not update it.
 3. Run `make eks-preflight` with the approved role. Any schema, value, or hash
    mismatch fails closed before cluster selection, rendering, or mutation.
+
+The current schema is version 3. It pins the single runtime Secret name as
+well as the workload target, so the delivery contract can verify only that
+Secret's Kubernetes UID and resourceVersion without reading or recording its
+contents. Reconcile the reviewed JSON and protected Parameter together before
+using this contract against a cluster.
 
 Do not infer authorization from an account number, repository URI, local AWS
 profile, or this file alone. The protected Parameter and least-privilege

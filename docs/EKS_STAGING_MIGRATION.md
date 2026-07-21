@@ -75,7 +75,8 @@ authorize a production cutover.
 6. Establish the protected staging delivery target before invoking a Make
    target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
    reviewed canonical target: account, region, ECR repository, cluster,
-   namespace, overlay, Deployment, container, and delivery role. The checked-in
+   namespace, runtime Secret, overlay, Deployment, container, and delivery
+   role. The checked-in
    repository URI is a bootstrap default, not proof of an approved live AWS/EKS
    target. First renew a least-privilege non-root session and explicitly
    reconcile the approved target. Then provision the exact JSON as a
@@ -85,7 +86,7 @@ authorize a production cutover.
    `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
    a separate platform configuration role owns `ssm:PutParameter`. The
    delivery contract reads both copies and fails unless their canonical JSON
-   hashes match. The current schema is version 2; update the reviewed file and
+   hashes match. The current schema is version 3; update the reviewed file and
    protected Parameter through the same approved infrastructure change. A
    version or value mismatch fails closed. See `deploy/aws/README.md` for the
    required protected-policy reconciliation.
@@ -131,6 +132,14 @@ configuration, but it must:
 
 Never create the Secret from a tracked file, a shell history containing a raw
 DSN, or a rendered manifest committed to the repository.
+
+The delivery contract permits only this approved runtime Secret in the router
+Pod's Secret volume, projected-volume, `env`, `envFrom`, and init-container
+sources. It requires namespace-scoped `get` permission for that one Secret,
+reads only its Kubernetes metadata, and records only its UID and
+`resourceVersion` in evidence. It never prints, hashes, or persists Secret
+data. A Secret replacement or update invalidates apply/smoke evidence; rerun
+the reviewed apply and protected smoke before a promotion plan can pass.
 
 ## Outcome-Calibrated Routing Validation
 
@@ -183,7 +192,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    The delivery role must also have namespace-scoped `list` permission only on
    `deployments`, `ingresses`, `networkpolicies`,
    `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
-   `serviceaccounts`. The delivery contract builds its expected inventory from
+   `serviceaccounts`, plus name-scoped `get` permission only for the approved
+   runtime Secret (not list/watch permission for Secrets). The delivery
+   contract builds its expected inventory from
    the isolated client-rendered manifest, not from Server-Side Apply output.
    Server-side dry-run is an acceptance/field-ownership check only: its object
    output is compared as a candidate live object and never becomes the expected
@@ -298,10 +309,10 @@ context. See `make eks-help` for the complete target list and required inputs.
 7. Run `make eks-promotion-plan IMAGE_DIGEST='<the same immutable digest>'`
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
-   target, digest, rendered
-   configuration fingerprint, and live Deployment pod-template/generation
-   state plus the exact label-selected managed-resource identity and normalized
-   configuration fingerprints. A smoke must accept the exact passed apply
+   target, digest, rendered configuration fingerprint, live Deployment
+   pod-template/generation state, approved runtime Secret UID/resourceVersion,
+   exact label-selected managed-resource identity, and normalized configuration
+   fingerprints. A smoke must accept the exact passed apply
    evidence first; a later apply invalidates it, so promotion can use only a
    smoke that ran after its accepted apply. It rechecks the current rollout and
    resource configuration before producing review-only evidence and cannot

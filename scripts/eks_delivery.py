@@ -85,6 +85,7 @@ EVIDENCE_BINDING_FIELDS = (
     "kustomize_overlay",
     "deployment_name",
     "container_name",
+    "runtime_secret_name",
     "target_policy_arn",
     "target_policy_sha256",
     "image_digest",
@@ -98,6 +99,8 @@ EVIDENCE_BINDING_FIELDS = (
     "live_deployment_generation",
     "live_deployment_observed_generation",
     "live_pod_template_sha256",
+    "runtime_secret_uid",
+    "runtime_secret_resource_version",
 )
 # Kubernetes writes these fields after accepting a declarative resource. They
 # do not describe the reviewed configuration and are deliberately excluded
@@ -215,6 +218,107 @@ def pod_template_sha256(template: dict[str, object]) -> str:
     return hashlib.sha256(canonical_json_bytes(normalized)).hexdigest()
 
 
+def pod_template_secret_names(
+    template: dict[str, object], *, source: str
+) -> tuple[str, ...]:
+    """Return every application runtime Secret referenced by a pod template.
+
+    The deployment contract permits one independently approved runtime Secret.
+    Keep this extraction deliberately narrow and structural: it covers the pod
+    Secret volume/projection and normal/init-container env references, but it
+    never reads Secret data.  Any malformed Secret reference fails closed.
+    """
+
+    pod_spec = template.get("spec")
+    if not isinstance(pod_spec, dict):
+        fail(f"{source} has no valid pod spec")
+    names: set[str] = set()
+
+    def add_name(value: object, path: str) -> None:
+        if not isinstance(value, str) or not NAME.fullmatch(value):
+            fail(f"{source} has an invalid Secret reference at {path}")
+        names.add(value)
+
+    volumes = pod_spec.get("volumes", [])
+    if not isinstance(volumes, list):
+        fail(f"{source} has invalid pod volumes")
+    for index, volume in enumerate(volumes):
+        if not isinstance(volume, dict):
+            fail(f"{source} has an invalid pod volume")
+        secret = volume.get("secret")
+        if secret is not None:
+            if not isinstance(secret, dict):
+                fail(f"{source} has an invalid Secret volume")
+            add_name(secret.get("secretName"), f"volumes[{index}].secret.secretName")
+        projected = volume.get("projected")
+        if projected is not None:
+            if not isinstance(projected, dict):
+                fail(f"{source} has an invalid projected volume")
+            sources = projected.get("sources", [])
+            if not isinstance(sources, list):
+                fail(f"{source} has invalid projected Secret sources")
+            for source_index, projection in enumerate(sources):
+                if not isinstance(projection, dict):
+                    fail(f"{source} has an invalid projected Secret source")
+                projected_secret = projection.get("secret")
+                if projected_secret is not None:
+                    if not isinstance(projected_secret, dict):
+                        fail(f"{source} has an invalid projected Secret source")
+                    add_name(
+                        projected_secret.get("name"),
+                        f"volumes[{index}].projected.sources[{source_index}].secret.name",
+                    )
+
+    for collection in ("initContainers", "containers"):
+        containers = pod_spec.get(collection, [])
+        if not isinstance(containers, list):
+            fail(f"{source} has invalid {collection}")
+        for container_index, container in enumerate(containers):
+            if not isinstance(container, dict):
+                fail(f"{source} has an invalid {collection} entry")
+            env = container.get("env", [])
+            if not isinstance(env, list):
+                fail(f"{source} has invalid {collection}[{container_index}].env")
+            for env_index, variable in enumerate(env):
+                if not isinstance(variable, dict):
+                    fail(f"{source} has an invalid environment variable")
+                value_from = variable.get("valueFrom")
+                if value_from is None:
+                    continue
+                if not isinstance(value_from, dict):
+                    fail(f"{source} has an invalid environment valueFrom")
+                secret_key_ref = value_from.get("secretKeyRef")
+                if secret_key_ref is not None:
+                    if not isinstance(secret_key_ref, dict):
+                        fail(f"{source} has an invalid environment Secret reference")
+                    add_name(
+                        secret_key_ref.get("name"),
+                        f"{collection}[{container_index}].env[{env_index}].valueFrom.secretKeyRef.name",
+                    )
+            env_from = container.get("envFrom", [])
+            if not isinstance(env_from, list):
+                fail(f"{source} has invalid {collection}[{container_index}].envFrom")
+            for env_from_index, source_ref in enumerate(env_from):
+                if not isinstance(source_ref, dict):
+                    fail(f"{source} has an invalid envFrom reference")
+                secret_ref = source_ref.get("secretRef")
+                if secret_ref is not None:
+                    if not isinstance(secret_ref, dict):
+                        fail(f"{source} has an invalid envFrom Secret reference")
+                    add_name(
+                        secret_ref.get("name"),
+                        f"{collection}[{container_index}].envFrom[{env_from_index}].secretRef.name",
+                    )
+    return tuple(sorted(names))
+
+
+def require_only_runtime_secret(
+    template: dict[str, object], target: "TargetPolicy", *, source: str
+) -> None:
+    if pod_template_secret_names(template, source=source) != (target.runtime_secret_name,):
+        fail(f"{source} must reference only the approved runtime Secret")
+
+
 @dataclass(frozen=True)
 class TargetPolicy:
     aws_account_id: str
@@ -226,6 +330,7 @@ class TargetPolicy:
     eks_cluster: str
     k8s_namespace: str
     kustomize_overlay: Path
+    runtime_secret_name: str
     ssm_parameter_arn: str
     raw: dict[str, object]
 
@@ -241,6 +346,21 @@ class LiveDeploymentIdentity:
     generation: int
     observed_generation: int
     pod_template_sha256: str
+    runtime_secret: "RuntimeSecretIdentity"
+
+
+@dataclass(frozen=True)
+class RuntimeSecretIdentity:
+    """Safe Kubernetes metadata binding for the approved runtime Secret.
+
+    The delivery contract deliberately never hashes, prints, or writes Secret
+    data.  A Secret's UID catches replacement and its resourceVersion catches
+    in-place updates, so both must remain stable from apply through smoke and
+    promotion.
+    """
+
+    uid: str
+    resource_version: str
 
 
 @dataclass(frozen=True, order=True)
@@ -314,11 +434,12 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "kustomize_overlay",
         "deployment_name",
         "container_name",
+        "runtime_secret_name",
         "delivery_role_name",
     }
     if set(value) != required:
         fail("approved staging target policy has an unexpected schema")
-    if value.get("schema_version") != 2 or value.get("environment") != "staging":
+    if value.get("schema_version") != 3 or value.get("environment") != "staging":
         fail("approved staging target policy is not a supported staging policy")
 
     def string(name: str) -> str:
@@ -334,12 +455,16 @@ def parse_target_policy(value: object) -> TargetPolicy:
     namespace = string("k8s_namespace")
     deployment = string("deployment_name")
     container = string("container_name")
+    runtime_secret_name = string("runtime_secret_name")
     role = string("delivery_role_name")
     parameter_arn = string("ssm_parameter_arn")
     overlay_value = string("kustomize_overlay")
     if not ACCOUNT_ID.fullmatch(account_id) or not REGION.fullmatch(region):
         fail("approved staging target policy has invalid AWS account or region")
-    if not all(NAME.fullmatch(item) for item in (namespace, deployment, container)):
+    if not all(
+        NAME.fullmatch(item)
+        for item in (namespace, deployment, container, runtime_secret_name)
+    ):
         fail("approved staging target policy has invalid Kubernetes identifiers")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", cluster):
         fail("approved staging target policy has invalid EKS cluster")
@@ -374,7 +499,8 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "eks_cluster": cluster,
         "k8s_namespace": namespace,
         "kustomize_overlay": overlay.as_posix(),
-        "schema_version": 2,
+        "runtime_secret_name": runtime_secret_name,
+        "schema_version": 3,
         "ssm_parameter_arn": parameter_arn,
     }
     return TargetPolicy(
@@ -387,6 +513,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         eks_cluster=cluster,
         k8s_namespace=namespace,
         kustomize_overlay=resolved_overlay,
+        runtime_secret_name=runtime_secret_name,
         ssm_parameter_arn=parameter_arn,
         raw=normalized,
     )
@@ -528,6 +655,7 @@ class Delivery:
             "ecr_repository_uri",
             "eks_cluster",
             "k8s_namespace",
+            "runtime_secret_name",
             "target_policy_sha256",
             "image_digest",
             "configuration_fingerprint",
@@ -544,6 +672,8 @@ class Delivery:
             "live_deployment_generation",
             "live_deployment_observed_generation",
             "live_pod_template_sha256",
+            "runtime_secret_uid",
+            "runtime_secret_resource_version",
         ):
             if key in self.evidence:
                 markdown.append(f"- {key}: `{self.evidence[key]}`")
@@ -600,6 +730,7 @@ class Delivery:
                 "kustomize_overlay": checked_in.kustomize_overlay.relative_to(REPO_ROOT).as_posix(),
                 "deployment_name": checked_in.deployment_name,
                 "container_name": checked_in.container_name,
+                "runtime_secret_name": checked_in.runtime_secret_name,
                 "target_policy_arn": checked_in.ssm_parameter_arn,
                 "target_policy_sha256": checked_in.sha256,
             }
@@ -681,6 +812,20 @@ class Delivery:
                     "Kubernetes RBAC does not allow list "
                     f"{resource_type} in the approved namespace"
                 )
+        runtime_secret_allowed = command(
+            [
+                "kubectl",
+                "auth",
+                "can-i",
+                "get",
+                f"secret/{target.runtime_secret_name}",
+                "-n",
+                target.k8s_namespace,
+            ],
+            env,
+        ).strip()
+        if runtime_secret_allowed != "yes":
+            fail("Kubernetes RBAC does not allow get on the approved runtime Secret")
         if self.args.action == "rollback":
             replica_sets_allowed = command(
                 ["kubectl", "auth", "can-i", "list", "replicasets", "-n", target.k8s_namespace],
@@ -695,6 +840,7 @@ class Delivery:
             cluster_status="ACTIVE",
             rbac_get_pods=allowed,
             rbac_list_managed_resource_types=len(MANAGED_RESOURCE_TYPES),
+            rbac_get_runtime_secret=runtime_secret_allowed,
             rbac_list_replicasets=self.args.action != "rollback" or replica_sets_allowed == "yes",
         )
         return target
@@ -1130,14 +1276,27 @@ class Delivery:
                 deployments += 1
                 if metadata.get("name") != target.deployment_name:
                     fail("rendered manifest contains an unapproved Deployment")
-                containers = (
+                deployment_spec = (
                     resource.get("spec", {})
                     if isinstance(resource.get("spec"), dict)
                     else {}
                 )
-                containers = containers.get("template", {}) if isinstance(containers.get("template"), dict) else {}
-                containers = containers.get("spec", {}) if isinstance(containers.get("spec"), dict) else {}
-                containers = containers.get("containers") if isinstance(containers.get("containers"), list) else []
+                template = (
+                    deployment_spec.get("template", {})
+                    if isinstance(deployment_spec.get("template"), dict)
+                    else {}
+                )
+                require_only_runtime_secret(
+                    template, target, source="rendered Deployment pod template"
+                )
+                pod_spec = (
+                    template.get("spec", {}) if isinstance(template.get("spec"), dict) else {}
+                )
+                containers = (
+                    pod_spec.get("containers")
+                    if isinstance(pod_spec.get("containers"), list)
+                    else []
+                )
                 router_container = next(
                     (item for item in containers if isinstance(item, dict) and item.get("name") == target.container_name),
                     None,
@@ -1362,6 +1521,52 @@ class Delivery:
             fail("live managed-resource configuration does not match the rendered staging manifest")
         self.record_live_managed_inventory(live_inventory, phase, "matched")
 
+    def runtime_secret_identity(
+        self, env: dict[str, str], target: TargetPolicy, phase: str
+    ) -> RuntimeSecretIdentity:
+        """Read only safe metadata for the one approved runtime Secret.
+
+        The JSONPath output is limited to the Secret UID and resourceVersion,
+        so the delivery process never receives, prints, hashes, or writes a
+        Secret data key or value.
+        """
+
+        payload = command(
+            [
+                "kubectl",
+                "get",
+                "secret",
+                target.runtime_secret_name,
+                "-n",
+                target.k8s_namespace,
+                "-o",
+                'jsonpath={.metadata.uid}{"\\n"}{.metadata.resourceVersion}{"\\n"}',
+            ],
+            env,
+            raw=True,
+        )
+        fields = payload.splitlines()
+        if len(fields) != 2:
+            fail("runtime Secret lookup did not return safe identity metadata")
+        uid, resource_version = fields
+        if not uid or not resource_version:
+            fail("runtime Secret lookup has no stable UID and resourceVersion")
+        identity = RuntimeSecretIdentity(uid=uid, resource_version=resource_version)
+        self.evidence.update(
+            {
+                "runtime_secret_uid": identity.uid,
+                "runtime_secret_resource_version": identity.resource_version,
+            }
+        )
+        self.event(
+            "runtime_secret",
+            phase=phase,
+            result="uid-and-resource-version-verified",
+            uid=identity.uid,
+            resource_version=identity.resource_version,
+        )
+        return identity
+
     def verify_live_deployment(
         self,
         env: dict[str, str],
@@ -1414,6 +1619,7 @@ class Delivery:
         template = spec.get("template") if isinstance(spec.get("template"), dict) else {}
         if not template:
             fail("live deployment lookup has no pod template")
+        require_only_runtime_secret(template, target, source="live router Deployment pod template")
         pod_spec = template.get("spec") if isinstance(template.get("spec"), dict) else {}
         containers = pod_spec.get("containers") if isinstance(pod_spec.get("containers"), list) else []
         router_container = next(
@@ -1422,10 +1628,12 @@ class Delivery:
         )
         if not router_container or router_container.get("image") != self.args.image_digest:
             fail("live router Deployment does not use the requested immutable IMAGE_DIGEST")
+        runtime_secret = self.runtime_secret_identity(env, target, phase)
         identity = LiveDeploymentIdentity(
             generation=generation,
             observed_generation=observed_generation,
             pod_template_sha256=pod_template_sha256(template),
+            runtime_secret=runtime_secret,
         )
         if (
             expected_pod_template_sha256 is not None
@@ -1492,6 +1700,13 @@ class Delivery:
         if not isinstance(revision_value, str) or not revision_value.isdigit() or int(revision_value) < 2:
             fail("rollback requires a current Deployment revision with prior history")
         current_revision = int(revision_value)
+        current_spec = deployment.get("spec") if isinstance(deployment.get("spec"), dict) else {}
+        current_template = (
+            current_spec.get("template") if isinstance(current_spec.get("template"), dict) else {}
+        )
+        require_only_runtime_secret(
+            current_template, target, source="rollback live Deployment pod template"
+        )
 
         replica_set_payload = command(
             [
@@ -1548,6 +1763,9 @@ class Delivery:
                 continue
             spec = replica_set.get("spec") if isinstance(replica_set.get("spec"), dict) else {}
             template = spec.get("template") if isinstance(spec.get("template"), dict) else {}
+            require_only_runtime_secret(
+                template, target, source="rollback ReplicaSet pod template"
+            )
             pod_spec = template.get("spec") if isinstance(template.get("spec"), dict) else {}
             containers = pod_spec.get("containers") if isinstance(pod_spec.get("containers"), list) else []
             router_container = next(

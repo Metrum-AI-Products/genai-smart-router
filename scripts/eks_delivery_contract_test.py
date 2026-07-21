@@ -31,6 +31,7 @@ def target_value(value: dict[str, object] | None = None) -> str:
 def rendered_objects(namespace: str | None = None) -> str:
     namespace = namespace or str(TARGET_POLICY["k8s_namespace"])
     labels = {"app.kubernetes.io/name": "smart-llmrouter"}
+    runtime_secret_name = str(TARGET_POLICY["runtime_secret_name"])
     return json.dumps(
         {
             "apiVersion": "v1",
@@ -51,6 +52,17 @@ def rendered_objects(namespace: str | None = None) -> str:
                                     {
                                         "name": "router",
                                         "image": DIGEST,
+                                        "env": [
+                                            {
+                                                "name": "ROUTER_USAGE_DB_DSN",
+                                                "valueFrom": {
+                                                    "secretKeyRef": {
+                                                        "name": runtime_secret_name,
+                                                        "key": "ROUTER_USAGE_DB_DSN",
+                                                    }
+                                                },
+                                            }
+                                        ],
                                         "ports": [
                                             {"name": "http", "containerPort": 8080}
                                         ],
@@ -73,7 +85,13 @@ def rendered_objects(namespace: str | None = None) -> str:
                                             "failureThreshold": 24,
                                         },
                                     }
-                                ]
+                                ],
+                                "volumes": [
+                                    {
+                                        "name": "runtime",
+                                        "secret": {"secretName": runtime_secret_name},
+                                    }
+                                ],
                             }
                         }
                     },
@@ -289,6 +307,7 @@ def deployment_object(
     observed_generation: int | None = None,
     revision: int = 2,
 ) -> str:
+    runtime_secret_name = str(TARGET_POLICY["runtime_secret_name"])
     return json.dumps(
         {
             "apiVersion": "apps/v1",
@@ -304,11 +323,44 @@ def deployment_object(
             "spec": {
                 "template": {
                     "metadata": {"annotations": {"example.metrum.ai/config-revision": template_marker}},
-                    "spec": {"containers": [{"name": "router", "image": digest}]},
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "router",
+                                "image": digest,
+                                "env": [
+                                    {
+                                        "name": "ROUTER_USAGE_DB_DSN",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "name": runtime_secret_name,
+                                                "key": "ROUTER_USAGE_DB_DSN",
+                                            }
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "name": "runtime",
+                                "secret": {"secretName": runtime_secret_name},
+                            }
+                        ],
+                    },
                 }
             },
         }
     )
+
+
+def runtime_secret_metadata(
+    uid: str = "runtime-secret-uid-one",
+    resource_version: str = "101",
+) -> str:
+    """The exact safe metadata output requested by the JSONPath lookup."""
+
+    return f"{uid}\n{resource_version}\n"
 
 
 def replica_sets_object(
@@ -318,6 +370,7 @@ def replica_sets_object(
     owner_uid: str = DEPLOYMENT_UID,
     template_marker: str = "template-one",
 ) -> str:
+    runtime_secret_name = str(TARGET_POLICY["runtime_secret_name"])
     return json.dumps(
         {
             "apiVersion": "v1",
@@ -352,7 +405,29 @@ def replica_sets_object(
                                 "labels": {"pod-template-hash": "historical-revision"},
                             },
                             "spec": {
-                                "containers": [{"name": "router", "image": digest}]
+                                "containers": [
+                                    {
+                                        "name": "router",
+                                        "image": digest,
+                                        "env": [
+                                            {
+                                                "name": "ROUTER_USAGE_DB_DSN",
+                                                "valueFrom": {
+                                                    "secretKeyRef": {
+                                                        "name": runtime_secret_name,
+                                                        "key": "ROUTER_USAGE_DB_DSN",
+                                                    }
+                                                },
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "volumes": [
+                                    {
+                                        "name": "runtime",
+                                        "secret": {"secretName": runtime_secret_name},
+                                    }
+                                ],
                             }
                         }
                     },
@@ -380,6 +455,7 @@ case "$0" in
     *"apply --server-side --dry-run=server"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
+    *"get secret smartrouter-staging-runtime"*) printf '%s' "$FAKE_RUNTIME_SECRET_METADATA" ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
     *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE" ;;
@@ -422,6 +498,8 @@ def run(
     deployed_generation: int = 1,
     deployed_observed_generation: int | None = None,
     deployed_revision: int = 2,
+    runtime_secret_uid: str = "runtime-secret-uid-one",
+    runtime_secret_resource_version: str = "101",
     replica_sets: str | None = None,
     rollback_pod_template_sha256: str | None = None,
     include_rollback_pod_template_sha256: bool = True,
@@ -477,6 +555,9 @@ def run(
             deployed_generation,
             deployed_observed_generation,
             deployed_revision,
+        ),
+        "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(
+            runtime_secret_uid, runtime_secret_resource_version
         ),
         "FAKE_REPLICA_SETS": replica_sets_payload,
     }
@@ -573,6 +654,21 @@ def main() -> int:
         assert run("preflight", root).returncode == 0
         result = run("plan", root)
         assert result.returncode == 0, result.stderr
+
+        unapproved_runtime_secret = json.loads(rendered_objects())
+        deployment = next(
+            item for item in unapproved_runtime_secret["items"] if item["kind"] == "Deployment"
+        )
+        deployment["spec"]["template"]["spec"]["volumes"][0]["secret"][
+            "secretName"
+        ] = "another-runtime-secret"
+        rejected_runtime_secret = run(
+            "plan", root, render_objects=json.dumps(unapproved_runtime_secret)
+        )
+        assert (
+            rejected_runtime_secret.returncode != 0
+            and "approved runtime Secret" in rejected_runtime_secret.stderr
+        )
         calls = (bindir / "calls.log").read_text()
         assert "must-not-be-used" not in calls and "update-kubeconfig" in calls and "--dry-run=server" in calls
         assert calls.index("ssm get-parameter") < calls.index("describe-cluster")
@@ -1122,6 +1218,7 @@ def main() -> int:
                 "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
                 "FAKE_RENDERED_MANIFEST": rendered_manifest(),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
+                "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
             },
         )
         assert make_smoke.returncode == 0, make_smoke.stderr
@@ -1139,9 +1236,23 @@ def main() -> int:
             assert evidence["managed_resource_spec_sha256"] == evidence["live_managed_resource_spec_sha256"]
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
             assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
+            assert evidence["runtime_secret_name"] == TARGET_POLICY["runtime_secret_name"]
+            assert evidence["runtime_secret_uid"] == "runtime-secret-uid-one"
+            assert evidence["runtime_secret_resource_version"] == "101"
             assert "different-workload" not in json.dumps(evidence)
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
+
+        # A runtime Secret update does not change the Deployment template. Its
+        # resourceVersion must nevertheless invalidate prior apply/smoke proof
+        # before a promotion decision can be emitted.
+        runtime_secret_drift = run(
+            "promotion-plan", root, runtime_secret_resource_version="102"
+        )
+        assert (
+            runtime_secret_drift.returncode != 0
+            and "runtime_secret_resource_version" in runtime_secret_drift.stderr
+        )
 
         apply_evidence_path = root / "tmp/evidence/evidence-apply.json"
         original_apply_evidence = apply_evidence_path.read_text()
@@ -1176,6 +1287,7 @@ def main() -> int:
                 "FAKE_APPLIED_LIVE_MANAGED_OBJECTS": rendered_objects(),
                 "FAKE_RENDERED_MANIFEST": rendered_manifest(),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
+                "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
             },
         )
         assert release_evidence.returncode != 0

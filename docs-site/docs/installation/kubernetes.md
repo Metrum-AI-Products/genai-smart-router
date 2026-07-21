@@ -197,6 +197,13 @@ the database DSN and any private CA material in the same protected runtime
 secret or equivalent secret-manager integration; do not render those values
 into checked-in manifests.
 
+For automated delivery evidence, bind a runtime Secret by its Kubernetes UID
+and `resourceVersion`, never by its data or a captured content checksum. A
+replacement or update must invalidate prior apply/smoke proof and require a
+fresh reviewed rollout and smoke before promotion. Grant the delivery identity
+only name-scoped `get` access to that approved Secret; it should not need
+cluster-wide or namespace-wide Secret listing.
+
 For managed PostgreSQL, use TLS with hostname verification. Mount the
 provider's CA bundle when the container trust store does not already contain
 the required root, and reference that file from the DSN. Validate the database
@@ -241,8 +248,9 @@ the delivery identity read-only access to that exact policy, verify its account
 and role before creating a kubeconfig, and reject any rendered resource outside
 the approved namespace. Bind smoke and promotion evidence to the exact
 immutable image digest from the exact approved registry/repository, a
-digest-normalized fingerprint of the validated rendered configuration, and the
-live Deployment pod-template/generation state. Recheck that state before
+digest-normalized fingerprint of the validated rendered configuration, live
+Deployment pod-template/generation state, and approved runtime Secret
+UID/resourceVersion. Recheck that state before
 promotion so a rollback or replacement cannot reuse stale smoke evidence. For
 automated delivery, use a deployment-owned label to derive an allowlisted
 namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,
