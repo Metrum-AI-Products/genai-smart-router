@@ -200,6 +200,24 @@ def test_failed_publish_leaves_no_report(root: Path) -> None:
         raise AssertionError("failed report publication left a temporary file")
 
 
+def test_oversized_report_is_rejected_before_publish(root: Path) -> None:
+    output = root / "oversized-eks-discovery.json"
+    # The serialized JSON is deliberately over the byte ceiling, not merely the
+    # character ceiling, so a future Unicode-only report cannot bypass it.
+    oversized = {"unicode": "é" * MODULE.MAX_DISCOVERY_REPORT_BYTES}
+    try:
+        MODULE.atomic_write_report(output, oversized)
+    except MODULE.DiscoveryError as exc:
+        if str(exc) != "discovery report exceeds the safe maximum size":
+            raise
+    else:
+        raise AssertionError("oversized discovery report was published")
+    if output.exists():
+        raise AssertionError("oversized discovery report created a reusable output")
+    if any(path.name.startswith(f".{output.name}.") and path.name != f".{output.name}.lock" for path in root.iterdir()):
+        raise AssertionError("oversized discovery report created a temporary file")
+
+
 def test_unsafe_output_paths_are_rejected_without_deletion(root: Path) -> None:
     repository_file = ROOT / "scripts" / "eks_discover.py"
     original_repository_content = repository_file.read_text(encoding="utf-8")
@@ -457,6 +475,7 @@ def main() -> int:
         test_make_discover_invalidates_before_identity_failure(root)
         test_atomic_report_publish(root)
         test_failed_publish_leaves_no_report(root)
+        test_oversized_report_is_rejected_before_publish(root)
         test_unsafe_output_paths_are_rejected_without_deletion(root)
         test_unrecognized_existing_output_is_preserved_before_probes(root)
         test_output_lock_is_exclusive(root)

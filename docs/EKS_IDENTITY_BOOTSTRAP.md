@@ -261,8 +261,31 @@ make eks-render-ingress-network-policy \
   EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
 ```
 
-Review and server-side dry-run that artifact before applying it. This is the
-complete ingress path for a non-Linkerd installation.
+Review it, then activate it with an explicit deployment kubeconfig/context;
+never use an ambient `kubectl` context. The validation target compares the
+discovery-selected AWS account and EKS endpoint with the named deployment AWS
+profile and explicit kubeconfig context before it issues a server-side dry-run.
+The apply target repeats that validation, dry-runs again, and requires an
+explicit confirmation:
+
+```bash
+make eks-validate-tenant-network-policies \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
+
+make eks-apply-tenant-network-policies \
+  EKS_POLICY_APPLY_CONFIRM=apply \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
+```
+
+This is the complete ingress path for a non-Linkerd installation.
 
 Before using `tenant-linkerd-policy.example.yaml`, select the Linkerd
 control-plane namespace during discovery and verify the discovered
@@ -290,10 +313,11 @@ evidence unless both the selected ingress workload and selected router Pods
 have ready `linkerd-proxy` sidecars. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
-placeholders. Review and server-side dry-run both outside-repository artifacts
-together before any apply; activate the Linkerd `Server` and
-`ServerAuthorization` with the companion NetworkPolicy so the namespace allow
-does not precede the identity policy.
+placeholders. Add `EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml`
+to both selection-bound validation/apply commands above. They verify and
+server-side dry-run both outside-repository artifacts before any apply, then
+activate the Linkerd `Server` and `ServerAuthorization` with the companion
+NetworkPolicy so the namespace allow does not precede the identity policy.
 
 ## Idempotence, Drift, And Rollback
 

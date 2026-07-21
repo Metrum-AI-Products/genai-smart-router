@@ -134,8 +134,11 @@ the staging configuration as a general baseline.
    dry run.
 3. Apply the overlay and wait for the router Deployment to become ready.
 4. Re-run the explicit-target discovery after the router Pods are Ready, then
-   render, server-side dry-run, and apply the companion ingress NetworkPolicy.
-   For the selected Linkerd deployment, render and apply its `Server` and
+   render and activate the companion ingress NetworkPolicy through the
+   selection-bound target. It verifies the discovery account and selected EKS
+   endpoint against the named deployment AWS profile and explicit kubeconfig/
+   context; do not use an ambient `kubectl` context. For the selected Linkerd
+   deployment, it server-side dry-runs and applies its `Server` and
    `ServerAuthorization` before the namespace allow policy:
 
    ```bash
@@ -144,14 +147,27 @@ the staging configuration as a general baseline.
      EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
      EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
 
-   kubectl apply --dry-run=server -f /secure/evidence/tenant-linkerd-policy.yaml
-   kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
-   kubectl apply -f /secure/evidence/tenant-linkerd-policy.yaml
-   kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+   make eks-validate-tenant-network-policies \
+     EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+     EKS_POLICY_AWS_PROFILE=<approved-staging-deployment-profile> \
+     EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-staging.yaml \
+     EKS_POLICY_CONTEXT=<approved-staging-context> \
+     EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+     EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+   make eks-apply-tenant-network-policies \
+     EKS_POLICY_APPLY_CONFIRM=apply \
+     EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+     EKS_POLICY_AWS_PROFILE=<approved-staging-deployment-profile> \
+     EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-staging.yaml \
+     EKS_POLICY_CONTEXT=<approved-staging-context> \
+     EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+     EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
    ```
 
    If Linkerd is intentionally not selected, use
-   `make eks-render-ingress-network-policy` and dry-run/apply only its output.
+   `make eks-render-ingress-network-policy`, then the same validate/apply
+   targets without `EKS_LINKERD_POLICY_OUTPUT`.
 5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
 6. Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the

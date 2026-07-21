@@ -419,6 +419,8 @@ def atomic_write_report(path: Path, report: dict[str, Any]) -> None:
     published = False
     try:
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
+        if len(serialized.encode("utf-8")) > MAX_DISCOVERY_REPORT_BYTES:
+            raise DiscoveryError("discovery report exceeds the safe maximum size")
         descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         temporary = Path(temporary_name)
         with os.fdopen(descriptor, "w", encoding="utf-8") as file:

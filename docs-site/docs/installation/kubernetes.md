@@ -232,21 +232,38 @@ kubectl -n smart-llmrouter get pods,svc,ingress
 The base `NetworkPolicy` intentionally keeps the hostname unreachable until
 discovery selects the real ingress namespace. After the rollout is Ready,
 rerun the explicit-target discovery so Linkerd mode can also verify the router
-Pods, then use the matching deployment bundle to render, dry-run, and apply
-that companion policy. Do not substitute a fixed namespace in the overlay:
+Pods, then use the matching deployment bundle to render and activate that
+companion policy. Do not substitute a fixed namespace in the overlay or use an
+ambient `kubectl` context. The activation target verifies the discovery account
+and selected EKS endpoint against the named AWS profile and explicit
+kubeconfig/context before every server-side dry-run or apply.
+
+For a non-Linkerd deployment:
 
 ```bash
 make eks-render-ingress-network-policy \
   EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
   EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
 
-kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
-kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+make eks-validate-tenant-network-policies \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
+
+make eks-apply-tenant-network-policies \
+  EKS_POLICY_APPLY_CONFIRM=apply \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
 ```
 
-For a Linkerd deployment, render both reviewed artifacts instead. Dry-run both,
-then apply the Linkerd `Server` and `ServerAuthorization` before the ingress
-allow policy:
+For a Linkerd deployment, render both reviewed artifacts instead. The same
+target dry-runs both, then applies the Linkerd `Server` and
+`ServerAuthorization` before the ingress allow policy:
 
 ```bash
 make eks-render-linkerd-policy \
@@ -254,10 +271,22 @@ make eks-render-linkerd-policy \
   EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
   EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
 
-kubectl apply --dry-run=server -f /secure/evidence/tenant-linkerd-policy.yaml
-kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
-kubectl apply -f /secure/evidence/tenant-linkerd-policy.yaml
-kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+make eks-validate-tenant-network-policies \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+make eks-apply-tenant-network-policies \
+  EKS_POLICY_APPLY_CONFIRM=apply \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_POLICY_AWS_PROFILE=<approved-deployment-profile> \
+  EKS_POLICY_KUBECONFIG=/secure/kubeconfigs/approved-cluster.yaml \
+  EKS_POLICY_CONTEXT=<approved-deployment-context> \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
 ```
 
 ## Network Policy

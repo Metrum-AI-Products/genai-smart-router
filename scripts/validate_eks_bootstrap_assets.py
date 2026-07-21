@@ -14,12 +14,14 @@ TRUST = ROOT / "deploy/aws/github-oidc-trust-policy.example.json"
 DISCOVERY_ROLE = ROOT / "deploy/aws/genai-smart-router-eks-discovery-role.example.json"
 LINKERD_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-linkerd-policy.example.yaml"
 INGRESS_NETWORK_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-network-policy.example.yaml"
+POLICY_ACTIVATOR = ROOT / "scripts/apply_tenant_network_policies.py"
 BASE_NETWORK_POLICY = ROOT / "deploy/kubernetes/base/networkpolicy.yaml"
 STAGING_NETWORK_POLICY_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-networkpolicy.yaml"
 MAKEFILE = ROOT / "Makefile"
 PUBLIC_KUBERNETES_DOC = ROOT / "docs-site/docs/installation/kubernetes.md"
 STAGING_RUNBOOK = ROOT / "docs/EKS_STAGING_MIGRATION.md"
 STAGING_OVERLAY_README = ROOT / "deploy/kubernetes/overlays/metrum-staging/README.md"
+IDENTITY_BOOTSTRAP = ROOT / "docs/EKS_IDENTITY_BOOTSTRAP.md"
 DISCOVERY_NAMESPACE_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml"
 DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linkerd-namespace-rbac.example.yaml"
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
@@ -62,13 +64,21 @@ def main() -> int:
     makefile = MAKEFILE.read_text(encoding="utf-8")
     if "eks-render-linkerd-policy: eks-render-ingress-network-policy" not in makefile or "scripts/render_tenant_ingress_network_policy.py" not in makefile:
         raise SystemExit("Linkerd policy rendering must require the discovery-derived ingress NetworkPolicy")
+    if "eks-validate-tenant-network-policies" not in makefile or "eks-apply-tenant-network-policies" not in makefile or "scripts/apply_tenant_network_policies.py" not in makefile:
+        raise SystemExit("tenant policy activation must use the selection-bound validation and apply targets")
+    activator = POLICY_ACTIVATOR.read_text(encoding="utf-8")
+    for required in ("--kubeconfig", "--context", "get-caller-identity", "describe-cluster", "--dry-run=server"):
+        if required not in activator:
+            raise SystemExit("tenant policy activation must bind explicit Kubernetes context to the discovered AWS target")
 
-    for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README):
+    for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README, IDENTITY_BOOTSTRAP):
         deployment_path = path.read_text(encoding="utf-8")
         if "make eks-render-ingress-network-policy" not in deployment_path:
             raise SystemExit(f"{path.name} must document the non-Linkerd ingress policy render path")
-        if "kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml" not in deployment_path:
-            raise SystemExit(f"{path.name} must document applying the rendered ingress policy")
+        if "make eks-validate-tenant-network-policies" not in deployment_path or "make eks-apply-tenant-network-policies" not in deployment_path:
+            raise SystemExit(f"{path.name} must document selection-bound rendered ingress policy activation")
+        if "kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml" in deployment_path:
+            raise SystemExit(f"{path.name} must not apply the rendered ingress policy through an ambient kubectl context")
 
     for path, required_resources in (
         (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses", "pods")),

@@ -29,6 +29,10 @@ EKS_ECR_REPOSITORY ?=
 EKS_DISCOVERY_OUTPUT ?=
 EKS_LINKERD_POLICY_OUTPUT ?=
 EKS_INGRESS_NETWORK_POLICY_OUTPUT ?=
+EKS_POLICY_AWS_PROFILE ?=
+EKS_POLICY_KUBECONFIG ?=
+EKS_POLICY_CONTEXT ?=
+EKS_POLICY_APPLY_CONFIRM ?=
 EKS_ADMIN_PROFILE ?= default
 EKS_SOURCE_USER ?= smartrouter
 EKS_MFA_SERIAL ?=
@@ -36,13 +40,13 @@ EKS_MFA_KEYCHAIN_SERVICE ?=
 EKS_MFA_KEYCHAIN_ACCOUNT ?= smartrouter
 EKS_SESSION_DURATION ?= 3600
 COPYFILE_DISABLE ?= 1
-export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
+export VERSION COMMIT BUILD_DATE DIST_DIR PKG_NAME GOOS GOARCH IMAGE_NAME IMAGE_TAG EKS_AWS_PROFILE EKS_ACCOUNT_ID EKS_REGION EKS_CLUSTER EKS_NAMESPACE EKS_LINKERD_NAMESPACE EKS_INGRESS_NAMESPACE EKS_INGRESS_SERVICE_ACCOUNT EKS_INGRESS_DEPLOYMENT EKS_LINKERD_TRUST_DOMAIN EKS_ECR_REPOSITORY EKS_DISCOVERY_OUTPUT EKS_LINKERD_POLICY_OUTPUT EKS_INGRESS_NETWORK_POLICY_OUTPUT EKS_POLICY_AWS_PROFILE EKS_POLICY_KUBECONFIG EKS_POLICY_CONTEXT EKS_POLICY_APPLY_CONFIRM EKS_ADMIN_PROFILE EKS_SOURCE_USER EKS_MFA_SERIAL EKS_MFA_KEYCHAIN_SERVICE EKS_MFA_KEYCHAIN_ACCOUNT EKS_SESSION_DURATION
 export COPYFILE_DISABLE
 TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
 
 test: secret-check
 	go test ./...
@@ -67,6 +71,7 @@ secret-check:
 	python3 scripts/validate_eks_bootstrap_assets.py
 	python3 scripts/render_tenant_ingress_network_policy_test.py
 	python3 scripts/render_tenant_linkerd_policy_test.py
+	python3 scripts/apply_tenant_network_policies_test.py
 	python3 scripts/check_license_skus.py
 	$(MAKE) validate-build-metadata
 
@@ -245,6 +250,31 @@ eks-render-ingress-network-policy:
 eks-render-linkerd-policy: eks-render-ingress-network-policy
 	@test -n "$$EKS_LINKERD_POLICY_OUTPUT" || (echo "EKS_LINKERD_POLICY_OUTPUT is required" >&2; exit 2)
 	python3 scripts/render_tenant_linkerd_policy.py --discovery-report "$$EKS_DISCOVERY_OUTPUT" --output "$$EKS_LINKERD_POLICY_OUTPUT"
+
+eks-validate-tenant-network-policies:
+	@test -n "$$EKS_DISCOVERY_OUTPUT" || (echo "EKS_DISCOVERY_OUTPUT is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_AWS_PROFILE" || (echo "EKS_POLICY_AWS_PROFILE is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_KUBECONFIG" || (echo "EKS_POLICY_KUBECONFIG is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_CONTEXT" || (echo "EKS_POLICY_CONTEXT is required" >&2; exit 2)
+	@test -n "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT" || (echo "EKS_INGRESS_NETWORK_POLICY_OUTPUT is required" >&2; exit 2)
+	@if [ -n "$$EKS_LINKERD_POLICY_OUTPUT" ]; then \
+		python3 scripts/apply_tenant_network_policies.py --discovery-report "$$EKS_DISCOVERY_OUTPUT" --profile "$$EKS_POLICY_AWS_PROFILE" --kubeconfig "$$EKS_POLICY_KUBECONFIG" --context "$$EKS_POLICY_CONTEXT" --ingress-policy "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT" --linkerd-policy "$$EKS_LINKERD_POLICY_OUTPUT"; \
+	else \
+		python3 scripts/apply_tenant_network_policies.py --discovery-report "$$EKS_DISCOVERY_OUTPUT" --profile "$$EKS_POLICY_AWS_PROFILE" --kubeconfig "$$EKS_POLICY_KUBECONFIG" --context "$$EKS_POLICY_CONTEXT" --ingress-policy "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT"; \
+	fi
+
+eks-apply-tenant-network-policies:
+	@test "$$EKS_POLICY_APPLY_CONFIRM" = "apply" || (echo "EKS_POLICY_APPLY_CONFIRM=apply is required" >&2; exit 2)
+	@test -n "$$EKS_DISCOVERY_OUTPUT" || (echo "EKS_DISCOVERY_OUTPUT is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_AWS_PROFILE" || (echo "EKS_POLICY_AWS_PROFILE is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_KUBECONFIG" || (echo "EKS_POLICY_KUBECONFIG is required" >&2; exit 2)
+	@test -n "$$EKS_POLICY_CONTEXT" || (echo "EKS_POLICY_CONTEXT is required" >&2; exit 2)
+	@test -n "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT" || (echo "EKS_INGRESS_NETWORK_POLICY_OUTPUT is required" >&2; exit 2)
+	@if [ -n "$$EKS_LINKERD_POLICY_OUTPUT" ]; then \
+		python3 scripts/apply_tenant_network_policies.py --discovery-report "$$EKS_DISCOVERY_OUTPUT" --profile "$$EKS_POLICY_AWS_PROFILE" --kubeconfig "$$EKS_POLICY_KUBECONFIG" --context "$$EKS_POLICY_CONTEXT" --ingress-policy "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT" --linkerd-policy "$$EKS_LINKERD_POLICY_OUTPUT" --apply; \
+	else \
+		python3 scripts/apply_tenant_network_policies.py --discovery-report "$$EKS_DISCOVERY_OUTPUT" --profile "$$EKS_POLICY_AWS_PROFILE" --kubeconfig "$$EKS_POLICY_KUBECONFIG" --context "$$EKS_POLICY_CONTEXT" --ingress-policy "$$EKS_INGRESS_NETWORK_POLICY_OUTPUT" --apply; \
+	fi
 
 e2e-mock:
 	$(MAKE) -C examples/cli-e2e-c clean test
