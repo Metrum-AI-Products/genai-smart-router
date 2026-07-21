@@ -11,6 +11,7 @@
   "kustomize_overlay": "deploy/kubernetes/overlays/metrum-staging",
   "kustomize_router_image_name": "registry.example.com/smart-llmrouter",
   "runtime_secret_name": "smartrouter-staging-runtime",
-  "schema_version": 4,
+  "runtime_secret_attestation_configmap_name": "smartrouter-staging-runtime-attestation",
+  "schema_version": 5,
   "ssm_parameter_arn": "arn:aws:ssm:us-east-1:121701826775:parameter/metrum/genai-smart-router/staging-delivery-target"
 }

@@ -53,6 +53,7 @@ KUSTOMIZE_IMAGE_NAME = re.compile(
     r"(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)+$"
 )
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+SAFE_ATTESTATION_VALUE = re.compile(r"^[A-Za-z0-9._:-]{1,255}$")
 PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
 REGION = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
@@ -94,6 +95,7 @@ EVIDENCE_BINDING_FIELDS = (
     "deployment_name",
     "container_name",
     "runtime_secret_name",
+    "runtime_secret_attestation_configmap_name",
     "target_policy_arn",
     "target_policy_sha256",
     "image_digest",
@@ -109,6 +111,8 @@ EVIDENCE_BINDING_FIELDS = (
     "live_pod_template_sha256",
     "runtime_secret_uid",
     "runtime_secret_resource_version",
+    "runtime_secret_attestation_uid",
+    "runtime_secret_attestation_resource_version",
 )
 # Kubernetes writes these fields after accepting a declarative resource. They
 # do not describe the reviewed configuration and are deliberately excluded
@@ -354,6 +358,7 @@ class TargetPolicy:
     kustomize_overlay: Path
     kustomize_router_image_name: str
     runtime_secret_name: str
+    runtime_secret_attestation_configmap_name: str
     ssm_parameter_arn: str
     raw: dict[str, object]
 
@@ -369,19 +374,24 @@ class LiveDeploymentIdentity:
     generation: int
     observed_generation: int
     pod_template_sha256: str
-    runtime_secret: "RuntimeSecretIdentity"
+    runtime_secret_attestation: "RuntimeSecretAttestation"
 
 
 @dataclass(frozen=True)
-class RuntimeSecretIdentity:
-    """Safe Kubernetes metadata binding for the approved runtime Secret.
+class RuntimeSecretAttestation:
+    """Safe non-secret attestation of the approved runtime Secret version.
 
-    The delivery contract deliberately never hashes, prints, or writes Secret
-    data.  A Secret's UID catches replacement and its resourceVersion catches
-    in-place updates, so both must remain stable from apply through smoke and
-    promotion.
+    A delivery role must not receive Kubernetes ``get`` permission on a
+    credential-bearing Secret: Kubernetes RBAC does not support metadata-only
+    Secret reads. A separate secret-bootstrap controller or identity publishes
+    these safe scalars in the target-pinned, non-secret ConfigMap. The delivery
+    role reads only that attestation and binds both its version and the
+    attested Secret UID/resourceVersion into apply, smoke, and promotion
+    evidence.
     """
 
+    attestation_uid: str
+    attestation_resource_version: str
     uid: str
     resource_version: str
 
@@ -459,11 +469,12 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "deployment_name",
         "container_name",
         "runtime_secret_name",
+        "runtime_secret_attestation_configmap_name",
         "delivery_role_name",
     }
     if set(value) != required:
         fail("approved staging target policy has an unexpected schema")
-    if value.get("schema_version") != 4 or value.get("environment") != "staging":
+    if value.get("schema_version") != 5 or value.get("environment") != "staging":
         fail("approved staging target policy is not a supported staging policy")
 
     def string(name: str) -> str:
@@ -480,6 +491,9 @@ def parse_target_policy(value: object) -> TargetPolicy:
     deployment = string("deployment_name")
     container = string("container_name")
     runtime_secret_name = string("runtime_secret_name")
+    runtime_secret_attestation_configmap_name = string(
+        "runtime_secret_attestation_configmap_name"
+    )
     role = string("delivery_role_name")
     parameter_arn = string("ssm_parameter_arn")
     overlay_value = string("kustomize_overlay")
@@ -488,7 +502,13 @@ def parse_target_policy(value: object) -> TargetPolicy:
         fail("approved staging target policy has invalid AWS account or region")
     if not all(
         NAME.fullmatch(item)
-        for item in (namespace, deployment, container, runtime_secret_name)
+        for item in (
+            namespace,
+            deployment,
+            container,
+            runtime_secret_name,
+            runtime_secret_attestation_configmap_name,
+        )
     ):
         fail("approved staging target policy has invalid Kubernetes identifiers")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", cluster):
@@ -528,7 +548,8 @@ def parse_target_policy(value: object) -> TargetPolicy:
         "kustomize_overlay": overlay.as_posix(),
         "kustomize_router_image_name": kustomize_router_image_name,
         "runtime_secret_name": runtime_secret_name,
-        "schema_version": 4,
+        "runtime_secret_attestation_configmap_name": runtime_secret_attestation_configmap_name,
+        "schema_version": 5,
         "ssm_parameter_arn": parameter_arn,
     }
     return TargetPolicy(
@@ -543,6 +564,7 @@ def parse_target_policy(value: object) -> TargetPolicy:
         kustomize_overlay=resolved_overlay,
         kustomize_router_image_name=kustomize_router_image_name,
         runtime_secret_name=runtime_secret_name,
+        runtime_secret_attestation_configmap_name=runtime_secret_attestation_configmap_name,
         ssm_parameter_arn=parameter_arn,
         raw=normalized,
     )
@@ -686,6 +708,7 @@ class Delivery:
             "k8s_namespace",
             "kustomize_router_image_name",
             "runtime_secret_name",
+            "runtime_secret_attestation_configmap_name",
             "target_policy_sha256",
             "image_digest",
             "configuration_fingerprint",
@@ -704,6 +727,8 @@ class Delivery:
             "live_pod_template_sha256",
             "runtime_secret_uid",
             "runtime_secret_resource_version",
+            "runtime_secret_attestation_uid",
+            "runtime_secret_attestation_resource_version",
         ):
             if key in self.evidence:
                 markdown.append(f"- {key}: `{self.evidence[key]}`")
@@ -762,6 +787,7 @@ class Delivery:
                 "deployment_name": checked_in.deployment_name,
                 "container_name": checked_in.container_name,
                 "runtime_secret_name": checked_in.runtime_secret_name,
+                "runtime_secret_attestation_configmap_name": checked_in.runtime_secret_attestation_configmap_name,
                 "target_policy_arn": checked_in.ssm_parameter_arn,
                 "target_policy_sha256": checked_in.sha256,
             }
@@ -843,20 +869,54 @@ class Delivery:
                     "Kubernetes RBAC does not allow list "
                     f"{resource_type} in the approved namespace"
                 )
-        runtime_secret_allowed = command(
+        runtime_secret_attestation_allowed = command(
             [
                 "kubectl",
                 "auth",
                 "can-i",
                 "get",
-                f"secret/{target.runtime_secret_name}",
+                f"configmap/{target.runtime_secret_attestation_configmap_name}",
                 "-n",
                 target.k8s_namespace,
             ],
             env,
         ).strip()
-        if runtime_secret_allowed != "yes":
-            fail("Kubernetes RBAC does not allow get on the approved runtime Secret")
+        if runtime_secret_attestation_allowed != "yes":
+            fail(
+                "Kubernetes RBAC does not allow get on the approved runtime Secret attestation ConfigMap"
+            )
+        # A JSONPath projection would not make a Secret metadata-only: the
+        # Kubernetes API authorizes and returns the complete Secret before
+        # kubectl applies that local projection. The delivery role must have
+        # no Secret verbs at all. A separately bootstrap-owned non-secret
+        # ConfigMap carries the safe version attestation instead.
+        secret_permission_probes = (
+            ("get", f"secret/{target.runtime_secret_name}"),
+            ("list", "secrets"),
+            ("watch", "secrets"),
+            ("create", "secrets"),
+            ("update", f"secret/{target.runtime_secret_name}"),
+            ("patch", f"secret/{target.runtime_secret_name}"),
+            ("delete", f"secret/{target.runtime_secret_name}"),
+            ("deletecollection", "secrets"),
+        )
+        for verb, resource in secret_permission_probes:
+            secret_permission = command(
+                [
+                    "kubectl",
+                    "auth",
+                    "can-i",
+                    verb,
+                    resource,
+                    "-n",
+                    target.k8s_namespace,
+                ],
+                env,
+            ).strip()
+            if secret_permission != "no":
+                fail(
+                    "Kubernetes RBAC grants a forbidden Secret permission to the delivery role"
+                )
         if self.args.action == "rollback":
             replica_sets_allowed = command(
                 ["kubectl", "auth", "can-i", "list", "replicasets", "-n", target.k8s_namespace],
@@ -871,9 +931,11 @@ class Delivery:
             cluster_status="ACTIVE",
             rbac_get_pods=allowed,
             rbac_list_managed_resource_types=len(MANAGED_RESOURCE_TYPES),
-            rbac_get_runtime_secret=runtime_secret_allowed,
+            rbac_get_runtime_secret_attestation=runtime_secret_attestation_allowed,
+            rbac_denied_runtime_secret_verbs=len(secret_permission_probes),
             rbac_list_replicasets=self.args.action != "rollback" or replica_sets_allowed == "yes",
         )
+        self.runtime_secret_attestation(env, target, "preflight")
         return target
 
     @staticmethod
@@ -1563,49 +1625,119 @@ class Delivery:
             fail("live managed-resource configuration does not match the rendered staging manifest")
         self.record_live_managed_inventory(live_inventory, phase, "matched")
 
-    def runtime_secret_identity(
+    def runtime_secret_attestation(
         self, env: dict[str, str], target: TargetPolicy, phase: str
-    ) -> RuntimeSecretIdentity:
-        """Read only safe metadata for the one approved runtime Secret.
+    ) -> RuntimeSecretAttestation:
+        """Read and strictly validate the non-secret runtime Secret attestation.
 
-        The JSONPath output is limited to the Secret UID and resourceVersion,
-        so the delivery process never receives, prints, hashes, or writes a
-        Secret data key or value.
+        Kubernetes RBAC cannot grant a metadata-only Secret read: a caller
+        authorized for ``get`` can read every credential-bearing data value.
+        A distinct, bootstrap-owned immutable ConfigMap therefore contains
+        only the approved Secret's safe identity/version scalars. This method
+        must never fetch a Kubernetes Secret or persist the ConfigMap payload.
         """
 
         payload = command(
             [
                 "kubectl",
                 "get",
-                "secret",
-                target.runtime_secret_name,
+                "configmap",
+                target.runtime_secret_attestation_configmap_name,
                 "-n",
                 target.k8s_namespace,
                 "-o",
-                'jsonpath={.metadata.uid}{"\\n"}{.metadata.resourceVersion}{"\\n"}',
+                "json",
             ],
             env,
             raw=True,
         )
-        fields = payload.splitlines()
-        if len(fields) != 2:
-            fail("runtime Secret lookup did not return safe identity metadata")
-        uid, resource_version = fields
-        if not uid or not resource_version:
-            fail("runtime Secret lookup has no stable UID and resourceVersion")
-        identity = RuntimeSecretIdentity(uid=uid, resource_version=resource_version)
+        try:
+            attestation_payload = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("runtime Secret attestation lookup returned invalid JSON") from exc
+        if not isinstance(attestation_payload, dict):
+            fail("runtime Secret attestation lookup returned an invalid resource")
+        if (
+            attestation_payload.get("apiVersion") != "v1"
+            or attestation_payload.get("kind") != "ConfigMap"
+            or attestation_payload.get("immutable") is not True
+            or "binaryData" in attestation_payload
+        ):
+            fail("runtime Secret attestation is not an immutable safe ConfigMap")
+        metadata = attestation_payload.get("metadata")
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("name") != target.runtime_secret_attestation_configmap_name
+            or metadata.get("namespace") != target.k8s_namespace
+            or metadata.get("deletionTimestamp") is not None
+        ):
+            fail("runtime Secret attestation does not match the approved target")
+        allowed_metadata_fields = {
+            "name",
+            "namespace",
+            "uid",
+            "resourceVersion",
+            "creationTimestamp",
+            "ownerReferences",
+        }
+        if set(metadata) - allowed_metadata_fields:
+            fail("runtime Secret attestation has unexpected metadata")
+        data = attestation_payload.get("data")
+        expected_data_keys = {
+            "schema_version",
+            "secret_name",
+            "secret_uid",
+            "secret_resource_version",
+        }
+        if not isinstance(data, dict) or set(data) != expected_data_keys:
+            fail("runtime Secret attestation has an unexpected data schema")
+        if any(
+            not isinstance(value, str) or not SAFE_ATTESTATION_VALUE.fullmatch(value)
+            for value in data.values()
+        ):
+            fail("runtime Secret attestation has unsafe scalar values")
+        if data["schema_version"] != "v1" or data["secret_name"] != target.runtime_secret_name:
+            fail("runtime Secret attestation does not bind the approved runtime Secret")
+        attestation_uid = metadata.get("uid")
+        attestation_resource_version = metadata.get("resourceVersion")
+        if (
+            not isinstance(attestation_uid, str)
+            or not SAFE_ATTESTATION_VALUE.fullmatch(attestation_uid)
+            or not isinstance(attestation_resource_version, str)
+            or not SAFE_ATTESTATION_VALUE.fullmatch(attestation_resource_version)
+        ):
+            fail("runtime Secret attestation has no stable ConfigMap identity")
+        expected_owner_reference = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "name": target.runtime_secret_name,
+            "uid": data["secret_uid"],
+        }
+        if metadata.get("ownerReferences") != [expected_owner_reference]:
+            fail("runtime Secret attestation has no matching runtime Secret owner reference")
+        identity = RuntimeSecretAttestation(
+            attestation_uid=attestation_uid,
+            attestation_resource_version=attestation_resource_version,
+            uid=data["secret_uid"],
+            resource_version=data["secret_resource_version"],
+        )
         self.evidence.update(
             {
                 "runtime_secret_uid": identity.uid,
                 "runtime_secret_resource_version": identity.resource_version,
+                "runtime_secret_attestation_uid": identity.attestation_uid,
+                "runtime_secret_attestation_resource_version": identity.attestation_resource_version,
             }
         )
         self.event(
-            "runtime_secret",
+            "runtime_secret_attestation",
             phase=phase,
-            result="uid-and-resource-version-verified",
-            uid=identity.uid,
-            resource_version=identity.resource_version,
+            result="immutable-configmap-attested-secret-version-verified",
+            configmap_name=target.runtime_secret_attestation_configmap_name,
+            configmap_uid=identity.attestation_uid,
+            configmap_resource_version=identity.attestation_resource_version,
+            secret_uid=identity.uid,
+            secret_resource_version=identity.resource_version,
         )
         return identity
 
@@ -1670,12 +1802,12 @@ class Delivery:
         )
         if not router_container or router_container.get("image") != self.args.image_digest:
             fail("live router Deployment does not use the requested immutable IMAGE_DIGEST")
-        runtime_secret = self.runtime_secret_identity(env, target, phase)
+        runtime_secret_attestation = self.runtime_secret_attestation(env, target, phase)
         identity = LiveDeploymentIdentity(
             generation=generation,
             observed_generation=observed_generation,
             pod_template_sha256=pod_template_sha256(template),
-            runtime_secret=runtime_secret,
+            runtime_secret_attestation=runtime_secret_attestation,
         )
         if (
             expected_pod_template_sha256 is not None
@@ -1863,12 +1995,20 @@ class Delivery:
                 # allowlisted, label-selected object behind, stop before this
                 # mutating apply and require an explicit reviewed recovery.
                 self.verify_no_stale_managed_resources(env, target)
+                before_apply_attestation = self.runtime_secret_attestation(
+                    env, target, "before_apply"
+                )
                 command(["kubectl", "apply", "--server-side", "-f", str(manifest)], env, quiet=True)
                 self.verify_managed_inventory(env, target, "after_apply")
-                self.verify_live_deployment(env, target, "after_apply")
+                after_apply = self.verify_live_deployment(env, target, "after_apply")
+                if after_apply.runtime_secret_attestation != before_apply_attestation:
+                    fail("runtime Secret attestation changed during staging apply")
                 self.event("apply", result="passed")
             elif self.args.action == "rollback":
                 rollback_revision = self.rollback_revision_for_digest(env, target)
+                before_rollback_attestation = self.runtime_secret_attestation(
+                    env, target, "before_rollback"
+                )
                 command(
                     [
                         "kubectl",
@@ -1883,12 +2023,14 @@ class Delivery:
                     env,
                     quiet=True,
                 )
-                self.verify_live_deployment(
+                after_rollback = self.verify_live_deployment(
                     env,
                     target,
                     "after_rollback",
                     expected_pod_template_sha256=self.args.rollback_pod_template_sha256,
                 )
+                if after_rollback.runtime_secret_attestation != before_rollback_attestation:
+                    fail("runtime Secret attestation changed during staging rollback")
                 self.event("rollback", result="passed")
             elif self.args.action == "smoke":
                 if self.smoke_command_fd is None:

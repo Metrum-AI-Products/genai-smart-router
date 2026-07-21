@@ -200,9 +200,16 @@ into checked-in manifests.
 For automated delivery evidence, bind a runtime Secret by its Kubernetes UID
 and `resourceVersion`, never by its data or a captured content checksum. A
 replacement or update must invalidate prior apply/smoke proof and require a
-fresh reviewed rollout and smoke before promotion. Grant the delivery identity
-only name-scoped `get` access to that approved Secret; it should not need
-cluster-wide or namespace-wide Secret listing.
+fresh reviewed rollout and smoke before promotion. Do **not** grant the
+delivery identity any Secret verb: Kubernetes cannot authorize a
+metadata-only Secret `get`. Instead, have a separate secret-bootstrap identity
+publish a policy-pinned, immutable, non-secret ConfigMap containing only a
+schema version, Secret name, UID, and resourceVersion, with a same-namespace
+Secret owner reference matching the attested UID. Grant delivery only
+name-scoped `get` on that ConfigMap; do not allow it to write ConfigMaps. Keep
+the attestation outside the workload Kustomize inventory. Delete it before a
+Secret mutation and recreate it only after bootstrap has read the new Secret
+metadata, so a partial rotation fails closed.
 
 For managed PostgreSQL, use TLS with hostname verification. Mount the
 provider's CA bundle when the container trust store does not already contain
@@ -249,8 +256,9 @@ and role before creating a kubeconfig, and reject any rendered resource outside
 the approved namespace. Bind smoke and promotion evidence to the exact
 immutable image digest from the exact approved registry/repository, a
 digest-normalized fingerprint of the validated rendered configuration, live
-Deployment pod-template/generation state, and approved runtime Secret
-UID/resourceVersion. Recheck that state before
+Deployment pod-template/generation state, attested runtime Secret
+UID/resourceVersion, and the immutable attestation ConfigMap identity.
+Recheck that state before
 promotion so a rollback or replacement cannot reuse stale smoke evidence. For
 automated delivery, use a deployment-owned label to derive an allowlisted
 namespace inventory for the router Deployment, Service, Ingress, NetworkPolicy,

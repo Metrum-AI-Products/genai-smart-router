@@ -23,6 +23,16 @@ commands in this repository or shell history. The mounted `config.yaml` must
 use a dedicated staging caller, the EKS-bound license, `/app/state` paths, and
 the new RDS DSN.
 
+The same bootstrap identity must also own the policy-pinned, non-secret
+`smartrouter-staging-runtime-attestation` ConfigMap. Before changing the
+runtime Secret, delete the old attestation. After the Secret write, create a
+fresh immutable ConfigMap with only `schema_version: v1`, `secret_name`,
+`secret_uid`, and `secret_resource_version` in `data`, no `binaryData`, and
+one same-namespace `v1` `Secret` owner reference matching the attested name
+and UID. The delivery role reads that exact ConfigMap but has no Secret verbs
+or ConfigMap write access. Do not put the attestation ConfigMap in this
+Kustomize overlay: it is bootstrap-owned evidence, not workload desired state.
+
 The RDS DSN must use TLS hostname verification and the mounted CA file, for
 example `sslmode=verify-full sslrootcert=/app/config/rds-ca.pem`. Confirm the
 platform wildcard certificate is available in this namespace as
@@ -31,7 +41,8 @@ secret name before applying.
 
 Render, dry-run, apply, and rollback must use the root Make contract rather
 than an implicit kubectl context. The approved account, region, ECR repository,
-cluster, namespace, overlay, Deployment, container, and role are pinned in
+cluster, namespace, runtime Secret attestation ConfigMap, overlay, Deployment,
+container, and role are pinned in
 `deploy/aws/genai-smart-router-eks-staging-target.json` and must exactly match
 the separately protected AWS Systems Manager Parameter named by that file.
 The checked-in repository URI is only a bootstrap default: it does not prove a

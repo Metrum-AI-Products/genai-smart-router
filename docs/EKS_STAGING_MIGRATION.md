@@ -41,9 +41,11 @@ produce a redacted explicit-target discovery report, and review identity,
 Linkerd, and namespace bootstrap prerequisites. This staging runbook does not
 authorize a production cutover.
 
-1. Obtain Kubernetes RBAC for the deployment identity: namespace creation,
-   Secret/PVC/Service/Ingress/Deployment/NetworkPolicy management, pod logs,
-   and port-forwarding. EKS authentication alone is insufficient.
+1. Obtain separate Kubernetes identities: a privileged bootstrap identity for
+   namespace/Secret setup and a least-privilege delivery identity for the
+   reviewed workload resources. The delivery identity must not have any Secret
+   verbs; it reads only the pinned non-secret attestation ConfigMap described
+   below. EKS authentication alone is insufficient.
 2. Confirm the `nginx` ingress class, selected ingress namespace, and the
    namespace-local wildcard certificate Secret named
    `apps-metrum-ai-wildcard-tls`. Render the discovery-derived ingress
@@ -75,8 +77,8 @@ authorize a production cutover.
 6. Establish the protected staging delivery target before invoking a Make
    target. `deploy/aws/genai-smart-router-eks-staging-target.json` is the
    reviewed canonical target: account, region, ECR repository, cluster,
-   namespace, runtime Secret, overlay, Kustomize source image name, Deployment,
-   container, and delivery role. The checked-in
+   namespace, runtime Secret, runtime Secret attestation ConfigMap, overlay,
+   Kustomize source image name, Deployment, container, and delivery role. The checked-in
    repository URI is a bootstrap default, not proof of an approved live AWS/EKS
    target. First renew a least-privilege non-root session and explicitly
    reconcile the approved target. Then provision the exact JSON as a
@@ -86,7 +88,7 @@ authorize a production cutover.
    `deploy/aws/genai-smart-router-eks-staging-delivery-parameter-read-policy.example.json`);
    a separate platform configuration role owns `ssm:PutParameter`. The
    delivery contract reads both copies and fails unless their canonical JSON
-   hashes match. The current schema is version 4; update the reviewed file and
+   hashes match. The current schema is version 5; update the reviewed file and
    protected Parameter through the same approved infrastructure change. The
    `kustomize_router_image_name` field is the full tagless source image in the
    overlay, not the ECR destination; the contract replaces exactly that name
@@ -138,11 +140,28 @@ DSN, or a rendered manifest committed to the repository.
 
 The delivery contract permits only this approved runtime Secret in the router
 Pod's Secret volume, projected-volume, `env`, `envFrom`, and init-container
-sources. It requires namespace-scoped `get` permission for that one Secret,
-reads only its Kubernetes metadata, and records only its UID and
-`resourceVersion` in evidence. It never prints, hashes, or persists Secret
-data. A Secret replacement or update invalidates apply/smoke evidence; rerun
-the reviewed apply and protected smoke before a promotion plan can pass.
+sources. The delivery identity must have **no** Secret verbs: Kubernetes RBAC
+does not support a metadata-only Secret `get`, and JSONPath would filter only
+after the full credential-bearing Secret had been authorized and returned.
+
+A separate, privileged Secret-bootstrap identity owns both the runtime Secret
+and the policy-pinned non-secret ConfigMap
+`smartrouter-staging-runtime-attestation`; the delivery identity gets
+name-scoped `get` only on that ConfigMap and no ConfigMap write access. Before
+any Secret mutation, bootstrap deletes the existing attestation. After the
+Secret write succeeds, bootstrap reads its metadata and creates a fresh
+`immutable: true` ConfigMap with exactly these non-secret `data` keys:
+`schema_version: v1`, `secret_name`, `secret_uid`, and
+`secret_resource_version`. It must have no `binaryData` and exactly one
+same-namespace `v1` `Secret` owner reference whose name and UID match the
+attested values. A missing, deleting, mutable, malformed, or mismatched
+attestation blocks preflight and delivery. The contract records only the
+attested Secret UID/resourceVersion plus the attestation ConfigMap
+UID/resourceVersion, never Secret contents or raw ConfigMap data. A Secret or
+attestation replacement/update invalidates apply/smoke evidence; rerun the
+reviewed apply and protected smoke before a promotion plan can pass. Keep this
+ConfigMap outside the Kustomize delivery inventory: it is bootstrap evidence,
+not workload desired state.
 
 ## Outcome-Calibrated Routing Validation
 
@@ -196,7 +215,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    `deployments`, `ingresses`, `networkpolicies`,
    `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
    `serviceaccounts`, plus name-scoped `get` permission only for the approved
-   runtime Secret (not list/watch permission for Secrets). The delivery
+   runtime Secret attestation ConfigMap. It must have no `get`, `list`,
+   `watch`, `create`, `update`, `patch`, `delete`, or `deletecollection`
+   permissions for Secrets, and no ConfigMap write permission. The delivery
    contract builds its expected inventory from
    the isolated client-rendered manifest, not from Server-Side Apply output.
    Server-side dry-run is an acceptance/field-ownership check only: its object
@@ -315,8 +336,9 @@ context. See `make eks-help` for the complete target list and required inputs.
    only after review. It remains read-only and requires both passed
    `evidence-apply.json` and `evidence-smoke.json` for that exact protected
    target, digest, rendered configuration fingerprint, live Deployment
-   pod-template/generation state, approved runtime Secret UID/resourceVersion,
-   exact label-selected managed-resource identity, and normalized configuration
+   pod-template/generation state, attested runtime Secret UID/resourceVersion,
+   immutable attestation ConfigMap name/UID/resourceVersion, exact
+   label-selected managed-resource identity, and normalized configuration
    fingerprints. A smoke must accept the exact passed apply
    evidence first; a later apply invalidates it, so promotion can use only a
    smoke that ran after its accepted apply. It rechecks the current rollout and

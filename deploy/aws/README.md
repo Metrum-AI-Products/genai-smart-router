@@ -55,20 +55,37 @@ Before any EKS delivery command can be used outside the offline contract tests:
 
 1. Renew a least-privilege, non-root AWS session through the secure login
    flow and confirm the approved non-production account, region, ECR
-   repository, cluster, namespace, runtime Secret, overlay, workload, and
-   delivery role.
+   repository, cluster, namespace, runtime Secret, non-secret Secret
+   attestation ConfigMap, overlay, workload, and delivery role.
 2. Update the reviewed JSON and the exact protected SSM Parameter named by the
    policy through approved infrastructure-as-code in one reconciliation
    change. The delivery role may read that Parameter but must not update it.
 3. Run `make eks-preflight` with the approved role. Any schema, value, or hash
    mismatch fails closed before cluster selection, rendering, or mutation.
 
-The current schema is version 4. It pins the full tagless source image name
-that Kustomize must replace, the single runtime Secret name, and the workload
-target. The delivery contract can therefore verify only that Secret's
-Kubernetes UID and resourceVersion without reading or recording its contents.
+The current schema is version 5. It pins the full tagless source image name
+that Kustomize must replace, the single runtime Secret name, the separately
+bootstrap-owned runtime Secret attestation ConfigMap, and the workload target.
+The delivery identity receives name-scoped `get` access only to that ConfigMap
+and must have **no** Secret verbs. Kubernetes RBAC cannot make a Secret `get`
+metadata-only: JSONPath filters output after the API has authorized and
+returned the complete Secret.
+
+The bootstrap identity alone creates a fresh immutable attestation ConfigMap
+after it creates or updates the Secret. Its `data` must contain exactly the
+safe scalar fields `schema_version: v1`, `secret_name`, `secret_uid`, and
+`secret_resource_version`; it must have no `binaryData` and exactly one
+same-namespace `v1` `Secret` owner reference matching the attested name and
+UID. Delete the old attestation before changing the Secret, then create the
+fresh immutable ConfigMap after the Secret change. Any absent, malformed, or
+in-progress attestation blocks delivery. The delivery contract records only
+the attested UID/resourceVersion and the ConfigMap UID/resourceVersion, never
+Secret contents or the raw ConfigMap payload.
+
 Reconcile the reviewed JSON and protected Parameter together before using this
-contract against a cluster.
+contract against a cluster. Do not add the attestation ConfigMap to the
+Kustomize delivery inventory: it is independent bootstrap state, not workload
+desired state.
 
 Do not infer authorization from an account number, repository URI, local AWS
 profile, or this file alone. The protected Parameter and least-privilege

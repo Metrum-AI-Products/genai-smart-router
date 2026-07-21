@@ -375,13 +375,44 @@ def deployment_object(
     )
 
 
-def runtime_secret_metadata(
-    uid: str = "runtime-secret-uid-one",
-    resource_version: str = "101",
+def runtime_secret_attestation(
+    secret_uid: str = "runtime-secret-uid-one",
+    secret_resource_version: str = "101",
+    *,
+    attestation_uid: str = "runtime-secret-attestation-uid-one",
+    attestation_resource_version: str = "201",
+    secret_name: str | None = None,
 ) -> str:
-    """The exact safe metadata output requested by the JSONPath lookup."""
+    """A bootstrap-owned immutable, non-secret version attestation fixture."""
 
-    return f"{uid}\n{resource_version}\n"
+    secret_name = secret_name or str(TARGET_POLICY["runtime_secret_name"])
+    return json.dumps(
+        {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": TARGET_POLICY["runtime_secret_attestation_configmap_name"],
+                "namespace": TARGET_POLICY["k8s_namespace"],
+                "uid": attestation_uid,
+                "resourceVersion": attestation_resource_version,
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "kind": "Secret",
+                        "name": secret_name,
+                        "uid": secret_uid,
+                    }
+                ],
+            },
+            "immutable": True,
+            "data": {
+                "schema_version": "v1",
+                "secret_name": secret_name,
+                "secret_uid": secret_uid,
+                "secret_resource_version": secret_resource_version,
+            },
+        }
+    )
 
 
 def replica_sets_object(
@@ -470,16 +501,20 @@ case "$0" in
     *describe-cluster*) printf '{{"cluster":{{"status":"ACTIVE","arn":"arn:aws:eks:%s:%s:cluster/%s"}}}}\\n' "$FAKE_AWS_REGION" "$FAKE_AWS_ACCOUNT" "$FAKE_EKS_CLUSTER" ;;
   esac ;;
   *kubectl) case "$*" in
+    *"auth can-i"*secret*) echo "$FAKE_SECRET_RBAC" ;;
+    *"auth can-i get configmap/$FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) echo yes ;;
+    *"auth can-i"*configmap*) echo no ;;
     *"auth can-i"*) echo yes ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
     *"apply --server-side --dry-run=server"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
-    *"get secret smartrouter-staging-runtime"*) printf '%s' "$FAKE_RUNTIME_SECRET_METADATA" ;;
+    *"get secret"*) echo "unexpected Secret read" >&2; exit 46 ;;
+    *"get configmap $FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) if test -n "$FAKE_RUNTIME_SECRET_ATTESTATION_FILE"; then cat "$FAKE_RUNTIME_SECRET_ATTESTATION_FILE"; else printf '%s\n' "$FAKE_RUNTIME_SECRET_ATTESTATION"; fi ;;
     *"get deployment/smart-llmrouter"*) printf '%s\\n' "$FAKE_DEPLOYMENT_OBJECT" ;;
     *"rollout status"*) : ;;
-    *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE" ;;
+    *apply*) for arg; do manifest="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_APPLIED_LIVE_MANAGED_OBJECTS" > "$FAKE_LIVE_INVENTORY_FILE"; if test -n "$FAKE_RUNTIME_SECRET_ATTESTATION_AFTER_APPLY"; then printf '%s\\n' "$FAKE_RUNTIME_SECRET_ATTESTATION_AFTER_APPLY" > "$FAKE_RUNTIME_SECRET_ATTESTATION_FILE"; fi ;;
   esac ;;
   *kustomize) case "$*" in
     "edit set image $FAKE_KUSTOMIZE_SOURCE_IMAGE=$FAKE_IMAGE_DIGEST") : > "$FAKE_KUSTOMIZE_EDIT_MARKER" ;;
@@ -523,6 +558,12 @@ def run(
     deployed_revision: int = 2,
     runtime_secret_uid: str = "runtime-secret-uid-one",
     runtime_secret_resource_version: str = "101",
+    runtime_secret_attestation_uid: str = "runtime-secret-attestation-uid-one",
+    runtime_secret_attestation_resource_version: str = "201",
+    runtime_secret_attested_name: str | None = None,
+    runtime_secret_attestation_payload: str | None = None,
+    runtime_secret_attestation_after_apply_payload: str | None = None,
+    secret_rbac: str = "no",
     replica_sets: str | None = None,
     rollback_pod_template_sha256: str | None = None,
     include_rollback_pod_template_sha256: bool = True,
@@ -554,8 +595,17 @@ def run(
         command += extra
     bindir = root / "fake-bin"
     live_inventory_file = root / "tmp" / "live-managed-inventory.json"
+    runtime_secret_attestation_file = root / "tmp" / "runtime-secret-attestation.json"
     live_inventory_file.parent.mkdir(parents=True, exist_ok=True)
     live_inventory_file.write_text(live_inventory or rendered_objects())
+    attestation_payload = runtime_secret_attestation_payload or runtime_secret_attestation(
+        runtime_secret_uid,
+        runtime_secret_resource_version,
+        attestation_uid=runtime_secret_attestation_uid,
+        attestation_resource_version=runtime_secret_attestation_resource_version,
+        secret_name=runtime_secret_attested_name,
+    )
+    runtime_secret_attestation_file.write_text(attestation_payload)
     env = {
         **os.environ,
         "PATH": f"{bindir}:{os.environ['PATH']}",
@@ -564,6 +614,7 @@ def run(
         "FAKE_AWS_REGION": str(TARGET_POLICY["aws_region"]),
         "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
+        "FAKE_SECRET_RBAC": secret_rbac,
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
         "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),
@@ -582,9 +633,13 @@ def run(
             deployed_observed_generation,
             deployed_revision,
         ),
-        "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(
-            runtime_secret_uid, runtime_secret_resource_version
+        "FAKE_RUNTIME_SECRET_ATTESTATION_NAME": str(
+            TARGET_POLICY["runtime_secret_attestation_configmap_name"]
         ),
+        "FAKE_RUNTIME_SECRET_ATTESTATION": attestation_payload,
+        "FAKE_RUNTIME_SECRET_ATTESTATION_FILE": str(runtime_secret_attestation_file),
+        "FAKE_RUNTIME_SECRET_ATTESTATION_AFTER_APPLY": runtime_secret_attestation_after_apply_payload
+        or "",
         "FAKE_REPLICA_SETS": replica_sets_payload,
     }
     return subprocess.run(command, cwd=root, text=True, capture_output=True, env=env)
@@ -620,6 +675,15 @@ def main() -> int:
         assert "Kustomize source image" in str(exc)
     else:
         raise AssertionError("target policy accepted a tagged Kustomize source image")
+
+    missing_attestation_policy = dict(TARGET_POLICY)
+    del missing_attestation_policy["runtime_secret_attestation_configmap_name"]
+    try:
+        EKS_DELIVERY.parse_target_policy(missing_attestation_policy)
+    except RuntimeError as exc:
+        assert "unexpected schema" in str(exc)
+    else:
+        raise AssertionError("target policy accepted a missing Secret attestation ConfigMap")
 
     for kind, mutate in (
         ("Service", lambda resource: resource["spec"].update({"selector": {"unexpected": "true"}})),
@@ -752,6 +816,67 @@ def main() -> int:
         assert calls.index("ssm get-parameter") < calls.index("describe-cluster")
         manifest_size = re.search(r"manifest-bytes=\s*(\d+)", calls)
         assert manifest_size and int(manifest_size.group(1)) > 4000
+        assert (
+            f"auth can-i get secret/{TARGET_POLICY['runtime_secret_name']}" in calls
+        )
+        assert f"get secret {TARGET_POLICY['runtime_secret_name']}" not in calls
+        assert (
+            "get configmap "
+            f"{TARGET_POLICY['runtime_secret_attestation_configmap_name']}" in calls
+        )
+
+        inherited_secret_access = run("preflight", root, secret_rbac="yes")
+        assert (
+            inherited_secret_access.returncode != 0
+            and "forbidden Secret permission" in inherited_secret_access.stderr
+        )
+
+        # The delivery contract fails before a mutating apply if the
+        # bootstrap-owned attestation is not a strictly safe immutable
+        # ConfigMap. The fake kubectl rejects every actual Secret read above.
+        for mutation_name, mutate in (
+            ("non-immutable", lambda item: item.update({"immutable": False})),
+            ("binary data", lambda item: item.update({"binaryData": {"x": "eA=="}})),
+            ("extra data", lambda item: item["data"].update({"unexpected": "value"})),
+            ("wrong owner", lambda item: item["metadata"].update({"ownerReferences": []})),
+            ("deletion in progress", lambda item: item["metadata"].update({"deletionTimestamp": "2026-07-20T00:00:00Z"})),
+            ("wrong secret name", lambda item: item["data"].update({"secret_name": "wrong-secret"})),
+        ):
+            invalid_attestation = json.loads(runtime_secret_attestation())
+            mutate(invalid_attestation)
+            before_invalid_apply = (bindir / "calls.log").read_text()
+            invalid_apply = run(
+                "apply",
+                root,
+                ["--confirm", "STAGING_APPLY"],
+                runtime_secret_attestation_payload=json.dumps(invalid_attestation),
+            )
+            assert invalid_apply.returncode != 0, mutation_name
+            assert "attestation" in invalid_apply.stderr, mutation_name
+            invalid_apply_calls = (bindir / "calls.log").read_text()[
+                len(before_invalid_apply):
+            ]
+            assert "apply --server-side -f" not in invalid_apply_calls, mutation_name
+
+        replacement_attestation = json.loads(runtime_secret_attestation())
+        replacement_attestation["metadata"]["resourceVersion"] = "202"
+        before_changed_attestation_apply = (bindir / "calls.log").read_text()
+        changed_attestation_apply = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            runtime_secret_attestation_after_apply_payload=json.dumps(
+                replacement_attestation
+            ),
+        )
+        assert (
+            changed_attestation_apply.returncode != 0
+            and "attestation changed during staging apply" in changed_attestation_apply.stderr
+        )
+        changed_attestation_apply_calls = (bindir / "calls.log").read_text()[
+            len(before_changed_attestation_apply):
+        ]
+        assert "apply --server-side -f" in changed_attestation_apply_calls
 
         # Server-side dry-run/live JSON includes API-defaulted nested container
         # and probe fields that are absent from the reviewed manifest. Exact
@@ -1329,6 +1454,7 @@ def main() -> int:
                 "FAKE_AWS_REGION": str(TARGET_POLICY["aws_region"]),
                 "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
                 "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
+                "FAKE_SECRET_RBAC": "no",
                 "FAKE_TARGET_POLICY_VALUE": target_value(),
                 "FAKE_RENDER_OBJECTS": rendered_objects(),
                 "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
@@ -1339,7 +1465,10 @@ def main() -> int:
                 "FAKE_KUSTOMIZE_EDIT_MARKER": str(root / "tmp" / "kustomize-image-overridden"),
                 "FAKE_KUSTOMIZE_SOURCE_IMAGE": str(TARGET_POLICY["kustomize_router_image_name"]),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
-                "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
+                "FAKE_RUNTIME_SECRET_ATTESTATION_NAME": str(
+                    TARGET_POLICY["runtime_secret_attestation_configmap_name"]
+                ),
+                "FAKE_RUNTIME_SECRET_ATTESTATION": runtime_secret_attestation(),
             },
         )
         assert make_smoke.returncode == 0, make_smoke.stderr
@@ -1358,8 +1487,14 @@ def main() -> int:
             assert re.fullmatch(r"[0-9a-f]{64}", str(evidence["live_pod_template_sha256"]))
             assert evidence["live_deployment_generation"] == evidence["live_deployment_observed_generation"] == 1
             assert evidence["runtime_secret_name"] == TARGET_POLICY["runtime_secret_name"]
+            assert (
+                evidence["runtime_secret_attestation_configmap_name"]
+                == TARGET_POLICY["runtime_secret_attestation_configmap_name"]
+            )
             assert evidence["runtime_secret_uid"] == "runtime-secret-uid-one"
             assert evidence["runtime_secret_resource_version"] == "101"
+            assert evidence["runtime_secret_attestation_uid"] == "runtime-secret-attestation-uid-one"
+            assert evidence["runtime_secret_attestation_resource_version"] == "201"
             assert "different-workload" not in json.dumps(evidence)
         promotion = run("promotion-plan", root)
         assert promotion.returncode == 0, promotion.stderr
@@ -1381,6 +1516,17 @@ def main() -> int:
         assert (
             runtime_secret_drift.returncode != 0
             and "runtime_secret_resource_version" in runtime_secret_drift.stderr
+        )
+
+        # Replacing the immutable non-secret attestation (or otherwise changing
+        # its API version) must also invalidate prior apply/smoke evidence.
+        runtime_secret_attestation_drift = run(
+            "promotion-plan", root, runtime_secret_attestation_resource_version="202"
+        )
+        assert (
+            runtime_secret_attestation_drift.returncode != 0
+            and "runtime_secret_attestation_resource_version"
+            in runtime_secret_attestation_drift.stderr
         )
 
         apply_evidence_path = root / "tmp/evidence/evidence-apply.json"
@@ -1409,6 +1555,7 @@ def main() -> int:
                 "FAKE_AWS_REGION": str(TARGET_POLICY["aws_region"]),
                 "FAKE_AWS_ROLE": str(TARGET_POLICY["delivery_role_name"]),
                 "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
+                "FAKE_SECRET_RBAC": "no",
                 "FAKE_TARGET_POLICY_VALUE": target_value(),
                 "FAKE_RENDER_OBJECTS": rendered_objects(),
                 "FAKE_SERVER_NORMALIZED_OBJECTS": rendered_objects(),
@@ -1419,7 +1566,10 @@ def main() -> int:
                 "FAKE_KUSTOMIZE_EDIT_MARKER": str(root / "tmp" / "kustomize-image-overridden"),
                 "FAKE_KUSTOMIZE_SOURCE_IMAGE": str(TARGET_POLICY["kustomize_router_image_name"]),
                 "FAKE_DEPLOYMENT_OBJECT": deployment_object(),
-                "FAKE_RUNTIME_SECRET_METADATA": runtime_secret_metadata(),
+                "FAKE_RUNTIME_SECRET_ATTESTATION_NAME": str(
+                    TARGET_POLICY["runtime_secret_attestation_configmap_name"]
+                ),
+                "FAKE_RUNTIME_SECRET_ATTESTATION": runtime_secret_attestation(),
             },
         )
         assert release_evidence.returncode != 0
