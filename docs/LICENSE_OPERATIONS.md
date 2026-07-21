@@ -9,12 +9,12 @@ Related work:
 - #167 tracks deployment binding.
 - #168 tracks revocation bundles.
 - #169 tracks online license leases.
-- #170 tracks the licensing portal.
-- #171 tracks Stripe billing and webhook fulfillment.
 - #159 defines the license envelope shape for capability, time, volume, and operational limits.
 - #158 makes license enforcement mandatory for normal builds and leaves any no-license mode as an explicit internal development build.
+- #545 owns the hosted tenant product flow and its commercial/control-plane boundary.
+- #42 owns customer-facing commercial and package copy.
 
-The machine-readable source for launch SKU templates is `docs/enterprise-license-skus.json`. Keep that artifact, this runbook, `COMMERCIALIZATION.md`, and customer-facing Docusaurus license docs aligned when packaging changes.
+The machine-readable source for launch SKU templates is `docs/enterprise-license-skus.json`. Keep that artifact, this runbook, and customer-facing Docusaurus license docs aligned when packaging changes. GitHub issue #545 is the product-flow source of truth; #42 owns the corresponding customer-facing commercial copy.
 
 ## Operating Rules
 
@@ -24,7 +24,7 @@ The machine-readable source for launch SKU templates is `docs/enterprise-license
 - Use safe scalar license metadata for support: `license_id`, customer alias, SKU, `key_id`, issuer, status, reason, expiry, grace flag, and request IDs.
 - Treat license issuance, renewal, replacement, and top-up as commercial events. Record them in the commercial/support system, not in this repository.
 - Treat license and quota state files as tamper-evident runtime state. The router signs state with deployment-local integrity metadata and fails closed when state is edited or replaced with raw JSON. Do not hand-edit counters, disabled flags, grace fields, or feature lists; use a reviewed license replacement/top-up or restore a trusted state backup. Legacy unsigned quota-state import requires an explicit one-time operator migration with `SMART_LLMROUTER_ALLOW_UNSIGNED_STATE_MIGRATION=1`, followed by restart without that flag after the router rewrites signed state.
-- Treat Stripe checkout, quote, invoice, customer-portal, refund, dispute, and cancellation events as commercial control-plane inputs. They authorize or block license operations; they do not belong in router config, license payload examples, or runtime logs except as safe external record references in the commercial/support system.
+- Treat approved commercial, procurement, and entitlement events as control-plane inputs. They may authorize or block license operations; they do not belong in router config, license payload examples, or runtime logs except as safe external record references in the commercial/support system.
 - When investigating an installed customer deployment, ask for safe status output and request IDs. Do not ask for full payloads unless legal/support policy explicitly authorizes a secure file transfer.
 
 ## Roles And Records
@@ -37,7 +37,7 @@ The machine-readable source for launch SKU templates is `docs/enterprise-license
 | Support engineer | Guides customer installation, renewal, replacement, and diagnostics using safe status fields. |
 | Release engineer | Confirms shipped binaries contain public verification keys and normal builds enforce licensing. |
 | Security reviewer | Reviews signing-key custody, secure delivery, and incident handling. |
-| Portal or billing operator | Maintains approved Stripe product/price/quote/customer-portal configuration and reconciles webhook fulfillment records when #170/#171 are implemented. |
+| Commercial control-plane operator | Maintains approved commercial and entitlement records, and reconciles authorized fulfillment requests under #545. Customer-facing commercial copy is governed by #42. |
 
 Maintain an external entitlement record with at least:
 
@@ -496,79 +496,15 @@ server:
 
 `require_current_bundle: true` fails closed when the bundle is absent. `fail_closed_on_bundle_error: true` fails closed when a configured bundle is malformed, expired, signed by an unknown key, has an invalid signature, or rolls back to an older observed epoch. Effective `revoked`, `suspended`, and `superseded` entries return `403` and must not enter license grace.
 
-## Portal And Stripe Fulfillment Workflow
+## Commercial And Customer Control-plane Boundary
 
-This section is planned operational guidance for #170/#171. Do not publish customer instructions for self-service checkout until the portal, Stripe fulfillment, security review, and support readiness checks are complete.
+GitHub issue #545 is the single source of truth for the hosted tenant product flow and its commercial/control-plane behavior. GitHub issue #42 owns the customer-facing commercial and package copy. This runbook deliberately does not define a checkout, customer portal, payment-provider integration, webhook schema, or self-service policy.
 
-### Stripe Catalog And SKU Approval
-
-Commercial ops must maintain a small approved catalog:
-
-- Stripe Product and Price IDs map one-to-one to approved license templates or quote-only bundles.
-- Each catalog entry is marked `self_service`, `quote_only`, `renewal_only`, `top_up_only`, or `internal_only`.
-- Self-service entries must use constrained templates such as evaluation, pilot, or approved credit packs. They must not allow arbitrary feature selection, custom instance scope, customer-entered model group names, or unrestricted volume.
-- Quote-only entries cover enterprise annual, private managed, marketplace/private-offer, custom deployment binding, online lease exceptions, air-gapped terms, and customer-specific add-ons.
-- Finance/legal must approve tax treatment, refund policy, customer terms, and whether Stripe Tax, marketplace tax handling, or another process applies before launch.
-
-Review the Stripe catalog whenever `docs/enterprise-license-skus.json`, public pricing/package docs, or license envelope semantics change.
-
-### Checkout, Quotes, Invoices, And Customer Portal
-
-Use Stripe-hosted surfaces for payment collection when available:
-
-- Checkout for approved self-service evaluation, pilot, renewal, or top-up purchase.
-- Quotes or invoices for sales-led B2B procurement, annual commitments, and private managed terms.
-- Stripe Customer Portal for payment methods, invoice download/payment, and subscription management where the commercial plan allows it.
-
-The router runtime and any Metrum licensing portal must not store card details. Store only safe Stripe object references and fulfillment state in the commercial system.
-
-### Webhook Fulfillment And Reconciliation
-
-Fulfillment must be idempotent and replay-safe:
-
-1. Receive a Stripe webhook event through the approved portal service.
-2. Verify the Stripe signature in the portal service.
-3. Resolve the customer, approved SKU/template, quantity or volume, term, and target deployment record.
-4. Confirm the event represents payment-confirmed fulfillment, finalized quote/invoice payment, or another finance-approved trigger.
-5. Create or update the external entitlement record.
-6. Issue the license through the approved signer or signing service.
-7. Verify the signed license.
-8. Attach the signed license to the portal download record or deliver through the approved secure channel.
-9. Record Stripe event ID, object IDs, entitlement record, license ID, signer key ID, issue time, delivery channel, and acceptance status.
-
-Webhook replay must not generate duplicate active licenses unless the operator intentionally issues a replacement. Reconciliation should compare Stripe paid/void/refunded/disputed/canceled state against entitlement and license-delivery state at least daily during launch.
-
-### Payment Succeeded But Fulfillment Failed
-
-If payment succeeded but license generation, verification, or download failed:
-
-1. Do not ask the customer to retry payment until finance confirms the charge status.
-2. Mark the fulfillment record blocked with the safe error class and Stripe event/object references.
-3. Escalate to the license issuer and portal operator.
-4. Issue the license manually through the approved workflow if the entitlement is valid.
-5. Update the portal record or send the license through the approved secure channel.
-6. Confirm the customer installed the license and record acceptance evidence.
-
-### Refund, Dispute, Cancellation, And Failed Renewal
-
-Refunds, disputes, cancellations, and failed renewals are commercial events. The support response depends on the enforcement mode:
-
-- Offline enterprise licenses usually require a replacement license, revocation bundle, or contract action; do not silently edit customer state files.
-- Online lease-required plans may move to payment-required, canceled, or revoked state at the next lease renewal or grace boundary.
-- Portal-issued evaluation, pilot, or top-up packages can be replaced, blocked from re-download, or revoked according to the approved policy.
-
-Always record the commercial decision separately from the technical action. Never delete evidence needed for tax, dispute, audit, or incident review without legal approval.
-
-### Accidental Bad License Issuance
-
-If Metrum issues an incorrect license:
-
-1. Stop further portal fulfillment for the affected SKU/template or customer segment.
-2. Identify issued license IDs, customer IDs, key IDs, terms, and delivery channels using safe metadata only.
-3. Decide whether to issue corrected replacements, publish a revocation bundle, require online lease denial, or leave the license valid under customer-success direction.
-4. Notify affected customers through the approved support/commercial path.
-5. Record the incident, root cause, corrected templates, and verification evidence.
-6. Resume automated fulfillment only after security and commercial owners approve.
+- An approved external entitlement record may authorize a license issuance, renewal, replacement, revocation, or top-up. The control-plane service must make that decision idempotently and retain only the safe references needed for support and audit.
+- Keep payment data, payment-provider credentials, webhook secrets, signing-service credentials, and full customer records outside router configuration, deployment packages, and runtime logs. The router runtime never processes card data or holds private license-signing keys.
+- Bind fulfillment to an approved SKU/template and deployment record. Verify the signed license before delivery; use the existing secure delivery and support workflow in this runbook.
+- If a commercial decision changes an issued entitlement, choose a reviewed technical action such as a replacement license, revocation bundle, or lease-state change. Do not hand-edit customer license or quota state.
+- Customer-facing materials must not describe a purchase, portal, download, or renewal mechanism as available until #545 is implemented and #42 has approved the shipped wording.
 
 ## Deployment Binding, Revocation, And Online Leases
 

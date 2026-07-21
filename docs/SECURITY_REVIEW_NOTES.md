@@ -23,9 +23,9 @@ Signed-license enforcement uses detached Ed25519 signatures over canonical JSON 
 
 License operations are covered by `docs/LICENSE_OPERATIONS.md`. Security review must verify that the runbook, support workflow, examples, and package/public docs do not disclose private signing-key handling beyond internal operator guidance, do not include real customer license payloads, and keep Docusaurus customer-facing guidance limited to install, renewal, status, commercial access paths, and support behavior.
 
-Planned portal and Stripe fulfillment workflows must keep commercial systems separated from router runtime secrets. Stripe webhook signing secrets, API keys, product/price administration, quote/invoice/customer-portal configuration, and fulfillment replay records belong in the approved portal/commercial environment, not router config or deployment packages. Stripe payment state can authorize license issuance or online lease renewal, but it must not grant access to raw license signing keys. The router must not store or process card details.
+Commercial/control-plane systems must remain separated from router runtime secrets. Payment-provider credentials, webhook secrets, commercial-system administration, and fulfillment replay records belong in the approved control-plane environment, not router config or deployment packages. An approved commercial event may authorize license issuance or online-lease renewal, but it must not grant access to raw license-signing keys. The router must not store or process card details.
 
-Security review for portal launch must include SKU/template approval, self-service versus quote-only gates, tax/compliance review evidence, webhook signature verification, idempotent event replay, payment-succeeded/fulfillment-failed support handling, refund/dispute/cancellation handling, accidental bad-license issuance response, deployment binding, revocation bundles, and online lease behavior. Public docs must mark portal/self-service as planned until the implementation is shipped.
+GitHub issue #545 owns the product-flow security and reliability acceptance criteria; #42 owns the customer-facing commercial/package wording. Public docs must not claim a commercial mechanism as available before those issues' implementation and acceptance criteria are met.
 
 ## Tenant And Caller Isolation
 
