@@ -8,7 +8,7 @@ metadata:
   namespace: replace-with-approved-tenant-namespace
 rules:
   - apiGroups: [""]
-    resources: ["serviceaccounts", "services", "persistentvolumeclaims"]
+    resources: ["serviceaccounts", "services", "persistentvolumeclaims", "pods"]
     verbs: ["get", "list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]

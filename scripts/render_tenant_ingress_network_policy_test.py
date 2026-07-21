@@ -22,12 +22,14 @@ SPEC.loader.exec_module(MODULE)
 
 def discovery() -> dict[str, object]:
     return {
-        "selection": {"namespace": "tenant-acme"},
+        "selection": {"namespace": "tenant-acme", "ingress_namespace": "gateway-system"},
         "linkerd": {
             "requested": True,
             "ingress_identity_verified": True,
             "ingress_workload_verified": True,
             "ingress_workload_mesh_ready": True,
+            "router_workload_verified": True,
+            "router_workload_mesh_ready": True,
             "ingress_namespace": "gateway-system",
         },
     }
@@ -92,6 +94,30 @@ def assert_make_renders_both_policies() -> None:
             raise AssertionError("Make allowed Linkerd rendering without the companion ingress policy output")
 
 
+def assert_make_renders_non_linkerd_ingress_policy() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        report = {"selection": {"namespace": "tenant-acme", "ingress_namespace": "external-gateway"}, "linkerd": {"requested": False}}
+        discovery_report = root / "eks-discovery.json"
+        ingress_policy = root / "tenant-ingress-network-policy.yaml"
+        discovery_report.write_text(json.dumps(report), encoding="utf-8")
+        completed = subprocess.run(
+            ["make", "eks-render-ingress-network-policy"],
+            cwd=ROOT,
+            env={
+                **os.environ,
+                "EKS_DISCOVERY_OUTPUT": str(discovery_report),
+                "EKS_INGRESS_NETWORK_POLICY_OUTPUT": str(ingress_policy),
+            },
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode or "kubernetes.io/metadata.name: external-gateway" not in ingress_policy.read_text(encoding="utf-8"):
+            raise AssertionError(f"Make did not render the non-Linkerd ingress policy: {completed.stderr}")
+
+
 def main() -> int:
     template = (ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-network-policy.example.yaml").read_text(encoding="utf-8")
     base = (ROOT / "deploy/kubernetes/base/networkpolicy.yaml").read_text(encoding="utf-8")
@@ -105,6 +131,15 @@ def main() -> int:
     assert isinstance(invalid_linkerd, dict)
     invalid_linkerd["ingress_workload_mesh_ready"] = False
     expect_rejected(lambda: MODULE.render(template, invalid, base))
+    invalid_router = discovery()
+    invalid_router_linkerd = invalid_router["linkerd"]
+    assert isinstance(invalid_router_linkerd, dict)
+    invalid_router_linkerd["router_workload_mesh_ready"] = False
+    expect_rejected(lambda: MODULE.render(template, invalid_router, base))
+    non_linkerd = {"selection": {"namespace": "tenant-acme", "ingress_namespace": "external-gateway"}, "linkerd": {"requested": False}}
+    non_linkerd_rendered = MODULE.render(template, non_linkerd, base)
+    if "kubernetes.io/metadata.name: external-gateway" not in non_linkerd_rendered:
+        raise AssertionError("renderer rejected or changed the explicit non-Linkerd ingress namespace")
     expect_rejected(lambda: MODULE.render(template, discovery(), base.replace("  ingress: []", "  ingress:\n    - from: []")))
     expect_rejected(lambda: MODULE.render(template, discovery(), base + "\n  ingress:\n    - from: []\n"))
     with tempfile.TemporaryDirectory() as directory:
@@ -115,6 +150,7 @@ def main() -> int:
         if stat.S_IMODE(output.stat().st_mode) != 0o600:
             raise AssertionError("rendered ingress NetworkPolicy must be written with mode 0600")
     assert_make_renders_both_policies()
+    assert_make_renders_non_linkerd_ingress_policy()
     print("Ingress NetworkPolicy render tests passed")
     return 0
 

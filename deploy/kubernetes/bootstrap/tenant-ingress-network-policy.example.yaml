@@ -1,7 +1,8 @@
-# Render this template only through `make eks-render-linkerd-policy` after a
-# successful, verified Linkerd discovery. The base NetworkPolicy denies ingress
-# until this selected-namespace allow policy is reviewed and applied alongside
-# the rendered Linkerd policy.
+# Render this template only through `make eks-render-ingress-network-policy`
+# after successful discovery. The base NetworkPolicy denies ingress until this
+# selected-namespace allow policy is reviewed and applied. In Linkerd mode,
+# `make eks-render-linkerd-policy` renders this companion policy first and
+# requires verified ingress and router mesh-readiness evidence.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

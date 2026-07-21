@@ -60,18 +60,21 @@ namespace injection, and identity/trust readiness before applying namespace
 policy resources. Select the actual Linkerd control-plane namespace during
 read-only discovery; clusters that do not use Linkerd may omit it. Review RBAC,
 service-account, network-policy, quota, and
-Linkerd-policy drift before overwriting it. Render each `ServerAuthorization`
+Linkerd-policy drift before overwriting it. Discovery always selects the
+ingress namespace and can render its companion `NetworkPolicy` for a
+non-Linkerd installation. Render each `ServerAuthorization`
 only after discovery verifies the selected ingress Deployment uses the selected
 service account and its controller-owned Pods are ready with a `linkerd-proxy`
-sidecar. Discovery derives the domain from every selected proxy's safe literal
-trust-domain configuration and compares its safe local-identity configuration
-with the selected ingress namespace and Linkerd control-plane namespace before
-rendering; never apply a template with a fixed, unresolved, or merely
-service-account-existence-based ingress identity. The base router
+sidecar, and verifies the selected router Pods also have ready `linkerd-proxy`
+sidecars. Discovery derives the domain from every selected ingress proxy's safe
+literal trust-domain configuration and compares its safe local-identity
+configuration with the selected ingress namespace and Linkerd control-plane
+namespace before rendering; never apply a template with a fixed, unresolved,
+or merely service-account-existence-based ingress identity. The base router
 `NetworkPolicy` denies ingress until the same verified report renders its
 companion selected-namespace allow policy; review, dry-run, and apply that
-policy together with the Linkerd authorization rather than restoring a fixed
-ingress namespace.
+policy alone for non-Linkerd deployment, or together with the Linkerd
+authorization rather than restoring a fixed ingress namespace.
 
 ## Image And Architecture
 

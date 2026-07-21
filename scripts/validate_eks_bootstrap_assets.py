@@ -61,7 +61,7 @@ def main() -> int:
         raise SystemExit("Linkerd policy rendering must require the discovery-derived ingress NetworkPolicy")
 
     for path, required_resources in (
-        (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses")),
+        (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses", "pods")),
         (DISCOVERY_LINKERD_RBAC, ("serviceaccounts",)),
         (DISCOVERY_INGRESS_RBAC, ("serviceaccounts", "deployments", "replicasets", "pods")),
     ):

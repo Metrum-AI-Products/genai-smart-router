@@ -272,6 +272,45 @@ def ingress_workload_evidence(
     }
 
 
+def router_workload_evidence(pods: dict[str, Any]) -> dict[str, int | bool]:
+    """Fail closed unless every selected router Pod has a ready Linkerd proxy.
+
+    The selected ingress identity is only meaningful when the router endpoint
+    itself is meshed: otherwise the companion ServerAuthorization cannot enforce
+    its service-account restriction. The discovery query is label scoped to the
+    router workload and this helper retains only bounded scalar readiness
+    evidence.
+    """
+    router_pods = non_terminating_items(pods)
+    if not router_pods:
+        raise DiscoveryError("selected router workload has no running Pods to verify Linkerd readiness")
+    for pod in router_pods:
+        status = pod.get("status", {})
+        spec = pod.get("spec", {})
+        if not isinstance(status, dict) or not isinstance(spec, dict):
+            raise DiscoveryError("selected router workload is not Linkerd-injected and ready")
+        ready = any(
+            isinstance(condition, dict) and condition.get("type") == "Ready" and condition.get("status") == "True"
+            for condition in status.get("conditions", [])
+        )
+        proxy_ready = any(
+            isinstance(container, dict) and container.get("name") == "linkerd-proxy" and container.get("ready") is True
+            for container in status.get("containerStatuses", [])
+        )
+        proxy_containers = [
+            container
+            for container in spec.get("containers", [])
+            if isinstance(container, dict) and container.get("name") == "linkerd-proxy"
+        ]
+        if not ready or not proxy_ready or len(proxy_containers) != 1:
+            raise DiscoveryError("selected router workload is not Linkerd-injected and ready")
+    return {
+        "router_workload_verified": True,
+        "router_workload_mesh_ready": True,
+        "router_workload_ready_pods": len(router_pods),
+    }
+
+
 def validate_discovery_identity(identity: dict[str, Any], account_id: str) -> tuple[str, str]:
     """Require the approved account and discovery role without echoing identity data."""
     actual_account = str(identity.get("Account", ""))
@@ -414,7 +453,7 @@ def main() -> int:
         "--linkerd-namespace",
         help="optional Linkerd control-plane namespace; when set, require the policy CRDs and template API versions",
     )
-    parser.add_argument("--ingress-namespace", help="ingress namespace required with Linkerd policy discovery")
+    parser.add_argument("--ingress-namespace", required=True, help="explicit ingress namespace used by the companion NetworkPolicy")
     parser.add_argument("--ingress-service-account", help="ingress service account required with Linkerd policy discovery")
     parser.add_argument("--ingress-deployment", help="ingress Deployment required with Linkerd policy discovery")
     parser.add_argument("--linkerd-trust-domain", help="explicit Linkerd trust domain required with Linkerd policy discovery")
@@ -424,16 +463,17 @@ def main() -> int:
 
     if not args.account_id.isdigit() or len(args.account_id) != 12:
         parser.error("--account-id must be an explicit 12-digit account ID")
-    linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
+    linkerd_identity_inputs = (args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
     if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
-        parser.error("--ingress-namespace, --ingress-service-account, --ingress-deployment, and --linkerd-trust-domain must be supplied together")
+        parser.error("--ingress-service-account, --ingress-deployment, and --linkerd-trust-domain must be supplied together")
     if args.linkerd_namespace and not all(linkerd_identity_inputs):
         parser.error("Linkerd discovery requires the explicit ingress namespace, service account, deployment, and trust domain")
     if not args.linkerd_namespace and any(linkerd_identity_inputs):
         parser.error("ingress identity is valid only when Linkerd discovery is selected")
+    if not DNS_LABEL.fullmatch(args.ingress_namespace):
+        parser.error("invalid ingress namespace")
     if args.linkerd_namespace and (
         not DNS_LABEL.fullmatch(args.linkerd_namespace)
-        or not DNS_LABEL.fullmatch(args.ingress_namespace)
         or not is_dns_subdomain(args.ingress_service_account)
         or not is_dns_subdomain(args.ingress_deployment)
         or not TRUST_DOMAIN.fullmatch(args.linkerd_trust_domain)
@@ -463,6 +503,9 @@ def main() -> int:
             ])
             context = "discovery-target"
             namespace = kubectl_json(kubeconfig, ["--context", context, "get", "namespace", args.namespace])
+            ingress_namespace = kubectl_json(kubeconfig, ["--context", context, "get", "namespace", args.ingress_namespace])
+            if ingress_namespace.get("metadata", {}).get("name") != args.ingress_namespace:
+                raise DiscoveryError("selected ingress namespace was not found")
             linkerd: dict[str, Any] = {
                 "requested": bool(args.linkerd_namespace),
                 "control_plane_namespace": args.linkerd_namespace,
@@ -480,6 +523,9 @@ def main() -> int:
                 "ingress_identity_verified": False,
                 "ingress_workload_verified": False,
                 "ingress_workload_mesh_ready": False,
+                "router_workload_verified": False,
+                "router_workload_mesh_ready": False,
+                "router_workload_ready_pods": 0,
                 "trust_identity_config_payload_read": False,
                 "trust_domain_source": "explicit operator selection; Linkerd trust configuration payload not read",
             }
@@ -506,6 +552,20 @@ def main() -> int:
                     args.linkerd_namespace,
                     args.linkerd_trust_domain,
                 )
+                router_pods = kubectl_json(
+                    kubeconfig,
+                    [
+                        "--context",
+                        context,
+                        "-n",
+                        args.namespace,
+                        "get",
+                        "pods",
+                        "-l",
+                        "app.kubernetes.io/name=smart-llmrouter",
+                    ],
+                )
+                router_evidence = router_workload_evidence(router_pods)
                 ingress_identity = linkerd_ingress_identity(
                     args.ingress_namespace,
                     args.ingress_service_account,
@@ -528,13 +588,14 @@ def main() -> int:
                     "ingress_identity": ingress_identity,
                     "ingress_identity_verified": True,
                     **workload_evidence,
+                    **router_evidence,
                 })
 
             report: dict[str, Any] = {
                 "schema_version": 1,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "intent": DISCOVERY_REPORT_INTENT,
-                "selection": {"account_id": args.account_id, "region": args.region, "cluster": args.cluster, "namespace": args.namespace, "ecr_repository": args.ecr_repository},
+                "selection": {"account_id": args.account_id, "region": args.region, "cluster": args.cluster, "namespace": args.namespace, "ingress_namespace": args.ingress_namespace, "ecr_repository": args.ecr_repository},
                 "aws_identity": {"account_id": actual_account, "principal_type": actual_arn.split(":")[5].split("/")[0]},
                 "eks": {
                     "version": cluster.get("version"), "platform_version": cluster.get("platformVersion"),

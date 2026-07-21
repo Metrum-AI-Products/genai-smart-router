@@ -60,11 +60,11 @@ def main() -> int:
                 validate(name, value)
             if args.linkerd_namespace:
                 validate("namespace", args.linkerd_namespace)
-            linkerd_identity_inputs = (args.ingress_namespace, args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
+            validate("namespace", args.ingress_namespace)
+            linkerd_identity_inputs = (args.ingress_service_account, args.ingress_deployment, args.linkerd_trust_domain)
             if any(linkerd_identity_inputs) and not all(linkerd_identity_inputs):
-                raise ValueError("ingress namespace, service account, deployment, and Linkerd trust domain must be supplied together")
+                raise ValueError("ingress service account, deployment, and Linkerd trust domain must be supplied together")
             if args.linkerd_namespace:
-                validate("namespace", args.ingress_namespace)
                 validate("kubernetes-object-name", args.ingress_service_account)
                 validate("kubernetes-object-name", args.ingress_deployment)
                 validate("trust-domain", args.linkerd_trust_domain)

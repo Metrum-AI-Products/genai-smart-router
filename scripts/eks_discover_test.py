@@ -46,6 +46,7 @@ def discovery_argv(output: Path) -> list[str]:
         "--region", "us-east-1",
         "--cluster", "approved-cluster",
         "--namespace", "tenant-acme",
+        "--ingress-namespace", "gateway-system",
         "--ecr-repository", "approved-router-repository",
         "--output", str(output),
     ]
@@ -140,7 +141,7 @@ def test_make_discover_invalidates_before_identity_failure(root: Path) -> None:
         "EKS_CLUSTER": "approved-cluster",
         "EKS_NAMESPACE": "tenant-acme",
         "EKS_LINKERD_NAMESPACE": "",
-        "EKS_INGRESS_NAMESPACE": "",
+        "EKS_INGRESS_NAMESPACE": "gateway-system",
         "EKS_INGRESS_SERVICE_ACCOUNT": "",
         "EKS_INGRESS_DEPLOYMENT": "",
         "EKS_LINKERD_TRUST_DOMAIN": "",
@@ -415,6 +416,30 @@ def test_ingress_workload_requires_actual_meshed_service_account() -> None:
         raise AssertionError("ingress identity verification accepted inconsistent Linkerd trust-domain evidence")
 
 
+def test_router_workload_requires_ready_meshed_pods() -> None:
+    _, _, pods = ingress_workload_payloads()
+    evidence = MODULE.router_workload_evidence(pods)
+    if evidence != {
+        "router_workload_verified": True,
+        "router_workload_mesh_ready": True,
+        "router_workload_ready_pods": 2,
+    }:
+        raise AssertionError("ready meshed router Pods did not produce bounded readiness evidence")
+    pods["items"][0]["status"]["containerStatuses"][1]["ready"] = False  # type: ignore[index]
+    try:
+        MODULE.router_workload_evidence(pods)
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router workload verification accepted a Pod without a ready Linkerd proxy")
+    try:
+        MODULE.router_workload_evidence({"items": []})
+    except MODULE.DiscoveryError:
+        pass
+    else:
+        raise AssertionError("router workload verification accepted an empty Pod selection")
+
+
 def test_linkerd_workload_names_accept_dns_subdomains() -> None:
     maximum_length_name = f"{'a' * 63}.{'b' * 63}.{'c' * 63}.{'d' * 61}"
     if not MODULE.is_dns_subdomain(maximum_length_name):
@@ -436,6 +461,7 @@ def main() -> int:
         test_unrecognized_existing_output_is_preserved_before_probes(root)
         test_output_lock_is_exclusive(root)
         test_ingress_workload_requires_actual_meshed_service_account()
+        test_router_workload_requires_ready_meshed_pods()
         test_linkerd_workload_names_accept_dns_subdomains()
     print("EKS discovery diagnostic safeguards passed")
     return 0

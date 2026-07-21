@@ -50,6 +50,28 @@ def test_dns_subdomain_workload_names_reach_make_validation() -> None:
             raise AssertionError(f"invalid Kubernetes DNS-subdomain workload name was accepted: {invalid}")
 
 
+def test_non_linkerd_ingress_namespace_is_validated_and_accepted() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        original_argv = sys.argv
+        sys.argv = [
+            "validate_eks_make_args.py",
+            "--profile", "discovery-profile",
+            "--account-id", "123456789012",
+            "--region", "us-east-1",
+            "--cluster", "approved-cluster",
+            "--namespace", "tenant-acme",
+            "--ingress-namespace", "external-gateway",
+            "--ecr-repository", "approved-router-repository",
+            "--output", str(Path(directory) / "eks-discovery.json"),
+        ]
+        try:
+            if MODULE.main() != 0:
+                raise AssertionError("non-Linkerd ingress selection failed Make validation")
+        finally:
+            sys.argv = original_argv
+
+
 if __name__ == "__main__":
     test_dns_subdomain_workload_names_reach_make_validation()
+    test_non_linkerd_ingress_namespace_is_validated_and_accepted()
     print("EKS Make argument validation tests passed")

@@ -25,6 +25,8 @@ def discovery() -> dict[str, object]:
             "ingress_identity_verified": True,
             "ingress_workload_verified": True,
             "ingress_workload_mesh_ready": True,
+            "router_workload_verified": True,
+            "router_workload_mesh_ready": True,
             "ingress_namespace": "gateway-system",
             "ingress_service_account": "gateway.proxy",
             "control_plane_namespace": "linkerd-control",
@@ -64,6 +66,16 @@ def main() -> int:
         pass
     else:
         raise AssertionError("renderer accepted identity evidence without a ready meshed ingress workload")
+    invalid_router = discovery()
+    invalid_router_linkerd = invalid_router["linkerd"]
+    assert isinstance(invalid_router_linkerd, dict)
+    invalid_router_linkerd["router_workload_mesh_ready"] = False
+    try:
+        MODULE.render(template, invalid_router)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("renderer accepted identity evidence without a ready meshed router workload")
     invalid_control_plane = discovery()
     invalid_control_plane_linkerd = invalid_control_plane["linkerd"]
     assert isinstance(invalid_control_plane_linkerd, dict)

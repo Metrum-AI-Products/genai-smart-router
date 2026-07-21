@@ -146,12 +146,16 @@ python3 scripts/eks_discover.py \
   --output /secure/evidence/eks-discovery.json
 ```
 
-`EKS_LINKERD_NAMESPACE` / `--linkerd-namespace` is optional. Omit it for a
-cluster that does not use Linkerd. When selected, it is the explicit
+`EKS_INGRESS_NAMESPACE` / `--ingress-namespace` is required for every
+discovery, including a cluster that does not use Linkerd: it is the sole input
+to the generated namespace allow policy. `EKS_LINKERD_NAMESPACE` /
+`--linkerd-namespace` is optional. When Linkerd is omitted, omit the
+service-account, Deployment, and trust-domain inputs too, then render only the
+ingress NetworkPolicy. When Linkerd is selected, it is the explicit
 control-plane namespace (not a product default), and discovery requires the
 Linkerd policy CRDs and the `v1beta3` `Server` plus `v1beta1`
 `ServerAuthorization` APIs used by the checked-in template. Select the actual
-ingress namespace, service account, Deployment, and mesh trust domain as well.
+ingress service account, Deployment, and mesh trust domain as well.
 Namespaces remain DNS labels; the selected ServiceAccount and Deployment use
 their Kubernetes DNS-subdomain object names (up to 253 characters). Discovery
 proves that the selected Deployment uses that service account, has its declared
@@ -176,9 +180,9 @@ containing only safe names, booleans, versions, labels needed for Linkerd
 injection, and policy presence. An expired session, wrong account, missing
 namespace RBAC, inaccessible ECR, or missing EKS access fails before producing
 a success report. When Linkerd was selected, missing Linkerd API/RBAC, a
-mismatched ingress Deployment service account, or an unready/non-meshed ingress
-Pod also fails before success; otherwise the report records Linkerd as not
-requested.
+mismatched ingress Deployment service account, an unready/non-meshed ingress
+Pod, or a selected router Pod without a ready `linkerd-proxy` also fails before
+success; otherwise the report records Linkerd as not requested.
 Discovery locally serializes use of one output path, validates that an existing
 file is a bounded discovery report before invalidating it, and atomically
 publishes only a fully successful replacement. A failed role check, probe, or
@@ -213,7 +217,9 @@ provisioner Role or grant wildcard cluster administration.
 It also requires the reviewed namespace-scoped read-only binding in
 `deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml` for
 the selected tenant namespace: ServiceAccounts, NetworkPolicies, Deployments,
-Services, PVCs, and Ingresses. If Linkerd discovery is selected, apply the
+Services, PVCs, Ingresses, and Pods. The Pod read is used only to prove the
+selected router workload has a ready `linkerd-proxy` when Linkerd is selected.
+If Linkerd discovery is selected, apply the
 separate `eks-discovery-linkerd-namespace-rbac.example.yaml` in the explicit
 Linkerd control-plane namespace and
 `eks-discovery-ingress-namespace-rbac.example.yaml` in the selected ingress
@@ -242,6 +248,20 @@ references. Verify with `kubectl auth can-i` for allowed resources and explicit
 denials for `secrets`, `deployments`, `serviceaccounts`, `clusterroles`, other
 namespaces, and `pods/exec`.
 
+Before rendering ingress access, deploy the router base resources and wait for
+the selected router Pods to be Ready. The base NetworkPolicy intentionally
+denies ingress during this state. For every cluster, render the companion
+selected-namespace allow policy from the successful scrubbed report:
+
+```bash
+make eks-render-ingress-network-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
+```
+
+Review and server-side dry-run that artifact before applying it. This is the
+complete ingress path for a non-Linkerd installation.
+
 Before using `tenant-linkerd-policy.example.yaml`, select the Linkerd
 control-plane namespace during discovery and verify the discovered
 Linkerd control plane, `policy.linkerd.io` CRDs/version, namespace injection
@@ -263,11 +283,15 @@ make eks-render-linkerd-policy \
 The Make target first renders the additive ingress NetworkPolicy for the
 verified ingress namespace, then renders the Linkerd policy. It refuses a base
 policy with a fixed namespace or one that does not deny ingress while the
-discovery-derived policy is absent. The Linkerd renderer derives
+discovery-derived policy is absent. In Linkerd mode it also refuses discovery
+evidence unless both the selected ingress workload and selected router Pods
+have ready `linkerd-proxy` sidecars. The Linkerd renderer derives
 `service-account.namespace.serviceaccount.identity.linkerd-control-plane-namespace.trust-domain`
 from the verified report and rejects mismatched identities or unrendered
 placeholders. Review and server-side dry-run both outside-repository artifacts
-together before any apply; apply neither artifact alone.
+together before any apply; activate the Linkerd `Server` and
+`ServerAuthorization` with the companion NetworkPolicy so the namespace allow
+does not precede the identity policy.
 
 ## Idempotence, Drift, And Rollback
 

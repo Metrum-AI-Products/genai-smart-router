@@ -29,17 +29,21 @@ def validated_namespaces(discovery: dict[str, Any]) -> tuple[str, str]:
     linkerd = discovery.get("linkerd")
     if not isinstance(selection, dict) or not isinstance(linkerd, dict):
         raise ValueError("discovery report is missing selection or Linkerd evidence")
-    if (
-        linkerd.get("requested") is not True
-        or linkerd.get("ingress_identity_verified") is not True
-        or linkerd.get("ingress_workload_verified") is not True
-        or linkerd.get("ingress_workload_mesh_ready") is not True
-    ):
-        raise ValueError("Linkerd ingress identity was not verified by discovery")
-    return (
-        require_label(selection.get("namespace"), "tenant namespace"),
-        require_label(linkerd.get("ingress_namespace"), "ingress namespace"),
-    )
+    tenant_namespace = require_label(selection.get("namespace"), "tenant namespace")
+    ingress_namespace = require_label(selection.get("ingress_namespace"), "ingress namespace")
+    if linkerd.get("requested") is True:
+        if (
+            linkerd.get("ingress_identity_verified") is not True
+            or linkerd.get("ingress_workload_verified") is not True
+            or linkerd.get("ingress_workload_mesh_ready") is not True
+            or linkerd.get("router_workload_verified") is not True
+            or linkerd.get("router_workload_mesh_ready") is not True
+            or linkerd.get("ingress_namespace") != ingress_namespace
+        ):
+            raise ValueError("Linkerd ingress and router workload identity evidence was not verified by discovery")
+    elif linkerd.get("requested") is not False:
+        raise ValueError("discovery report has an invalid Linkerd selection state")
+    return tenant_namespace, ingress_namespace
 
 
 def validate_base_network_policy(content: str) -> None:
