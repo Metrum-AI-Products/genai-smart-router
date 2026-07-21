@@ -17,6 +17,9 @@ INGRESS_NETWORK_POLICY = ROOT / "deploy/kubernetes/bootstrap/tenant-ingress-netw
 BASE_NETWORK_POLICY = ROOT / "deploy/kubernetes/base/networkpolicy.yaml"
 STAGING_NETWORK_POLICY_PATCH = ROOT / "deploy/kubernetes/overlays/metrum-staging/patch-networkpolicy.yaml"
 MAKEFILE = ROOT / "Makefile"
+PUBLIC_KUBERNETES_DOC = ROOT / "docs-site/docs/installation/kubernetes.md"
+STAGING_RUNBOOK = ROOT / "docs/EKS_STAGING_MIGRATION.md"
+STAGING_OVERLAY_README = ROOT / "deploy/kubernetes/overlays/metrum-staging/README.md"
 DISCOVERY_NAMESPACE_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml"
 DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linkerd-namespace-rbac.example.yaml"
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
@@ -59,6 +62,13 @@ def main() -> int:
     makefile = MAKEFILE.read_text(encoding="utf-8")
     if "eks-render-linkerd-policy: eks-render-ingress-network-policy" not in makefile or "scripts/render_tenant_ingress_network_policy.py" not in makefile:
         raise SystemExit("Linkerd policy rendering must require the discovery-derived ingress NetworkPolicy")
+
+    for path in (PUBLIC_KUBERNETES_DOC, STAGING_RUNBOOK, STAGING_OVERLAY_README):
+        deployment_path = path.read_text(encoding="utf-8")
+        if "make eks-render-ingress-network-policy" not in deployment_path:
+            raise SystemExit(f"{path.name} must document the non-Linkerd ingress policy render path")
+        if "kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml" not in deployment_path:
+            raise SystemExit(f"{path.name} must document applying the rendered ingress policy")
 
     for path, required_resources in (
         (DISCOVERY_NAMESPACE_RBAC, ("serviceaccounts", "networkpolicies", "deployments", "services", "persistentvolumeclaims", "ingresses", "pods")),

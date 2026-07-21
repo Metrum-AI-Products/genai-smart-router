@@ -129,7 +129,7 @@ They include:
 - `ConfigMap` for non-secret router config;
 - placeholder `Secret` example for provider env, license JSON, and Postgres DSN;
 - `Deployment` with `/readyz` readiness/startup probes and `/healthz` liveness probe;
-- `Service`, example `Ingress`, `NetworkPolicy`, `PersistentVolumeClaim`, and `PodDisruptionBudget`;
+- `Service`, example `Ingress`, base deny-ingress `NetworkPolicy`, `PersistentVolumeClaim`, and `PodDisruptionBudget`;
 - an example overlay for image and ingress replacement.
 
 The suggested layout is:
@@ -229,11 +229,43 @@ kubectl -n smart-llmrouter rollout status deploy/smart-llmrouter
 kubectl -n smart-llmrouter get pods,svc,ingress
 ```
 
+The base `NetworkPolicy` intentionally keeps the hostname unreachable until
+discovery selects the real ingress namespace. After the rollout is Ready,
+rerun the explicit-target discovery so Linkerd mode can also verify the router
+Pods, then use the matching deployment bundle to render, dry-run, and apply
+that companion policy. Do not substitute a fixed namespace in the overlay:
+
+```bash
+make eks-render-ingress-network-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml
+
+kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
+kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+```
+
+For a Linkerd deployment, render both reviewed artifacts instead. Dry-run both,
+then apply the Linkerd `Server` and `ServerAuthorization` before the ingress
+allow policy:
+
+```bash
+make eks-render-linkerd-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+kubectl apply --dry-run=server -f /secure/evidence/tenant-linkerd-policy.yaml
+kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
+kubectl apply -f /secure/evidence/tenant-linkerd-policy.yaml
+kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+```
+
 ## Network Policy
 
-The example policy allows ingress from a placeholder ingress controller namespace, HTTPS egress for external model providers, DNS egress, and Postgres egress to an example private CIDR. Update it for:
+The base policy denies ingress until the discovery-derived companion policy is
+applied. Its egress rules allow HTTPS for external model providers, DNS, and
+Postgres to an example private CIDR. Update the deployment for:
 
-- the actual ingress controller namespace labels;
 - approved provider endpoints or private upstream ranges;
 - external Postgres address ranges;
 - internal observability endpoints if required.

@@ -250,7 +250,9 @@ namespaces, and `pods/exec`.
 
 Before rendering ingress access, deploy the router base resources and wait for
 the selected router Pods to be Ready. The base NetworkPolicy intentionally
-denies ingress during this state. For every cluster, render the companion
+denies ingress during this state. Rerun the explicit-target discovery after
+that readiness check; in Linkerd mode it records the router proxy evidence
+needed by both renderers. For every cluster, render the companion
 selected-namespace allow policy from the successful scrubbed report:
 
 ```bash

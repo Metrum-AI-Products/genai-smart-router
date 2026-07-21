@@ -46,5 +46,27 @@ kubectl apply --dry-run=server -f /tmp/smartrouter-staging.yaml
 kubectl apply -f /tmp/smartrouter-staging.yaml
 ```
 
+The overlay's base NetworkPolicy intentionally denies ingress at this point.
+After the router Deployment is Ready, rerun the approved staging discovery and
+render the companion policy from that evidence; it is not checked into this
+overlay because the ingress namespace is deployment-specific. For Linkerd
+staging, dry-run both artifacts, then apply the Linkerd policy before the
+namespace allow policy:
+
+```bash
+make eks-render-linkerd-policy \
+  EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+  EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+  EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+kubectl apply --dry-run=server -f /secure/evidence/tenant-linkerd-policy.yaml
+kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
+kubectl apply -f /secure/evidence/tenant-linkerd-policy.yaml
+kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+```
+
+If Linkerd is intentionally not selected, use
+`make eks-render-ingress-network-policy` and dry-run/apply only that output.
+
 See `docs/EKS_STAGING_MIGRATION.md` for the full RDS, license, validation, and
 rollback runbook.

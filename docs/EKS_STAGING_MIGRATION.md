@@ -133,16 +133,35 @@ the staging configuration as a general baseline.
 2. Render `deploy/kubernetes/overlays/metrum-staging` and run a server-side
    dry run.
 3. Apply the overlay and wait for the router Deployment to become ready.
-4. Verify RDS TLS connectivity and that the fresh database contains the router
+4. Re-run the explicit-target discovery after the router Pods are Ready, then
+   render, server-side dry-run, and apply the companion ingress NetworkPolicy.
+   For the selected Linkerd deployment, render and apply its `Server` and
+   `ServerAuthorization` before the namespace allow policy:
+
+   ```bash
+   make eks-render-linkerd-policy \
+     EKS_DISCOVERY_OUTPUT=/secure/evidence/eks-discovery.json \
+     EKS_INGRESS_NETWORK_POLICY_OUTPUT=/secure/evidence/tenant-ingress-network-policy.yaml \
+     EKS_LINKERD_POLICY_OUTPUT=/secure/evidence/tenant-linkerd-policy.yaml
+
+   kubectl apply --dry-run=server -f /secure/evidence/tenant-linkerd-policy.yaml
+   kubectl apply --dry-run=server -f /secure/evidence/tenant-ingress-network-policy.yaml
+   kubectl apply -f /secure/evidence/tenant-linkerd-policy.yaml
+   kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml
+   ```
+
+   If Linkerd is intentionally not selected, use
+   `make eks-render-ingress-network-policy` and dry-run/apply only its output.
+5. Verify RDS TLS connectivity and that the fresh database contains the router
    schema. A failed migration or license check must keep `/readyz` unhealthy.
-5. Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
+6. Validate `/healthz`, `/readyz`, `/docs/`, and `/version` through both the
    Service and `https://smartrouter.apps.metrum.ai`.
-6. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
+7. With the dedicated staging caller, validate `/v1/models`, OpenAI Chat,
    OpenAI Responses, Anthropic Messages, streaming, and representative
    validated tool/image request shapes for each intended staging group.
-7. Verify fresh usage rows and authorized admin reports against RDS. Verify a
+8. Verify fresh usage rows and authorized admin reports against RDS. Verify a
    normal caller receives `403 metrics-forbidden` from `/metrics`.
-8. Record safe image version, RDS major version, readiness result, smoke
+9. Record safe image version, RDS major version, readiness result, smoke
    results, and rollback evidence in `deployment.md`.
 
 ## Rollback And Deferred Cutover
