@@ -8,6 +8,10 @@ GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
 PYTHON ?= python3
 
+# Keep the repository's historical validation contract for bare `make` even
+# though the EKS help target appears earlier in this file.
+.DEFAULT_GOAL := test
+
 # Explicit inputs for all EKS commands. No target reads the current kubectl
 # context; scripts/eks_delivery.py creates and removes its own kubeconfig.
 # The AWS account, region, ECR repository, cluster, namespace, overlay,
@@ -23,9 +27,13 @@ EKS_EVIDENCE_DIR ?= tmp/eks-evidence
 # contents must never be passed through Make expansion or a Python argv value;
 # the runner opens the validated file once and executes that bound descriptor.
 EKS_SMOKE_COMMAND_FILE ?=
-export EKS_SMOKE_COMMAND_FILE
+# EKS inputs can originate in CI/environment values. Export them and expand
+# only in the recipe shell: Make interpolation inside shell quotes would allow
+# a malicious value to alter shell syntax before Python can validate it.
+export EKS_AWS_PROFILE IMAGE_DIGEST EKS_CONFIRM ROLLBACK_POD_TEMPLATE_SHA256 \
+	EKS_EVIDENCE_DIR EKS_SMOKE_COMMAND_FILE
 EKS_DELIVERY = $(PYTHON) scripts/eks_delivery.py
-EKS_ARGS = --aws-profile "$(EKS_AWS_PROFILE)" --image-digest "$(IMAGE_DIGEST)" --confirm "$(EKS_CONFIRM)" --rollback-pod-template-sha256 "$(ROLLBACK_POD_TEMPLATE_SHA256)" --evidence-dir "$(EKS_EVIDENCE_DIR)"
+EKS_ARGS = --aws-profile "$${EKS_AWS_PROFILE}" --image-digest "$${IMAGE_DIGEST}" --confirm "$${EKS_CONFIRM}" --rollback-pod-template-sha256 "$${ROLLBACK_POD_TEMPLATE_SHA256}" --evidence-dir "$${EKS_EVIDENCE_DIR}"
 
 DOCKER ?= docker
 DOCKER_BUILDX ?= $(DOCKER) buildx
@@ -108,7 +116,7 @@ eks-rollback-staging:
 
 eks-release-evidence:
 	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
-	@echo "Safe evidence: $(EKS_EVIDENCE_DIR)/evidence-{apply,smoke}.json and matching Markdown summaries"
+	@printf '%s\n' 'Safe evidence: evidence-{apply,smoke}.json and matching Markdown summaries are in the requested EKS_EVIDENCE_DIR.'
 
 eks-promotion-plan:
 	$(EKS_DELIVERY) promotion-plan $(EKS_ARGS)
