@@ -46,7 +46,9 @@ An interrupted or ambiguous creation must block retries until an operator has
 reconciled the dedicated source user's keys; never create a second key merely
 because the first process did not return a key identifier.
 The bootstrap must verify the exact approved account and discovery assumed-role
-identity before it reports success.
+identity before it reports success. If a paired local AWS profile update cannot
+publish its role-config file, it restores the previous credentials profile and
+fails rather than leaving a new source session paired with stale role settings.
 
 Use distinct roles for discovery, registry push, staging deployment, production
 promotion, and workload access. GitHub Actions should use OIDC with repository
@@ -236,7 +238,9 @@ Pods, then use the matching deployment bundle to render and activate that
 companion policy. Do not substitute a fixed namespace in the overlay or use an
 ambient `kubectl` context. The activation target verifies the discovery account
 and selected EKS endpoint against the named AWS profile and explicit
-kubeconfig/context before every server-side dry-run or apply.
+kubeconfig/context before every server-side dry-run or apply. It accepts only
+discovery evidence generated within the preceding 15 minutes; rerun discovery
+after that window rather than applying a stale ingress or Linkerd identity.
 
 For a non-Linkerd deployment:
 

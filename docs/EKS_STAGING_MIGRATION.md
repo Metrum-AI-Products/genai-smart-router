@@ -139,7 +139,9 @@ the staging configuration as a general baseline.
    endpoint against the named deployment AWS profile and explicit kubeconfig/
    context; do not use an ambient `kubectl` context. For the selected Linkerd
    deployment, it server-side dry-runs and applies its `Server` and
-   `ServerAuthorization` before the namespace allow policy:
+   `ServerAuthorization` before the namespace allow policy. Discovery evidence
+   is valid for 15 minutes only, so rerun it immediately if that window expires
+   before activation:
 
    ```bash
    make eks-render-linkerd-policy \

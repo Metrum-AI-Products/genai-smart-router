@@ -11,6 +11,7 @@ import hmac
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -69,15 +70,25 @@ def write_profiles(
 ) -> None:
     for directory in {credentials_path.parent, config_path.parent}:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    prior_credentials = profile_file_snapshot(credentials_path)
     creds = configparser.RawConfigParser()
     creds.read(credentials_path)
     creds[profile] = credentials
-    atomic_write_config(credentials_path, creds)
-    config = configparser.RawConfigParser()
-    config.read(config_path)
-    config[f"profile {profile}"] = {"region": region}
-    config[f"profile {role_profile}"] = {"role_arn": role_arn, "source_profile": profile, "region": region}
-    atomic_write_config(config_path, config)
+    try:
+        atomic_write_config(credentials_path, creds)
+        config = configparser.RawConfigParser()
+        config.read(config_path)
+        config[f"profile {profile}"] = {"region": region}
+        config[f"profile {role_profile}"] = {"role_arn": role_arn, "source_profile": profile, "region": region}
+        atomic_write_config(config_path, config)
+    except Exception:
+        try:
+            restore_profile_file(credentials_path, prior_credentials)
+        except OSError as rollback_error:
+            raise RuntimeError(
+                "AWS profile update failed and the prior credentials profile could not be restored; do not use the profile"
+            ) from rollback_error
+        raise
 
 
 def profile_verification_environment(credentials_path: Path, config_path: Path, region: str) -> dict[str, str]:
@@ -129,6 +140,42 @@ def atomic_write_config(path: Path, config: configparser.RawConfigParser) -> Non
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def profile_file_snapshot(path: Path) -> tuple[bytes, int] | None:
+    """Retain only the previous local credentials bytes long enough to roll back a paired write."""
+    if not path.exists():
+        return None
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError("AWS shared credentials path must be a regular file")
+    return path.read_bytes(), stat.S_IMODE(metadata.st_mode)
+
+
+def atomic_write_bytes(path: Path, content: bytes, mode: int) -> None:
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.rollback.tmp")
+    try:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        with os.fdopen(descriptor, "wb") as file:
+            os.fchmod(file.fileno(), mode)
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+        fsync_parent(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def restore_profile_file(path: Path, snapshot: tuple[bytes, int] | None) -> None:
+    """Undo only this invocation's credentials update when config publication fails."""
+    if snapshot is None:
+        path.unlink(missing_ok=True)
+        fsync_parent(path)
+        return
+    content, mode = snapshot
+    atomic_write_bytes(path, content, mode)
 
 
 def reservation_payload(source_user: str, reservation_id: str) -> dict[str, object]:

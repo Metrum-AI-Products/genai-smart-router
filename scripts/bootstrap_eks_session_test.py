@@ -244,6 +244,54 @@ def assert_configured_profile_paths_and_role_verification(root: Path) -> None:
         raise AssertionError("bootstrap did not write the role profile to AWS_CONFIG_FILE")
 
 
+def assert_profile_write_rolls_back_credentials_when_config_write_fails(root: Path) -> None:
+    credentials_path = root / "profile-rollback" / "credentials"
+    config_path = root / "profile-rollback" / "config"
+    credentials_path.parent.mkdir()
+    original_credentials = b"[smartrouter]\naws_access_key_id = prior-test-session\n"
+    original_config = b"[profile genai-smart-router-eks-discovery]\nregion = us-west-2\n"
+    credentials_path.write_bytes(original_credentials)
+    config_path.write_bytes(original_config)
+    credentials_path.chmod(0o640)
+    config_path.chmod(0o600)
+    original_atomic_write = MODULE.atomic_write_config
+
+    def fail_only_config(path: Path, config: configparser.RawConfigParser) -> None:
+        if path == config_path:
+            raise OSError("simulated config publication failure")
+        original_atomic_write(path, config)
+
+    MODULE.atomic_write_config = fail_only_config  # type: ignore[method-assign]
+    try:
+        try:
+            MODULE.write_profiles(
+                "smartrouter",
+                "genai-smart-router-eks-discovery",
+                "arn:aws:iam::123456789012:role/genai-smart-router-eks-discovery",
+                "us-east-1",
+                {
+                    "aws_access_key_id": "new-test-session",
+                    "aws_secret_access_key": "new-test-secret",
+                    "aws_session_token": "new-test-token",
+                },
+                credentials_path=credentials_path,
+                config_path=config_path,
+            )
+        except OSError as exc:
+            if str(exc) != "simulated config publication failure":
+                raise
+        else:
+            raise AssertionError("profile write accepted a simulated config publication failure")
+    finally:
+        MODULE.atomic_write_config = original_atomic_write  # type: ignore[method-assign]
+    if credentials_path.read_bytes() != original_credentials or mode(credentials_path) != 0o640:
+        raise AssertionError("config publication failure did not restore the prior credentials profile exactly")
+    if config_path.read_bytes() != original_config:
+        raise AssertionError("config publication failure changed the prior role configuration")
+    if any(path.name.startswith(f".{credentials_path.name}.") for path in credentials_path.parent.iterdir()):
+        raise AssertionError("profile rollback left a credentials temporary file")
+
+
 def assert_unexpected_role_identity_is_rejected(root: Path) -> None:
     cleanup = root / "unexpected-role" / "recovery.json"
     source_key_deleted = False
@@ -341,6 +389,7 @@ def main() -> int:
         assert_ambiguous_create_preserves_reservation(root)
         assert_concurrent_reservation_is_exclusive(root)
         assert_configured_profile_paths_and_role_verification(root)
+        assert_profile_write_rolls_back_credentials_when_config_write_fails(root)
         assert_unexpected_role_identity_is_rejected(root)
     print("EKS session bootstrap safety tests passed")
     return 0

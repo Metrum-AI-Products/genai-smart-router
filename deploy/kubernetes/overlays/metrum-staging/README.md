@@ -54,7 +54,8 @@ through the selection-bound Make target, which verifies the discovery account
 and EKS endpoint against the named deployment profile and explicit kubeconfig/
 context rather than an ambient `kubectl` context. For Linkerd staging, it
 dry-runs both artifacts, then applies the Linkerd policy before the namespace
-allow policy:
+allow policy. Discovery evidence is valid for 15 minutes only; rerun it if the
+window expires before activation:
 
 ```bash
 make eks-render-linkerd-policy \

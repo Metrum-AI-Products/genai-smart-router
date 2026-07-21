@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -48,7 +49,7 @@ def discovery(*, linkerd: bool = False) -> dict[str, object]:
         )
     return {
         "schema_version": 1,
-        "generated_at": "2026-07-20T00:00:00+00:00",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "intent": MODULE.DISCOVERY_REPORT_INTENT,
         "selection": selection,
         "linkerd": linkerd_evidence,
@@ -192,6 +193,31 @@ def test_account_mismatch_prevents_any_apply(root: Path) -> None:
         MODULE.run = original_run  # type: ignore[method-assign]
     if any(command[0] == "kubectl" and "apply" in command for command in calls):
         raise AssertionError("an account-mismatched deployment profile reached kubectl apply")
+
+
+def test_stale_discovery_evidence_prevents_any_target_command(root: Path) -> None:
+    now = datetime(2026, 7, 21, tzinfo=timezone.utc)
+    report = discovery()
+    report["generated_at"] = (now - timedelta(seconds=MODULE.MAX_DISCOVERY_EVIDENCE_AGE_SECONDS + 1)).isoformat()
+    report_path, kubeconfig, linkerd_policy, ingress_policy = write_artifacts(root, report)
+    original_run = MODULE.run
+    MODULE.run = lambda command: (_ for _ in ()).throw(AssertionError("stale evidence must not reach target commands"))  # type: ignore[method-assign]
+    try:
+        expect_failure(
+            lambda: MODULE.activate(
+                report_path,
+                "approved-profile",
+                kubeconfig,
+                "approved-deployment-context",
+                ingress_policy,
+                linkerd_policy,
+                apply=True,
+                now=now,
+            ),
+            "discovery report is too old; rerun discovery before policy activation",
+        )
+    finally:
+        MODULE.run = original_run  # type: ignore[method-assign]
 
 
 def test_linkerd_policy_order_requires_dry_run_before_apply(root: Path) -> None:
@@ -340,6 +366,7 @@ def main() -> int:
         test_explicit_context_is_bound_and_server_dry_run_only(root)
         test_cluster_context_mismatch_prevents_any_apply(root)
         test_account_mismatch_prevents_any_apply(root)
+        test_stale_discovery_evidence_prevents_any_target_command(root)
         test_linkerd_policy_order_requires_dry_run_before_apply(root)
         test_tampered_policy_is_rejected_before_target_commands(root)
         test_make_apply_requires_explicit_confirmation(root)

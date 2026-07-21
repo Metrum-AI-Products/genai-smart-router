@@ -64,7 +64,10 @@ session and role profiles to those exact selected files (otherwise the standard
 ~/.aws files) and pins its verification command to them. It ignores ambient AWS
 credentials, profile selection, and web-identity overrides while performing
 that verification, so it cannot validate an older same-named profile. Keep the
-selected local files protected and distinct.
+selected local files protected and distinct. If the paired role-config update
+fails after writing the credentials profile, bootstrap atomically restores the
+prior credentials file (or removes the newly created one) before it fails; it
+never leaves a new source session paired with stale role configuration.
 
 Deletion is retried three times. If AWS remains unavailable, bootstrap fails
 with a mode-0600 recovery record containing only safe state: either an exact
@@ -266,7 +269,9 @@ never use an ambient `kubectl` context. The validation target compares the
 discovery-selected AWS account and EKS endpoint with the named deployment AWS
 profile and explicit kubeconfig context before it issues a server-side dry-run.
 The apply target repeats that validation, dry-runs again, and requires an
-explicit confirmation:
+explicit confirmation. It accepts discovery evidence only for 15 minutes after
+its timestamp; rerun discovery after the window instead of activating stale
+ingress or Linkerd identity evidence:
 
 ```bash
 make eks-validate-tenant-network-policies \

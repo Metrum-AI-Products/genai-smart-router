@@ -67,7 +67,7 @@ def main() -> int:
     if "eks-validate-tenant-network-policies" not in makefile or "eks-apply-tenant-network-policies" not in makefile or "scripts/apply_tenant_network_policies.py" not in makefile:
         raise SystemExit("tenant policy activation must use the selection-bound validation and apply targets")
     activator = POLICY_ACTIVATOR.read_text(encoding="utf-8")
-    for required in ("--kubeconfig", "--context", "get-caller-identity", "describe-cluster", "--dry-run=server"):
+    for required in ("--kubeconfig", "--context", "get-caller-identity", "describe-cluster", "--dry-run=server", "MAX_DISCOVERY_EVIDENCE_AGE_SECONDS"):
         if required not in activator:
             raise SystemExit("tenant policy activation must bind explicit Kubernetes context to the discovered AWS target")
 
@@ -77,6 +77,8 @@ def main() -> int:
             raise SystemExit(f"{path.name} must document the non-Linkerd ingress policy render path")
         if "make eks-validate-tenant-network-policies" not in deployment_path or "make eks-apply-tenant-network-policies" not in deployment_path:
             raise SystemExit(f"{path.name} must document selection-bound rendered ingress policy activation")
+        if "15 minutes" not in deployment_path:
+            raise SystemExit(f"{path.name} must document the short discovery-evidence lifetime before policy activation")
         if "kubectl apply -f /secure/evidence/tenant-ingress-network-policy.yaml" in deployment_path:
             raise SystemExit(f"{path.name} must not apply the rendered ingress policy through an ambient kubectl context")
 

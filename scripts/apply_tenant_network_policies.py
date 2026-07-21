@@ -18,6 +18,7 @@ import re
 import stat
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DISCOVERY_REPORT_INTENT = "read-only bootstrap discovery; no secret, endpoint, certificate, DSN, or policy payload values"
 MAX_DISCOVERY_REPORT_BYTES = 1_000_000
+# Policy artifacts are rendered only after the router workload is Ready. A
+# short fixed lifetime keeps the discovered ingress/Linkerd identity from being
+# reused after ordinary rollout or controller drift.
+MAX_DISCOVERY_EVIDENCE_AGE_SECONDS = 900
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
 REGION = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 CLUSTER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
@@ -95,6 +100,25 @@ def read_discovery_report(path: Path) -> dict[str, Any]:
     if not isinstance(report, dict) or report.get("schema_version") != 1 or report.get("intent") != DISCOVERY_REPORT_INTENT:
         raise PolicyActivationError("discovery report is not a recognized successful discovery result")
     return report
+
+
+def require_fresh_discovery_evidence(report: dict[str, Any], *, now: datetime | None = None) -> None:
+    """Reject missing, future, or expired discovery evidence before any target probe."""
+    generated_at = report.get("generated_at")
+    if not isinstance(generated_at, str):
+        raise PolicyActivationError("discovery report is missing its generation timestamp")
+    try:
+        observed = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PolicyActivationError("discovery report has an invalid generation timestamp") from exc
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        raise PolicyActivationError("discovery report generation timestamp must include a timezone")
+    current = now or datetime.now(timezone.utc)
+    age = current - observed.astimezone(timezone.utc)
+    if age < timedelta(0):
+        raise PolicyActivationError("discovery report generation timestamp is in the future")
+    if age > timedelta(seconds=MAX_DISCOVERY_EVIDENCE_AGE_SECONDS):
+        raise PolicyActivationError("discovery report is too old; rerun discovery before policy activation")
 
 
 def required_string(value: Any, pattern: re.Pattern[str], label: str) -> str:
@@ -246,8 +270,10 @@ def activate(
     linkerd_policy: Path | None,
     *,
     apply: bool,
+    now: datetime | None = None,
 ) -> None:
     report = read_discovery_report(discovery_report)
+    require_fresh_discovery_evidence(report, now=now)
     selection = selection_from_report(report)
     policies = validate_rendered_policies(report, ingress_policy, linkerd_policy)
     validate_selected_target(selection, profile, kubeconfig, context)
