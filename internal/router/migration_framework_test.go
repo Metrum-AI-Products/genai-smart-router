@@ -158,8 +158,8 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "pending" || len(status.Pending) != 1 {
-		t.Fatalf("legacy usage database should be eligible for baseline adoption: %+v", status)
+	if !status.Compatible || status.State != "pending" || len(status.Pending) != len(usageMigrationDefinitions) {
+		t.Fatalf("legacy usage database should be eligible for the complete online migration prefix: %+v", status)
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatal(err)
@@ -168,8 +168,8 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != 1 || status.DataVersion != 0 || len(status.Entries) != 1 {
-		t.Fatalf("unexpected adopted usage status: %+v", status)
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != usageMigrationCompatibility.MaxSchema || status.DataVersion != 0 || len(status.Entries) != len(usageMigrationDefinitions) {
+		t.Fatalf("unexpected fully migrated usage status: %+v", status)
 	}
 }
 
@@ -187,8 +187,8 @@ func TestUsageMigrationBaselineRejectsEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != 1 {
-		t.Fatalf("failed baseline adoption must leave no ledger entry: %+v", status)
+	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != len(usageMigrationDefinitions) {
+		t.Fatalf("failed baseline adoption must leave no ledger entry or apply later migrations: %+v", status)
 	}
 }
 
