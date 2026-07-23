@@ -2793,7 +2793,13 @@ func ExportReasoningCoverage(opts UsageReportOptions) (ReasoningCoverageExport, 
 	if err := validateUsageReportOptions(&opts); err != nil {
 		return ReasoningCoverageExport{}, err
 	}
-	store, err := OpenUsageStore(UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN})
+	cfg := UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN}
+	if opts.LogPath != "" {
+		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
+			return ReasoningCoverageExport{}, err
+		}
+	}
+	store, err := OpenUsageStore(cfg)
 	if err != nil {
 		return ReasoningCoverageExport{}, err
 	}

@@ -14,14 +14,19 @@ make eval-bigcodebench eval-report EVAL_SUITE=bigcodebench EVAL_MODEL=deployment
 
 The wrapper executes Inspect from an empty disposable directory. This prevents Inspect from auto-selecting this repository's Dockerfile as its code-execution sandbox. Each Make invocation creates an isolated timestamp/PID `EVAL_LOG_DIR`, shared by its explicitly requested suite and report targets; CI pins the run ID across separate Make calls. The exporter uses Inspect's supported log API and reads only headers and sample summaries into `inspect-aggregate.json`; only `evaluation-summary.json` and `.md` are safe to upload. They omit prompts, responses, schemas, raw logs, credentials, headers, and token hashes.
 
-Inspect cannot report router reasoning usage itself. To populate the reasoning-coverage section, an operator or protected CI job must separately export aggregate-only data from the router usage database for the exact evaluation window and caller/model-group filters, then set its owner-readable path as `EVAL_REASONING_COVERAGE_FILE` when running `make eval-report`. The supported exporter is `router-usage-report --reasoning-coverage-out`; it writes only totals plus provider/model/dialect attempt aggregates—never request IDs, caller IDs, prompt/response content, headers, endpoint hosts, or credentials.
+Inspect cannot report router reasoning usage itself. `make eval-ci-smoke` and `make eval-ci-full` therefore invoke the supported aggregate-only `router-usage-report --reasoning-coverage-out` step after each suite and before its report. They require `EVAL_USAGE_CALLER_ID` plus exactly one protected router usage configuration source: `EVAL_USAGE_CONFIG_YAML` (the CI secret, written to an owner-only temporary file) or `EVAL_USAGE_CONFIG_FILE` (a protected local file). The reusable wrapper derives the suite UTC start/end window, filters by the dedicated evaluation caller and `EVAL_MODEL` resolved group, and optionally filters `EVAL_USAGE_CLIENT`. It never puts database credentials on a command line.
+
+The exporter writes only totals plus provider/model/dialect attempt aggregates—never request IDs, caller IDs, prompt/response content, headers, endpoint hosts, or credentials. `EVAL_REASONING_COVERAGE_FILE` remains an explicit owner-readable override for an already-created aggregate-only export when using `make eval-report` outside the CI flows.
+
+The exporter writes a new owner-readable (`0600`) file even if its output path already exists. The wrapper validates any configured export before reporting: all four nonnegative aggregate counters and the provider/model/dialect rows are required, each row must be internally valid, and row totals must exactly match the aggregate counters. A malformed or inconsistent export blocks the report rather than degrading to `not reported`.
 
 ```sh
 # Run in the protected environment that can read the usage DB. Keep the output
 # outside the repository and make it owner-readable only.
 go run ./cmd/router-usage-report \
-  --driver postgres --dsn "$ROUTER_USAGE_DSN" \
+  --usage-db-config /protected/router-config.yaml \
   --from 2026-07-23T10:00:00Z --to 2026-07-23T11:00:00Z \
+  --caller-id dedicated-evaluation-caller \
   --resolved-group deployment-defined-group \
   --reasoning-coverage-out /protected/eval/reasoning-coverage.json
 

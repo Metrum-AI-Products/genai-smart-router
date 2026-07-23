@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -51,6 +52,30 @@ func TestExportReasoningCoverageIsAggregateOnly(t *testing.T) {
 	}
 	if got.Coverage[0].Provider != "provider-a" || got.Coverage[0].ReportedAttempts != 1 || got.Coverage[0].ReasoningTokens != 5 {
 		t.Fatalf("first coverage row=%#v", got.Coverage[0])
+	}
+}
+
+func TestExportReasoningCoverageImportsJSONL(t *testing.T) {
+	dir := t.TempDir()
+	seven := 7
+	record := logRecord{TS: "2026-07-23T12:00:00.000Z", RequestID: "jsonl-request", ResolvedGroup: "eval-group", AttemptsDetail: []attemptLogRecord{{Provider: "provider", Model: "model", Dialect: "openai-chat", Selected: true, ReasoningTokens: &seven}}}
+	populateReasoningUsageCoverage(&record)
+	line, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(dir, "usage.jsonl")
+	if err := os.WriteFile(logPath, append(line, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	from, _ := time.Parse(time.RFC3339, "2026-07-23T11:00:00Z")
+	to, _ := time.Parse(time.RFC3339, "2026-07-23T13:00:00Z")
+	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: filepath.Join(dir, "usage.sqlite"), LogPath: logPath, From: from, To: to, ResolvedGroup: "eval-group"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ReasoningTokens != 7 || got.ReasoningAttemptCount != 1 || got.ReasoningReportedAttemptCount != 1 || len(got.Coverage) != 1 {
+		t.Fatalf("JSONL coverage=%#v", got)
 	}
 }
 
