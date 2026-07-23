@@ -74,6 +74,9 @@ responses to the repository.
 
 ## Local evidence (2026-07-23)
 
+The timestamped execution record, including the unsuccessful synthetic-fixture
+attempt, is in the [evaluation report](VLM_IMAGE_ANALYSIS_EVALUATION_REPORT_2026-07-23.md).
+
 | Target | Image OCR + forced tool | Streaming tool call | Result |
 | --- | --- | --- | --- |
 | GPT-5.4 | Passed | Passed | Eligible reference target |
