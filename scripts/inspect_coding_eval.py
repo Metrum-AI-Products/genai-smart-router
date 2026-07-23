@@ -39,6 +39,16 @@ def safe_aggregate(value: Any) -> dict[str, Any]:
         return {}
     return {key: safe(value[key]) for key in SAFE_AGGREGATE_FIELDS if key in value}
 
+def load_policy(path: Path | None = None) -> dict[str, Any]:
+    path = path or Path(env("EVAL_POLICY", "config/evaluation-policy.example.json"))
+    try:
+        policy = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"evaluation policy unavailable: {type(exc).__name__}") from exc
+    if not isinstance(policy, dict):
+        raise ValueError("evaluation policy must be an object")
+    return policy
+
 def status_for_error(error: str) -> str:
     text = error.lower()
     if any(x in text for x in ("credential", "api key", "unauthorized", "forbidden", "entitlement", "not configured")): return "blocked"
@@ -54,6 +64,10 @@ def require_run_inputs() -> tuple[str,str,str,int,int,int,Path]:
     model_kind = env("EVAL_MODEL_KIND", "router-group")
     if model_kind not in {"router-group", "direct-baseline"}:
         raise ValueError("EVAL_MODEL_KIND must be router-group or direct-baseline")
+    if model_kind == "direct-baseline":
+        approved = load_policy().get("approved_direct_baselines", [])
+        if not isinstance(approved, list) or model not in approved:
+            raise ValueError("direct baseline is not in approved_direct_baselines")
     return model, base_url, model_kind, bounded_int(env("EVAL_LIMIT","8"),"EVAL_LIMIT",1,200), bounded_int(env("EVAL_CONCURRENCY","1"),"EVAL_CONCURRENCY",1,16), bounded_int(env("EVAL_TIMEOUT","300"),"EVAL_TIMEOUT",30,3600), Path(env("EVAL_LOG_DIR","tmp/inspect-evals")).expanduser().resolve()
 
 def write_status(log_dir: Path, payload: dict[str,Any]) -> None:
@@ -184,7 +198,11 @@ def aggregate(log_dir: Path) -> dict[str,Any]:
 
 def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,Any]) -> list[str]:
     limits=policy.get("regression_thresholds",{}); failures=[]
-    checks=(("score","max_score_delta",lambda a,b: b-a),("unscored_error_rate","max_unscored_error_rate",lambda a,b:a-b),("p95_sample_time_ms","max_p95_sample_time_growth",lambda a,b:(a-b)/b if b else 0),("token_cost","max_token_cost_growth",lambda a,b:(a-b)/b if b else 0))
+    def growth(current_value: float, baseline_value: float) -> float:
+        if baseline_value == 0:
+            return 0 if current_value == 0 else float("inf")
+        return (current_value - baseline_value) / baseline_value
+    checks=(("score","max_score_delta",lambda a,b: b-a),("unscored_error_rate","max_unscored_error_rate",lambda a,b:a-b),("p95_sample_time_ms","max_p95_sample_time_growth",growth),("token_cost","max_token_cost_growth",growth))
     for metric,limit,delta in checks:
         if limit not in limits:
             continue
@@ -195,11 +213,12 @@ def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,An
     return failures
 
 def report(args: argparse.Namespace) -> int:
-    log_dir=Path(args.log_dir) / args.suite; result=aggregate(log_dir); policy=json.loads(Path(args.policy).read_text())
+    log_dir=Path(args.log_dir) / args.suite; result=aggregate(log_dir); policy=load_policy(Path(args.policy))
     baseline_path=log_dir/"inspect-baseline-aggregate.json"
     baseline_text=env("EVAL_BASELINE_JSON")
+    baseline_supplied = bool(baseline_text) or baseline_path.exists()
     baseline=safe_aggregate(json.loads(baseline_text)) if baseline_text else (safe_aggregate(json.loads(baseline_path.read_text())) if baseline_path.exists() else None)
-    failures=compare(result,baseline,policy) if baseline else []
+    failures=["protected baseline aggregate is empty or unsafe"] if baseline_supplied and not baseline else (compare(result,baseline,policy) if baseline else [])
     result.update({"baseline_present":bool(baseline),"regression_failures":failures})
     out_json=log_dir/"evaluation-summary.json"; out_md=log_dir/"evaluation-summary.md"; out_json.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     lines=["# Inspect coding evaluation", "", f"Status: **{result.get('status','blocked').upper()}**", "", "This sanitized aggregate excludes prompts, responses, schemas, raw logs, credentials, and headers.", ""]
@@ -224,11 +243,41 @@ def smoke(args: argparse.Namespace) -> int:
     if code: return code
     return report(argparse.Namespace(log_dir=env("EVAL_LOG_DIR","tmp/inspect-evals"), suite="humaneval", policy=env("EVAL_POLICY","config/evaluation-policy.example.json")))
 
+def ci_full(args: argparse.Namespace) -> int:
+    """Run the protected, per-suite CI contract without embedding policy in YAML."""
+    required = ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL", "EVAL_BASELINE_HUMANEVAL_JSON", "EVAL_BASELINE_BIGCODEBENCH_JSON")
+    missing = [name for name in required if not env(name)]
+    if missing:
+        print(f"evaluation blocked: protected CI input unavailable ({', '.join(missing)})", file=sys.stderr)
+        return 2
+    original = {name: os.environ.get(name) for name in ("EVAL_SUITE", "EVAL_BASELINE_JSON", "EVAL_CI_REPORT_TIMESTAMP")}
+    label = env("EVAL_CI_REPORT_TIMESTAMP")
+    timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    try:
+        for suite, baseline_var in (("humaneval", "EVAL_BASELINE_HUMANEVAL_JSON"), ("bigcodebench", "EVAL_BASELINE_BIGCODEBENCH_JSON")):
+            os.environ["EVAL_SUITE"] = suite
+            os.environ["EVAL_BASELINE_JSON"] = env(baseline_var)
+            os.environ["EVAL_CI_REPORT_TIMESTAMP"] = f"{timestamp}-{label}-{suite}" if label else f"{timestamp}-{suite}"
+            code = run(argparse.Namespace(suite=suite))
+            if code:
+                return code
+            code = report(argparse.Namespace(log_dir=env("EVAL_LOG_DIR", "tmp/inspect-evals"), suite=suite, policy=env("EVAL_POLICY", "config/evaluation-policy.example.json")))
+            if code:
+                return code
+    finally:
+        for name, prior in original.items():
+            if prior is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = prior
+    return 0
+
 def main() -> int:
     parser=argparse.ArgumentParser(description=__doc__); subs=parser.add_subparsers(dest="command",required=True)
     r=subs.add_parser("run"); r.add_argument("--suite", choices=sorted(SUITES)); r.set_defaults(func=run)
     q=subs.add_parser("report"); q.add_argument("--log-dir",required=True); q.add_argument("--suite",choices=sorted(SUITES),required=True); q.add_argument("--policy",required=True); q.set_defaults(func=report)
     s=subs.add_parser("smoke"); s.set_defaults(func=smoke)
+    c=subs.add_parser("ci-full"); c.set_defaults(func=ci_full)
     args = parser.parse_args()
     return args.func(args)
 if __name__ == "__main__": raise SystemExit(main())

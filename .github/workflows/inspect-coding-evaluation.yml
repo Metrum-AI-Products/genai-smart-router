@@ -37,7 +37,7 @@ jobs:
       - run: python3 scripts/inspect_coding_eval_test.py
       - name: Install Inspect AI
         if: ${{ env.EVAL_BASE_URL != '' && env.EVAL_API_KEY != '' && env.EVAL_MODEL != '' }}
-        run: python3 -m pip install 'inspect-ai>=0.3.242' inspect-evals
+        run: python3 -m pip install 'inspect-ai==0.3.242' 'inspect-evals==0.15.0'
       - name: Authenticated bounded router smoke
         if: ${{ env.EVAL_BASE_URL != '' && env.EVAL_API_KEY != '' && env.EVAL_MODEL != '' }}
         env:
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install Inspect AI
-        run: python3 -m pip install 'inspect-ai>=0.3.242' inspect-evals
+        run: python3 -m pip install 'inspect-ai==0.3.242' 'inspect-evals==0.15.0'
       - name: Run deployment-owned full suite
         env:
           EVAL_MODEL_KIND: router-group
@@ -72,11 +72,9 @@ jobs:
           EVAL_LIMIT: ${{ inputs.limit || '8' }}
           EVAL_SAVE_CI_REPORT: "true"
           EVAL_CI_REPORT_DIR: docs/evaluation-reports/inspect
+          EVAL_CI_REPORT_TIMESTAMP: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          test -n "$EVAL_BASE_URL" && test -n "$EVAL_API_KEY" && test -n "$EVAL_MODEL" || { echo 'evaluation blocked: protected router inputs unavailable'; exit 2; }
-          test -n "$EVAL_BASELINE_HUMANEVAL_JSON" && test -n "$EVAL_BASELINE_BIGCODEBENCH_JSON" || { echo 'evaluation blocked: protected per-suite baseline unavailable'; exit 2; }
-          EVAL_SUITE=humaneval EVAL_BASELINE_JSON="$EVAL_BASELINE_HUMANEVAL_JSON" EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-humaneval" make eval-humaneval eval-report
-          EVAL_SUITE=bigcodebench EVAL_BASELINE_JSON="$EVAL_BASELINE_BIGCODEBENCH_JSON" EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-bigcodebench" make eval-bigcodebench eval-report
+          make eval-ci-full
       - name: Commit sanitized evaluation report
         if: success()
         run: |
