@@ -23,6 +23,7 @@ SAFE_AGGREGATE_FIELDS = {
 }
 COVERAGE_TEXT_FIELDS = ("provider", "model", "dialect")
 COVERAGE_NUMBER_FIELDS = ("attempts", "reported_attempts", "reasoning_tokens")
+REASONING_EXPORT_FIELDS = ("reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage")
 
 def env(name: str, default: str = "") -> str: return os.environ.get(name, default)
 def bounded_int(value: str, name: str, low: int, high: int) -> int:
@@ -62,6 +63,18 @@ def safe_reasoning_coverage(value: Any) -> list[dict[str, Any]]:
                 row[field] = item[field]
         rows.append(row)
     return rows
+
+def protected_reasoning_coverage() -> dict[str, Any]:
+    """Load only the aggregate-only router usage export selected by CI/operator."""
+    path_text = env("EVAL_REASONING_COVERAGE_FILE")
+    if not path_text:
+        return {}
+    try:
+        payload = json.loads(Path(path_text).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"protected reasoning coverage unavailable: {type(exc).__name__}") from exc
+    safe_payload = safe_aggregate(payload)
+    return {field: safe_payload[field] for field in REASONING_EXPORT_FIELDS if field in safe_payload}
 
 def load_policy(path: Path | None = None) -> dict[str, Any]:
     path = path or Path(env("EVAL_POLICY", "config/evaluation-policy.example.json"))
@@ -265,6 +278,10 @@ def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,An
 
 def report(args: argparse.Namespace) -> int:
     log_dir=Path(args.log_dir) / args.suite; result=aggregate(log_dir); policy=load_policy(Path(args.policy))
+    try:
+        result.update(protected_reasoning_coverage())
+    except ValueError as exc:
+        print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     baseline_path=log_dir/"inspect-baseline-aggregate.json"
     baseline_text=env("EVAL_BASELINE_JSON")
     baseline_supplied = bool(baseline_text) or baseline_path.exists()

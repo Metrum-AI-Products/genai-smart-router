@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ func main() {
 	toText := flag.String("to", "", "report end time, RFC3339 or 2006-01-02T15:04:05Z; defaults to now")
 	sinceText := flag.String("since", "24h", "relative report duration when --from is omitted, such as 24h, 7d, 30d")
 	outPath := flag.String("out", "", "optional markdown output path; defaults to stdout")
+	reasoningCoverageOut := flag.String("reasoning-coverage-out", "", "write aggregate-only reasoning coverage JSON for a protected evaluation report")
 	tokenID := flag.String("token-id", "", "filter report to one public router token id")
 	tokenIDPrefix := flag.String("token-id-prefix", "", "filter report to public router token ids with this prefix")
 	callerUser := flag.String("caller-user", "", "filter report to one caller owner user")
@@ -153,6 +155,20 @@ func main() {
 		TrafficShapedOnly:  *trafficShapedOnly,
 		TrafficShapeBucket: *trafficShapeBucket,
 		TrafficShapeScope:  *trafficShapeScope,
+	}
+	if *reasoningCoverageOut != "" {
+		coverage, err := router.ExportReasoningCoverage(reportOpts)
+		if err != nil {
+			die("export reasoning coverage: %v", err)
+		}
+		payload, err := json.MarshalIndent(coverage, "", "  ")
+		if err != nil {
+			die("encode reasoning coverage: %v", err)
+		}
+		if err := os.WriteFile(*reasoningCoverageOut, append(payload, '\n'), 0600); err != nil {
+			die("write --reasoning-coverage-out: %v", err)
+		}
+		return
 	}
 	var md string
 	if *trafficTuningAdvisor {

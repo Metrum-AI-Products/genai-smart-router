@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestUsageFromMapPreservesReasoningTokenPresence(t *testing.T) {
@@ -16,6 +17,40 @@ func TestUsageFromMapPreservesReasoningTokenPresence(t *testing.T) {
 	missing := usageFromMap(map[string]any{"prompt_tokens": 4, "completion_tokens": 3})
 	if missing.ReasoningTokens != nil {
 		t.Fatalf("missing field became a value: %#v", missing)
+	}
+}
+
+func TestExportReasoningCoverageIsAggregateOnly(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := "2026-07-23T12:00:00.000Z"
+	five := 5
+	if err := store.db.Create(&usageRecord{RequestID: "must-not-export", TS: ts, ReasoningTokens: &five, ReasoningAttemptCount: 2, ReasoningSuccessfulAttemptCount: 1, ReasoningReportedAttemptCount: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&[]requestAttemptRecord{
+		{RequestID: "must-not-export", AttemptIndex: 1, TS: ts, Provider: "provider-a", Model: "model-a", Dialect: "openai-chat", ReasoningTokens: &five},
+		{RequestID: "must-not-export", AttemptIndex: 2, TS: ts, Provider: "provider-b", Model: "model-b", Dialect: "anthropic", ErrorMessage: "must-not-export"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	from, _ := time.Parse(time.RFC3339, "2026-07-23T11:00:00Z")
+	to, _ := time.Parse(time.RFC3339, "2026-07-23T13:00:00Z")
+	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: dbPath, From: from, To: to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ReasoningTokens != 5 || got.ReasoningAttemptCount != 2 || got.ReasoningSuccessfulAttemptCount != 1 || got.ReasoningReportedAttemptCount != 1 || len(got.Coverage) != 2 {
+		t.Fatalf("coverage=%#v", got)
+	}
+	if got.Coverage[0].Provider != "provider-a" || got.Coverage[0].ReportedAttempts != 1 || got.Coverage[0].ReasoningTokens != 5 {
+		t.Fatalf("first coverage row=%#v", got.Coverage[0])
 	}
 }
 

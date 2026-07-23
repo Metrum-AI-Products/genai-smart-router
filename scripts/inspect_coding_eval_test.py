@@ -51,6 +51,14 @@ def main() -> int:
     usage=json.dumps({"stored_request_time_cost_usd":1})
     report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
     need(report.returncode==0,report.stderr); rendered=(suite_logs/"evaluation-summary.md").read_text(); summary_json=(suite_logs/"evaluation-summary.json").read_text(); need("leak" not in rendered and coverage_leak not in rendered and coverage_leak not in summary_json and "openai_chat" in rendered and "caller_output_cap_field" in rendered and "1 reported / 2 upstream attempts (0 tokens; 2 successful)" in rendered and "safe-provider" in rendered,"secret/raw content leaked or reasoning coverage missing")
+    protected_coverage=root/"protected-reasoning-coverage.json"
+    protected_coverage.write_text(json.dumps({"reasoning_tokens":9,"reasoning_attempt_count":1,"reasoning_successful_attempt_count":1,"reasoning_reported_attempt_count":1,"reasoning_provider_model_dialect_coverage":[{"provider":"usage-db-provider","model":"usage-db-model","dialect":"openai-chat","attempts":1,"reported_attempts":1,"reasoning_tokens":9,"response":coverage_leak}]}))
+    protected_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(protected_coverage)},text=True,capture_output=True)
+    protected_summary=(suite_logs/"evaluation-summary.json").read_text()
+    need(protected_report.returncode==0 and '"reasoning_tokens": 9' in protected_summary and "usage-db-provider" in protected_summary and coverage_leak not in protected_summary,"protected aggregate-only reasoning coverage was not used safely")
+    invalid_coverage=root/"invalid-reasoning-coverage.json"; invalid_coverage.write_text("not-json")
+    invalid_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(invalid_coverage)},text=True,capture_output=True)
+    need(invalid_report.returncode==2 and "protected reasoning coverage unavailable" in invalid_report.stderr,"invalid protected coverage did not block")
     baseline_env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_BASELINE_JSON":json.dumps({"score":0.9,"unscored_error_rate":0,"p95_sample_time_ms":100,"token_cost":1})}
     baseline_failed=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=baseline_env,text=True,capture_output=True)
     need(baseline_failed.returncode==1,"protected baseline JSON did not enforce regression policy")

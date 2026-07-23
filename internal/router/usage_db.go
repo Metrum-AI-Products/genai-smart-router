@@ -93,6 +93,28 @@ type UsageReportOptions struct {
 	ErrorClass         string
 }
 
+// ReasoningCoverageExport is an aggregate-only view for protected evaluation
+// reporting. It intentionally contains no request identifiers, callers,
+// prompts, response content, headers, credentials, or endpoint details.
+type ReasoningCoverageExport struct {
+	ReasoningTokens                 int                    `json:"reasoning_tokens"`
+	ReasoningAttemptCount           int                    `json:"reasoning_attempt_count"`
+	ReasoningSuccessfulAttemptCount int                    `json:"reasoning_successful_attempt_count"`
+	ReasoningReportedAttemptCount   int                    `json:"reasoning_reported_attempt_count"`
+	Coverage                        []ReasoningCoverageRow `json:"reasoning_provider_model_dialect_coverage"`
+}
+
+// ReasoningCoverageRow is a provider/model/dialect aggregate for an evaluation
+// window. Reasoning tokens are a subset of output tokens, not an additive total.
+type ReasoningCoverageRow struct {
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	Dialect          string `json:"dialect"`
+	Attempts         int    `json:"attempts"`
+	ReportedAttempts int    `json:"reported_attempts"`
+	ReasoningTokens  int    `json:"reasoning_tokens"`
+}
+
 type UsageRollupOptions struct {
 	Driver                           string
 	DBPath                           string
@@ -2737,22 +2759,10 @@ func usageJSONLLineHasEventType(line string) bool {
 }
 
 func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
+	if err := validateUsageReportOptions(&opts); err != nil {
+		return "", err
+	}
 	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
-	if driver == "sqlite" && opts.DBPath == "" {
-		return "", errors.New("usage db path is required")
-	}
-	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
-		return "", errors.New("usage db dsn is required")
-	}
-	if opts.To.IsZero() {
-		opts.To = time.Now().UTC()
-	}
-	if opts.From.IsZero() {
-		opts.From = opts.To.Add(-24 * time.Hour)
-	}
-	if !opts.From.Before(opts.To) {
-		return "", errors.New("from must be before to")
-	}
 	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN}
 	if opts.LogPath != "" {
 		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
@@ -2775,6 +2785,91 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 		return "", err
 	}
 	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary, upstreamShapeEvents), nil
+}
+
+// ExportReasoningCoverage returns the bounded scalar reasoning-usage aggregate
+// for the same protected filters and time window used by usage reporting.
+func ExportReasoningCoverage(opts UsageReportOptions) (ReasoningCoverageExport, error) {
+	if err := validateUsageReportOptions(&opts); err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	store, err := OpenUsageStore(UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN})
+	if err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	defer store.Close()
+	rows, err := store.rowsWithoutBuckets(opts)
+	if err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	result := ReasoningCoverageExport{}
+	requestIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		requestIDs = append(requestIDs, row.RequestID)
+		if row.ReasoningTokens != nil {
+			result.ReasoningTokens += *row.ReasoningTokens
+		}
+		result.ReasoningAttemptCount += row.ReasoningAttemptCount
+		result.ReasoningSuccessfulAttemptCount += row.ReasoningSuccessfulAttemptCount
+		result.ReasoningReportedAttemptCount += row.ReasoningReportedAttemptCount
+	}
+	byTarget := map[string]*ReasoningCoverageRow{}
+	for start := 0; start < len(requestIDs); start += 500 {
+		end := start + 500
+		if end > len(requestIDs) {
+			end = len(requestIDs)
+		}
+		var attempts []requestAttemptRecord
+		if err := store.db.Where("request_id IN ?", requestIDs[start:end]).Find(&attempts).Error; err != nil {
+			return ReasoningCoverageExport{}, err
+		}
+		for _, attempt := range attempts {
+			key := attempt.Provider + "\x00" + attempt.Model + "\x00" + attempt.Dialect
+			entry := byTarget[key]
+			if entry == nil {
+				entry = &ReasoningCoverageRow{Provider: attempt.Provider, Model: attempt.Model, Dialect: attempt.Dialect}
+				byTarget[key] = entry
+			}
+			entry.Attempts++
+			if attempt.ReasoningTokens != nil {
+				entry.ReportedAttempts++
+				entry.ReasoningTokens += *attempt.ReasoningTokens
+			}
+		}
+	}
+	for _, entry := range byTarget {
+		result.Coverage = append(result.Coverage, *entry)
+	}
+	sort.Slice(result.Coverage, func(i, j int) bool {
+		if result.Coverage[i].Provider != result.Coverage[j].Provider {
+			return result.Coverage[i].Provider < result.Coverage[j].Provider
+		}
+		if result.Coverage[i].Model != result.Coverage[j].Model {
+			return result.Coverage[i].Model < result.Coverage[j].Model
+		}
+		return result.Coverage[i].Dialect < result.Coverage[j].Dialect
+	})
+	return result, nil
+}
+
+func validateUsageReportOptions(opts *UsageReportOptions) error {
+	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
+	if driver == "sqlite" && opts.DBPath == "" {
+		return errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
+		return errors.New("usage db dsn is required")
+	}
+	if opts.To.IsZero() {
+		opts.To = time.Now().UTC()
+	}
+	if opts.From.IsZero() {
+		opts.From = opts.To.Add(-24 * time.Hour)
+	}
+	if !opts.From.Before(opts.To) {
+		return errors.New("from must be before to")
+	}
+	return nil
 }
 
 func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
