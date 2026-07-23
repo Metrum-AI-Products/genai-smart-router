@@ -48,7 +48,7 @@ func TestReasoningUsageColumnsPersistAsNullableScalars(t *testing.T) {
 
 func TestReasoningUsageAggregateSurvivesDiagnosticChildSuppression(t *testing.T) {
 	reasoning := 0
-	rec := logRecord{AttemptsDetail: []attemptLogRecord{{StatusCode: 200, ReasoningTokens: &reasoning}}}
+	rec := logRecord{AttemptsDetail: []attemptLogRecord{{StatusCode: 200, Selected: true, ReasoningTokens: &reasoning}}}
 	populateReasoningUsageCoverage(&rec)
 	rec.AttemptsDetail = nil // the diagnostics-disabled path removes child telemetry before usage persistence
 	row := rowFromRecord(rec)
@@ -84,8 +84,8 @@ func TestReasoningUsageResponseEncodingAndAttemptCoverage(t *testing.T) {
 		t.Fatalf("responses reasoning usage=%#v", responses)
 	}
 	zero := 0
-	total, attempts, successful, reported := reasoningUsageCoverage([]attemptLogRecord{{StatusCode: 502}, {StatusCode: 200, ReasoningTokens: &zero}, {StatusCode: 200, ReasoningTokens: &n}})
-	if total == nil || *total != 7 || attempts != 3 || successful != 2 || reported != 2 {
+	total, attempts, successful, reported := reasoningUsageCoverage([]attemptLogRecord{{StatusCode: 502}, {StatusCode: 200, ReasoningTokens: &zero, ErrorClass: "decode_error"}, {StatusCode: 200, ReasoningTokens: &n, Selected: true}})
+	if total == nil || *total != 7 || attempts != 3 || successful != 1 || reported != 2 {
 		t.Fatalf("coverage total=%v attempts=%d successful=%d reported=%d", total, attempts, successful, reported)
 	}
 	if absent, _, _, count := reasoningUsageCoverage([]attemptLogRecord{{StatusCode: 200}}); absent != nil || count != 0 {

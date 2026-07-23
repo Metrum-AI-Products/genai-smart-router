@@ -51,9 +51,11 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	DataVersion:     0,
 	Transactional:   true,
 	MaintenanceMode: "online",
-	RollbackClass:   "package-only",
-	Apply:           applyUsageReasoningTelemetryMigration,
-	Verify:          verifyUsageReasoningTelemetryMigration,
+	// Older binaries reject this new ledger ID under validate/deployment-job.
+	// Downgrade therefore requires restoring the pre-migration database snapshot.
+	RollbackClass: "restore-required",
+	Apply:         applyUsageReasoningTelemetryMigration,
+	Verify:        verifyUsageReasoningTelemetryMigration,
 }}
 
 // MigrationCompatibility declares the inclusive schema/data versions a binary

@@ -231,6 +231,16 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 }
 
 func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T) {
+	var definition *MigrationDefinition
+	for i := range usageMigrationDefinitions {
+		if usageMigrationDefinitions[i].ID == usageReasoningTelemetryMigrationID {
+			definition = &usageMigrationDefinitions[i]
+			break
+		}
+	}
+	if definition == nil || definition.RollbackClass != "restore-required" {
+		t.Fatalf("reasoning migration must require database restore for a binary downgrade: %#v", definition)
+	}
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	legacy, err := OpenUsageStorePath(path)
 	if err != nil {
@@ -266,5 +276,13 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 	status, err := runner.Verify()
 	if err != nil || status.SchemaVersion != 2 || status.State != "current" {
 		t.Fatalf("reasoning migration ledger status=%+v err=%v", status, err)
+	}
+	previousBinary, err := NewMigrationRunner(migrated.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousStatus, err := previousBinary.Status()
+	if err != nil || previousStatus.Compatible || previousStatus.State != "incompatible" {
+		t.Fatalf("previous binary must reject the newer ledger and require restore before downgrade: status=%+v err=%v", previousStatus, err)
 	}
 }

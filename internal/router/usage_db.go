@@ -2387,7 +2387,10 @@ func reasoningUsageCoverage(attempts []attemptLogRecord) (total *int, attempted,
 	var sum int
 	for _, attempt := range attempts {
 		attempted++
-		if attempt.StatusCode >= 200 && attempt.StatusCode < 300 {
+		// HTTP 2xx alone is not a completed upstream attempt: read, size, or
+		// decode failures can fall back after a 2xx response. Selected is set
+		// only after router processing succeeds and the attempt is terminal.
+		if attempt.Selected {
 			successful++
 		}
 		if attempt.ReasoningTokens != nil {
