@@ -45,13 +45,16 @@ def status_for_error(error: str) -> str:
     if any(x in text for x in ("docker", "inspect", "not found", "unavailable")): return "skipped"
     return "blocked"
 
-def require_run_inputs() -> tuple[str,str,int,int,int,Path]:
+def require_run_inputs() -> tuple[str,str,str,int,int,int,Path]:
     model, base_url = env("EVAL_MODEL"), env("EVAL_BASE_URL")
     if not model: raise ValueError("EVAL_MODEL is required (a caller-visible router group or approved direct baseline)")
     if not base_url: raise ValueError("EVAL_BASE_URL is required")
     if not env("EVAL_API_KEY") and not env("OPENAI_API_KEY"):
         raise ValueError("evaluation credential is unavailable; set EVAL_API_KEY in protected environment")
-    return model, base_url, bounded_int(env("EVAL_LIMIT","8"),"EVAL_LIMIT",1,200), bounded_int(env("EVAL_CONCURRENCY","1"),"EVAL_CONCURRENCY",1,16), bounded_int(env("EVAL_TIMEOUT","300"),"EVAL_TIMEOUT",30,3600), Path(env("EVAL_LOG_DIR","tmp/inspect-evals")).expanduser().resolve()
+    model_kind = env("EVAL_MODEL_KIND", "router-group")
+    if model_kind not in {"router-group", "direct-baseline"}:
+        raise ValueError("EVAL_MODEL_KIND must be router-group or direct-baseline")
+    return model, base_url, model_kind, bounded_int(env("EVAL_LIMIT","8"),"EVAL_LIMIT",1,200), bounded_int(env("EVAL_CONCURRENCY","1"),"EVAL_CONCURRENCY",1,16), bounded_int(env("EVAL_TIMEOUT","300"),"EVAL_TIMEOUT",30,3600), Path(env("EVAL_LOG_DIR","tmp/inspect-evals")).expanduser().resolve()
 
 def write_status(log_dir: Path, payload: dict[str,Any]) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -96,7 +99,7 @@ def export_inspect_aggregate(log_dir: Path) -> None:
         print(f"evaluation aggregate unavailable: {type(exc).__name__}", file=sys.stderr)
 
 def run(args: argparse.Namespace) -> int:
-    try: model, base_url, limit, concurrency, timeout, log_dir = require_run_inputs()
+    try: model, base_url, model_kind, limit, concurrency, timeout, log_dir = require_run_inputs()
     except ValueError as exc:
         print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     inspect = env("EVAL_INSPECT", "inspect")
@@ -108,7 +111,9 @@ def run(args: argparse.Namespace) -> int:
         print("evaluation skipped: Docker unavailable", file=sys.stderr); return 3
     log_dir.mkdir(parents=True, exist_ok=True)
     api, reasoning = env("EVAL_API", "openai"), env("EVAL_REASONING")
-    model_spec = model if "/" in model else f"{api}/{model}"
+    # Model-group names are deployment-owned strings and may contain '/'. The
+    # explicit kind prevents a router group from being mistaken for a provider.
+    model_spec = f"{api}/{model}"
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="smart-router-inspect-") as scratch:
         command = [inspect, "eval", SUITES[args.suite], "--model", model_spec, "--model-base-url", base_url, "--limit", str(limit), "--max-connections", str(concurrency), "--log-dir", str(log_dir)]
@@ -121,7 +126,7 @@ def run(args: argparse.Namespace) -> int:
             process_env.setdefault("OPENAI_API_KEY", env("EVAL_API_KEY"))
         process = subprocess.run(command, cwd=scratch, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=process_env)
     state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
-    write_status(log_dir, {"status":state,"suite":args.suite,"model":model,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
+    write_status(log_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
     if state == "completed":
         export_inspect_aggregate(log_dir)
     print(f"evaluation {state}: suite={args.suite} model={model} limit={limit}")
@@ -149,7 +154,7 @@ def report(args: argparse.Namespace) -> int:
     result.update({"baseline_present":bool(baseline),"regression_failures":failures})
     out_json=log_dir/"evaluation-summary.json"; out_md=log_dir/"evaluation-summary.md"; out_json.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     lines=["# Inspect coding evaluation", "", f"Status: **{result.get('status','blocked').upper()}**", "", "This sanitized aggregate excludes prompts, responses, schemas, raw logs, credentials, and headers.", ""]
-    for key in ("suite","model","api","reasoning","inbound_dialect","tools_present","tool_count_bucket","streaming","caller_output_cap_field","request_size_bucket","tool_schema_bytes_bucket","completed","partial","skipped","blocked","limit","score","correct","scored","unscored","unscored_error_rate","p95_sample_time_ms","token_cost","wall_seconds"):
+    for key in ("suite","model","model_kind","api","reasoning","inbound_dialect","tools_present","tool_count_bucket","streaming","caller_output_cap_field","request_size_bucket","tool_schema_bytes_bucket","completed","partial","skipped","blocked","limit","score","correct","scored","unscored","unscored_error_rate","p95_sample_time_ms","token_cost","wall_seconds"):
         if key in result: lines.append(f"- {key}: {result[key]}")
     if failures: lines += ["", "## Regression policy", ""] + [f"- {x}" for x in failures]
     out_md.write_text("\n".join(lines)+"\n")

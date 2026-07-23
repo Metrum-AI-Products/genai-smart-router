@@ -16,14 +16,22 @@ EVAL_API ?= openai
 EVAL_LIMIT ?= 8
 EVAL_CONCURRENCY ?= 1
 EVAL_TIMEOUT ?= 300
-EVAL_LOG_DIR ?= tmp/inspect-evals
+# Each Make process receives one isolated run directory, shared by explicitly
+# requested suite/report targets in that same invocation. CI pins EVAL_RUN_ID
+# across separate Make calls in one workflow run.
+EVAL_LOG_ROOT ?= tmp/inspect-evals
+ifeq ($(origin EVAL_RUN_ID), undefined)
+EVAL_RUN_ID := $(shell date -u +%Y%m%dT%H%M%SZ)-$(shell printf '%s' $$$$)
+endif
+EVAL_LOG_DIR ?= $(EVAL_LOG_ROOT)/$(EVAL_RUN_ID)
 EVAL_REASONING ?=
+EVAL_MODEL_KIND ?= router-group
 EVAL_POLICY ?= config/evaluation-policy.example.json
 EVAL_INSPECT ?= inspect
 EVAL_CI_REPORT_DIR ?= docs/evaluation-reports/inspect
 EVAL_CI_REPORT_TIMESTAMP ?=
 EVAL_SAVE_CI_REPORT ?= false
-export EVAL_MODEL EVAL_BASE_URL EVAL_API EVAL_LIMIT EVAL_CONCURRENCY EVAL_TIMEOUT EVAL_LOG_DIR EVAL_REASONING EVAL_POLICY EVAL_INSPECT EVAL_CI_REPORT_DIR EVAL_CI_REPORT_TIMESTAMP EVAL_SAVE_CI_REPORT
+export EVAL_MODEL EVAL_BASE_URL EVAL_API EVAL_LIMIT EVAL_CONCURRENCY EVAL_TIMEOUT EVAL_LOG_ROOT EVAL_RUN_ID EVAL_LOG_DIR EVAL_REASONING EVAL_MODEL_KIND EVAL_POLICY EVAL_INSPECT EVAL_CI_REPORT_DIR EVAL_CI_REPORT_TIMESTAMP EVAL_SAVE_CI_REPORT
 
 # Keep the repository's historical validation contract for bare `make` even
 # though the EKS help target appears earlier in this file.

@@ -31,12 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: python3 scripts/inspect_coding_eval_test.py
+      - name: Install Inspect AI
+        if: ${{ secrets.EVAL_ROUTER_BASE_URL != '' && secrets.EVAL_ROUTER_API_KEY != '' && vars.EVAL_ROUTER_MODEL != '' }}
+        run: python3 -m pip install 'inspect-ai>=0.3.242'
       - name: Authenticated bounded router smoke
         if: ${{ secrets.EVAL_ROUTER_BASE_URL != '' && secrets.EVAL_ROUTER_API_KEY != '' && vars.EVAL_ROUTER_MODEL != '' }}
         env:
           EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
           EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
           EVAL_MODEL: ${{ vars.EVAL_ROUTER_MODEL }}
+          EVAL_MODEL_KIND: router-group
+          EVAL_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-smoke
           EVAL_LIMIT: "2"
         run: make eval-ci-smoke
       - uses: actions/upload-artifact@v4
@@ -58,6 +63,8 @@ jobs:
           EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
           EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
           EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
+          EVAL_MODEL_KIND: router-group
+          EVAL_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
           EVAL_LIMIT: ${{ inputs.limit || '8' }}
           EVAL_SAVE_CI_REPORT: "true"
           EVAL_CI_REPORT_DIR: docs/evaluation-reports/inspect

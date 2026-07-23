@@ -6,14 +6,12 @@ Run a caller-visible router group with protected environment variables (never pu
 
 ```sh
 export EVAL_BASE_URL=https://router.example/v1 EVAL_API_KEY='…'
-make eval-humaneval EVAL_MODEL=deployment-defined-group EVAL_LIMIT=8
-make eval-bigcodebench EVAL_MODEL=deployment-defined-group EVAL_LIMIT=8
-make eval-report EVAL_LOG_DIR=tmp/inspect-evals
+make eval-humaneval eval-bigcodebench eval-report EVAL_MODEL=deployment-defined-group EVAL_MODEL_KIND=router-group EVAL_LIMIT=8
 ```
 
-`EVAL_API` selects the Inspect model provider (default `openai`) and prefixes an unqualified `EVAL_MODEL`; `EVAL_REASONING` is passed as Inspect's `reasoning_effort` model argument. `EVAL_CONCURRENCY`, `EVAL_TIMEOUT`, `EVAL_INSPECT`, and `EVAL_POLICY` are explicit overrides. Limits are 1–200 and concurrency 1–16. Use the caller output-cap, dialect, tool mode/count, streaming state, and request-size bucket intended for promotion as separate evidence; a text-only OpenAI-style suite does not validate Responses, Messages, or bridge traffic.
+`EVAL_MODEL_KIND` is required policy context: use `router-group` for a caller-visible deployment group and `direct-baseline` only for an approved direct upstream reference. It is never inferred from a slash because group names are deployment-defined strings. `EVAL_API` selects the Inspect model provider (default `openai`) and prefixes `EVAL_MODEL`; `EVAL_REASONING` is passed as Inspect's `reasoning_effort` model argument. `EVAL_CONCURRENCY`, `EVAL_TIMEOUT`, `EVAL_INSPECT`, and `EVAL_POLICY` are explicit overrides. Limits are 1–200 and concurrency 1–16. Use the caller output-cap, dialect, tool mode/count, streaming state, and request-size bucket intended for promotion as separate evidence; a text-only OpenAI-style suite does not validate Responses, Messages, or bridge traffic.
 
-The wrapper executes Inspect from an empty disposable directory. This prevents Inspect from auto-selecting this repository's Dockerfile as its code-execution sandbox. It resolves `EVAL_LOG_DIR` before changing directory, so Inspect's raw logs remain available to its aggregate exporter after the run. The exporter uses Inspect's supported log API and reads only headers and sample summaries into `inspect-aggregate.json`; only `evaluation-summary.json` and `.md` are safe to upload. They omit prompts, responses, schemas, raw logs, credentials, headers, and token hashes.
+The wrapper executes Inspect from an empty disposable directory. This prevents Inspect from auto-selecting this repository's Dockerfile as its code-execution sandbox. Each Make invocation creates an isolated timestamp/PID `EVAL_LOG_DIR`, shared by its explicitly requested suite and report targets; CI pins the run ID across separate Make calls. The exporter uses Inspect's supported log API and reads only headers and sample summaries into `inspect-aggregate.json`; only `evaluation-summary.json` and `.md` are safe to upload. They omit prompts, responses, schemas, raw logs, credentials, headers, and token hashes.
 
 `make eval-ci-smoke` is a two-task router-group smoke for explicitly configured CI. Missing Inspect/Docker yields `skipped`; missing protected credentials or model access yields `blocked`; neither is a passing quality result. The protected scheduled/manual workflow runs bounded HumanEval and BigCodeBench, compares aggregates using `config/evaluation-policy.example.json`, and requires human promotion review. Roll back by removing the candidate from the group or reducing its weight; never promote on this benchmark alone.
 
