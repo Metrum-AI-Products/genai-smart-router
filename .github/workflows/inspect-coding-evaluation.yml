@@ -28,25 +28,26 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'smoke')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
+      EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
+      EVAL_MODEL: ${{ vars.EVAL_ROUTER_MODEL }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: python3 scripts/inspect_coding_eval_test.py
       - name: Install Inspect AI
-        if: ${{ secrets.EVAL_ROUTER_BASE_URL != '' && secrets.EVAL_ROUTER_API_KEY != '' && vars.EVAL_ROUTER_MODEL != '' }}
-        run: python3 -m pip install 'inspect-ai>=0.3.242'
+        if: ${{ env.EVAL_BASE_URL != '' && env.EVAL_API_KEY != '' && env.EVAL_MODEL != '' }}
+        run: python3 -m pip install 'inspect-ai>=0.3.242' inspect-evals
       - name: Authenticated bounded router smoke
-        if: ${{ secrets.EVAL_ROUTER_BASE_URL != '' && secrets.EVAL_ROUTER_API_KEY != '' && vars.EVAL_ROUTER_MODEL != '' }}
+        if: ${{ env.EVAL_BASE_URL != '' && env.EVAL_API_KEY != '' && env.EVAL_MODEL != '' }}
         env:
-          EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
-          EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
-          EVAL_MODEL: ${{ vars.EVAL_ROUTER_MODEL }}
           EVAL_MODEL_KIND: router-group
           EVAL_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-smoke
           EVAL_LIMIT: "2"
         run: make eval-ci-smoke
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: inspect-smoke-sanitized, path: tmp/inspect-evals/evaluation-summary.*, if-no-files-found: ignore, retention-days: 7 }
+        with: { name: inspect-smoke-sanitized, path: tmp/inspect-evals/**/evaluation-summary.*, if-no-files-found: ignore, retention-days: 7 }
 
   full-or-promotion:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier != 'smoke')
@@ -54,15 +55,18 @@ jobs:
     environment: evaluation
     permissions: { contents: write }
     timeout-minutes: 90
+    env:
+      EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
+      EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
+      EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
+      EVAL_BASELINE_HUMANEVAL_JSON: ${{ secrets.EVAL_BASELINE_HUMANEVAL_JSON }}
+      EVAL_BASELINE_BIGCODEBENCH_JSON: ${{ secrets.EVAL_BASELINE_BIGCODEBENCH_JSON }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install Inspect AI
-        run: python3 -m pip install 'inspect-ai>=0.3.242'
+        run: python3 -m pip install 'inspect-ai>=0.3.242' inspect-evals
       - name: Run deployment-owned full suite
         env:
-          EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
-          EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
-          EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
           EVAL_MODEL_KIND: router-group
           EVAL_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
           EVAL_LIMIT: ${{ inputs.limit || '8' }}
@@ -70,8 +74,9 @@ jobs:
           EVAL_CI_REPORT_DIR: docs/evaluation-reports/inspect
         run: |
           test -n "$EVAL_BASE_URL" && test -n "$EVAL_API_KEY" && test -n "$EVAL_MODEL" || { echo 'evaluation blocked: protected router inputs unavailable'; exit 2; }
-          make eval-humaneval eval-bigcodebench
-          EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" make eval-report
+          test -n "$EVAL_BASELINE_HUMANEVAL_JSON" && test -n "$EVAL_BASELINE_BIGCODEBENCH_JSON" || { echo 'evaluation blocked: protected per-suite baseline unavailable'; exit 2; }
+          EVAL_SUITE=humaneval EVAL_BASELINE_JSON="$EVAL_BASELINE_HUMANEVAL_JSON" EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-humaneval" make eval-humaneval eval-report
+          EVAL_SUITE=bigcodebench EVAL_BASELINE_JSON="$EVAL_BASELINE_BIGCODEBENCH_JSON" EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-bigcodebench" make eval-bigcodebench eval-report
       - name: Commit sanitized evaluation report
         if: success()
         run: |
@@ -82,7 +87,7 @@ jobs:
           git push
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: inspect-sanitized-summary, path: tmp/inspect-evals/evaluation-summary.*, if-no-files-found: ignore, retention-days: 30 }
+        with: { name: inspect-sanitized-summary, path: tmp/inspect-evals/**/evaluation-summary.*, if-no-files-found: ignore, retention-days: 30 }
 
 # Promotion-review is a manual protected-environment decision. A completed
 # benchmark is evidence, never an automatic target-weight or membership change.

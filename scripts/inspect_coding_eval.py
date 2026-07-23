@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 SECRET_WORDS = ("secret", "authorization", "api_key", "apikey", "password", "token_hash", "prompt", "message", "raw_response", "raw_output", "content")
-SUITES = {"humaneval": "humaneval", "bigcodebench": "bigcodebench"}
+SUITES = {"humaneval": "inspect_evals/humaneval", "bigcodebench": "inspect_evals/bigcodebench"}
 SAFE_AGGREGATE_FIELDS = {
     "status", "status_reason", "suite", "model", "model_kind", "api", "reasoning", "limit", "concurrency", "wall_seconds", "exit_code",
     "completed", "partial", "skipped", "blocked", "score", "correct", "scored", "unscored", "unscored_error_rate",
@@ -103,20 +103,21 @@ def run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     inspect = env("EVAL_INSPECT", "inspect")
+    suite_dir = log_dir / args.suite
     if not shutil.which(inspect):
-        write_status(log_dir, {"status":"skipped", "status_reason":"inspect-unavailable", "suite":args.suite, "completed":False, "partial":False, "skipped":True, "blocked":False})
+        write_status(suite_dir, {"status":"skipped", "status_reason":"inspect-unavailable", "suite":args.suite, "completed":False, "partial":False, "skipped":True, "blocked":False})
         print("evaluation skipped: Inspect executable unavailable", file=sys.stderr); return 3
     if not shutil.which(env("DOCKER", "docker")):
-        write_status(log_dir, {"status":"skipped", "status_reason":"docker-unavailable", "suite":args.suite, "completed":False, "partial":False, "skipped":True, "blocked":False})
+        write_status(suite_dir, {"status":"skipped", "status_reason":"docker-unavailable", "suite":args.suite, "completed":False, "partial":False, "skipped":True, "blocked":False})
         print("evaluation skipped: Docker unavailable", file=sys.stderr); return 3
-    log_dir.mkdir(parents=True, exist_ok=True)
+    suite_dir.mkdir(parents=True, exist_ok=True)
     api, reasoning = env("EVAL_API", "openai"), env("EVAL_REASONING")
     # Model-group names are deployment-owned strings and may contain '/'. The
     # explicit kind prevents a router group from being mistaken for a provider.
     model_spec = f"{api}/{model}"
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="smart-router-inspect-") as scratch:
-        command = [inspect, "eval", SUITES[args.suite], "--model", model_spec, "--model-base-url", base_url, "--limit", str(limit), "--max-connections", str(concurrency), "--log-dir", str(log_dir)]
+        command = [inspect, "eval", SUITES[args.suite], "--model", model_spec, "--model-base-url", base_url, "--limit", str(limit), "--max-connections", str(concurrency), "--log-dir", str(suite_dir)]
         if reasoning:
             command.extend(["-M", f"reasoning_effort={reasoning}"])
         # Inspect provider configuration is inherited, but no secret is included in argv.
@@ -126,9 +127,9 @@ def run(args: argparse.Namespace) -> int:
             process_env.setdefault("OPENAI_API_KEY", env("EVAL_API_KEY"))
         process = subprocess.run(command, cwd=scratch, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=process_env)
     state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
-    write_status(log_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
+    write_status(suite_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
     if state == "completed":
-        export_inspect_aggregate(log_dir)
+        export_inspect_aggregate(suite_dir)
     print(f"evaluation {state}: suite={args.suite} model={model} limit={limit}")
     return 0 if process.returncode == 0 else (3 if state == "skipped" else 2)
 
@@ -148,8 +149,10 @@ def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,An
     return failures
 
 def report(args: argparse.Namespace) -> int:
-    log_dir=Path(args.log_dir); result=aggregate(log_dir); policy=json.loads(Path(args.policy).read_text())
-    baseline_path=log_dir/"inspect-baseline-aggregate.json"; baseline=safe(json.loads(baseline_path.read_text())) if baseline_path.exists() else None
+    log_dir=Path(args.log_dir) / args.suite; result=aggregate(log_dir); policy=json.loads(Path(args.policy).read_text())
+    baseline_path=log_dir/"inspect-baseline-aggregate.json"
+    baseline_text=env("EVAL_BASELINE_JSON")
+    baseline=safe_aggregate(json.loads(baseline_text)) if baseline_text else (safe_aggregate(json.loads(baseline_path.read_text())) if baseline_path.exists() else None)
     failures=compare(result,baseline,policy) if baseline else []
     result.update({"baseline_present":bool(baseline),"regression_failures":failures})
     out_json=log_dir/"evaluation-summary.json"; out_md=log_dir/"evaluation-summary.md"; out_json.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
@@ -168,17 +171,17 @@ def report(args: argparse.Namespace) -> int:
         (report_dir / "evaluation-summary.json").write_text(out_json.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"evaluation CI report: {report_dir}")
     print(f"evaluation report: status={result.get('status')} summary={out_md}")
-    return 1 if failures else 0
+    return 1 if failures or not result.get("completed", False) else 0
 
 def smoke(args: argparse.Namespace) -> int:
     os.environ.setdefault("EVAL_LIMIT", "2"); args.suite="humaneval"; code=run(args)
     if code: return code
-    return report(argparse.Namespace(log_dir=env("EVAL_LOG_DIR","tmp/inspect-evals"), policy=env("EVAL_POLICY","config/evaluation-policy.example.json")))
+    return report(argparse.Namespace(log_dir=env("EVAL_LOG_DIR","tmp/inspect-evals"), suite="humaneval", policy=env("EVAL_POLICY","config/evaluation-policy.example.json")))
 
 def main() -> int:
     parser=argparse.ArgumentParser(description=__doc__); subs=parser.add_subparsers(dest="command",required=True)
     r=subs.add_parser("run"); r.add_argument("--suite", choices=sorted(SUITES)); r.set_defaults(func=run)
-    q=subs.add_parser("report"); q.add_argument("--log-dir",required=True); q.add_argument("--policy",required=True); q.set_defaults(func=report)
+    q=subs.add_parser("report"); q.add_argument("--log-dir",required=True); q.add_argument("--suite",choices=sorted(SUITES),required=True); q.add_argument("--policy",required=True); q.set_defaults(func=report)
     s=subs.add_parser("smoke"); s.set_defaults(func=smoke)
     args = parser.parse_args()
     return args.func(args)
