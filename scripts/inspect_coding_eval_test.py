@@ -8,6 +8,9 @@ ROOT=Path(__file__).resolve().parents[1]; SCRIPT=ROOT/"scripts/inspect_coding_ev
 def need(ok: bool, message: str) -> None:
     if not ok: raise AssertionError(message)
 def main() -> int:
+  probes=subprocess.run(["make","-s","-f",str(ROOT/"Makefile"),"--eval","probe-a: ; @printf '%s\\n' \"$$EVAL_LOG_DIR\"","--eval","probe-b: ; @printf '%s\\n' \"$$EVAL_LOG_DIR\"","probe-a","probe-b"],cwd=ROOT,text=True,capture_output=True)
+  need(probes.returncode==0,probes.stderr); probe_dirs=[line for line in probes.stdout.splitlines() if line]
+  need(len(probe_dirs)==2 and probe_dirs[0]==probe_dirs[1] and "/tmp/inspect-evals/" not in probe_dirs[0],f"Make targets did not share one isolated evaluation directory: {probe_dirs}")
   with tempfile.TemporaryDirectory() as raw:
     root=Path(raw); bin_dir=root/"bin"; bin_dir.mkdir(); capture=root/"capture.json"
     for name, body in {"docker":"#!/bin/sh\nexit 0\n", "inspect":"#!/bin/sh\nprintf '%s\\n' \"$PWD|$*\" > \"$CAPTURE\"\nexit 0\n"}.items():
