@@ -683,6 +683,7 @@ type TrafficBackoffConfig struct {
 }
 
 type RequestShapeSupport struct {
+	RequiredInputModalities          []string `yaml:"required_input_modalities" json:"requiredInputModalities,omitempty"`
 	MaxRequestBytes                  int      `yaml:"max_request_bytes" json:"maxRequestBytes,omitempty"`
 	MaxEstimatedInputTokens          int      `yaml:"max_estimated_input_tokens" json:"maxEstimatedInputTokens,omitempty"`
 	MinRequestedOutputTokens         int      `yaml:"min_requested_output_tokens" json:"minRequestedOutputTokens,omitempty"`
@@ -2519,6 +2520,9 @@ func validateOutputTokenField(value string) error {
 
 func mergeRequestShapeSupport(base, override RequestShapeSupport) RequestShapeSupport {
 	out := base
+	if len(override.RequiredInputModalities) > 0 {
+		out.RequiredInputModalities = append([]string(nil), override.RequiredInputModalities...)
+	}
 	if override.MaxRequestBytes != 0 {
 		out.MaxRequestBytes = override.MaxRequestBytes
 	}
@@ -2746,6 +2750,11 @@ func validBridgeSessionRedisNamespace(namespace string) bool {
 }
 
 func validateRequestShapeSupport(prefix string, support RequestShapeSupport) error {
+	for _, modality := range support.RequiredInputModalities {
+		if !requestShapeInputModalityAllowed(modality) {
+			return fmt.Errorf("%s request_shape_support.required_input_modalities contains unsupported modality %q", prefix, modality)
+		}
+	}
 	if support.MaxRequestBytes < 0 {
 		return fmt.Errorf("%s request_shape_support.max_request_bytes cannot be negative", prefix)
 	}
@@ -2781,6 +2790,15 @@ func validateRequestShapeSupport(prefix string, support RequestShapeSupport) err
 		return fmt.Errorf("%s request_shape_support.validation_status %q is unsupported", prefix, support.ValidationStatus)
 	}
 	return nil
+}
+
+func requestShapeInputModalityAllowed(modality string) bool {
+	switch strings.ToLower(strings.TrimSpace(modality)) {
+	case "text", "image", "audio", "video":
+		return true
+	default:
+		return false
+	}
 }
 
 func requestShapeFeatureAllowed(feature string) bool {

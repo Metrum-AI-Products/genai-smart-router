@@ -167,6 +167,11 @@ func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outD
 	if len(support.SupportedInboundDialects) > 0 && !stringSliceContainsNormalizedDialect(support.SupportedInboundDialects, callerDialect) {
 		return "request-shape-dialect-unsupported"
 	}
+	for _, modality := range support.RequiredInputModalities {
+		if !stringSliceContains(requestInputModalities(req), modality) {
+			return "request-shape-required-input-modality"
+		}
+	}
 	if feature := firstUnsupportedRequestFeature(req, support.UnsupportedRequestFeatures); feature != "" {
 		return "request-shape-unsupported-feature"
 	}

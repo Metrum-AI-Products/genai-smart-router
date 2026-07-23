@@ -208,6 +208,8 @@ Reasoning is not implied by either bridge. `bridges.chat_to_responses.reasoning:
 
 ```yaml
 request_shape_support:
+  # Positive gate: use this target only when every listed modality is present.
+  required_input_modalities: [image]
   max_request_bytes: 300000
   max_estimated_input_tokens: 90000
   min_requested_output_tokens: 16
@@ -224,6 +226,12 @@ request_shape_support:
 ```
 
 Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
+
+Use `required_input_modalities` as a positive eligibility gate for a target that
+is validated only for a modality-specific request shape. For example, `[image]`
+keeps an image specialist out of text-only traffic and records
+`request-shape-required-input-modality` when it is skipped. This metadata never
+alters caller content or silently adds a modality.
 
 Use `unsupported_request_features` for deterministic provider incompatibilities that are narrower than the whole target. For example, some OpenAI-compatible coding-agent clients send Chat `stream_options` while the router converts tool-bearing upstream calls to unary requests and synthesizes downstream SSE. If a provider/model rejects that exact shape, set `stream_options` until a direct upstream smoke and router-level smoke pass for that provider/model/skin.
 
