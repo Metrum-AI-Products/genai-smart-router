@@ -723,35 +723,39 @@ type adminReportTableRow struct {
 }
 
 type adminReportRequest struct {
-	TimeUTC        string  `json:"timeUtc"`
-	RequestID      string  `json:"requestId"`
-	CallerID       string  `json:"callerId"`
-	CallerUser     string  `json:"callerUser"`
-	Project        string  `json:"project"`
-	Environment    string  `json:"environment"`
-	TokenID        string  `json:"tokenId"`
-	CallerIP       string  `json:"callerIp"`
-	Client         string  `json:"client"`
-	RequestedModel string  `json:"requestedModel"`
-	ModelGroup     string  `json:"modelGroup"`
-	Provider       string  `json:"provider"`
-	Model          string  `json:"model"`
-	Dialect        string  `json:"dialect"`
-	Status         int     `json:"status"`
-	Error          string  `json:"error,omitempty"`
-	Cache          string  `json:"cache"`
-	Attempts       int     `json:"attempts"`
-	Fallback       bool    `json:"fallback"`
-	LatencyMS      int64   `json:"latencyMs"`
-	TTFBMS         *int64  `json:"ttfbMs,omitempty"`
-	UpstreamMS     *int64  `json:"upstreamMs,omitempty"`
-	DownstreamMS   *int64  `json:"downstreamMs,omitempty"`
-	Tokens         int     `json:"tokens"`
-	TotalTokens    int     `json:"totalTokens"`
-	InputTokens    int     `json:"inputTokens"`
-	OutputTokens   int     `json:"outputTokens"`
-	CostUSD        float64 `json:"costUsd"`
-	TotalCostUSD   float64 `json:"totalCostUsd"`
+	TimeUTC                         string  `json:"timeUtc"`
+	RequestID                       string  `json:"requestId"`
+	CallerID                        string  `json:"callerId"`
+	CallerUser                      string  `json:"callerUser"`
+	Project                         string  `json:"project"`
+	Environment                     string  `json:"environment"`
+	TokenID                         string  `json:"tokenId"`
+	CallerIP                        string  `json:"callerIp"`
+	Client                          string  `json:"client"`
+	RequestedModel                  string  `json:"requestedModel"`
+	ModelGroup                      string  `json:"modelGroup"`
+	Provider                        string  `json:"provider"`
+	Model                           string  `json:"model"`
+	Dialect                         string  `json:"dialect"`
+	Status                          int     `json:"status"`
+	Error                           string  `json:"error,omitempty"`
+	Cache                           string  `json:"cache"`
+	Attempts                        int     `json:"attempts"`
+	Fallback                        bool    `json:"fallback"`
+	LatencyMS                       int64   `json:"latencyMs"`
+	TTFBMS                          *int64  `json:"ttfbMs,omitempty"`
+	UpstreamMS                      *int64  `json:"upstreamMs,omitempty"`
+	DownstreamMS                    *int64  `json:"downstreamMs,omitempty"`
+	Tokens                          int     `json:"tokens"`
+	TotalTokens                     int     `json:"totalTokens"`
+	InputTokens                     int     `json:"inputTokens"`
+	OutputTokens                    int     `json:"outputTokens"`
+	ReasoningTokens                 *int    `json:"reasoningTokens,omitempty"`
+	ReasoningAttemptCount           int     `json:"reasoningAttemptCount"`
+	ReasoningSuccessfulAttemptCount int     `json:"reasoningSuccessfulAttemptCount"`
+	ReasoningReportedAttemptCount   int     `json:"reasoningReportedAttemptCount"`
+	CostUSD                         float64 `json:"costUsd"`
+	TotalCostUSD                    float64 `json:"totalCostUsd"`
 }
 
 type adminReportAttempt struct {
@@ -775,6 +779,7 @@ type adminReportAttempt struct {
 	ResponseBytes    int64  `json:"responseBytes"`
 	AttemptTimeoutMS int    `json:"attemptTimeoutMs"`
 	RetryAfterMS     int64  `json:"retryAfterMs"`
+	ReasoningTokens  *int   `json:"reasoningTokens,omitempty"`
 }
 
 type adminReportTraceEvent struct {
@@ -5334,35 +5339,39 @@ func adminFilterDTO(filters adminReportFilters) adminReportFilterDTO {
 
 func adminRequestFromRow(row usageRow) adminReportRequest {
 	return adminReportRequest{
-		TimeUTC:        formatUsageTime(row.TS),
-		RequestID:      row.RequestID,
-		CallerID:       row.CallerID,
-		CallerUser:     row.CallerUser,
-		Project:        row.CallerProject,
-		Environment:    row.CallerEnvironment,
-		TokenID:        row.TokenID,
-		CallerIP:       row.CallerIP,
-		Client:         row.Client,
-		RequestedModel: row.RequestedModel,
-		ModelGroup:     defaultString(row.ResolvedGroup, row.RequestedModel),
-		Provider:       row.TargetProvider,
-		Model:          row.TargetModel,
-		Dialect:        row.TargetDialect,
-		Status:         row.Status,
-		Error:          sanitizePersistedDiagnosticText(row.Error),
-		Cache:          row.Cache,
-		Attempts:       row.Attempts,
-		Fallback:       row.FallbackUsed,
-		LatencyMS:      row.LatencyMS,
-		TTFBMS:         row.TTFBMS,
-		UpstreamMS:     row.UpstreamMS,
-		DownstreamMS:   row.DownstreamMS,
-		Tokens:         totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
-		TotalTokens:    totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
-		InputTokens:    row.InputTokens,
-		OutputTokens:   row.OutputTokens,
-		CostUSD:        row.TotalCostUSD,
-		TotalCostUSD:   row.TotalCostUSD,
+		TimeUTC:                         formatUsageTime(row.TS),
+		RequestID:                       row.RequestID,
+		CallerID:                        row.CallerID,
+		CallerUser:                      row.CallerUser,
+		Project:                         row.CallerProject,
+		Environment:                     row.CallerEnvironment,
+		TokenID:                         row.TokenID,
+		CallerIP:                        row.CallerIP,
+		Client:                          row.Client,
+		RequestedModel:                  row.RequestedModel,
+		ModelGroup:                      defaultString(row.ResolvedGroup, row.RequestedModel),
+		Provider:                        row.TargetProvider,
+		Model:                           row.TargetModel,
+		Dialect:                         row.TargetDialect,
+		Status:                          row.Status,
+		Error:                           sanitizePersistedDiagnosticText(row.Error),
+		Cache:                           row.Cache,
+		Attempts:                        row.Attempts,
+		Fallback:                        row.FallbackUsed,
+		LatencyMS:                       row.LatencyMS,
+		TTFBMS:                          row.TTFBMS,
+		UpstreamMS:                      row.UpstreamMS,
+		DownstreamMS:                    row.DownstreamMS,
+		Tokens:                          totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+		TotalTokens:                     totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
+		InputTokens:                     row.InputTokens,
+		OutputTokens:                    row.OutputTokens,
+		ReasoningTokens:                 row.ReasoningTokens,
+		ReasoningAttemptCount:           row.ReasoningAttemptCount,
+		ReasoningSuccessfulAttemptCount: row.ReasoningSuccessfulAttemptCount,
+		ReasoningReportedAttemptCount:   row.ReasoningReportedAttemptCount,
+		CostUSD:                         row.TotalCostUSD,
+		TotalCostUSD:                    row.TotalCostUSD,
 	}
 }
 
@@ -5390,6 +5399,7 @@ func adminAttemptsFromRecords(records []requestAttemptRecord) []adminReportAttem
 			ResponseBytes:    record.ResponseBytes,
 			AttemptTimeoutMS: record.AttemptTimeoutMS,
 			RetryAfterMS:     record.RetryAfterMS,
+			ReasoningTokens:  record.ReasoningTokens,
 		})
 	}
 	return out

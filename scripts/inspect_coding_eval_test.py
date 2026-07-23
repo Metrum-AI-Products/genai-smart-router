@@ -24,6 +24,8 @@ def main() -> int:
     root=Path(raw); bin_dir=root/"bin"; bin_dir.mkdir(); capture=root/"capture.json"
     for name, body in {"docker":"#!/bin/sh\nexit 0\n", "inspect":"#!/bin/sh\nprintf '%s\\n' \"$PWD|$*|$OPENAI_API_KEY\" > \"$CAPTURE\"\nexit 0\n"}.items():
       path=bin_dir/name; path.write_text(body); path.chmod(0o755)
+    go_export_capture=root/"usage-export.txt"
+    go_script=bin_dir/"go"; go_script.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$USAGE_EXPORT_CAPTURE\"\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--reasoning-coverage-out\" ]; then shift; printf '%s\\n' '{\"reasoning_tokens\":7,\"reasoning_attempt_count\":1,\"reasoning_successful_attempt_count\":1,\"reasoning_reported_attempt_count\":1,\"reasoning_provider_model_dialect_coverage_complete\":true,\"reasoning_provider_model_dialect_coverage\":[{\"provider\":\"usage-db\",\"model\":\"safe-model\",\"dialect\":\"openai-chat\",\"attempts\":1,\"reported_attempts\":1,\"reasoning_tokens\":7}]}' > \"$1\"; exit 0; fi\n  shift\ndone\nexit 1\n"); go_script.chmod(0o755)
     policy=root/"policy.json"; policy.write_text(json.dumps({"approved_direct_baselines":["vendor/model"],"regression_thresholds":{"max_score_delta":0.05,"max_unscored_error_rate":0.1,"max_p95_sample_time_growth":0.25,"max_token_cost_growth":0.25}}))
     logs=root/"logs"; base=os.environ|{"PATH":str(bin_dir),"CAPTURE":str(capture),"EVAL_MODEL":"team/coding","EVAL_MODEL_KIND":"router-group","EVAL_API":"openai","EVAL_REASONING":"low","EVAL_BASE_URL":"https://router.invalid/v1","EVAL_API_KEY":"not-a-real-secret","OPENAI_API_KEY":"ambient-wrong-key","EVAL_LOG_DIR":str(logs),"EVAL_POLICY":str(policy),"EVAL_LIMIT":"2","EVAL_CONCURRENCY":"1"}
     done=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=base,text=True,capture_output=True)
@@ -35,6 +37,14 @@ def main() -> int:
     bigcodebench=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","bigcodebench"],env=base,text=True,capture_output=True)
     need(bigcodebench.returncode==0 and "inspect_evals/bigcodebench" in capture.read_text(),"BigCodeBench task was not qualified")
     need((logs/"humaneval"/"inspect-eval-status.json").exists() and (logs/"bigcodebench"/"inspect-eval-status.json").exists(),"suite runs overwrote each other's status")
+    covered_logs=root/"covered-logs"
+    covered=base|{"EVAL_LOG_DIR":str(covered_logs),"EVAL_USAGE_CONFIG_YAML":"server:\n  usage_db:\n    driver: postgres\n","EVAL_USAGE_CALLER_ID":"evaluation-caller","USAGE_EXPORT_CAPTURE":str(go_export_capture)}
+    covered_run=subprocess.run([sys.executable,str(SCRIPT),"smoke"],env=covered,text=True,capture_output=True)
+    covered_summary=(covered_logs/"humaneval"/"evaluation-summary.json").read_text()
+    export_args=go_export_capture.read_text()
+    need(covered_run.returncode in (0,1) and '"reasoning_tokens": 7' in covered_summary and "usage-db" in covered_summary and "--caller-id evaluation-caller" in export_args and "--resolved-group team/coding" in export_args and "--from" in export_args and "--to" in export_args,f"smoke did not run the protected usage exporter before reporting: return={covered_run.returncode} stderr={covered_run.stderr} summary={covered_summary} args={export_args}")
+    coverage_missing=subprocess.run([sys.executable,str(SCRIPT),"smoke"],env=base,text=True,capture_output=True)
+    need(coverage_missing.returncode==2 and "reasoning coverage requires" in coverage_missing.stderr,"router-group smoke did not block before running without protected usage-export inputs")
     direct=base|{"EVAL_MODEL":"vendor/model","EVAL_MODEL_KIND":"direct-baseline","EVAL_LOG_DIR":str(root/"direct-logs"),"CAPTURE":str(root/"direct.txt")}
     direct_run=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=direct,text=True,capture_output=True)
     need(direct_run.returncode==0 and "--model openai/vendor/model" in (root/"direct.txt").read_text(),"direct baseline was not explicitly provider-qualified")
@@ -46,10 +56,25 @@ def main() -> int:
     need(invalid_run.returncode==2 and "EVAL_MODEL_KIND" in invalid_run.stderr,"invalid model kind did not block")
     ci_missing=subprocess.run([sys.executable,str(SCRIPT),"ci-full"],env=base,text=True,capture_output=True)
     need(ci_missing.returncode==2 and "EVAL_BASELINE_HUMANEVAL_JSON" in ci_missing.stderr,"full CI lane did not require protected baselines")
-    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"status":"completed","completed":True,"score":0.8,"correct":8,"scored":10,"unscored":0,"p95_sample_time_ms":100,"token_cost":1,"inbound_dialect":"openai_chat","tools_present":False,"tool_count_bucket":"0","streaming":False,"caller_output_cap_field":"max_tokens","request_size_bucket":"small","tool_schema_bytes_bucket":"0","authorization":"leak","response":"leak"}))
+    coverage_leak="coverage-response-must-not-persist"
+    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"status":"completed","completed":True,"score":0.8,"correct":8,"scored":10,"unscored":0,"p95_sample_time_ms":100,"token_cost":1,"inbound_dialect":"openai_chat","tools_present":False,"tool_count_bucket":"0","streaming":False,"caller_output_cap_field":"max_tokens","request_size_bucket":"small","tool_schema_bytes_bucket":"0","reasoning_tokens":0,"reasoning_attempt_count":2,"reasoning_successful_attempt_count":2,"reasoning_reported_attempt_count":1,"reasoning_provider_model_dialect_coverage_complete":True,"reasoning_provider_model_dialect_coverage":[{"provider":"safe-provider","model":"safe-model","dialect":"openai-chat","attempts":2,"reported_attempts":1,"reasoning_tokens":0,"response":coverage_leak,"headers":{"authorization":coverage_leak}}],"authorization":"leak","response":"leak"}))
     usage=json.dumps({"stored_request_time_cost_usd":1})
     report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
-    need(report.returncode==0,report.stderr); rendered=(suite_logs/"evaluation-summary.md").read_text(); need("leak" not in rendered and "openai_chat" in rendered and "caller_output_cap_field" in rendered,"secret/raw content leaked or request-shape missing")
+    need(report.returncode==0,report.stderr); rendered=(suite_logs/"evaluation-summary.md").read_text(); summary_json=(suite_logs/"evaluation-summary.json").read_text(); need("leak" not in rendered and coverage_leak not in rendered and coverage_leak not in summary_json and "openai_chat" in rendered and "caller_output_cap_field" in rendered and "1 reported / 2 upstream attempts (0 tokens; 2 successful)" in rendered and "safe-provider" in rendered,"secret/raw content leaked or reasoning coverage missing")
+    protected_coverage=root/"protected-reasoning-coverage.json"
+    protected_coverage.write_text(json.dumps({"reasoning_tokens":9,"reasoning_attempt_count":1,"reasoning_successful_attempt_count":1,"reasoning_reported_attempt_count":1,"reasoning_provider_model_dialect_coverage_complete":True,"reasoning_provider_model_dialect_coverage":[{"provider":"usage-db-provider","model":"usage-db-model","dialect":"openai-chat","attempts":1,"reported_attempts":1,"reasoning_tokens":9,"response":coverage_leak}]}))
+    protected_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(protected_coverage)},text=True,capture_output=True)
+    protected_summary=(suite_logs/"evaluation-summary.json").read_text()
+    need(protected_report.returncode==0 and '"reasoning_tokens": 9' in protected_summary and "usage-db-provider" in protected_summary and coverage_leak not in protected_summary,"protected aggregate-only reasoning coverage was not used safely")
+    invalid_coverage=root/"invalid-reasoning-coverage.json"; invalid_coverage.write_text("not-json")
+    invalid_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(invalid_coverage)},text=True,capture_output=True)
+    need(invalid_report.returncode==2 and "protected reasoning coverage unavailable" in invalid_report.stderr,"invalid protected coverage did not block")
+    malformed_coverage=root/"malformed-reasoning-coverage.json"; malformed_coverage.write_text("{}")
+    malformed_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(malformed_coverage)},text=True,capture_output=True)
+    need(malformed_report.returncode==2 and "coverage is incomplete" in malformed_report.stderr,"incomplete protected coverage did not fail closed")
+    inconsistent_coverage=root/"inconsistent-reasoning-coverage.json"; inconsistent_coverage.write_text(json.dumps({"reasoning_tokens":8,"reasoning_attempt_count":1,"reasoning_successful_attempt_count":1,"reasoning_reported_attempt_count":1,"reasoning_provider_model_dialect_coverage_complete":True,"reasoning_provider_model_dialect_coverage":[{"provider":"safe","model":"safe","dialect":"openai-chat","attempts":1,"reported_attempts":1,"reasoning_tokens":7}]}))
+    inconsistent_report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_REASONING_COVERAGE_FILE":str(inconsistent_coverage)},text=True,capture_output=True)
+    need(inconsistent_report.returncode==2 and "totals are inconsistent" in inconsistent_report.stderr,"inconsistent protected coverage did not fail closed")
     baseline_env=base|{"EVAL_ROUTER_USAGE_JSON":usage,"EVAL_BASELINE_JSON":json.dumps({"score":0.9,"unscored_error_rate":0,"p95_sample_time_ms":100,"token_cost":1})}
     baseline_failed=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=baseline_env,text=True,capture_output=True)
     need(baseline_failed.returncode==1,"protected baseline JSON did not enforce regression policy")
@@ -58,13 +83,20 @@ def main() -> int:
     need(empty_failed.returncode==1,"empty protected baseline returned success")
     ci_reports=root/"ci-reports"; ci_env=os.environ|{"EVAL_SAVE_CI_REPORT":"true","EVAL_CI_REPORT_DIR":str(ci_reports),"EVAL_CI_REPORT_TIMESTAMP":"20260723T191500Z-123-1"}
     saved=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=ci_env|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
-    need(saved.returncode==0,saved.stderr); need((ci_reports/"20260723T191500Z-123-1"/"evaluation-summary.md").exists(),"timestamped CI Markdown report missing")
+    need(saved.returncode==0,saved.stderr); saved_dir=ci_reports/"20260723T191500Z-123-1"; need((saved_dir/"evaluation-summary.md").exists() and coverage_leak not in (saved_dir/"evaluation-summary.json").read_text(),"timestamped CI report leaked coverage content or is missing")
+    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"reasoning_tokens":9,"reasoning_attempt_count":1,"reasoning_successful_attempt_count":1,"reasoning_reported_attempt_count":1}))
+    complete=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
+    need(complete.returncode==0 and "9 (complete coverage)" in (suite_logs/"evaluation-summary.md").read_text(),"complete reasoning coverage was not rendered")
+    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"reasoning_attempt_count":1,"reasoning_successful_attempt_count":1,"reasoning_reported_attempt_count":0}))
+    absent=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
+    need(absent.returncode==0 and "reasoning tokens: not reported" in (suite_logs/"evaluation-summary.md").read_text(),"absent reasoning coverage was not rendered")
+    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"score":0.8,"unscored_error_rate":0,"p95_sample_time_ms":100,"token_cost":1}))
     (suite_logs/"inspect-baseline-aggregate.json").write_text(json.dumps({"score":0.9,"unscored_error_rate":0,"p95_sample_time_ms":100,"token_cost":1}))
     failed=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
     need(failed.returncode==1,"score regression did not fail")
-    (suite_logs/"inspect-baseline-aggregate.json").unlink()
+    (suite_logs/"inspect-baseline-aggregate.json").unlink(missing_ok=True)
     (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"status":"completed","completed":True,"partial":True,"skipped":False,"blocked":False}))
-    incomplete=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],text=True,capture_output=True)
+    incomplete=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],env=base|{"EVAL_ROUTER_USAGE_JSON":usage},text=True,capture_output=True)
     need(incomplete.returncode==1,"incomplete aggregate returned success")
     blocked=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env={"PATH":str(bin_dir)},text=True,capture_output=True)
     need(blocked.returncode==2 and "blocked" in blocked.stderr,blocked.stderr)

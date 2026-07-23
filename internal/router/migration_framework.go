@@ -19,8 +19,9 @@ import (
 const usageMigrationScope = "usage"
 
 const usageLegacyBaselineMigrationID = 2026071901
+const usageReasoningTelemetryMigrationID = 2026072301
 
-var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}
+var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}
 
 // usageMigrationDefinitions starts the immutable usage manifest by adopting a
 // database created by the pre-ledger initializer. It intentionally contains no
@@ -40,6 +41,21 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	RollbackClass:   "package-only",
 	Apply:           verifyUsageLegacyBaseline,
 	Verify:          verifyUsageLegacyBaseline,
+}, {
+	ID:              usageReasoningTelemetryMigrationID,
+	Scope:           usageMigrationScope,
+	Name:            "add nullable reasoning-token usage telemetry",
+	Release:         "2026.7",
+	Checksum:        "e23d1dd0f41292af050f2ee9a6c2bc55a5430d22397c90dd33c145bd350264b8",
+	SchemaVersion:   2,
+	DataVersion:     0,
+	Transactional:   true,
+	MaintenanceMode: "online",
+	// Older binaries reject this new ledger ID under validate/deployment-job.
+	// Downgrade therefore requires restoring the pre-migration database snapshot.
+	RollbackClass: "restore-required",
+	Apply:         applyUsageReasoningTelemetryMigration,
+	Verify:        verifyUsageReasoningTelemetryMigration,
 }}
 
 // MigrationCompatibility declares the inclusive schema/data versions a binary

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"smart-llmrouter/internal/buildinfo"
@@ -18,12 +20,16 @@ func main() {
 	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
 	dsn := flag.String("dsn", "", "Postgres DSN when --driver=postgres")
+	usageDBConfigPath := flag.String("usage-db-config", "", "protected router config path from which to read usage DB settings")
+	migrationPolicy := flag.String("migration-policy", "", "usage DB migration policy; normally supplied by --usage-db-config")
 	logPath := flag.String("log", "", "optional JSONL request log to import before reporting")
 	fromText := flag.String("from", "", "report start time, RFC3339 or 2006-01-02T15:04:05Z")
 	toText := flag.String("to", "", "report end time, RFC3339 or 2006-01-02T15:04:05Z; defaults to now")
 	sinceText := flag.String("since", "24h", "relative report duration when --from is omitted, such as 24h, 7d, 30d")
 	outPath := flag.String("out", "", "optional markdown output path; defaults to stdout")
+	reasoningCoverageOut := flag.String("reasoning-coverage-out", "", "write aggregate-only reasoning coverage JSON for a protected evaluation report")
 	tokenID := flag.String("token-id", "", "filter report to one public router token id")
+	callerID := flag.String("caller-id", "", "filter report to one configured caller id")
 	tokenIDPrefix := flag.String("token-id-prefix", "", "filter report to public router token ids with this prefix")
 	callerUser := flag.String("caller-user", "", "filter report to one caller owner user")
 	callerProject := flag.String("caller-project", "", "filter report to one caller project")
@@ -109,6 +115,16 @@ func main() {
 		}
 		return
 	}
+	if *usageDBConfigPath != "" {
+		cfg, err := router.LoadConfig(*usageDBConfigPath)
+		if err != nil {
+			die("load --usage-db-config: %v", err)
+		}
+		*driver = cfg.Server.UsageDB.Driver
+		*dbPath = cfg.Server.UsageDB.Path
+		*dsn = cfg.Server.UsageDB.DSN
+		*migrationPolicy = cfg.Server.UsageDB.MigrationPolicy
+	}
 
 	if *rollup {
 		result, err := router.GenerateUsageRollup(router.UsageRollupOptions{
@@ -138,9 +154,11 @@ func main() {
 		Driver:             *driver,
 		DBPath:             *dbPath,
 		DSN:                *dsn,
+		MigrationPolicy:    *migrationPolicy,
 		LogPath:            *logPath,
 		From:               from,
 		To:                 to,
+		CallerID:           *callerID,
 		TokenID:            *tokenID,
 		TokenIDPrefix:      *tokenIDPrefix,
 		CallerUser:         *callerUser,
@@ -153,6 +171,20 @@ func main() {
 		TrafficShapedOnly:  *trafficShapedOnly,
 		TrafficShapeBucket: *trafficShapeBucket,
 		TrafficShapeScope:  *trafficShapeScope,
+	}
+	if *reasoningCoverageOut != "" {
+		coverage, err := router.ExportReasoningCoverage(reportOpts)
+		if err != nil {
+			die("export reasoning coverage: %v", err)
+		}
+		payload, err := json.MarshalIndent(coverage, "", "  ")
+		if err != nil {
+			die("encode reasoning coverage: %v", err)
+		}
+		if err := writePrivateFile(*reasoningCoverageOut, append(payload, '\n')); err != nil {
+			die("write --reasoning-coverage-out: %v", err)
+		}
+		return
 	}
 	var md string
 	if *trafficTuningAdvisor {
@@ -170,6 +202,28 @@ func main() {
 	if err := os.WriteFile(*outPath, []byte(md), 0600); err != nil {
 		die("write --out: %v", err)
 	}
+}
+
+func writePrivateFile(path string, contents []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".router-usage-report-")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(contents); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func parseTime(v string) (time.Time, error) {

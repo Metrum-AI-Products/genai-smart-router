@@ -184,11 +184,7 @@ func decodeResponsesToChatBridge(raw []byte, model string) (*IRResponse, error) 
 		"model":       model,
 		"output_text": text,
 		"output":      output,
-		"usage": map[string]any{
-			"input_tokens":  usage.InputTokens,
-			"output_tokens": usage.OutputTokens,
-			"total_tokens":  usage.TotalTokens,
-		},
+		"usage":       responsesUsageMap(usage),
 	}
 	if stopReason != "" {
 		responses["finish_reason"] = stopReason

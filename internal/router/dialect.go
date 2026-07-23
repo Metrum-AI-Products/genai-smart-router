@@ -514,6 +514,7 @@ func encodeChatResponse(resp *IRResponse) map[string]any {
 	if resp.RawResponse && resp.Raw != nil {
 		return resp.Raw
 	}
+	usage := chatUsageMap(resp.Usage)
 	return map[string]any{
 		"id":      resp.ID,
 		"object":  "chat.completion",
@@ -524,11 +525,7 @@ func encodeChatResponse(resp *IRResponse) map[string]any {
 			"finish_reason": defaultString(resp.StopReason, "stop"),
 			"message":       map[string]any{"role": "assistant", "content": resp.Text},
 		}},
-		"usage": map[string]any{
-			"prompt_tokens":     resp.Usage.InputTokens,
-			"completion_tokens": resp.Usage.OutputTokens,
-			"total_tokens":      resp.Usage.TotalTokens,
-		},
+		"usage": usage,
 	}
 }
 
@@ -536,6 +533,7 @@ func encodeResponsesResponse(resp *IRResponse) map[string]any {
 	if resp.RawResponse && resp.Raw != nil {
 		return resp.Raw
 	}
+	usage := responsesUsageMap(resp.Usage)
 	return map[string]any{
 		"id":          resp.ID,
 		"object":      "response",
@@ -551,12 +549,24 @@ func encodeResponsesResponse(resp *IRResponse) map[string]any {
 				"text": resp.Text,
 			}},
 		}},
-		"usage": map[string]any{
-			"input_tokens":  resp.Usage.InputTokens,
-			"output_tokens": resp.Usage.OutputTokens,
-			"total_tokens":  resp.Usage.TotalTokens,
-		},
+		"usage": usage,
 	}
+}
+
+func chatUsageMap(usage Usage) map[string]any {
+	out := map[string]any{"prompt_tokens": usage.InputTokens, "completion_tokens": usage.OutputTokens, "total_tokens": usage.TotalTokens}
+	if usage.ReasoningTokens != nil {
+		out["completion_tokens_details"] = map[string]any{"reasoning_tokens": *usage.ReasoningTokens}
+	}
+	return out
+}
+
+func responsesUsageMap(usage Usage) map[string]any {
+	out := map[string]any{"input_tokens": usage.InputTokens, "output_tokens": usage.OutputTokens, "total_tokens": usage.TotalTokens}
+	if usage.ReasoningTokens != nil {
+		out["output_tokens_details"] = map[string]any{"reasoning_tokens": *usage.ReasoningTokens}
+	}
+	return out
 }
 
 func decodeMessages(v any) []IRMessage {
@@ -1025,6 +1035,16 @@ func usageFromMap(v any) Usage {
 		total = in + out
 	}
 	imageTokens := imageTokensFromUsage(m)
+	var reasoningTokens *int
+	// OpenAI-compatible usage schema. Provider-specific aliases require direct evidence.
+	for _, key := range []string{"completion_tokens_details", "output_tokens_details"} {
+		if details, ok := m[key].(map[string]any); ok {
+			if n, present := numberAsInt(details["reasoning_tokens"]); present {
+				reasoningTokens = &n
+				break
+			}
+		}
+	}
 	upstreamTotalCost, _ := numberAsFloat(m["cost"])
 	costDetails, _ := m["cost_details"].(map[string]any)
 	upstreamInputCost, _ := numberAsFloat(costDetails["upstream_inference_prompt_cost"])
@@ -1036,6 +1056,7 @@ func usageFromMap(v any) Usage {
 		InputTokens:                   in,
 		OutputTokens:                  out,
 		TotalTokens:                   total,
+		ReasoningTokens:               reasoningTokens,
 		InputImageTokens:              imageTokens,
 		UpstreamReportedInputCostUSD:  upstreamInputCost,
 		UpstreamReportedOutputCostUSD: upstreamOutputCost,

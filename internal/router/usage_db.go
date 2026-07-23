@@ -58,6 +58,7 @@ type UsageReportOptions struct {
 	Driver             string
 	DBPath             string
 	DSN                string
+	MigrationPolicy    string
 	LogPath            string
 	From               time.Time
 	To                 time.Time
@@ -91,6 +92,29 @@ type UsageReportOptions struct {
 	RequestShapeFP     string
 	ToolSchemaFP       string
 	ErrorClass         string
+}
+
+// ReasoningCoverageExport is an aggregate-only view for protected evaluation
+// reporting. It intentionally contains no request identifiers, callers,
+// prompts, response content, headers, credentials, or endpoint details.
+type ReasoningCoverageExport struct {
+	ReasoningTokens                 int                    `json:"reasoning_tokens"`
+	ReasoningAttemptCount           int                    `json:"reasoning_attempt_count"`
+	ReasoningSuccessfulAttemptCount int                    `json:"reasoning_successful_attempt_count"`
+	ReasoningReportedAttemptCount   int                    `json:"reasoning_reported_attempt_count"`
+	Coverage                        []ReasoningCoverageRow `json:"reasoning_provider_model_dialect_coverage"`
+	CoverageComplete                bool                   `json:"reasoning_provider_model_dialect_coverage_complete"`
+}
+
+// ReasoningCoverageRow is a provider/model/dialect aggregate for an evaluation
+// window. Reasoning tokens are a subset of output tokens, not an additive total.
+type ReasoningCoverageRow struct {
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	Dialect          string `json:"dialect"`
+	Attempts         int    `json:"attempts"`
+	ReportedAttempts int    `json:"reported_attempts"`
+	ReasoningTokens  int    `json:"reasoning_tokens"`
 }
 
 type UsageRollupOptions struct {
@@ -254,6 +278,10 @@ type usageRow struct {
 	InputTokens                        int
 	OutputTokens                       int
 	TotalTokens                        int
+	ReasoningTokens                    *int
+	ReasoningAttemptCount              int
+	ReasoningSuccessfulAttemptCount    int
+	ReasoningReportedAttemptCount      int
 	InputHasImage                      bool
 	InputImageCount                    int
 	InputImageTokens                   int
@@ -403,6 +431,10 @@ type usageRecord struct {
 	InputTokens                        int                                `gorm:"column:input_tokens;not null"`
 	OutputTokens                       int                                `gorm:"column:output_tokens;not null"`
 	TotalTokens                        int                                `gorm:"column:total_tokens;not null"`
+	ReasoningTokens                    *int                               `gorm:"column:reasoning_tokens"`
+	ReasoningAttemptCount              int                                `gorm:"column:reasoning_attempt_count;not null;default:0"`
+	ReasoningSuccessfulAttemptCount    int                                `gorm:"column:reasoning_successful_attempt_count;not null;default:0"`
+	ReasoningReportedAttemptCount      int                                `gorm:"column:reasoning_reported_attempt_count;not null;default:0"`
 	InputHasImage                      bool                               `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
 	InputImageCount                    int                                `gorm:"column:input_image_count;not null;default:0"`
 	InputImageTokens                   int                                `gorm:"column:input_image_tokens;not null;default:0"`
@@ -940,6 +972,7 @@ type requestAttemptRecord struct {
 	ResponseBytes    int64  `gorm:"column:response_bytes;not null"`
 	AttemptTimeoutMS int    `gorm:"column:attempt_timeout_ms;not null"`
 	RetryAfterMS     int64  `gorm:"column:retry_after_ms;not null;default:0"`
+	ReasoningTokens  *int   `gorm:"column:reasoning_tokens"`
 }
 
 func (requestAttemptRecord) TableName() string {
@@ -1728,6 +1761,47 @@ var usageRelationalTables = []string{
 // complete explicit DDL manifest is prepared as a later migration slice.
 func verifyUsageLegacyBaseline(db *gorm.DB) error { return ensureUsageRelationalSchema(db) }
 
+func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
+	for _, column := range []struct {
+		model any
+		field string
+	}{
+		{&usageRecord{}, "ReasoningTokens"},
+		{&usageRecord{}, "ReasoningAttemptCount"},
+		{&usageRecord{}, "ReasoningSuccessfulAttemptCount"},
+		{&usageRecord{}, "ReasoningReportedAttemptCount"},
+		{&requestAttemptRecord{}, "ReasoningTokens"},
+	} {
+		if !db.Migrator().HasColumn(column.model, column.field) {
+			if err := db.Migrator().AddColumn(column.model, column.field); err != nil {
+				return fmt.Errorf("add reasoning telemetry column %s: %w", column.field, err)
+			}
+		}
+	}
+	return verifyUsageReasoningTelemetryMigration(db)
+}
+
+func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
+	if err := verifyUsageLegacyBaseline(db); err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		model any
+		name  string
+	}{
+		{&usageRecord{}, "reasoning_tokens"},
+		{&usageRecord{}, "reasoning_attempt_count"},
+		{&usageRecord{}, "reasoning_successful_attempt_count"},
+		{&usageRecord{}, "reasoning_reported_attempt_count"},
+		{&requestAttemptRecord{}, "reasoning_tokens"},
+	} {
+		if !db.Migrator().HasColumn(column.model, column.name) {
+			return fmt.Errorf("required reasoning telemetry column %s is missing", column.name)
+		}
+	}
+	return nil
+}
+
 func (s *usageStore) Emit(rec logRecord) {
 	if s == nil || s.db == nil || rec.RequestID == "" {
 		return
@@ -1815,6 +1889,7 @@ func attemptRecordFromLog(requestID string, rec attemptLogRecord) *requestAttemp
 		ResponseBytes:    rec.ResponseBytes,
 		AttemptTimeoutMS: rec.AttemptTimeoutMS,
 		RetryAfterMS:     rec.RetryAfterMS,
+		ReasoningTokens:  rec.ReasoningTokens,
 	}
 }
 
@@ -2228,6 +2303,10 @@ func rowFromRecord(rec logRecord) usageRow {
 	} else {
 		tokenID = publicTokenID(tokenID)
 	}
+	reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported := rec.ReasoningTokens, rec.ReasoningAttemptCount, rec.ReasoningSuccessfulAttemptCount, rec.ReasoningReportedAttemptCount
+	if !rec.ReasoningCoverageMeasured {
+		reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported = reasoningUsageCoverage(rec.AttemptsDetail)
+	}
 	return usageRow{
 		TS:                                 ts,
 		RequestID:                          rec.RequestID,
@@ -2261,6 +2340,10 @@ func rowFromRecord(rec logRecord) usageRow {
 		InputTokens:                        rec.Usage.InputTokens,
 		OutputTokens:                       rec.Usage.OutputTokens,
 		TotalTokens:                        rec.Usage.TotalTokens,
+		ReasoningTokens:                    reasoningTokens,
+		ReasoningAttemptCount:              reasoningAttempts,
+		ReasoningSuccessfulAttemptCount:    reasoningSuccesses,
+		ReasoningReportedAttemptCount:      reasoningReported,
 		InputHasImage:                      rec.InputHasImage,
 		InputImageCount:                    rec.InputImageCount,
 		InputImageTokens:                   rec.InputImageTokens,
@@ -2322,6 +2405,29 @@ func rowFromRecord(rec logRecord) usageRow {
 	}
 }
 
+// reasoningUsageCoverage preserves absence. Reasoning token counts are a subset
+// of output tokens and are intentionally not used in cost or throughput totals.
+func reasoningUsageCoverage(attempts []attemptLogRecord) (total *int, attempted, successful, reported int) {
+	var sum int
+	for _, attempt := range attempts {
+		attempted++
+		// HTTP 2xx alone is not a completed upstream attempt: read, size, or
+		// decode failures can fall back after a 2xx response. Selected is set
+		// only after router processing succeeds and the attempt is terminal.
+		if attempt.Selected {
+			successful++
+		}
+		if attempt.ReasoningTokens != nil {
+			reported++
+			sum += *attempt.ReasoningTokens
+		}
+	}
+	if reported > 0 {
+		return &sum, attempted, successful, reported
+	}
+	return nil, attempted, successful, 0
+}
+
 func recordFromRow(row usageRow) *usageRecord {
 	return &usageRecord{
 		RequestID:                          row.RequestID,
@@ -2356,6 +2462,10 @@ func recordFromRow(row usageRow) *usageRecord {
 		InputTokens:                        row.InputTokens,
 		OutputTokens:                       row.OutputTokens,
 		TotalTokens:                        row.TotalTokens,
+		ReasoningTokens:                    row.ReasoningTokens,
+		ReasoningAttemptCount:              row.ReasoningAttemptCount,
+		ReasoningSuccessfulAttemptCount:    row.ReasoningSuccessfulAttemptCount,
+		ReasoningReportedAttemptCount:      row.ReasoningReportedAttemptCount,
 		InputHasImage:                      row.InputHasImage,
 		InputImageCount:                    row.InputImageCount,
 		InputImageTokens:                   row.InputImageTokens,
@@ -2455,6 +2565,10 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		InputTokens:                        record.InputTokens,
 		OutputTokens:                       record.OutputTokens,
 		TotalTokens:                        record.TotalTokens,
+		ReasoningTokens:                    record.ReasoningTokens,
+		ReasoningAttemptCount:              record.ReasoningAttemptCount,
+		ReasoningSuccessfulAttemptCount:    record.ReasoningSuccessfulAttemptCount,
+		ReasoningReportedAttemptCount:      record.ReasoningReportedAttemptCount,
 		InputHasImage:                      record.InputHasImage,
 		InputImageCount:                    record.InputImageCount,
 		InputImageTokens:                   record.InputImageTokens,
@@ -2647,23 +2761,11 @@ func usageJSONLLineHasEventType(line string) bool {
 }
 
 func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
+	if err := validateUsageReportOptions(&opts); err != nil {
+		return "", err
+	}
 	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
-	if driver == "sqlite" && opts.DBPath == "" {
-		return "", errors.New("usage db path is required")
-	}
-	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
-		return "", errors.New("usage db dsn is required")
-	}
-	if opts.To.IsZero() {
-		opts.To = time.Now().UTC()
-	}
-	if opts.From.IsZero() {
-		opts.From = opts.To.Add(-24 * time.Hour)
-	}
-	if !opts.From.Before(opts.To) {
-		return "", errors.New("from must be before to")
-	}
-	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN}
+	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN, MigrationPolicy: opts.MigrationPolicy}
 	if opts.LogPath != "" {
 		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
 			return "", err
@@ -2685,6 +2787,102 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 		return "", err
 	}
 	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary, upstreamShapeEvents), nil
+}
+
+// ExportReasoningCoverage returns the bounded scalar reasoning-usage aggregate
+// for the same protected filters and time window used by usage reporting.
+func ExportReasoningCoverage(opts UsageReportOptions) (ReasoningCoverageExport, error) {
+	if err := validateUsageReportOptions(&opts); err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	cfg := UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN, MigrationPolicy: opts.MigrationPolicy}
+	if opts.LogPath != "" {
+		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
+			return ReasoningCoverageExport{}, err
+		}
+	}
+	store, err := OpenUsageStore(cfg)
+	if err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	defer store.Close()
+	rows, err := store.rowsWithoutBuckets(opts)
+	if err != nil {
+		return ReasoningCoverageExport{}, err
+	}
+	result := ReasoningCoverageExport{}
+	requestIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		requestIDs = append(requestIDs, row.RequestID)
+		if row.ReasoningTokens != nil {
+			result.ReasoningTokens += *row.ReasoningTokens
+		}
+		result.ReasoningAttemptCount += row.ReasoningAttemptCount
+		result.ReasoningSuccessfulAttemptCount += row.ReasoningSuccessfulAttemptCount
+		result.ReasoningReportedAttemptCount += row.ReasoningReportedAttemptCount
+	}
+	byTarget := map[string]*ReasoningCoverageRow{}
+	for start := 0; start < len(requestIDs); start += 500 {
+		end := start + 500
+		if end > len(requestIDs) {
+			end = len(requestIDs)
+		}
+		var attempts []requestAttemptRecord
+		if err := store.db.Where("request_id IN ?", requestIDs[start:end]).Find(&attempts).Error; err != nil {
+			return ReasoningCoverageExport{}, err
+		}
+		for _, attempt := range attempts {
+			key := attempt.Provider + "\x00" + attempt.Model + "\x00" + attempt.Dialect
+			entry := byTarget[key]
+			if entry == nil {
+				entry = &ReasoningCoverageRow{Provider: attempt.Provider, Model: attempt.Model, Dialect: attempt.Dialect}
+				byTarget[key] = entry
+			}
+			entry.Attempts++
+			if attempt.ReasoningTokens != nil {
+				entry.ReportedAttempts++
+				entry.ReasoningTokens += *attempt.ReasoningTokens
+			}
+		}
+	}
+	for _, entry := range byTarget {
+		result.Coverage = append(result.Coverage, *entry)
+	}
+	coverageAttempts := 0
+	for _, entry := range result.Coverage {
+		coverageAttempts += entry.Attempts
+	}
+	result.CoverageComplete = coverageAttempts == result.ReasoningAttemptCount
+	sort.Slice(result.Coverage, func(i, j int) bool {
+		if result.Coverage[i].Provider != result.Coverage[j].Provider {
+			return result.Coverage[i].Provider < result.Coverage[j].Provider
+		}
+		if result.Coverage[i].Model != result.Coverage[j].Model {
+			return result.Coverage[i].Model < result.Coverage[j].Model
+		}
+		return result.Coverage[i].Dialect < result.Coverage[j].Dialect
+	})
+	return result, nil
+}
+
+func validateUsageReportOptions(opts *UsageReportOptions) error {
+	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
+	if driver == "sqlite" && opts.DBPath == "" {
+		return errors.New("usage db path is required")
+	}
+	if (driver == "postgres" || driver == "postgresql") && opts.DSN == "" {
+		return errors.New("usage db dsn is required")
+	}
+	if opts.To.IsZero() {
+		opts.To = time.Now().UTC()
+	}
+	if opts.From.IsZero() {
+		opts.From = opts.To.Add(-24 * time.Hour)
+	}
+	if !opts.From.Before(opts.To) {
+		return errors.New("from must be before to")
+	}
+	return nil
 }
 
 func GenerateRetentionStatus(opts RetentionStatusOptions) (RetentionStatusResult, error) {
@@ -7458,14 +7656,14 @@ func boolInt(v bool) int {
 }
 
 func formatUsageTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z")
+	return t.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }
 
 func parseUsageTime(v string) (time.Time, error) {
 	if v == "" {
 		return time.Time{}, errors.New("empty time")
 	}
-	layouts := []string{"2006-01-02T15:04:05.000Z", time.RFC3339Nano, time.RFC3339}
+	layouts := []string{"2006-01-02T15:04:05.000000000Z", "2006-01-02T15:04:05.000Z", time.RFC3339Nano, time.RFC3339}
 	var last error
 	for _, layout := range layouts {
 		t, err := time.Parse(layout, v)

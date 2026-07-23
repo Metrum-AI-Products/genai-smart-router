@@ -998,6 +998,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	if rc == nil {
 		return
 	}
+	populateReasoningUsageCoverage(&rc.rec)
 	if !s.diagnosticsEnabled() {
 		rc.rec.AttemptsDetail = nil
 		rc.rec.TraceEvents = nil
@@ -1026,6 +1027,14 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
 		rc.securityRecorded = true
 	}
+}
+
+func populateReasoningUsageCoverage(rec *logRecord) {
+	if rec == nil || rec.ReasoningCoverageMeasured {
+		return
+	}
+	rec.ReasoningTokens, rec.ReasoningAttemptCount, rec.ReasoningSuccessfulAttemptCount, rec.ReasoningReportedAttemptCount = reasoningUsageCoverage(rec.AttemptsDetail)
+	rec.ReasoningCoverageMeasured = true
 }
 
 func (s *Service) populateLicenseMetadata(rec *logRecord) {
@@ -1786,6 +1795,7 @@ sendUpstream:
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	if passthrough {
@@ -1796,6 +1806,7 @@ sendUpstream:
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	if chatResponsesBridge {
@@ -1807,6 +1818,7 @@ sendUpstream:
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
 		s.setChatToResponsesBridgeSession(ctx, rc, chatResponsesSession, target, resp.ID, attemptIndex)
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	resp, err := decodeUpstreamResponse(outDialect, raw, target.Model)
@@ -1816,6 +1828,7 @@ sendUpstream:
 		attempt.Retryable = true
 		return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 	}
+	attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 	return resp, attempt, nil
 }
 
@@ -2636,7 +2649,7 @@ func (s *Service) writeIRStream(w http.ResponseWriter, dialect string, resp *IRR
 
 func writeChatTextSSE(writeSSE func(string, any), w http.ResponseWriter, resp *IRResponse) {
 	writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": resp.Text}, "finish_reason": nil}}})
-	writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": defaultString(resp.StopReason, "stop")}}, "usage": map[string]any{"prompt_tokens": resp.Usage.InputTokens, "completion_tokens": resp.Usage.OutputTokens, "total_tokens": resp.Usage.TotalTokens}})
+	writeSSE("", map[string]any{"id": resp.ID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": defaultString(resp.StopReason, "stop")}}, "usage": chatUsageMap(resp.Usage)})
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 }
 

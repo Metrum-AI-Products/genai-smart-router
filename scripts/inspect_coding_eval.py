@@ -8,7 +8,7 @@ directory so repository Dockerfiles cannot become the evaluator sandbox.
 """
 from __future__ import annotations
 
-import argparse, json, os, shutil, subprocess, sys, tempfile, time
+import argparse, datetime, json, os, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +18,12 @@ SAFE_AGGREGATE_FIELDS = {
     "status", "status_reason", "suite", "model", "model_kind", "api", "reasoning", "limit", "concurrency", "wall_seconds", "exit_code",
     "completed", "partial", "skipped", "blocked", "score", "correct", "scored", "unscored", "unscored_error_rate",
     "p50_sample_time_ms", "p95_sample_time_ms", "input_tokens", "output_tokens", "total_tokens", "token_cost", "attempts", "errors", "fallbacks",
+    "reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage", "reasoning_provider_model_dialect_coverage_complete",
     "inbound_dialect", "tools_present", "tool_count_bucket", "streaming", "caller_output_cap_field", "request_size_bucket", "tool_schema_bytes_bucket",
 }
+COVERAGE_TEXT_FIELDS = ("provider", "model", "dialect")
+COVERAGE_NUMBER_FIELDS = ("attempts", "reported_attempts", "reasoning_tokens")
+REASONING_EXPORT_FIELDS = ("reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage", "reasoning_provider_model_dialect_coverage_complete")
 
 def env(name: str, default: str = "") -> str: return os.environ.get(name, default)
 def bounded_int(value: str, name: str, low: int, high: int) -> int:
@@ -37,7 +41,111 @@ def safe(value: Any) -> Any:
 def safe_aggregate(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
-    return {key: safe(value[key]) for key in SAFE_AGGREGATE_FIELDS if key in value}
+    aggregate = {key: safe(value[key]) for key in SAFE_AGGREGATE_FIELDS if key in value and key != "reasoning_provider_model_dialect_coverage"}
+    if "reasoning_provider_model_dialect_coverage" in value:
+        aggregate["reasoning_provider_model_dialect_coverage"] = safe_reasoning_coverage(value["reasoning_provider_model_dialect_coverage"])
+    return aggregate
+
+def safe_reasoning_coverage(value: Any) -> list[dict[str, Any]]:
+    """Allow only bounded provider/model/dialect coverage scalars from protected exporters."""
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        row: dict[str, Any] = {}
+        for field in COVERAGE_TEXT_FIELDS:
+            if isinstance(item.get(field), str):
+                row[field] = item[field]
+        for field in COVERAGE_NUMBER_FIELDS:
+            if isinstance(item.get(field), (int, float)) and not isinstance(item[field], bool):
+                row[field] = item[field]
+        rows.append(row)
+    return rows
+
+def protected_reasoning_coverage() -> dict[str, Any]:
+    """Load only the aggregate-only router usage export selected by CI/operator."""
+    path_text = env("EVAL_REASONING_COVERAGE_FILE")
+    if not path_text:
+        return {}
+    try:
+        payload = json.loads(Path(path_text).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"protected reasoning coverage unavailable: {type(exc).__name__}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("protected reasoning coverage must be an object")
+    for field in REASONING_EXPORT_FIELDS:
+        if field not in payload:
+            raise ValueError("protected reasoning coverage is incomplete")
+    counters = REASONING_EXPORT_FIELDS[:4]
+    if any(not isinstance(payload[field], int) or isinstance(payload[field], bool) or payload[field] < 0 for field in counters):
+        raise ValueError("protected reasoning coverage counters must be nonnegative integers")
+    coverage = payload["reasoning_provider_model_dialect_coverage"]
+    complete = payload["reasoning_provider_model_dialect_coverage_complete"]
+    if not isinstance(complete, bool):
+        raise ValueError("protected reasoning coverage completeness is invalid")
+    if not isinstance(coverage, list):
+        raise ValueError("protected reasoning coverage rows must be a list")
+    attempts = reported = tokens = 0
+    for row in coverage:
+        if not isinstance(row, dict) or any(not isinstance(row.get(field), str) or not row[field] for field in COVERAGE_TEXT_FIELDS):
+            raise ValueError("protected reasoning coverage row identity is invalid")
+        if any(not isinstance(row.get(field), int) or isinstance(row[field], bool) or row[field] < 0 for field in COVERAGE_NUMBER_FIELDS):
+            raise ValueError("protected reasoning coverage row counters are invalid")
+        if row["reported_attempts"] > row["attempts"]:
+            raise ValueError("protected reasoning coverage row counters are inconsistent")
+        attempts += row["attempts"]; reported += row["reported_attempts"]; tokens += row["reasoning_tokens"]
+    expected = (payload["reasoning_attempt_count"], payload["reasoning_reported_attempt_count"], payload["reasoning_tokens"])
+    actual = (attempts, reported, tokens)
+    if payload["reasoning_successful_attempt_count"] > payload["reasoning_attempt_count"] or (actual != expected if complete else any(a > b for a,b in zip(actual, expected))):
+        raise ValueError("protected reasoning coverage totals are inconsistent")
+    return safe_aggregate(payload)
+
+def utc_timestamp(epoch: float) -> str:
+    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+def require_reasoning_export_inputs(model_kind: str) -> None:
+    if model_kind != "router-group" or env("EVAL_REQUIRE_REASONING_COVERAGE").lower() != "true":
+        return
+    if not env("EVAL_USAGE_CALLER_ID") or bool(env("EVAL_USAGE_CONFIG_YAML")) == bool(env("EVAL_USAGE_CONFIG_FILE")):
+        raise ValueError("router-group reasoning coverage requires exactly one protected EVAL_USAGE_CONFIG_YAML or EVAL_USAGE_CONFIG_FILE and EVAL_USAGE_CALLER_ID")
+
+def export_reasoning_coverage(suite_dir: Path, started_at: float, finished_at: float, model: str, model_kind: str) -> Path | None:
+    """Run the protected usage-DB exporter for one router-group evaluation window."""
+    if model_kind != "router-group":
+        return None
+    caller_id = env("EVAL_USAGE_CALLER_ID")
+    config_text, config_file = env("EVAL_USAGE_CONFIG_YAML"), env("EVAL_USAGE_CONFIG_FILE")
+    require_reasoning_export_inputs(model_kind)
+    temporary_config: Path | None = None
+    try:
+        if config_text:
+            fd, temporary_name = tempfile.mkstemp(prefix="smart-router-eval-usage-", suffix=".yaml")
+            temporary_config = Path(temporary_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(config_text)
+            os.chmod(temporary_config, 0o600)
+            config_file = str(temporary_config)
+        exporter = env("EVAL_USAGE_REPORT_BIN", "go")
+        command = [exporter]
+        if exporter == "go":
+            command.extend(["run", "./cmd/router-usage-report"])
+        output = suite_dir / "reasoning-coverage.json"
+        grace = bounded_int(env("EVAL_USAGE_EXPORT_GRACE_SECONDS", "2"), "EVAL_USAGE_EXPORT_GRACE_SECONDS", 0, 30)
+        command.extend(["--usage-db-config", config_file, "--from", utc_timestamp(started_at), "--to", utc_timestamp(finished_at + grace), "--caller-id", caller_id, "--resolved-group", model, "--reasoning-coverage-out", str(output)])
+        client = env("EVAL_USAGE_CLIENT")
+        if client:
+            command.extend(["--client", client])
+        completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=bounded_int(env("EVAL_USAGE_EXPORT_TIMEOUT", "60"), "EVAL_USAGE_EXPORT_TIMEOUT", 5, 300))
+        if completed.returncode != 0 or not output.is_file():
+            raise ValueError("protected reasoning coverage export failed")
+        os.chmod(output, 0o600)
+        os.environ["EVAL_REASONING_COVERAGE_FILE"] = str(output)
+        return output
+    finally:
+        if temporary_config:
+            temporary_config.unlink(missing_ok=True)
 
 def load_policy(path: Path | None = None) -> dict[str, Any]:
     path = path or Path(env("EVAL_POLICY", "config/evaluation-policy.example.json"))
@@ -62,6 +170,19 @@ def authoritative_router_cost() -> float:
     if cost is None or cost < 0:
         raise ValueError("authoritative router request-time cost is unavailable")
     return cost
+
+def reasoning_coverage_text(result: dict[str, Any]) -> str:
+    """Render presence-aware reasoning usage; zero is reported, never absence."""
+    reported = int(result.get("reasoning_reported_attempt_count", 0) or 0)
+    attempts = int(result.get("reasoning_attempt_count", 0) or 0)
+    successful = int(result.get("reasoning_successful_attempt_count", 0) or 0)
+    if reported == 0:
+        return "not reported"
+    tokens = result.get("reasoning_tokens", 0)
+    if attempts > 0 and reported == attempts:
+        return f"{tokens} (complete coverage)"
+    # Prefer the total upstream-attempt denominator specified by the evaluation contract.
+    return f"{reported} reported / {attempts} upstream attempts ({tokens} tokens; {successful} successful)"
 
 def status_for_error(error: str) -> str:
     text = error.lower()
@@ -171,6 +292,9 @@ def run(args: argparse.Namespace) -> int:
     try: model, base_url, model_kind, limit, concurrency, timeout, log_dir = require_run_inputs()
     except ValueError as exc:
         print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
+    try: require_reasoning_export_inputs(model_kind)
+    except ValueError as exc:
+        print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     inspect = env("EVAL_INSPECT", "inspect")
     suite_dir = log_dir / args.suite
     if not shutil.which(inspect):
@@ -184,7 +308,7 @@ def run(args: argparse.Namespace) -> int:
     # Model-group names are deployment-owned strings and may contain '/'. The
     # explicit kind prevents a router group from being mistaken for a provider.
     model_spec = f"{api}/{model}"
-    started = time.monotonic()
+    started = time.monotonic(); started_at = time.time()
     with tempfile.TemporaryDirectory(prefix="smart-router-inspect-") as scratch:
         command = [inspect, "eval", SUITES[args.suite], "--model", model_spec, "--model-base-url", base_url, "--limit", str(limit), "--max-connections", str(concurrency), "--log-dir", str(suite_dir)]
         if reasoning:
@@ -195,10 +319,15 @@ def run(args: argparse.Namespace) -> int:
         if env("EVAL_API_KEY"):
             process_env["OPENAI_API_KEY"] = env("EVAL_API_KEY")
         process = subprocess.run(command, cwd=scratch, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=process_env)
-    state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
-    write_status(suite_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
+    finished_at = time.time(); state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
+    write_status(suite_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"started_at":utc_timestamp(started_at),"finished_at":utc_timestamp(finished_at),"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
     if state == "completed":
         export_inspect_aggregate(suite_dir)
+        if env("EVAL_REQUIRE_REASONING_COVERAGE").lower() == "true":
+            try:
+                export_reasoning_coverage(suite_dir, started_at, finished_at, model, model_kind)
+            except ValueError as exc:
+                print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     print(f"evaluation {state}: suite={args.suite} model={model} limit={limit}")
     return 0 if process.returncode == 0 else (3 if state == "skipped" else 2)
 
@@ -228,6 +357,10 @@ def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,An
 
 def report(args: argparse.Namespace) -> int:
     log_dir=Path(args.log_dir) / args.suite; result=aggregate(log_dir); policy=load_policy(Path(args.policy))
+    try:
+        result.update(protected_reasoning_coverage())
+    except ValueError as exc:
+        print(f"evaluation blocked: {exc}", file=sys.stderr); return 2
     baseline_path=log_dir/"inspect-baseline-aggregate.json"
     baseline_text=env("EVAL_BASELINE_JSON")
     baseline_supplied = bool(baseline_text) or baseline_path.exists()
@@ -252,6 +385,14 @@ def report(args: argparse.Namespace) -> int:
     lines=["# Inspect coding evaluation", "", f"Status: **{result.get('status','blocked').upper()}**", "", "This sanitized aggregate excludes prompts, responses, schemas, raw logs, credentials, and headers.", ""]
     for key in ("suite","model","model_kind","api","reasoning","inbound_dialect","tools_present","tool_count_bucket","streaming","caller_output_cap_field","request_size_bucket","tool_schema_bytes_bucket","completed","partial","skipped","blocked","limit","score","correct","scored","unscored","unscored_error_rate","p95_sample_time_ms","token_cost","wall_seconds"):
         if key in result: lines.append(f"- {key}: {result[key]}")
+    lines.append(f"- reasoning tokens: {reasoning_coverage_text(result)}")
+    lines.append("- reasoning-token counts are a subset of output tokens and are not additive.")
+    coverage = result.get("reasoning_provider_model_dialect_coverage")
+    if isinstance(coverage, list) and coverage:
+        lines += ["", "## Upstream reasoning-token coverage", "", "| Provider | Model | Dialect | Reported / attempts | Tokens |", "| --- | --- | --- | ---: | ---: |"]
+        for item in coverage:
+            if not isinstance(item, dict): continue
+            lines.append(f"| {item.get('provider','')} | {item.get('model','')} | {item.get('dialect','')} | {item.get('reported_attempts',0)} / {item.get('attempts',0)} | {item.get('reasoning_tokens','not reported')} |")
     if failures: lines += ["", "## Regression policy", ""] + [f"- {x}" for x in failures]
     out_md.write_text("\n".join(lines)+"\n")
     if env("EVAL_SAVE_CI_REPORT").lower() == "true":
@@ -267,21 +408,25 @@ def report(args: argparse.Namespace) -> int:
     return 1 if failures or not result.get("completed", False) or result.get("partial", False) or result.get("skipped", False) or result.get("blocked", False) else 0
 
 def smoke(args: argparse.Namespace) -> int:
-    os.environ.setdefault("EVAL_LIMIT", "2"); args.suite="humaneval"; code=run(args)
+    os.environ.setdefault("EVAL_LIMIT", "2"); os.environ["EVAL_REQUIRE_REASONING_COVERAGE"]="true"; args.suite="humaneval"; code=run(args)
     if code: return code
     return report(argparse.Namespace(log_dir=env("EVAL_LOG_DIR","tmp/inspect-evals"), suite="humaneval", policy=env("EVAL_POLICY","config/evaluation-policy.example.json")))
 
 def ci_full(args: argparse.Namespace) -> int:
     """Run the protected, per-suite CI contract without embedding policy in YAML."""
-    required = ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL", "EVAL_BASELINE_HUMANEVAL_JSON", "EVAL_BASELINE_BIGCODEBENCH_JSON", "EVAL_ROUTER_USAGE_HUMANEVAL_JSON", "EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON")
+    required = ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL", "EVAL_BASELINE_HUMANEVAL_JSON", "EVAL_BASELINE_BIGCODEBENCH_JSON", "EVAL_ROUTER_USAGE_HUMANEVAL_JSON", "EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON", "EVAL_USAGE_CALLER_ID")
     missing = [name for name in required if not env(name)]
     if missing:
         print(f"evaluation blocked: protected CI input unavailable ({', '.join(missing)})", file=sys.stderr)
         return 2
-    original = {name: os.environ.get(name) for name in ("EVAL_SUITE", "EVAL_BASELINE_JSON", "EVAL_ROUTER_USAGE_JSON", "EVAL_CI_REPORT_TIMESTAMP")}
+    if bool(env("EVAL_USAGE_CONFIG_YAML")) == bool(env("EVAL_USAGE_CONFIG_FILE")):
+        print("evaluation blocked: protected CI input unavailable (exactly one usage DB config source)", file=sys.stderr)
+        return 2
+    original = {name: os.environ.get(name) for name in ("EVAL_SUITE", "EVAL_BASELINE_JSON", "EVAL_ROUTER_USAGE_JSON", "EVAL_CI_REPORT_TIMESTAMP", "EVAL_REQUIRE_REASONING_COVERAGE", "EVAL_REASONING_COVERAGE_FILE")}
     label = env("EVAL_CI_REPORT_TIMESTAMP")
     timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     try:
+        os.environ["EVAL_REQUIRE_REASONING_COVERAGE"] = "true"
         for suite, baseline_var in (("humaneval", "EVAL_BASELINE_HUMANEVAL_JSON"), ("bigcodebench", "EVAL_BASELINE_BIGCODEBENCH_JSON")):
             os.environ["EVAL_SUITE"] = suite
             os.environ["EVAL_BASELINE_JSON"] = env(baseline_var)

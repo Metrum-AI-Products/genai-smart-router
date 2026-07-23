@@ -65,6 +65,11 @@ type logRecord struct {
 	DownstreamOutputTPS                *float64                         `json:"downstream_output_tokens_per_sec"`
 	DownstreamTotalTPS                 *float64                         `json:"downstream_total_tokens_per_sec"`
 	Usage                              Usage                            `json:"usage"`
+	ReasoningCoverageMeasured          bool                             `json:"reasoning_coverage_measured,omitempty"`
+	ReasoningAttemptCount              int                              `json:"reasoning_attempt_count,omitempty"`
+	ReasoningSuccessfulAttemptCount    int                              `json:"reasoning_successful_attempt_count,omitempty"`
+	ReasoningReportedAttemptCount      int                              `json:"reasoning_reported_attempt_count,omitempty"`
+	ReasoningTokens                    *int                             `json:"reasoning_tokens,omitempty"`
 	InputHasImage                      bool                             `json:"input_has_image,omitempty"`
 	InputImageCount                    int                              `json:"input_image_count,omitempty"`
 	InputImageTokens                   int                              `json:"input_image_tokens,omitempty"`
@@ -165,6 +170,7 @@ type attemptLogRecord struct {
 	ResponseBytes    int64                          `json:"response_bytes,omitempty"`
 	AttemptTimeoutMS int                            `json:"attempt_timeout_ms,omitempty"`
 	RetryAfterMS     int64                          `json:"retry_after_ms,omitempty"`
+	ReasoningTokens  *int                           `json:"reasoning_tokens,omitempty"`
 	ErrorDetails     []upstreamErrorDetailLogRecord `json:"error_details,omitempty"`
 }
 

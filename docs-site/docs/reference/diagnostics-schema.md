@@ -94,6 +94,10 @@ This section is generated from the router usage and content-capture schema used 
 | `input_tokens` | integer | no | after usage and request-time cost accounting | safe scalar diagnostics metadata | `0` or positive integer |
 | `output_tokens` | integer | no | after usage and request-time cost accounting | safe scalar diagnostics metadata | `0` or positive integer |
 | `total_tokens` | integer | no | after usage and request-time cost accounting | safe scalar diagnostics metadata | `0` or positive integer |
+| `reasoning_tokens` | integer | yes | after usage and request-time cost accounting | safe scalar diagnostics metadata | `0` or positive integer |
+| `reasoning_attempt_count` | integer | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `0` or positive integer |
+| `reasoning_successful_attempt_count` | integer | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `0` or positive integer |
+| `reasoning_reported_attempt_count` | integer | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `0` or positive integer |
 | `input_has_image` | boolean | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `true` or `false` |
 | `input_image_count` | integer | no | once per request at terminal request accounting | safe scalar diagnostics metadata | `0` or positive integer |
 | `input_image_tokens` | integer | no | after usage and request-time cost accounting | safe scalar diagnostics metadata | `0` or positive integer |
@@ -182,6 +186,7 @@ This section is generated from the router usage and content-capture schema used 
 | `response_bytes` | integer | no | after each upstream attempt completes or fails | safe scalar diagnostics metadata | `0` or positive integer |
 | `attempt_timeout_ms` | integer | no | after each upstream attempt completes or fails | safe scalar diagnostics metadata | `0..600000` milliseconds |
 | `retry_after_ms` | integer | no | after each upstream attempt completes or fails | safe scalar diagnostics metadata | `0..600000` milliseconds |
+| `reasoning_tokens` | integer | yes | after each upstream attempt completes or fails | safe scalar diagnostics metadata | `0` or positive integer |
 
 ### `request_trace_events`
 

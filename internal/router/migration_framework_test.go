@@ -158,8 +158,8 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "pending" || len(status.Pending) != 1 {
-		t.Fatalf("legacy usage database should be eligible for baseline adoption: %+v", status)
+	if !status.Compatible || status.State != "pending" || len(status.Pending) != len(usageMigrationDefinitions) {
+		t.Fatalf("legacy usage database should be eligible for the complete online migration prefix: %+v", status)
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatal(err)
@@ -168,8 +168,8 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != 1 || status.DataVersion != 0 || len(status.Entries) != 1 {
-		t.Fatalf("unexpected adopted usage status: %+v", status)
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != usageMigrationCompatibility.MaxSchema || status.DataVersion != 0 || len(status.Entries) != len(usageMigrationDefinitions) {
+		t.Fatalf("unexpected fully migrated usage status: %+v", status)
 	}
 }
 
@@ -187,8 +187,8 @@ func TestUsageMigrationBaselineRejectsEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != 1 {
-		t.Fatalf("failed baseline adoption must leave no ledger entry: %+v", status)
+	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != len(usageMigrationDefinitions) {
+		t.Fatalf("failed baseline adoption must leave no ledger entry or apply later migrations: %+v", status)
 	}
 }
 
@@ -227,5 +227,62 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 		if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: policy}); err == nil {
 			t.Fatalf("%s must reject an empty database without an explicit bootstrap manifest", policy)
 		}
+	}
+}
+
+func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T) {
+	var definition *MigrationDefinition
+	for i := range usageMigrationDefinitions {
+		if usageMigrationDefinitions[i].ID == usageReasoningTelemetryMigrationID {
+			definition = &usageMigrationDefinitions[i]
+			break
+		}
+	}
+	if definition == nil || definition.RollbackClass != "restore-required" {
+		t.Fatalf("reasoning migration must require database restore for a binary downgrade: %#v", definition)
+	}
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	legacy, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"ALTER TABLE request_usage DROP COLUMN reasoning_tokens",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_successful_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_reported_attempt_count",
+		"ALTER TABLE request_attempts DROP COLUMN reasoning_tokens",
+	} {
+		if err := legacy.db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if err := verifyUsageReasoningTelemetryMigration(migrated.db); err != nil {
+		t.Fatalf("reasoning migration postcondition: %v", err)
+	}
+	runner, err := newUsageMigrationRunner(migrated.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := runner.Verify()
+	if err != nil || status.SchemaVersion != 2 || status.State != "current" {
+		t.Fatalf("reasoning migration ledger status=%+v err=%v", status, err)
+	}
+	previousBinary, err := NewMigrationRunner(migrated.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousStatus, err := previousBinary.Status()
+	if err != nil || previousStatus.Compatible || previousStatus.State != "incompatible" {
+		t.Fatalf("previous binary must reject the newer ledger and require restore before downgrade: status=%+v err=%v", previousStatus, err)
 	}
 }

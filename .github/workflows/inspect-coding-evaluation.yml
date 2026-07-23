@@ -2,7 +2,9 @@ name: Inspect coding evaluation
 
 on:
   pull_request:
-    paths: ["internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "config/evaluation-policy.example.json", ".github/workflows/inspect-coding-evaluation.yml"]
+    paths: ["cmd/router-usage-report/**", "internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "config/evaluation-policy.example.json", ".github/workflows/inspect-coding-evaluation.yml"]
+  push:
+    branches: [main]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -30,6 +32,8 @@ jobs:
       EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
       EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
       EVAL_MODEL: ${{ vars.EVAL_ROUTER_MODEL }}
+      EVAL_USAGE_CONFIG_YAML: ${{ secrets.EVAL_USAGE_CONFIG_YAML }}
+      EVAL_USAGE_CALLER_ID: ${{ vars.EVAL_USAGE_CALLER_ID }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: python3 scripts/inspect_coding_eval_test.py
@@ -61,6 +65,8 @@ jobs:
       EVAL_BASELINE_BIGCODEBENCH_JSON: ${{ secrets.EVAL_BASELINE_BIGCODEBENCH_JSON }}
       EVAL_ROUTER_USAGE_HUMANEVAL_JSON: ${{ secrets.EVAL_ROUTER_USAGE_HUMANEVAL_JSON }}
       EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON: ${{ secrets.EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON }}
+      EVAL_USAGE_CONFIG_YAML: ${{ secrets.EVAL_USAGE_CONFIG_YAML }}
+      EVAL_USAGE_CALLER_ID: ${{ vars.EVAL_USAGE_CALLER_ID }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install Inspect AI
