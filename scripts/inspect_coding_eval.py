@@ -21,6 +21,8 @@ SAFE_AGGREGATE_FIELDS = {
     "reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage",
     "inbound_dialect", "tools_present", "tool_count_bucket", "streaming", "caller_output_cap_field", "request_size_bucket", "tool_schema_bytes_bucket",
 }
+COVERAGE_TEXT_FIELDS = ("provider", "model", "dialect")
+COVERAGE_NUMBER_FIELDS = ("attempts", "reported_attempts", "reasoning_tokens")
 
 def env(name: str, default: str = "") -> str: return os.environ.get(name, default)
 def bounded_int(value: str, name: str, low: int, high: int) -> int:
@@ -38,7 +40,28 @@ def safe(value: Any) -> Any:
 def safe_aggregate(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
-    return {key: safe(value[key]) for key in SAFE_AGGREGATE_FIELDS if key in value}
+    aggregate = {key: safe(value[key]) for key in SAFE_AGGREGATE_FIELDS if key in value and key != "reasoning_provider_model_dialect_coverage"}
+    if "reasoning_provider_model_dialect_coverage" in value:
+        aggregate["reasoning_provider_model_dialect_coverage"] = safe_reasoning_coverage(value["reasoning_provider_model_dialect_coverage"])
+    return aggregate
+
+def safe_reasoning_coverage(value: Any) -> list[dict[str, Any]]:
+    """Allow only bounded provider/model/dialect coverage scalars from protected exporters."""
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        row: dict[str, Any] = {}
+        for field in COVERAGE_TEXT_FIELDS:
+            if isinstance(item.get(field), str):
+                row[field] = item[field]
+        for field in COVERAGE_NUMBER_FIELDS:
+            if isinstance(item.get(field), (int, float)) and not isinstance(item[field], bool):
+                row[field] = item[field]
+        rows.append(row)
+    return rows
 
 def load_policy(path: Path | None = None) -> dict[str, Any]:
     path = path or Path(env("EVAL_POLICY", "config/evaluation-policy.example.json"))
