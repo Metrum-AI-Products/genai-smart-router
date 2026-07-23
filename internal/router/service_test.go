@@ -3291,7 +3291,10 @@ func newAdminReportPaginationTestService(t *testing.T, security bool) *Service {
 		DefaultSince: "24h",
 		MaxRange:     "31d",
 		MaxRows:      100,
-		Security:     AdminSecurityReportsConfig{Enabled: security, RetentionDays: 30},
+		// These pagination fixtures use a fixed June 2026 reporting window. Keep
+		// them inside the retention horizon as calendar time advances; retention
+		// enforcement itself is covered by dedicated usage-store tests.
+		Security:     AdminSecurityReportsConfig{Enabled: security, RetentionDays: 365},
 	}
 	svc, err := New(cfg)
 	if err != nil {
