@@ -22,6 +22,9 @@ def main() -> int:
     policy=root/"policy.json"; policy.write_text(json.dumps({"regression_thresholds":{"max_score_delta":0.05,"max_unscored_error_rate":0.1,"max_p95_sample_time_growth":0.25,"max_token_cost_growth":0.25}}))
     report=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--policy",str(policy)],text=True,capture_output=True)
     need(report.returncode==0,report.stderr); rendered=(logs/"evaluation-summary.md").read_text(); need("leak" not in rendered and "openai_chat" in rendered and "caller_output_cap_field" in rendered,"secret/raw content leaked or request-shape missing")
+    ci_reports=root/"ci-reports"; ci_env=os.environ|{"EVAL_SAVE_CI_REPORT":"true","EVAL_CI_REPORT_DIR":str(ci_reports),"EVAL_CI_REPORT_TIMESTAMP":"20260723T191500Z-123-1"}
+    saved=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--policy",str(policy)],env=ci_env,text=True,capture_output=True)
+    need(saved.returncode==0,saved.stderr); need((ci_reports/"20260723T191500Z-123-1"/"evaluation-summary.md").exists(),"timestamped CI Markdown report missing")
     (logs/"inspect-baseline-aggregate.json").write_text(json.dumps({"score":0.9,"unscored_error_rate":0,"p95_sample_time_ms":100,"token_cost":1}))
     failed=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--policy",str(policy)],text=True,capture_output=True)
     need(failed.returncode==1,"score regression did not fail")

@@ -113,6 +113,15 @@ def report(args: argparse.Namespace) -> int:
         if key in result: lines.append(f"- {key}: {result[key]}")
     if failures: lines += ["", "## Regression policy", ""] + [f"- {x}" for x in failures]
     out_md.write_text("\n".join(lines)+"\n")
+    if env("EVAL_SAVE_CI_REPORT").lower() == "true":
+        timestamp = env("EVAL_CI_REPORT_TIMESTAMP")
+        if not timestamp or not timestamp.replace("T", "").replace("Z", "").replace("-", "").replace("_", "").replace(":", "").isdigit():
+            raise ValueError("EVAL_CI_REPORT_TIMESTAMP must be a safe timestamp such as 20260723T191500Z")
+        report_dir = Path(env("EVAL_CI_REPORT_DIR", "docs/evaluation-reports/inspect")) / timestamp
+        report_dir.mkdir(parents=True, exist_ok=False)
+        (report_dir / "evaluation-summary.md").write_text(out_md.read_text(encoding="utf-8"), encoding="utf-8")
+        (report_dir / "evaluation-summary.json").write_text(out_json.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"evaluation CI report: {report_dir}")
     print(f"evaluation report: status={result.get('status')} summary={out_md}")
     return 1 if failures else 0
 

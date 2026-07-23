@@ -21,7 +21,7 @@ on:
         required: false
         default: "8"
 
-permissions: { contents: read }
+permissions: { contents: write }
 
 jobs:
   smoke:
@@ -56,9 +56,20 @@ jobs:
           EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
           EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
           EVAL_LIMIT: ${{ inputs.limit || '8' }}
+          EVAL_SAVE_CI_REPORT: "true"
+          EVAL_CI_REPORT_DIR: docs/evaluation-reports/inspect
         run: |
           test -n "$EVAL_BASE_URL" && test -n "$EVAL_API_KEY" && test -n "$EVAL_MODEL" || { echo 'evaluation blocked: protected router inputs unavailable'; exit 2; }
-          make eval-humaneval eval-bigcodebench eval-report
+          make eval-humaneval eval-bigcodebench
+          EVAL_CI_REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" make eval-report
+      - name: Commit sanitized evaluation report
+        if: success()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/evaluation-reports/inspect
+          git diff --cached --quiet || git commit -m 'docs: record Inspect evaluation report'
+          git push
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: inspect-sanitized-summary, path: tmp/inspect-evals/evaluation-summary.*, if-no-files-found: ignore, retention-days: 30 }
