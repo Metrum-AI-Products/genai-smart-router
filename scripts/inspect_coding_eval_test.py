@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Contract tests for the opt-in Inspect evaluation wrapper."""
 from __future__ import annotations
-import json, os, subprocess, sys, tempfile
+import importlib.util, json, os, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]; SCRIPT=ROOT/"scripts/inspect_coding_eval.py"
+SPEC=importlib.util.spec_from_file_location("inspect_coding_eval", SCRIPT); assert SPEC and SPEC.loader
+EVAL=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(EVAL)
 def need(ok: bool, message: str) -> None:
     if not ok: raise AssertionError(message)
 def main() -> int:
+  need(EVAL.number("C")==1.0 and EVAL.number("CORRECT")==1.0 and EVAL.number("I")==0.0 and EVAL.number("INCORRECT")==0.0,"categorical Inspect scores were not normalized")
+  sample={"stats":{"total_time":1.25},"model_usage":{"route":{"total_cost":0.003}}}
+  need(EVAL.nested_number(sample,("total_time",))==1.25 and EVAL.nested_number(sample,("total_cost",))==0.003 and EVAL.percentile95([10,20,30,40])==40,"Inspect metric extraction failed")
+  missing=EVAL.compare({"score":1.0},{"score":1.0},{"regression_thresholds":{"max_p95_sample_time_growth":0.25}})
+  need(missing==["p95_sample_time_ms unavailable for regression policy"],f"missing policy metric did not fail closed: {missing}")
   probes=subprocess.run(["make","-s","-f",str(ROOT/"Makefile"),"--eval","probe-a: ; @printf '%s\\n' \"$$EVAL_LOG_DIR\"","--eval","probe-b: ; @printf '%s\\n' \"$$EVAL_LOG_DIR\"","probe-a","probe-b"],cwd=ROOT,text=True,capture_output=True)
   need(probes.returncode==0,probes.stderr); probe_dirs=[line for line in probes.stdout.splitlines() if line]
   need(len(probe_dirs)==2 and probe_dirs[0]==probe_dirs[1] and "/tmp/inspect-evals/" not in probe_dirs[0],f"Make targets did not share one isolated evaluation directory: {probe_dirs}")
@@ -45,7 +52,7 @@ def main() -> int:
     failed=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],text=True,capture_output=True)
     need(failed.returncode==1,"score regression did not fail")
     (suite_logs/"inspect-baseline-aggregate.json").unlink()
-    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"status":"partial","completed":False,"partial":True}))
+    (suite_logs/"inspect-aggregate.json").write_text(json.dumps({"status":"completed","completed":True,"partial":True,"skipped":False,"blocked":False}))
     incomplete=subprocess.run([sys.executable,str(SCRIPT),"report","--log-dir",str(logs),"--suite","humaneval","--policy",str(policy)],text=True,capture_output=True)
     need(incomplete.returncode==1,"incomplete aggregate returned success")
     blocked=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env={"PATH":str(bin_dir)},text=True,capture_output=True)

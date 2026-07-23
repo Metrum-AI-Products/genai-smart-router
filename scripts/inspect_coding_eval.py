@@ -64,14 +64,44 @@ def value(source: Any, name: str, default: Any = None) -> Any:
     return source.get(name, default) if isinstance(source, dict) else getattr(source, name, default)
 
 def number(source: Any) -> float | None:
+    if isinstance(source, str):
+        categorical = source.strip().upper()
+        if categorical in {"C", "CORRECT"}:
+            return 1.0
+        if categorical in {"I", "INCORRECT"}:
+            return 0.0
     return float(source) if isinstance(source, (int, float)) and not isinstance(source, bool) else None
+
+def nested_number(source: Any, names: tuple[str, ...]) -> float | None:
+    """Find a scalar metric in Inspect's summary/stats/usage shapes only."""
+    for name in names:
+        candidate = number(value(source, name))
+        if candidate is not None:
+            return candidate
+    for child_name in ("stats", "usage", "model_usage", "tokens"):
+        child = value(source, child_name)
+        if isinstance(child, dict):
+            direct = nested_number(child, names)
+            if direct is not None:
+                return direct
+            for item in child.values():
+                nested = nested_number(item, names)
+                if nested is not None:
+                    return nested
+    return None
+
+def percentile95(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, max(0, int((len(ordered) * 0.95 + 0.999999)) - 1))]
 
 def export_inspect_aggregate(log_dir: Path) -> None:
     """Read only Inspect headers and sample summaries into a safe aggregate."""
     try:
         from inspect_ai.log import list_eval_logs, read_eval_log, read_eval_log_sample_summaries
         logs = list_eval_logs(str(log_dir))
-        scores: list[float] = []; scored = unscored = errors = 0; wall_seconds = 0.0
+        scores: list[float] = []; sample_times: list[float] = []; costs: list[float] = []; scored = unscored = errors = 0; wall_seconds = 0.0
         for info in logs:
             header = read_eval_log(info, header_only=True)
             wall_seconds += number(value(value(header, "stats"), "total_time")) or 0.0
@@ -86,6 +116,12 @@ def export_inspect_aggregate(log_dir: Path) -> None:
                     scored += 1; scores.append(sum(sample_values) / len(sample_values))
                 else:
                     unscored += 1
+                sample_time = nested_number(summary, ("total_time", "time", "duration", "elapsed_time"))
+                if sample_time is not None:
+                    sample_times.append(sample_time * 1000)
+                cost = nested_number(summary, ("total_cost", "cost", "cost_usd"))
+                if cost is not None:
+                    costs.append(cost)
         total = scored + unscored
         payload: dict[str, Any] = {"status": "completed", "completed": True, "partial": bool(unscored or errors), "scored": scored, "unscored": unscored, "errors": errors, "wall_seconds": round(wall_seconds, 3)}
         if total:
@@ -93,6 +129,11 @@ def export_inspect_aggregate(log_dir: Path) -> None:
         if scores:
             payload["score"] = round(sum(scores) / len(scores), 6)
             payload["correct"] = sum(score >= 1.0 for score in scores)
+        p95 = percentile95(sample_times)
+        if p95 is not None:
+            payload["p95_sample_time_ms"] = round(p95, 3)
+        if costs:
+            payload["token_cost"] = round(sum(costs), 9)
         (log_dir / "inspect-aggregate.json").write_text(json.dumps(safe_aggregate(payload), indent=2, sort_keys=True)+"\n", encoding="utf-8")
     except Exception as exc:
         (log_dir / "inspect-aggregate.json").write_text(json.dumps({"status": "partial", "status_reason": "inspect-aggregate-unavailable", "completed": False, "partial": True, "skipped": False, "blocked": False}, indent=2, sort_keys=True)+"\n", encoding="utf-8")
@@ -145,7 +186,12 @@ def compare(current: dict[str,Any], baseline: dict[str,Any], policy: dict[str,An
     limits=policy.get("regression_thresholds",{}); failures=[]
     checks=(("score","max_score_delta",lambda a,b: b-a),("unscored_error_rate","max_unscored_error_rate",lambda a,b:a-b),("p95_sample_time_ms","max_p95_sample_time_growth",lambda a,b:(a-b)/b if b else 0),("token_cost","max_token_cost_growth",lambda a,b:(a-b)/b if b else 0))
     for metric,limit,delta in checks:
-        if metric in current and metric in baseline and limit in limits and delta(float(current[metric]),float(baseline[metric])) > float(limits[limit]): failures.append(f"{metric} regression exceeds policy")
+        if limit not in limits:
+            continue
+        if metric not in current or metric not in baseline:
+            failures.append(f"{metric} unavailable for regression policy")
+        elif delta(float(current[metric]),float(baseline[metric])) > float(limits[limit]):
+            failures.append(f"{metric} regression exceeds policy")
     return failures
 
 def report(args: argparse.Namespace) -> int:
@@ -171,7 +217,7 @@ def report(args: argparse.Namespace) -> int:
         (report_dir / "evaluation-summary.json").write_text(out_json.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"evaluation CI report: {report_dir}")
     print(f"evaluation report: status={result.get('status')} summary={out_md}")
-    return 1 if failures or not result.get("completed", False) else 0
+    return 1 if failures or not result.get("completed", False) or result.get("partial", False) or result.get("skipped", False) or result.get("blocked", False) else 0
 
 def smoke(args: argparse.Namespace) -> int:
     os.environ.setdefault("EVAL_LIMIT", "2"); args.suite="humaneval"; code=run(args)
