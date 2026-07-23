@@ -79,6 +79,20 @@ func TestExportReasoningCoverageImportsJSONL(t *testing.T) {
 	}
 }
 
+func TestUsageTimePreservesSubsecondBounds(t *testing.T) {
+	tm, err := time.Parse(time.RFC3339Nano, "2026-07-23T12:00:00.123456789Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := formatUsageTime(tm); got != "2026-07-23T12:00:00.123456789Z" {
+		t.Fatalf("formatted=%q", got)
+	}
+	parsed, err := parseUsageTime("2026-07-23T12:00:00.123456789Z")
+	if err != nil || !parsed.Equal(tm) {
+		t.Fatalf("parsed=%v err=%v", parsed, err)
+	}
+}
+
 func TestReasoningUsageColumnsPersistAsNullableScalars(t *testing.T) {
 	store, err := OpenUsageStorePath(filepath.Join(t.TempDir(), "usage.sqlite"))
 	if err != nil {

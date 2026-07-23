@@ -21,6 +21,7 @@ func main() {
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
 	dsn := flag.String("dsn", "", "Postgres DSN when --driver=postgres")
 	usageDBConfigPath := flag.String("usage-db-config", "", "protected router config path from which to read usage DB settings")
+	migrationPolicy := flag.String("migration-policy", "", "usage DB migration policy; normally supplied by --usage-db-config")
 	logPath := flag.String("log", "", "optional JSONL request log to import before reporting")
 	fromText := flag.String("from", "", "report start time, RFC3339 or 2006-01-02T15:04:05Z")
 	toText := flag.String("to", "", "report end time, RFC3339 or 2006-01-02T15:04:05Z; defaults to now")
@@ -122,6 +123,7 @@ func main() {
 		*driver = cfg.Server.UsageDB.Driver
 		*dbPath = cfg.Server.UsageDB.Path
 		*dsn = cfg.Server.UsageDB.DSN
+		*migrationPolicy = cfg.Server.UsageDB.MigrationPolicy
 	}
 
 	if *rollup {
@@ -152,6 +154,7 @@ func main() {
 		Driver:             *driver,
 		DBPath:             *dbPath,
 		DSN:                *dsn,
+		MigrationPolicy:    *migrationPolicy,
 		LogPath:            *logPath,
 		From:               from,
 		To:                 to,

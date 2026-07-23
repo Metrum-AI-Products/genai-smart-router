@@ -58,6 +58,7 @@ type UsageReportOptions struct {
 	Driver             string
 	DBPath             string
 	DSN                string
+	MigrationPolicy    string
 	LogPath            string
 	From               time.Time
 	To                 time.Time
@@ -2764,7 +2765,7 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 		return "", err
 	}
 	driver := strings.ToLower(defaultString(opts.Driver, "sqlite"))
-	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN}
+	cfg := UsageDBConfig{Driver: driver, Path: opts.DBPath, DSN: opts.DSN, MigrationPolicy: opts.MigrationPolicy}
 	if opts.LogPath != "" {
 		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
 			return "", err
@@ -2794,7 +2795,7 @@ func ExportReasoningCoverage(opts UsageReportOptions) (ReasoningCoverageExport, 
 	if err := validateUsageReportOptions(&opts); err != nil {
 		return ReasoningCoverageExport{}, err
 	}
-	cfg := UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN}
+	cfg := UsageDBConfig{Driver: strings.ToLower(defaultString(opts.Driver, "sqlite")), Path: opts.DBPath, DSN: opts.DSN, MigrationPolicy: opts.MigrationPolicy}
 	if opts.LogPath != "" {
 		if _, err := ImportUsageJSONLTo(cfg, opts.LogPath); err != nil {
 			return ReasoningCoverageExport{}, err
@@ -7655,14 +7656,14 @@ func boolInt(v bool) int {
 }
 
 func formatUsageTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z")
+	return t.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }
 
 func parseUsageTime(v string) (time.Time, error) {
 	if v == "" {
 		return time.Time{}, errors.New("empty time")
 	}
-	layouts := []string{"2006-01-02T15:04:05.000Z", time.RFC3339Nano, time.RFC3339}
+	layouts := []string{"2006-01-02T15:04:05.000000000Z", "2006-01-02T15:04:05.000Z", time.RFC3339Nano, time.RFC3339}
 	var last error
 	for _, layout := range layouts {
 		t, err := time.Parse(layout, v)
