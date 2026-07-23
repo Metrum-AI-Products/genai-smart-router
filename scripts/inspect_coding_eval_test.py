@@ -16,7 +16,7 @@ def main() -> int:
     done=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=base,text=True,capture_output=True)
     need(done.returncode==0, done.stderr); invoked=capture.read_text()
     need(str(ROOT) not in invoked.split("|",1)[0], "Inspect ran in repository rather than scratch directory")
-    need("--limit 2" in invoked and "--model openai/router-group" in invoked and "--model-base-url https://router.invalid/v1" in invoked and "reasoning_effort=low" in invoked, invoked)
+    need("--limit 2" in invoked and "--model openai/router-group" in invoked and "--model-base-url https://router.invalid/v1" in invoked and "reasoning_effort=low" in invoked and f"--log-dir {logs}" in invoked, invoked)
     status=json.loads((logs/"inspect-eval-status.json").read_text()); need(status["status"]=="completed" and status["api"]=="openai" and status["reasoning"]=="low" and status["wall_seconds"] >= 0 and status["completed"],status)
     (logs/"inspect-aggregate.json").write_text(json.dumps({"status":"completed","score":0.8,"correct":8,"scored":10,"unscored":0,"p95_sample_time_ms":100,"token_cost":1,"inbound_dialect":"openai_chat","tools_present":False,"tool_count_bucket":"0","streaming":False,"caller_output_cap_field":"max_tokens","request_size_bucket":"small","tool_schema_bytes_bucket":"0","authorization":"leak","response":"leak"}))
     policy=root/"policy.json"; policy.write_text(json.dumps({"regression_thresholds":{"max_score_delta":0.05,"max_unscored_error_rate":0.1,"max_p95_sample_time_growth":0.25,"max_token_cost_growth":0.25}}))

@@ -51,11 +51,49 @@ def require_run_inputs() -> tuple[str,str,int,int,int,Path]:
     if not base_url: raise ValueError("EVAL_BASE_URL is required")
     if not env("EVAL_API_KEY") and not env("OPENAI_API_KEY"):
         raise ValueError("evaluation credential is unavailable; set EVAL_API_KEY in protected environment")
-    return model, base_url, bounded_int(env("EVAL_LIMIT","8"),"EVAL_LIMIT",1,200), bounded_int(env("EVAL_CONCURRENCY","1"),"EVAL_CONCURRENCY",1,16), bounded_int(env("EVAL_TIMEOUT","300"),"EVAL_TIMEOUT",30,3600), Path(env("EVAL_LOG_DIR","tmp/inspect-evals"))
+    return model, base_url, bounded_int(env("EVAL_LIMIT","8"),"EVAL_LIMIT",1,200), bounded_int(env("EVAL_CONCURRENCY","1"),"EVAL_CONCURRENCY",1,16), bounded_int(env("EVAL_TIMEOUT","300"),"EVAL_TIMEOUT",30,3600), Path(env("EVAL_LOG_DIR","tmp/inspect-evals")).expanduser().resolve()
 
 def write_status(log_dir: Path, payload: dict[str,Any]) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / "inspect-eval-status.json").write_text(json.dumps(safe(payload), indent=2, sort_keys=True)+"\n", encoding="utf-8")
+
+def value(source: Any, name: str, default: Any = None) -> Any:
+    return source.get(name, default) if isinstance(source, dict) else getattr(source, name, default)
+
+def number(source: Any) -> float | None:
+    return float(source) if isinstance(source, (int, float)) and not isinstance(source, bool) else None
+
+def export_inspect_aggregate(log_dir: Path) -> None:
+    """Read only Inspect headers and sample summaries into a safe aggregate."""
+    try:
+        from inspect_ai.log import list_eval_logs, read_eval_log, read_eval_log_sample_summaries
+        logs = list_eval_logs(str(log_dir))
+        scores: list[float] = []; scored = unscored = errors = 0; wall_seconds = 0.0
+        for info in logs:
+            header = read_eval_log(info, header_only=True)
+            wall_seconds += number(value(value(header, "stats"), "total_time")) or 0.0
+            for summary in read_eval_log_sample_summaries(info):
+                if value(summary, "error") is not None:
+                    errors += 1
+                sample_scores = value(summary, "scores", {}) or {}
+                values = sample_scores.values() if isinstance(sample_scores, dict) else []
+                sample_values = [number(value(score, "value")) for score in values]
+                sample_values = [score for score in sample_values if score is not None]
+                if sample_values:
+                    scored += 1; scores.append(sum(sample_values) / len(sample_values))
+                else:
+                    unscored += 1
+        total = scored + unscored
+        payload: dict[str, Any] = {"status": "completed", "completed": True, "partial": bool(unscored or errors), "scored": scored, "unscored": unscored, "errors": errors, "wall_seconds": round(wall_seconds, 3)}
+        if total:
+            payload["unscored_error_rate"] = round((unscored + errors) / total, 6)
+        if scores:
+            payload["score"] = round(sum(scores) / len(scores), 6)
+            payload["correct"] = sum(score >= 1.0 for score in scores)
+        (log_dir / "inspect-aggregate.json").write_text(json.dumps(safe_aggregate(payload), indent=2, sort_keys=True)+"\n", encoding="utf-8")
+    except Exception as exc:
+        (log_dir / "inspect-aggregate.json").write_text(json.dumps({"status": "partial", "status_reason": "inspect-aggregate-unavailable", "completed": False, "partial": True, "skipped": False, "blocked": False}, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+        print(f"evaluation aggregate unavailable: {type(exc).__name__}", file=sys.stderr)
 
 def run(args: argparse.Namespace) -> int:
     try: model, base_url, limit, concurrency, timeout, log_dir = require_run_inputs()
@@ -84,6 +122,8 @@ def run(args: argparse.Namespace) -> int:
         process = subprocess.run(command, cwd=scratch, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=process_env)
     state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
     write_status(log_dir, {"status":state,"suite":args.suite,"model":model,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
+    if state == "completed":
+        export_inspect_aggregate(log_dir)
     print(f"evaluation {state}: suite={args.suite} model={model} limit={limit}")
     return 0 if process.returncode == 0 else (3 if state == "skipped" else 2)
 

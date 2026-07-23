@@ -21,7 +21,7 @@ on:
         required: false
         default: "8"
 
-permissions: { contents: write }
+permissions: { contents: read }
 
 jobs:
   smoke:
@@ -47,9 +47,12 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier != 'smoke')
     runs-on: ubuntu-24.04
     environment: evaluation
+    permissions: { contents: write }
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install Inspect AI
+        run: python3 -m pip install 'inspect-ai>=0.3.242'
       - name: Run deployment-owned full suite
         env:
           EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
