@@ -3,8 +3,6 @@ name: Inspect coding evaluation
 on:
   pull_request:
     paths: ["internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "config/evaluation-policy.example.json", ".github/workflows/inspect-coding-evaluation.yml"]
-  push:
-    branches: [main]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -61,6 +59,8 @@ jobs:
       EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
       EVAL_BASELINE_HUMANEVAL_JSON: ${{ secrets.EVAL_BASELINE_HUMANEVAL_JSON }}
       EVAL_BASELINE_BIGCODEBENCH_JSON: ${{ secrets.EVAL_BASELINE_BIGCODEBENCH_JSON }}
+      EVAL_ROUTER_USAGE_HUMANEVAL_JSON: ${{ secrets.EVAL_ROUTER_USAGE_HUMANEVAL_JSON }}
+      EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON: ${{ secrets.EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install Inspect AI

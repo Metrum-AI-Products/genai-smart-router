@@ -49,6 +49,20 @@ def load_policy(path: Path | None = None) -> dict[str, Any]:
         raise ValueError("evaluation policy must be an object")
     return policy
 
+def authoritative_router_cost() -> float:
+    """Read the safe scalar exported from stored request-time router usage."""
+    raw = env("EVAL_ROUTER_USAGE_JSON")
+    if not raw:
+        raise ValueError("authoritative router request-time usage aggregate is unavailable")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("authoritative router request-time usage aggregate is invalid") from exc
+    cost = number(value(payload, "stored_request_time_cost_usd"))
+    if cost is None or cost < 0:
+        raise ValueError("authoritative router request-time cost is unavailable")
+    return cost
+
 def status_for_error(error: str) -> str:
     text = error.lower()
     if any(x in text for x in ("credential", "api key", "unauthorized", "forbidden", "entitlement", "not configured")): return "blocked"
@@ -179,7 +193,7 @@ def run(args: argparse.Namespace) -> int:
         process_env = os.environ.copy()
         process_env.setdefault("OPENAI_BASE_URL", base_url)
         if env("EVAL_API_KEY"):
-            process_env.setdefault("OPENAI_API_KEY", env("EVAL_API_KEY"))
+            process_env["OPENAI_API_KEY"] = env("EVAL_API_KEY")
         process = subprocess.run(command, cwd=scratch, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=process_env)
     state = "completed" if process.returncode == 0 else status_for_error(process.stderr)
     write_status(suite_dir, {"status":state,"suite":args.suite,"model":model,"model_kind":model_kind,"api":api,"reasoning":reasoning,"base_url_configured":bool(base_url),"limit":limit,"concurrency":concurrency,"wall_seconds":round(time.monotonic()-started,3),"exit_code":process.returncode,"completed":state == "completed","partial":False,"skipped":state == "skipped","blocked":state == "blocked"})
@@ -219,6 +233,20 @@ def report(args: argparse.Namespace) -> int:
     baseline_supplied = bool(baseline_text) or baseline_path.exists()
     baseline=safe_aggregate(json.loads(baseline_text)) if baseline_text else (safe_aggregate(json.loads(baseline_path.read_text())) if baseline_path.exists() else None)
     failures=["protected baseline aggregate is empty or unsafe"] if baseline_supplied and not baseline else (compare(result,baseline,policy) if baseline else [])
+    if result.get("model_kind") == "router-group":
+        try:
+            result["token_cost"] = authoritative_router_cost()
+        except ValueError as exc:
+            failures.append(str(exc))
+        else:
+            # Cost comparison must use stored router usage, never Inspect's
+            # estimator for a weighted router group.
+            failures = [item for item in failures if not item.startswith("token_cost ")]
+            if baseline:
+                if "token_cost" not in baseline:
+                    failures.append("token_cost unavailable for regression policy")
+                else:
+                    failures.extend(compare({"token_cost": result["token_cost"]}, {"token_cost": baseline["token_cost"]}, {"regression_thresholds": {"max_token_cost_growth": policy.get("regression_thresholds", {}).get("max_token_cost_growth")}}))
     result.update({"baseline_present":bool(baseline),"regression_failures":failures})
     out_json=log_dir/"evaluation-summary.json"; out_md=log_dir/"evaluation-summary.md"; out_json.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     lines=["# Inspect coding evaluation", "", f"Status: **{result.get('status','blocked').upper()}**", "", "This sanitized aggregate excludes prompts, responses, schemas, raw logs, credentials, and headers.", ""]
@@ -245,18 +273,19 @@ def smoke(args: argparse.Namespace) -> int:
 
 def ci_full(args: argparse.Namespace) -> int:
     """Run the protected, per-suite CI contract without embedding policy in YAML."""
-    required = ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL", "EVAL_BASELINE_HUMANEVAL_JSON", "EVAL_BASELINE_BIGCODEBENCH_JSON")
+    required = ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL", "EVAL_BASELINE_HUMANEVAL_JSON", "EVAL_BASELINE_BIGCODEBENCH_JSON", "EVAL_ROUTER_USAGE_HUMANEVAL_JSON", "EVAL_ROUTER_USAGE_BIGCODEBENCH_JSON")
     missing = [name for name in required if not env(name)]
     if missing:
         print(f"evaluation blocked: protected CI input unavailable ({', '.join(missing)})", file=sys.stderr)
         return 2
-    original = {name: os.environ.get(name) for name in ("EVAL_SUITE", "EVAL_BASELINE_JSON", "EVAL_CI_REPORT_TIMESTAMP")}
+    original = {name: os.environ.get(name) for name in ("EVAL_SUITE", "EVAL_BASELINE_JSON", "EVAL_ROUTER_USAGE_JSON", "EVAL_CI_REPORT_TIMESTAMP")}
     label = env("EVAL_CI_REPORT_TIMESTAMP")
     timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     try:
         for suite, baseline_var in (("humaneval", "EVAL_BASELINE_HUMANEVAL_JSON"), ("bigcodebench", "EVAL_BASELINE_BIGCODEBENCH_JSON")):
             os.environ["EVAL_SUITE"] = suite
             os.environ["EVAL_BASELINE_JSON"] = env(baseline_var)
+            os.environ["EVAL_ROUTER_USAGE_JSON"] = env(f"EVAL_ROUTER_USAGE_{suite.upper()}_JSON")
             os.environ["EVAL_CI_REPORT_TIMESTAMP"] = f"{timestamp}-{label}-{suite}" if label else f"{timestamp}-{suite}"
             code = run(argparse.Namespace(suite=suite))
             if code:
