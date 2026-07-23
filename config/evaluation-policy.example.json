@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "regression_thresholds": {
+    "max_score_delta": 0.05,
+    "max_unscored_error_rate": 0.10,
+    "max_p95_sample_time_growth": 0.25,
+    "max_token_cost_growth": 0.25
+  },
+  "approved_direct_baselines": []
+}
