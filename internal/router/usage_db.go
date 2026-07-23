@@ -254,6 +254,10 @@ type usageRow struct {
 	InputTokens                        int
 	OutputTokens                       int
 	TotalTokens                        int
+	ReasoningTokens                    *int
+	ReasoningAttemptCount              int
+	ReasoningSuccessfulAttemptCount    int
+	ReasoningReportedAttemptCount      int
 	InputHasImage                      bool
 	InputImageCount                    int
 	InputImageTokens                   int
@@ -403,6 +407,10 @@ type usageRecord struct {
 	InputTokens                        int                                `gorm:"column:input_tokens;not null"`
 	OutputTokens                       int                                `gorm:"column:output_tokens;not null"`
 	TotalTokens                        int                                `gorm:"column:total_tokens;not null"`
+	ReasoningTokens                    *int                               `gorm:"column:reasoning_tokens"`
+	ReasoningAttemptCount              int                                `gorm:"column:reasoning_attempt_count;not null;default:0"`
+	ReasoningSuccessfulAttemptCount    int                                `gorm:"column:reasoning_successful_attempt_count;not null;default:0"`
+	ReasoningReportedAttemptCount      int                                `gorm:"column:reasoning_reported_attempt_count;not null;default:0"`
 	InputHasImage                      bool                               `gorm:"column:input_has_image;not null;default:false;index:idx_request_usage_input_image"`
 	InputImageCount                    int                                `gorm:"column:input_image_count;not null;default:0"`
 	InputImageTokens                   int                                `gorm:"column:input_image_tokens;not null;default:0"`
@@ -940,6 +948,7 @@ type requestAttemptRecord struct {
 	ResponseBytes    int64  `gorm:"column:response_bytes;not null"`
 	AttemptTimeoutMS int    `gorm:"column:attempt_timeout_ms;not null"`
 	RetryAfterMS     int64  `gorm:"column:retry_after_ms;not null;default:0"`
+	ReasoningTokens  *int   `gorm:"column:reasoning_tokens"`
 }
 
 func (requestAttemptRecord) TableName() string {
@@ -1815,6 +1824,7 @@ func attemptRecordFromLog(requestID string, rec attemptLogRecord) *requestAttemp
 		ResponseBytes:    rec.ResponseBytes,
 		AttemptTimeoutMS: rec.AttemptTimeoutMS,
 		RetryAfterMS:     rec.RetryAfterMS,
+		ReasoningTokens:  rec.ReasoningTokens,
 	}
 }
 
@@ -2228,6 +2238,7 @@ func rowFromRecord(rec logRecord) usageRow {
 	} else {
 		tokenID = publicTokenID(tokenID)
 	}
+	reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported := reasoningUsageCoverage(rec.AttemptsDetail)
 	return usageRow{
 		TS:                                 ts,
 		RequestID:                          rec.RequestID,
@@ -2261,6 +2272,10 @@ func rowFromRecord(rec logRecord) usageRow {
 		InputTokens:                        rec.Usage.InputTokens,
 		OutputTokens:                       rec.Usage.OutputTokens,
 		TotalTokens:                        rec.Usage.TotalTokens,
+		ReasoningTokens:                    reasoningTokens,
+		ReasoningAttemptCount:              reasoningAttempts,
+		ReasoningSuccessfulAttemptCount:    reasoningSuccesses,
+		ReasoningReportedAttemptCount:      reasoningReported,
 		InputHasImage:                      rec.InputHasImage,
 		InputImageCount:                    rec.InputImageCount,
 		InputImageTokens:                   rec.InputImageTokens,
@@ -2322,6 +2337,26 @@ func rowFromRecord(rec logRecord) usageRow {
 	}
 }
 
+// reasoningUsageCoverage preserves absence. Reasoning token counts are a subset
+// of output tokens and are intentionally not used in cost or throughput totals.
+func reasoningUsageCoverage(attempts []attemptLogRecord) (total *int, attempted, successful, reported int) {
+	var sum int
+	for _, attempt := range attempts {
+		attempted++
+		if attempt.StatusCode >= 200 && attempt.StatusCode < 300 {
+			successful++
+		}
+		if attempt.ReasoningTokens != nil {
+			reported++
+			sum += *attempt.ReasoningTokens
+		}
+	}
+	if reported > 0 {
+		return &sum, attempted, successful, reported
+	}
+	return nil, attempted, successful, 0
+}
+
 func recordFromRow(row usageRow) *usageRecord {
 	return &usageRecord{
 		RequestID:                          row.RequestID,
@@ -2356,6 +2391,10 @@ func recordFromRow(row usageRow) *usageRecord {
 		InputTokens:                        row.InputTokens,
 		OutputTokens:                       row.OutputTokens,
 		TotalTokens:                        row.TotalTokens,
+		ReasoningTokens:                    row.ReasoningTokens,
+		ReasoningAttemptCount:              row.ReasoningAttemptCount,
+		ReasoningSuccessfulAttemptCount:    row.ReasoningSuccessfulAttemptCount,
+		ReasoningReportedAttemptCount:      row.ReasoningReportedAttemptCount,
 		InputHasImage:                      row.InputHasImage,
 		InputImageCount:                    row.InputImageCount,
 		InputImageTokens:                   row.InputImageTokens,
@@ -2455,6 +2494,10 @@ func rowFromUsageRecord(record usageRecord) (usageRow, error) {
 		InputTokens:                        record.InputTokens,
 		OutputTokens:                       record.OutputTokens,
 		TotalTokens:                        record.TotalTokens,
+		ReasoningTokens:                    record.ReasoningTokens,
+		ReasoningAttemptCount:              record.ReasoningAttemptCount,
+		ReasoningSuccessfulAttemptCount:    record.ReasoningSuccessfulAttemptCount,
+		ReasoningReportedAttemptCount:      record.ReasoningReportedAttemptCount,
 		InputHasImage:                      record.InputHasImage,
 		InputImageCount:                    record.InputImageCount,
 		InputImageTokens:                   record.InputImageTokens,

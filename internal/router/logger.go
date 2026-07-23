@@ -165,6 +165,7 @@ type attemptLogRecord struct {
 	ResponseBytes    int64                          `json:"response_bytes,omitempty"`
 	AttemptTimeoutMS int                            `json:"attempt_timeout_ms,omitempty"`
 	RetryAfterMS     int64                          `json:"retry_after_ms,omitempty"`
+	ReasoningTokens  *int                           `json:"reasoning_tokens,omitempty"`
 	ErrorDetails     []upstreamErrorDetailLogRecord `json:"error_details,omitempty"`
 }
 

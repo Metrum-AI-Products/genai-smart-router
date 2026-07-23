@@ -18,6 +18,7 @@ SAFE_AGGREGATE_FIELDS = {
     "status", "status_reason", "suite", "model", "model_kind", "api", "reasoning", "limit", "concurrency", "wall_seconds", "exit_code",
     "completed", "partial", "skipped", "blocked", "score", "correct", "scored", "unscored", "unscored_error_rate",
     "p50_sample_time_ms", "p95_sample_time_ms", "input_tokens", "output_tokens", "total_tokens", "token_cost", "attempts", "errors", "fallbacks",
+    "reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage",
     "inbound_dialect", "tools_present", "tool_count_bucket", "streaming", "caller_output_cap_field", "request_size_bucket", "tool_schema_bytes_bucket",
 }
 
@@ -62,6 +63,19 @@ def authoritative_router_cost() -> float:
     if cost is None or cost < 0:
         raise ValueError("authoritative router request-time cost is unavailable")
     return cost
+
+def reasoning_coverage_text(result: dict[str, Any]) -> str:
+    """Render presence-aware reasoning usage; zero is reported, never absence."""
+    reported = int(result.get("reasoning_reported_attempt_count", 0) or 0)
+    attempts = int(result.get("reasoning_attempt_count", 0) or 0)
+    successful = int(result.get("reasoning_successful_attempt_count", 0) or 0)
+    if reported == 0:
+        return "not reported"
+    tokens = result.get("reasoning_tokens", 0)
+    if attempts > 0 and reported == attempts:
+        return f"{tokens} (complete coverage)"
+    # Prefer the total upstream-attempt denominator specified by the evaluation contract.
+    return f"{reported} reported / {attempts} upstream attempts ({tokens} tokens; {successful} successful)"
 
 def status_for_error(error: str) -> str:
     text = error.lower()
@@ -252,6 +266,14 @@ def report(args: argparse.Namespace) -> int:
     lines=["# Inspect coding evaluation", "", f"Status: **{result.get('status','blocked').upper()}**", "", "This sanitized aggregate excludes prompts, responses, schemas, raw logs, credentials, and headers.", ""]
     for key in ("suite","model","model_kind","api","reasoning","inbound_dialect","tools_present","tool_count_bucket","streaming","caller_output_cap_field","request_size_bucket","tool_schema_bytes_bucket","completed","partial","skipped","blocked","limit","score","correct","scored","unscored","unscored_error_rate","p95_sample_time_ms","token_cost","wall_seconds"):
         if key in result: lines.append(f"- {key}: {result[key]}")
+    lines.append(f"- reasoning tokens: {reasoning_coverage_text(result)}")
+    lines.append("- reasoning-token counts are a subset of output tokens and are not additive.")
+    coverage = result.get("reasoning_provider_model_dialect_coverage")
+    if isinstance(coverage, list) and coverage:
+        lines += ["", "## Upstream reasoning-token coverage", "", "| Provider | Model | Dialect | Reported / attempts | Tokens |", "| --- | --- | --- | ---: | ---: |"]
+        for item in coverage:
+            if not isinstance(item, dict): continue
+            lines.append(f"| {item.get('provider','')} | {item.get('model','')} | {item.get('dialect','')} | {item.get('reported_attempts',0)} / {item.get('attempts',0)} | {item.get('reasoning_tokens','not reported')} |")
     if failures: lines += ["", "## Regression policy", ""] + [f"- {x}" for x in failures]
     out_md.write_text("\n".join(lines)+"\n")
     if env("EVAL_SAVE_CI_REPORT").lower() == "true":

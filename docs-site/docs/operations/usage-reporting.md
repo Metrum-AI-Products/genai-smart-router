@@ -256,6 +256,7 @@ Reports include:
 
 - Calls, errors, status codes, latency, and upstream attempts.
 - Input tokens, output tokens, total tokens, and throughput.
+- Presence-aware reasoning-token coverage when an upstream reports it. The count is a subset of output tokens, never added again to totals, costs, or throughput; a reported zero is distinct from unavailable telemetry. Request and attempt diagnostics expose reported/attempt/successful-attempt coverage so routed evaluations can identify partial provider/model/dialect reporting.
 - Downstream user performance grouped by user, project, environment, and client, including average/max latency, TTFB, downstream duration, and downstream token throughput.
 - Upstream endpoint performance grouped by provider, model, and API dialect, including average/max upstream duration, latency, TTFB, attempts, fallbacks, cost, and upstream token throughput.
 - Request-time input/output token prices and calculated input/output/total USD cost.

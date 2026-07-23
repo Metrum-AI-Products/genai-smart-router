@@ -368,11 +368,7 @@ func responsesToChatCompletion(raw map[string]any, model string, resp *IRRespons
 			"message":       message,
 			"finish_reason": defaultString(resp.StopReason, "stop"),
 		}},
-		"usage": map[string]any{
-			"prompt_tokens":     resp.Usage.InputTokens,
-			"completion_tokens": resp.Usage.OutputTokens,
-			"total_tokens":      resp.Usage.TotalTokens,
-		},
+		"usage": chatUsageMap(resp.Usage),
 	}
 }
 

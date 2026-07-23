@@ -1786,6 +1786,7 @@ sendUpstream:
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	if passthrough {
@@ -1796,6 +1797,7 @@ sendUpstream:
 			attempt.Retryable = true
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	if chatResponsesBridge {
@@ -1807,6 +1809,7 @@ sendUpstream:
 			return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 		}
 		s.setChatToResponsesBridgeSession(ctx, rc, chatResponsesSession, target, resp.ID, attemptIndex)
+		attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 		return resp, attempt, nil
 	}
 	resp, err := decodeUpstreamResponse(outDialect, raw, target.Model)
@@ -1816,6 +1819,7 @@ sendUpstream:
 		attempt.Retryable = true
 		return nil, attempt, upstreamError{Class: "decode_error", Message: err.Error(), Retryable: true, Err: err}
 	}
+	attempt.ReasoningTokens = resp.Usage.ReasoningTokens
 	return resp, attempt, nil
 }
 
