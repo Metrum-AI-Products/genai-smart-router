@@ -1,0 +1,67 @@
+name: Inspect coding evaluation
+
+on:
+  pull_request:
+    paths: ["internal/router/**", "config.example.yaml", "Makefile", "scripts/inspect_coding_eval.py", "config/evaluation-policy.example.json", ".github/workflows/inspect-coding-evaluation.yml"]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "smoke, full, or promotion-review"
+        required: true
+        default: "smoke"
+      model:
+        description: "Deployment-approved group or optional baseline"
+        required: false
+      limit:
+        description: "Bounded task limit"
+        required: false
+        default: "8"
+
+permissions: { contents: read }
+
+jobs:
+  smoke:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'smoke')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: python3 scripts/inspect_coding_eval_test.py
+      - name: Authenticated bounded router smoke
+        if: ${{ secrets.EVAL_ROUTER_BASE_URL != '' && secrets.EVAL_ROUTER_API_KEY != '' && vars.EVAL_ROUTER_MODEL != '' }}
+        env:
+          EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
+          EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
+          EVAL_MODEL: ${{ vars.EVAL_ROUTER_MODEL }}
+          EVAL_LIMIT: "2"
+        run: make eval-ci-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: inspect-smoke-sanitized, path: tmp/inspect-evals/evaluation-summary.*, if-no-files-found: ignore, retention-days: 7 }
+
+  full-or-promotion:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier != 'smoke')
+    runs-on: ubuntu-24.04
+    environment: evaluation
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Run deployment-owned full suite
+        env:
+          EVAL_BASE_URL: ${{ secrets.EVAL_ROUTER_BASE_URL }}
+          EVAL_API_KEY: ${{ secrets.EVAL_ROUTER_API_KEY }}
+          EVAL_MODEL: ${{ inputs.model || vars.EVAL_ROUTER_MODEL }}
+          EVAL_LIMIT: ${{ inputs.limit || '8' }}
+        run: |
+          test -n "$EVAL_BASE_URL" && test -n "$EVAL_API_KEY" && test -n "$EVAL_MODEL" || { echo 'evaluation blocked: protected router inputs unavailable'; exit 2; }
+          make eval-humaneval eval-bigcodebench eval-report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: inspect-sanitized-summary, path: tmp/inspect-evals/evaluation-summary.*, if-no-files-found: ignore, retention-days: 30 }
+
+# Promotion-review is a manual protected-environment decision. A completed
+# benchmark is evidence, never an automatic target-weight or membership change.

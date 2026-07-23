@@ -8,6 +8,20 @@ GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
 PYTHON ?= python3
 
+# Inspect coding evaluations are deliberately opt-in: they call a live endpoint
+# and may start Docker sandboxes.  They are never prerequisites of test/build.
+EVAL_MODEL ?=
+EVAL_BASE_URL ?=
+EVAL_API ?= openai
+EVAL_LIMIT ?= 8
+EVAL_CONCURRENCY ?= 1
+EVAL_TIMEOUT ?= 300
+EVAL_LOG_DIR ?= tmp/inspect-evals
+EVAL_REASONING ?=
+EVAL_POLICY ?= config/evaluation-policy.example.json
+EVAL_INSPECT ?= inspect
+export EVAL_MODEL EVAL_BASE_URL EVAL_API EVAL_LIMIT EVAL_CONCURRENCY EVAL_TIMEOUT EVAL_LOG_DIR EVAL_REASONING EVAL_POLICY EVAL_INSPECT
+
 # Keep the repository's historical validation contract for bare `make` even
 # though the EKS help target appears earlier in this file.
 .DEFAULT_GOAL := test
@@ -82,9 +96,22 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke clean
 
 help: eks-help
+
+eval-humaneval:
+	$(PYTHON) scripts/inspect_coding_eval.py run --suite humaneval
+
+eval-bigcodebench:
+	$(PYTHON) scripts/inspect_coding_eval.py run --suite bigcodebench
+
+eval-report:
+	$(PYTHON) scripts/inspect_coding_eval.py report --log-dir "$${EVAL_LOG_DIR}" --policy "$${EVAL_POLICY}"
+
+# A small, authenticated router-group check for explicitly enabled CI only.
+eval-ci-smoke:
+	$(PYTHON) scripts/inspect_coding_eval.py smoke
 
 eks-help:
 	@echo "EKS delivery targets (approved target policy; no default kubeconfig/context):"
