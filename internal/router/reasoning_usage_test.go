@@ -1,6 +1,9 @@
 package router
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 )
@@ -61,5 +64,14 @@ func TestReasoningUsageResponseEncodingAndAttemptCoverage(t *testing.T) {
 	}
 	if absent, _, _, count := reasoningUsageCoverage([]attemptLogRecord{{StatusCode: 200}}); absent != nil || count != 0 {
 		t.Fatalf("absence was not preserved: total=%v reported=%d", absent, count)
+	}
+	stream := httptest.NewRecorder()
+	writeChatTextSSE(func(_ string, v any) { _ = json.NewEncoder(stream).Encode(v) }, stream, &IRResponse{ID: "id", Model: "model", Usage: usage})
+	if !bytes.Contains(stream.Body.Bytes(), []byte("reasoning_tokens")) {
+		t.Fatalf("streaming usage lost reasoning tokens: %s", stream.Body.String())
+	}
+	bridged, err := decodeResponsesToChatBridge([]byte(`{"id":"chat","usage":{"prompt_tokens":2,"completion_tokens":10,"completion_tokens_details":{"reasoning_tokens":7}},"choices":[{"message":{"content":"ok"}}]}`), "model")
+	if err != nil || bridged.Raw["usage"].(map[string]any)["output_tokens_details"].(map[string]any)["reasoning_tokens"] != 7 {
+		t.Fatalf("Responses-to-Chat bridge lost reasoning usage: %#v, %v", bridged, err)
 	}
 }
