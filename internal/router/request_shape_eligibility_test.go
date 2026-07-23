@@ -113,6 +113,30 @@ func TestRequestShapeFitSkipsExplicitOutputCapsBelowTargetMinimum(t *testing.T) 
 	}
 }
 
+func TestRequestShapeFitOutputCapMinimumDoesNotRaiseOrRequireAnOmittedCallerCap(t *testing.T) {
+	cfg := minimalConfig(t)
+	target := cfg.Models["default"].Targets[0]
+	target.RequestShapeSupport.MinRequestedOutputTokens = 256
+	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{cfg: cfg}
+	req := &IRRequest{
+		Model:    "default",
+		Messages: []IRMessage{{Role: "user", Content: "hello"}},
+		Raw:      map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}},
+	}
+	estimate := requestTokenEstimateFromIR(req, "openai-responses", 96)
+	fit := svc.targetRequestShapeFit(target, req, "openai-responses", "openai-responses", estimate)
+	if fit.FilterReason != "" {
+		t.Fatalf("omitted caller cap must remain eligible, fit=%#v", fit)
+	}
+	if fit.Estimate.RequestedOutputCapTokens != 0 {
+		t.Fatalf("request estimate must not invent a caller cap, got %d", fit.Estimate.RequestedOutputCapTokens)
+	}
+}
+
 func TestRequestShapeFitUsesTargetDialectDefaultOutputReservation(t *testing.T) {
 	cfg := minimalConfig(t)
 	target := cfg.Models["default"].Targets[0]
