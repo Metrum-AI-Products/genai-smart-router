@@ -998,6 +998,7 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 	if rc == nil {
 		return
 	}
+	populateReasoningUsageCoverage(&rc.rec)
 	if !s.diagnosticsEnabled() {
 		rc.rec.AttemptsDetail = nil
 		rc.rec.TraceEvents = nil
@@ -1026,6 +1027,14 @@ func (s *Service) finish(rc *requestContext, status int, code *string) {
 		s.recordRequestSecurityAccess(rc, rc.rec.Status, codeText)
 		rc.securityRecorded = true
 	}
+}
+
+func populateReasoningUsageCoverage(rec *logRecord) {
+	if rec == nil || rec.ReasoningCoverageMeasured {
+		return
+	}
+	rec.ReasoningTokens, rec.ReasoningAttemptCount, rec.ReasoningSuccessfulAttemptCount, rec.ReasoningReportedAttemptCount = reasoningUsageCoverage(rec.AttemptsDetail)
+	rec.ReasoningCoverageMeasured = true
 }
 
 func (s *Service) populateLicenseMetadata(rec *logRecord) {

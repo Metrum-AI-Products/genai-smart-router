@@ -1737,6 +1737,47 @@ var usageRelationalTables = []string{
 // complete explicit DDL manifest is prepared as a later migration slice.
 func verifyUsageLegacyBaseline(db *gorm.DB) error { return ensureUsageRelationalSchema(db) }
 
+func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
+	for _, column := range []struct {
+		model any
+		field string
+	}{
+		{&usageRecord{}, "ReasoningTokens"},
+		{&usageRecord{}, "ReasoningAttemptCount"},
+		{&usageRecord{}, "ReasoningSuccessfulAttemptCount"},
+		{&usageRecord{}, "ReasoningReportedAttemptCount"},
+		{&requestAttemptRecord{}, "ReasoningTokens"},
+	} {
+		if !db.Migrator().HasColumn(column.model, column.field) {
+			if err := db.Migrator().AddColumn(column.model, column.field); err != nil {
+				return fmt.Errorf("add reasoning telemetry column %s: %w", column.field, err)
+			}
+		}
+	}
+	return verifyUsageReasoningTelemetryMigration(db)
+}
+
+func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
+	if err := verifyUsageLegacyBaseline(db); err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		model any
+		name  string
+	}{
+		{&usageRecord{}, "reasoning_tokens"},
+		{&usageRecord{}, "reasoning_attempt_count"},
+		{&usageRecord{}, "reasoning_successful_attempt_count"},
+		{&usageRecord{}, "reasoning_reported_attempt_count"},
+		{&requestAttemptRecord{}, "reasoning_tokens"},
+	} {
+		if !db.Migrator().HasColumn(column.model, column.name) {
+			return fmt.Errorf("required reasoning telemetry column %s is missing", column.name)
+		}
+	}
+	return nil
+}
+
 func (s *usageStore) Emit(rec logRecord) {
 	if s == nil || s.db == nil || rec.RequestID == "" {
 		return
@@ -2238,7 +2279,10 @@ func rowFromRecord(rec logRecord) usageRow {
 	} else {
 		tokenID = publicTokenID(tokenID)
 	}
-	reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported := reasoningUsageCoverage(rec.AttemptsDetail)
+	reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported := rec.ReasoningTokens, rec.ReasoningAttemptCount, rec.ReasoningSuccessfulAttemptCount, rec.ReasoningReportedAttemptCount
+	if !rec.ReasoningCoverageMeasured {
+		reasoningTokens, reasoningAttempts, reasoningSuccesses, reasoningReported = reasoningUsageCoverage(rec.AttemptsDetail)
+	}
 	return usageRow{
 		TS:                                 ts,
 		RequestID:                          rec.RequestID,

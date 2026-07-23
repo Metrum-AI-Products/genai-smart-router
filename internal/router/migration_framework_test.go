@@ -229,3 +229,42 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 		}
 	}
 }
+
+func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	legacy, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"ALTER TABLE request_usage DROP COLUMN reasoning_tokens",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_successful_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_reported_attempt_count",
+		"ALTER TABLE request_attempts DROP COLUMN reasoning_tokens",
+	} {
+		if err := legacy.db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if err := verifyUsageReasoningTelemetryMigration(migrated.db); err != nil {
+		t.Fatalf("reasoning migration postcondition: %v", err)
+	}
+	runner, err := newUsageMigrationRunner(migrated.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := runner.Verify()
+	if err != nil || status.SchemaVersion != 2 || status.State != "current" {
+		t.Fatalf("reasoning migration ledger status=%+v err=%v", status, err)
+	}
+}

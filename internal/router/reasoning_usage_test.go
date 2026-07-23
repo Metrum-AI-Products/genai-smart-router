@@ -46,6 +46,32 @@ func TestReasoningUsageColumnsPersistAsNullableScalars(t *testing.T) {
 	}
 }
 
+func TestReasoningUsageAggregateSurvivesDiagnosticChildSuppression(t *testing.T) {
+	reasoning := 0
+	rec := logRecord{AttemptsDetail: []attemptLogRecord{{StatusCode: 200, ReasoningTokens: &reasoning}}}
+	populateReasoningUsageCoverage(&rec)
+	rec.AttemptsDetail = nil // the diagnostics-disabled path removes child telemetry before usage persistence
+	row := rowFromRecord(rec)
+	if row.ReasoningTokens == nil || *row.ReasoningTokens != 0 || row.ReasoningAttemptCount != 1 || row.ReasoningSuccessfulAttemptCount != 1 || row.ReasoningReportedAttemptCount != 1 {
+		t.Fatalf("suppressed diagnostics lost reasoning aggregate: %#v", row)
+	}
+}
+
+func TestAdminReasoningCoverageDTOsPreserveNullability(t *testing.T) {
+	zero := 0
+	request := adminRequestFromRow(usageRow{ReasoningTokens: &zero, ReasoningAttemptCount: 2, ReasoningSuccessfulAttemptCount: 2, ReasoningReportedAttemptCount: 1})
+	if request.ReasoningTokens == nil || *request.ReasoningTokens != 0 || request.ReasoningAttemptCount != 2 || request.ReasoningSuccessfulAttemptCount != 2 || request.ReasoningReportedAttemptCount != 1 {
+		t.Fatalf("request DTO=%#v", request)
+	}
+	attempt := adminAttemptsFromRecords([]requestAttemptRecord{{ReasoningTokens: &zero}})[0]
+	if attempt.ReasoningTokens == nil || *attempt.ReasoningTokens != 0 {
+		t.Fatalf("attempt DTO=%#v", attempt)
+	}
+	if adminRequestFromRow(usageRow{}).ReasoningTokens != nil || adminAttemptsFromRecords([]requestAttemptRecord{{}})[0].ReasoningTokens != nil {
+		t.Fatal("missing reasoning usage must remain null in admin DTOs")
+	}
+}
+
 func TestReasoningUsageResponseEncodingAndAttemptCoverage(t *testing.T) {
 	n := 7
 	usage := Usage{InputTokens: 2, OutputTokens: 10, TotalTokens: 12, ReasoningTokens: &n}
