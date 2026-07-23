@@ -1520,6 +1520,54 @@ providers:
           anthropic_messages:
           - client_tools
 models:
+  # Local-only VLM acceptance groups. Do not grant these groups to production
+  # callers or promote a target into a broad group until the exact API skin has
+  # passed receipt OCR, forced function-tool, streaming, and cap tests.
+  image-analysis-smoke-gpt54:
+    strategy: static
+    targets:
+    - provider: openai
+      model_ref: gpt-5.4
+      request_shape_support:
+        required_input_modalities: [image]
+        supported_inbound_dialects: [openai-responses]
+        min_requested_output_tokens: 512
+  image-analysis-smoke-grok45:
+    strategy: static
+    targets:
+    - provider: xai
+      model_ref: grok-4-5
+      dialect: openai-responses
+      input_modalities: [text, image]
+      tool_support:
+        openai_responses: [function]
+      request_shape_support:
+        required_input_modalities: [image]
+        supported_inbound_dialects: [openai-responses]
+        min_requested_output_tokens: 512
+  image-analysis-smoke-claude46:
+    strategy: static
+    targets:
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      request_shape_support:
+        required_input_modalities: [image]
+        supported_inbound_dialects: [openai-responses]
+        min_requested_output_tokens: 512
+  # Retained as a local staging canary. Its Responses image contract is not
+  # established: passing this group is required before any production weight.
+  image-analysis-smoke-minimax-m3:
+    strategy: static
+    targets:
+    - provider: minimax_responses
+      model_ref: m3
+      input_modalities: [text, image]
+      tool_support:
+        openai_responses: [function]
+      request_shape_support:
+        required_input_modalities: [image]
+        supported_inbound_dialects: [openai-responses]
+        min_requested_output_tokens: 512
   crusoe-smoke:
     strategy: static
     targets:

@@ -1342,6 +1342,16 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 	}
 	for name, group := range cfg.Models {
+		if strings.HasPrefix(name, "image-analysis-smoke-") {
+			if group.Strategy != "static" || len(group.Targets) != 1 {
+				t.Fatalf("example config %s must be a single-target static VLM smoke group: %#v", name, group)
+			}
+			target := group.Targets[0]
+			if !stringSliceContains(target.InputModalities, "image") || !stringSliceContains(target.RequestShapeSupport.RequiredInputModalities, "image") || !stringSliceContains(target.RequestShapeSupport.SupportedInboundDialects, "openai-responses") || target.RequestShapeSupport.MinRequestedOutputTokens != 512 {
+				t.Fatalf("example config %s must require image-bearing Responses requests with a 512-token floor: %#v", name, target)
+			}
+			continue
+		}
 		if name == "agent-tools-smoke" {
 			if group.Strategy != "static" || len(group.Targets) != 1 || group.Targets[0].Provider != "minimax_responses" || group.Targets[0].Model != "MiniMax-M3" || targetDialect(cfg.Provider[group.Targets[0].Provider], group.Targets[0]) != "openai-responses" {
 				t.Fatalf("example config agent-tools-smoke=%#v, want static MiniMax Responses target", group)
