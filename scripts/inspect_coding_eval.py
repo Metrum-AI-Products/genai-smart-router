@@ -18,12 +18,12 @@ SAFE_AGGREGATE_FIELDS = {
     "status", "status_reason", "suite", "model", "model_kind", "api", "reasoning", "limit", "concurrency", "wall_seconds", "exit_code",
     "completed", "partial", "skipped", "blocked", "score", "correct", "scored", "unscored", "unscored_error_rate",
     "p50_sample_time_ms", "p95_sample_time_ms", "input_tokens", "output_tokens", "total_tokens", "token_cost", "attempts", "errors", "fallbacks",
-    "reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage",
+    "reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage", "reasoning_provider_model_dialect_coverage_complete",
     "inbound_dialect", "tools_present", "tool_count_bucket", "streaming", "caller_output_cap_field", "request_size_bucket", "tool_schema_bytes_bucket",
 }
 COVERAGE_TEXT_FIELDS = ("provider", "model", "dialect")
 COVERAGE_NUMBER_FIELDS = ("attempts", "reported_attempts", "reasoning_tokens")
-REASONING_EXPORT_FIELDS = ("reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage")
+REASONING_EXPORT_FIELDS = ("reasoning_tokens", "reasoning_attempt_count", "reasoning_successful_attempt_count", "reasoning_reported_attempt_count", "reasoning_provider_model_dialect_coverage", "reasoning_provider_model_dialect_coverage_complete")
 
 def env(name: str, default: str = "") -> str: return os.environ.get(name, default)
 def bounded_int(value: str, name: str, low: int, high: int) -> int:
@@ -82,6 +82,9 @@ def protected_reasoning_coverage() -> dict[str, Any]:
     if any(not isinstance(payload[field], int) or isinstance(payload[field], bool) or payload[field] < 0 for field in counters):
         raise ValueError("protected reasoning coverage counters must be nonnegative integers")
     coverage = payload["reasoning_provider_model_dialect_coverage"]
+    complete = payload["reasoning_provider_model_dialect_coverage_complete"]
+    if not isinstance(complete, bool):
+        raise ValueError("protected reasoning coverage completeness is invalid")
     if not isinstance(coverage, list):
         raise ValueError("protected reasoning coverage rows must be a list")
     attempts = reported = tokens = 0
@@ -93,12 +96,14 @@ def protected_reasoning_coverage() -> dict[str, Any]:
         if row["reported_attempts"] > row["attempts"]:
             raise ValueError("protected reasoning coverage row counters are inconsistent")
         attempts += row["attempts"]; reported += row["reported_attempts"]; tokens += row["reasoning_tokens"]
-    if payload["reasoning_successful_attempt_count"] > payload["reasoning_attempt_count"] or (attempts, reported, tokens) != (payload["reasoning_attempt_count"], payload["reasoning_reported_attempt_count"], payload["reasoning_tokens"]):
+    expected = (payload["reasoning_attempt_count"], payload["reasoning_reported_attempt_count"], payload["reasoning_tokens"])
+    actual = (attempts, reported, tokens)
+    if payload["reasoning_successful_attempt_count"] > payload["reasoning_attempt_count"] or (actual != expected if complete else any(a > b for a,b in zip(actual, expected))):
         raise ValueError("protected reasoning coverage totals are inconsistent")
     return safe_aggregate(payload)
 
 def utc_timestamp(epoch: float) -> str:
-    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 def require_reasoning_export_inputs(model_kind: str) -> None:
     if model_kind != "router-group" or env("EVAL_REQUIRE_REASONING_COVERAGE").lower() != "true":
@@ -127,7 +132,8 @@ def export_reasoning_coverage(suite_dir: Path, started_at: float, finished_at: f
         if exporter == "go":
             command.extend(["run", "./cmd/router-usage-report"])
         output = suite_dir / "reasoning-coverage.json"
-        command.extend(["--usage-db-config", config_file, "--from", utc_timestamp(started_at), "--to", utc_timestamp(finished_at), "--caller-id", caller_id, "--resolved-group", model, "--reasoning-coverage-out", str(output)])
+        grace = bounded_int(env("EVAL_USAGE_EXPORT_GRACE_SECONDS", "2"), "EVAL_USAGE_EXPORT_GRACE_SECONDS", 0, 30)
+        command.extend(["--usage-db-config", config_file, "--from", utc_timestamp(started_at), "--to", utc_timestamp(finished_at + grace), "--caller-id", caller_id, "--resolved-group", model, "--reasoning-coverage-out", str(output)])
         client = env("EVAL_USAGE_CLIENT")
         if client:
             command.extend(["--client", client])

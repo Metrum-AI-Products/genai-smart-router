@@ -20,6 +20,8 @@ The exporter writes only totals plus provider/model/dialect attempt aggregatesâ€
 
 The exporter writes a new owner-readable (`0600`) file even if its output path already exists. The wrapper validates any configured export before reporting: all four nonnegative aggregate counters and the provider/model/dialect rows are required, each row must be internally valid, and row totals must exactly match the aggregate counters. A malformed or inconsistent export blocks the report rather than degrading to `not reported`.
 
+Suite bounds retain milliseconds. The exporter adds a bounded terminal-persistence grace period (default two seconds) after the suite finishes; configure `EVAL_USAGE_EXPORT_GRACE_SECONDS` only within 0â€“30 seconds. When diagnostics intentionally suppresses attempt child rows, the export marks provider/model/dialect coverage incomplete while retaining the request-level totals; consumers accept those bounded partial rows without treating missing diagnostics as inconsistent telemetry.
+
 ```sh
 # Run in the protected environment that can read the usage DB. Keep the output
 # outside the repository and make it owner-readable only.

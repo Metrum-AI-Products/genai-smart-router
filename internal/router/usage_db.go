@@ -102,6 +102,7 @@ type ReasoningCoverageExport struct {
 	ReasoningSuccessfulAttemptCount int                    `json:"reasoning_successful_attempt_count"`
 	ReasoningReportedAttemptCount   int                    `json:"reasoning_reported_attempt_count"`
 	Coverage                        []ReasoningCoverageRow `json:"reasoning_provider_model_dialect_coverage"`
+	CoverageComplete                bool                   `json:"reasoning_provider_model_dialect_coverage_complete"`
 }
 
 // ReasoningCoverageRow is a provider/model/dialect aggregate for an evaluation
@@ -2846,6 +2847,11 @@ func ExportReasoningCoverage(opts UsageReportOptions) (ReasoningCoverageExport, 
 	for _, entry := range byTarget {
 		result.Coverage = append(result.Coverage, *entry)
 	}
+	coverageAttempts := 0
+	for _, entry := range result.Coverage {
+		coverageAttempts += entry.Attempts
+	}
+	result.CoverageComplete = coverageAttempts == result.ReasoningAttemptCount
 	sort.Slice(result.Coverage, func(i, j int) bool {
 		if result.Coverage[i].Provider != result.Coverage[j].Provider {
 			return result.Coverage[i].Provider < result.Coverage[j].Provider
