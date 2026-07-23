@@ -225,7 +225,7 @@ request_shape_support:
   validation_notes: Large coding-agent payload validation has not passed yet.
 ```
 
-Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
+Known limits are enforced before the routing strategy runs. For example, if estimated input plus requested output cap exceeds `context_tokens`, the target is skipped with `request-shape-context-exceeded`; if a tool schema is too large, it is skipped with `request-shape-tool-schema-bytes`; if a caller-supplied output cap is below a provider's accepted minimum, it is skipped with `request-shape-min-output-tokens`. `min_requested_output_tokens` applies only when the caller explicitly supplied a positive cap: it never raises a caller cap and does not turn a router default reservation into a caller requirement. Weighted routing then recalculates over the remaining eligible targets. Unknown limits remain eligible by default and are recorded as `limit_unknown` in decision telemetry.
 
 Use `required_input_modalities` as a positive eligibility gate for a target that
 is validated only for a modality-specific request shape. For example, `[image]`
