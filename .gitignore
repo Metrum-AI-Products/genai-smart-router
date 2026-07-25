@@ -7,6 +7,7 @@ env.json
 config.production.yaml
 ROUTER_TOKENS_*.txt
 ROUTER_TOKEN*.txt
+CHETAN_ROUTERKEY.env
 license.json
 **/license.json
 license-state.json
@@ -30,6 +31,9 @@ smart-llmrouter
 usage.sqlite
 examples/cli-e2e-c/cli-e2e
 dist/
+logs/
+reports/
+scripts/__pycache__/
 tmp/eks-evidence/
 tmp/
 jobs/
