@@ -1,8 +1,0 @@
-interface:
-  display_name: "NVIDIA Setup"
-  short_description: "Install and validate NVIDIA GPU drivers on Ubuntu."
-  brand_color: "#76B900"
-  default_prompt: "Use $nvidia-setup to detect this server's GPU, choose a current driver branch, and install the NVIDIA stack."
-
-policy:
-  allow_implicit_invocation: true
