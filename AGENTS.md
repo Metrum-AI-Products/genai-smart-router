@@ -13,6 +13,7 @@ These instructions apply to the whole repository.
 ## Core Rules
 
 - Use `rtk` before shell commands in this repo.
+- For any material persistent schema, API contract, interaction model, frontend stack/layout, service boundary, build/test/deploy interface, platform topology, security boundary, or cross-cutting refactor, consult the configured `system_architect` subagent at planning time and before finalization. Record its approval, conditions, or documented low-risk exception; architecture preferences are strong defaults, not dogma.
 - Do not print provider API keys, router tokens, token hashes, or full production config contents.
 - `/metrics` is global operational telemetry and must remain restricted to callers with `metrics_admin: true`. Normal application caller keys must receive `403 metrics-forbidden`; do not add tenant-scoped data labels or token IDs to unauthenticated or ordinary-caller endpoints.
 - Do not commit `env.json`, `config.production.yaml`, `ROUTER_TOKEN*.txt`, generated logs, DBs, or `dist/`.
