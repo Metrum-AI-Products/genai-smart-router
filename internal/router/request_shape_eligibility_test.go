@@ -32,24 +32,25 @@ func TestRequestShapeFitSmallTextEligible(t *testing.T) {
 	}
 }
 
-func TestRequestShapeFitRequiresInputModality(t *testing.T) {
+func TestRequestShapeFitRequiresImageWhenConfigured(t *testing.T) {
 	cfg := minimalConfig(t)
 	target := cfg.Models["default"].Targets[0]
+	target.InputModalities = []string{"text", "image"}
 	target.RequestShapeSupport.RequiredInputModalities = []string{"image"}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{target}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	svc := &Service{cfg: cfg}
-	text := &IRRequest{Messages: []IRMessage{{Role: "user", Content: "hello"}}}
-	fit := svc.targetRequestShapeFit(target, text, "openai-responses", "openai-responses", requestTokenEstimateFromIR(text, "openai-responses", 96))
-	if fit.FilterReason != "request-shape-required-input-modality" {
-		t.Fatalf("text fit=%#v", fit)
+	textReq := &IRRequest{Model: "default", Messages: []IRMessage{{Role: "user", Content: "hello"}}}
+	textFit := svc.targetRequestShapeFit(target, textReq, "openai-responses", "openai-responses", requestTokenEstimateFromIR(textReq, "openai-responses", 96))
+	if textFit.FilterReason != "request-shape-required-input-modality" {
+		t.Fatalf("text fit=%#v", textFit)
 	}
-	image := &IRRequest{Messages: []IRMessage{{Role: "user", Parts: []IRContentPart{{Type: "image", ImageURL: "https://example.test/image.png"}}}}}
-	fit = svc.targetRequestShapeFit(target, image, "openai-responses", "openai-responses", requestTokenEstimateFromIR(image, "openai-responses", 96))
-	if fit.FilterReason != "" {
-		t.Fatalf("image fit=%#v", fit)
+	imageReq := &IRRequest{Model: "default", Messages: []IRMessage{{Role: "user", Parts: []IRContentPart{{Type: "image", ImageURL: "https://example.test/receipt.png"}}}}}
+	imageFit := svc.targetRequestShapeFit(target, imageReq, "openai-responses", "openai-responses", requestTokenEstimateFromIR(imageReq, "openai-responses", 96))
+	if imageFit.FilterReason != "" {
+		t.Fatalf("image fit=%#v", imageFit)
 	}
 }
 

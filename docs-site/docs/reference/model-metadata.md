@@ -216,6 +216,9 @@ request_shape_support:
   max_requested_output_tokens: 8192
   max_tool_schema_bytes: 100000
   supports_large_coding_agent_payloads: false
+  # Optional positive gate: this target is considered only when every listed
+  # modality is present on the caller request.
+  required_input_modalities: [image]
   supported_inbound_dialects: [openai-chat]
   unsupported_request_features:
     - previous_response_id
@@ -232,6 +235,8 @@ is validated only for a modality-specific request shape. For example, `[image]`
 keeps an image specialist out of text-only traffic and records
 `request-shape-required-input-modality` when it is skipped. This metadata never
 alters caller content or silently adds a modality.
+
+`required_input_modalities` is a positive request-shape gate. Use it for a validated image or multimodal fallback that should serve image-bearing agent requests without receiving ordinary text traffic in the same broad group. It supplements `input_modalities`; it never makes a target eligible for a modality the target does not declare.
 
 Use `unsupported_request_features` for deterministic provider incompatibilities that are narrower than the whole target. For example, some OpenAI-compatible coding-agent clients send Chat `stream_options` while the router converts tool-bearing upstream calls to unary requests and synthesizes downstream SSE. If a provider/model rejects that exact shape, set `stream_options` until a direct upstream smoke and router-level smoke pass for that provider/model/skin.
 

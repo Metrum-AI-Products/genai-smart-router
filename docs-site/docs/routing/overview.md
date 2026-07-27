@@ -50,6 +50,7 @@ Request-shape filtering happens before the routing strategy runs. A weighted or 
 | OpenAI Chat structured outputs | `tool_support.openai_chat` includes `structured_outputs`. |
 | OpenAI Responses structured outputs | `tool_support.openai_responses` includes `structured_outputs`. |
 | Image input | `input_modalities` includes `image`. |
+| Image-only fallback | `input_modalities` includes `image` and optional `request_shape_support.required_input_modalities: [image]` is satisfied. |
 | Explicit reasoning or thinking | Target `reasoning` metadata is compatible with the caller field. |
 | Positive max-token cap | Target is not marked as unsafe for caller caps. |
 | Large input or output reserve | Estimated input plus requested output cap fits the target context window and configured request-shape limits. |

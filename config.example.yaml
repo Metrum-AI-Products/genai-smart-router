@@ -1148,7 +1148,18 @@ providers:
           Added as a direct-provider vision target to reduce reliance on OpenRouter-hosted
           Anthropic vision traffic. OpenAI gpt-5.4-mini was not enabled for this project;
           gpt-5-nano, gpt-5-mini, gpt-4.1-nano, gpt-4o-mini, and gpt-5.4-nano did
-          not pass the same receipt OCR acceptance gate on 2026-06-25.
+          not pass the same receipt OCR acceptance gate on 2026-06-25. Direct
+          image-plus-forced-function smoke passed on 2026-07-20, returning the
+          expected function call with the receipt merchant. Broad coding groups
+          select this target only for image-bearing OpenAI Responses requests.
+        tool_support:
+          openai_responses:
+          - function
+        request_shape_support:
+          supported_inbound_dialects: [openai-responses]
+          required_input_modalities: [image]
+          validation_status: passed
+          validation_notes: Direct OpenAI Responses receipt-image OCR and image-plus-forced-function smokes passed on 2026-07-20.
   anthropic:
     base_url: https://api.anthropic.com
     dialect: anthropic
@@ -1754,6 +1765,8 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 5
+      # GPT-5.4 Nano did not meet the receipt OCR quality gate.
+      input_modalities: [text]
       tags: [validated, fallback]
       validation:
         status: passed
@@ -2243,6 +2256,19 @@ models:
     - provider: openai
       model_ref: gpt-5.4-nano
       weight: 5
+    # Image-only request-shape eligibility preserves established text weights.
+    - provider: openai
+      model_ref: gpt-5.4
+      weight: 1
+    # Claude passed current direct Responses image, forced-function, and
+    # explicit 16-token cap smokes. It is image-only and tool-only so text
+    # routing weights remain unchanged.
+    - provider: openrouter_responses
+      model_ref: openrouter-claude-sonnet-4-6
+      weight: 1
+      tool_only: true
+      request_shape_support:
+        required_input_modalities: [image]
     - provider: fireworks_responses
       model_ref: kimi-k2p7-code
       weight: 33

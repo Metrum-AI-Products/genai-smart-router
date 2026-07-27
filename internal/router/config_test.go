@@ -1529,8 +1529,8 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 			if !stringSliceContains(group.Targets[0].InputModalities, "image") {
 				t.Fatalf("example config openai-gpt54-vision-smoke missing image modality: %#v", group.Targets[0].InputModalities)
 			}
-			if len(group.Targets[0].ToolSupport.OpenAIResponses) != 0 {
-				t.Fatalf("example config openai-gpt54-vision-smoke has unvalidated Responses tool metadata: %#v", group.Targets[0].ToolSupport)
+			if !stringSliceContains(group.Targets[0].ToolSupport.OpenAIResponses, "function") || !stringSliceContains(group.Targets[0].RequestShapeSupport.RequiredInputModalities, "image") {
+				t.Fatalf("example config openai-gpt54-vision-smoke missing validated image/function eligibility metadata: %#v", group.Targets[0])
 			}
 			continue
 		}
@@ -1684,6 +1684,18 @@ func TestExampleConfigOpenAINanoResponsesReasoningMetadata(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("big-coder missing openai gpt-5.4-nano target")
+	}
+	found = false
+	for _, target := range cfg.Models["big-coder"].Targets {
+		if target.Provider == "openai" && target.Model == "gpt-5.4" {
+			found = true
+			if !stringSliceContains(target.InputModalities, "image") || !stringSliceContains(target.ToolSupport.OpenAIResponses, "function") || !stringSliceContains(target.RequestShapeSupport.RequiredInputModalities, "image") {
+				t.Fatalf("big-coder gpt-5.4 image target metadata=%#v", target)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("big-coder missing image-only OpenAI gpt-5.4 target")
 	}
 }
 
@@ -1935,13 +1947,16 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	normalTotal := 0
 	gotNormal := map[string]int{}
 	gotToolOnly := map[string]int{}
+	gotImageOnly := map[string]int{}
 	chatToolCapable := map[string]bool{}
 	chatReasoningCapable := map[string]bool{}
 	responsesReasoningCapable := map[string]bool{}
 	responsesEligible := map[string]bool{}
 	for _, target := range group.Targets {
 		key := target.Provider + ":" + target.Model
-		if target.ToolOnly {
+		if stringSliceContains(target.RequestShapeSupport.RequiredInputModalities, "image") {
+			gotImageOnly[key] = target.Weight
+		} else if target.ToolOnly {
 			gotToolOnly[key] = target.Weight
 		} else {
 			gotNormal[key] = target.Weight
@@ -1974,6 +1989,9 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	}
 	if normalTotal != 100 || len(gotNormal) != len(wantNormal) {
 		t.Fatalf("big-coder normal weights=%#v total=%d, want %#v total=100", gotNormal, normalTotal, wantNormal)
+	}
+	if gotImageOnly["openai:gpt-5.4"] != 1 || len(gotImageOnly) != 1 {
+		t.Fatalf("big-coder image-only targets=%#v, want OpenAI GPT-5.4 at weight 1", gotImageOnly)
 	}
 	for key, weight := range wantNormal {
 		if gotNormal[key] != weight {

@@ -2,6 +2,23 @@
 
 Last deployed: 2026-07-19
 
+## 2026-07-27 Aditya Primary Caller Rate-Limit Increase
+
+Doubled the production rate limits for the primary caller
+`aditya-metrum-insights-prod`. The separate PR-verifier caller was not
+changed.
+
+- RPM: `240` -> `480`
+- TPM: `5,000,000` -> `10,000,000`
+- Concurrent requests: `16` -> `32`
+
+Production backup:
+`/opt/smart-llmrouter/compose/config/config.yaml.bak.aditya-rate-double-20260727T145753Z`.
+
+Validation: `docker compose config` passed, the router restarted and remained
+running, production `/readyz` returned 200, and the live caller configuration
+reported the new limits.
+
 ## EKS Staging Migration Status
 
 As of 2026-07-14, the EKS validation router is live at

@@ -200,6 +200,15 @@ func requestShapeFilterReason(target Target, req *IRRequest, callerDialect, outD
 	return ""
 }
 
+func stringSliceContainsAll(values, required []string) bool {
+	for _, value := range required {
+		if !stringSliceContains(values, value) {
+			return false
+		}
+	}
+	return true
+}
+
 func anthropicInboundDialectFilterReason(target Target, callerDialect, outDialect string) string {
 	if normalizeDialect(callerDialect) != "anthropic" || normalizeDialect(outDialect) == "anthropic" {
 		return ""
