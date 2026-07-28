@@ -31,7 +31,7 @@ The profile supplies all host-specific values: `profile_id`, logical `planner_ow
 
 All externally discoverable names are stable and persisted in protected state: the profile supplies the tmux session, WSH server instance, and `planner_wsh_session_id`; a worker window is `agent-<issue>-<role>` and its WSH session is `<worker_session_prefix>-<issue>-<role>`. Inputs are lowercase safe names, so a later planner terminal can derive and monitor the same identities from the protected profile plus issue/role without process memory. Profile IDs, worker prefixes, issue, and role must not be changed while a lease exists; the profile must choose unique tmux/WSH names per concurrently active project/profile to avoid collisions. Audit event UUIDs are audit-only and never session identifiers.
 
-For cooperative same-host/shared-filesystem profiles of one repository, the launcher also stores a canonical-worktree keyed lease registry under Git's canonical common directory. An OS lock plus temp-file/fsync/atomic-rename update serializes reservations and lifecycle generation values across profile state directories. Registry corruption, owner/generation mismatch, and ambiguous recovery fail closed; only the owning profile may release its matching lease. This is same-host cooperative correctness, not a hostile-worker security boundary.
+For cooperative same-host/shared-filesystem profiles of one repository, the launcher also stores a canonical-worktree keyed lease registry under Git's canonical common directory. An OS lock plus temp-file/file-fsync/atomic-rename/parent-directory-fsync update (where directory fsync is supported) serializes reservations and lifecycle generation values across profile state directories. If a write fails before rename, the previous durable record remains authoritative; if it fails after rename or while syncing the directory, the launcher reports persistence uncertainty and retains the matching lease for recovery rather than guessing or releasing it. Registry corruption, owner/generation mismatch, and ambiguous recovery fail closed; only the owning profile may release its matching lease. This is same-host cooperative correctness, not a hostile-worker security boundary.
 
 The checked-in template grammar is verified against the portable local WSH CLI help: `wsh -L <profile> server`, `wsh -L <profile> list` for bounded lifecycle discovery, and `wsh -L <profile> kill <name>` for exact cleanup. The profile contains a safe `planner_wsh_session_id`; `scripts/planner_wsh_planner.sh` starts that one named, `planner-<profile>`-tagged session with the supported interactive Codex form and a fixed planner prompt. `scripts/planner_wsh_worker.sh` does the same for a worker with `codex --cd <canonical-worktree> <planner-issued-assignment-prompt>`. Both adapters shell-quote fixed argv and do not accept profile-supplied shell text. Do not add unverified CLI subcommands or replace an adapter with a generic shell command.
 
@@ -77,6 +77,8 @@ python3 scripts/planner_wsh_control.py --profile /protected/planner-wsh-profile.
 
 `release-worker` requires an explicit recorded terminal outcome (`merged` or `abandoned`) and `--cleanup-authorized`; it releases the lease only after the configured exact WSH kill command and exact window removal succeed. A completed `wsh -c` worker may already have removed its own WSH session: in that case the launcher reclaims the lease only after a fresh successful list proves the exact session is absent *and* the exact tmux worker window is absent. Any unavailable list result or remaining window leaves the lease in `release-failed` for planner recovery, rather than freeing a potentially live writer. Shutdown similarly kills only the persisted exact planner WSH session before its exact planner window and refuses an unavailable, duplicate, or wrongly tagged planner identity. Lifecycle audit events are append-only protected JSONL: event ID, timestamp, action/outcome, assignment, lease, and opaque worktree fingerprint. They survive shutdown and intentionally exclude terminal/session content.
 
+Worker launch is monotonic. Before tmux creation is attempted, ordinary template, state, list, or preflight failures roll back only the matching generation-tagged provisional lease. Once the tmux creation call is attempted, the record becomes `start-uncertain` if that call returns an error; it stays leased until `release-worker` proves the exact WSH session and exact tmux window are both absent. Do not delete state or registry files to force reuse.
+
 After every worker lease is released, shut the plane down explicitly:
 
 ```bash
@@ -85,6 +87,15 @@ python3 scripts/planner_wsh_control.py --profile /protected/planner-wsh-profile.
 ```
 
 Shutdown refuses active leases and refuses to kill a tmux session containing an unexpected window. This makes rollback simple and local: stop/release the affected worker, shut down the two control windows, correct the protected profile, then bootstrap again. Never roll back by deleting the state directory while a WSH process may still be running. For an orphaned or stale process, require planner/human authorization, record the safe lifecycle evidence, terminate the exact process/session, then use the normal release flow.
+
+If shutdown fails after the repository drain begins, the durable drain record blocks all profiles from allocating a new writer. It is intentionally not cleared by a retry of `shutdown`. After planner cleanup authority has been recorded, resume only that exact drain with:
+
+```bash
+python3 scripts/planner_wsh_control.py --profile /protected/planner-wsh-profile.json \
+  recover-shutdown --cleanup-authorized
+```
+
+Recovery is owner-profile bound and refuses a different profile, a legacy/ambiguous drain, or any shared worker lease. It repeats exact planner WSH and tmux cleanup, then clears the drain only after a fresh bounded result proves the named planner session is absent and the exact tmux control session is absent. If either result is unavailable or uncertain, leave the drain and protected state in place, preserve the audit evidence, and escalate; never manually clear the drain, delete the registry, or infer that a same-UID process is harmless. This remains a cooperative same-host/shared-filesystem procedure, not cross-host coordination or hostile-worker containment.
 
 ## Worker and QA instructions
 

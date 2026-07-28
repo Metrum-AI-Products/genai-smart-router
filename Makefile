@@ -117,7 +117,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check planner-wsh-control-test planner-wsh-control-live-test validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check planner-wsh-control-test planner-wsh-control-concurrency-test planner-wsh-control-live-test validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
 
 help: eks-help
 
@@ -204,7 +204,7 @@ ci-eks-staging-contract:
 	$(PYTHON) scripts/eks_promotion_evidence_integration_test.py
 	$(PYTHON) scripts/validate_eks_staging_workflow.py
 
-test: secret-check planner-wsh-control-test
+test: secret-check planner-wsh-control-test planner-wsh-control-concurrency-test
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 
@@ -237,6 +237,9 @@ secret-check:
 
 planner-wsh-control-test:
 	$(PYTHON) scripts/planner_wsh_control_test.py
+
+planner-wsh-control-concurrency-test:
+	$(PYTHON) scripts/planner_wsh_control_concurrency_test.py
 
 planner-wsh-control-live-test:
 	$(PYTHON) scripts/planner_wsh_control_lifecycle_test.py

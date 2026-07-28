@@ -70,6 +70,63 @@ class ControlPlaneError(RuntimeError):
     """A predictable, safe-to-display launcher failure."""
 
 
+class AtomicWriteError(ControlPlaneError):
+    """A durable write failed before or after its atomic visibility point."""
+
+    def __init__(self, target: Path, *, after_replace: bool, cause: OSError):
+        stage = "after atomic replace" if after_replace else "before atomic replace"
+        super().__init__(f"durable write for {target.name} failed {stage}")
+        self.target = target
+        self.after_replace = after_replace
+        self.__cause__ = cause
+
+
+def _fsync_parent_directory(directory: Path) -> bool:
+    """Persist a prior rename when the host filesystem supports directory fsync."""
+    try:
+        descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError as exc:
+        if exc.errno in {getattr(os, "EINVAL", 22), getattr(os, "ENOTSUP", 95), getattr(os, "EOPNOTSUPP", 95)}:
+            return False
+        raise
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            if exc.errno in {getattr(os, "EINVAL", 22), getattr(os, "ENOTSUP", 95), getattr(os, "EOPNOTSUPP", 95)}:
+                return False
+            raise
+    finally:
+        os.close(descriptor)
+    return True
+
+
+def _durable_json_replace(target: Path, value: dict[str, Any], *, prefix: str) -> bool:
+    """Write JSON atomically and fsync its containing directory when supported.
+
+    A failure before ``os.replace`` leaves the old file authoritative. A failure
+    after it is intentionally reported as uncertain: callers must retain their
+    matching lease/state rather than guessing which version survived a crash.
+    """
+    descriptor, temporary = tempfile.mkstemp(prefix=prefix, dir=target.parent)
+    replaced = False
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, target)
+        replaced = True
+        return _fsync_parent_directory(target.parent)
+    except OSError as exc:
+        raise AtomicWriteError(target, after_replace=replaced, cause=exc) from exc
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 @dataclass(frozen=True)
 class RunResult:
     returncode: int
@@ -376,23 +433,27 @@ class ControlPlane:
                     raw = json.loads(state_path.read_text(encoding="utf-8"))
                     if not isinstance(raw, dict) or not isinstance(raw.get("leases"), dict) or not isinstance(raw.get("generation"), int):
                         raise ControlPlaneError("repository-common lease registry is corrupt; refuse recovery")
+                    # The old boolean cannot safely identify the owner or exact
+                    # shutdown to resume. Preserve it as an explicit recovery
+                    # requirement rather than silently clearing it.
+                    if "drain" not in raw:
+                        raw["drain"] = ({"state": "legacy-recovery-required", "owner_profile": None, "started_at": None} if raw.pop("stopping", False) else None)
+                    if raw["drain"] is not None and (
+                        not isinstance(raw["drain"], dict)
+                        or raw["drain"].get("state") not in {"draining", "recovering", "legacy-recovery-required"}
+                    ):
+                        raise ControlPlaneError("repository-common drain metadata is corrupt; refuse recovery")
                 else:
-                    raw = {"generation": 0, "stopping": False, "leases": {}}
+                    raw = {"generation": 0, "drain": None, "leases": {}}
                 yield raw
-                fd, temporary = tempfile.mkstemp(prefix=".registry-", dir=directory)
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                        json.dump(raw, handle, sort_keys=True, separators=(",", ":")); handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
-                    os.chmod(temporary, 0o600); os.replace(temporary, state_path)
-                finally:
-                    if os.path.exists(temporary): os.unlink(temporary)
+                _durable_json_replace(state_path, raw, prefix=".registry-")
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def _reserve_shared_lease(self, worktree_id: str, assignment_id: str) -> tuple[str, int]:
         with self._locked_registry() as registry:
-            if registry["stopping"]:
-                raise ControlPlaneError("worker launch rejected: repository lifecycle is stopping")
+            if registry["drain"] is not None:
+                raise ControlPlaneError("worker launch rejected: repository drain requires explicit recovery")
             if worktree_id in registry["leases"]:
                 current = registry["leases"][worktree_id]
                 if current.get("owner_profile") == self.profile.profile_id and current.get("assignment_id") == assignment_id:
@@ -415,15 +476,36 @@ class ControlPlane:
         with self._locked_registry() as registry:
             if registry["leases"]:
                 raise ControlPlaneError("shutdown refused while repository-common worker leases exist")
-            if registry["stopping"]:
-                raise ControlPlaneError("shutdown already in progress for this repository")
-            registry["stopping"] = True
+            if registry["drain"] is not None:
+                raise ControlPlaneError("shutdown already requires explicit drain recovery")
+            registry["drain"] = {
+                "state": "draining",
+                "owner_profile": self.profile.profile_id,
+                "owner": self.profile.planner_owner,
+                "started_at": _utc_now(),
+                "generation": registry["generation"],
+            }
+
+    def _resume_repository_shutdown(self) -> None:
+        with self._locked_registry() as registry:
+            drain = registry["drain"]
+            if not isinstance(drain, dict) or drain.get("state") == "legacy-recovery-required":
+                raise ControlPlaneError("repository drain recovery is ambiguous; do not clear it manually")
+            if drain.get("owner_profile") != self.profile.profile_id or drain.get("owner") != self.profile.planner_owner:
+                raise ControlPlaneError("repository drain belongs to a different profile; refuse recovery")
+            if registry["leases"]:
+                raise ControlPlaneError("repository drain recovery refused while worker leases exist")
+            drain["state"] = "recovering"
+            drain["recovery_started_at"] = _utc_now()
 
     def _finish_repository_shutdown(self) -> None:
         with self._locked_registry() as registry:
             if registry["leases"]:
                 raise ControlPlaneError("repository-common lease appeared during shutdown")
-            registry["stopping"] = False
+            drain = registry["drain"]
+            if not isinstance(drain, dict) or drain.get("owner_profile") != self.profile.profile_id:
+                raise ControlPlaneError("repository drain ownership is ambiguous; refuse completion")
+            registry["drain"] = None
 
     @contextlib.contextmanager
     def _locked_state(self) -> Any:
@@ -481,18 +563,7 @@ class ControlPlane:
 
     def _write_state(self, state: dict[str, Any]) -> None:
         state["updated_at"] = _utc_now()
-        fd, name = tempfile.mkstemp(prefix=".planner-wsh-", dir=self.profile.state_directory)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(state, handle, sort_keys=True, separators=(",", ":"))
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(name, 0o600)
-            os.replace(name, self.state_path)
-        finally:
-            if os.path.exists(name):
-                os.unlink(name)
+        _durable_json_replace(self.state_path, state, prefix=".planner-wsh-")
 
     def _audit(self, action: str, outcome: str, worker: dict[str, Any] | None = None) -> None:
         """Append safe lifecycle metadata. This file is never reset or pruned by shutdown."""
@@ -599,7 +670,12 @@ class ControlPlane:
             if current and current.get("lease_id") == record["lease_id"]:
                 self._audit(action, "failed", record)
                 del state["workers"][assignment_id]
-                self._write_state(state)
+                try:
+                    self._write_state(state)
+                except AtomicWriteError as exc:
+                    # Do not free the shared lease when the deletion may not have
+                    # survived. A retry can inspect the matching durable record.
+                    raise ControlPlaneError("worker rollback persistence is uncertain; retain matching lease for recovery") from exc
         self._release_shared_lease(str(record["worktree_id"]), str(record["lease_id"]), int(record["registry_generation"]))
 
     def _tmux_command(self, command: list[str]) -> str:
@@ -761,7 +837,10 @@ class ControlPlane:
         def rollback_local_failure(message: str) -> None:
             # No terminal exists during this part of launch, so a failed local
             # validation or state write must not strand the shared reservation.
-            self._release_shared_lease(worktree_id, shared_lease_id, shared_generation)
+            try:
+                self._release_shared_lease(worktree_id, shared_lease_id, shared_generation)
+            except AtomicWriteError as exc:
+                raise ControlPlaneError("provisional shared lease persistence is uncertain; retry recovery without manual deletion") from exc
             raise ControlPlaneError(message)
 
         with self._locked_state() as state:
@@ -770,7 +849,11 @@ class ControlPlane:
             except Exception:
                 self._release_shared_lease(worktree_id, shared_lease_id, shared_generation)
                 raise
-            if not self._tmux_has_session() or {"wsh-server", "sprint-planner"} - self._tmux_windows():
+            try:
+                bootstrapped = self._tmux_has_session() and not ({"wsh-server", "sprint-planner"} - self._tmux_windows())
+            except Exception:
+                rollback_local_failure("planner control session cannot be enumerated before worker creation")
+            if not bootstrapped:
                 rollback_local_failure("planner control session is not bootstrapped; run bootstrap first")
             workers: dict[str, dict[str, Any]] = state["workers"]
             existing = workers.get(assignment_id)
@@ -787,7 +870,11 @@ class ControlPlane:
                         rollback_local_failure("worker launch rejected: worktree already has an exclusive lease")
                     if worker.get("wsh_session_id") == session_id:
                         rollback_local_failure("worker launch rejected: WSH session identifier is already allocated")
-                if window in self._tmux_windows():
+                try:
+                    window_exists = window in self._tmux_windows()
+                except Exception:
+                    rollback_local_failure("tmux worker window cannot be enumerated before creation")
+                if window_exists:
                     rollback_local_failure("worker launch rejected: tmux worker window already exists")
                 lease_id = shared_lease_id
                 record = {
@@ -800,33 +887,44 @@ class ControlPlane:
                     "branch": branch,
                     "wsh_session_id": session_id,
                     "window": window,
-                    "state": "allocated",
+                    "state": "reserved",
                     "created_at": _utc_now(),
                     "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=self.profile.lease_ttl_seconds)).replace(microsecond=0).isoformat(),
                     "owner": self.profile.planner_owner,
                 }
+                try:
+                    # Rendering and Git-derived template values are still in the
+                    # provisional phase. Failures here release only this exact
+                    # common lease because no terminal can exist yet.
+                    values = self._template_values(
+                        window_name=window,
+                        wsh_session_id=session_id,
+                        assignment_id=assignment_id,
+                        issue=issue,
+                        role=role,
+                        worktree=str(canonical),
+                        lease_id=lease_id,
+                        assignment_prompt=self._assignment_prompt(issue, role),
+                    )
+                    command = _render_command(self.profile.commands["worker"], values)
+                except Exception:
+                    rollback_local_failure("worker command template could not be rendered")
                 # Persist the exclusive lease before creating a terminal.  A second
                 # planner process cannot win the same worktree during this gap.
                 workers[assignment_id] = record
                 try:
                     self._write_state(state)
-                except Exception:
+                except AtomicWriteError as exc:
                     # The local state write did not prove a durable worker; remove
-                    # the provisional shared lease before propagating the error.
+                    # the provisional shared lease only when the old state is
+                    # still authoritative. Post-replace uncertainty is retained.
                     workers.pop(assignment_id, None)
-                    self._release_shared_lease(worktree_id, shared_lease_id, shared_generation)
-                    raise
-                values = self._template_values(
-                    window_name=window,
-                    wsh_session_id=session_id,
-                    assignment_id=assignment_id,
-                    issue=issue,
-                    role=role,
-                    worktree=str(canonical),
-                    lease_id=lease_id,
-                    assignment_prompt=self._assignment_prompt(issue, role),
-                )
-                command = _render_command(self.profile.commands["worker"], values)
+                    if exc.after_replace:
+                        raise ControlPlaneError("worker reservation persistence is uncertain; retry recovery without manual deletion") from exc
+                    rollback_local_failure("worker reservation could not be persisted")
+                except Exception:
+                    workers.pop(assignment_id, None)
+                    rollback_local_failure("worker reservation could not be persisted")
         if return_after_lock:
             return self.status()
         # Verify that the profile-selected server is reachable after reservation
@@ -859,8 +957,28 @@ class ControlPlane:
             self._rollback_launch_reservation(assignment_id, record, "worker-codex-preflight")
             raise ControlPlaneError("worker launch rejected: supported Codex invocation preflight is unavailable")
         self._audit("worker-codex-preflight", "succeeded", record)
-        # The WSH worker is started by tmux after the lease reservation is
-        # durable. Never hold the planner state lock while that process starts.
+        # Persist this monotonic handoff before invoking tmux. From the call
+        # onward, an exception cannot prove that no process/window exists.
+        try:
+            with self._locked_state() as state:
+                current = state["workers"].get(assignment_id)
+                if not current or current.get("lease_id") != record["lease_id"]:
+                    raise ControlPlaneError("worker lease changed before tmux creation; manual recovery is required")
+                # This conservative state is durable before the call because a
+                # process/window may exist even when tmux reports an error.
+                current["state"] = "start-uncertain"
+                self._audit("worker-tmux-create", "attempting", record)
+                self._write_state(state)
+        except AtomicWriteError as exc:
+            if exc.after_replace:
+                raise ControlPlaneError("worker tmux handoff persistence is uncertain; retain matching lease for recovery") from exc
+            self._rollback_launch_reservation(assignment_id, record, "worker-tmux-handoff")
+            raise
+        except Exception:
+            self._rollback_launch_reservation(assignment_id, record, "worker-tmux-handoff")
+            raise
+        # The WSH worker is started by tmux after the handoff is durable. Never
+        # hold the planner state lock while the terminal creation call runs.
         try:
             self.runner.run(
                 ["tmux", "new-window", "-d", "-t", self.profile.tmux_session, "-n", window, "-c", str(canonical), self._tmux_command(command)]
@@ -869,10 +987,11 @@ class ControlPlane:
             with self._locked_state() as state:
                 current = state["workers"].get(assignment_id)
                 if current and current.get("lease_id") == record["lease_id"]:
-                    self._audit("worker-started", "failed", record)
-                    del state["workers"][assignment_id]
+                    # A failed create call may still have reached tmux. Preserve
+                    # the lease until exact WSH and window absence is established.
+                    current["state"] = "start-uncertain"
+                    self._audit("worker-started", "uncertain", record)
                     self._write_state(state)
-            self._release_shared_lease(worktree_id, shared_lease_id, shared_generation)
             raise
         with self._locked_state() as state:
             current = state["workers"].get(assignment_id)
@@ -1084,20 +1203,23 @@ class ControlPlane:
         self._release_shared_lease(str(worker["worktree_id"]), str(worker["lease_id"]), int(worker["registry_generation"]))
         return self.status()
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, recovery_authorized: bool = False) -> None:
         with self._locked_state() as state:
             if state["workers"]:
                 raise ControlPlaneError("shutdown refused while worker leases exist; release each worker first")
-            windows = self._tmux_windows()
+            windows = self._tmux_windows() if self._tmux_has_session() else set()
             if windows - {"wsh-server", "sprint-planner"}:
                 raise ControlPlaneError("shutdown refused: control tmux session contains an unexpected window")
         # This transition serializes every profile sharing the Git common dir:
-        # reservations see `stopping` before they can allocate a writer lease.
-        self._begin_repository_shutdown()
+        # reservations see durable drain metadata before allocating a writer.
+        if recovery_authorized:
+            self._resume_repository_shutdown()
+        else:
+            self._begin_repository_shutdown()
         with self._locked_state() as state:
             if state["workers"]:
                 raise ControlPlaneError("shutdown refused while worker leases exist; release each worker first")
-            windows = self._tmux_windows()
+            windows = self._tmux_windows() if self._tmux_has_session() else set()
             known = {"wsh-server", "sprint-planner"}
             unexpected = windows - known
             if unexpected:
@@ -1111,10 +1233,13 @@ class ControlPlane:
             self.runner.run(_render_command(self.profile.commands["planner_stop"], self._template_values()))
             if self._planner_identity_state() != "absent":
                 raise ControlPlaneError("shutdown refused: exact planner WSH session did not terminate")
+        # This is the fresh exact WSH absence proof; killing the WSH server
+        # window later intentionally makes a subsequent list unavailable.
+        planner_absence_proved = True
         with self._locked_state() as state:
             if state["workers"]:
                 raise ControlPlaneError("shutdown refused while worker leases exist; release each worker first")
-            windows = self._tmux_windows()
+            windows = self._tmux_windows() if self._tmux_has_session() else set()
             known = {"wsh-server", "sprint-planner"}
             unexpected = windows - known
             if unexpected:
@@ -1129,6 +1254,11 @@ class ControlPlane:
             replacement = self._new_state()
             self._audit("shutdown", "succeeded")
             self._write_state(replacement)
+        # Clear durable drain metadata only after fresh exact absence evidence.
+        if not planner_absence_proved:
+            raise ControlPlaneError("shutdown recovery cannot prove exact planner WSH absence")
+        if self._tmux_has_session():
+            raise ControlPlaneError("shutdown recovery cannot prove exact tmux control session absence")
         self._finish_repository_shutdown()
 
 
@@ -1155,6 +1285,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     release.add_argument("--cleanup-authorized", action="store_true")
     shutdown = subparsers.add_parser("shutdown")
     shutdown.add_argument("--confirm-shutdown", action="store_true")
+    recover_shutdown = subparsers.add_parser("recover-shutdown")
+    recover_shutdown.add_argument("--cleanup-authorized", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -1178,6 +1310,10 @@ def main(argv: list[str] | None = None) -> int:
             if not args.confirm_shutdown:
                 raise ControlPlaneError("shutdown requires --confirm-shutdown")
             control.shutdown()
+        elif args.action == "recover-shutdown":
+            if not args.cleanup_authorized:
+                raise ControlPlaneError("shutdown recovery requires --cleanup-authorized")
+            control.shutdown(recovery_authorized=True)
         return 0
     except ControlPlaneError as exc:
         print(f"planner-wsh-control: {exc}", file=sys.stderr)

@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTROL = ROOT / "scripts" / "planner_wsh_control.py"
 
 
-def run(argv: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(argv, cwd=ROOT, env=env, text=True, capture_output=True, check=False, timeout=30)
+def run(argv: list[str], *, env: dict[str, str], check: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(argv, cwd=cwd or ROOT, env=env, text=True, capture_output=True, check=False, timeout=30)
     if check and result.returncode:
         raise RuntimeError(f"command failed ({result.returncode}): {' '.join(argv)}; stderr={result.stderr.strip()}")
     return result
@@ -38,6 +38,7 @@ def main() -> int:
     branch = f"issue-573-live-{marker}"
     with tempfile.TemporaryDirectory(prefix="planner-wsh-live-") as temporary:
         base = Path(temporary)
+        repository = base / "repo"
         worktree = base / "worktree"
         state = base / "state"
         fake_bin = base / "bin"
@@ -52,6 +53,14 @@ def main() -> int:
             encoding="utf-8",
         )
         fake_codex.chmod(0o755)
+        # Isolate the Git common directory as well as state: a failed lifecycle
+        # test must never leave a drain record in the developer's repository.
+        bootstrap_env = os.environ.copy()
+        run(["git", "init", str(repository)], env=bootstrap_env)
+        run(["git", "-C", str(repository), "config", "user.email", "planner-wsh-test@example.invalid"], env=bootstrap_env)
+        run(["git", "-C", str(repository), "config", "user.name", "Planner WSH Test"], env=bootstrap_env)
+        run(["git", "-C", str(repository), "commit", "--allow-empty", "-m", "test root"], env=bootstrap_env)
+        (repository / "scripts").symlink_to(CONTROL.parent, target_is_directory=True)
         profile = base / "profile.json"
         profile.write_text(
             json.dumps(
@@ -91,21 +100,22 @@ def main() -> int:
         )
         profile.chmod(0o600)
         env = dict(os.environ, PATH=f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
-        run(["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"], env=env)
+        run(["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"], env=env, cwd=repository)
+        (worktree / "scripts").symlink_to(CONTROL.parent, target_is_directory=True)
         try:
-            run(["python3", str(CONTROL), "--profile", str(profile), "bootstrap"], env=env)
-            preflight = run(["python3", str(CONTROL), "--profile", str(profile), "preflight"], env=env)
+            run(["python3", str(CONTROL), "--profile", str(profile), "bootstrap"], env=env, cwd=repository)
+            preflight = run(["python3", str(CONTROL), "--profile", str(profile), "preflight"], env=env, cwd=repository)
             if json.loads(preflight.stdout) != {"codex": "accepted", "planner_wsh": "present"}:
                 raise RuntimeError("bounded preflight did not accept local WSH/Codex surfaces")
             run(
                 ["python3", str(CONTROL), "--profile", str(profile), "launch-worker", "--issue", "573", "--role", "software_engineer", "--worktree", str(worktree)],
-                env=env,
+                env=env, cwd=repository,
             )
             worker = f"worker{marker}-573-software_engineer"
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
-                listed = run(["wsh", "-L", session, "list"], env=env, check=False)
-                windows = run(["tmux", "list-windows", "-t", session, "-F", "#{window_name}"], env=env, check=False)
+                listed = run(["wsh", "-L", session, "list"], env=env, check=False, cwd=repository)
+                windows = run(["tmux", "list-windows", "-t", session, "-F", "#{window_name}"], env=env, check=False, cwd=repository)
                 if worker not in listed.stdout and "agent-573-software_engineer" not in windows.stdout:
                     break
                 time.sleep(0.1)
@@ -113,17 +123,17 @@ def main() -> int:
                 raise RuntimeError("completed fake Codex worker did not remove its exact WSH session and tmux window")
             released = run(
                 ["python3", str(CONTROL), "--profile", str(profile), "release-worker", "--issue", "573", "--role", "software_engineer", "--outcome", "merged", "--cleanup-authorized"],
-                env=env,
+                env=env, cwd=repository,
             )
             if json.loads(released.stdout)["workers"]:
                 raise RuntimeError("completed worker lease was not reclaimed")
-            run(["python3", str(CONTROL), "--profile", str(profile), "shutdown", "--confirm-shutdown"], env=env)
+            run(["python3", str(CONTROL), "--profile", str(profile), "shutdown", "--confirm-shutdown"], env=env, cwd=repository)
             print("PASS: completed fake Codex worker session/window were verified absent and lease released")
             return 0
         finally:
-            run(["tmux", "kill-session", "-t", session], env=env, check=False)
-            run(["git", "worktree", "remove", "--force", str(worktree)], env=env, check=False)
-            run(["git", "branch", "-D", branch], env=env, check=False)
+            run(["tmux", "kill-session", "-t", session], env=env, check=False, cwd=repository)
+            run(["git", "worktree", "remove", "--force", str(worktree)], env=env, check=False, cwd=repository)
+            run(["git", "branch", "-D", branch], env=env, check=False, cwd=repository)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import fcntl
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import sys
 import time
 import subprocess
@@ -16,7 +17,7 @@ import signal
 import shutil
 import shlex
 
-from planner_wsh_control import ControlPlane, ControlPlaneError, Profile, RunResult, Runner
+from planner_wsh_control import AtomicWriteError, ControlPlane, ControlPlaneError, Profile, RunResult, Runner, _durable_json_replace
 
 
 class FakeRunner:
@@ -34,6 +35,7 @@ class FakeRunner:
         self.status_hook = None
         self.wsh_sessions: dict[str, str] = {}
         self.fail_status_spawn = False
+        self.fail_list_windows = False
         self.fail_codex_preflight = False
         self.tag_payload: str | None = None
 
@@ -57,6 +59,8 @@ class FakeRunner:
         if argv[:2] == ["tmux", "has-session"]:
             return RunResult(0 if self.tmux_exists else 1)
         if argv[:2] == ["tmux", "list-windows"]:
+            if self.fail_list_windows:
+                return RunResult(1)
             return RunResult(0 if self.tmux_exists else 1, "\n".join(sorted(self.windows)) + "\n")
         if argv[:2] == ["tmux", "new-session"]:
             self.tmux_exists = True
@@ -177,6 +181,27 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.assertEqual({"foreign-window"}, self.runner.windows)
         self.assertFalse(self.control.state_path.exists())
 
+    def test_durable_json_replace_distinguishes_pre_and_post_replace_failures(self) -> None:
+        target = self.root.parent / "durable.json"
+        target.write_text('{"old":true}\n', encoding="utf-8")
+        with mock.patch("planner_wsh_control.os.replace", side_effect=OSError("replace failed")):
+            with self.assertRaises(AtomicWriteError) as before:
+                _durable_json_replace(target, {"new": True}, prefix=".test-")
+        self.assertFalse(before.exception.after_replace)
+        self.assertEqual('{"old":true}\n', target.read_text(encoding="utf-8"))
+        with mock.patch("planner_wsh_control._fsync_parent_directory", side_effect=OSError("directory fsync failed")):
+            with self.assertRaises(AtomicWriteError) as after:
+                _durable_json_replace(target, {"new": True}, prefix=".test-")
+        self.assertTrue(after.exception.after_replace)
+        self.assertEqual({"new": True}, json.loads(target.read_text(encoding="utf-8")))
+
+    def test_durable_json_replace_allows_explicit_unsupported_directory_fsync(self) -> None:
+        target = self.root.parent / "unsupported-directory-fsync.json"
+        with mock.patch("planner_wsh_control._fsync_parent_directory", return_value=False) as fsync_parent:
+            self.assertFalse(_durable_json_replace(target, {"ok": True}, prefix=".test-"))
+        fsync_parent.assert_called_once_with(target.parent)
+        self.assertEqual({"ok": True}, json.loads(target.read_text(encoding="utf-8")))
+
     def test_worker_allocation_requires_one_fresh_tagged_planner_identity(self) -> None:
         self.control.bootstrap()
         self.runner.wsh_sessions["router-planner-session"] = "wrong-tag"
@@ -278,11 +303,79 @@ class PlannerWSHControlTest(unittest.TestCase):
             write_state(state)
 
         self.control._write_state = fail_worker_persistence  # type: ignore[method-assign]
-        with self.assertRaisesRegex(OSError, "persistence failure"):
+        with self.assertRaisesRegex(ControlPlaneError, "reservation could not be persisted"):
             self.control.launch_worker("573", "software_engineer", self.worktree)
         self.assertNotIn("573-software_engineer", json.loads(self.control.state_path.read_text(encoding="utf-8"))["workers"])
         with self.control._locked_registry() as registry:
             self.assertEqual({}, registry["leases"])
+
+    def test_post_replace_reservation_uncertainty_retains_matching_lease_for_retry(self) -> None:
+        self.control.bootstrap()
+        write_state = self.control._write_state
+        failed = False
+
+        def uncertain_once(state: dict[str, object]) -> None:
+            nonlocal failed
+            if not failed and "573-software_engineer" in state["workers"]:
+                failed = True
+                raise AtomicWriteError(self.control.state_path, after_replace=True, cause=OSError("directory fsync failed"))
+            write_state(state)
+
+        self.control._write_state = uncertain_once  # type: ignore[method-assign]
+        with self.assertRaisesRegex(ControlPlaneError, "persistence is uncertain"):
+            self.control.launch_worker("573", "software_engineer", self.worktree)
+        with self.control._locked_registry() as registry:
+            self.assertIn(self.control._discover_worktree(self.worktree)[2], registry["leases"])
+        self.control.launch_worker("573", "software_engineer", self.worktree)
+        self.control.release_worker("573", "software_engineer", outcome="abandoned", cleanup_authorized=True)
+
+    def test_template_and_tmux_enumeration_failures_after_reservation_release_exact_lease(self) -> None:
+        self.control.bootstrap()
+        original_worker = self.control.profile.commands["worker"]
+        self.control.profile.commands["worker"] = ["bad-template-{unknown}"]
+        with self.assertRaisesRegex(ControlPlaneError, "template"):
+            self.control.launch_worker("573", "software_engineer", self.worktree)
+        self.control.profile.commands["worker"] = original_worker
+        with self.control._locked_registry() as registry:
+            self.assertEqual({}, registry["leases"])
+
+        def fail_later_tmux_enumeration() -> None:
+            self.runner.fail_list_windows = True
+
+        self.runner.status_hook = fail_later_tmux_enumeration
+        with self.assertRaisesRegex(ControlPlaneError, "cannot be enumerated"):
+            self.control.launch_worker("573", "software_engineer", self.worktree)
+        self.assertNotIn("573-software_engineer", json.loads(self.control.state_path.read_text(encoding="utf-8"))["workers"])
+        with self.control._locked_registry() as registry:
+            self.assertEqual({}, registry["leases"])
+
+    def test_tmux_create_failure_retains_start_uncertain_until_exact_release(self) -> None:
+        self.control.bootstrap()
+        self.runner.fail_new_window = True
+        with self.assertRaisesRegex(ControlPlaneError, "simulated tmux"):
+            self.control.launch_worker("573", "software_engineer", self.worktree)
+        state = json.loads(self.control.state_path.read_text(encoding="utf-8"))
+        self.assertEqual("start-uncertain", state["workers"]["573-software_engineer"]["state"])
+        with self.control._locked_registry() as registry:
+            self.assertTrue(registry["leases"])
+        self.runner.fail_new_window = False
+        self.control.release_worker("573", "software_engineer", outcome="abandoned", cleanup_authorized=True)
+        with self.control._locked_registry() as registry:
+            self.assertEqual({}, registry["leases"])
+
+    def test_failed_shutdown_requires_authorized_recovery_before_new_launch(self) -> None:
+        self.control.bootstrap()
+        self.runner.fail_stop = True
+        with self.assertRaisesRegex(ControlPlaneError, "simulated WSH"):
+            self.control.shutdown()
+        with self.control._locked_registry() as registry:
+            self.assertEqual("draining", registry["drain"]["state"])
+        with self.assertRaisesRegex(ControlPlaneError, "drain requires explicit recovery"):
+            self.control._reserve_shared_lease("another-worktree", "573-software_engineer")
+        self.runner.fail_stop = False
+        self.control.shutdown(recovery_authorized=True)
+        with self.control._locked_registry() as registry:
+            self.assertIsNone(registry["drain"])
 
     def test_existing_assignment_with_a_different_worktree_never_reserves_shared_lease(self) -> None:
         self.control.bootstrap()
@@ -402,7 +495,7 @@ class PlannerWSHControlTest(unittest.TestCase):
     def test_repository_shutdown_stopping_serializes_a_concurrent_allocation(self) -> None:
         self.control.bootstrap()
         self.control._begin_repository_shutdown()
-        with self.assertRaisesRegex(ControlPlaneError, "lifecycle is stopping"):
+        with self.assertRaisesRegex(ControlPlaneError, "drain requires explicit recovery"):
             self.control._reserve_shared_lease("worktree-race", "573-software_engineer")
         self.control._finish_repository_shutdown()
 
@@ -490,12 +583,15 @@ class PlannerWSHControlTest(unittest.TestCase):
         with self.assertRaisesRegex(ControlPlaneError, "simulated tmux"):
             self.control.launch_worker("573", "software_engineer", self.worktree)
         self.runner.fail_new_window = False
+        # A create-call failure is intentionally start-uncertain; prove its
+        # exact absence through normal release before retrying the assignment.
+        self.control.release_worker("573", "software_engineer", outcome="abandoned", cleanup_authorized=True)
         self.control.launch_worker("573", "software_engineer", self.worktree)
         self.runner.fail_stop = True
         with self.assertRaisesRegex(ControlPlaneError, "simulated WSH"):
             self.control.release_worker("573", "software_engineer", outcome="merged", cleanup_authorized=True)
         events_before = [json.loads(line) for line in self.control.audit_path.read_text(encoding="utf-8").splitlines()]
-        self.assertTrue(any(event["action"] == "worker-started" and event["outcome"] == "failed" for event in events_before))
+        self.assertTrue(any(event["action"] == "worker-started" and event["outcome"] == "uncertain" for event in events_before))
         self.assertTrue(any(event["action"] == "worker-released" and event["outcome"] == "failed" for event in events_before))
         self.runner.fail_stop = False
         self.control.release_worker("573", "software_engineer", outcome="merged", cleanup_authorized=True)
