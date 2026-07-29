@@ -451,21 +451,42 @@ class PlannerWSHControlTest(unittest.TestCase):
             "assigned external worktree",
             "Do not launch, attach to, inspect, or steer tmux or WSH sessions",
             "do not use WSH MCP",
-            "Report progress, evidence, blockers, and human-needed decisions to sprint_planner",
+            "Report progress, evidence, blockers, and every required decision to sprint_planner as MANAGER ATTENTION NEEDED",
             "independently leased QA worktree",
             "never share an implementation worktree",
             "Create a focused PR linked to this issue",
             "monitor PR and issue feedback",
             "action every actionable review or issue comment",
             "linked out-of-scope follow-up issue only with authority",
-            "otherwise escalate it to sprint_planner",
+            "otherwise escalate it to sprint_planner as MANAGER ATTENTION NEEDED",
             "required checks, CODEOWNERS review where applicable, no unresolved blocker, and rollback review",
             "explicitly authorize the exact PR head and named target",
             "binding issue comment with PR, head, checks, QA, rollback, and merge authority evidence",
-            "explicit cleanup authority",
+            "Do not remove or delete the worktree or its local branch after merge",
+            "GitHub confirms the authorized head merged into the named target",
+            "planner-controlled cleanup path",
+            "separately recorded explicit cleanup authority",
             "clean, unpushed, unleased, and not needed",
         ):
             self.assertIn(required, prompt)
+
+    def test_closeout_contract_is_consistent_in_effective_prompt_and_role_policies(self) -> None:
+        repository = Path(__file__).resolve().parent.parent
+        sources = {
+            "effective worker prompt": self.control._assignment_prompt("573", "software_engineer"),
+            "effective planner prompt": self.control._planner_assignment_prompt(),
+            "software engineer policy": (repository / ".codex" / "agents" / "software_engineer.toml").read_text(encoding="utf-8"),
+            "sprint planner policy": (repository / ".codex" / "agents" / "sprint_planner.toml").read_text(encoding="utf-8"),
+            "repository policy": (repository / "AGENTS.md").read_text(encoding="utf-8"),
+            "control-plane runbook": (repository / "docs" / "PLANNER_WSH_CONTROL_PLANE.md").read_text(encoding="utf-8"),
+        }
+        for name, source in sources.items():
+            self.assertIn("MANAGER ATTENTION NEEDED", source, name)
+            self.assertIn("GitHub confirms", source, name)
+            self.assertIn("local branch", source, name)
+            self.assertIn("planner-controlled cleanup path", source, name)
+            self.assertIn("explicit cleanup authority", source, name)
+        self.assertIn("Do not remove or delete", sources["effective worker prompt"])
 
     def test_deterministic_names_survive_control_plane_recovery(self) -> None:
         self.control.bootstrap()

@@ -644,13 +644,13 @@ class ControlPlane:
             "Accept task intake only from sprint_planner through this planner-provisioned assignment. "
             "Use only this assigned external worktree and read and follow AGENTS.md. "
             "Do not launch, attach to, inspect, or steer tmux or WSH sessions, and do not use WSH MCP. "
-            "Report progress, evidence, blockers, and human-needed decisions to sprint_planner. "
+            "Report progress, evidence, blockers, and every required decision to sprint_planner as MANAGER ATTENTION NEEDED. "
             "If assigned the quality_engineer role, use only an independently leased QA worktree and never share an implementation worktree."
             " Create a focused PR linked to this issue, monitor PR and issue feedback, and action every actionable review or issue comment through sprint_planner. "
-            "Create a linked out-of-scope follow-up issue only with authority; otherwise escalate it to sprint_planner. "
+            "Create a linked out-of-scope follow-up issue only with authority; otherwise escalate it to sprint_planner as MANAGER ATTENTION NEEDED. "
             "QA must validate independently with required checks, CODEOWNERS review where applicable, no unresolved blocker, and rollback review. "
             "Never merge: a human must explicitly authorize the exact PR head and named target. Before issue closeout, post the binding issue comment with PR, head, checks, QA, rollback, and merge authority evidence. "
-            "After merge, clean up only with explicit cleanup authority and proof that the worktree/session is clean, unpushed, unleased, and not needed."
+            "Do not remove or delete the worktree or its local branch after merge. Only after GitHub confirms the authorized head merged into the named target may the planner use its planner-controlled cleanup path, with separately recorded explicit cleanup authority and proof that the worktree/session is clean, unpushed, unleased, and not needed."
         )
 
     @staticmethod
@@ -659,8 +659,8 @@ class ControlPlane:
             "Act as the sole sprint_planner for this protected runtime profile. "
             "Read and follow AGENTS.md, allocate only approved issue work through the control plane, "
             "and report evidence and blockers to the human supervisor."
-            " Require focused issue-linked PRs, monitored/actioned feedback, authority-gated out-of-scope follow-ups, independent QA, required checks/CODEOWNERS/no unresolved blocker, and rollback review. "
-            "Require explicit human authorization of the exact PR head and named target before merge, binding issue-comment closeout evidence, and explicit cleanup authority plus clean/unpushed/unleased/not-needed proof after merge."
+            " Require focused issue-linked PRs, monitored/actioned feedback, MANAGER ATTENTION NEEDED escalation for unauthorized out-of-scope follow-ups or any required decision, independent QA, required checks/CODEOWNERS/no unresolved blocker, and rollback review. "
+            "Require explicit human authorization of the exact PR head and named target before merge, binding issue-comment closeout evidence, and only after GitHub confirms the authorized head merged into the named target authorize the planner-controlled cleanup path to remove only that merged issue's leased worktree and local branch with separately recorded explicit cleanup authority plus clean/unpushed/unleased/not-needed proof. Any ambiguity is MANAGER ATTENTION NEEDED and leaves files and branches intact."
         )
 
     def _rollback_launch_reservation(self, assignment_id: str, record: dict[str, Any], action: str) -> None:
