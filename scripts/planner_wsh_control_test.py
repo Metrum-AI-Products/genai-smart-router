@@ -390,6 +390,7 @@ class PlannerWSHControlTest(unittest.TestCase):
             self.control.shutdown(recovery_authorized=True)
         self.runner.wsh_sessions = {}
         self.runner.status_result = RunResult(1)
+        self.runner.windows.remove("wsh-server")
         self.control.shutdown(recovery_authorized=True)
 
     def test_absence_proof_requires_exact_owner_profile_generation_and_session(self) -> None:
@@ -397,6 +398,10 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.control._record_planner_absence_proof()
         with self.control._locked_registry() as registry:
             registry["drain"]["planner_absence_proof"]["planner_wsh_session_id"] = "wrong-session"
+        self.assertFalse(self.control._has_planner_absence_proof())
+        with self.control._locked_registry() as registry:
+            registry["drain"]["planner_absence_proof"]["planner_wsh_session_id"] = "router-planner-session"
+            registry["drain"]["generation"] += 1
         self.assertFalse(self.control._has_planner_absence_proof())
 
     def test_existing_assignment_with_a_different_worktree_never_reserves_shared_lease(self) -> None:
@@ -647,7 +652,7 @@ class PlannerWSHControlTest(unittest.TestCase):
     def test_failed_wsh_preflight_releases_reservation_before_terminal_creation(self) -> None:
         self.control.bootstrap()
         self.runner.status_result = RunResult(1)
-        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is unavailable"):
+        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is list-unavailable"):
             self.control.launch_worker("573", "software_engineer", self.worktree)
         self.assertNotIn("agent-573-software_engineer", self.runner.windows)
         state = json.loads(self.control.state_path.read_text(encoding="utf-8"))
@@ -662,7 +667,7 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.assertEqual({}, json.loads(self.control.state_path.read_text(encoding="utf-8"))["workers"])
         self.runner.fail_codex_preflight = False
         self.runner.fail_status_spawn = True
-        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is unavailable"):
+        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is list-unavailable"):
             self.control.launch_worker("573", "software_engineer", self.worktree)
         self.assertEqual({}, json.loads(self.control.state_path.read_text(encoding="utf-8"))["workers"])
         events = [json.loads(line) for line in self.control.audit_path.read_text(encoding="utf-8").splitlines()]

@@ -523,7 +523,7 @@ class ControlPlane:
         with self._locked_registry() as registry:
             drain = registry["drain"]
             proof = drain.get("planner_absence_proof") if isinstance(drain, dict) else None
-            return isinstance(proof, dict) and proof == {
+            return isinstance(proof, dict) and isinstance(drain, dict) and drain.get("generation") == registry["generation"] and proof == {
                 "at": proof.get("at"), "owner_profile": self.profile.profile_id,
                 "owner": self.profile.planner_owner, "generation": registry["generation"],
                 "planner_wsh_session_id": self.profile.planner_wsh_session_id,
@@ -785,9 +785,9 @@ class ControlPlane:
                 timeout_seconds=self.profile.status_timeout_seconds, max_output_bytes=self.profile.status_output_bytes,
             )
         except ControlPlaneError:
-            return "unavailable"
+            return "list-unavailable"
         if result.returncode:
-            return "unavailable"
+            return "list-unavailable"
         session = self.profile.planner_wsh_session_id
         session_pattern = re.compile(rf"(?<![a-zA-Z0-9_-]){re.escape(session)}(?![a-zA-Z0-9_-])")
         matching_rows = [index for index, line in enumerate(result.stdout.splitlines()) if session_pattern.search(line)]
@@ -804,9 +804,9 @@ class ControlPlane:
                 timeout_seconds=self.profile.status_timeout_seconds, max_output_bytes=self.profile.status_output_bytes,
             )
         except ControlPlaneError:
-            return "unavailable"
+            return "tag-unavailable"
         if tags.returncode:
-            return "unavailable"
+            return "tag-unavailable"
         delimiter = re.search(rf"Session '{re.escape(session)}':(?P<tags>[\s\S]*)\Z", tags.stdout)
         if not delimiter:
             return "wrong-identity"
@@ -1248,9 +1248,9 @@ class ControlPlane:
                 raise ControlPlaneError("shutdown refused: control tmux session contains an unexpected window")
         # Do not hold the protected state lock while invoking WSH. A fresh
         # identity result permits exact cleanup only; ambiguity fails closed.
-        persisted_absence = recovery_authorized and self._has_planner_absence_proof()
+        persisted_absence = recovery_authorized and self._has_planner_absence_proof() and "wsh-server" not in self._tmux_windows()
         planner_identity = self._planner_identity_state()
-        if planner_identity not in {"present", "absent"} and not (persisted_absence and planner_identity == "unavailable"):
+        if planner_identity not in {"present", "absent"} and not (persisted_absence and planner_identity == "list-unavailable"):
             raise ControlPlaneError(f"shutdown refused: planner WSH identity is {planner_identity}")
         if planner_identity == "present":
             self.runner.run(_render_command(self.profile.commands["planner_stop"], self._template_values()))
