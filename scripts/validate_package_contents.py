@@ -18,6 +18,7 @@ BINARY_PACKAGE_FILES = {
     "bin/router",
     "bin/router-token-gen",
     "bin/router-usage-report",
+    "bin/metrum-smartrouterctl",
     "config/config.example.yaml",
     "config/env.example.json",
     "config/scripts/router.ts",
@@ -33,7 +34,7 @@ DOCKER_PACKAGE_FILES = {
     "config/env.example.json",
     "config/scripts/router.ts",
 }
-PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report"}
+PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/metrum-smartrouterctl"}
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
 DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_IMAGE_PATH_RE = re.compile(

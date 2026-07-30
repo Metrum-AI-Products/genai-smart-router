@@ -63,6 +63,7 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/router": elf(62),
         f"{root}/bin/router-token-gen": elf(62),
         f"{root}/bin/router-usage-report": elf(62),
+        f"{root}/bin/metrum-smartrouterctl": elf(62),
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
         f"{root}/config/scripts/router.ts": "export function route() {}\n",
