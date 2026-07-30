@@ -591,7 +591,9 @@ class ControlPlane:
         state["updated_at"] = _utc_now()
         _durable_json_replace(self.state_path, state, prefix=".planner-wsh-")
 
-    def _audit(self, action: str, outcome: str, worker: dict[str, Any] | None = None) -> None:
+    def _audit(
+        self, action: str, outcome: str, worker: dict[str, Any] | None = None, *, disposition: str | None = None
+    ) -> None:
         """Append safe lifecycle metadata. This file is never reset or pruned by shutdown."""
         event: dict[str, str] = {"event_id": str(uuid.uuid4()), "at": _utc_now(), "action": action, "outcome": outcome}
         if worker:
@@ -602,6 +604,11 @@ class ControlPlane:
             ):
                 if isinstance(worker.get(source), str):
                     event[target] = worker[source]
+        if disposition is not None:
+            safe_disposition = re.sub(r"[^a-z0-9]+", "-", disposition.lower()).strip("-")
+            if not safe_disposition:
+                raise ControlPlaneError("audit disposition must be a safe non-empty class")
+            event["disposition"] = safe_disposition
         encoded = (json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
         fd = os.open(self.audit_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
@@ -644,7 +651,7 @@ class ControlPlane:
     def _assert_server_identity(self, disposition: str) -> None:
         outcome = self._server_identity_state()
         with self._locked_state():
-            self._audit("server-identity-validation", outcome)
+            self._audit("server-identity-validation", outcome, disposition=disposition)
         if outcome != "matched":
             raise ControlPlaneError(f"{disposition} rejected: profile WSH server identity is {outcome}")
 

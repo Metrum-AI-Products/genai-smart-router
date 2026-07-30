@@ -273,6 +273,7 @@ class PlannerWSHControlTest(unittest.TestCase):
         audit = self.control.audit_path.read_text(encoding="utf-8")
         self.assertIn('"action":"server-identity-validation"', audit)
         self.assertIn('"outcome":"mismatch"', audit)
+        self.assertIn('"disposition":"worker-allocation"', audit)
         self.assertNotIn("another-server", audit)
 
     def test_tag_query_does_not_authorize_a_session_name_that_equals_the_expected_tag(self) -> None:
