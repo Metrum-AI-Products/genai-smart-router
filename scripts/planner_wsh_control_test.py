@@ -377,6 +377,28 @@ class PlannerWSHControlTest(unittest.TestCase):
         with self.control._locked_registry() as registry:
             self.assertIsNone(registry["drain"])
 
+    def test_proof_backed_recovery_permits_only_unavailable_identity(self) -> None:
+        self.control.bootstrap()
+        self.control._begin_repository_shutdown()
+        self.control._record_planner_absence_proof()
+        self.runner.status_payload = "router-planner-session\nrouter-planner-session"
+        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is duplicate"):
+            self.control.shutdown(recovery_authorized=True)
+        self.runner.status_payload = None
+        self.runner.wsh_sessions = {"router-planner-session": "wrong-tag"}
+        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is wrong-identity"):
+            self.control.shutdown(recovery_authorized=True)
+        self.runner.wsh_sessions = {}
+        self.runner.status_result = RunResult(1)
+        self.control.shutdown(recovery_authorized=True)
+
+    def test_absence_proof_requires_exact_owner_profile_generation_and_session(self) -> None:
+        self.control._begin_repository_shutdown()
+        self.control._record_planner_absence_proof()
+        with self.control._locked_registry() as registry:
+            registry["drain"]["planner_absence_proof"]["planner_wsh_session_id"] = "wrong-session"
+        self.assertFalse(self.control._has_planner_absence_proof())
+
     def test_existing_assignment_with_a_different_worktree_never_reserves_shared_lease(self) -> None:
         self.control.bootstrap()
         state = json.loads(self.control.state_path.read_text(encoding="utf-8"))

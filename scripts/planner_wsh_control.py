@@ -513,12 +513,21 @@ class ControlPlane:
             drain = registry["drain"]
             if not isinstance(drain, dict) or drain.get("owner_profile") != self.profile.profile_id:
                 raise ControlPlaneError("repository drain ownership is ambiguous; refuse absence-proof recording")
-            drain["planner_absence_proved_at"] = _utc_now()
+            drain["planner_absence_proof"] = {
+                "at": _utc_now(), "owner_profile": self.profile.profile_id,
+                "owner": self.profile.planner_owner, "generation": registry["generation"],
+                "planner_wsh_session_id": self.profile.planner_wsh_session_id,
+            }
 
     def _has_planner_absence_proof(self) -> bool:
         with self._locked_registry() as registry:
             drain = registry["drain"]
-            return isinstance(drain, dict) and drain.get("owner_profile") == self.profile.profile_id and isinstance(drain.get("planner_absence_proved_at"), str)
+            proof = drain.get("planner_absence_proof") if isinstance(drain, dict) else None
+            return isinstance(proof, dict) and proof == {
+                "at": proof.get("at"), "owner_profile": self.profile.profile_id,
+                "owner": self.profile.planner_owner, "generation": registry["generation"],
+                "planner_wsh_session_id": self.profile.planner_wsh_session_id,
+            } and isinstance(proof.get("at"), str)
 
     @contextlib.contextmanager
     def _locked_state(self) -> Any:
@@ -1241,7 +1250,7 @@ class ControlPlane:
         # identity result permits exact cleanup only; ambiguity fails closed.
         persisted_absence = recovery_authorized and self._has_planner_absence_proof()
         planner_identity = self._planner_identity_state()
-        if planner_identity not in {"present", "absent"} and not persisted_absence:
+        if planner_identity not in {"present", "absent"} and not (persisted_absence and planner_identity == "unavailable"):
             raise ControlPlaneError(f"shutdown refused: planner WSH identity is {planner_identity}")
         if planner_identity == "present":
             self.runner.run(_render_command(self.profile.commands["planner_stop"], self._template_values()))
