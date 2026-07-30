@@ -507,6 +507,19 @@ class ControlPlane:
                 raise ControlPlaneError("repository drain ownership is ambiguous; refuse completion")
             registry["drain"] = None
 
+    def _record_planner_absence_proof(self) -> None:
+        """Durably retain the exact-list proof before the WSH server is stopped."""
+        with self._locked_registry() as registry:
+            drain = registry["drain"]
+            if not isinstance(drain, dict) or drain.get("owner_profile") != self.profile.profile_id:
+                raise ControlPlaneError("repository drain ownership is ambiguous; refuse absence-proof recording")
+            drain["planner_absence_proved_at"] = _utc_now()
+
+    def _has_planner_absence_proof(self) -> bool:
+        with self._locked_registry() as registry:
+            drain = registry["drain"]
+            return isinstance(drain, dict) and drain.get("owner_profile") == self.profile.profile_id and isinstance(drain.get("planner_absence_proved_at"), str)
+
     @contextlib.contextmanager
     def _locked_state(self) -> Any:
         self.profile.state_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1226,8 +1239,9 @@ class ControlPlane:
                 raise ControlPlaneError("shutdown refused: control tmux session contains an unexpected window")
         # Do not hold the protected state lock while invoking WSH. A fresh
         # identity result permits exact cleanup only; ambiguity fails closed.
+        persisted_absence = recovery_authorized and self._has_planner_absence_proof()
         planner_identity = self._planner_identity_state()
-        if planner_identity not in {"present", "absent"}:
+        if planner_identity not in {"present", "absent"} and not persisted_absence:
             raise ControlPlaneError(f"shutdown refused: planner WSH identity is {planner_identity}")
         if planner_identity == "present":
             self.runner.run(_render_command(self.profile.commands["planner_stop"], self._template_values()))
@@ -1235,6 +1249,9 @@ class ControlPlane:
                 raise ControlPlaneError("shutdown refused: exact planner WSH session did not terminate")
         # This is the fresh exact WSH absence proof; killing the WSH server
         # window later intentionally makes a subsequent list unavailable.
+        # Persist this proof before stopping the WSH server's status surface.
+        # A later failure can then resume the protected drain without guessing.
+        self._record_planner_absence_proof()
         planner_absence_proved = True
         with self._locked_state() as state:
             if state["workers"]:
