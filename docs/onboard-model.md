@@ -46,6 +46,24 @@ When one upstream model exposes multiple API skins, create separate provider ent
 
 ## 4. Capture Capability Probe Results
 
+The repository now has an offline, synthetic contract check:
+
+```bash
+make capability-smoke-unit
+```
+
+It validates versioned scalar-only fixtures, fake-adapter classification, and
+configuration/evidence assertions without credentials or network access. Its
+results are explicitly **non-promotable**: they prove the contract and never
+certify a provider, account, route, target, or weight. `SKIP_TESTS=true` is the
+only bypass for this deterministic check and emits a warning. The reserved
+`make capability-smoke-live` target currently fails closed; it does not probe
+providers or write evidence until a protected-live follow-up is approved.
+
+Every future live result must bind the exact provider, account identity class,
+endpoint fingerprint and path, API skin, model plus suffix, inbound dialect,
+bridge direction, request shape, capability case, and profile version.
+
 Record public-safe evidence for each probe:
 
 - date, provider, endpoint family, model ID, dialect, skin, and account/region class;

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Regression contract for the deterministic capability smoke harness."""
+from __future__ import annotations
+import os
+import importlib.util
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+HARNESS = ROOT / "scripts/provider_capability_smoke.py"
+
+def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, str(HARNESS), *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, **env})
+
+def require(value: bool, message: str) -> None:
+    if not value: raise AssertionError(message)
+
+def main() -> int:
+    unit = run("unit")
+    require(unit.returncode == 0 and "scrubbed synthetic" in unit.stdout, unit.stderr)
+    live = run("live", LIVE_CAPABILITY_SMOKES="1", CAPABILITY_PROFILE="active")
+    require(live.returncode == 2 and "intentionally unavailable" in live.stderr, "live mode must fail closed")
+    source = HARNESS.read_text()
+    imports = {alias.name.split(".")[0] for node in ast.walk(ast.parse(source)) if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names}
+    require(not imports & {"urllib", "requests", "http", "socket"}, "network import found in fake adapter")
+    spec = importlib.util.spec_from_file_location("capability_smoke", HARNESS)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    safe = {"schema_version": module.SCHEMA_VERSION, "identity": {field: "x" for field in module.REQUIRED_IDENTITY}, "capability_case": "text", "status": "passed", "observed": {"http_status": 200}}
+    safe["identity"]["model_suffix"] = ""
+    module.validate_result(safe)
+    unsafe = dict(safe); unsafe["observed"] = {"nested": {"raw_prompt": "sentinel prompt", "image_url": "https://sentinel.invalid", "tool_schema": {"secret": "sentinel"}}}
+    try:
+        module.validate_result(unsafe)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("raw prompt sentinel survived result serialization")
+    raw_output = dict(safe); raw_output["observed"] = {"finish_class": "SENTINEL RAW MODEL OUTPUT"}
+    try:
+        module.validate_result(raw_output)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("raw output sentinel survived scalar allowlist")
+    request = module.fake_request("tools-forced", safe["identity"])
+    require(request["tool_choice"] == "forced", "fake adapter failed forced-tool classification")
+    make = (ROOT / "Makefile").read_text()
+    require("capability-smoke-unit" in make and "SKIP_TESTS" in make, "Make capability contract missing")
+
+    normal_make = subprocess.run(["make", "-n", "build-go-only"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require(normal_make.returncode == 0 and "provider_capability_smoke.py unit" in normal_make.stdout, "normal build must invoke the unit gate")
+    skipped_make = subprocess.run(["make", "capability-smoke-unit", "SKIP_TESTS=true"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require(skipped_make.returncode == 0 and "WARNING: SKIP_TESTS=true" in skipped_make.stdout, "explicit skip must be visible")
+    invalid_skip = subprocess.run(["make", "capability-smoke-unit", "SKIP_TESTS=1"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require(invalid_skip.returncode != 0 and "must be true or false" in invalid_skip.stderr, "invalid skip must fail")
+    for target in ("package-one-no-docs", "docker-image-no-docs", "package-docker-one-no-docs"):
+        dry_run = subprocess.run(["make", "-n", target], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(dry_run.returncode == 0 and "provider_capability_smoke.py unit" in dry_run.stdout, f"{target} bypasses capability gate")
+    print("Provider capability smoke regression tests passed")
+    return 0
+
+if __name__ == "__main__": raise SystemExit(main())
