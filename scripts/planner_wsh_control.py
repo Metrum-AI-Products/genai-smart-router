@@ -283,6 +283,7 @@ class Profile:
     tmux_session: str
     wsh_server_name: str
     wsh_server_identity: str
+    bootstrap_identity_wait_seconds: int
     planner_wsh_session_id: str
     state_directory: Path
     worker_session_prefix: str
@@ -315,6 +316,13 @@ class Profile:
         tmux_session = _safe_name(str(raw.get("tmux_session", "")), "tmux_session")
         wsh_server_name = _safe_name(str(raw.get("wsh_server_name", "")), "wsh_server_name")
         wsh_server_identity = _safe_name(str(raw.get("wsh_server_identity", "")), "wsh_server_identity")
+        bootstrap_identity_wait = raw.get("bootstrap_identity_wait_seconds")
+        if (
+            not isinstance(bootstrap_identity_wait, int)
+            or isinstance(bootstrap_identity_wait, bool)
+            or not 1 <= bootstrap_identity_wait <= 10
+        ):
+            raise ControlPlaneError("profile bootstrap_identity_wait_seconds must be an integer between 1 and 10")
         planner_wsh_session_id = _safe_name(str(raw.get("planner_wsh_session_id", "")), "planner_wsh_session_id")
         prefix = _safe_name(str(raw.get("worker_session_prefix", "")), "worker_session_prefix")
         state_value = raw.get("state_directory")
@@ -383,7 +391,8 @@ class Profile:
             if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
                 raise ControlPlaneError(f"profile {label} is outside the approved bound")
         return cls(
-            path, profile_id, planner_owner, tmux_session, wsh_server_name, wsh_server_identity, planner_wsh_session_id, state_directory, prefix, base_ref, ttl,
+            path, profile_id, planner_owner, tmux_session, wsh_server_name, wsh_server_identity, bootstrap_identity_wait,
+            planner_wsh_session_id, state_directory, prefix, base_ref, ttl,
             status_timeout, status_output, status_field, tuple(env_names), commands,
         )
 
@@ -617,7 +626,7 @@ class ControlPlane:
         finally:
             os.close(fd)
 
-    def _server_identity_state(self) -> str:
+    def _server_identity_state(self, timeout_seconds: float | None = None) -> str:
         """Return only a safe class for the authoritative server handshake.
 
         The handshake is the sole runtime binding between this protected profile
@@ -628,7 +637,7 @@ class ControlPlane:
             result = self.runner.run(
                 _render_command(self.profile.commands["wsh_identity"], self._template_values()),
                 check=False,
-                timeout_seconds=self.profile.status_timeout_seconds,
+                timeout_seconds=timeout_seconds if timeout_seconds is not None else self.profile.status_timeout_seconds,
                 max_output_bytes=self.profile.status_output_bytes,
             )
         except ControlPlaneError:
@@ -654,6 +663,31 @@ class ControlPlane:
             self._audit("server-identity-validation", outcome, disposition=disposition)
         if outcome != "matched":
             raise ControlPlaneError(f"{disposition} rejected: profile WSH server identity is {outcome}")
+
+    def _await_bootstrap_server_identity(self) -> None:
+        """Bound only cold bootstrap's unavailable identity observation.
+
+        The identity command remains the sole WSH call in this interval.  A
+        successful observation is intentionally not reusable: the ordinary
+        creation-time assertion below still binds the pending mutation.
+        """
+        deadline = time.monotonic() + self.profile.bootstrap_identity_wait_seconds
+        outcome = "unavailable"
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            outcome = self._server_identity_state(min(self.profile.status_timeout_seconds, remaining))
+            if outcome != "unavailable":
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.1, remaining))
+        with self._locked_state():
+            self._audit("server-identity-readiness", outcome, disposition="bootstrap")
+        if outcome != "matched":
+            raise ControlPlaneError(f"bootstrap rejected: profile WSH server identity is {outcome}")
 
     def _expire_leases(self, state: dict[str, Any]) -> bool:
         changed = False
@@ -716,6 +750,7 @@ class ControlPlane:
             "Use only this assigned external worktree and read and follow AGENTS.md. "
             "Do not launch, attach to, inspect, or steer tmux or WSH sessions, and do not use WSH MCP. "
             "Only the planner uses WSH. If server-identity validation fails, do not retry, select another profile, or attempt cleanup; report MANAGER ATTENTION NEEDED for human-supervised recovery. "
+            "Only cold bootstrap may wait briefly for an unavailable authoritative identity; every other identity failure is immediately fail-closed. "
             "Report progress, evidence, blockers, and every required decision to sprint_planner as MANAGER ATTENTION NEEDED. "
             "If assigned the quality_engineer role, use only an independently leased QA worktree and never share an implementation worktree."
             " Create a focused PR linked to this issue, monitor PR and issue feedback, and action every actionable review or issue comment through sprint_planner. "
@@ -731,7 +766,7 @@ class ControlPlane:
             "Act as the sole sprint_planner for this protected runtime profile. "
             "Read and follow AGENTS.md, allocate only approved issue work through the control plane, "
             "and report evidence and blockers to the human supervisor."
-            " Before every WSH session inventory, creation, relay, stop, or cleanup, require the runtime profile's exact authoritative server-identity handshake. On missing, mismatch, unavailable, malformed, or ambiguous identity, fail closed without an alternate profile or stale client and escalate to the human supervisor; only this planner uses WSH."
+            " Cold bootstrap alone may use the profile's bounded unavailable-only identity readiness wait after starting its local server; every other WSH session inventory, creation, relay, stop, or cleanup requires one fresh exact authoritative server-identity handshake. On missing, mismatch, unavailable, malformed, or ambiguous identity, fail closed without an alternate profile or stale client and escalate to the human supervisor; only this planner uses WSH."
             " Require focused issue-linked PRs, monitored/actioned feedback, MANAGER ATTENTION NEEDED escalation for unauthorized out-of-scope follow-ups or any required decision, independent QA, required checks/CODEOWNERS/no unresolved blocker, and rollback review. "
             "Require explicit human authorization of the exact PR head and named target before merge, binding issue-comment closeout evidence, and only after GitHub confirms the authorized head merged into the named target authorize the planner-controlled cleanup path to remove only that merged issue's leased worktree and local branch with separately recorded explicit cleanup authority plus clean/unpushed/unleased/not-needed proof. Any ambiguity is MANAGER ATTENTION NEEDED and leaves files and branches intact."
         )
@@ -786,7 +821,7 @@ class ControlPlane:
             # Starting the local server is the only bootstrap step before the
             # authoritative handshake.  Do not create the planner session
             # until this profile is bound to the expected server identity.
-        self._assert_server_identity("bootstrap")
+        self._await_bootstrap_server_identity()
         planner_command = _render_command(
             self.profile.commands["planner"],
             self._template_values(window_name="sprint-planner", planner_assignment_prompt=self._planner_assignment_prompt()),

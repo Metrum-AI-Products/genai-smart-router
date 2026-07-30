@@ -33,6 +33,10 @@ def main() -> int:
     if not shutil.which("wsh") or not shutil.which("tmux"):
         print("SKIP: wsh and tmux are required for the live lifecycle regression")
         return 0
+    expected_identity = os.environ.get("PLANNER_WSH_LIVE_IDENTITY")
+    if not expected_identity:
+        print("SKIP: PLANNER_WSH_LIVE_IDENTITY is required for the protected exact-identity lifecycle regression")
+        return 0
     marker = uuid.uuid4().hex[:12]
     session = f"issue573live{marker}"
     branch = f"issue-573-live-{marker}"
@@ -69,6 +73,8 @@ def main() -> int:
                     "planner_owner": "sprint_planner",
                     "tmux_session": session,
                     "wsh_server_name": session,
+                    "wsh_server_identity": expected_identity,
+                    "bootstrap_identity_wait_seconds": 1,
                     "planner_wsh_session_id": f"planner{marker}",
                     "state_directory": str(state),
                     "worker_session_prefix": f"worker{marker}",
@@ -80,6 +86,7 @@ def main() -> int:
                     "forbidden_environment_variables": ["WSH_SESSION_ID"],
                     "commands": {
                         "wsh_server": ["wsh", "-L", "{wsh_server_name}", "server"],
+                        "wsh_identity": ["wsh", "-L", "{wsh_server_name}", "identity", "--json"],
                         "planner": [
                             "scripts/planner_wsh_planner.sh", "{wsh_server_name}", "{planner_wsh_session_id}",
                             "planner-{profile_id}", "{repository_root}", "{planner_assignment_prompt}",
