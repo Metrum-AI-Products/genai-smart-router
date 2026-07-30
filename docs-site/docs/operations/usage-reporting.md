@@ -36,7 +36,7 @@ router-usage-report \
   --out usage-24h.md
 ```
 
-Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. The public docs include graphical Chart.js examples built from the same report dimensions.
+Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. Instant values in the `Period UTC` bounds and `Per-Request Throughput` time column use fixed UTC RFC3339 milliseconds (`YYYY-MM-DDTHH:mm:ss.SSSZ`). Hour and day summary labels remain reporting buckets; browser JSON APIs and CSV exports retain their existing precision. The public docs include graphical Chart.js examples built from the same report dimensions.
 
 ## Investigate Traffic Shaping
 

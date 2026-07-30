@@ -866,6 +866,8 @@ Each request row stores the configured input/output price per million tokens for
 
 The JSONL file is useful for raw audit/debugging. The relational DB is the source for periodic reports. In container deployments using SQLite, use `/app/logs/requests.jsonl` and `/app/state/usage.sqlite`. In Postgres deployments, the report tool reads from the configured DSN.
 
+Markdown report instants use UTC RFC3339 with fixed milliseconds (`YYYY-MM-DDTHH:mm:ss.SSSZ`) in the `Period UTC` bounds and `Per-Request Throughput` time column. Hour and day summary labels remain reporting buckets (`YYYY-MM-DD HH:00` and `YYYY-MM-DD`); JSONL, database, browser JSON APIs, and CSV exports retain their existing precision.
+
 For routine browser inspection, deployments may enable `/admin/reports/`. The browser report UI is disabled by default, embedded in the router binary, uses local Metrum logo/font/chart assets, shows authenticated build metadata from `/admin/reports/api/version`, and calls bounded JSON APIs over the same relational usage DB. The CLI remains the supported path for automation, incident exports, and headless workflows.
 
 `router-usage-report` flags:

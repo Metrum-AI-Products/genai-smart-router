@@ -104,7 +104,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	logPath := filepath.Join(dir, "requests.jsonl")
 	dbPath := filepath.Join(dir, "usage.sqlite")
 	raw := strings.Join([]string{
-		`{"ts":"2026-06-14T01:15:00.000Z","request_id":"req_1","caller_id":"sudarshan-prod","caller_user":"sudarshan","caller_project":"metrum-insights","caller_environment":"prod","caller_ip":"203.0.113.10","token_id":"rtr_metrum_sudarshan_metrum-insights_prod_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"big-coder","resolved_group":"big-coder","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.4","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1200,"ttfb_ms":300,"usage":{"input_tokens":100,"output_tokens":40,"total_tokens":140},"input_price_per_million_usd":2,"output_price_per_million_usd":8,"input_cost_usd":0.0002,"output_cost_usd":0.00032,"total_cost_usd":0.00052,"pricing_source":"https://example.test/openai","pricing_updated_at":"2026-06-14","quota_state":"ok","key_state":"active","warnings":[]}`,
+		`{"ts":"2026-06-14T01:15:00.987654321Z","request_id":"req_1","caller_id":"sudarshan-prod","caller_user":"sudarshan","caller_project":"metrum-insights","caller_environment":"prod","caller_ip":"203.0.113.10","token_id":"rtr_metrum_sudarshan_metrum-insights_prod_k20260614","client":"codex","inbound_dialect":"openai-responses","requested_model":"big-coder","resolved_group":"big-coder","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.4","target_dialect":"openai-responses","stream":false,"cache":"miss","status":200,"attempts":1,"fallback_used":false,"latency_ms":1200,"ttfb_ms":300,"usage":{"input_tokens":100,"output_tokens":40,"total_tokens":140},"input_price_per_million_usd":2,"output_price_per_million_usd":8,"input_cost_usd":0.0002,"output_cost_usd":0.00032,"total_cost_usd":0.00052,"pricing_source":"https://example.test/openai","pricing_updated_at":"2026-06-14","quota_state":"ok","key_state":"active","warnings":[]}`,
 		`{"ts":"2026-06-14T02:05:00.000Z","request_id":"req_2","caller_id":"clay-prod","caller_user":"clay","caller_project":"metrum-insights","caller_environment":"prod","token_id":"rtr_metrum_clay_metrum-insights_prod_k20260614","client":"claude-code","inbound_dialect":"anthropic","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"openai","target_model":"gpt-5.4-nano","target_dialect":"openai-chat","stream":true,"cache":"hit","status":200,"attempts":0,"fallback_used":false,"latency_ms":30,"usage":{"input_tokens":12,"output_tokens":6,"total_tokens":18},"input_price_per_million_usd":0.1,"output_price_per_million_usd":0.625,"input_cost_usd":0.0000012,"output_cost_usd":0.00000375,"total_cost_usd":0.00000495,"pricing_source":"https://example.test/openai","pricing_updated_at":"2026-06-14","quota_state":"ok","key_state":"active","warnings":[]}`,
 		`{"ts":"2026-06-14T02:45:00.000Z","request_id":"req_3","caller_id":"clay-prod","caller_user":"clay","caller_project":"metrum-insights","caller_environment":"prod","token_id":"rtr_metrum_clay_metrum-insights_prod_k20260614","client":"claude-code","inbound_dialect":"anthropic","requested_model":"small","resolved_group":"small","strategy":"weighted","target_provider":"minimax","target_model":"MiniMax-M3","target_dialect":"openai-chat","stream":false,"cache":"miss","status":502,"attempts":2,"fallback_used":true,"latency_ms":900,"usage":{"input_tokens":20,"output_tokens":0,"total_tokens":20},"input_price_per_million_usd":0.3,"output_price_per_million_usd":1.2,"input_cost_usd":0.000006,"output_cost_usd":0,"total_cost_usd":0.000006,"pricing_source":"https://example.test/minimax","pricing_updated_at":"2026-06-14","quota_state":"ok","key_state":"active","traffic_shape_applied":true,"traffic_shape_decision":"rejected","traffic_shape_scope":"caller","traffic_shape_bucket":"caller.total_reserved_tokens_per_sec","traffic_shape_retry_after_ms":750,"traffic_shape_queue_wait_ms":0,"traffic_shape_estimated_input_tokens":20,"traffic_shape_reserved_output_tokens":200,"traffic_shape_total_reserved_tokens":220,"traffic_shape_events":[{"seq":1,"scope":"caller","bucket":"total_reserved","decision":"rejected","cost":220,"retry_after_ms":750,"estimated_input_tokens":20,"reserved_output_tokens":200,"total_reserved_tokens":220}],"upstream_shape_events":[{"seq":1,"ts":"2026-06-14T02:45:00.000Z","scope":"provider","provider":"minimax","model":"MiniMax-M3","dialect":"openai-chat","bucket":"adaptive_backoff","decision":"cooldown_started","retry_after_ms":1000,"estimated_input_tokens":20,"reserved_output_tokens":200,"total_reserved_tokens":220,"backoff_reason":"adaptive-backoff-provider-429"}],"warnings":[],"error":"upstream-failed"}`,
 		"",
@@ -124,6 +124,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 	for _, want := range []string{
 		"# Smart LLM Router Usage Report",
+		"Period UTC: `2026-06-14T00:00:00.000Z` to `2026-06-15T00:00:00.000Z`",
 		"Requests: `3`",
 		"Errors: `1`",
 		"Total Tokens: `178`; Input Tokens: `132`; Output Tokens: `46`",
@@ -141,6 +142,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		"## Downstream User Performance",
 		"## Upstream Endpoint Performance",
 		"## Per-Request Throughput",
+		"| 2026-06-14T01:15:00.987Z | `203.0.113.10` | `req_1` |",
 		"## Traffic Shaping Summary",
 		"P50 queue wait ms",
 		"P95 queue wait ms",
@@ -159,6 +161,22 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	if imported != 3 {
 		t.Fatalf("imported=%d", imported)
 	}
+	store, err := OpenUsageStorePath(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted usageRecord
+	if err := store.db.First(&persisted, "request_id = ?", "req_1").Error; err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	if got, want := persisted.TS, "2026-06-14T01:15:00.987654321Z"; got != want {
+		store.Close()
+		t.Fatalf("persisted timestamp=%q, want lossless %q", got, want)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	md, err = GenerateUsageMarkdown(UsageReportOptions{
 		DBPath: dbPath,
 		From:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
@@ -169,6 +187,41 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(md, "Requests: `3`") {
 		t.Fatalf("duplicate import changed request count:\n%s", md)
+	}
+}
+
+func TestUsageMarkdownTimestampsUseUTCMillisecondsWithoutChangingStoredPrecision(t *testing.T) {
+	from := time.Date(2026, 6, 14, 1, 15, 0, 987654321, time.UTC)
+	to := time.Date(2026, 6, 14, 2, 15, 0, 123456789, time.UTC)
+	row := usageRow{
+		TS:             time.Date(2026, 6, 14, 1, 59, 59, 999999999, time.UTC),
+		RequestID:      "req_subsecond",
+		CallerIP:       "198.51.100.42",
+		RequestedModel: "default",
+		ResolvedGroup:  "default",
+		TargetProvider: "mock",
+		TargetModel:    "mock-model",
+		Status:         200,
+	}
+
+	md := renderUsageMarkdown(from, to, []usageRow{row}, decisionTelemetrySummary{}, nil)
+	for _, want := range []string{
+		"Period UTC: `2026-06-14T01:15:00.987Z` to `2026-06-14T02:15:00.123Z`",
+		"| 2026-06-14T01:59:59.999Z | `198.51.100.42` | `req_subsecond` |",
+		"| 2026-06-14 01:00 | 1 |",
+		"| 2026-06-14 | 1 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("Markdown report missing %q:\n%s", want, md)
+		}
+	}
+	for _, notWant := range []string{"2026-06-14T01:15:00.987654321Z", "2026-06-14T01:59:59.999999999Z"} {
+		if strings.Contains(md, notWant) {
+			t.Fatalf("Markdown report retained nanosecond precision %q:\n%s", notWant, md)
+		}
+	}
+	if got, want := formatUsageTime(row.TS), "2026-06-14T01:59:59.999999999Z"; got != want {
+		t.Fatalf("formatUsageTime=%q, want lossless %q", got, want)
 	}
 }
 

@@ -6884,7 +6884,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Smart LLM Router Usage Report\n\n")
-	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
+	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageMarkdownTime(from), formatUsageMarkdownTime(to))
 	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
 	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)
 	fmt.Fprintf(&b, "- Total Tokens: `%d`; Input Tokens: `%d`; Output Tokens: `%d`\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
@@ -7466,7 +7466,7 @@ func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
 	fmt.Fprintln(b, "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, row := range rows {
 		fmt.Fprintf(b, "| %s | `%s` | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | $%s | %s | %s | %s | %s | %s | %s |\n",
-			formatUsageTime(row.TS), esc(defaultString(row.CallerIP, "unknown")), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
+			formatUsageMarkdownTime(row.TS), esc(defaultString(row.CallerIP, "unknown")), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
 			esc(row.TargetProvider), esc(row.TargetModel), row.Status, esc(row.Cache), row.OutputTokens, totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
 			fmtUSD(row.TotalCostUSD), fmtIntPtr(row.UpstreamMS), fmtIntPtr(row.DownstreamMS), fmtFloatPtr(row.UpstreamOutputTPS), fmtFloatPtr(row.UpstreamTotalTPS),
 			fmtFloatPtr(row.DownstreamOutputTPS), fmtFloatPtr(row.DownstreamTotalTPS))
@@ -7657,6 +7657,13 @@ func boolInt(v bool) int {
 
 func formatUsageTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05.000000000Z")
+}
+
+// formatUsageMarkdownTime is the stable, presentation-only timestamp format
+// for CLI Markdown report bounds and per-request rows. Storage and export
+// timestamps retain nanosecond precision through formatUsageTime.
+func formatUsageMarkdownTime(t time.Time) string {
+	return t.UTC().Truncate(time.Millisecond).Format("2006-01-02T15:04:05.000Z")
 }
 
 func parseUsageTime(v string) (time.Time, error) {
