@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "provider": "google_chat",
+  "space_id": "AAQAM18gk10",
+  "runtime_webhook_selector": "workspace.google_chat_webhook_url",
+  "runtime_tracker_selector": "workspace.escalation_spreadsheet_url",
+  "credential_handling": "The webhook URL, API key, and token are stored only in the ignored runtime profile or an approved secret manager reference.",
+  "delivery_contract": "Workers report through the sprint planner. The planner sends concise status and escalation messages through the runtime webhook; a non-2xx response is recorded by sanitized status/class in the tracker and linked GitHub issue."
+}
