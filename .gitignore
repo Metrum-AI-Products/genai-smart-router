@@ -1,6 +1,15 @@
 .env
 **/.env
 env.json
+.tugduck/config.json
+.metrum-agents/local/*
+!.metrum-agents/local/.gitkeep
+.metrum-agents/runtime/*
+!.metrum-agents/runtime/.gitignore
+.metrum-agents/**/env.json
+.metrum-agents/**/*secret*
+.metrum-agents/**/*token*
+.metrum-agents/**/*credential*
 **/env.json
 !env.example.json
 !**/env.example.json
@@ -45,3 +54,5 @@ docs-site/.docusaurus/
 docs-site/node_modules/
 internal/router/docsdist/*
 !internal/router/docsdist/.keep
+router-key-inventory-and-delivery-20260729.csv
+
