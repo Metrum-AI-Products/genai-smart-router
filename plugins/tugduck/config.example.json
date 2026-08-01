@@ -1,0 +1,39 @@
+{
+  "wsh": {
+    "listen_address": "0.0.0.0",
+    "listen_port": "8000",
+    "token": "this-is-a-secret-token-somehow",
+    "server_name": "project-agent-server"
+  },
+  "project_root": "/absolute/path/on-the-wsh-host/to/the-project",
+  "environment": {
+    "METRUM_AI_API_KEY": "set-this-locally",
+    "GEMINI_API_KEY": "set-this-locally",
+    "OPENAI_API_KEY": "set-this-locally"
+  },
+  "agents": {
+    "codex": {
+      "command": "codex",
+      "args": []
+    },
+    "claude": {
+      "command": "claude",
+      "args": []
+    },
+    "opencode": {
+      "command": "opencode",
+      "args": []
+    }
+  },
+  "pm2": {
+    "server": {
+      "name": "tugduck-wsh-server",
+      "command": "wsh"
+    },
+    "client": {
+      "command": "wsh",
+      "namespace": "tugduck",
+      "name_prefix": "tugduck-agent"
+    }
+  }
+}
