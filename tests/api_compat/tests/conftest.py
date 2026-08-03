@@ -15,9 +15,19 @@ import pytest
 
 CALLER = "synthetic-api-compat-caller"
 DENIED_CALLER = "synthetic-api-compat-denied"
+CALLER_DIGEST = hashlib.sha256(CALLER.encode()).hexdigest()
+DENIED_CALLER_DIGEST = hashlib.sha256(DENIED_CALLER.encode()).hexdigest()
 PROMPT_CANARY = "api-compat-prompt-canary"
 TOOL_CANARY = "api-compat-tool-canary"
-FORBIDDEN_ARTIFACT_VALUES = {CALLER, DENIED_CALLER, "Authorization:", PROMPT_CANARY, TOOL_CANARY}
+FORBIDDEN_ARTIFACT_VALUES = {
+    CALLER,
+    DENIED_CALLER,
+    CALLER_DIGEST,
+    DENIED_CALLER_DIGEST,
+    "Authorization:",
+    PROMPT_CANARY,
+    TOOL_CANARY,
+}
 
 
 def unused_port():
@@ -47,7 +57,12 @@ class FakeUpstream(BaseHTTPRequestHandler):
                 output = [{"type": "function_call", "id": "fc_synthetic", "call_id": "call_synthetic", "name": "lookup", "arguments": "{}"}]
             response = {"id": "resp_synthetic", "object": "response", "model": model, "status": "completed", "output": output, "output_text": "synthetic responses", "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}}
         elif self.path.endswith("/messages"):
-            response = {"id": "msg_synthetic", "type": "message", "role": "assistant", "model": model, "stop_reason": "end_turn", "content": [{"type": "text", "text": "synthetic messages"}], "usage": {"input_tokens": 3, "output_tokens": 2}}
+            content = [{"type": "text", "text": "synthetic messages"}]
+            stop_reason = "end_turn"
+            if body.get("tools"):
+                content = [{"type": "tool_use", "id": "toolu_synthetic", "name": "lookup", "input": {}}]
+                stop_reason = "tool_use"
+            response = {"id": "msg_synthetic", "type": "message", "role": "assistant", "model": model, "stop_reason": stop_reason, "content": content, "usage": {"input_tokens": 3, "output_tokens": 2}}
         else:
             self.send_error(404)
             return
@@ -60,7 +75,9 @@ class FakeUpstream(BaseHTTPRequestHandler):
 
 
 def request(base, path, payload=None, token=CALLER):
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     data = None if payload is None else json.dumps(payload).encode()
     if data:
         headers["Content-Type"] = "application/json"
@@ -80,7 +97,6 @@ def router(tmp_path_factory):
     thread.start()
     upstream_url = f"http://127.0.0.1:{upstream.server_port}"
     port = unused_port()
-    digest = lambda value: hashlib.sha256(value.encode()).hexdigest()
     config = f'''server:
   listen: "127.0.0.1:{port}"
   default_model_group: chat
@@ -100,10 +116,10 @@ models:
   chat-to-responses: {{strategy: static, targets: [{{provider: responses, model: synthetic-bridge-responses, tool_support: {{openai_responses: [function, tool_choice]}}, bridges: {{chat_to_responses: {{enabled: true, text: true, tools: true, tool_choice: true}}}}}}]}}
 callers:
   - id: synthetic-allowed
-    token_sha256: {digest(CALLER)}
+    token_sha256: {CALLER_DIGEST}
     allow: [chat, responses, messages, responses-to-chat, chat-to-responses]
   - id: synthetic-denied
-    token_sha256: {digest(DENIED_CALLER)}
+    token_sha256: {DENIED_CALLER_DIGEST}
     allow: [chat]
 '''
     config_path = work / "config.yaml"
@@ -122,6 +138,7 @@ callers:
     else:
         process.terminate()
         raise RuntimeError(process.stderr.read())
+    config_path.unlink()
     yield {"base": base, "work": work, "upstream": FakeUpstream}
     process.terminate()
     process.wait(timeout=5)
