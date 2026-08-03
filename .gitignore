@@ -1,15 +1,6 @@
 .env
 **/.env
 env.json
-.tugduck/config.json
-.metrum-agents/local/*
-!.metrum-agents/local/.gitkeep
-.metrum-agents/runtime/*
-!.metrum-agents/runtime/.gitignore
-.metrum-agents/**/env.json
-.metrum-agents/**/*secret*
-.metrum-agents/**/*token*
-.metrum-agents/**/*credential*
 **/env.json
 !env.example.json
 !**/env.example.json

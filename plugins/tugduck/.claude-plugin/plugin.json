@@ -1,9 +1,0 @@
-{
-  "name": "tugduck",
-  "description": "PM2-managed agile subagents configured in <project-root>/.tugduck/config.json.",
-  "version": "0.1.0",
-  "author": {
-    "name": "chetan-metrum-ai",
-    "url": "https://github.com/chetan-metrum-ai"
-  }
-}
