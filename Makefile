@@ -117,7 +117,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test api-compat-mock api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
 
 help: eks-help
 
@@ -207,6 +207,30 @@ ci-eks-staging-contract:
 test: secret-check
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
+	$(MAKE) api-compat-mock
+
+# Deterministic caller-boundary tests: the locally built router and fake
+# upstream bind to 127.0.0.1 only. --offline prevents dependency egress.
+api-compat-mock:
+	cd tests/api_compat && GOPROXY=off GOSUMDB=off uv run --locked --offline pytest
+
+# Deliberately not a normal test/build/package target. Live execution awaits a
+# human-approved non-production matrix and least-privilege caller identity.
+API_COMPAT_LIVE_MATRIX ?=
+API_COMPAT_LIVE_ENVIRONMENT ?=
+API_COMPAT_LIVE_CALLER ?=
+API_COMPAT_LIVE_BASE_URL ?=
+API_COMPAT_LIVE_CREDENTIAL_FILE ?=
+API_COMPAT_LIVE_CONFIRM ?=
+export API_COMPAT_LIVE_MATRIX API_COMPAT_LIVE_ENVIRONMENT API_COMPAT_LIVE_CALLER API_COMPAT_LIVE_BASE_URL API_COMPAT_LIVE_CREDENTIAL_FILE API_COMPAT_LIVE_CONFIRM
+api-compat-live:
+	@test -n "$${API_COMPAT_LIVE_MATRIX}" && test "$${API_COMPAT_LIVE_MATRIX}" != "default" && test "$${API_COMPAT_LIVE_MATRIX}" != "all" || { echo "API_COMPAT_LIVE_MATRIX must name an approved matrix" >&2; exit 2; }
+	@test -n "$${API_COMPAT_LIVE_ENVIRONMENT}" && test "$${API_COMPAT_LIVE_ENVIRONMENT}" != "production" && test "$${API_COMPAT_LIVE_ENVIRONMENT}" != "default" || { echo "API_COMPAT_LIVE_ENVIRONMENT must name a non-production environment" >&2; exit 2; }
+	@test -n "$${API_COMPAT_LIVE_CALLER}" && test "$${API_COMPAT_LIVE_CALLER}" != "default" && test "$${API_COMPAT_LIVE_CALLER}" != "all" || { echo "API_COMPAT_LIVE_CALLER must name a least-privilege caller" >&2; exit 2; }
+	@test -n "$${API_COMPAT_LIVE_BASE_URL}" || { echo "API_COMPAT_LIVE_BASE_URL is required" >&2; exit 2; }
+	@test -f "$${API_COMPAT_LIVE_CREDENTIAL_FILE}" && test "$$(stat -c '%a' "$${API_COMPAT_LIVE_CREDENTIAL_FILE}")" = 600 || { echo "API_COMPAT_LIVE_CREDENTIAL_FILE must be a mode-0600 protected file" >&2; exit 2; }
+	@test "$${API_COMPAT_LIVE_CONFIRM}" = "$${API_COMPAT_LIVE_MATRIX}:$${API_COMPAT_LIVE_ENVIRONMENT}" || { echo "API_COMPAT_LIVE_CONFIRM must bind the selected matrix and environment" >&2; exit 2; }
+	@echo "api-compat-live is intentionally unavailable until its human-approved matrix is implemented." >&2; exit 2
 
 outcome-calibrated-demo: outcome-calibrated-synthetic-demo
 
