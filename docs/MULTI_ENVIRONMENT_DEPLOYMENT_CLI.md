@@ -25,6 +25,12 @@ the scalar quota snapshot plus configured headroom and records an idempotent
 local hold. It is not an AWS reservation; a later approved provisioner must
 recheck and reconcile capacity immediately before resource creation.
 
+The required `--reservation` value is a bounded opaque idempotency key in
+`rsv-<lowercase-canonical-uuid>` form, for example
+`rsv-018f4f47-7d2b-7e2a-9c35-6b8c85f71942`. Token-like, credential-like, URL,
+path, uppercase, malformed, and unbounded values are rejected before any quota
+adapter call or quota-record write.
+
 `status` is bounded (1–100 rows), stable by tenant ID, and registry-only. It
 reports schema-version drift and the still-open policy gates, but makes no live
 health, Kubernetes, RDS, DNS, or credential calls.

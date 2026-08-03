@@ -37,7 +37,10 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, "tenant-a") {
 		t.Fatalf("bounded status failed: %v %s", err, out)
 	}
-	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "reserve-a", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "https://example.test/reservation", "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "invalid reservation id") {
+		t.Fatalf("unsafe quota reservation ID did not fail closed: %v %s", err, out)
+	}
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "rsv-00000000-0000-0000-0000-000000000001", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
 		t.Fatalf("fake quota reservation failed: %v %s", err, out)
 	}
 	if _, err := run("status", "--registry", "file:unsafe?mode=memory", "--limit", "1"); err == nil {

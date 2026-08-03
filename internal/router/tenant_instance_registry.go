@@ -22,6 +22,8 @@ const (
 	TenantPlacementDedicatedInstance = "dedicated_instance"
 	RDSProxyDisabled                 = "disabled"
 	maxTenantDriftStatusRows         = 100
+	quotaReservationIDPrefix         = "rsv-"
+	quotaReservationIDLength         = 40
 )
 
 // TenantInstance is the safe input/output contract. Its component fields are
@@ -298,9 +300,34 @@ func (r *TenantInstanceRegistry) ResolveDedicated(ctx context.Context, tenantID,
 	return TenantInstance{TenantID: i.TenantID, InstanceID: i.InstanceID, Stage: i.Stage, Region: i.Region, Namespace: i.Namespace, ReleaseName: i.ReleaseName, RuntimeIdentity: i.RuntimeIdentity, RDSInstanceID: p.RDSAllocationID, RDSInstanceClass: p.RDSInstanceClass, AllocatedStorageGiB: p.AllocatedStorageGiB, Placement: p.PlacementKind, RDSProxyMode: p.RDSProxyMode, DesiredReleaseDigest: s.DesiredReleaseDigest, ExpectedSchemaVersion: s.ExpectedSchemaVersion, CurrentSchemaVersion: s.CurrentSchemaVersion, ObservedAt: s.ObservedAt}, nil
 }
 
+func validQuotaReservationID(reservationID string) bool {
+	if len(reservationID) != quotaReservationIDLength ||
+		!strings.HasPrefix(reservationID, quotaReservationIDPrefix) {
+		return false
+	}
+	for index := len(quotaReservationIDPrefix); index < len(reservationID); index++ {
+		switch index {
+		case 12, 17, 22, 27:
+			if reservationID[index] != '-' {
+				return false
+			}
+		default:
+			character := reservationID[index]
+			if !((character >= '0' && character <= '9') ||
+				(character >= 'a' && character <= 'f')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (r *TenantInstanceRegistry) PreflightAndReserve(ctx context.Context, tenantID, stage, reservationID string, headroom int, adapter RDSQuotaAdapter) (QuotaReservation, error) {
-	if strings.TrimSpace(reservationID) == "" || adapter == nil || headroom < 0 {
-		return QuotaReservation{}, errors.New("reservation id, quota adapter, and non-negative headroom are required")
+	if !validQuotaReservationID(reservationID) {
+		return QuotaReservation{}, errors.New("invalid reservation id: expected rsv- followed by a lowercase canonical UUID")
+	}
+	if adapter == nil || headroom < 0 {
+		return QuotaReservation{}, errors.New("quota adapter and non-negative headroom are required")
 	}
 	var result QuotaReservation
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

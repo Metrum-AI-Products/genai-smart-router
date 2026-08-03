@@ -75,6 +75,11 @@ The shipped `metrum-smartrouterctl` safe contract keeps a non-secret relational 
 
 This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
 
+The fake-adapter `quota-reserve` command accepts only a bounded opaque
+`rsv-<lowercase-canonical-uuid>` idempotency key. It rejects token-like,
+credential-like, URL, path, uppercase, malformed, and unbounded values before
+calling the quota adapter or writing a quota-admission record.
+
 Rollout and rollback flow:
 
 1. Update staging config and run `/readyz`, `/v1/models`, Chat, Responses, Messages, tool, image, report, and license smokes that match the change.

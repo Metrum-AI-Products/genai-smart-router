@@ -89,7 +89,7 @@ func quotaReserve(args []string) {
 	fs := flag.NewFlagSet("quota-reserve", flag.ExitOnError)
 	path, tenant := registryFromFlags(fs)
 	stage := fs.String("stage", "", "user-defined stage label")
-	reservation := fs.String("reservation", "", "idempotency-safe reservation identifier")
+	reservation := fs.String("reservation", "", "opaque idempotency key in rsv-<lowercase-canonical-uuid> format")
 	limit := fs.Int("mock-quota-limit", 0, "fake regional dedicated-RDS quota limit")
 	used := fs.Int("mock-quota-used", 0, "fake regional dedicated-RDS quota usage")
 	reserved := fs.Int("mock-quota-reserved", 0, "fake regional dedicated-RDS quota reservations")
