@@ -286,12 +286,14 @@ build: docs-build admin-build
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
+	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
 build-go-only:
 	$(MAKE) validate-build-metadata
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
+	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
 build-all: docs-build admin-build
 	$(MAKE) validate-build-metadata
@@ -299,9 +301,11 @@ build-all: docs-build admin-build
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router" ./cmd/router
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-token-gen" ./cmd/router-token-gen
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router-usage-report" ./cmd/router-usage-report
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router" ./cmd/router
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-token-gen" ./cmd/router-token-gen
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/router-usage-report" ./cmd/router-usage-report
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-arm64/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl
 
 package: package-all
 
@@ -316,6 +320,7 @@ package-one-no-docs:
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router" ./cmd/router; \
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-token-gen" ./cmd/router-token-gen; \
 	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/router-usage-report" ./cmd/router-usage-report; \
+	CGO_ENABLED=0 GOOS="$${GOOS}" GOARCH="$${GOARCH}" go build -ldflags "$(BUILD_LDFLAGS)" -o "$${pkg_dir}/bin/metrum-smartrouterctl" ./cmd/metrum-smartrouterctl; \
 	cp config.example.yaml "$${pkg_dir}/config/config.example.yaml"; \
 	cp env.example.json "$${pkg_dir}/config/env.example.json"; \
 	cp scripts/router.ts "$${pkg_dir}/config/scripts/router.ts"; \
@@ -326,7 +331,7 @@ package-one-no-docs:
 	done < "$(PACKAGE_DOC_ALLOWLIST)"
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type d -exec chmod 0755 {} \;
 	find "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}" -type f -exec chmod 0644 {} \;
-	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report"
+	chmod 0755 "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-token-gen" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/router-usage-report" "$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}/bin/metrum-smartrouterctl"
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
 
