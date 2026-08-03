@@ -19,6 +19,21 @@ Validation: `docker compose config` passed, the router restarted and remained
 running, production `/readyz` returned 200, and the live caller configuration
 reported the new limits.
 
+## 2026-07-27 All Caller Quota Update
+
+Updated all 36 production caller entries through structured YAML parsing:
+
+- Daily token quota: `200,000,000`
+- Monthly token quota: `5,000,000,000`
+- Existing RPM, TPM, concurrency, request quotas, soft limits, allowed groups,
+  and `4,000,000,000` lifetime-key limits were not changed.
+
+The protected configuration backup is
+`config.yaml.bak.all-caller-quotas-20260727T153929Z`. Docker Compose
+validation passed, the router container was restarted, and production
+`/readyz` returned HTTP 200. The ignored local production snapshot was then
+resynced from the live configuration.
+
 ## EKS Staging Migration Status
 
 As of 2026-07-14, the EKS validation router is live at

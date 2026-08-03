@@ -1,0 +1,4 @@
+interface:
+  display_name: "Launch WSH Subagent"
+  short_description: "Launch an AI coding agent in a configured WSH session."
+  default_prompt: "Launch a Codex subagent in WSH to investigate this project task."

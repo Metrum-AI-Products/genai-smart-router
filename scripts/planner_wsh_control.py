@@ -444,7 +444,12 @@ class ControlPlane:
             try:
                 if state_path.exists():
                     raw = json.loads(state_path.read_text(encoding="utf-8"))
-                    if not isinstance(raw, dict) or not isinstance(raw.get("leases"), dict) or not isinstance(raw.get("generation"), int):
+                    if (
+                        not isinstance(raw, dict)
+                        or not isinstance(raw.get("leases"), dict)
+                        or not isinstance(raw.get("generation"), int)
+                        or isinstance(raw.get("generation"), bool)
+                    ):
                         raise ControlPlaneError("repository-common lease registry is corrupt; refuse recovery")
                     # The old boolean cannot safely identify the owner or exact
                     # shutdown to resume. Preserve it as an explicit recovery
@@ -520,6 +525,24 @@ class ControlPlane:
                 raise ControlPlaneError("repository drain ownership is ambiguous; refuse completion")
             registry["drain"] = None
 
+    def _finish_persisted_absence_shutdown(self) -> None:
+        """Clear a proved drain only while the exact tmux control plane is gone."""
+        with self._locked_registry() as registry:
+            if registry["leases"]:
+                raise ControlPlaneError("repository-common lease appeared during shutdown")
+            drain = registry["drain"]
+            if not isinstance(drain, dict) or drain.get("owner_profile") != self.profile.profile_id:
+                raise ControlPlaneError("repository drain ownership is ambiguous; refuse completion")
+            # This is deliberately inside the drain-clear critical section so a
+            # newly visible control session cannot be cleared past.
+            if self._shutdown_windows():
+                raise ControlPlaneError("shutdown recovery cannot prove exact tmux control session absence")
+            registry["drain"] = None
+
+    def _drain_has_absence_proof(self) -> bool:
+        with self._locked_registry() as registry:
+            return isinstance(registry["drain"], dict) and "planner_absence_proof" in registry["drain"]
+
     def _record_planner_absence_proof(self) -> None:
         """Durably retain the exact-list proof before the WSH server is stopped."""
         with self._locked_registry() as registry:
@@ -530,6 +553,7 @@ class ControlPlane:
                 "at": _utc_now(), "owner_profile": self.profile.profile_id,
                 "owner": self.profile.planner_owner, "generation": registry["generation"],
                 "planner_wsh_session_id": self.profile.planner_wsh_session_id,
+                "proof_kind": "identity-bound-exact-planner-absence",
             }
 
     def _has_planner_absence_proof(self) -> bool:
@@ -540,7 +564,107 @@ class ControlPlane:
                 "at": proof.get("at"), "owner_profile": self.profile.profile_id,
                 "owner": self.profile.planner_owner, "generation": registry["generation"],
                 "planner_wsh_session_id": self.profile.planner_wsh_session_id,
+                "proof_kind": "identity-bound-exact-planner-absence",
             } and isinstance(proof.get("at"), str)
+
+    @staticmethod
+    def _is_timestamp(value: object) -> bool:
+        """Accept an explicit timezone-aware ISO timestamp without a clock-age rule."""
+        if not isinstance(value, str):
+            return False
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return False
+        return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+    def _persisted_absence_recovery_ready(self) -> bool:
+        """Validate the one recovery proof that may proceed without WSH.
+
+        This predicate intentionally uses only protected local state, the
+        repository-common registry, and tmux.  It is evaluated before any
+        identity/list/tag/stop call.  A false result is not an offline mode:
+        the caller follows the ordinary fresh-identity shutdown path.
+        """
+        with self._locked_registry() as registry:
+            if (
+                set(registry) != {"generation", "drain", "leases"}
+                or not isinstance(registry["generation"], int)
+                or isinstance(registry["generation"], bool)
+                or registry["generation"] < 0
+                or not isinstance(registry["leases"], dict)
+                or registry["leases"]
+            ):
+                return False
+            drain = registry["drain"]
+            if not isinstance(drain, dict):
+                return False
+            expected_drain_keys = {
+                "state", "owner_profile", "owner", "started_at", "generation", "planner_absence_proof",
+            }
+            if drain.get("state") == "recovering":
+                expected_drain_keys.add("recovery_started_at")
+            if (
+                drain.get("state") not in {"draining", "recovering"}
+                or set(drain) != expected_drain_keys
+                or drain.get("owner_profile") != self.profile.profile_id
+                or drain.get("owner") != self.profile.planner_owner
+                or not isinstance(drain.get("generation"), int)
+                or isinstance(drain.get("generation"), bool)
+                or drain.get("generation") != registry["generation"]
+                or not self._is_timestamp(drain.get("started_at"))
+                or (drain.get("state") == "recovering" and not self._is_timestamp(drain.get("recovery_started_at")))
+            ):
+                return False
+            proof = drain.get("planner_absence_proof")
+            expected_proof = {
+                "at", "owner_profile", "owner", "generation", "planner_wsh_session_id", "proof_kind",
+            }
+            if (
+                not isinstance(proof, dict)
+                or set(proof) != expected_proof
+                or proof.get("owner_profile") != self.profile.profile_id
+                or proof.get("owner") != self.profile.planner_owner
+                or not isinstance(proof.get("generation"), int)
+                or isinstance(proof.get("generation"), bool)
+                or proof.get("generation") != registry["generation"]
+                or proof.get("planner_wsh_session_id") != self.profile.planner_wsh_session_id
+                or proof.get("proof_kind") != "identity-bound-exact-planner-absence"
+                or not self._is_timestamp(proof.get("at"))
+            ):
+                return False
+        with self._locked_state() as state:
+            if state["workers"]:
+                return False
+        windows = self._shutdown_windows()
+        return "wsh-server" not in windows and not (windows - {"wsh-server", "sprint-planner"})
+
+    def _shutdown_windows(self) -> set[str]:
+        """Return only the exact control-session windows, failing on enumeration errors."""
+        return self._tmux_windows() if self._tmux_has_session() else set()
+
+    def _recover_persisted_absence_shutdown(self) -> None:
+        """Complete the already-proved residual teardown without contacting WSH."""
+        try:
+            self._resume_repository_shutdown()
+            with self._locked_state() as state:
+                if state["workers"]:
+                    raise ControlPlaneError("shutdown refused while worker leases exist; release each worker first")
+                windows = self._shutdown_windows()
+                if "wsh-server" in windows or windows - {"wsh-server", "sprint-planner"}:
+                    raise ControlPlaneError("shutdown recovery cannot prove exact tmux control windows")
+                if "sprint-planner" in windows:
+                    self.runner.run(["tmux", "kill-window", "-t", f"{self.profile.tmux_session}:sprint-planner"])
+                if self._tmux_has_session():
+                    self.runner.run(["tmux", "kill-session", "-t", self.profile.tmux_session])
+                self._write_state(self._new_state())
+            # Recheck immediately before clearing the repository drain.  A
+            # reappearing server window or an enumeration failure is unsafe.
+            self._finish_persisted_absence_shutdown()
+        except Exception:
+            self._audit("shutdown-recovery", "retained", disposition="persisted-absence")
+            raise
+        self._audit("shutdown-recovery", "succeeded", disposition="persisted-absence")
 
     @contextlib.contextmanager
     def _locked_state(self) -> Any:
@@ -767,6 +891,7 @@ class ControlPlane:
             "Read and follow AGENTS.md, allocate only approved issue work through the control plane, "
             "and report evidence and blockers to the human supervisor."
             " Cold bootstrap alone may use the profile's bounded unavailable-only identity readiness wait after starting its local server; every other WSH session inventory, creation, relay, stop, or cleanup requires one fresh exact authoritative server-identity handshake. On missing, mismatch, unavailable, malformed, or ambiguous identity, fail closed without an alternate profile or stale client and escalate to the human supervisor; only this planner uses WSH."
+            " The sole recovery exception is authorized recover-shutdown with a complete persisted exact-planner-absence proof and an absent wsh-server window; it makes zero WSH calls, and any incomplete, stale, malformed, or reappearing-window proof retains the drain."
             " Require focused issue-linked PRs, monitored/actioned feedback, MANAGER ATTENTION NEEDED escalation for unauthorized out-of-scope follow-ups or any required decision, independent QA, required checks/CODEOWNERS/no unresolved blocker, and rollback review. "
             "Require explicit human authorization of the exact PR head and named target before merge, binding issue-comment closeout evidence, and only after GitHub confirms the authorized head merged into the named target authorize the planner-controlled cleanup path to remove only that merged issue's leased worktree and local branch with separately recorded explicit cleanup authority plus clean/unpushed/unleased/not-needed proof. Any ambiguity is MANAGER ATTENTION NEEDED and leaves files and branches intact."
         )
@@ -1334,6 +1459,19 @@ class ControlPlane:
         return self.status()
 
     def shutdown(self, *, recovery_authorized: bool = False) -> None:
+        # The narrowly persisted absence proof is the only route that may run
+        # before a live identity assertion.  It has no WSH commands at all.
+        if recovery_authorized and self._persisted_absence_recovery_ready():
+            self._recover_persisted_absence_shutdown()
+            return
+        # A recorded but non-qualifying proof is never silently treated as a
+        # normal cleanup.  It still receives the ordinary fresh handshake, but
+        # retains the drain instead of allowing a malformed/stale proof to be
+        # cleared through a different recovery branch.
+        if recovery_authorized and self._drain_has_absence_proof():
+            self._assert_server_identity("shutdown recovery")
+            self._audit("shutdown-recovery", "retained", disposition="identity-required")
+            raise ControlPlaneError("shutdown recovery persisted absence proof is invalid; drain retained")
         self._assert_server_identity("shutdown")
         with self._locked_state() as state:
             if state["workers"]:
@@ -1357,9 +1495,8 @@ class ControlPlane:
                 raise ControlPlaneError("shutdown refused: control tmux session contains an unexpected window")
         # Do not hold the protected state lock while invoking WSH. A fresh
         # identity result permits exact cleanup only; ambiguity fails closed.
-        persisted_absence = recovery_authorized and self._has_planner_absence_proof() and "wsh-server" not in self._tmux_windows()
         planner_identity = self._planner_identity_state()
-        if planner_identity not in {"present", "absent"} and not (persisted_absence and planner_identity == "list-unavailable"):
+        if planner_identity not in {"present", "absent"}:
             raise ControlPlaneError(f"shutdown refused: planner WSH identity is {planner_identity}")
         if planner_identity == "present":
             self._assert_server_identity("planner stop")

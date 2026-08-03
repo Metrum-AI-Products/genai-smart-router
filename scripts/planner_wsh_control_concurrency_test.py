@@ -48,6 +48,8 @@ class ConcurrentRunner:
         if argv[:2] == ["tmux", "kill-session"]:
             self.tmux_exists = False; self.windows.clear(); return RunResult(0)
         if argv[0] == "wsh" and argv[-2:] == ["identity", "--json"]:
+            # The race fixture models the required authoritative handshake;
+            # it never contacts a WSH server or uses runtime credentials.
             return RunResult(0, json.dumps({"server_identity": self.profile["wsh_server_identity"]}))
         if argv[0] == "wsh" and argv[-1] == "list":
             return RunResult(0, "\n".join(f"{name}\nTAGS {tag}" for name, tag in self.sessions.items()))
