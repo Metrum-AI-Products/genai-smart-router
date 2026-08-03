@@ -14,6 +14,15 @@ Common placeholders:
 - `MODEL_ID`: direct upstream model ID
 - `MODEL_GROUP`: router model group
 
+## Deterministic Capability Contract
+
+Run `make capability-smoke-unit` before relying on capability metadata. It is
+an offline fake-adapter and fixture test only; it neither calls providers nor
+discovers credentials. Synthetic fixtures under `testdata/capability-smokes/`
+are non-promotable and must not be used as evidence for activation, routing
+weights, or provider claims. `make capability-smoke-live` is intentionally a
+fail-closed placeholder in this release.
+
 ## OpenAI Chat Text
 
 Direct upstream:

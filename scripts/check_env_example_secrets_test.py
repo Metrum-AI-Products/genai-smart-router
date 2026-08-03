@@ -56,5 +56,9 @@ class SecretKeyErrorsTest(unittest.TestCase):
         self.assertEqual([], errors)
 
 
+    def test_retired_agent_credential_paths_are_ignored(self) -> None:
+        self.assertEqual([], list(checker.retired_agent_ignore_errors()))
+
+
 if __name__ == "__main__":
     unittest.main()

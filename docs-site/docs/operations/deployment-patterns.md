@@ -69,6 +69,12 @@ flowchart LR
 
 Keep test provider keys separate from production BYOK credentials where policy requires it. Use separate usage databases or state stores when the reporting, retention, or license envelope differs by environment. Validate new providers, model IDs, weights, tool metadata, image metadata, and routing scripts in staging before promotion.
 
+### Multi-environment operator contract
+
+The shipped `metrum-smartrouterctl` safe contract keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. Stage labels are deployment-defined rather than a fixed environment list. A bounded registry status can show schema-version drift without contacting a live database, cluster, DNS endpoint, or secret store.
+
+This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
+
 Rollout and rollback flow:
 
 1. Update staging config and run `/readyz`, `/v1/models`, Chat, Responses, Messages, tool, image, report, and license smokes that match the change.

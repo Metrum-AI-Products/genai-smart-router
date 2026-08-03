@@ -1599,6 +1599,7 @@ func TestExampleConfigDefaultIncludesLatestCodingTargets(t *testing.T) {
 		}
 		if name == "big-coder" {
 			assertReducedBigCoderGroup(t, cfg, group)
+			assertBigCoderImageTargetPolicy(t, cfg, group)
 			continue
 		}
 		assertActiveGroupPolicy(t, name, group)
@@ -1990,8 +1991,17 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	if normalTotal != 100 || len(gotNormal) != len(wantNormal) {
 		t.Fatalf("big-coder normal weights=%#v total=%d, want %#v total=100", gotNormal, normalTotal, wantNormal)
 	}
-	if gotImageOnly["openai:gpt-5.4"] != 1 || len(gotImageOnly) != 1 {
-		t.Fatalf("big-coder image-only targets=%#v, want OpenAI GPT-5.4 at weight 1", gotImageOnly)
+	wantImageOnly := map[string]int{
+		"openai:gpt-5.4": 1,
+		"openrouter_responses:anthropic/claude-sonnet-4.6": 1,
+	}
+	if len(gotImageOnly) != len(wantImageOnly) {
+		t.Fatalf("big-coder image-only targets=%#v, want %#v", gotImageOnly, wantImageOnly)
+	}
+	for key, weight := range wantImageOnly {
+		if gotImageOnly[key] != weight {
+			t.Fatalf("big-coder image-only target %s weight=%d, want %d; all image-only weights=%#v", key, gotImageOnly[key], weight, gotImageOnly)
+		}
 	}
 	for key, weight := range wantNormal {
 		if gotNormal[key] != weight {
@@ -2019,6 +2029,84 @@ func assertReducedBigCoderGroup(t *testing.T, cfg *Config, group ModelGroup) {
 	for key, weight := range wantToolOnly {
 		if gotToolOnly[key] != weight {
 			t.Fatalf("big-coder tool-only target %s weight=%d, want %d; all weights=%#v", key, gotToolOnly[key], weight, gotToolOnly)
+		}
+	}
+}
+
+func assertBigCoderImageTargetPolicy(t *testing.T, cfg *Config, group ModelGroup) {
+	t.Helper()
+	type imageTargetPolicy struct {
+		weight                   int
+		toolOnly                 bool
+		supportedInboundDialects string
+	}
+	want := map[string]imageTargetPolicy{
+		"openai:gpt-5.4": {
+			weight:                   1,
+			supportedInboundDialects: "openai-responses",
+		},
+		"openrouter_responses:anthropic/claude-sonnet-4.6": {
+			weight:   1,
+			toolOnly: true,
+		},
+	}
+	got := map[string]Target{}
+	for _, target := range group.Targets {
+		if stringSliceContains(target.RequestShapeSupport.RequiredInputModalities, "image") {
+			got[target.Provider+":"+target.Model] = target
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("big-coder image-gated targets=%#v, want exactly %#v", got, want)
+	}
+
+	textReq := &IRRequest{Model: "big-coder", Messages: []IRMessage{{Role: "user", Content: "hello"}}}
+	imageReq := &IRRequest{Model: "big-coder", InputParts: []IRContentPart{{Type: "image", ImageURL: "https://example.test/receipt.png"}}}
+	svc := &Service{cfg: cfg}
+	for key, policy := range want {
+		target, ok := got[key]
+		if !ok {
+			t.Fatalf("big-coder missing image-gated target %s; got %#v", key, got)
+		}
+		if target.Weight != policy.weight || target.ToolOnly != policy.toolOnly ||
+			!stringSliceContains(target.InputModalities, "image") ||
+			strings.Join(target.RequestShapeSupport.RequiredInputModalities, ",") != "image" ||
+			strings.Join(target.RequestShapeSupport.SupportedInboundDialects, ",") != policy.supportedInboundDialects ||
+			targetDialect(cfg.Provider[target.Provider], target) != "openai-responses" {
+			t.Fatalf("big-coder image-gated target %s policy=%#v, want weight=%d tool_only=%t required_input_modalities=image supported_inbound_dialects=%q openai-responses output", key, target, policy.weight, policy.toolOnly, policy.supportedInboundDialects)
+		}
+
+		outDialect := targetDialect(cfg.Provider[target.Provider], target)
+		textFit := svc.targetRequestShapeFit(target, textReq, "openai-responses", outDialect, requestTokenEstimateFromIR(textReq, "openai-responses", 96))
+		if textFit.FilterReason != "request-shape-required-input-modality" {
+			t.Fatalf("big-coder image-gated target %s allowed ordinary text: %#v", key, textFit)
+		}
+		imageFit := svc.targetRequestShapeFit(target, imageReq, "openai-responses", outDialect, requestTokenEstimateFromIR(imageReq, "openai-responses", 96))
+		if imageFit.FilterReason != "" || imageFit.EligibilityDecision != "eligible" {
+			t.Fatalf("big-coder image-gated target %s rejected image request: %#v", key, imageFit)
+		}
+	}
+
+	selectedKeys := func(targets []Target) map[string]bool {
+		keys := make(map[string]bool, len(targets))
+		for _, target := range targets {
+			keys[target.Provider+":"+target.Model] = true
+		}
+		return keys
+	}
+	withoutTools := selectedKeys(svc.targetsForRequest(nil, group.Targets, imageReq, "openai-responses"))
+	if !withoutTools["openai:gpt-5.4"] || withoutTools["openrouter_responses:anthropic/claude-sonnet-4.6"] {
+		t.Fatalf("big-coder image-without-tools selection=%#v, want OpenAI image target and no tool-only Claude target", withoutTools)
+	}
+	imageWithFunction := &IRRequest{
+		Model:      "big-coder",
+		InputParts: []IRContentPart{{Type: "image", ImageURL: "https://example.test/receipt.png"}},
+		Tools:      []map[string]any{{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object"}}},
+	}
+	withTools := selectedKeys(svc.targetsForRequest(nil, group.Targets, imageWithFunction, "openai-responses"))
+	for _, key := range []string{"openai:gpt-5.4", "openrouter_responses:anthropic/claude-sonnet-4.6"} {
+		if !withTools[key] {
+			t.Fatalf("big-coder image-plus-function selection=%#v, missing %s", withTools, key)
 		}
 	}
 }
