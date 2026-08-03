@@ -31,11 +31,27 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 		t.Fatalf("status created registry: %v", err)
 	}
 	register := []string{"register", "--registry", registry, "--tenant", "tenant-a", "--instance", "router-a", "--stage", "test", "--region", "test-region-1", "--namespace", "ns-router-a", "--release", "release-router-a", "--runtime-identity", "identity-router-a", "--rds-instance", "rds-router-a", "--release-digest", "sha256:test", "--schema-version", "1"}
+	if out, err := run(register...); err == nil || !strings.Contains(out, "current schema version") {
+		t.Fatalf("register inferred current schema version: %v %s", err, out)
+	}
+	register = append(register, "--current-schema-version", "0")
 	if out, err := run(register...); err != nil || !strings.Contains(out, "registered safe") {
 		t.Fatalf("register failed: %v %s", err, out)
 	}
-	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, "tenant-a") {
-		t.Fatalf("bounded status failed: %v %s", err, out)
+	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, "schema_version_mismatch") || !strings.Contains(out, `"CurrentSchemaVersion": 0`) {
+		t.Fatalf("independently observed schema drift was not reported: %v %s", err, out)
+	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--current-schema-version", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) {
+		t.Fatalf("schema observation failed: %v %s", err, out)
+	}
+	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) || !strings.Contains(out, `"CurrentSchemaVersion": 1`) {
+		t.Fatalf("updated schema status was not current: %v %s", err, out)
+	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "missing", "--stage", "test", "--current-schema-version", "1"); err == nil || !strings.Contains(out, "exactly one registered instance") {
+		t.Fatalf("missing tenant schema observation did not fail closed: %v %s", err, out)
+	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--current-schema-version", "2147483648"); err == nil || !strings.Contains(out, "between 0 and 2147483647") {
+		t.Fatalf("out-of-bounds schema observation did not fail closed: %v %s", err, out)
 	}
 	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "reserve-a", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
 		t.Fatalf("fake quota reservation failed: %v %s", err, out)

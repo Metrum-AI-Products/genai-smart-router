@@ -22,6 +22,7 @@ const (
 	TenantPlacementDedicatedInstance = "dedicated_instance"
 	RDSProxyDisabled                 = "disabled"
 	maxTenantDriftStatusRows         = 100
+	maxTenantSchemaVersion           = 1<<31 - 1
 )
 
 // TenantInstance is the safe input/output contract. Its component fields are
@@ -128,6 +129,15 @@ type TenantDriftStatus struct {
 	ExpectedSchemaVersion, CurrentSchemaVersion                                                       int
 	ObservedAt                                                                                        time.Time
 	EndpointPolicy, EncryptionPolicy, TLSPolicy, DurabilityPolicy, HAPolicy, NetworkPolicy, DNSPolicy string
+}
+
+// SchemaObservation is the safe scalar result of recording an independently
+// supplied current schema version in the local registry.
+type SchemaObservation struct {
+	TenantID, InstanceID, Stage                 string
+	ExpectedSchemaVersion, CurrentSchemaVersion int
+	DriftCode                                   string
+	ObservedAt                                  time.Time
 }
 
 // TenantInstanceRegistry owns a new isolated control-plane SQLite schema. It
@@ -254,10 +264,30 @@ func validateTenantInstance(v TenantInstance) error {
 	if v.RDSProxyMode != RDSProxyDisabled {
 		return errors.New("unsupported RDS Proxy mode: disabled is required")
 	}
-	if v.AllocatedStorageGiB <= 0 || v.ExpectedSchemaVersion < 0 || v.CurrentSchemaVersion < 0 {
-		return errors.New("storage must be positive and schema versions must be non-negative")
+	if v.AllocatedStorageGiB <= 0 {
+		return errors.New("storage must be positive")
+	}
+	if err := validateTenantSchemaVersion(v.ExpectedSchemaVersion); err != nil {
+		return fmt.Errorf("expected schema version: %w", err)
+	}
+	if err := validateTenantSchemaVersion(v.CurrentSchemaVersion); err != nil {
+		return fmt.Errorf("current schema version: %w", err)
 	}
 	return nil
+}
+
+func validateTenantSchemaVersion(version int) error {
+	if version < 0 || version > maxTenantSchemaVersion {
+		return fmt.Errorf("must be between 0 and %d", maxTenantSchemaVersion)
+	}
+	return nil
+}
+
+func tenantSchemaDriftCode(expected, current int) string {
+	if current != expected {
+		return "schema_version_mismatch"
+	}
+	return "current"
 }
 
 func safeRegistryScalar(v string) bool {
@@ -296,6 +326,60 @@ func (r *TenantInstanceRegistry) ResolveDedicated(ctx context.Context, tenantID,
 		return TenantInstance{}, errors.New("tenant registry entry violates dedicated RDS policy")
 	}
 	return TenantInstance{TenantID: i.TenantID, InstanceID: i.InstanceID, Stage: i.Stage, Region: i.Region, Namespace: i.Namespace, ReleaseName: i.ReleaseName, RuntimeIdentity: i.RuntimeIdentity, RDSInstanceID: p.RDSAllocationID, RDSInstanceClass: p.RDSInstanceClass, AllocatedStorageGiB: p.AllocatedStorageGiB, Placement: p.PlacementKind, RDSProxyMode: p.RDSProxyMode, DesiredReleaseDigest: s.DesiredReleaseDigest, ExpectedSchemaVersion: s.ExpectedSchemaVersion, CurrentSchemaVersion: s.CurrentSchemaVersion, ObservedAt: s.ObservedAt}, nil
+}
+
+// ObserveSchemaVersion records a caller-supplied current version for exactly
+// one local tenant/stage registration. It does not contact a router database,
+// deployment endpoint, cloud API, Kubernetes, DNS, or a credential store.
+func (r *TenantInstanceRegistry) ObserveSchemaVersion(ctx context.Context, tenantID, stage string, currentSchemaVersion int) (SchemaObservation, error) {
+	if !safeRegistryScalar(tenantID) || !safeRegistryScalar(stage) {
+		return SchemaObservation{}, errors.New("tenant id and stage are required safe registry identifiers")
+	}
+	if err := validateTenantSchemaVersion(currentSchemaVersion); err != nil {
+		return SchemaObservation{}, fmt.Errorf("observed schema version: %w", err)
+	}
+	var result SchemaObservation
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var instances []routerInstanceRecord
+		if err := tx.Where("tenant_id = ? AND stage = ?", tenantID, stage).Limit(2).Find(&instances).Error; err != nil {
+			return err
+		}
+		if len(instances) != 1 {
+			return errors.New("tenant stage must resolve to exactly one registered instance")
+		}
+		instance := instances[0]
+		var status instanceSchemaStatusRecord
+		if err := tx.Where("instance_id = ?", instance.InstanceID).First(&status).Error; err != nil {
+			return err
+		}
+		observedAt := time.Now().UTC()
+		if !observedAt.After(status.ObservedAt) {
+			return errors.New("existing schema observation is not older than the new observation")
+		}
+		update := tx.Model(&instanceSchemaStatusRecord{}).
+			Where("instance_id = ?", instance.InstanceID).
+			Updates(map[string]any{
+				"current_schema_version": currentSchemaVersion,
+				"observed_at":            observedAt,
+			})
+		if update.Error != nil {
+			return update.Error
+		}
+		if update.RowsAffected != 1 {
+			return errors.New("schema observation did not update exactly one registered instance")
+		}
+		result = SchemaObservation{
+			TenantID:              instance.TenantID,
+			InstanceID:            instance.InstanceID,
+			Stage:                 instance.Stage,
+			ExpectedSchemaVersion: status.ExpectedSchemaVersion,
+			CurrentSchemaVersion:  currentSchemaVersion,
+			DriftCode:             tenantSchemaDriftCode(status.ExpectedSchemaVersion, currentSchemaVersion),
+			ObservedAt:            observedAt,
+		}
+		return nil
+	})
+	return result, err
 }
 
 func (r *TenantInstanceRegistry) PreflightAndReserve(ctx context.Context, tenantID, stage, reservationID string, headroom int, adapter RDSQuotaAdapter) (QuotaReservation, error) {
@@ -372,10 +456,7 @@ func (r *TenantInstanceRegistry) DriftStatus(ctx context.Context, limit int) ([]
 		if err := r.db.Where("instance_id = ?", i.InstanceID).First(&s).Error; err != nil {
 			return nil, err
 		}
-		code := "current"
-		if s.CurrentSchemaVersion != s.ExpectedSchemaVersion {
-			code = "schema_version_mismatch"
-		}
+		code := tenantSchemaDriftCode(s.ExpectedSchemaVersion, s.CurrentSchemaVersion)
 		result = append(result, TenantDriftStatus{TenantID: i.TenantID, InstanceID: i.InstanceID, Stage: i.Stage, Placement: p.PlacementKind, RDSProxyMode: p.RDSProxyMode, DriftCode: code, ExpectedSchemaVersion: s.ExpectedSchemaVersion, CurrentSchemaVersion: s.CurrentSchemaVersion, ObservedAt: s.ObservedAt, EndpointPolicy: "not_evaluated", EncryptionPolicy: "not_authorized", TLSPolicy: "not_authorized", DurabilityPolicy: "not_authorized", HAPolicy: "not_authorized", NetworkPolicy: "not_authorized", DNSPolicy: "not_authorized"})
 	}
 	return result, nil

@@ -136,6 +136,91 @@ func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
 	}
 }
 
+func TestTenantRegistryObserveSchemaVersionIsIndependentBoundedAndLocal(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	instance := testTenantInstance("tenant-a", "router-a")
+	instance.CurrentSchemaVersion = 3
+	if err := r.Register(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.DriftStatus(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || status[0].DriftCode != "schema_version_mismatch" {
+		t.Fatalf("independent registration did not expose drift: %#v", status)
+	}
+
+	observation, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "customer-test", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.ExpectedSchemaVersion != 4 ||
+		observation.CurrentSchemaVersion != 4 ||
+		observation.DriftCode != "current" ||
+		!observation.ObservedAt.After(instance.ObservedAt) {
+		t.Fatalf("unexpected schema observation: %#v", observation)
+	}
+	resolved, err := r.ResolveDedicated(context.Background(), "tenant-a", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ExpectedSchemaVersion != 4 ||
+		resolved.CurrentSchemaVersion != 4 ||
+		resolved.DesiredReleaseDigest != instance.DesiredReleaseDigest {
+		t.Fatalf("schema observation changed immutable deployment metadata: %#v", resolved)
+	}
+	status, err = r.DriftStatus(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || status[0].DriftCode != "current" {
+		t.Fatalf("later observation did not clear drift: %#v", status)
+	}
+
+	for _, invalidVersion := range []int{-1, maxTenantSchemaVersion + 1} {
+		if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "customer-test", invalidVersion); err == nil {
+			t.Fatalf("out-of-bounds observed schema version accepted: %d", invalidVersion)
+		}
+	}
+	unchanged, err := r.ResolveDedicated(context.Background(), "tenant-a", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.CurrentSchemaVersion != 4 || !unchanged.ObservedAt.Equal(observation.ObservedAt) {
+		t.Fatalf("rejected observation mutated registry state: %#v", unchanged)
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "missing", "customer-test", 4); err == nil {
+		t.Fatal("missing tenant observation succeeded")
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "", 4); err == nil {
+		t.Fatal("ambiguous tenant-only observation succeeded")
+	}
+
+	future := testTenantInstance("tenant-future", "router-future")
+	future.ObservedAt = time.Now().UTC().Add(time.Hour)
+	if err := r.Register(context.Background(), future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-future", "customer-test", 3); err == nil {
+		t.Fatal("stale server-generated observation replaced a future registry observation")
+	}
+	futureResolved, err := r.ResolveDedicated(context.Background(), "tenant-future", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if futureResolved.CurrentSchemaVersion != future.CurrentSchemaVersion ||
+		!futureResolved.ObservedAt.Equal(future.ObservedAt) {
+		t.Fatalf("rejected stale observation mutated registry state: %#v", futureResolved)
+	}
+
+	tooLarge := testTenantInstance("tenant-large", "router-large")
+	tooLarge.ExpectedSchemaVersion = maxTenantSchemaVersion + 1
+	if err := r.Register(context.Background(), tooLarge); err == nil {
+		t.Fatal("out-of-bounds expected schema version registered")
+	}
+}
+
 func TestTenantRegistryQuotaPreflightReservationIsIdempotentAndFailsClosed(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	if err := r.Register(context.Background(), testTenantInstance("tenant-a", "router-a")); err != nil {
