@@ -47,6 +47,10 @@ class ConcurrentRunner:
             self.windows.discard(argv[-1].split(":", 1)[1]); return RunResult(0)
         if argv[:2] == ["tmux", "kill-session"]:
             self.tmux_exists = False; self.windows.clear(); return RunResult(0)
+        if argv[0] == "wsh" and argv[-2:] == ["identity", "--json"]:
+            # The race fixture models the required authoritative handshake;
+            # it never contacts a WSH server or uses runtime credentials.
+            return RunResult(0, json.dumps({"server_identity": self.profile["wsh_server_identity"]}))
         if argv[0] == "wsh" and argv[-1] == "list":
             return RunResult(0, "\n".join(f"{name}\nTAGS {tag}" for name, tag in self.sessions.items()))
         if argv[0] == "wsh" and "tag" in argv:
@@ -103,11 +107,13 @@ class ConcurrentLifecycleTest(unittest.TestCase):
                 return {
                     "profile_id": profile_id, "planner_owner": "sprint_planner",
                     "tmux_session": f"router-{profile_id}", "wsh_server_name": f"router-{profile_id}",
+                    "wsh_server_identity": f"router-{profile_id}-server",
                     "planner_wsh_session_id": f"router-{profile_id}-planner", "state_directory": str(base / f"state-{profile_id}"),
                     "worker_session_prefix": f"router-{profile_id}-worker", "base_ref": "origin/main", "lease_ttl_seconds": 3600,
                     "forbidden_environment_variables": ["WSH_SESSION_ID"],
                     "commands": {
                         "wsh_server": ["wsh", "-L", "{wsh_server_name}", "server"],
+                        "wsh_identity": ["wsh", "-L", "{wsh_server_name}", "identity", "--json"],
                         "planner": ["scripts/planner_wsh_planner.sh", "{wsh_server_name}", "{planner_wsh_session_id}", "planner-{profile_id}", "{repository_root}", "{planner_assignment_prompt}"],
                         "worker": ["scripts/planner_wsh_worker.sh", "{wsh_server_name}", "{wsh_session_id}", "assignment-{assignment_id}", "lease-{lease_id}", "{worktree}", "{assignment_prompt}"],
                         "codex_preflight": ["codex", "--help"], "wsh_stop": ["wsh", "-L", "{wsh_server_name}", "kill", "{wsh_session_id}"],
