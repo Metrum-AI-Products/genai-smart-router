@@ -282,6 +282,7 @@ class Profile:
     planner_owner: str
     tmux_session: str
     wsh_server_name: str
+    wsh_server_identity: str
     planner_wsh_session_id: str
     state_directory: Path
     worker_session_prefix: str
@@ -313,6 +314,7 @@ class Profile:
         planner_owner = _safe_name(str(raw.get("planner_owner", "")), "planner_owner")
         tmux_session = _safe_name(str(raw.get("tmux_session", "")), "tmux_session")
         wsh_server_name = _safe_name(str(raw.get("wsh_server_name", "")), "wsh_server_name")
+        wsh_server_identity = _safe_name(str(raw.get("wsh_server_identity", "")), "wsh_server_identity")
         planner_wsh_session_id = _safe_name(str(raw.get("planner_wsh_session_id", "")), "planner_wsh_session_id")
         prefix = _safe_name(str(raw.get("worker_session_prefix", "")), "worker_session_prefix")
         state_value = raw.get("state_directory")
@@ -327,15 +329,17 @@ class Profile:
         ):
             raise ControlPlaneError("profile forbidden_environment_variables must contain environment variable names")
         commands_raw = raw.get("commands")
-        required = {"wsh_server", "planner", "worker", "wsh_stop", "planner_stop", "planner_tag", "wsh_status", "codex_preflight"}
+        required = {"wsh_server", "wsh_identity", "planner", "worker", "wsh_stop", "planner_stop", "planner_tag", "wsh_status", "codex_preflight"}
         if not isinstance(commands_raw, dict) or set(commands_raw) != required:
-            raise ControlPlaneError("profile commands must define exactly wsh_server, planner, worker, wsh_stop, planner_stop, planner_tag, wsh_status, and codex_preflight")
+            raise ControlPlaneError("profile commands must define exactly wsh_server, wsh_identity, planner, worker, wsh_stop, planner_stop, planner_tag, wsh_status, and codex_preflight")
         commands = {name: _command(commands_raw[name], name) for name in required}
         for name, command in commands.items():
             _reject_unsafe_command(command, name)
         server = commands["wsh_server"]
         if server != ["wsh", "-L", "{wsh_server_name}", "server"]:
             raise ControlPlaneError("profile commands.wsh_server must use the portable `wsh server` shape")
+        if commands["wsh_identity"] != ["wsh", "-L", "{wsh_server_name}", "identity", "--json"]:
+            raise ControlPlaneError("profile commands.wsh_identity must use the exact authoritative JSON identity handshake")
         if commands["wsh_stop"] != ["wsh", "-L", "{wsh_server_name}", "kill", "{wsh_session_id}"]:
             raise ControlPlaneError("profile commands.wsh_stop must use the portable `wsh kill <NAME>` shape")
         if commands["planner_stop"] != ["wsh", "-L", "{wsh_server_name}", "kill", "{planner_wsh_session_id}"]:
@@ -379,7 +383,7 @@ class Profile:
             if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
                 raise ControlPlaneError(f"profile {label} is outside the approved bound")
         return cls(
-            path, profile_id, planner_owner, tmux_session, wsh_server_name, planner_wsh_session_id, state_directory, prefix, base_ref, ttl,
+            path, profile_id, planner_owner, tmux_session, wsh_server_name, wsh_server_identity, planner_wsh_session_id, state_directory, prefix, base_ref, ttl,
             status_timeout, status_output, status_field, tuple(env_names), commands,
         )
 
@@ -587,7 +591,9 @@ class ControlPlane:
         state["updated_at"] = _utc_now()
         _durable_json_replace(self.state_path, state, prefix=".planner-wsh-")
 
-    def _audit(self, action: str, outcome: str, worker: dict[str, Any] | None = None) -> None:
+    def _audit(
+        self, action: str, outcome: str, worker: dict[str, Any] | None = None, *, disposition: str | None = None
+    ) -> None:
         """Append safe lifecycle metadata. This file is never reset or pruned by shutdown."""
         event: dict[str, str] = {"event_id": str(uuid.uuid4()), "at": _utc_now(), "action": action, "outcome": outcome}
         if worker:
@@ -598,6 +604,11 @@ class ControlPlane:
             ):
                 if isinstance(worker.get(source), str):
                     event[target] = worker[source]
+        if disposition is not None:
+            safe_disposition = re.sub(r"[^a-z0-9]+", "-", disposition.lower()).strip("-")
+            if not safe_disposition:
+                raise ControlPlaneError("audit disposition must be a safe non-empty class")
+            event["disposition"] = safe_disposition
         encoded = (json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
         fd = os.open(self.audit_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
@@ -605,6 +616,44 @@ class ControlPlane:
             os.fsync(fd)
         finally:
             os.close(fd)
+
+    def _server_identity_state(self) -> str:
+        """Return only a safe class for the authoritative server handshake.
+
+        The handshake is the sole runtime binding between this protected profile
+        and a WSH server.  It intentionally accepts one exact JSON field and
+        never returns, logs, or otherwise exposes the observed value.
+        """
+        try:
+            result = self.runner.run(
+                _render_command(self.profile.commands["wsh_identity"], self._template_values()),
+                check=False,
+                timeout_seconds=self.profile.status_timeout_seconds,
+                max_output_bytes=self.profile.status_output_bytes,
+            )
+        except ControlPlaneError:
+            return "unavailable"
+        if result.returncode:
+            return "unavailable"
+        try:
+            pairs = json.loads(result.stdout, object_pairs_hook=lambda values: values)
+        except json.JSONDecodeError:
+            return "malformed"
+        if not isinstance(pairs, list) or any(not isinstance(pair, tuple) or len(pair) != 2 for pair in pairs):
+            return "malformed"
+        identities = [value for key, value in pairs if key == "server_identity"]
+        if len(identities) != 1:
+            return "missing" if not identities else "ambiguous"
+        if len(pairs) != 1 or not isinstance(identities[0], str) or not NAME_RE.fullmatch(identities[0]):
+            return "malformed"
+        return "matched" if identities[0] == self.profile.wsh_server_identity else "mismatch"
+
+    def _assert_server_identity(self, disposition: str) -> None:
+        outcome = self._server_identity_state()
+        with self._locked_state():
+            self._audit("server-identity-validation", outcome, disposition=disposition)
+        if outcome != "matched":
+            raise ControlPlaneError(f"{disposition} rejected: profile WSH server identity is {outcome}")
 
     def _expire_leases(self, state: dict[str, Any]) -> bool:
         changed = False
@@ -666,6 +715,7 @@ class ControlPlane:
             "Accept task intake only from sprint_planner through this planner-provisioned assignment. "
             "Use only this assigned external worktree and read and follow AGENTS.md. "
             "Do not launch, attach to, inspect, or steer tmux or WSH sessions, and do not use WSH MCP. "
+            "Only the planner uses WSH. If server-identity validation fails, do not retry, select another profile, or attempt cleanup; report MANAGER ATTENTION NEEDED for human-supervised recovery. "
             "Report progress, evidence, blockers, and every required decision to sprint_planner as MANAGER ATTENTION NEEDED. "
             "If assigned the quality_engineer role, use only an independently leased QA worktree and never share an implementation worktree."
             " Create a focused PR linked to this issue, monitor PR and issue feedback, and action every actionable review or issue comment through sprint_planner. "
@@ -681,6 +731,7 @@ class ControlPlane:
             "Act as the sole sprint_planner for this protected runtime profile. "
             "Read and follow AGENTS.md, allocate only approved issue work through the control plane, "
             "and report evidence and blockers to the human supervisor."
+            " Before every WSH session inventory, creation, relay, stop, or cleanup, require the runtime profile's exact authoritative server-identity handshake. On missing, mismatch, unavailable, malformed, or ambiguous identity, fail closed without an alternate profile or stale client and escalate to the human supervisor; only this planner uses WSH."
             " Require focused issue-linked PRs, monitored/actioned feedback, MANAGER ATTENTION NEEDED escalation for unauthorized out-of-scope follow-ups or any required decision, independent QA, required checks/CODEOWNERS/no unresolved blocker, and rollback review. "
             "Require explicit human authorization of the exact PR head and named target before merge, binding issue-comment closeout evidence, and only after GitHub confirms the authorized head merged into the named target authorize the planner-controlled cleanup path to remove only that merged issue's leased worktree and local branch with separately recorded explicit cleanup authority plus clean/unpushed/unleased/not-needed proof. Any ambiguity is MANAGER ATTENTION NEEDED and leaves files and branches intact."
         )
@@ -718,10 +769,6 @@ class ControlPlane:
             if self._tmux_has_session() and self._tmux_windows() - {"wsh-server", "sprint-planner"}:
                 raise ControlPlaneError("bootstrap refused: control tmux session contains an unexpected window")
             server_command = _render_command(self.profile.commands["wsh_server"], self._template_values(window_name="wsh-server"))
-            planner_command = _render_command(
-                self.profile.commands["planner"],
-                self._template_values(window_name="sprint-planner", planner_assignment_prompt=self._planner_assignment_prompt()),
-            )
             if not self._tmux_has_session():
                 self.runner.run(
                     [
@@ -736,6 +783,18 @@ class ControlPlane:
                     ]
                 )
             self._ensure_window("wsh-server", server_command)
+            # Starting the local server is the only bootstrap step before the
+            # authoritative handshake.  Do not create the planner session
+            # until this profile is bound to the expected server identity.
+        self._assert_server_identity("bootstrap")
+        planner_command = _render_command(
+            self.profile.commands["planner"],
+            self._template_values(window_name="sprint-planner", planner_assignment_prompt=self._planner_assignment_prompt()),
+        )
+        self._assert_server_identity("planner session creation")
+        with self._locked_state() as state:
+            if self._tmux_windows() - {"wsh-server", "sprint-planner"}:
+                raise ControlPlaneError("bootstrap refused: control tmux session contains an unexpected window")
             self._ensure_window("sprint-planner", planner_command)
             state["server_window"] = "wsh-server"
             state["planner_window"] = "sprint-planner"
@@ -778,6 +837,9 @@ class ControlPlane:
 
     def _planner_identity_state(self) -> str:
         """Boundedly verify the single profile-bound planner WSH identity."""
+        server_identity = self._server_identity_state()
+        if server_identity != "matched":
+            return f"server-{server_identity}"
         values = self._template_values()
         try:
             result = self.runner.run(
@@ -799,6 +861,9 @@ class ControlPlane:
         # session's read-only tag surface instead of interpreting aggregate
         # table continuation formatting for identity authorization.
         try:
+            server_identity = self._server_identity_state()
+            if server_identity != "matched":
+                return f"server-{server_identity}"
             tags = self.runner.run(
                 _render_command(self.profile.commands["planner_tag"], values), check=False,
                 timeout_seconds=self.profile.status_timeout_seconds, max_output_bytes=self.profile.status_output_bytes,
@@ -817,6 +882,7 @@ class ControlPlane:
         return "present"
 
     def _assert_planner_identity(self) -> None:
+        self._assert_server_identity("worker allocation")
         with self._locked_state() as state:
             if state.get("planner_wsh_session_id") != self.profile.planner_wsh_session_id:
                 raise ControlPlaneError("planner control state has a different WSH identity")
@@ -1002,6 +1068,7 @@ class ControlPlane:
         # The WSH worker is started by tmux after the handoff is durable. Never
         # hold the planner state lock while the terminal creation call runs.
         try:
+            self._assert_server_identity("worker session creation")
             self.runner.run(
                 ["tmux", "new-window", "-d", "-t", self.profile.tmux_session, "-n", window, "-c", str(canonical), self._tmux_command(command)]
             )
@@ -1051,6 +1118,7 @@ class ControlPlane:
             lease_id=str(worker["lease_id"]),
         )
         try:
+            self._assert_server_identity("worker status")
             result = self.runner.run(
                 _render_command(self.profile.commands["wsh_status"], values),
                 check=False,
@@ -1099,6 +1167,7 @@ class ControlPlane:
             lease_id=str(worker["lease_id"]),
         )
         try:
+            self._assert_server_identity("worker session inspection")
             result = self.runner.run(
                 _render_command(self.profile.commands["wsh_status"], values),
                 check=False,
@@ -1130,6 +1199,7 @@ class ControlPlane:
     def status(self) -> dict[str, Any]:
         # WSH calls happen after the state lock is released.  The snapshot has
         # only safe lease metadata and cannot expose terminal content.
+        self._assert_server_identity("status")
         state = self._status_snapshot()
         workers = []
         for assignment_id, worker in sorted(state["workers"].items()):
@@ -1158,6 +1228,7 @@ class ControlPlane:
         }
 
     def attach(self) -> None:
+        self._assert_server_identity("attach")
         if not self._tmux_has_session():
             raise ControlPlaneError("planner control session is not bootstrapped; run bootstrap first")
         self.runner.run(["tmux", "attach-session", "-t", self.profile.tmux_session])
@@ -1166,6 +1237,7 @@ class ControlPlane:
         if outcome not in {"merged", "abandoned"} or not cleanup_authorized:
             raise ControlPlaneError("worker release requires persisted merged/abandoned outcome and explicit cleanup authorization")
         assignment_id = f"{_safe_name(issue, 'issue')}-{_safe_name(role, 'role')}"
+        self._assert_server_identity("worker release")
         with self._locked_state() as state:
             worker = state["workers"].get(assignment_id)
             if not worker:
@@ -1197,6 +1269,7 @@ class ControlPlane:
                 if str(worker["window"]) in self._tmux_windows():
                     raise ControlPlaneError("worker release cannot reclaim lease while tmux worker window remains")
             else:
+                self._assert_server_identity("worker stop")
                 self.runner.run(_render_command(self.profile.commands["wsh_stop"], values))
                 if str(worker["window"]) in self._tmux_windows():
                     self.runner.run(["tmux", "kill-window", "-t", f"{self.profile.tmux_session}:{worker['window']}"])
@@ -1226,6 +1299,7 @@ class ControlPlane:
         return self.status()
 
     def shutdown(self, *, recovery_authorized: bool = False) -> None:
+        self._assert_server_identity("shutdown")
         with self._locked_state() as state:
             if state["workers"]:
                 raise ControlPlaneError("shutdown refused while worker leases exist; release each worker first")
@@ -1253,6 +1327,7 @@ class ControlPlane:
         if planner_identity not in {"present", "absent"} and not (persisted_absence and planner_identity == "list-unavailable"):
             raise ControlPlaneError(f"shutdown refused: planner WSH identity is {planner_identity}")
         if planner_identity == "present":
+            self._assert_server_identity("planner stop")
             self.runner.run(_render_command(self.profile.commands["planner_stop"], self._template_values()))
             if self._planner_identity_state() != "absent":
                 raise ControlPlaneError("shutdown refused: exact planner WSH session did not terminate")

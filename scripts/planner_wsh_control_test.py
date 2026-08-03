@@ -38,6 +38,9 @@ class FakeRunner:
         self.fail_list_windows = False
         self.fail_codex_preflight = False
         self.tag_payload: str | None = None
+        self.server_identity = "router-planner-server"
+        self.server_identity_payload: str | None = None
+        self.server_identity_result: RunResult | None = None
 
     def run(self, argv: list[str], *, check: bool = True, **kwargs: object) -> RunResult:
         self.calls.append(argv)
@@ -98,6 +101,12 @@ class FakeRunner:
                 f"{session}\nTAGS {tag}" for session, tag in sorted(self.wsh_sessions.items())
             )
             return RunResult(0, json.dumps(payload) if isinstance(payload, dict) else str(payload))
+        if argv == ["wsh", "-L", "router-planner", "identity", "--json"]:
+            if self.server_identity_result:
+                return self.server_identity_result
+            if self.server_identity_payload is not None:
+                return RunResult(0, self.server_identity_payload)
+            return RunResult(0, json.dumps({"server_identity": self.server_identity}))
         if argv[0] == "wsh" and "kill" in argv:
             if self.fail_stop:
                 raise ControlPlaneError("simulated WSH stop failure")
@@ -131,6 +140,7 @@ class PlannerWSHControlTest(unittest.TestCase):
                     "planner_owner": "sprint_planner",
                     "tmux_session": "router-planner",
                     "wsh_server_name": "router-planner",
+                    "wsh_server_identity": "router-planner-server",
                     "planner_wsh_session_id": "router-planner-session",
                     "state_directory": str(base / "state"),
                     "worker_session_prefix": "router-worker",
@@ -139,6 +149,7 @@ class PlannerWSHControlTest(unittest.TestCase):
                     "forbidden_environment_variables": ["WSH_SESSION_ID"],
                     "commands": {
                         "wsh_server": ["wsh", "-L", "{wsh_server_name}", "server"],
+                        "wsh_identity": ["wsh", "-L", "{wsh_server_name}", "identity", "--json"],
                         "planner": ["scripts/planner_wsh_planner.sh", "{wsh_server_name}", "{planner_wsh_session_id}", "planner-{profile_id}", "{repository_root}", "{planner_assignment_prompt}"],
                         "worker": ["scripts/planner_wsh_worker.sh", "{wsh_server_name}", "{wsh_session_id}", "assignment-{assignment_id}", "lease-{lease_id}", "{worktree}", "{assignment_prompt}"],
                         "codex_preflight": ["codex", "--help"],
@@ -219,6 +230,51 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.runner.wsh_sessions["router-planner-session"] = "planner-local-planner"
         self.control.launch_worker("573", "software_engineer", self.worktree)
         self.assertTrue(any(call[0] == "wsh" and "tag" in call and call[-1] == "router-planner-session" for call in self.runner.calls))
+
+    def test_server_identity_handshake_fails_closed_before_worker_mutation(self) -> None:
+        self.control.bootstrap()
+        cases = {
+            "missing": "{}",
+            "unavailable": None,
+            "mismatch": '{"server_identity":"another-server"}',
+            "malformed": "not-json",
+            "ambiguous": '{"server_identity":"router-planner-server","server_identity":"another-server"}',
+        }
+        for expected, payload in cases.items():
+            with self.subTest(expected=expected):
+                self.runner.server_identity_payload = payload
+                self.runner.server_identity_result = RunResult(1) if expected == "unavailable" else None
+                before = len(self.runner.calls)
+                with self.assertRaisesRegex(ControlPlaneError, f"server identity is {expected}"):
+                    self.control.launch_worker("573", "software_engineer", self.worktree)
+                calls = [call for call in self.runner.calls[before:] if call[0] == "wsh"]
+                self.assertTrue(calls and all(call[-2:] == ["identity", "--json"] for call in calls))
+                self.assertNotIn("agent-573-software_engineer", self.runner.windows)
+                self.assertEqual({}, json.loads(self.control.state_path.read_text(encoding="utf-8"))["workers"])
+        self.runner.server_identity_payload = None
+        self.runner.server_identity_result = None
+
+    def test_later_invalid_server_identity_cannot_reuse_a_prior_binding_for_stop(self) -> None:
+        self.control.bootstrap()
+        self.control.launch_worker("573", "software_engineer", self.worktree)
+        self.runner.server_identity_payload = '{"server_identity":"another-server"}'
+        before = len(self.runner.calls)
+        with self.assertRaisesRegex(ControlPlaneError, "server identity is mismatch"):
+            self.control.release_worker("573", "software_engineer", outcome="abandoned", cleanup_authorized=True)
+        calls = [call for call in self.runner.calls[before:] if call[0] == "wsh"]
+        self.assertTrue(calls and all(call[-2:] == ["identity", "--json"] for call in calls))
+        self.assertIn("router-worker-573-software_engineer", self.runner.wsh_sessions)
+
+    def test_server_identity_audit_uses_only_safe_outcome_class(self) -> None:
+        self.control.bootstrap()
+        self.runner.server_identity_payload = '{"server_identity":"another-server"}'
+        with self.assertRaisesRegex(ControlPlaneError, "server identity is mismatch"):
+            self.control.launch_worker("573", "software_engineer", self.worktree)
+        audit = self.control.audit_path.read_text(encoding="utf-8")
+        self.assertIn('"action":"server-identity-validation"', audit)
+        self.assertIn('"outcome":"mismatch"', audit)
+        self.assertIn('"disposition":"worker-allocation"', audit)
+        self.assertNotIn("another-server", audit)
 
     def test_tag_query_does_not_authorize_a_session_name_that_equals_the_expected_tag(self) -> None:
         raw = json.loads(self.profile_path.read_text(encoding="utf-8"))
@@ -449,6 +505,7 @@ class PlannerWSHControlTest(unittest.TestCase):
     def test_help_verified_wsh_cli_template_grammar(self) -> None:
         commands = self.control.profile.commands
         self.assertEqual(["wsh", "-L", "{wsh_server_name}", "server"], commands["wsh_server"])
+        self.assertEqual(["wsh", "-L", "{wsh_server_name}", "identity", "--json"], commands["wsh_identity"])
         self.assertEqual(["wsh", "-L", "{wsh_server_name}", "list"], commands["wsh_status"])
         self.assertEqual(["wsh", "-L", "{wsh_server_name}", "kill", "{wsh_session_id}"], commands["wsh_stop"])
         self.assertEqual(["scripts/planner_wsh_planner.sh", "{wsh_server_name}", "{planner_wsh_session_id}", "planner-{profile_id}", "{repository_root}", "{planner_assignment_prompt}"], commands["planner"])
@@ -494,6 +551,8 @@ class PlannerWSHControlTest(unittest.TestCase):
             "planner-controlled cleanup path",
             "separately recorded explicit cleanup authority",
             "clean, unpushed, unleased, and not needed",
+            "server-identity validation fails",
+            "Only the planner uses WSH",
         ):
             self.assertIn(required, prompt)
 
@@ -697,6 +756,13 @@ class PlannerWSHControlTest(unittest.TestCase):
 
     def test_profile_rejects_symlink_permissions_shell_nested_tmux_non_wsh_and_network_templates(self) -> None:
         raw = json.loads(self.profile_path.read_text(encoding="utf-8"))
+        missing_identity = json.loads(json.dumps(raw))
+        missing_identity.pop("wsh_server_identity")
+        self.profile_path.write_text(json.dumps(missing_identity), encoding="utf-8")
+        self.profile_path.chmod(0o600)
+        with self.assertRaisesRegex(ControlPlaneError, "wsh_server_identity"):
+            Profile.load(self.profile_path)
+        self.profile_path.write_text(json.dumps(raw), encoding="utf-8")
         self.profile_path.chmod(0o644)
         with self.assertRaisesRegex(ControlPlaneError, "mode 0600"):
             Profile.load(self.profile_path)
@@ -718,6 +784,12 @@ class PlannerWSHControlTest(unittest.TestCase):
             self.profile_path.chmod(0o600)
             with self.assertRaisesRegex(ControlPlaneError, expected):
                 Profile.load(self.profile_path)
+        changed = json.loads(json.dumps(raw))
+        changed["commands"]["wsh_identity"] = ["wsh", "-L", "{wsh_server_name}", "list"]
+        self.profile_path.write_text(json.dumps(changed), encoding="utf-8")
+        self.profile_path.chmod(0o600)
+        with self.assertRaisesRegex(ControlPlaneError, "authoritative JSON identity"):
+            Profile.load(self.profile_path)
         changed = json.loads(json.dumps(raw))
         changed["commands"]["worker"][0] = "not-an-approved-adapter"
         self.profile_path.write_text(json.dumps(changed), encoding="utf-8")
