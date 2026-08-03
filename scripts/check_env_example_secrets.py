@@ -29,6 +29,16 @@ PLACEHOLDER_RE = re.compile(
     re.IGNORECASE,
 )
 
+RETIRED_AGENT_CREDENTIAL_PATHS = (
+    ".tugduck/config.json",
+    ".metrum-agents/local/profile.json",
+    ".metrum-agents/runtime/state.json",
+    ".metrum-agents/workspace/env.json",
+    ".metrum-agents/workspace/provider-secret.txt",
+    ".metrum-agents/workspace/router-token.txt",
+    ".metrum-agents/workspace/credential.json",
+)
+
 
 def tracked_env_examples() -> list[Path]:
     try:
@@ -68,6 +78,27 @@ def live_pattern_errors(path: Path, text: str) -> Iterable[str]:
             yield f"{path.relative_to(ROOT)} contains a live-looking secret pattern: {pattern.pattern}"
 
 
+def retired_agent_ignore_errors() -> Iterable[str]:
+    for path in RETIRED_AGENT_CREDENTIAL_PATHS:
+        try:
+            result = subprocess.run(
+                ["git", "check-ignore", "--no-index", "--quiet", "--", path],
+                cwd=ROOT,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            yield f"unable to verify retired credential path {path}: {exc}"
+            continue
+        if result.returncode == 1:
+            yield f"retired credential path is not ignored: {path}"
+        elif result.returncode != 0:
+            detail = result.stderr.strip() or f"git check-ignore exited {result.returncode}"
+            yield f"unable to verify retired credential path {path}: {detail}"
+
+
 def main() -> int:
     paths = tracked_env_examples()
     if not paths:
@@ -84,6 +115,7 @@ def main() -> int:
             errors.append(f"{path.relative_to(ROOT)} is not valid JSON: {exc}")
             continue
         errors.extend(secret_key_errors(path, data))
+    errors.extend(retired_agent_ignore_errors())
 
     if errors:
         print("env example secret check failed:", file=sys.stderr)
