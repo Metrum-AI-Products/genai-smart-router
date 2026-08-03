@@ -29,7 +29,7 @@ type CapabilityEvidenceIdentity struct {
 // VerifyCapabilityClaims checks resolved (catalog plus target override)
 // metadata against matching, passing evidence. It does not mutate routing,
 // configuration, weights, or provider catalogs.
-func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidence) []string {
+func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidence, expected []CapabilityEvidenceIdentity) []string {
 	modelGroup, ok := c.Models[group]
 	if !ok {
 		return []string{"unknown model group " + group}
@@ -40,17 +40,22 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 			failures = append(failures, "capability evidence is not a passing v1 result")
 			continue
 		}
+		if !identityIsExpected(claim.Identity, expected) {
+			failures = append(failures, "capability evidence identity is not approved")
+			continue
+		}
 		matched := false
 		for _, raw := range modelGroup.Targets {
 			target, err := c.resolveTarget(group, raw)
 			if err != nil || target.Provider != claim.Identity.Provider || target.Model != claim.Identity.Model {
 				continue
 			}
-			if targetDialect(c.Provider[target.Provider], target) != claim.Identity.APISkin {
+			dialect := targetDialect(c.Provider[target.Provider], target)
+			if dialect != claim.Identity.APISkin || !identityMatchesTargetPath(claim.Identity, dialect) {
 				continue
 			}
 			matched = true
-			if !targetAdvertisesCapability(target, claim.CapabilityCase) {
+			if !targetAdvertisesCapability(target, dialect, claim.CapabilityCase) {
 				failures = append(failures, "target metadata does not advertise "+claim.CapabilityCase+" for "+target.Provider+"/"+target.Model)
 			}
 		}
@@ -107,7 +112,7 @@ func advertisedCapabilities(target Target, dialect string) []string {
 	if targetAdvertisesToolCapability(target, dialect, "forced") {
 		cases = append(cases, "tools-forced")
 	}
-	if targetAdvertisesCapability(target, "image-input") {
+	if targetAdvertisesCapability(target, dialect, "image-input") {
 		cases = append(cases, "router-selected-ocr")
 	}
 	return cases
@@ -160,7 +165,7 @@ func capabilityIdentityComplete(identity CapabilityEvidenceIdentity) bool {
 	return true // model_suffix may deliberately be empty.
 }
 
-func targetAdvertisesCapability(target Target, capability string) bool {
+func targetAdvertisesCapability(target Target, dialect, capability string) bool {
 	values := func(values []string, wanted string) bool {
 		for _, value := range values {
 			if value == wanted {
@@ -175,11 +180,11 @@ func targetAdvertisesCapability(target Target, capability string) bool {
 	case "image-input", "router-selected-ocr":
 		return values(target.InputModalities, "image")
 	case "tools-auto":
-		return values(target.ToolSupport.OpenAIChat, "auto") || values(target.ToolSupport.OpenAIResponses, "auto") || values(target.ToolSupport.AnthropicMessages, "auto")
+		return targetAdvertisesToolCapability(target, dialect, "auto")
 	case "tools-forced":
-		return values(target.ToolSupport.OpenAIChat, "forced") || values(target.ToolSupport.OpenAIResponses, "forced") || values(target.ToolSupport.AnthropicMessages, "forced")
+		return targetAdvertisesToolCapability(target, dialect, "forced")
 	case "openai-responses":
-		return target.Dialect == "openai-responses"
+		return dialect == "openai-responses"
 	default:
 		return false
 	}
