@@ -4,6 +4,7 @@
   "tmux_session": "router-planner",
   "wsh_server_name": "router-planner",
   "wsh_server_identity": "router-planner-server",
+  "bootstrap_identity_wait_seconds": 3,
   "planner_wsh_session_id": "router-planner-session",
   "state_directory": "/var/lib/genai-smart-router/planner-wsh",
   "worker_session_prefix": "router-worker",

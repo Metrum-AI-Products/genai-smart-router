@@ -107,7 +107,7 @@ class ConcurrentLifecycleTest(unittest.TestCase):
                 return {
                     "profile_id": profile_id, "planner_owner": "sprint_planner",
                     "tmux_session": f"router-{profile_id}", "wsh_server_name": f"router-{profile_id}",
-                    "wsh_server_identity": f"router-{profile_id}-server",
+                    "wsh_server_identity": f"router-{profile_id}-server", "bootstrap_identity_wait_seconds": 1,
                     "planner_wsh_session_id": f"router-{profile_id}-planner", "state_directory": str(base / f"state-{profile_id}"),
                     "worker_session_prefix": f"router-{profile_id}-worker", "base_ref": "origin/main", "lease_ttl_seconds": 3600,
                     "forbidden_environment_variables": ["WSH_SESSION_ID"],

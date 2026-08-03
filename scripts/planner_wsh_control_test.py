@@ -41,6 +41,7 @@ class FakeRunner:
         self.server_identity = "router-planner-server"
         self.server_identity_payload: str | None = None
         self.server_identity_result: RunResult | None = None
+        self.server_identity_responses: list[RunResult] = []
 
     def run(self, argv: list[str], *, check: bool = True, **kwargs: object) -> RunResult:
         self.calls.append(argv)
@@ -102,6 +103,8 @@ class FakeRunner:
             )
             return RunResult(0, json.dumps(payload) if isinstance(payload, dict) else str(payload))
         if argv == ["wsh", "-L", "router-planner", "identity", "--json"]:
+            if self.server_identity_responses:
+                return self.server_identity_responses.pop(0)
             if self.server_identity_result:
                 return self.server_identity_result
             if self.server_identity_payload is not None:
@@ -141,6 +144,7 @@ class PlannerWSHControlTest(unittest.TestCase):
                     "tmux_session": "router-planner",
                     "wsh_server_name": "router-planner",
                     "wsh_server_identity": "router-planner-server",
+                    "bootstrap_identity_wait_seconds": 1,
                     "planner_wsh_session_id": "router-planner-session",
                     "state_directory": str(base / "state"),
                     "worker_session_prefix": "router-worker",
@@ -190,6 +194,85 @@ class PlannerWSHControlTest(unittest.TestCase):
         with self.assertRaisesRegex(ControlPlaneError, "unexpected window"):
             self.control.bootstrap()
         self.assertEqual({"foreign-window"}, self.runner.windows)
+        self.assertFalse(self.control.state_path.exists())
+
+    def test_bootstrap_waits_only_for_unavailable_identity_then_revalidates_before_creation(self) -> None:
+        self.runner.server_identity_responses = [
+            RunResult(1),
+            RunResult(0, '{"server_identity":"router-planner-server"}'),
+            RunResult(0, '{"server_identity":"router-planner-server"}'),
+        ]
+        self.control.bootstrap()
+        planner_call = next(index for index, call in enumerate(self.runner.calls) if call[:2] == ["tmux", "new-window"] and "sprint-planner" in call)
+        identity_calls = [
+            (index, call) for index, call in enumerate(self.runner.calls)
+            if call == ["wsh", "-L", "router-planner", "identity", "--json"]
+        ]
+        self.assertEqual(3, len([call for index, call in identity_calls if index < planner_call]))
+        readiness_calls = self.runner.calls[identity_calls[0][0] : planner_call]
+        self.assertTrue(all(call[0] != "wsh" or call[-2:] == ["identity", "--json"] for call in readiness_calls))
+        audit = self.control.audit_path.read_text(encoding="utf-8")
+        self.assertIn('"action":"server-identity-readiness"', audit)
+        self.assertIn('"outcome":"matched"', audit)
+        self.assertIn('"disposition":"bootstrap"', audit)
+
+    def test_bootstrap_unavailable_expiry_never_creates_planner_or_state(self) -> None:
+        self.runner.server_identity_responses = [RunResult(1)]
+        with mock.patch("planner_wsh_control.time.monotonic", side_effect=[0.0, 0.0, 1.0]):
+            with self.assertRaisesRegex(ControlPlaneError, "server identity is unavailable"):
+                self.control.bootstrap()
+        self.assertEqual({"wsh-server"}, self.runner.windows)
+        self.assertFalse(self.control.state_path.exists())
+        self.assertFalse(any(call[:2] == ["tmux", "new-window"] and "sprint-planner" in call for call in self.runner.calls))
+        self.assertTrue(all(call[0] != "wsh" or call[-2:] == ["identity", "--json"] for call in self.runner.calls))
+        audit = self.control.audit_path.read_text(encoding="utf-8")
+        event = json.loads(audit.strip())
+        self.assertEqual({"action", "at", "event_id", "outcome", "disposition"}, set(event))
+        self.assertEqual(("server-identity-readiness", "unavailable", "bootstrap"), (event["action"], event["outcome"], event["disposition"]))
+        self.assertNotIn("router-planner-server", audit)
+        self.assertNotIn("another-server", audit)
+
+    def test_bootstrap_terminal_identity_outcomes_do_not_poll_or_mutate(self) -> None:
+        cases = {
+            "missing": "{}",
+            "mismatch": '{"server_identity":"another-server"}',
+            "malformed": "not-json",
+            "ambiguous": '{"server_identity":"router-planner-server","server_identity":"another-server"}',
+        }
+        for expected, payload in cases.items():
+            with self.subTest(expected=expected):
+                self.runner.tmux_exists = False
+                self.runner.windows.clear()
+                self.runner.calls.clear()
+                self.runner.call_kwargs.clear()
+                self.runner.server_identity_responses.clear()
+                self.runner.server_identity_responses = [RunResult(0, payload)]
+                with self.assertRaisesRegex(ControlPlaneError, f"server identity is {expected}"):
+                    self.control.bootstrap()
+                identity_calls = [call for call in self.runner.calls if call[0] == "wsh"]
+                self.assertEqual([["wsh", "-L", "router-planner", "identity", "--json"]], identity_calls)
+                self.assertEqual({"wsh-server"}, self.runner.windows)
+                self.assertFalse(self.control.state_path.exists())
+
+    def test_bootstrap_identity_timeout_is_capped_by_the_remaining_deadline(self) -> None:
+        self.runner.server_identity_responses = [RunResult(0, "{}")]
+        with mock.patch("planner_wsh_control.time.monotonic", side_effect=[0.0, 0.9]):
+            with self.assertRaisesRegex(ControlPlaneError, "server identity is missing"):
+                self.control.bootstrap()
+        identity_kwargs = next(
+            kwargs for call, kwargs in zip(self.runner.calls, self.runner.call_kwargs)
+            if call == ["wsh", "-L", "router-planner", "identity", "--json"]
+        )
+        self.assertLessEqual(float(identity_kwargs["timeout_seconds"]), 0.1)
+
+    def test_bootstrap_final_creation_guard_rejects_a_later_mismatch(self) -> None:
+        self.runner.server_identity_responses = [
+            RunResult(0, '{"server_identity":"router-planner-server"}'),
+            RunResult(0, '{"server_identity":"another-server"}'),
+        ]
+        with self.assertRaisesRegex(ControlPlaneError, "planner session creation rejected: profile WSH server identity is mismatch"):
+            self.control.bootstrap()
+        self.assertEqual({"wsh-server"}, self.runner.windows)
         self.assertFalse(self.control.state_path.exists())
 
     def test_durable_json_replace_distinguishes_pre_and_post_replace_failures(self) -> None:
@@ -683,7 +766,6 @@ class PlannerWSHControlTest(unittest.TestCase):
         sources = {
             "effective worker prompt": self.control._assignment_prompt("573", "software_engineer"),
             "effective planner prompt": self.control._planner_assignment_prompt(),
-            "software engineer policy": (repository / ".codex" / "agents" / "software_engineer.toml").read_text(encoding="utf-8"),
             "sprint planner policy": (repository / ".codex" / "agents" / "sprint_planner.toml").read_text(encoding="utf-8"),
             "repository policy": (repository / "AGENTS.md").read_text(encoding="utf-8"),
             "control-plane runbook": (repository / "docs" / "PLANNER_WSH_CONTROL_PLANE.md").read_text(encoding="utf-8"),
@@ -884,6 +966,16 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.profile_path.chmod(0o600)
         with self.assertRaisesRegex(ControlPlaneError, "wsh_server_identity"):
             Profile.load(self.profile_path)
+        for value in (None, True, 0, 11):
+            changed = json.loads(json.dumps(raw))
+            if value is None:
+                changed.pop("bootstrap_identity_wait_seconds")
+            else:
+                changed["bootstrap_identity_wait_seconds"] = value
+            self.profile_path.write_text(json.dumps(changed), encoding="utf-8")
+            self.profile_path.chmod(0o600)
+            with self.assertRaisesRegex(ControlPlaneError, "bootstrap_identity_wait_seconds"):
+                Profile.load(self.profile_path)
         self.profile_path.write_text(json.dumps(raw), encoding="utf-8")
         self.profile_path.chmod(0o644)
         with self.assertRaisesRegex(ControlPlaneError, "mode 0600"):
@@ -924,19 +1016,13 @@ class PlannerWSHControlTest(unittest.TestCase):
         self.assertNotIn("localhost", source)
         self.assertNotIn(".sock", source)
 
-    def test_all_role_contracts_require_one_planner_identity_and_no_codex_agent_flag(self) -> None:
+    def test_checked_in_role_contracts_require_one_planner_identity_and_no_codex_agent_flag(self) -> None:
         repository = Path(__file__).resolve().parent.parent
-        role_configs = (
-            "sprint_planner.toml",
-            "software_engineer.toml",
-            "quality_engineer.toml",
-            "system_architect.toml",
-            "product-manager.toml",
-            "interaction_designer.toml",
-            "eks_operations.toml",
-        )
-        for name in role_configs:
-            source = (repository / ".codex" / "agents" / name).read_text(encoding="utf-8")
+        role_configs = sorted((repository / ".codex" / "agents").glob("*.toml"))
+        self.assertTrue(role_configs)
+        for path in role_configs:
+            source = path.read_text(encoding="utf-8")
+            name = path.name
             self.assertIn("WSH assignment identity:", source, name)
             self.assertIn("duplicate in-process planner", source, name)
             self.assertIn("bounded WSH CLI/REST", source, name)
