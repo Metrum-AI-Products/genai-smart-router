@@ -20,7 +20,7 @@ At launch, one customer router instance maps to one isolated runtime identity an
 
 ## Before any live action
 
-The following are mandatory fail-closed preflight conditions. An absent condition means record a safe blocked status and escalate through the sprint planner; do not bypass it manually, select shared placement, or reuse another customer's resources.
+The following are mandatory fail-closed preflight conditions. An absent condition means record a safe blocked status in the #555 durable provisioning job and escalate to the commercial/control-plane owner. That owner coordinates the listed Infra/Security or Release approver when the missing gate requires their decision; operators must not bypass the gate manually, select shared placement, or reuse another customer's resources.
 
 | Required gate | Evidence to record safely |
 | --- | --- |
