@@ -40,6 +40,11 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   docs/
 ```
 
+`metrum-smartrouterctl` is required in the binary package. It is intentionally
+absent from the standard Docker image and Docker Compose package image. For a
+Docker-based deployment, run the CLI from an extracted binary package on a
+separate trusted administration host.
+
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
 
 ## Release Validation Matrix

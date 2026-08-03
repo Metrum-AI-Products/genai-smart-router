@@ -6,6 +6,10 @@ tenant, router-instance, dedicated-RDS allocation, schema-state, and local
 quota-admission records. It does not store credentials, DSNs, endpoints,
 tokens, secret references, or runtime configuration content.
 
+The CLI is included in binary tarballs. It is not included in the standard
+Docker image or Docker Compose package image; use the binary package from a
+separate trusted administration host for Docker-based router deployments.
+
 The currently available safe commands are:
 
 ```text

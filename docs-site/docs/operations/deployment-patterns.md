@@ -71,7 +71,7 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 ### Multi-environment operator contract
 
-The shipped `metrum-smartrouterctl` safe contract keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. Stage labels are deployment-defined rather than a fixed environment list. A bounded registry status can show schema-version drift without contacting a live database, cluster, DNS endpoint, or secret store.
+The binary tarball ships `metrum-smartrouterctl`; the standard Docker and Docker Compose image does not include this operator CLI. Run it from an extracted binary package or a separate trusted administration host rather than from the router container. Its safe contract keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. Stage labels are deployment-defined rather than a fixed environment list. A bounded registry status can show schema-version drift without contacting a live database, cluster, DNS endpoint, or secret store.
 
 This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
 
