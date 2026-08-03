@@ -433,21 +433,140 @@ class PlannerWSHControlTest(unittest.TestCase):
         with self.control._locked_registry() as registry:
             self.assertIsNone(registry["drain"])
 
-    def test_proof_backed_recovery_permits_only_unavailable_identity(self) -> None:
+    def _prepare_persisted_absence_recovery(self) -> None:
         self.control.bootstrap()
         self.control._begin_repository_shutdown()
         self.control._record_planner_absence_proof()
-        self.runner.status_payload = "router-planner-session\nrouter-planner-session"
-        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is duplicate"):
-            self.control.shutdown(recovery_authorized=True)
-        self.runner.status_payload = None
-        self.runner.wsh_sessions = {"router-planner-session": "wrong-tag"}
-        with self.assertRaisesRegex(ControlPlaneError, "planner WSH identity is wrong-identity"):
-            self.control.shutdown(recovery_authorized=True)
         self.runner.wsh_sessions = {}
-        self.runner.status_result = RunResult(1)
         self.runner.windows.remove("wsh-server")
+        self.runner.calls.clear()
+        self.runner.call_kwargs.clear()
+
+    def _assert_drain_retained_without_wsh_mutation(self) -> None:
+        with self.control._locked_registry() as registry:
+            self.assertIsInstance(registry["drain"], dict)
+        wsh_calls = [call for call in self.runner.calls if call and call[0] == "wsh"]
+        self.assertFalse(any("kill" in call for call in wsh_calls), wsh_calls)
+
+    def test_authorized_persisted_absence_recovery_uses_zero_wsh_calls(self) -> None:
+        self._prepare_persisted_absence_recovery()
         self.control.shutdown(recovery_authorized=True)
+        self.assertFalse([call for call in self.runner.calls if call and call[0] == "wsh"])
+        with self.control._locked_registry() as registry:
+            self.assertIsNone(registry["drain"])
+        event = json.loads(self.control.audit_path.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual({"action": "shutdown-recovery", "outcome": "succeeded", "disposition": "persisted-absence"}, {key: event[key] for key in ("action", "outcome", "disposition")})
+        self.assertNotIn("router-planner-server", json.dumps(event))
+
+    def test_invalid_persisted_absence_proofs_retain_drain_without_wsh_mutation(self) -> None:
+        mutations = (
+            ("missing-proof-field", lambda registry, state: registry["drain"]["planner_absence_proof"].pop("at")),
+            ("extra-proof-field", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"extra": "x"})),
+            ("wrong-profile", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"owner_profile": "other"})),
+            ("wrong-owner", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"owner": "other"})),
+            ("wrong-session", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"planner_wsh_session_id": "other"})),
+            ("wrong-generation", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"generation": 1})),
+            ("boolean-drain-generation", lambda registry, state: registry["drain"].update({"generation": True})),
+            ("boolean-proof-generation", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"generation": True})),
+            ("advanced-drain-generation", lambda registry, state: registry.update({"generation": registry["generation"] + 1})),
+            ("invalid-timestamp", lambda registry, state: registry["drain"]["planner_absence_proof"].update({"at": "not-a-timestamp"})),
+            ("malformed-drain", lambda registry, state: registry["drain"].update({"unexpected": "x"})),
+            ("shared-lease", lambda registry, state: registry["leases"].update({"other": {}})),
+            ("local-lease", lambda registry, state: state["workers"].update({"other": {}})),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                self.tearDown()
+                self.setUp()
+                self._prepare_persisted_absence_recovery()
+                with self.control._locked_registry() as registry, self.control._locked_state() as state:
+                    mutate(registry, state)
+                    if name == "local-lease":
+                        self.control._write_state(state)
+                with self.assertRaisesRegex(ControlPlaneError, "persisted absence proof is invalid"):
+                    self.control.shutdown(recovery_authorized=True)
+                self._assert_drain_retained_without_wsh_mutation()
+
+    def test_legacy_corrupt_unauthorized_and_tmux_failures_retain_drain(self) -> None:
+        self._prepare_persisted_absence_recovery()
+        with self.control._locked_registry() as registry:
+            registry["drain"] = {"state": "legacy-recovery-required", "owner_profile": None, "started_at": None}
+        with self.assertRaisesRegex(ControlPlaneError, "repository drain recovery is ambiguous"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        with self.assertRaisesRegex(ControlPlaneError, "shutdown already requires explicit drain recovery"):
+            self.control.shutdown()
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        self.runner.fail_list_windows = True
+        with self.assertRaisesRegex(ControlPlaneError, "unable to enumerate tmux control windows"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        self.runner.windows.add("wsh-server")
+        with self.assertRaisesRegex(ControlPlaneError, "persisted absence proof is invalid"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        self.runner.windows.add("unexpected")
+        with self.assertRaisesRegex(ControlPlaneError, "persisted absence proof is invalid"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        registry_path = self.control.registry_directory / "registry.json"
+        registry_path.write_text('{"generation":"bad","drain":null,"leases":{}}\n', encoding="utf-8")
+        with self.assertRaisesRegex(ControlPlaneError, "lease registry is corrupt"):
+            self.control.shutdown(recovery_authorized=True)
+        self.assertFalse([call for call in self.runner.calls if call and call[0] == "wsh"])
+
+    def test_boolean_registry_generation_is_rejected_before_persisted_recovery_readiness(self) -> None:
+        self._prepare_persisted_absence_recovery()
+        registry_path = self.control.registry_directory / "registry.json"
+        raw = json.loads(registry_path.read_text(encoding="utf-8"))
+        raw["generation"] = True
+        registry_path.write_text(json.dumps(raw), encoding="utf-8")
+        with self.assertRaisesRegex(ControlPlaneError, "lease registry is corrupt"):
+            self.control.shutdown(recovery_authorized=True)
+        self.assertIs(json.loads(registry_path.read_text(encoding="utf-8"))["generation"], True)
+        self.assertFalse([call for call in self.runner.calls if call and call[0] == "wsh"])
+
+    def test_persisted_absence_recovery_rejects_reappearing_server_and_state_write_failure(self) -> None:
+        self._prepare_persisted_absence_recovery()
+        original_finish = self.control._finish_persisted_absence_shutdown
+
+        def reappear_before_drain_clear() -> None:
+            self.runner.tmux_exists = True
+            self.runner.windows = {"wsh-server"}
+            original_finish()
+
+        self.control._finish_persisted_absence_shutdown = reappear_before_drain_clear  # type: ignore[method-assign]
+        with self.assertRaisesRegex(ControlPlaneError, "tmux control session absence"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
+
+        self.tearDown()
+        self.setUp()
+        self._prepare_persisted_absence_recovery()
+        self.control._write_state = mock.Mock(side_effect=ControlPlaneError("simulated state persistence failure"))  # type: ignore[method-assign]
+        with self.assertRaisesRegex(ControlPlaneError, "simulated state persistence failure"):
+            self.control.shutdown(recovery_authorized=True)
+        self._assert_drain_retained_without_wsh_mutation()
 
     def test_absence_proof_requires_exact_owner_profile_generation_and_session(self) -> None:
         self.control._begin_repository_shutdown()
@@ -555,6 +674,9 @@ class PlannerWSHControlTest(unittest.TestCase):
             "Only the planner uses WSH",
         ):
             self.assertIn(required, prompt)
+        planner_prompt = self.control._planner_assignment_prompt()
+        self.assertIn("complete persisted exact-planner-absence proof", planner_prompt)
+        self.assertIn("zero WSH calls", planner_prompt)
 
     def test_closeout_contract_is_consistent_in_effective_prompt_and_role_policies(self) -> None:
         repository = Path(__file__).resolve().parent.parent
