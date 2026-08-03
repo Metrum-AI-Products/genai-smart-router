@@ -117,7 +117,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test capability-smoke capability-smoke-unit capability-smoke-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
 
 help: eks-help
 
@@ -204,7 +204,27 @@ ci-eks-staging-contract:
 	$(PYTHON) scripts/eks_promotion_evidence_integration_test.py
 	$(PYTHON) scripts/validate_eks_staging_workflow.py
 
-test: secret-check
+capability-smoke: capability-smoke-unit
+
+# This mock-first contract is offline and credential-free. SKIP_TESTS=true is
+# the only bypass; it is explicit, noisy, and cannot enable provider traffic.
+capability-smoke-unit:
+	@if [ "$${SKIP_TESTS:-false}" = "true" ]; then \
+		echo "WARNING: SKIP_TESTS=true skips capability-smoke-unit (synthetic manifests, evidence verifier, redaction checks)"; \
+	elif [ "$${SKIP_TESTS:-false}" = "false" ]; then \
+		$(PYTHON) scripts/provider_capability_smoke.py unit; \
+		$(PYTHON) scripts/provider_capability_smoke_test.py; \
+		go test ./internal/router -run 'TestVerifyCapability'; \
+	else \
+		echo "SKIP_TESTS must be true or false" >&2; exit 2; \
+	fi
+
+# Reserved for a separately reviewed protected-live implementation. It always
+# fails closed and the invoked script has no network, credential, or write path.
+capability-smoke-live:
+	@$(PYTHON) scripts/provider_capability_smoke.py live
+
+test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 
@@ -281,21 +301,21 @@ admin-e2e: admin-build
 	npx --prefix internal/router/admindist/web playwright install chromium
 	npm run e2e --prefix internal/router/admindist/web
 
-build: docs-build admin-build
+build: docs-build admin-build capability-smoke-unit
 	$(MAKE) validate-build-metadata
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
 	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
-build-go-only:
+build-go-only: capability-smoke-unit
 	$(MAKE) validate-build-metadata
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router ./cmd/router
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-token-gen ./cmd/router-token-gen
 	go build -ldflags "$(BUILD_LDFLAGS)" -o router-usage-report ./cmd/router-usage-report
 	go build -ldflags "$(BUILD_LDFLAGS)" -o metrum-smartrouterctl ./cmd/metrum-smartrouterctl
 
-build-all: docs-build admin-build
+build-all: docs-build admin-build capability-smoke-unit
 	$(MAKE) validate-build-metadata
 	mkdir -p "$${DIST_DIR}/build/linux-amd64" "$${DIST_DIR}/build/linux-arm64"
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o "$${DIST_DIR}/build/linux-amd64/router" ./cmd/router
@@ -309,9 +329,9 @@ build-all: docs-build admin-build
 
 package: package-all
 
-package-one: docs-build admin-build package-one-no-docs
+package-one: docs-build admin-build capability-smoke-unit package-one-no-docs
 
-package-one-no-docs:
+package-one-no-docs: capability-smoke-unit
 	$(MAKE) validate-release-clean
 	$(MAKE) validate-build-metadata
 	pkg_dir="$${DIST_DIR}/pkg/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"; \
@@ -335,21 +355,21 @@ package-one-no-docs:
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/pkg" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-$${GOOS}-$${GOARCH}.tar.gz"
 
-package-all: docs-build admin-build
+package-all: docs-build admin-build capability-smoke-unit
 	GOOS=linux GOARCH=amd64 $(MAKE) package-one-no-docs
 	GOOS=linux GOARCH=arm64 $(MAKE) package-one-no-docs
 
-docker-image: docs-build admin-build docker-image-no-docs
+docker-image: docs-build admin-build capability-smoke-unit docker-image-no-docs
 
-docker-image-no-docs:
+docker-image-no-docs: capability-smoke-unit
 	$(MAKE) validate-build-metadata
 	$(DOCKER_BUILDX) build --platform "$(DOCKER_PLATFORM)" --load --build-arg "VERSION=$${VERSION}" --build-arg "COMMIT=$${COMMIT}" --build-arg "BUILD_DATE=$${BUILD_DATE}" -t "$${IMAGE_NAME}:$${IMAGE_TAG}" .
 
 package-docker: package-docker-all
 
-package-docker-one: docs-build admin-build package-docker-one-no-docs
+package-docker-one: docs-build admin-build capability-smoke-unit package-docker-one-no-docs
 
-package-docker-one-no-docs:
+package-docker-one-no-docs: capability-smoke-unit
 	$(MAKE) validate-release-clean
 	$(MAKE) validate-build-metadata
 	docker_pkg_dir="$${DIST_DIR}/docker/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"; \
@@ -375,7 +395,7 @@ package-docker-one-no-docs:
 	$(TAR_ENV) tar --owner=0 --group=0 --numeric-owner -C "$${DIST_DIR}/docker" -czf "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz" "$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}"
 	python3 scripts/validate_package_contents.py --allowlist "$(PACKAGE_DOC_ALLOWLIST)" "$${DIST_DIR}/$${PKG_NAME}-$${VERSION}-docker-$${GOOS}-$${GOARCH}.tar.gz"
 
-package-docker-all: docs-build admin-build
+package-docker-all: docs-build admin-build capability-smoke-unit
 	GOOS=linux GOARCH=amd64 $(MAKE) package-docker-one-no-docs
 	GOOS=linux GOARCH=arm64 $(MAKE) package-docker-one-no-docs
 
