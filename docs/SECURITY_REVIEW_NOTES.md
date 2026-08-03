@@ -11,6 +11,14 @@ Keep `env.example.json` placeholder-only and run `make secret-check` before publ
 
 Release package review must include `scripts/validate_package_contents.py` on every binary and Docker artifact. The validator rejects AppleDouble `._*` metadata, non-allowlisted docs, internal production runbooks, private host/IP/SSH/live-compose markers, raw provider keys, raw router tokens, GitHub tokens, token-like filenames, real license files/state, signing material, local DBs, logs, JSONL state, source-checkout files, and unexpected package paths. Binary packages also validate `linux-amd64` and `linux-arm64` ELF machine types; Docker packages validate the saved image tar path and required runtime binaries in the image layers.
 
+Retired local agent integrations may leave credential-bearing files under
+`.tugduck/` or `.metrum-agents/` in older checkouts. Their tombstone ignore
+rules must remain even when the integration code is removed. Before cleanup,
+stop any process that could still use the files, verify the paths with
+`git check-ignore --no-index`, and remove only the retired directories without
+reading, printing, archiving, or force-staging their contents. Do not use
+`git clean -x`; it can delete unrelated ignored credentials and local state.
+
 Provider keys stay server-side. Caller tokens authenticate to the router and are checked before provider calls.
 
 Browser-admin authentication is separate from router caller tokens. HTTP Basic and OIDC sessions are disabled by default. Basic must use bcrypt password hashes from deployment secrets or environment variables and HTTPS in production. OIDC must use IdP client credentials from environment variables, Authorization Code with PKCE, server-side sessions, HttpOnly cookies, production HTTPS redirect URLs, and bounded pending-login state with per-client limits. If TLS terminates at a reverse proxy, `X-Forwarded-Proto: https` is trusted only from configured proxy CIDRs. Browser-admin authentication establishes subjects such as `basic:admin` or `user:alice@example.com`; it does not grant broader admin permissions by itself. `/metrics` remains caller-token protected and requires Casbin authorization for `metrics` `read`; existing `metrics_admin: true` callers are converted to equivalent startup grants.
