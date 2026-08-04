@@ -3660,7 +3660,14 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 		}},
 	}
 	cfg.Models["private-group"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "private-model", ContextTokens: 8192}}}
-	cfg.Callers[0].Allow = []string{"big-coder"}
+	cfg.Models["plain"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "plain-model", ContextTokens: 8192}}}
+	cfg.Models["tool-only"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "mock",
+		Model:           "tool-only-model",
+		ToolOnly:        true,
+		DefaultThinking: map[string]any{"type": "enabled", "budget_tokens": 512},
+	}}}
+	cfg.Callers[0].Allow = []string{"big-coder", "plain", "tool-only"}
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -3715,8 +3722,8 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 	if err := json.Unmarshal(rr.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 1 {
-		t.Fatalf("catalog models=%#v, want exactly caller-allowed group", catalog.Models)
+	if len(catalog.Models) != 3 {
+		t.Fatalf("catalog models=%#v, want exactly caller-allowed groups", catalog.Models)
 	}
 	model := catalog.Models[0]
 	if model.Slug != "big-coder" || model.DisplayName != "Coding workspace" || model.Description != "Deployment-defined coding group." {
@@ -3733,6 +3740,35 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 	}
 	if model.TruncationPolicy["mode"] != "tokens" || model.ApplyPatchToolType != "freeform" {
 		t.Fatalf("static Codex mapping=%#v", model)
+	}
+	if model.DefaultReasoningLevel == "" || !model.SupportsReasoningSummaries {
+		t.Fatalf("active reasoning metadata must remain advertised: %#v", model)
+	}
+	var rawCatalog struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &rawCatalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, slug := range []string{"plain", "tool-only"} {
+		var nonReasoning map[string]any
+		for _, rawModel := range rawCatalog.Models {
+			if rawModel["slug"] == slug {
+				nonReasoning = rawModel
+				break
+			}
+		}
+		if nonReasoning == nil {
+			t.Fatalf("missing non-reasoning Codex model %q in %#v", slug, rawCatalog.Models)
+		}
+		for _, field := range []string{"default_reasoning_level", "default_reasoning_summary"} {
+			if _, ok := nonReasoning[field]; ok {
+				t.Fatalf("non-reasoning Codex model %q advertised %s: %#v", slug, field, nonReasoning)
+			}
+		}
+		if levels, ok := nonReasoning["supported_reasoning_levels"].([]any); !ok || len(levels) != 0 || nonReasoning["supports_reasoning_summaries"] != false {
+			t.Fatalf("non-reasoning Codex model %q reasoning metadata=%#v", slug, nonReasoning)
+		}
 	}
 	for _, forbidden := range []string{"provider-key", testToken, cfg.Callers[0].TokenSHA256, cfg.Provider["mock"].BaseURL, "mock", "private-upstream-model", "private-model", "private-group", "weight", "dialect", "targets"} {
 		if strings.Contains(rr.Body.String(), forbidden) {

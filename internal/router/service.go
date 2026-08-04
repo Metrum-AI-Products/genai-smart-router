@@ -402,7 +402,6 @@ func (s *Service) callerModelMetadata(caller *callerRuntime) []map[string]any {
 			"owned_by":                         "smart-llmrouter",
 			"use_responses_lite":               false,
 		}
-		model["default_reasoning_summary"] = "none"
 		if len(reasoningLevels) > 0 {
 			model["default_reasoning_summary"] = "none"
 			model["supported_reasoning_levels"] = reasoningLevelPresets(reasoningLevels)
