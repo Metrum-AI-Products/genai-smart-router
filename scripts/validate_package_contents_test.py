@@ -130,6 +130,12 @@ def main() -> int:
         write_tar(good, binary_package_files())
         expect_ok(good, allowlist)
 
+        missing_cli = root / "missing-cli.tar.gz"
+        missing_cli_files = binary_package_files()
+        del missing_cli_files["smart-llmrouter-v1.0.0-linux-amd64/bin/metrum-smartrouterctl"]
+        write_tar(missing_cli, missing_cli_files)
+        expect_errors(missing_cli, allowlist, ["required package file is missing: bin/metrum-smartrouterctl"])
+
         good_docker = root / "smart-llmrouter-v1.0.0-docker-linux-amd64.tar.gz"
         write_tar(good_docker, docker_package_files())
         expect_ok(good_docker, allowlist)

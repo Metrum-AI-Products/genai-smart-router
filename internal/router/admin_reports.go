@@ -2841,7 +2841,7 @@ func buildAdminCatalogStatusResponse(cfg Config) adminCatalogStatusResponse {
 			effective, inactive := toolSupportByActiveDialect(resolved.ToolSupport, eligibilityDialect)
 			row.EffectiveToolSupport = effective
 			row.InactiveToolSupport = inactive
-			row.EffectiveStructured = targetSupportsCapability(resolved, eligibilityDialect, "structured_outputs", "json_schema")
+			row.EffectiveStructured = targetSupportsStructuredOutput(resolved, eligibilityDialect, eligibilityDialect, true)
 			row.EffectiveReasoning = targetSupportsReasoningForDialect(resolved, eligibilityDialect)
 			row.EffectiveImageInput = stringSliceContains(defaultModalities(resolved.InputModalities), "image")
 			if len(row.InactiveToolSupport) > 0 {
@@ -3067,7 +3067,7 @@ func addGroupEligibility(groups map[string]*adminGroupEligibility, groupName str
 		groups[groupName] = summary
 	}
 	tools := targetSupportsTools(target, dialect)
-	structured := targetSupportsCapability(target, dialect, "structured_outputs", "json_schema")
+	structured := targetSupportsStructuredOutput(target, dialect, dialect, true)
 	image := stringSliceContains(defaultModalities(target.InputModalities), "image")
 	reasoning := targetSupportsReasoningForDialect(target, dialect)
 	switch normalizeDialect(dialect) {

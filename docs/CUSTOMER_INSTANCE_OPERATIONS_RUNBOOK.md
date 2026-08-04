@@ -1,6 +1,6 @@
 # Customer Router Instance Operations Runbook
 
-> **Source-only internal runbook.** The operator CLI described here is the planned #581 contract, not a shipped command surface. This document does not authorize AWS, EKS, RDS, DNS, or production mutations. Until the policy gates and implementation evidence below are complete, use the approved existing deployment runbooks for live operations.
+> **Source-only internal runbook.** The safe-contract operator CLI is shipped in binary tarballs and is not included in the standard Docker or Docker Compose image. This document does not authorize AWS, EKS, RDS, DNS, or production mutations. Until the policy gates and implementation evidence below are complete, use the approved existing deployment runbooks for live operations.
 
 ## Purpose and ownership
 

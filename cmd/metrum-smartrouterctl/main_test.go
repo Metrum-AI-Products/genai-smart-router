@@ -30,14 +30,51 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 	if _, err := os.Stat(registry); !os.IsNotExist(err) {
 		t.Fatalf("status created registry: %v", err)
 	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "missing", "--stage", "test", "--current-schema-version", "1"); err == nil || !strings.Contains(out, "open existing tenant registry") {
+		t.Fatalf("missing observation registry did not fail closed: %v %s", err, out)
+	}
+	if _, err := os.Stat(registry); !os.IsNotExist(err) {
+		t.Fatalf("observation created missing registry: %v", err)
+	}
 	register := []string{"register", "--registry", registry, "--tenant", "tenant-a", "--instance", "router-a", "--stage", "test", "--region", "test-region-1", "--namespace", "ns-router-a", "--release", "release-router-a", "--runtime-identity", "identity-router-a", "--rds-instance", "rds-router-a", "--release-digest", "sha256:test", "--schema-version", "1"}
+	if out, err := run(register...); err == nil || !strings.Contains(out, "current schema version") {
+		t.Fatalf("register inferred current schema version: %v %s", err, out)
+	}
+	register = append(register, "--current-schema-version", "0")
 	if out, err := run(register...); err != nil || !strings.Contains(out, "registered safe") {
 		t.Fatalf("register failed: %v %s", err, out)
 	}
-	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, "tenant-a") {
-		t.Fatalf("bounded status failed: %v %s", err, out)
+	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, "schema_version_mismatch") || !strings.Contains(out, `"CurrentSchemaVersion": 0`) {
+		t.Fatalf("independently observed schema drift was not reported: %v %s", err, out)
 	}
-	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "reserve-a", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--current-schema-version", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) {
+		t.Fatalf("schema observation failed: %v %s", err, out)
+	}
+	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) || !strings.Contains(out, `"CurrentSchemaVersion": 1`) {
+		t.Fatalf("updated schema status was not current: %v %s", err, out)
+	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "missing", "--stage", "test", "--current-schema-version", "1"); err == nil || !strings.Contains(out, "exactly one registered instance") {
+		t.Fatalf("missing tenant schema observation did not fail closed: %v %s", err, out)
+	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--current-schema-version", "2147483648"); err == nil || !strings.Contains(out, "between 0 and 2147483647") {
+		t.Fatalf("out-of-bounds schema observation did not fail closed: %v %s", err, out)
+	}
+	for _, unsafeReservationID := range []string{
+		"ghp_exampleCredentialValue",
+		"sk-exampleProviderSecret",
+		"router-token-example",
+		"https://example.test/reservation",
+		"/private/reservations/example",
+	} {
+		out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", unsafeReservationID, "--mock-quota-limit", "4")
+		if err == nil || !strings.Contains(out, "invalid reservation id") {
+			t.Fatalf("unsafe quota reservation ID did not fail closed: %v %s", err, out)
+		}
+		if strings.Contains(out, unsafeReservationID) {
+			t.Fatalf("unsafe quota reservation ID was echoed: %s", out)
+		}
+	}
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "rsv-00000000-0000-0000-0000-000000000001", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
 		t.Fatalf("fake quota reservation failed: %v %s", err, out)
 	}
 	if _, err := run("status", "--registry", "file:unsafe?mode=memory", "--limit", "1"); err == nil {

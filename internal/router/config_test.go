@@ -2050,14 +2050,22 @@ func assertBigCoderImageTargetPolicy(t *testing.T, cfg *Config, group ModelGroup
 			toolOnly: true,
 		},
 	}
-	got := map[string]Target{}
+	imageTargets := make([]Target, 0, len(want))
 	for _, target := range group.Targets {
 		if stringSliceContains(target.RequestShapeSupport.RequiredInputModalities, "image") {
-			got[target.Provider+":"+target.Model] = target
+			imageTargets = append(imageTargets, target)
 		}
 	}
-	if len(got) != len(want) {
-		t.Fatalf("big-coder image-gated targets=%#v, want exactly %#v", got, want)
+	if len(imageTargets) != len(want) {
+		t.Fatalf("big-coder image-gated target entries=%#v, want exactly %d entries", imageTargets, len(want))
+	}
+	got := make(map[string]Target, len(imageTargets))
+	for _, target := range imageTargets {
+		key := target.Provider + ":" + target.Model
+		if _, exists := got[key]; exists {
+			t.Fatalf("big-coder duplicate image-gated target %s; entries=%#v", key, imageTargets)
+		}
+		got[key] = target
 	}
 
 	textReq := &IRRequest{Model: "big-coder", Messages: []IRMessage{{Role: "user", Content: "hello"}}}

@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+const (
+	testReservationA         = "rsv-00000000-0000-0000-0000-000000000001"
+	testReservationB         = "rsv-00000000-0000-0000-0000-000000000002"
+	testReservationExhausted = "rsv-00000000-0000-0000-0000-000000000003"
+	testReservationFailure   = "rsv-00000000-0000-0000-0000-000000000004"
+)
+
 type fakeRDSQuotaAdapter struct {
 	snapshot     QuotaSnapshot
 	preflightErr error
@@ -122,6 +129,62 @@ func TestTenantRegistryReadOnlyOpenNeverCreatesMissingDatabase(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read-only open created registry: %v", err)
 	}
+	if _, err := OpenTenantInstanceRegistryExisting(path); err == nil {
+		t.Fatal("missing writable registry opened")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("writable observation open created registry: %v", err)
+	}
+}
+
+func TestTenantRegistrySQLiteModesAtomicallyRejectMissingDatabase(t *testing.T) {
+	for _, mode := range []string{"rw", "ro"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "removed-after-stat.sqlite")
+			if _, err := openTenantRegistrySQLite(path, mode); err == nil {
+				t.Fatalf("SQLite mode %s created a missing registry", mode)
+			}
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("SQLite mode %s left a created registry: %v", mode, err)
+			}
+		})
+	}
+}
+
+func TestTenantRegistryExistingModesPreserveRelativePaths(t *testing.T) {
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	const path = "tenant-instances.sqlite"
+	created, err := OpenTenantInstanceRegistry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, open := range []func(string) (*TenantInstanceRegistry, error){
+		OpenTenantInstanceRegistryExisting,
+		OpenTenantInstanceRegistryReadOnly,
+	} {
+		registry, err := open(path)
+		if err != nil {
+			t.Fatalf("reopen relative registry: %v", err)
+		}
+		if err := registry.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
@@ -136,20 +199,150 @@ func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
 	}
 }
 
+func TestTenantRegistryQuotaReservationIDRejectsUnsafeValuesBeforeIO(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	if err := r.Register(context.Background(), testTenantInstance("tenant-a", "router-a")); err != nil {
+		t.Fatal(err)
+	}
+	invalidReservationIDs := []string{
+		"",
+		"reserve-a",
+		"rsv-00000000-0000-0000-0000-00000000000A",
+		"rsv-00000000-0000-0000-0000-00000000000",
+		"rsv-00000000-0000-0000-0000-0000000000010",
+		"sk-exampleProviderSecret",
+		"router-token-example",
+		"ghp_exampleCredentialValue",
+		"https://example.test/reservations/1",
+		"/tmp/reservation",
+		strings.Repeat("a", 4096),
+	}
+	for _, reservationID := range invalidReservationIDs {
+		adapter := &fakeRDSQuotaAdapter{
+			snapshot: QuotaSnapshot{Region: "test-region-1", Limit: 10},
+		}
+		if _, err := r.PreflightAndReserve(
+			context.Background(),
+			"tenant-a",
+			"customer-test",
+			reservationID,
+			0,
+			adapter,
+		); err == nil || !strings.Contains(err.Error(), "invalid reservation id") {
+			t.Fatalf("unsafe reservation ID accepted or returned an unsafe error: %q %v", reservationID, err)
+		}
+		if adapter.preflights != 0 || adapter.reservations != 0 {
+			t.Fatalf("unsafe reservation ID reached adapter: preflights=%d reservations=%d", adapter.preflights, adapter.reservations)
+		}
+		var rows int64
+		if err := r.db.Model(&quotaReservationRecord{}).Count(&rows).Error; err != nil {
+			t.Fatal(err)
+		}
+		if rows != 0 {
+			t.Fatalf("unsafe reservation ID mutated quota records: %d", rows)
+		}
+	}
+}
+
+func TestTenantRegistryObserveSchemaVersionIsIndependentBoundedAndLocal(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	instance := testTenantInstance("tenant-a", "router-a")
+	instance.CurrentSchemaVersion = 3
+	if err := r.Register(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.DriftStatus(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || status[0].DriftCode != "schema_version_mismatch" {
+		t.Fatalf("independent registration did not expose drift: %#v", status)
+	}
+
+	observation, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "customer-test", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.ExpectedSchemaVersion != 4 ||
+		observation.CurrentSchemaVersion != 4 ||
+		observation.DriftCode != "current" ||
+		!observation.ObservedAt.After(instance.ObservedAt) {
+		t.Fatalf("unexpected schema observation: %#v", observation)
+	}
+	resolved, err := r.ResolveDedicated(context.Background(), "tenant-a", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ExpectedSchemaVersion != 4 ||
+		resolved.CurrentSchemaVersion != 4 ||
+		resolved.DesiredReleaseDigest != instance.DesiredReleaseDigest {
+		t.Fatalf("schema observation changed immutable deployment metadata: %#v", resolved)
+	}
+	status, err = r.DriftStatus(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || status[0].DriftCode != "current" {
+		t.Fatalf("later observation did not clear drift: %#v", status)
+	}
+
+	for _, invalidVersion := range []int{-1, maxTenantSchemaVersion + 1} {
+		if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "customer-test", invalidVersion); err == nil {
+			t.Fatalf("out-of-bounds observed schema version accepted: %d", invalidVersion)
+		}
+	}
+	unchanged, err := r.ResolveDedicated(context.Background(), "tenant-a", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.CurrentSchemaVersion != 4 || !unchanged.ObservedAt.Equal(observation.ObservedAt) {
+		t.Fatalf("rejected observation mutated registry state: %#v", unchanged)
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "missing", "customer-test", 4); err == nil {
+		t.Fatal("missing tenant observation succeeded")
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-a", "", 4); err == nil {
+		t.Fatal("ambiguous tenant-only observation succeeded")
+	}
+
+	future := testTenantInstance("tenant-future", "router-future")
+	future.ObservedAt = time.Now().UTC().Add(time.Hour)
+	if err := r.Register(context.Background(), future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ObserveSchemaVersion(context.Background(), "tenant-future", "customer-test", 3); err == nil {
+		t.Fatal("stale server-generated observation replaced a future registry observation")
+	}
+	futureResolved, err := r.ResolveDedicated(context.Background(), "tenant-future", "customer-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if futureResolved.CurrentSchemaVersion != future.CurrentSchemaVersion ||
+		!futureResolved.ObservedAt.Equal(future.ObservedAt) {
+		t.Fatalf("rejected stale observation mutated registry state: %#v", futureResolved)
+	}
+
+	tooLarge := testTenantInstance("tenant-large", "router-large")
+	tooLarge.ExpectedSchemaVersion = maxTenantSchemaVersion + 1
+	if err := r.Register(context.Background(), tooLarge); err == nil {
+		t.Fatal("out-of-bounds expected schema version registered")
+	}
+}
+
 func TestTenantRegistryQuotaPreflightReservationIsIdempotentAndFailsClosed(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	if err := r.Register(context.Background(), testTenantInstance("tenant-a", "router-a")); err != nil {
 		t.Fatal(err)
 	}
 	adapter := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: "test-region-1", Limit: 5, Used: 2, Reserved: 1}}
-	reservation, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", "reserve-a", 1, adapter)
+	reservation, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", testReservationA, 1, adapter)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reservation.State != "admission_reserved" || reservation.Headroom != 1 || adapter.reservations != 1 {
 		t.Fatalf("bad reservation %#v calls=%d", reservation, adapter.reservations)
 	}
-	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", "reserve-a", 1, adapter); err != nil {
+	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", testReservationA, 1, adapter); err != nil {
 		t.Fatal(err)
 	}
 	if adapter.reservations != 1 {
@@ -160,29 +353,29 @@ func TestTenantRegistryQuotaPreflightReservationIsIdempotentAndFailsClosed(t *te
 	if err := r.Register(context.Background(), other); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.PreflightAndReserve(context.Background(), "tenant-b", "customer-test", "reserve-a", 1, adapter); err == nil {
+	if _, err := r.PreflightAndReserve(context.Background(), "tenant-b", "customer-test", testReservationA, 1, adapter); err == nil {
 		t.Fatal("reservation ID was reused across tenants")
 	}
 	regional := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: "test-region-1", Limit: 1}}
-	if _, err := r.PreflightAndReserve(context.Background(), "tenant-b", "customer-test", "reserve-b", 0, regional); err == nil {
+	if _, err := r.PreflightAndReserve(context.Background(), "tenant-b", "customer-test", testReservationB, 0, regional); err == nil {
 		t.Fatal("active regional local hold did not consume capacity")
 	}
 	if regional.reservations != 0 {
 		t.Fatal("regional local hold rejection called adapter")
 	}
 	exhausted := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: "test-region-1", Limit: 3, Used: 2, Reserved: 0}}
-	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", "reserve-exhausted", 1, exhausted); err == nil {
+	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", testReservationExhausted, 1, exhausted); err == nil {
 		t.Fatal("headroom exhaustion was accepted")
 	}
 	if exhausted.reservations != 0 {
 		t.Fatal("quota exhaustion called reserve")
 	}
 	failing := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: "test-region-1", Limit: 10}, reserveErr: errors.New("fake adapter failure")}
-	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", "reserve-fail", 0, failing); err == nil {
+	if _, err := r.PreflightAndReserve(context.Background(), "tenant-a", "customer-test", testReservationFailure, 0, failing); err == nil {
 		t.Fatal("adapter failure was accepted")
 	}
 	var rows int64
-	if err := r.db.Model(&quotaReservationRecord{}).Where("reservation_id = ?", "reserve-fail").Count(&rows).Error; err != nil {
+	if err := r.db.Model(&quotaReservationRecord{}).Where("reservation_id = ?", testReservationFailure).Count(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	if rows != 0 {
