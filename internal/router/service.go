@@ -2459,8 +2459,8 @@ func targetSupportsStructuredOutput(target Target, callerDialect, outDialect str
 	if !required {
 		return true
 	}
-	if isResponsesToChatBridge(callerDialect, outDialect, target) && target.ResponsesToChat.StructuredOutputs {
-		return supportsAnyCapability(targetCapabilityValues(target, "openai-chat"), "structured_outputs", "json_schema")
+	if isResponsesToChatBridge(callerDialect, outDialect, target) {
+		return false
 	}
 	if isChatToResponsesBridge(callerDialect, outDialect, target) {
 		return target.Bridges.ChatToResponses.StructuredOutputs && supportsAnyCapability(targetCapabilityValues(target, outDialect), "structured_outputs", "json_schema")

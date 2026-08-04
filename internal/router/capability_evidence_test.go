@@ -159,6 +159,43 @@ func TestProviderHostedStructuredOutputsStayInactiveAcrossConsumers(t *testing.T
 	}
 }
 
+func TestResponsesToChatStructuredOutputRemainsUnsupportedAcrossConsumers(t *testing.T) {
+	target := Target{
+		Provider:        "p",
+		Model:           "synthetic",
+		Dialect:         "openai-chat",
+		ToolSupport:     ToolSupport{OpenAIChat: []string{"structured_outputs"}},
+		ResponsesToChat: ResponsesToChatBridge{Enabled: true, StructuredOutputs: true},
+	}
+	req := &IRRequest{Raw: map[string]any{"response_format": map[string]any{"type": "json_schema"}}}
+	if targetSupportsStructuredOutput(target, "openai-responses", "openai-chat", true) {
+		t.Fatal("Responses-to-Chat bridge advertised unsupported structured output")
+	}
+	if reason := responsesToChatBridgeFilterReason(target, req, "openai-responses", "openai-chat"); reason != "responses-to-chat-structured-output" {
+		t.Fatalf("runtime bridge filter reason=%q", reason)
+	}
+	contract := &ModelGroupContract{
+		RequiredCaps: ContractRequiredCapabilities{StructuredOutputs: true},
+	}
+	if reason := targetPassesContract(contract, target, "openai-chat", "openai-responses", req, dynamicStats{}, time.Now().UTC()); reason != "contract-required-structured-outputs" {
+		t.Fatalf("contract accepted Responses-to-Chat structured output: reason=%q", reason)
+	}
+	filters := DynamicScoreHardFilters{RequireStructuredOutputSupport: true}
+	if dynamicPassesHardFilters(target, req, "openai-responses", "openai-chat", filters) {
+		t.Fatal("dynamic hard filter accepted Responses-to-Chat structured output")
+	}
+
+	cfg := Config{
+		Server:   ServerConfig{DecisionTelemetry: DecisionTelemetryConfig{Enabled: true}},
+		Provider: map[string]ProviderConfig{"p": {Dialect: "openai-chat"}},
+	}
+	rc := &requestContext{}
+	(&Service{cfg: &cfg}).recordEligibilityTelemetry(rc, "group", ModelGroup{Targets: []Target{target}}, req, "openai-responses")
+	if len(rc.rec.DecisionCandidates) != 1 || rc.rec.DecisionCandidates[0].StructuredOutput {
+		t.Fatalf("telemetry reported Responses-to-Chat structured output as supported: %#v", rc.rec.DecisionCandidates)
+	}
+}
+
 func TestAdvertisedCapabilitiesHonorToolOnlyAndUnsupportedFeatures(t *testing.T) {
 	target := Target{
 		ToolOnly:        true,
