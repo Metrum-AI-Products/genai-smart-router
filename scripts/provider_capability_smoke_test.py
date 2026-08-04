@@ -29,8 +29,20 @@ def main() -> int:
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
-    safe = {"schema_version": module.SCHEMA_VERSION, "identity": {field: "x" for field in module.REQUIRED_IDENTITY}, "capability_case": "text", "status": "passed", "observed": {"http_status": 200}}
-    safe["identity"]["model_suffix"] = ""
+    identity = {
+        "provider": "synthetic",
+        "account_identity_class": "test",
+        "endpoint_fingerprint": "sha256:" + "a" * 64,
+        "endpoint_path": "/v1/chat/completions",
+        "api_skin": "openai-chat",
+        "model": "synthetic",
+        "model_suffix": "",
+        "inbound_dialect": "openai-chat",
+        "bridge_direction": "none",
+        "request_shape": "text",
+        "profile_version": "synthetic/v1",
+    }
+    safe = {"schema_version": module.SCHEMA_VERSION, "identity": identity, "capability_case": "text", "status": "passed", "observed": {"http_status": 200}}
     module.validate_result(safe)
     unsafe = dict(safe); unsafe["observed"] = {"nested": {"raw_prompt": "sentinel prompt", "image_url": "https://sentinel.invalid", "tool_schema": {"secret": "sentinel"}}}
     try:
@@ -46,6 +58,14 @@ def main() -> int:
         pass
     else:
         raise AssertionError("raw output sentinel survived scalar allowlist")
+    wrong_shape = dict(safe)
+    wrong_shape["identity"] = {**identity, "request_shape": "tools-auto"}
+    try:
+        module.validate_result(wrong_shape)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("request shape was not bound to capability case")
     request = module.fake_request("tools-forced", safe["identity"])
     require(request["tool_choice"] == "forced", "fake adapter failed forced-tool classification")
     make = (ROOT / "Makefile").read_text()

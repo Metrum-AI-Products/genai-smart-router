@@ -1,6 +1,11 @@
 package router
 
-import "strings"
+import (
+	"crypto/sha256"
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 // CapabilityEvidence is an import-safe, persistence-free DTO for the
 // deterministic capability-smoke contract. It intentionally has no GORM tags
@@ -24,6 +29,19 @@ type CapabilityEvidenceIdentity struct {
 	BridgeDirection      string `json:"bridge_direction"`
 	RequestShape         string `json:"request_shape"`
 	ProfileVersion       string `json:"profile_version"`
+}
+
+type capabilitySurface struct {
+	target              Target
+	accountIdentity     string
+	endpointFingerprint string
+	endpointPath        string
+	apiSkin             string
+	model               string
+	modelSuffix         string
+	inbound             string
+	bridge              string
+	capabilities        []string
 }
 
 // VerifyCapabilityClaims checks resolved (catalog plus target override)
@@ -50,13 +68,19 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 			if err != nil || target.Provider != claim.Identity.Provider || target.Model != claim.Identity.Model {
 				continue
 			}
-			dialect := targetDialect(c.Provider[target.Provider], target)
-			if dialect != claim.Identity.APISkin || !identityMatchesTargetPath(claim.Identity, dialect) {
+			surfaces, err := capabilitySurfaces(c.Provider[target.Provider], target)
+			if err != nil {
+				failures = append(failures, "cannot derive capability endpoint for "+target.Provider+"/"+target.Model)
 				continue
 			}
-			matched = true
-			if !targetAdvertisesCapability(target, dialect, claim.CapabilityCase) {
-				failures = append(failures, "target metadata does not advertise "+claim.CapabilityCase+" for "+target.Provider+"/"+target.Model)
+			for _, surface := range surfaces {
+				if !identityMatchesCapabilitySurface(claim.Identity, claim.CapabilityCase, surface) {
+					continue
+				}
+				matched = true
+				if !surfaceAdvertisesCapability(surface, claim.CapabilityCase) {
+					failures = append(failures, "target metadata does not advertise "+claim.CapabilityCase+" for "+target.Provider+"/"+target.Model)
+				}
 			}
 		}
 		if !matched {
@@ -66,9 +90,10 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 	return failures
 }
 
-// VerifyAdvertisedCapabilities fails closed when any resolved target capability
-// lacks matching, complete, passing synthetic evidence. It is deliberately a
-// test-only contract gate: no evidence is written or trusted for promotion.
+// VerifyAdvertisedCapabilities fails closed when any resolved target callable
+// surface lacks matching, complete, passing synthetic evidence. Direct and
+// translated surfaces are separate requirements. No evidence is persisted or
+// trusted for promotion.
 func (c *Config) VerifyAdvertisedCapabilities(group string, evidence []CapabilityEvidence, expected []CapabilityEvidenceIdentity) []string {
 	modelGroup, ok := c.Models[group]
 	if !ok {
@@ -81,70 +106,195 @@ func (c *Config) VerifyAdvertisedCapabilities(group string, evidence []Capabilit
 			failures = append(failures, err.Error())
 			continue
 		}
-		dialect := targetDialect(c.Provider[target.Provider], target)
-		for _, capability := range advertisedCapabilities(target, dialect) {
-			matched := false
-			for _, row := range evidence {
-				if row.SchemaVersion != "capability-smoke/v1" || row.Status != "passed" || row.CapabilityCase != capability || !capabilityIdentityComplete(row.Identity) {
-					continue
+		surfaces, err := capabilitySurfaces(c.Provider[target.Provider], target)
+		if err != nil {
+			failures = append(failures, "cannot derive capability endpoint for "+target.Provider+"/"+target.Model)
+			continue
+		}
+		for _, surface := range surfaces {
+			for _, capability := range surface.capabilities {
+				matched := false
+				for _, row := range evidence {
+					if row.SchemaVersion != "capability-smoke/v1" || row.Status != "passed" || row.CapabilityCase != capability || !capabilityIdentityComplete(row.Identity) {
+						continue
+					}
+					if identityMatchesCapabilitySurface(row.Identity, capability, surface) && identityIsExpected(row.Identity, expected) {
+						matched = true
+						break
+					}
 				}
-				if row.Identity.Provider == target.Provider && row.Identity.Model == target.Model && row.Identity.APISkin == dialect && identityMatchesTargetPath(row.Identity, dialect) && identityIsExpected(row.Identity, expected) {
-					matched = true
-					break
+				if !matched {
+					failures = append(failures, "missing passing evidence for "+capability+" on "+target.Provider+"/"+target.Model+" ("+surface.inbound+"/"+surface.bridge+")")
 				}
-			}
-			if !matched {
-				failures = append(failures, "missing passing evidence for "+capability+" on "+target.Provider+"/"+target.Model)
 			}
 		}
 	}
 	return failures
 }
 
-func advertisedCapabilities(target Target, dialect string) []string {
-	cases := []string{"text"}
-	if dialect == "openai-responses" {
-		cases = append(cases, "openai-responses")
+func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySurface, error) {
+	accountIdentity := strings.TrimSpace(provider.KeyID)
+	if accountIdentity == "" {
+		return nil, fmt.Errorf("provider key_id is required")
 	}
-	if targetAdvertisesToolCapability(target, dialect, "auto") {
-		cases = append(cases, "tools-auto")
+	apiSkin := targetDialect(provider, target)
+	endpointPath, endpointFingerprint, err := capabilityEndpointIdentity(provider, target, apiSkin)
+	if err != nil {
+		return nil, err
 	}
-	if targetAdvertisesToolCapability(target, dialect, "forced") {
-		cases = append(cases, "tools-forced")
+	model, modelSuffix := capabilityModelIdentity(target.Model)
+	direct := capabilitySurface{
+		target:              target,
+		accountIdentity:     accountIdentity,
+		endpointFingerprint: endpointFingerprint,
+		endpointPath:        endpointPath,
+		apiSkin:             apiSkin,
+		model:               model,
+		modelSuffix:         modelSuffix,
+		inbound:             apiSkin,
+		bridge:              "none",
+		capabilities:        advertisedCapabilities(target, apiSkin),
 	}
-	if targetAdvertisesCapability(target, dialect, "image-input") {
-		cases = append(cases, "router-selected-ocr")
+	surfaces := []capabilitySurface{direct}
+	if isChatToResponsesBridge("openai-chat", apiSkin, target) {
+		capabilities := chatToResponsesEvidenceCapabilities(target, apiSkin)
+		if len(capabilities) > 0 {
+			translated := direct
+			translated.inbound = "openai-chat"
+			translated.bridge = chatToResponsesBridgeDirection
+			translated.capabilities = capabilities
+			surfaces = append(surfaces, translated)
+		}
 	}
-	return cases
+	if isResponsesToChatBridge("openai-responses", apiSkin, target) {
+		capabilities := responsesToChatEvidenceCapabilities(target, apiSkin)
+		if len(capabilities) > 0 {
+			translated := direct
+			translated.inbound = "openai-responses"
+			translated.bridge = responsesToChatBridgeDirection
+			translated.capabilities = capabilities
+			surfaces = append(surfaces, translated)
+		}
+	}
+	return surfaces, nil
 }
 
-func targetAdvertisesToolCapability(target Target, dialect, wanted string) bool {
-	var values []string
-	switch dialect {
-	case "openai-chat":
-		values = target.ToolSupport.OpenAIChat
-	case "openai-responses":
-		values = target.ToolSupport.OpenAIResponses
-	case "anthropic":
-		values = target.ToolSupport.AnthropicMessages
+func advertisedCapabilities(target Target, dialect string) []string {
+	capabilities := []string{"text"}
+	if targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-auto")
 	}
-	for _, value := range values {
-		if value == wanted {
+	if targetSupportsClientTools(target, dialect, true) {
+		capabilities = append(capabilities, "tools-forced")
+	}
+	if targetSupportsInputModalities(target, []string{"image"}) {
+		capabilities = append(capabilities, "image-input")
+	}
+	if targetSupportsStructuredOutput(target, dialect, dialect, true) {
+		capabilities = append(capabilities, "structured-outputs")
+	}
+	return capabilities
+}
+
+func chatToResponsesEvidenceCapabilities(target Target, dialect string) []string {
+	bridge := target.Bridges.ChatToResponses
+	var capabilities []string
+	if bridge.Text == nil || *bridge.Text {
+		capabilities = append(capabilities, "text")
+	}
+	if bridge.Tools && targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-auto")
+	}
+	if bridge.Tools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {
+		capabilities = append(capabilities, "tools-forced")
+	}
+	if bridge.Images && targetSupportsInputModalities(target, []string{"image"}) {
+		capabilities = append(capabilities, "image-input")
+	}
+	if targetSupportsStructuredOutput(target, "openai-chat", dialect, true) {
+		capabilities = append(capabilities, "structured-outputs")
+	}
+	return capabilities
+}
+
+func responsesToChatEvidenceCapabilities(target Target, dialect string) []string {
+	bridge := target.ResponsesToChat
+	var capabilities []string
+	if bridge.Text {
+		capabilities = append(capabilities, "text")
+	}
+	if bridge.FunctionTools && targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-auto")
+	}
+	if bridge.FunctionTools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {
+		capabilities = append(capabilities, "tools-forced")
+	}
+	if bridge.Images && targetSupportsInputModalities(target, []string{"image"}) {
+		capabilities = append(capabilities, "image-input")
+	}
+	if targetSupportsStructuredOutput(target, "openai-responses", dialect, true) {
+		capabilities = append(capabilities, "structured-outputs")
+	}
+	return capabilities
+}
+
+func capabilityEndpointIdentity(provider ProviderConfig, target Target, dialect string) (string, string, error) {
+	endpoint := upstreamEndpoint(provider.BaseURL, dialect, target)
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.EscapedPath() == "" || parsed.User != nil {
+		return "", "", fmt.Errorf("invalid upstream endpoint")
+	}
+	authority := strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+	fingerprint := sha256.Sum256([]byte(authority))
+	return parsed.EscapedPath(), fmt.Sprintf("sha256:%x", fingerprint), nil
+}
+
+func capabilityModelIdentity(model string) (string, string) {
+	if index := strings.LastIndex(model, ":"); index > strings.LastIndex(model, "/") {
+		return model[:index], model[index:]
+	}
+	return model, ""
+}
+
+func identityMatchesCapabilitySurface(identity CapabilityEvidenceIdentity, capability string, surface capabilitySurface) bool {
+	requestShape := capabilityRequestShape(capability)
+	return requestShape != "" &&
+		identity.Provider == surface.target.Provider &&
+		identity.AccountIdentityClass == surface.accountIdentity &&
+		identity.EndpointFingerprint == surface.endpointFingerprint &&
+		identity.Model == surface.model &&
+		identity.ModelSuffix == surface.modelSuffix &&
+		identity.APISkin == surface.apiSkin &&
+		identity.EndpointPath == surface.endpointPath &&
+		identity.InboundDialect == surface.inbound &&
+		identity.BridgeDirection == surface.bridge &&
+		identity.RequestShape == requestShape
+}
+
+func surfaceAdvertisesCapability(surface capabilitySurface, capability string) bool {
+	for _, advertised := range surface.capabilities {
+		if advertised == capability {
 			return true
 		}
 	}
 	return false
 }
 
-func identityMatchesTargetPath(identity CapabilityEvidenceIdentity, dialect string) bool {
-	expectedPath := "/v1/chat/completions"
-	if dialect == "openai-responses" {
-		expectedPath = "/v1/responses"
+func capabilityRequestShape(capability string) string {
+	switch capability {
+	case "text", "openai-responses":
+		return "text"
+	case "tools-auto":
+		return "tools-auto"
+	case "tools-forced":
+		return "tools-forced"
+	case "image-input", "router-selected-ocr":
+		return "image"
+	case "structured-outputs":
+		return "structured-outputs"
+	default:
+		return ""
 	}
-	if dialect == "anthropic" {
-		expectedPath = "/anthropic/v1/messages"
-	}
-	return identity.EndpointPath == expectedPath && identity.InboundDialect == identity.APISkin && identity.BridgeDirection == "none"
 }
 
 func identityIsExpected(identity CapabilityEvidenceIdentity, expected []CapabilityEvidenceIdentity) bool {
@@ -157,35 +307,26 @@ func identityIsExpected(identity CapabilityEvidenceIdentity, expected []Capabili
 }
 
 func capabilityIdentityComplete(identity CapabilityEvidenceIdentity) bool {
-	for _, value := range []string{identity.Provider, identity.AccountIdentityClass, identity.EndpointFingerprint, identity.EndpointPath, identity.APISkin, identity.Model, identity.InboundDialect, identity.BridgeDirection, identity.RequestShape, identity.ProfileVersion} {
-		if strings.TrimSpace(value) == "" {
+	for _, value := range []string{identity.Provider, identity.AccountIdentityClass, identity.EndpointPath, identity.APISkin, identity.Model, identity.InboundDialect, identity.BridgeDirection, identity.RequestShape, identity.ProfileVersion} {
+		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
 			return false
 		}
 	}
-	return true // model_suffix may deliberately be empty.
-}
-
-func targetAdvertisesCapability(target Target, dialect, capability string) bool {
-	values := func(values []string, wanted string) bool {
-		for _, value := range values {
-			if value == wanted {
-				return true
-			}
+	if !strings.HasPrefix(identity.EndpointPath, "/") ||
+		normalizeDialect(identity.APISkin) != identity.APISkin ||
+		normalizeDialect(identity.InboundDialect) != identity.InboundDialect ||
+		(identity.BridgeDirection != "none" && identity.BridgeDirection != chatToResponsesBridgeDirection && identity.BridgeDirection != responsesToChatBridgeDirection) ||
+		(identity.ModelSuffix != "" && !strings.HasPrefix(identity.ModelSuffix, ":")) {
+		return false
+	}
+	const fingerprintPrefix = "sha256:"
+	if !strings.HasPrefix(identity.EndpointFingerprint, fingerprintPrefix) || len(identity.EndpointFingerprint) != len(fingerprintPrefix)+64 {
+		return false
+	}
+	for _, value := range identity.EndpointFingerprint[len(fingerprintPrefix):] {
+		if !strings.ContainsRune("0123456789abcdef", value) {
+			return false
 		}
-		return false
 	}
-	switch capability {
-	case "text":
-		return true
-	case "image-input", "router-selected-ocr":
-		return values(target.InputModalities, "image")
-	case "tools-auto":
-		return targetAdvertisesToolCapability(target, dialect, "auto")
-	case "tools-forced":
-		return targetAdvertisesToolCapability(target, dialect, "forced")
-	case "openai-responses":
-		return dialect == "openai-responses"
-	default:
-		return false
-	}
+	return true
 }

@@ -64,6 +64,24 @@ Every future live result must bind the exact provider, account identity class,
 endpoint fingerprint and path, API skin, model plus suffix, inbound dialect,
 bridge direction, request shape, capability case, and profile version.
 
+The promotion verifier derives the evidence identity from the resolved active
+target, not from the submitted evidence. `account_identity_class` must equal
+the provider's non-secret `key_id`; `endpoint_fingerprint` is
+`sha256(lowercase-scheme://lowercase-authority)` for the resolved upstream;
+`endpoint_path` is the path the router actually calls after joining the
+configured base path; and OpenRouter-style model suffixes such as `:nitro`
+remain separate from the base model ID. A valid but different account,
+endpoint, skin, model suffix, inbound dialect, bridge direction, request
+shape, or unapproved profile cannot satisfy the active target.
+
+Use one request-shape identity per capability case. `text`,
+`tools-auto`, `tools-forced`, `image`, and `structured-outputs` are distinct
+shapes. Native and translated calls are also distinct: bridge evidence must
+name the caller's inbound dialect and `chat_to_responses` or
+`responses_to_chat`; direct evidence uses the target dialect and `none`.
+Tool evidence is accepted only for the target's exact API-skin vocabulary,
+and explicit unsupported-feature metadata overrides broad tool metadata.
+
 Record public-safe evidence for each probe:
 
 - date, provider, endpoint family, model ID, dialect, skin, and account/region class;

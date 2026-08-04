@@ -322,7 +322,7 @@ func dynamicPassesHardFilters(target Target, req *IRRequest, callerDialect, outD
 	if filters.RequireRequestedAPISkin && outDialect != "" && callerDialect != outDialect {
 		return false
 	}
-	if filters.RequireForcedToolChoiceSupport && requestHasForcedToolChoice(req) && !targetSupportsCapability(target, callerDialect, "forced_tool_choice") {
+	if filters.RequireForcedToolChoiceSupport && requestHasForcedToolChoice(req) && !targetSupportsClientTools(target, outDialect, true) {
 		return false
 	}
 	if filters.RequireStructuredOutputSupport && requestHasStructuredOutput(req) && !targetSupportsCapability(target, callerDialect, "structured_outputs", "json_schema") {

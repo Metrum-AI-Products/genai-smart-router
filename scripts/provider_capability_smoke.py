@@ -26,6 +26,18 @@ REQUIRED_IDENTITY = (
     "api_skin", "model", "model_suffix", "inbound_dialect", "bridge_direction",
     "request_shape", "profile_version",
 )
+FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
+DIALECTS = {"openai-chat", "openai-responses", "anthropic", "replicate"}
+BRIDGE_DIRECTIONS = {"none", "chat_to_responses", "responses_to_chat"}
+CAPABILITY_REQUEST_SHAPES = {
+    "text": "text",
+    "openai-responses": "text",
+    "tools-auto": "tools-auto",
+    "tools-forced": "tools-forced",
+    "image-input": "image",
+    "router-selected-ocr": "image",
+    "structured-outputs": "structured-outputs",
+}
 
 
 def fail(message: str) -> None:
@@ -57,19 +69,41 @@ def scrub(value: object) -> object:
         fail("unsafe evidence value")
     return value
 
+def validate_identity(identity: object, capability_case: object) -> None:
+    if not isinstance(capability_case, str) or not capability_case:
+        fail("result capability_case is required")
+    if not isinstance(identity, dict):
+        fail("result identity must be an object")
+    for field in REQUIRED_IDENTITY:
+        value = identity.get(field)
+        if not isinstance(value, str) or (field != "model_suffix" and not value.strip()):
+            fail(f"result identity.{field} is required")
+        if value != value.strip():
+            fail(f"result identity.{field} must not contain outer whitespace")
+    if not FINGERPRINT.fullmatch(identity["endpoint_fingerprint"]):
+        fail("result identity.endpoint_fingerprint must be sha256:<64 lowercase hex>")
+    if not identity["endpoint_path"].startswith("/"):
+        fail("result identity.endpoint_path must be absolute")
+    if identity["api_skin"] not in DIALECTS or identity["inbound_dialect"] not in DIALECTS:
+        fail("result identity dialect is unsupported")
+    if identity["bridge_direction"] not in BRIDGE_DIRECTIONS:
+        fail("result identity.bridge_direction is unsupported")
+    if identity["model_suffix"] and not identity["model_suffix"].startswith(":"):
+        fail("result identity.model_suffix must be empty or colon-prefixed")
+    expected_shape = CAPABILITY_REQUEST_SHAPES.get(capability_case)
+    if expected_shape is None:
+        fail("result capability_case is unsupported")
+    if identity["request_shape"] != expected_shape:
+        fail("result identity.request_shape does not match capability_case")
+
 
 def validate_result(result: dict) -> None:
     scrub(result)
     if result.get("schema_version") != SCHEMA_VERSION:
         fail("result schema_version is unsupported")
     identity = result.get("identity")
-    if not isinstance(identity, dict):
-        fail("result identity must be an object")
-    for field in REQUIRED_IDENTITY:
-        if not isinstance(identity.get(field), str) or (field != "model_suffix" and not identity[field].strip()):
-            fail(f"result identity.{field} is required")
-    if result.get("capability_case") == "" or not isinstance(result.get("capability_case"), str):
-        fail("result capability_case is required")
+    capability_case = result.get("capability_case")
+    validate_identity(identity, capability_case)
     if result.get("status") not in STATUSES:
         fail("result status must be pass/limited/failed/unsupported/untested")
     observed = result.get("observed", {})
@@ -159,12 +193,10 @@ def verify(claims: dict, results: list[dict]) -> list[str]:
             continue
         identity = claim.get("identity", {})
         capability = claim.get("capability_case")
-        if not isinstance(identity, dict) or not isinstance(capability, str):
-            failures.append("claim identity and capability_case are required")
-            continue
-        missing = [field for field in REQUIRED_IDENTITY if field not in identity or (field != "model_suffix" and not identity[field])]
-        if missing:
-            failures.append(f"claim missing identity fields: {', '.join(missing)}")
+        try:
+            validate_identity(identity, capability)
+        except ValueError as exc:
+            failures.append(str(exc))
             continue
         result = index.get(identity_key(identity, capability))
         if not result:

@@ -1,1 +1,13 @@
-{"schema_version":"capability-smoke/v1","claims":[{"capability_case":"text","identity":{"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:synthetic-chat","endpoint_path":"/v1/chat/completions","api_skin":"openai-chat","model":"synthetic-k3","model_suffix":"","inbound_dialect":"openai-chat","bridge_direction":"none","request_shape":"text","profile_version":"synthetic-k3-chat-only/v1"}},{"capability_case":"tools-auto","identity":{"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:synthetic-responses","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"text","profile_version":"synthetic-responses-tools/v1"}}]}
+{
+  "schema_version": "capability-smoke/v1",
+  "claims": [
+    {
+      "capability_case": "text",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","endpoint_path":"/v1/chat/completions","api_skin":"openai-chat","model":"synthetic-k3","model_suffix":"","inbound_dialect":"openai-chat","bridge_direction":"none","request_shape":"text","profile_version":"synthetic-k3-chat-only/v1"}
+    },
+    {
+      "capability_case": "tools-auto",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"tools-auto","profile_version":"synthetic-responses-tools-auto/v1"}
+    }
+  ]
+}

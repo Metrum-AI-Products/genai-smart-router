@@ -124,7 +124,7 @@ func (s *Service) recordEligibilityTelemetry(rc *requestContext, groupName strin
 			InputImage:                  targetSupportsInputModalities(target, []string{"image"}),
 			OutputImage:                 stringSliceContains(defaultModalities(target.OutputModalities), "image"),
 			ToolSupport:                 targetSupportsTools(target, outDialect),
-			ForcedToolChoice:            targetSupportsCapability(target, outDialect, "forced_tool_choice", "tool_choice"),
+			ForcedToolChoice:            targetSupportsClientTools(target, outDialect, true),
 			StructuredOutput:            targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema"),
 			HonorsMaxTokens:             target.HonorsMaxTokens == nil || *target.HonorsMaxTokens,
 			ReasoningSupport:            targetSupportsReasoning(target),

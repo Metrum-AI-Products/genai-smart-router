@@ -2375,19 +2375,30 @@ func targetSupportsInputModalities(target Target, required []string) bool {
 }
 
 func targetSupportsTools(target Target, dialect string) bool {
-	switch dialect {
-	case "openai-responses":
-		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
-	case "anthropic":
-		return supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
-	case "openai", "openai-chat":
-		if toolSupportEmpty(target.ToolSupport) {
-			return false
-		}
-		return supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
-	default:
+	return targetSupportsClientTools(target, dialect, false)
+}
+
+func targetSupportsClientTools(target Target, dialect string, forced bool) bool {
+	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tools") {
 		return false
 	}
+	var supported bool
+	switch dialect {
+	case "openai-responses":
+		supported = supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
+	case "anthropic":
+		supported = supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
+	case "openai", "openai-chat":
+		supported = !toolSupportEmpty(target.ToolSupport) &&
+			supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
+	}
+	if !supported || !forced {
+		return supported
+	}
+	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tool_choice", "forced_tool_choice") {
+		return false
+	}
+	return supportsAnyCapability(targetCapabilityValues(target, dialect), "tool_choice", "forced_tool_choice")
 }
 
 func requestHasForbiddenProviderHostedTools(req *IRRequest) bool {
