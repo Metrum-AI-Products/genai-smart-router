@@ -76,13 +76,16 @@ The smoke emits safe scalar proof only: request IDs, API surface, status, select
 
 `make api-compat-mock` is the deterministic pytest entrypoint for
 `tests/api_compat`. It uses the exact dependency versions and hashes in
-`uv.lock`, runs through `uv --locked --offline`, and is included in
-`make test`. A cold test environment must first supply those locked
-dependencies from its approved package source with `uv sync --locked`; the
-mock suite itself makes no dependency or provider network requests. It builds
-the router locally and uses a synthetic fake upstream, with both listeners
-bound exclusively to loopback. It does not read production configuration or
-retain authorization values or request bodies in artifacts.
+`uv.lock`, provisions the locked Python and Go dependencies, then runs through
+`uv --locked --offline` with Go module resolution disabled. It is included in
+`make test`, so a clean supported runner does not need a separate manual
+dependency step. Only `make api-compat-bootstrap` may resolve dependencies;
+`make api-compat-mock-offline` is separately invokable and fails closed when
+its prerequisites are absent. The mock suite itself makes no dependency or
+provider network requests. It builds the router locally and uses a synthetic
+fake upstream, with both listeners bound exclusively to loopback. It does not
+read production configuration or retain authorization values or request bodies
+in artifacts.
 
 The current caller-contract matrix covers `/v1/models`, OpenAI Chat
 Completions, OpenAI Responses, Anthropic Messages, function tools and tool

@@ -123,7 +123,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres capability-smoke capability-smoke-unit capability-smoke-live api-compat-mock api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-validate livecodebench-run clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-validate livecodebench-run clean
 
 help: eks-help
 
@@ -253,12 +253,29 @@ capability-smoke-live:
 test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
+	python3 scripts/api_compat_bootstrap_test.py
 	$(MAKE) api-compat-mock
 
+# Provision the locked Python and Go dependency sets before entering the
+# isolated conformance run. API_COMPAT_BOOTSTRAP_GO_PROXY and
+# API_COMPAT_BOOTSTRAP_GO_SUMDB permit an approved internal mirror; they apply
+# only here, never while the suite is running offline.
+API_COMPAT_BOOTSTRAP_GO_PROXY ?= https://proxy.golang.org
+API_COMPAT_BOOTSTRAP_GO_SUMDB ?= sum.golang.org
+api-compat-bootstrap:
+	cd tests/api_compat && uv sync --locked
+	GOPROXY=$(API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
+
 # Deterministic caller-boundary tests: the locally built router and fake
-# upstream bind to 127.0.0.1 only. --offline prevents dependency egress.
-api-compat-mock:
-	cd tests/api_compat && GOPROXY=off GOSUMDB=off uv run --locked --offline pytest
+# upstream bind to 127.0.0.1 only. This target is fail-closed: its Python and
+# Go dependency resolution cannot use the network. It intentionally has no
+# bootstrap prerequisite so clean-cache failure remains directly testable.
+api-compat-mock-offline:
+	cd tests/api_compat && UV_OFFLINE=1 GOPROXY=off GOSUMDB=off uv run --locked --offline pytest
+
+# Keep the default target usable on a clean supported runner while preserving
+# the separately invokable fail-closed offline conformance phase.
+api-compat-mock: api-compat-bootstrap api-compat-mock-offline
 
 # Deliberately not a normal test/build/package target. Live execution awaits a
 # human-approved non-production matrix and least-privilege caller identity.
