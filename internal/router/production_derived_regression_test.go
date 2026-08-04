@@ -84,6 +84,134 @@ type productionDerivedAgentCompatibilityFixture struct {
 	} `json:"scenarios"`
 }
 
+type productionDerivedAnthropicImageFixture struct {
+	Name                               string          `json:"name"`
+	SourceIncidentIssue                string          `json:"source_incident_issue"`
+	ObservedModelGroup                 string          `json:"observed_model_group"`
+	TestModelGroup                     string          `json:"test_model_group"`
+	ClientName                         string          `json:"client_name"`
+	Surface                            string          `json:"surface"`
+	Stream                             bool            `json:"stream"`
+	MessageCount                       int             `json:"message_count"`
+	ImageCount                         int             `json:"image_count"`
+	OutputCapField                     string          `json:"output_cap_field"`
+	OutputCapValue                     int             `json:"output_cap_value"`
+	RequiredCapabilities               []string        `json:"required_capabilities"`
+	ExpectedErrorWithoutEligibleTarget string          `json:"expected_error_without_eligible_target"`
+	ProductionSafePayload              string          `json:"production_smoke_safe_payload_template"`
+	Request                            json.RawMessage `json:"request"`
+}
+
+func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
+	fixture := loadProductionDerivedAnthropicImageFixture(t, "anthropic-messages-image-eligibility.json")
+	if fixture.SourceIncidentIssue != "#660" || fixture.ObservedModelGroup != "big-coder" ||
+		fixture.TestModelGroup != "anthropic-image-smoke" || fixture.ClientName != "Claude Code" ||
+		fixture.Surface != "anthropic_messages" || fixture.Stream || fixture.MessageCount != 1 ||
+		fixture.ImageCount != 1 || fixture.OutputCapField != "max_tokens" || fixture.OutputCapValue != 512 ||
+		fixture.ExpectedErrorWithoutEligibleTarget != "no-eligible-target" || fixture.ProductionSafePayload == "" {
+		t.Fatalf("invalid production-derived Anthropic image fixture: %#v", fixture)
+	}
+	for _, capability := range []string{"anthropic_messages", "image", "max_tokens"} {
+		if !stringSliceContains(fixture.RequiredCapabilities, capability) {
+			t.Fatalf("fixture required_capabilities=%v missing %q", fixture.RequiredCapabilities, capability)
+		}
+	}
+
+	var upstreamBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamBody); err != nil {
+			t.Fatal(err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":          "msg_production_derived_image",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "image-anthropic",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "Synthetic Merchant"}},
+			"usage":       map[string]any{"input_tokens": 32, "output_tokens": 2},
+		})
+	}))
+	defer upstream.Close()
+
+	newConfig := func(dir string, includeImageTarget bool) *Config {
+		cfg := testConfig(t, upstream.URL, "provider-key", dir)
+		cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+		cfg.Provider["text_anthropic"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+		cfg.Provider["image_anthropic"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
+		targets := []Target{{
+			Provider:         "text_anthropic",
+			Model:            "text-anthropic",
+			InputModalities:  []string{"text"},
+			OutputModalities: []string{"text"},
+		}}
+		if includeImageTarget {
+			honorsMaxTokens := true
+			targets = append(targets, Target{
+				Provider:         "image_anthropic",
+				Model:            "image-anthropic",
+				InputModalities:  []string{"text", "image"},
+				OutputModalities: []string{"text"},
+				HonorsMaxTokens:  &honorsMaxTokens,
+				RequestShapeSupport: RequestShapeSupport{
+					SupportedInboundDialects: []string{"anthropic"},
+					ValidationStatus:         "passed",
+				},
+			})
+		}
+		cfg.Models[fixture.TestModelGroup] = ModelGroup{Strategy: "static", Targets: targets}
+		cfg.Callers[0].Allow = append(cfg.Callers[0].Allow, fixture.TestModelGroup)
+		return cfg
+	}
+
+	t.Run("no eligible target remains actionable", func(t *testing.T) {
+		dir := t.TempDir()
+		svc, err := New(newConfig(dir, false))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc.Close()
+		req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(string(fixture.Request)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadGateway {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		decodeProductionDerivedErrorDetails(t, rr.Body.Bytes(), fixture.ExpectedErrorWithoutEligibleTarget)
+		assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "Read the synthetic receipt", "https://example.com/synthetic-receipt.png", "provider-key", testToken)
+	})
+
+	t.Run("validated Anthropic image target receives shape", func(t *testing.T) {
+		dir := t.TempDir()
+		svc, err := New(newConfig(dir, true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer svc.Close()
+		req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", strings.NewReader(string(fixture.Request)))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if upstreamBody["model"] != "image-anthropic" || upstreamBody["max_tokens"] != float64(fixture.OutputCapValue) {
+			t.Fatalf("upstream model/cap mismatch: %#v", upstreamBody)
+		}
+		messages := upstreamBody["messages"].([]any)
+		content := messages[0].(map[string]any)["content"].([]any)
+		source := content[1].(map[string]any)["source"].(map[string]any)
+		if source["type"] != "url" || source["url"] != "https://example.com/synthetic-receipt.png" {
+			t.Fatalf("upstream image source=%#v", source)
+		}
+		assertProductionDerivedArtifactsDoNotContain(t, svc, dir, "Read the synthetic receipt", "https://example.com/synthetic-receipt.png", "provider-key", testToken)
+	})
+}
+
 func TestProductionDerivedAgentCompatibilityFixtureCoversRequiredScenarios(t *testing.T) {
 	fixture := loadProductionDerivedAgentCompatibilityFixture(t, "agent-reasoning-bridge-compatibility.json")
 	if fixture.ModelGroup != "reasoning-bridge-smoke" {
@@ -850,6 +978,19 @@ func loadProductionDerivedErrorFixture(t *testing.T, name string) productionDeri
 		t.Fatal(err)
 	}
 	var fixture productionDerivedErrorFixture
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	return fixture
+}
+
+func loadProductionDerivedAnthropicImageFixture(t *testing.T, name string) productionDerivedAnthropicImageFixture {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "smokes", "production-derived", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture productionDerivedAnthropicImageFixture
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}

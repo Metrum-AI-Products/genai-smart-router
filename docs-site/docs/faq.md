@@ -93,7 +93,7 @@ Use the Anthropic Messages-compatible setup in [Claude Code CLI](./getting-start
 
 ### Can Codex or Claude Code send images through the same coding group?
 
-Yes, when the deployment has validated multimodal tool-capable targets in that group. See [Codex CLI](./getting-started/codex-cli), [Claude Code CLI](./getting-started/claude-code-cli), and [Image Analysis And VLM Routing](./configuration/image-analysis-vlm).
+Yes, when the deployment has validated multimodal tool-capable targets for the **exact API skins** used by those clients. A group's aggregate `image` modality may be backed by a Responses target for Codex without an Anthropic Messages image target for Claude Code. Run each documented image smoke before rollout; `502 no-eligible-target` means the group is allowed but no target satisfies that client's image shape. See [Codex CLI](./getting-started/codex-cli), [Claude Code CLI](./getting-started/claude-code-cli), and [Image Analysis And VLM Routing](./configuration/image-analysis-vlm).
 
 ### What should I do for `429 traffic-shaped`, quota, or rate-limit errors?
 

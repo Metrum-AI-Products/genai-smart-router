@@ -1,0 +1,42 @@
+{
+  "name": "anthropic-messages-image-eligibility",
+  "source_incident_issue": "#660",
+  "observed_model_group": "big-coder",
+  "test_model_group": "anthropic-image-smoke",
+  "client_name": "Claude Code",
+  "surface": "anthropic_messages",
+  "stream": false,
+  "message_count": 1,
+  "image_count": 1,
+  "output_cap_field": "max_tokens",
+  "output_cap_value": 512,
+  "required_capabilities": [
+    "anthropic_messages",
+    "image",
+    "max_tokens"
+  ],
+  "expected_error_without_eligible_target": "no-eligible-target",
+  "production_smoke_safe_payload_template": "synthetic-anthropic-url-image-v1",
+  "request": {
+    "model": "anthropic-image-smoke",
+    "max_tokens": 512,
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Read the synthetic receipt. Reply with only the merchant name."
+          },
+          {
+            "type": "image",
+            "source": {
+              "type": "url",
+              "url": "https://example.com/synthetic-receipt.png"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

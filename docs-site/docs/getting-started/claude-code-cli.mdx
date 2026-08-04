@@ -57,7 +57,7 @@ claude --bare --print --model "<allowed-model-group>" \
 claude --model "<allowed-model-group>"
 ```
 
-Use the same deployment-defined coding group for mixed coding and image tasks. Some hosted examples use `big-coder` as a coding-oriented group name; your deployment may use a different group name. When a Claude Code request includes image content, the router filters to multimodal Anthropic Messages-compatible targets inside that group; text-only and ordinary tool requests continue to use the normal coding targets.
+Use the same deployment-defined coding group for mixed coding and image tasks only after the deployment has validated an image-capable **Anthropic Messages** target in that group. Some hosted examples use `big-coder` as a coding-oriented group name; your deployment may use a different group name. A group's aggregate `image` modality can come from an OpenAI Chat or Responses target and does not prove that Claude Code image traffic is eligible. When a Messages image target exists, the router filters image-bearing requests to that pool while text-only and ordinary tool requests continue to use the normal coding targets.
 
 ## Subagent Model Routing
 
@@ -113,7 +113,9 @@ The requested model must be allowed by the caller token. Deployment admins decid
 
 ## Image Input
 
-Claude Code sends image work through the Anthropic Messages API shape when an image is attached in the conversation. Use a deployment-defined router model group that is allowed for the caller token. The router filters image-bearing Messages requests to targets that advertise `image` in `input_modalities`.
+Claude Code sends image work through the Anthropic Messages API shape when an image is attached in the conversation. Use a deployment-defined router model group that is allowed for the caller token **and** has validation evidence for image input on the Anthropic Messages surface. The router filters image-bearing Messages requests to targets that advertise `image` in `input_modalities` and are eligible for the inbound `anthropic` dialect and caller output cap.
+
+`/v1/models` confirms that the token may request the group, but group-level image metadata can be backed by a different API skin. Before rollout, run the Messages image smoke below. A `502 no-eligible-target` response means the group is authorized but has no target validated for that exact Messages image shape; ask the deployment administrator to add or enable a validated Anthropic Messages image target rather than retrying the same request.
 
 For non-interactive validation, use the same Anthropic-compatible payload shape Claude Code sends:
 

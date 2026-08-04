@@ -36,13 +36,21 @@ Responses is not automatically eligible for Claude Code.
 
 ## Required routing gates
 
-Every active image-analysis target must set:
+Every active image-analysis target must declare `image` and gate the exact
+validated inbound dialect:
 
 ```yaml
+input_modalities: [text, image]
 request_shape_support:
   required_input_modalities: [image]
-  supported_inbound_dialects: [openai-responses]
+  supported_inbound_dialects: [anthropic] # or openai-chat/openai-responses
 ```
+
+Do not copy one skin's value to another target without direct and router-level
+evidence. A group-level image capability can be supplied by a Responses target
+while the same group still returns `no-eligible-target` for Anthropic Messages.
+The sanitized `anthropic-messages-image-eligibility.json` production-derived
+fixture, linked to issue #660, protects this distinction.
 
 Use `min_requested_output_tokens` when the provider is only reliable at a
 realistic requested output budget. The router must skip the target for smaller
