@@ -11,7 +11,7 @@ This is the key product principle: not every task needs the most expensive model
 
 For strategy selection, start with [Routing Strategy Decision Tree](../routing/strategy-decision-tree). For the full customer-controlled routing contract, ownership controls, and proof workflow, see [Customer-Controlled Routing](../routing/customer-controlled-routing). For a repeatable router-versus-fixed-model proof plan, see [Prove Router Quality](./prove-router-quality). For one coding-agent evidence pattern, see the [Harbor Case Study](./harbor-case-study).
 
-Operators can also run bounded, opt-in coding suites against an authorized group. These produce only sanitized aggregate evidence and are reviewed before promotion; they do not expose prompts or provider credentials and do not automatically alter routing policy.
+Operators can also run bounded, opt-in coding suites against an authorized group. Ordinary suites need only the authorized router inputs and local evaluator prerequisites. When a deployment requires reasoning-coverage evidence, it supplies one protected usage source plus a dedicated evaluation identity; the coverage-required mode blocks if that protected input contract is incomplete. These suites produce only sanitized aggregate evidence, are reviewed before promotion, do not expose prompts or provider credentials, and do not automatically alter routing policy.
 
 ## Group Contract Fields
 
