@@ -3,7 +3,6 @@
 env.json
 # Retired local agent runtimes may still contain credentials in older checkouts.
 # Keep these tombstone ignores even though the integrations are no longer shipped.
-.tugduck/config.json
 .metrum-agents/local/*
 !.metrum-agents/local/.gitkeep
 .metrum-agents/runtime/*

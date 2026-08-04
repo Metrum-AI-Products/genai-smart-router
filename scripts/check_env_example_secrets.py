@@ -30,7 +30,6 @@ PLACEHOLDER_RE = re.compile(
 )
 
 RETIRED_AGENT_CREDENTIAL_PATHS = (
-    ".tugduck/config.json",
     ".metrum-agents/local/profile.json",
     ".metrum-agents/runtime/state.json",
     ".metrum-agents/workspace/env.json",
