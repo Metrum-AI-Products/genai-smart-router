@@ -239,8 +239,8 @@ func TestDynamicScoreHardFiltersForcedToolsAndStructuredOutput(t *testing.T) {
 			},
 		}},
 		Targets: []Target{
-			{Provider: "mock", Model: "auto-only", Weight: 100, ToolSupport: ToolSupport{OpenAIChat: []string{"function_tools"}}},
-			{Provider: "mock", Model: "forced-and-json", Weight: 1, ToolSupport: ToolSupport{OpenAIChat: []string{"function_tools", "forced_tool_choice", "structured_outputs"}}},
+			{Provider: "mock", Model: "auto-only", Weight: 100, ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}}},
+			{Provider: "mock", Model: "forced-and-json", Weight: 1, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice", "structured_outputs"}}},
 		},
 	}
 	now := time.Now().UTC()

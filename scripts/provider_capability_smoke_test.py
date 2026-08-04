@@ -66,6 +66,47 @@ def main() -> int:
         pass
     else:
         raise AssertionError("request shape was not bound to capability case")
+    for mutated, label in (
+        ({**safe, "notes": "benign-looking raw payload"}, "unknown result field"),
+        ({**safe, "identity": {**identity, "deployment": "private"}}, "unknown identity field"),
+    ):
+        try:
+            module.validate_result(mutated)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{label} survived closed evidence schema")
+    try:
+        module.verify({"schema_version": module.SCHEMA_VERSION, "claims": {}}, [safe])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("non-list claims survived closed claims schema")
+    valid_claims = {"schema_version": module.SCHEMA_VERSION, "claims": [{"identity": identity, "capability_case": "text"}]}
+    try:
+        module.verify(valid_claims, [safe, safe])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate evidence rows were accepted")
+    profile_identity = {key: value for key, value in identity.items() if key != "profile_version"}
+    duplicate_manifest = {
+        "schema_version": module.SCHEMA_VERSION,
+        "profiles": [{
+            "profile_version": identity["profile_version"],
+            "identity": profile_identity,
+            "cases": [
+                {"capability_case": "text", "status": "passed"},
+                {"capability_case": "text", "status": "failed"},
+            ],
+        }],
+    }
+    try:
+        module.validate_manifest(duplicate_manifest)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate manifest evidence rows were accepted")
     request = module.fake_request("tools-forced", safe["identity"])
     require(request["tool_choice"] == "forced", "fake adapter failed forced-tool classification")
     make = (ROOT / "Makefile").read_text()

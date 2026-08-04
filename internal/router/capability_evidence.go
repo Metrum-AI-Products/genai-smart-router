@@ -44,6 +44,8 @@ type capabilitySurface struct {
 	capabilities        []string
 }
 
+const anthropicTranslationBridgePrefix = "anthropic_to_"
+
 // VerifyCapabilityClaims checks resolved (catalog plus target override)
 // metadata against matching, passing evidence. It does not mutate routing,
 // configuration, weights, or provider catalogs.
@@ -65,7 +67,7 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 		matched := false
 		for _, raw := range modelGroup.Targets {
 			target, err := c.resolveTarget(group, raw)
-			if err != nil || target.Provider != claim.Identity.Provider || target.Model != claim.Identity.Model {
+			if err != nil || target.Provider != claim.Identity.Provider {
 				continue
 			}
 			surfaces, err := capabilitySurfaces(c.Provider[target.Provider], target)
@@ -138,6 +140,9 @@ func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySur
 		return nil, fmt.Errorf("provider key_id is required")
 	}
 	apiSkin := targetDialect(provider, target)
+	if err := validateRepresentableCapabilityShapes(target, apiSkin); err != nil {
+		return nil, err
+	}
 	endpointPath, endpointFingerprint, err := capabilityEndpointIdentity(provider, target, apiSkin)
 	if err != nil {
 		return nil, err
@@ -155,8 +160,11 @@ func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySur
 		bridge:              "none",
 		capabilities:        advertisedCapabilities(target, apiSkin),
 	}
-	surfaces := []capabilitySurface{direct}
-	if isChatToResponsesBridge("openai-chat", apiSkin, target) {
+	var surfaces []capabilitySurface
+	if evidenceInboundAllowed(target, apiSkin) && len(direct.capabilities) > 0 {
+		surfaces = append(surfaces, direct)
+	}
+	if evidenceInboundAllowed(target, "openai-chat") && isChatToResponsesBridge("openai-chat", apiSkin, target) {
 		capabilities := chatToResponsesEvidenceCapabilities(target, apiSkin)
 		if len(capabilities) > 0 {
 			translated := direct
@@ -166,7 +174,7 @@ func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySur
 			surfaces = append(surfaces, translated)
 		}
 	}
-	if isResponsesToChatBridge("openai-responses", apiSkin, target) {
+	if evidenceInboundAllowed(target, "openai-responses") && isResponsesToChatBridge("openai-responses", apiSkin, target) {
 		capabilities := responsesToChatEvidenceCapabilities(target, apiSkin)
 		if len(capabilities) > 0 {
 			translated := direct
@@ -176,30 +184,146 @@ func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySur
 			surfaces = append(surfaces, translated)
 		}
 	}
+	if apiSkin != "anthropic" && anthropicInboundDialectFilterReason(target, "anthropic", apiSkin) == "" {
+		capabilities := anthropicTranslationEvidenceCapabilities(target, apiSkin)
+		if len(capabilities) > 0 {
+			translated := direct
+			translated.inbound = "anthropic"
+			translated.bridge = anthropicTranslationBridgePrefix + apiSkin
+			translated.capabilities = capabilities
+			surfaces = append(surfaces, translated)
+		}
+	}
+	for _, configuredInbound := range target.RequestShapeSupport.SupportedInboundDialects {
+		inbound := normalizeDialect(configuredInbound)
+		if !genericCapabilityTranslationDirection(inbound, apiSkin) {
+			continue
+		}
+		capabilities := genericTranslationEvidenceCapabilities(target)
+		if len(capabilities) == 0 {
+			continue
+		}
+		translated := direct
+		translated.inbound = inbound
+		translated.bridge = inbound + "_to_" + apiSkin
+		translated.capabilities = capabilities
+		surfaces = append(surfaces, translated)
+	}
+	if len(surfaces) == 0 {
+		return nil, fmt.Errorf("target has no verifiable runtime capability surface")
+	}
 	return surfaces, nil
 }
 
 func advertisedCapabilities(target Target, dialect string) []string {
-	capabilities := []string{"text"}
+	var capabilities []string
+	if !target.ToolOnly {
+		capabilities = append(capabilities, "text")
+	}
 	if targetSupportsClientTools(target, dialect, false) {
 		capabilities = append(capabilities, "tools-auto")
 	}
 	if targetSupportsClientTools(target, dialect, true) {
 		capabilities = append(capabilities, "tools-forced")
 	}
-	if targetSupportsInputModalities(target, []string{"image"}) {
+	if !target.ToolOnly &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"}) {
 		capabilities = append(capabilities, "image-input")
 	}
-	if targetSupportsStructuredOutput(target, dialect, dialect, true) {
+	if !target.ToolOnly &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "structured_output", "response_format") &&
+		targetSupportsStructuredOutput(target, dialect, dialect, true) {
 		capabilities = append(capabilities, "structured-outputs")
 	}
-	return capabilities
+	return filterCapabilitiesByRequiredModalities(target, capabilities)
+}
+
+func anthropicTranslationEvidenceCapabilities(target Target, dialect string) []string {
+	if target.ToolOnly {
+		return nil
+	}
+	capabilities := []string{"text"}
+	if !supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"}) {
+		capabilities = append(capabilities, "image-input")
+	}
+	return filterCapabilitiesByRequiredModalities(target, capabilities)
+}
+
+func evidenceInboundAllowed(target Target, inbound string) bool {
+	return len(target.RequestShapeSupport.SupportedInboundDialects) == 0 ||
+		stringSliceContainsNormalizedDialect(target.RequestShapeSupport.SupportedInboundDialects, inbound)
+}
+
+func validateRepresentableCapabilityShapes(target Target, dialect string) error {
+	image := !supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"})
+	structured := !supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "structured_output", "response_format") &&
+		targetSupportsStructuredOutput(target, dialect, dialect, true)
+	if target.ToolOnly && (image || structured) {
+		return fmt.Errorf("tool-only image or structured capability requires an unsupported composite evidence shape")
+	}
+	if len(target.RequestShapeSupport.RequiredInputModalities) > 0 &&
+		!stringSliceContainsAll([]string{"text"}, target.RequestShapeSupport.RequiredInputModalities) &&
+		(targetSupportsClientTools(target, dialect, false) || structured) {
+		return fmt.Errorf("required input modalities with tools or structured output require an unsupported composite evidence shape")
+	}
+	return nil
+}
+
+func genericCapabilityTranslationDirection(inbound, out string) bool {
+	if inbound == "" || inbound == out || inbound == "anthropic" {
+		return false
+	}
+	if (inbound == "openai-chat" && out == "openai-responses") ||
+		(inbound == "openai-responses" && out == "openai-chat") {
+		return false
+	}
+	switch inbound {
+	case "openai-chat", "openai-responses":
+		return out == "anthropic" || out == "replicate"
+	default:
+		return false
+	}
+}
+
+func genericTranslationEvidenceCapabilities(target Target) []string {
+	if target.ToolOnly {
+		return nil
+	}
+	capabilities := []string{"text"}
+	if !supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"}) {
+		capabilities = append(capabilities, "image-input")
+	}
+	return filterCapabilitiesByRequiredModalities(target, capabilities)
+}
+
+func filterCapabilitiesByRequiredModalities(target Target, capabilities []string) []string {
+	if len(target.RequestShapeSupport.RequiredInputModalities) == 0 {
+		return capabilities
+	}
+	filtered := capabilities[:0]
+	for _, capability := range capabilities {
+		modalities := []string{"text"}
+		if capability == "image-input" || capability == "router-selected-ocr" {
+			modalities = append(modalities, "image")
+		}
+		if stringSliceContainsAll(modalities, target.RequestShapeSupport.RequiredInputModalities) {
+			filtered = append(filtered, capability)
+		}
+	}
+	return filtered
 }
 
 func chatToResponsesEvidenceCapabilities(target Target, dialect string) []string {
 	bridge := target.Bridges.ChatToResponses
+	if bridge.Text != nil && !*bridge.Text {
+		return nil
+	}
 	var capabilities []string
-	if bridge.Text == nil || *bridge.Text {
+	if !target.ToolOnly {
 		capabilities = append(capabilities, "text")
 	}
 	if bridge.Tools && targetSupportsClientTools(target, dialect, false) {
@@ -208,19 +332,23 @@ func chatToResponsesEvidenceCapabilities(target Target, dialect string) []string
 	if bridge.Tools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {
 		capabilities = append(capabilities, "tools-forced")
 	}
-	if bridge.Images && targetSupportsInputModalities(target, []string{"image"}) {
+	if !target.ToolOnly && bridge.Images &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"}) {
 		capabilities = append(capabilities, "image-input")
 	}
-	if targetSupportsStructuredOutput(target, "openai-chat", dialect, true) {
+	if !target.ToolOnly &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "structured_output", "response_format") &&
+		targetSupportsStructuredOutput(target, "openai-chat", dialect, true) {
 		capabilities = append(capabilities, "structured-outputs")
 	}
-	return capabilities
+	return filterCapabilitiesByRequiredModalities(target, capabilities)
 }
 
 func responsesToChatEvidenceCapabilities(target Target, dialect string) []string {
 	bridge := target.ResponsesToChat
 	var capabilities []string
-	if bridge.Text {
+	if !target.ToolOnly && bridge.Text {
 		capabilities = append(capabilities, "text")
 	}
 	if bridge.FunctionTools && targetSupportsClientTools(target, dialect, false) {
@@ -229,13 +357,12 @@ func responsesToChatEvidenceCapabilities(target Target, dialect string) []string
 	if bridge.FunctionTools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {
 		capabilities = append(capabilities, "tools-forced")
 	}
-	if bridge.Images && targetSupportsInputModalities(target, []string{"image"}) {
+	if !target.ToolOnly && bridge.Text && bridge.Images &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "image") &&
+		targetSupportsInputModalities(target, []string{"image"}) {
 		capabilities = append(capabilities, "image-input")
 	}
-	if targetSupportsStructuredOutput(target, "openai-responses", dialect, true) {
-		capabilities = append(capabilities, "structured-outputs")
-	}
-	return capabilities
+	return filterCapabilitiesByRequiredModalities(target, capabilities)
 }
 
 func capabilityEndpointIdentity(provider ProviderConfig, target Target, dialect string) (string, string, error) {
@@ -244,8 +371,11 @@ func capabilityEndpointIdentity(provider ProviderConfig, target Target, dialect 
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.EscapedPath() == "" || parsed.User != nil {
 		return "", "", fmt.Errorf("invalid upstream endpoint")
 	}
-	authority := strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
-	fingerprint := sha256.Sum256([]byte(authority))
+	fingerprintURL := *parsed
+	fingerprintURL.Scheme = strings.ToLower(fingerprintURL.Scheme)
+	fingerprintURL.Host = strings.ToLower(fingerprintURL.Host)
+	fingerprintURL.Fragment = ""
+	fingerprint := sha256.Sum256([]byte(fingerprintURL.String()))
 	return parsed.EscapedPath(), fmt.Sprintf("sha256:%x", fingerprint), nil
 }
 
@@ -312,10 +442,20 @@ func capabilityIdentityComplete(identity CapabilityEvidenceIdentity) bool {
 			return false
 		}
 	}
+	validBridge := identity.BridgeDirection == "none" ||
+		identity.BridgeDirection == chatToResponsesBridgeDirection ||
+		identity.BridgeDirection == responsesToChatBridgeDirection ||
+		identity.BridgeDirection == "anthropic_to_openai-chat" ||
+		identity.BridgeDirection == "anthropic_to_openai-responses" ||
+		identity.BridgeDirection == "anthropic_to_replicate" ||
+		identity.BridgeDirection == "openai-chat_to_anthropic" ||
+		identity.BridgeDirection == "openai-chat_to_replicate" ||
+		identity.BridgeDirection == "openai-responses_to_anthropic" ||
+		identity.BridgeDirection == "openai-responses_to_replicate"
 	if !strings.HasPrefix(identity.EndpointPath, "/") ||
 		normalizeDialect(identity.APISkin) != identity.APISkin ||
 		normalizeDialect(identity.InboundDialect) != identity.InboundDialect ||
-		(identity.BridgeDirection != "none" && identity.BridgeDirection != chatToResponsesBridgeDirection && identity.BridgeDirection != responsesToChatBridgeDirection) ||
+		!validBridge ||
 		(identity.ModelSuffix != "" && !strings.HasPrefix(identity.ModelSuffix, ":")) {
 		return false
 	}

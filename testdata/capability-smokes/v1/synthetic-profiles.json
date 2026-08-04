@@ -37,6 +37,13 @@
         {"capability_case":"image-input","status":"passed","observed":{"http_status":200,"upstream_attempts":1}},
         {"capability_case":"router-selected-ocr","status":"untested","observed":{}}
       ]
+    },
+    {
+      "profile_version": "synthetic-anthropic-to-responses-text/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"anthropic","bridge_direction":"anthropic_to_openai-responses","request_shape":"text"},
+      "cases": [
+        {"capability_case":"text","status":"passed","observed":{"http_status":200,"upstream_attempts":1}}
+      ]
     }
   ]
 }

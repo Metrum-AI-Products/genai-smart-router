@@ -2,6 +2,7 @@ package router
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -68,8 +69,13 @@ func TestAdvertisedCapabilitiesUseRuntimeToolVocabulary(t *testing.T) {
 		{name: "auto-only", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function"}}, wantAuto: true},
 		{name: "forced-explicitly-unsupported", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}, unsupported: []string{"forced_tool_choice"}, wantAuto: true},
 		{name: "tools-explicitly-unsupported", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, unsupported: []string{"tools"}},
+		{name: "normalized-unsupported-tools", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, unsupported: []string{" TOOLS "}},
 		{name: "cross-skin", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}},
 		{name: "provider-hosted-is-not-client-tools", dialect: "openai-responses", toolSupport: ToolSupport{ProviderHosted: []string{"tools", "tool_choice"}}},
+		{name: "chat-tool-choice-alone", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tool_choice"}}},
+		{name: "chat-alias", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"function_tools", "forced_tool_choice"}}},
+		{name: "responses-alias", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"tools", "functions", "tool_choice"}}},
+		{name: "anthropic-alias", dialect: "anthropic", toolSupport: ToolSupport{AnthropicMessages: []string{"tools", "tool_use", "tool_choice"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -82,6 +88,43 @@ func TestAdvertisedCapabilitiesUseRuntimeToolVocabulary(t *testing.T) {
 				t.Fatalf("tools-forced=%v, want %v: %v", got, test.wantForced, capabilities)
 			}
 		})
+	}
+}
+
+func TestAdvertisedCapabilitiesHonorToolOnlyAndUnsupportedFeatures(t *testing.T) {
+	target := Target{
+		ToolOnly:        true,
+		InputModalities: []string{"text", "image"},
+		ToolSupport: ToolSupport{OpenAIResponses: []string{
+			"function", "tool_choice", "structured_outputs",
+		}},
+	}
+	capabilities := advertisedCapabilities(target, "openai-responses")
+	for _, forbidden := range []string{"text", "image-input", "structured-outputs"} {
+		if stringSliceContains(capabilities, forbidden) {
+			t.Fatalf("ToolOnly capability %q advertised as standalone: %v", forbidden, capabilities)
+		}
+	}
+	for _, required := range []string{"tools-auto", "tools-forced"} {
+		if !stringSliceContains(capabilities, required) {
+			t.Fatalf("supported capability %q omitted: %v", required, capabilities)
+		}
+	}
+
+	target.ToolOnly = false
+	target.RequestShapeSupport.UnsupportedRequestFeatures = []string{" IMAGE ", "response_format"}
+	capabilities = advertisedCapabilities(target, "openai-responses")
+	for _, forbidden := range []string{"image-input", "structured-outputs"} {
+		if stringSliceContains(capabilities, forbidden) {
+			t.Fatalf("explicitly unsupported capability %q advertised: %v", forbidden, capabilities)
+		}
+	}
+
+	target.RequestShapeSupport.UnsupportedRequestFeatures = nil
+	target.RequestShapeSupport.RequiredInputModalities = []string{"image"}
+	capabilities = advertisedCapabilities(target, "openai-responses")
+	if len(capabilities) != 1 || capabilities[0] != "image-input" {
+		t.Fatalf("image-required target advertised uncallable standalone shapes: %v", capabilities)
 	}
 }
 
@@ -192,6 +235,19 @@ func TestCapabilityEvidenceUsesActualUpstreamEndpointPaths(t *testing.T) {
 		t.Fatalf("invalid endpoint construction did not fail closed: %v", failures)
 	}
 }
+func TestCapabilityEndpointFingerprintBindsResolvedQuery(t *testing.T) {
+	target := Target{Provider: "p", Model: "synthetic", Dialect: "openai-chat", Weight: 1}
+	first := ProviderConfig{BaseURL: "https://provider.example/v1?api-version=one", Dialect: "openai-chat", KeyID: "test"}
+	second := ProviderConfig{BaseURL: "https://provider.example/v1?api-version=two", Dialect: "openai-chat", KeyID: "test"}
+	firstEvidence, _ := completeSurfaceEvidence(t, first, target)
+	secondEvidence, secondExpected := completeSurfaceEvidence(t, second, target)
+	if firstEvidence[0].Identity.EndpointFingerprint == secondEvidence[0].Identity.EndpointFingerprint {
+		t.Fatal("different resolved endpoint queries produced the same fingerprint")
+	}
+	if failures := capabilityTestConfig(second, target).VerifyAdvertisedCapabilities("group", firstEvidence, secondExpected); len(failures) == 0 {
+		t.Fatal("evidence for a different endpoint query satisfied promotion")
+	}
+}
 
 func TestChatToResponsesBridgeRequiresDistinctShapeEvidence(t *testing.T) {
 	provider := ProviderConfig{BaseURL: "https://provider.example/api/v1", Dialect: "openai-responses", KeyID: "test"}
@@ -268,14 +324,14 @@ func TestBothRuntimeBridgeDirectionsAndDisabledShapes(t *testing.T) {
 		Model:           "synthetic",
 		Dialect:         "openai-chat",
 		Weight:          1,
-		ToolSupport:     ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+		ToolSupport:     ToolSupport{OpenAIChat: []string{"tools", "tool_choice", "structured_outputs"}},
 		InputModalities: []string{"text", "image"},
-		ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true, FunctionTools: true, ToolChoice: true, Images: true},
+		ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true, FunctionTools: true, ToolChoice: true, Images: true, StructuredOutputs: true},
 	}
 	chatCfg := capabilityTestConfig(chatProvider, chatTarget)
 	chatEvidence, chatExpected := completeSurfaceEvidence(t, chatProvider, chatTarget)
-	if len(chatEvidence) != 8 {
-		t.Fatalf("Responses-to-Chat requirement count=%d, want 8", len(chatEvidence))
+	if len(chatEvidence) != 9 {
+		t.Fatalf("Responses-to-Chat requirement count=%d, want direct 5 plus bridge 4", len(chatEvidence))
 	}
 	if failures := chatCfg.VerifyAdvertisedCapabilities("group", chatEvidence, chatExpected); len(failures) != 0 {
 		t.Fatalf("Responses-to-Chat evidence rejected: %v", failures)
@@ -298,6 +354,177 @@ func TestBothRuntimeBridgeDirectionsAndDisabledShapes(t *testing.T) {
 	}
 	if failures := responsesCfg.VerifyAdvertisedCapabilities("group", responsesEvidence, responsesExpected); len(failures) != 0 {
 		t.Fatalf("disabled bridge shapes incorrectly required evidence: %v", failures)
+	}
+
+	bridgeText = false
+	responsesTarget.Bridges.ChatToResponses.Text = &bridgeText
+	if capabilities := chatToResponsesEvidenceCapabilities(responsesTarget, "openai-responses"); len(capabilities) != 0 {
+		t.Fatalf("Text-disabled Chat-to-Responses bridge advertised unreachable shapes: %v", capabilities)
+	}
+	chatTarget.ResponsesToChat.Text = false
+	capabilities := responsesToChatEvidenceCapabilities(chatTarget, "openai-chat")
+	if len(capabilities) != 2 || !stringSliceContains(capabilities, "tools-auto") || !stringSliceContains(capabilities, "tools-forced") {
+		t.Fatalf("Text-disabled Responses-to-Chat capability set mismatch: %v", capabilities)
+	}
+}
+
+func TestAnthropicInboundTranslationRequiresDistinctCallableEvidence(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
+	target := Target{
+		Provider:        "p",
+		Model:           "synthetic",
+		Dialect:         "openai-responses",
+		Weight:          1,
+		InputModalities: []string{"text", "image"},
+		ToolSupport: ToolSupport{OpenAIResponses: []string{
+			"function", "tool_choice", "structured_outputs",
+		}},
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"anthropic"},
+			ValidationStatus:         "passed",
+		},
+	}
+	surfaces, err := capabilitySurfaces(provider, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(surfaces) != 1 {
+		t.Fatalf("Anthropic-only translated surfaces=%d, want 1: %#v", len(surfaces), surfaces)
+	}
+	surface := surfaces[0]
+	if surface.inbound != "anthropic" || surface.bridge != "anthropic_to_openai-responses" {
+		t.Fatalf("Anthropic translation identity mismatch: %#v", surface)
+	}
+	if len(surface.capabilities) != 2 || !stringSliceContains(surface.capabilities, "text") || !stringSliceContains(surface.capabilities, "image-input") {
+		t.Fatalf("Anthropic callable capability set mismatch: %v", surface.capabilities)
+	}
+	for _, unsupported := range []string{"tools-auto", "tools-forced", "structured-outputs"} {
+		if stringSliceContains(surface.capabilities, unsupported) {
+			t.Fatalf("uncallable Anthropic translation capability %q advertised: %v", unsupported, surface.capabilities)
+		}
+	}
+}
+
+func TestConfiguredGenericTranslationRequiresDistinctEvidence(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example", Dialect: "anthropic", KeyID: "test"}
+	target := Target{
+		Provider:        "p",
+		Model:           "synthetic",
+		Dialect:         "anthropic",
+		Weight:          1,
+		InputModalities: []string{"text", "image"},
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"openai-chat"},
+		},
+	}
+	surfaces, err := capabilitySurfaces(provider, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(surfaces) != 1 {
+		t.Fatalf("generic translation surfaces=%d, want 1: %#v", len(surfaces), surfaces)
+	}
+	surface := surfaces[0]
+	if surface.inbound != "openai-chat" || surface.bridge != "openai-chat_to_anthropic" ||
+		len(surface.capabilities) != 2 ||
+		!stringSliceContains(surface.capabilities, "text") ||
+		!stringSliceContains(surface.capabilities, "image-input") {
+		t.Fatalf("generic translation evidence mismatch: %#v", surface)
+	}
+}
+
+func TestUnrepresentableCompositeCapabilityShapesFailClosed(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
+	tests := []Target{
+		{
+			Provider:        "p",
+			Model:           "image-tools",
+			Dialect:         "openai-responses",
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+			RequestShapeSupport: RequestShapeSupport{
+				RequiredInputModalities: []string{"image"},
+			},
+		},
+		{
+			Provider:        "p",
+			Model:           "tool-only-image",
+			Dialect:         "openai-responses",
+			ToolOnly:        true,
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+		},
+	}
+	for _, target := range tests {
+		if _, err := capabilitySurfaces(provider, target); err == nil {
+			t.Fatalf("unrepresentable composite surface passed for %s", target.Model)
+		}
+	}
+}
+
+func TestBridgeEvidenceHonorsSupportedInboundDialectAllowlist(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
+	bridgeText := true
+	target := Target{
+		Provider:    "p",
+		Model:       "synthetic",
+		Dialect:     "openai-responses",
+		Weight:      1,
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}},
+		Bridges:     BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Text: &bridgeText, Tools: true}},
+		RequestShapeSupport: RequestShapeSupport{
+			SupportedInboundDialects: []string{"openai-responses"},
+		},
+	}
+	surfaces, err := capabilitySurfaces(provider, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(surfaces) != 1 || surfaces[0].inbound != "openai-responses" || surfaces[0].bridge != "none" {
+		t.Fatalf("uncallable Chat bridge was advertised: %#v", surfaces)
+	}
+}
+
+func TestExampleConfigAnthropicTranslationSurfacesMatchRuntime(t *testing.T) {
+	raw, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	matched := 0
+	for groupName, group := range cfg.Models {
+		for _, rawTarget := range group.Targets {
+			target, err := cfg.resolveTarget(groupName, rawTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			apiSkin := targetDialect(cfg.Provider[target.Provider], target)
+			if target.ToolOnly || apiSkin == "anthropic" ||
+				!stringSliceContainsNormalizedDialect(target.RequestShapeSupport.SupportedInboundDialects, "anthropic") ||
+				strings.ToLower(strings.TrimSpace(target.RequestShapeSupport.ValidationStatus)) != "passed" {
+				continue
+			}
+			surfaces, err := capabilitySurfaces(cfg.Provider[target.Provider], target)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", groupName, target.Model, err)
+			}
+			found := false
+			for _, surface := range surfaces {
+				if surface.inbound == "anthropic" && surface.bridge == anthropicTranslationBridgePrefix+apiSkin {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("%s/%s omitted validated Anthropic translation surface", groupName, target.Model)
+			}
+			matched++
+		}
+	}
+	if matched == 0 {
+		t.Fatal("example config has no validated Anthropic translation surfaces")
 	}
 }
 
@@ -356,6 +583,9 @@ func TestEvidenceIdentityMustMatchResolvedTarget(t *testing.T) {
 	}
 	if failures := cfg.VerifyAdvertisedCapabilities("group", evidence, expected); len(failures) != 0 {
 		t.Fatalf("exact target identity rejected: %v", failures)
+	}
+	if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{evidence[0]}, []CapabilityEvidenceIdentity{expected[0]}); len(failures) != 0 {
+		t.Fatalf("exact suffixed target claim rejected: %v", failures)
 	}
 	for _, mutation := range []struct {
 		name   string

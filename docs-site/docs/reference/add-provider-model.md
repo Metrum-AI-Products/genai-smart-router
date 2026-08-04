@@ -103,16 +103,23 @@ Map probe results to catalog metadata mechanically:
 
 Every API skin needs independent evidence. OpenAI Chat tool support does not prove OpenAI Responses function tools or Anthropic Messages client tools.
 
-Promotion evidence must match the resolved active target exactly. Bind each
-row to the provider's non-secret `key_id`, a SHA-256 fingerprint of the
-resolved endpoint authority, the actual upstream path, API skin, base model
-and suffix, inbound dialect, bridge direction, request shape, capability
-case, and an approved profile version. Do not reuse native evidence for a
-bridge or reuse text evidence for tools, image input, or structured outputs.
-Chat auto tools, Responses function tools, Anthropic client tools, forced
-tool choice, and structured outputs are separate per-skin claims. A different
+Promotion evidence collected by a protected validation workflow must match the
+resolved target exactly. The shipped offline harness validates this binding
+contract but does not authorize a live route. Bind each
+row to the provider's non-secret `key_id`, a SHA-256 fingerprint of the full
+resolved upstream URL (lowercase scheme and host, actual path, and configured
+query), the actual upstream path, API skin, base model and suffix, inbound
+dialect, bridge direction, request shape, capability case, and an approved
+profile version. The query is never stored in evidence; it is only hash-bound.
+Do not reuse native evidence for a bridge or reuse text evidence for tools,
+image input, or structured outputs. Chat `tools`, Responses `function`,
+Anthropic `client_tools`, forced `tool_choice`, and structured outputs are
+separate per-skin claims. Any allowlisted cross-skin text or image translation
+uses its own `<inbound-skin>_to_<upstream-skin>` direction. A different
 account, endpoint, suffix, skin, bridge direction, or shape fails the
-promotion gate even when the evidence itself passed.
+promotion contract even when the evidence itself passed. Targets that require
+composite image-plus-tool or image-plus-structured evidence fail closed until
+that composite request shape is defined.
 
 One upstream model can have multiple provider skins. Keep each skin as its own provider entry when the upstream exposes distinct endpoints or request contracts:
 

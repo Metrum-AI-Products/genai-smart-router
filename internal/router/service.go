@@ -2385,12 +2385,11 @@ func targetSupportsClientTools(target Target, dialect string, forced bool) bool 
 	var supported bool
 	switch dialect {
 	case "openai-responses":
-		supported = supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
+		supported = supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function")
 	case "anthropic":
-		supported = supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
+		supported = supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools")
 	case "openai", "openai-chat":
-		supported = !toolSupportEmpty(target.ToolSupport) &&
-			supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
+		supported = supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools")
 	}
 	if !supported || !forced {
 		return supported
@@ -2398,7 +2397,7 @@ func targetSupportsClientTools(target Target, dialect string, forced bool) bool 
 	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tool_choice", "forced_tool_choice") {
 		return false
 	}
-	return supportsAnyCapability(targetCapabilityValues(target, dialect), "tool_choice", "forced_tool_choice")
+	return supportsAnyCapability(targetCapabilityValues(target, dialect), "tool_choice")
 }
 
 func requestHasForbiddenProviderHostedTools(req *IRRequest) bool {
@@ -2445,9 +2444,12 @@ func filterResponsesToolsForUpstream(tools any) any {
 }
 
 func supportsAnyCapability(values []string, capabilities ...string) bool {
-	for _, capability := range capabilities {
-		if stringSliceContains(values, capability) {
-			return true
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, capability := range capabilities {
+			if value == strings.ToLower(strings.TrimSpace(capability)) {
+				return true
+			}
 		}
 	}
 	return false
