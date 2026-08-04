@@ -21,6 +21,52 @@ PACKAGE_DOCS = [
 ]
 
 
+def markdown_section(document: str, heading: str) -> str:
+    marker = f"## {heading}\n"
+    start = document.find(marker)
+    if start == -1:
+        raise AssertionError(f"missing {heading!r} section")
+    end = document.find("\n## ", start + len(marker))
+    return document[start:] if end == -1 else document[start:end]
+
+
+def assert_offline_package_documentation_contract() -> None:
+    repository = Path(__file__).resolve().parent.parent
+    binary_manifest_sources = {
+        repository / "docs/PACKAGE_README.md": "What Is Included",
+        repository / "README.md": "Build And Package",
+        repository / "docs/DEPLOYMENT.md": "Package Contents",
+    }
+    for path, heading in binary_manifest_sources.items():
+        section = markdown_section(path.read_text(encoding="utf-8"), heading)
+        for package_file in validate_package_contents.BINARY_PACKAGE_FILES:
+            if package_file not in section:
+                raise AssertionError(f"{path}: binary package manifest omits {package_file}")
+
+    package_readme = (repository / "docs/PACKAGE_README.md").read_text(encoding="utf-8")
+    docker_section = markdown_section(package_readme, "What Is Included")
+    docker_start = docker_section.find("Docker Compose packages include:")
+    if docker_start == -1:
+        raise AssertionError("docs/PACKAGE_README.md: missing Docker Compose package manifest")
+    docker_manifest = docker_section[docker_start:]
+    if "bin/metrum-smartrouterctl" in docker_manifest:
+        raise AssertionError("docs/PACKAGE_README.md: Docker package manifest must omit metrum-smartrouterctl")
+    for guidance in (
+        "The standard Docker and Docker Compose images do not include",
+        "binary package on a separate trusted administration host.",
+    ):
+        if guidance not in docker_manifest:
+            raise AssertionError(f"docs/PACKAGE_README.md: missing Docker CLI guidance: {guidance}")
+
+    dockerfile = (repository / "Dockerfile").read_text(encoding="utf-8")
+    for runtime_binary in ("router", "router-token-gen", "router-usage-report"):
+        expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
+        if expected_copy not in dockerfile:
+            raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
+    if "metrum-smartrouterctl" in dockerfile:
+        raise AssertionError("Dockerfile: standard image must not include metrum-smartrouterctl")
+
+
 def write_allowlist(root: Path) -> Path:
     allowlist = root / "allowlist.txt"
     allowlist.write_text("".join(f"docs/{doc}\n" for doc in PACKAGE_DOCS), encoding="utf-8")
@@ -122,6 +168,7 @@ def docker_package_files(root: str = "smart-llmrouter-v1.0.0-docker-linux-amd64"
 
 
 def main() -> int:
+    assert_offline_package_documentation_contract()
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         allowlist = write_allowlist(root)
