@@ -9,6 +9,7 @@ Binary packages include:
 - `bin/router`
 - `bin/router-token-gen`
 - `bin/router-usage-report`
+- `bin/metrum-smartrouterctl`
 - `config/config.example.yaml`
 - `config/env.example.json`
 - `config/scripts/router.ts`
@@ -27,6 +28,10 @@ Docker Compose packages include:
 - `config/scripts/router.ts`
 - `images/smart-llmrouter-<version>-linux-<arch>.tar`
 - `docs/`
+
+The standard Docker and Docker Compose images do not include
+`metrum-smartrouterctl`. Docker-based operators run the CLI from an extracted
+binary package on a separate trusted administration host.
 
 Choose `linux-amd64` for x86_64 hosts and `linux-arm64` for ARM64 hosts.
 

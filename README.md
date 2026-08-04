@@ -62,6 +62,7 @@ Each tarball contains:
 bin/router
 bin/router-token-gen
 bin/router-usage-report
+bin/metrum-smartrouterctl
 config/config.example.yaml
 config/env.example.json
 config/scripts/router.ts
