@@ -807,7 +807,7 @@ Durability:
 ## Make Targets
 
 ```bash
-make test       # Go unit tests
+make test       # safe default suite: Go, policy, and offline API compatibility tests
 make docs-build # build customer-facing Docusaurus docs into the Go embed directory
 make docs-dev   # run the Docusaurus development server
 make build      # build docs, then ./router, ./router-token-gen, and ./router-usage-report
