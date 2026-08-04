@@ -46,13 +46,13 @@ func targetPassesContract(contract *ModelGroupContract, target Target, outDialec
 		return "contract-required-api-shape"
 	}
 	caps := contract.RequiredCaps
-	if caps.Tools && !targetExplicitlySupportsTools(target, outDialect) {
+	if caps.Tools && !targetSupportsClientTools(target, outDialect, false) {
 		return "contract-required-tools"
 	}
-	if caps.ForcedToolChoice && !targetSupportsCapability(target, outDialect, "forced_tool_choice", "tool_choice") {
+	if caps.ForcedToolChoice && !targetSupportsClientTools(target, outDialect, true) {
 		return "contract-required-tools"
 	}
-	if caps.StructuredOutputs && !targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema") {
+	if caps.StructuredOutputs && !targetSupportsStructuredOutput(target, callerDialect, outDialect, true) {
 		return "contract-required-structured-outputs"
 	}
 	if caps.Reasoning && !targetSupportsReasoning(target) {
@@ -120,19 +120,6 @@ func targetPassesContract(contract *ModelGroupContract, target Target, outDialec
 		return "contract-operational-threshold"
 	}
 	return ""
-}
-
-func targetExplicitlySupportsTools(target Target, dialect string) bool {
-	switch dialect {
-	case "openai-responses":
-		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
-	case "anthropic":
-		return supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
-	case "openai", "openai-chat":
-		return supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
-	default:
-		return false
-	}
 }
 
 func contractSupportsAPIShape(contract *ModelGroupContract, callerDialect string) bool {

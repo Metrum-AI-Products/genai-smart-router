@@ -69,6 +69,20 @@ flowchart LR
 
 Keep test provider keys separate from production BYOK credentials where policy requires it. Use separate usage databases or state stores when the reporting, retention, or license envelope differs by environment. Validate new providers, model IDs, weights, tool metadata, image metadata, and routing scripts in staging before promotion.
 
+### Multi-environment operator contract
+
+In binary tarballs, `metrum-smartrouterctl` keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. The CLI is not included in the standard Docker or Docker Compose image; Docker-based operators run it from an extracted binary package on a separate trusted administration host. Stage labels are deployment-defined rather than a fixed environment list. Registration requires separate expected and independently observed current schema versions. A later local-only `observe-schema` command updates only the current version and server-generated observation time for exactly one tenant/stage; expected deployment metadata remains immutable. Missing, ambiguous, malformed, or out-of-range observations fail closed. A bounded read-only status reports `schema_version_mismatch` or `current` without contacting a live database, cluster, DNS endpoint, cloud API, adapter, or secret store.
+
+Schema observation opens only an existing local registry. A missing registry
+fails closed without creating a SQLite file or applying registry DDL.
+
+This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
+
+The fake-adapter `quota-reserve` command accepts only a bounded opaque
+`rsv-<lowercase-canonical-uuid>` idempotency key. It rejects token-like,
+credential-like, URL, path, uppercase, malformed, and unbounded values before
+calling the quota adapter or writing a quota-admission record.
+
 Rollout and rollback flow:
 
 1. Update staging config and run `/readyz`, `/v1/models`, Chat, Responses, Messages, tool, image, report, and license smokes that match the change.

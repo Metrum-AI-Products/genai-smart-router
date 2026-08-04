@@ -1,0 +1,49 @@
+{
+  "schema_version": "capability-smoke/v1",
+  "profiles": [
+    {
+      "profile_version": "synthetic-k3-chat-only/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","endpoint_path":"/v1/chat/completions","api_skin":"openai-chat","model":"synthetic-k3","model_suffix":"","inbound_dialect":"openai-chat","bridge_direction":"none","request_shape":"text"},
+      "cases": [
+        {"capability_case":"text","status":"passed","observed":{"http_status":200,"request_id_present":true,"latency_bucket":"under-1s","usage_present":true,"finish_class":"stop","upstream_attempts":1}},
+        {"capability_case":"openai-responses","status":"failed","observed":{"http_status":400,"error_class":"upstream_bad_request","upstream_attempts":1}}
+      ]
+    },
+    {
+      "profile_version": "synthetic-responses-text/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"text"},
+      "cases": [
+        {"capability_case":"text","status":"passed","observed":{"http_status":200,"upstream_attempts":1}}
+      ]
+    },
+    {
+      "profile_version": "synthetic-responses-tools-auto/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"tools-auto"},
+      "cases": [
+        {"capability_case":"tools-auto","status":"passed","observed":{"http_status":200,"upstream_attempts":1}}
+      ]
+    },
+    {
+      "profile_version": "synthetic-responses-tools-forced/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"tools-forced"},
+      "cases": [
+        {"capability_case":"tools-forced","status":"failed","observed":{"http_status":400,"error_class":"upstream_bad_request","upstream_attempts":1}}
+      ]
+    },
+    {
+      "profile_version": "synthetic-image-direct/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","endpoint_path":"/v1/chat/completions","api_skin":"openai-chat","model":"synthetic-image","model_suffix":"","inbound_dialect":"openai-chat","bridge_direction":"none","request_shape":"image"},
+      "cases": [
+        {"capability_case":"image-input","status":"passed","observed":{"http_status":200,"upstream_attempts":1}},
+        {"capability_case":"router-selected-ocr","status":"untested","observed":{}}
+      ]
+    },
+    {
+      "profile_version": "synthetic-anthropic-to-responses-text/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"anthropic","bridge_direction":"anthropic_to_openai-responses","request_shape":"text"},
+      "cases": [
+        {"capability_case":"text","status":"passed","observed":{"http_status":200,"upstream_attempts":1}}
+      ]
+    }
+  ]
+}

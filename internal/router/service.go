@@ -2375,19 +2375,29 @@ func targetSupportsInputModalities(target Target, required []string) bool {
 }
 
 func targetSupportsTools(target Target, dialect string) bool {
-	switch dialect {
-	case "openai-responses":
-		return supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function", "functions", "tools")
-	case "anthropic":
-		return supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools", "tools", "tool_use")
-	case "openai", "openai-chat":
-		if toolSupportEmpty(target.ToolSupport) {
-			return false
-		}
-		return supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools", "function", "functions", "function_tools", "tool_choice", "forced_tool_choice")
-	default:
+	return targetSupportsClientTools(target, dialect, false)
+}
+
+func targetSupportsClientTools(target Target, dialect string, forced bool) bool {
+	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tools") {
 		return false
 	}
+	var supported bool
+	switch dialect {
+	case "openai-responses":
+		supported = supportsAnyCapability(target.ToolSupport.OpenAIResponses, "function")
+	case "anthropic":
+		supported = supportsAnyCapability(target.ToolSupport.AnthropicMessages, "client_tools")
+	case "openai", "openai-chat":
+		supported = supportsAnyCapability(target.ToolSupport.OpenAIChat, "tools")
+	}
+	if !supported || !forced {
+		return supported
+	}
+	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tool_choice", "forced_tool_choice") {
+		return false
+	}
+	return supportsAnyCapability(targetCapabilityValues(target, dialect), "tool_choice")
 }
 
 func requestHasForbiddenProviderHostedTools(req *IRRequest) bool {
@@ -2434,9 +2444,12 @@ func filterResponsesToolsForUpstream(tools any) any {
 }
 
 func supportsAnyCapability(values []string, capabilities ...string) bool {
-	for _, capability := range capabilities {
-		if stringSliceContains(values, capability) {
-			return true
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, capability := range capabilities {
+			if value == strings.ToLower(strings.TrimSpace(capability)) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2446,16 +2459,16 @@ func targetSupportsStructuredOutput(target Target, callerDialect, outDialect str
 	if !required {
 		return true
 	}
-	if isResponsesToChatBridge(callerDialect, outDialect, target) && target.ResponsesToChat.StructuredOutputs {
-		return targetSupportsCapability(target, "openai-chat", "structured_outputs", "json_schema")
+	if isResponsesToChatBridge(callerDialect, outDialect, target) {
+		return false
 	}
 	if isChatToResponsesBridge(callerDialect, outDialect, target) {
-		return target.Bridges.ChatToResponses.StructuredOutputs && targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
+		return target.Bridges.ChatToResponses.StructuredOutputs && supportsAnyCapability(targetCapabilityValues(target, outDialect), "structured_outputs", "json_schema")
 	}
 	if callerDialect != outDialect {
 		return false
 	}
-	return targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
+	return supportsAnyCapability(targetCapabilityValues(target, outDialect), "structured_outputs", "json_schema")
 }
 
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {

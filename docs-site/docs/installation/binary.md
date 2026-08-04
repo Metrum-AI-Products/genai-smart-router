@@ -17,6 +17,7 @@ smart-llmrouter-<version>-linux-<arch>/
     router
     router-token-gen
     router-usage-report
+    metrum-smartrouterctl
   config/
     config.example.yaml
     env.example.json
@@ -82,6 +83,7 @@ Install the binary and runtime files according to the host change-control proces
 sudo install -m 0755 bin/router /usr/local/bin/smart-llmrouter
 sudo install -m 0755 bin/router-token-gen /usr/local/bin/router-token-gen
 sudo install -m 0755 bin/router-usage-report /usr/local/bin/router-usage-report
+sudo install -m 0755 bin/metrum-smartrouterctl /usr/local/bin/metrum-smartrouterctl
 sudo install -m 0640 -o router -g router config/config.yaml /etc/smart-llmrouter/config.yaml
 sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/env.json
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
