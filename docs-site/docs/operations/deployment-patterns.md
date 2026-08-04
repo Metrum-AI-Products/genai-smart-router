@@ -81,7 +81,10 @@ This safe slice permits only fake-adapter quota admission checks and local regis
 The fake-adapter `quota-reserve` command accepts only a bounded opaque
 `rsv-<lowercase-canonical-uuid>` idempotency key. It rejects token-like,
 credential-like, URL, path, uppercase, malformed, and unbounded values before
-calling the quota adapter or writing a quota-admission record.
+calling the quota adapter or writing a quota-admission record. An exact retry
+of a bounded opaque legacy row already in the local registry remains
+idempotent, but a legacy identifier cannot create a new hold and a different
+identifier cannot bypass an active hold.
 
 Rollout and rollback flow:
 

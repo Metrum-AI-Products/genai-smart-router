@@ -1,11 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	_ "github.com/glebarez/go-sqlite"
 )
 
 func TestLifecycleCommandsFailClosed(t *testing.T) {
@@ -69,6 +72,7 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 		t.Fatalf("out-of-bounds schema observation did not fail closed: %v %s", err, out)
 	}
 	for _, unsafeReservationID := range []string{
+		"reserve-a",
 		"ghp_exampleCredentialValue",
 		"sk-exampleProviderSecret",
 		"router-token-example",
@@ -83,8 +87,25 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 			t.Fatalf("unsafe quota reservation ID was echoed: %s", out)
 		}
 	}
-	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "rsv-00000000-0000-0000-0000-000000000001", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
-		t.Fatalf("fake quota reservation failed: %v %s", err, out)
+	seed, err := sql.Open("sqlite", registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seed.Close()
+	if _, err := seed.Exec(`INSERT INTO tenant_instance_quota_reservations (reservation_id, instance_id, region, db_instances, quota_limit, quota_used, quota_reserved, headroom, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, "reserve-a", "router-a", "test-region-1", 1, 4, 0, 0, 0, "admission_reserved"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "reserve-a", "--mock-quota-limit", "4"); err != nil || !strings.Contains(out, "admission_reserved") {
+		t.Fatalf("exact legacy reservation retry failed: %v %s", err, out)
+	}
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "rsv-00000000-0000-0000-0000-000000000001", "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "already has an active quota admission reservation") {
+		t.Fatalf("canonical identifier bypassed active legacy hold: %v %s", err, out)
+	}
+	if _, err := seed.Exec(`INSERT INTO tenant_instance_quota_reservations (reservation_id, instance_id, region, db_instances, quota_limit, quota_used, quota_reserved, headroom, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, "sk-exampleProviderSecret", "router-a", "test-region-1", 1, 4, 0, 0, 0, "admission_reserved"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "sk-exampleProviderSecret", "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "invalid reservation id") || strings.Contains(out, "sk-exampleProviderSecret") {
+		t.Fatalf("unsafe existing reservation row was accepted or echoed: %v %s", err, out)
 	}
 	if _, err := run("status", "--registry", "file:unsafe?mode=memory", "--limit", "1"); err == nil {
 		t.Fatal("SQLite URI was accepted")
