@@ -47,6 +47,8 @@ Example response:
 
 Use one returned `id` as the `model` value in `/v1/chat/completions`, `/v1/responses`, `/anthropic/v1/messages`, Codex CLI, Claude Code CLI, or another compatible client. Model discovery stays at `/v1/models` for both OpenAI-compatible and Anthropic-compatible setup flows.
 
+Codex CLI additionally reads a local Codex-native model catalog for deployment-defined group names. Fetch its caller-filtered catalog from `/v1/codex/models.json` with the same token, then pass the downloaded file as `model_catalog_json`; see [Codex CLI](./codex-cli). This does not replace `/v1/models` as the general allowed-group discovery endpoint.
+
 ## What The Names Mean
 
 The returned IDs are router model groups, not a full inventory of every upstream provider model. A deployment might expose groups such as `default`, `fast`, `coding`, `vision`, or different names chosen by the platform team. GenAI Smart Router does not require any specific group names.

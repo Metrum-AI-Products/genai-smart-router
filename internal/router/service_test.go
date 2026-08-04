@@ -3633,6 +3633,239 @@ func TestModelsEndpointIncludesCompatibilityModelsField(t *testing.T) {
 	}
 }
 
+func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Models["big-coder"] = ModelGroup{
+		Strategy: "static",
+		Contract: &ModelGroupContract{
+			DisplayName:        "Coding workspace",
+			CallerVisibleNotes: "Deployment-defined coding group.",
+		},
+		Targets: []Target{{
+			Provider:        "mock",
+			Model:           "private-upstream-model",
+			Dialect:         "openai-responses",
+			ContextTokens:   200000,
+			InputModalities: []string{"text", "image"},
+			ToolSupport:     ToolSupport{OpenAIResponses: []string{"function", "local_shell", "apply_patch"}},
+			Reasoning: ReasoningSupport{
+				Supported:         true,
+				Mode:              reasoningModeOptIn,
+				Control:           reasoningControlEffortEnum,
+				SupportsSummaries: true,
+				DefaultOn:         true,
+			},
+			Weight: 99,
+		}},
+	}
+	cfg.Models["private-group"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "private-model", ContextTokens: 8192}}}
+	cfg.Models["plain"] = ModelGroup{Strategy: "static", Targets: []Target{{Provider: "mock", Model: "plain-model", ContextTokens: 8192}}}
+	cfg.Models["tool-only"] = ModelGroup{Strategy: "static", Targets: []Target{{
+		Provider:        "mock",
+		Model:           "tool-only-model",
+		ToolOnly:        true,
+		DefaultThinking: map[string]any{"type": "enabled", "budget_tokens": 512},
+	}}}
+	cfg.Callers[0].Allow = []string{"big-coder", "plain", "tool-only"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	unauthorized := httptest.NewRequest(http.MethodGet, "/v1/codex/models.json", nil)
+	unauthorizedRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(unauthorizedRR, unauthorized)
+	if unauthorizedRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status=%d body=%s", unauthorizedRR.Code, unauthorizedRR.Body.String())
+	}
+	invalid := httptest.NewRequest(http.MethodGet, "/v1/codex/models.json", nil)
+	invalid.Header.Set("Authorization", "Bearer invalid-caller-token")
+	invalidRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(invalidRR, invalid)
+	if invalidRR.Code != http.StatusUnauthorized || strings.Contains(invalidRR.Body.String(), "big-coder") {
+		t.Fatalf("invalid caller status=%d body=%s", invalidRR.Code, invalidRR.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/codex/models.json", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	// This local mirror deliberately includes the Codex fields this endpoint
+	// promises, so accidental field-name/type drift fails deterministically.
+	var catalog struct {
+		Models []struct {
+			Slug                          string `json:"slug"`
+			DisplayName                   string `json:"display_name"`
+			Description                   string `json:"description"`
+			ContextWindow                 int    `json:"context_window"`
+			MaxContextWindow              int    `json:"max_context_window"`
+			EffectiveContextWindowPercent int    `json:"effective_context_window_percent"`
+			SupportedReasoningLevels      []struct {
+				Effort string `json:"effort"`
+			} `json:"supported_reasoning_levels"`
+			DefaultReasoningLevel       string         `json:"default_reasoning_level"`
+			SupportsReasoningSummaries  bool           `json:"supports_reasoning_summaries"`
+			SupportsParallelToolCalls   bool           `json:"supports_parallel_tool_calls"`
+			ExperimentalSupportedTools  []string       `json:"experimental_supported_tools"`
+			SupportsImageDetailOriginal bool           `json:"supports_image_detail_original"`
+			InputModalities             []string       `json:"input_modalities"`
+			TruncationPolicy            map[string]any `json:"truncation_policy"`
+			ApplyPatchToolType          string         `json:"apply_patch_tool_type"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Models) != 3 {
+		t.Fatalf("catalog models=%#v, want exactly caller-allowed groups", catalog.Models)
+	}
+	model := catalog.Models[0]
+	if model.Slug != "big-coder" || model.DisplayName != "Coding workspace" || model.Description != "Deployment-defined coding group." {
+		t.Fatalf("safe identity mapping=%#v", model)
+	}
+	if model.MaxContextWindow != 200000 || model.ContextWindow != 190000 || model.EffectiveContextWindowPercent != 95 {
+		t.Fatalf("context mapping=%#v", model)
+	}
+	if len(model.SupportedReasoningLevels) != 3 || model.DefaultReasoningLevel != "medium" || !model.SupportsReasoningSummaries {
+		t.Fatalf("reasoning mapping=%#v", model)
+	}
+	if !model.SupportsParallelToolCalls || len(model.ExperimentalSupportedTools) == 0 || !model.SupportsImageDetailOriginal || !stringSliceContains(model.InputModalities, "image") {
+		t.Fatalf("tool/modality mapping=%#v", model)
+	}
+	if model.TruncationPolicy["mode"] != "tokens" || model.ApplyPatchToolType != "freeform" {
+		t.Fatalf("static Codex mapping=%#v", model)
+	}
+	if model.DefaultReasoningLevel == "" || !model.SupportsReasoningSummaries {
+		t.Fatalf("active reasoning metadata must remain advertised: %#v", model)
+	}
+	var rawCatalog struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &rawCatalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, slug := range []string{"plain", "tool-only"} {
+		var nonReasoning map[string]any
+		for _, rawModel := range rawCatalog.Models {
+			if rawModel["slug"] == slug {
+				nonReasoning = rawModel
+				break
+			}
+		}
+		if nonReasoning == nil {
+			t.Fatalf("missing non-reasoning Codex model %q in %#v", slug, rawCatalog.Models)
+		}
+		for _, field := range []string{"default_reasoning_level", "default_reasoning_summary"} {
+			if _, ok := nonReasoning[field]; ok {
+				t.Fatalf("non-reasoning Codex model %q advertised %s: %#v", slug, field, nonReasoning)
+			}
+		}
+		if levels, ok := nonReasoning["supported_reasoning_levels"].([]any); !ok || len(levels) != 0 || nonReasoning["supports_reasoning_summaries"] != false {
+			t.Fatalf("non-reasoning Codex model %q reasoning metadata=%#v", slug, nonReasoning)
+		}
+	}
+	for _, forbidden := range []string{"provider-key", testToken, cfg.Callers[0].TokenSHA256, cfg.Provider["mock"].BaseURL, "mock", "private-upstream-model", "private-model", "private-group", "weight", "dialect", "targets"} {
+		if strings.Contains(rr.Body.String(), forbidden) {
+			t.Fatalf("Codex catalog leaked %q: %s", forbidden, rr.Body.String())
+		}
+	}
+
+	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	modelsReq.Header.Set("Authorization", "Bearer "+testToken)
+	modelsRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(modelsRR, modelsReq)
+	if modelsRR.Code != http.StatusOK || !strings.Contains(modelsRR.Body.String(), `"data"`) {
+		t.Fatalf("/v1/models compatibility changed: status=%d body=%s", modelsRR.Code, modelsRR.Body.String())
+	}
+}
+
+func TestCodexModelsEndpointInstalledCLIFetchThenRunSmoke(t *testing.T) {
+	if os.Getenv("RUN_CODEX_CATALOG_SMOKE") != "1" {
+		t.Skip("set RUN_CODEX_CATALOG_SMOKE=1 to run the installed Codex CLI smoke")
+	}
+	if _, err := exec.LookPath("codex"); err != nil {
+		t.Skip("installed Codex CLI is unavailable")
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("upstream path=%s", r.URL.Path)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":     "resp_codex_catalog_smoke",
+			"object": "response",
+			"status": "completed",
+			"model":  "catalog-smoke-model",
+			"output": []map[string]any{{
+				"type":    "message",
+				"role":    "assistant",
+				"content": []map[string]any{{"type": "output_text", "text": "router codex ok"}},
+			}},
+			"usage": map[string]any{"input_tokens": 1, "output_tokens": 3, "total_tokens": 4},
+		})
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
+	cfg.Models = map[string]ModelGroup{"catalog-smoke": {Strategy: "static", Targets: []Target{{Provider: "mock", Model: "catalog-smoke-model", Dialect: "openai-responses", ContextTokens: 1000000, ToolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice", "local_shell", "apply_patch"}}}}}}
+	cfg.Server.DefaultModelGroup = "catalog-smoke"
+	cfg.Callers[0].Allow = []string{"catalog-smoke"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	routerServer := httptest.NewServer(svc.Handler())
+	defer routerServer.Close()
+
+	fetchReq, err := http.NewRequest(http.MethodGet, routerServer.URL+"/v1/codex/models.json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchReq.Header.Set("Authorization", "Bearer "+testToken)
+	fetchResp, err := http.DefaultClient.Do(fetchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := io.ReadAll(fetchResp.Body)
+	fetchResp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetchResp.StatusCode != http.StatusOK {
+		t.Fatalf("catalog fetch status=%d", fetchResp.StatusCode)
+	}
+	catalogPath := filepath.Join(dir, "metrum-models.json")
+	if err := os.WriteFile(catalogPath, catalog, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "codex", "exec", "--ignore-user-config", "--ephemeral", "--ignore-rules", "--skip-git-repo-check",
+		"-c", `model="catalog-smoke"`,
+		"-c", `model_provider="metrum-router"`,
+		"-c", `model_catalog_json="`+catalogPath+`"`,
+		"-c", `model_providers.metrum-router.name="Metrum Router"`,
+		"-c", `model_providers.metrum-router.base_url="`+routerServer.URL+`/v1"`,
+		"-c", `model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"`,
+		"-c", `model_providers.metrum-router.wire_api="responses"`,
+		"Reply with exactly: router codex ok")
+	cmd.Env = append(os.Environ(), "METRUM_ROUTER_KEY="+testToken, "HOME="+dir, "CODEX_HOME="+dir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("installed Codex CLI smoke failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "router codex ok") {
+		t.Fatalf("installed Codex CLI did not return the expected safe sentinel")
+	}
+}
+
 func TestVersionAndHealthEndpointsExposeBuildInfo(t *testing.T) {
 	svc := newTestService(t, "http://127.0.0.1:1", "provider-key")
 	defer svc.Close()

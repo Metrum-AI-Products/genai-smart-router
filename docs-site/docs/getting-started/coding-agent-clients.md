@@ -39,7 +39,7 @@ For rollout decisions, keep client setup distinct from outcome evaluation. A set
 
 ## Codex CLI
 
-Codex CLI uses the OpenAI Responses-compatible router path. Set a router token in `METRUM_ROUTER_KEY` and configure `wire_api="responses"`.
+Codex CLI uses the OpenAI Responses-compatible router path. Set a router token in `METRUM_ROUTER_KEY`, fetch `/v1/codex/models.json` with that same token into a local protected file, and configure `wire_api="responses"` plus `model_catalog_json`. `/v1/models` remains the source of the allowed group IDs; the Codex endpoint is the caller-filtered metadata projection for those IDs. See the complete [Codex CLI](./codex-cli) fetch-then-run workflow.
 
 ```bash
 export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
@@ -48,6 +48,7 @@ codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="https://<router-host>/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \

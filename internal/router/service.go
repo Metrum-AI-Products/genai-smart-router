@@ -284,6 +284,7 @@ func (s *Service) routes() {
 		writeJSON(w, http.StatusOK, out)
 	})
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
+	s.mux.HandleFunc("GET /v1/codex/models.json", s.handleCodexModels)
 	s.mux.HandleFunc("GET /v1/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
 	s.mux.HandleFunc("GET /admin/auth/login", s.handleAdminOIDCLogin)
@@ -325,22 +326,54 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.finish(rc, http.StatusOK, nil)
+	data := s.callerModelMetadata(rc.caller)
+	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "mode": "default", "data": data, "models": data})
+}
+
+// handleCodexModels returns the local model catalog file shape consumed by Codex
+// for deployment-defined model-group names. It intentionally exposes only the
+// safe, caller-filtered projection also used by /v1/models.
+func (s *Service) handleCodexModels(w http.ResponseWriter, r *http.Request) {
+	rc, ok := s.begin(w, r, "models")
+	if !ok {
+		return
+	}
+	defer s.finish(rc, http.StatusOK, nil)
+	writeJSON(w, http.StatusOK, map[string]any{"models": s.callerModelMetadata(rc.caller)})
+}
+
+func (s *Service) callerModelMetadata(caller *callerRuntime) []map[string]any {
 	data := []map[string]any{}
-	for name := range rc.caller.allow {
+	if caller == nil {
+		return data
+	}
+	for name := range caller.allow {
+		group := s.cfg.Models[name]
 		internalModalities := s.supportedInputModalitiesForGroup(name)
 		publicModalities := publicModelInputModalities(internalModalities)
 		hasImage := stringSliceContains(internalModalities, "image")
 		reasoningLevels, reasoningSummaries, defaultReasoningLevel := s.reasoningMetadataForGroup(name)
+		maxContextWindow := s.contextWindowForGroup(name)
+		displayName := name
+		description := "Smart LLM Router model group " + name
+		if group.Contract != nil {
+			if strings.TrimSpace(group.Contract.DisplayName) != "" {
+				displayName = group.Contract.DisplayName
+			}
+			if strings.TrimSpace(group.Contract.CallerVisibleNotes) != "" {
+				description = group.Contract.CallerVisibleNotes
+			}
+		}
 		model := map[string]any{
 			"id":                               name,
 			"slug":                             name,
 			"name":                             name,
-			"display_name":                     name,
-			"description":                      "Smart LLM Router model group " + name,
+			"display_name":                     displayName,
+			"description":                      description,
 			"mode":                             "default",
 			"base_instructions":                "Use GenAI Smart Router as the model gateway.",
-			"context_window":                   131072,
-			"max_context_window":               131072,
+			"context_window":                   maxContextWindow * 95 / 100,
+			"max_context_window":               maxContextWindow,
 			"effective_context_window_percent": 95,
 			"default_verbosity":                "low",
 			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
@@ -354,6 +387,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"input_modalities":                 publicModalities,
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
 			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
+			"auto_compact_token_limit":         maxContextWindow * 90 / 100,
 			"shell_type":                       "shell_command",
 			"visibility":                       "list",
 			"minimal_client_version":           "0.0.0",
@@ -366,6 +400,7 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 			"object":                           "model",
 			"created":                          0,
 			"owned_by":                         "smart-llmrouter",
+			"use_responses_lite":               false,
 		}
 		if len(reasoningLevels) > 0 {
 			model["default_reasoning_summary"] = "none"
@@ -378,7 +413,28 @@ func (s *Service) handleModels(w http.ResponseWriter, r *http.Request) {
 		data = append(data, model)
 	}
 	sort.Slice(data, func(i, j int) bool { return data[i]["id"].(string) < data[j]["id"].(string) })
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "mode": "default", "data": data, "models": data})
+	return data
+}
+
+func (s *Service) contextWindowForGroup(name string) int {
+	const fallbackContextWindow = 131072
+	group, ok := s.cfg.Models[name]
+	if !ok {
+		return fallbackContextWindow
+	}
+	minContextWindow := 0
+	for _, target := range group.Targets {
+		if target.ContextTokens <= 0 {
+			continue
+		}
+		if minContextWindow == 0 || target.ContextTokens < minContextWindow {
+			minContextWindow = target.ContextTokens
+		}
+	}
+	if minContextWindow == 0 {
+		return fallbackContextWindow
+	}
+	return minContextWindow
 }
 
 func reasoningLevelPresets(levels []string) []map[string]string {

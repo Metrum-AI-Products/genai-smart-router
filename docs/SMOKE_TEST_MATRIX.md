@@ -31,6 +31,7 @@ Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted 
 | Config validation | YAML parse and `docker compose config` |
 | Health/deploy | `/readyz`, `/version`, router logs |
 | Auth/allow list | `/v1/models` with caller token |
+| Codex model catalog | missing token gets `401`; a restricted caller gets only its allowed groups from `/v1/codex/models.json`; parse the returned `models[]` as Codex metadata, verify no upstream/provider/token/weight fields, verify non-reasoning and tool-only-only groups omit reasoning defaults while active-reasoning groups retain their valid reasoning metadata, fetch it to a mode-0600 local file, then run installed Codex with `model_catalog_json` and Responses wire API against a local or approved endpoint |
 | Anthropic namespace | `/anthropic/v1/messages` and `/anthropic/v1/messages/count_tokens` with a Claude-compatible caller token; legacy `/v1/messages` paths only as compatibility checks |
 | Admin Basic Auth | `/admin/auth/check` with missing, bad, and valid Basic credentials when enabled |
 | Omitted model behavior | request without `model`, expect configured default or `400 missing-model` |
