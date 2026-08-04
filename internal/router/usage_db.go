@@ -2786,7 +2786,7 @@ func GenerateUsageMarkdown(opts UsageReportOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return renderUsageMarkdown(opts.From, opts.To, rows, decisionSummary, upstreamShapeEvents), nil
+	return renderUsageCLIMarkdown(opts.From, opts.To, rows, decisionSummary, upstreamShapeEvents), nil
 }
 
 // ExportReasoningCoverage returns the bounded scalar reasoning-usage aggregate
@@ -6830,6 +6830,14 @@ func applySecurityPageCursor(q *gorm.DB, sortKey, direction string, cursor *admi
 }
 
 func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary, upstreamShapeEvents []upstreamShapeJoinedEvent) string {
+	return renderUsageMarkdownWithTimeFormatter(from, to, rows, decisionSummary, upstreamShapeEvents, formatUsageTime)
+}
+
+func renderUsageCLIMarkdown(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary, upstreamShapeEvents []upstreamShapeJoinedEvent) string {
+	return renderUsageMarkdownWithTimeFormatter(from, to, rows, decisionSummary, upstreamShapeEvents, formatUsageMarkdownTime)
+}
+
+func renderUsageMarkdownWithTimeFormatter(from, to time.Time, rows []usageRow, decisionSummary decisionTelemetrySummary, upstreamShapeEvents []upstreamShapeJoinedEvent, formatInstant func(time.Time) string) string {
 	total := &agg{}
 	byToken := map[string]*agg{}
 	byTokenMeta := map[string]usageRow{}
@@ -6884,7 +6892,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Smart LLM Router Usage Report\n\n")
-	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatUsageTime(from), formatUsageTime(to))
+	fmt.Fprintf(&b, "- Period UTC: `%s` to `%s`\n", formatInstant(from), formatInstant(to))
 	fmt.Fprintf(&b, "- Requests: `%d`\n", total.Calls)
 	fmt.Fprintf(&b, "- Errors: `%d`\n", total.Errors)
 	fmt.Fprintf(&b, "- Total Tokens: `%d`; Input Tokens: `%d`; Output Tokens: `%d`\n", total.TotalTokens, total.InputTokens, total.OutputTokens)
@@ -6905,7 +6913,7 @@ func renderUsageMarkdown(from, to time.Time, rows []usageRow, decisionSummary de
 	writeTrafficShapingSummary(&b, rows, upstreamShapeEvents)
 	writeDownstreamUserPerformanceTable(&b, byDownstreamUser)
 	writeUpstreamEndpointPerformanceTable(&b, byUpstreamEndpoint)
-	writeRequestThroughputTable(&b, rows)
+	writeRequestThroughputTable(&b, rows, formatInstant)
 	writeTokenTable(&b, "Usage By Internal API Key", byToken, byTokenMeta)
 	writeAggTable(&b, "Usage By External Model", []string{"Provider", "Model"}, byModel, splitKey2)
 	writeAggTable(&b, "Usage By Router Model Group", []string{"Model Group"}, byGroup, splitKey1)
@@ -7459,14 +7467,14 @@ func writeUpstreamEndpointPerformanceTable(b *strings.Builder, data map[string]*
 	fmt.Fprintln(b)
 }
 
-func writeRequestThroughputTable(b *strings.Builder, rows []usageRow) {
+func writeRequestThroughputTable(b *strings.Builder, rows []usageRow, formatInstant func(time.Time) string) {
 	fmt.Fprintln(b, "## Per-Request Throughput")
 	fmt.Fprintln(b)
 	fmt.Fprintln(b, "| Time UTC | Caller IP | Request ID | Token ID | Model Group | Provider | Model | Status | Cache | Output Tokens | Total Tokens | Cost USD | Upstream ms | Downstream ms | Upstream Output tok/s | Upstream Total tok/s | Downstream Write Output tok/s | Downstream Write Total tok/s |")
 	fmt.Fprintln(b, "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 	for _, row := range rows {
 		fmt.Fprintf(b, "| %s | `%s` | `%s` | `%s` | %s | %s | %s | %d | %s | %d | %d | $%s | %s | %s | %s | %s | %s | %s |\n",
-			formatUsageTime(row.TS), esc(defaultString(row.CallerIP, "unknown")), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
+			formatInstant(row.TS), esc(defaultString(row.CallerIP, "unknown")), esc(row.RequestID), esc(row.TokenID), esc(defaultString(row.ResolvedGroup, row.RequestedModel)),
 			esc(row.TargetProvider), esc(row.TargetModel), row.Status, esc(row.Cache), row.OutputTokens, totalTokens(Usage{InputTokens: row.InputTokens, OutputTokens: row.OutputTokens, TotalTokens: row.TotalTokens}),
 			fmtUSD(row.TotalCostUSD), fmtIntPtr(row.UpstreamMS), fmtIntPtr(row.DownstreamMS), fmtFloatPtr(row.UpstreamOutputTPS), fmtFloatPtr(row.UpstreamTotalTPS),
 			fmtFloatPtr(row.DownstreamOutputTPS), fmtFloatPtr(row.DownstreamTotalTPS))
@@ -7657,6 +7665,13 @@ func boolInt(v bool) int {
 
 func formatUsageTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05.000000000Z")
+}
+
+// formatUsageMarkdownTime is the stable, presentation-only timestamp format
+// for CLI Markdown report bounds and per-request rows. Storage and export
+// timestamps retain nanosecond precision through formatUsageTime.
+func formatUsageMarkdownTime(t time.Time) string {
+	return t.UTC().Truncate(time.Millisecond).Format("2006-01-02T15:04:05.000Z")
 }
 
 func parseUsageTime(v string) (time.Time, error) {
