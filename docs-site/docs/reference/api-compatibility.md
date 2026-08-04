@@ -69,6 +69,42 @@ Agent compatibility should also be validated with realistic synthetic request sh
 
 The smoke emits safe scalar proof only: request IDs, API surface, status, selected provider/model/dialect, bridge direction when recorded, translated reasoning control when recorded, and request-shape buckets.
 
+## Deterministic Compatibility Regression Suite
+
+`make api-compat-mock` is the deterministic pytest entrypoint for
+`tests/api_compat`. It uses the exact dependency versions and hashes in
+`uv.lock`, runs through `uv --locked --offline`, and is included in
+`make test`. A cold test environment must first supply those locked
+dependencies from its approved package source with `uv sync --locked`; the
+mock suite itself makes no dependency or provider network requests. It builds
+the router locally and uses a synthetic fake upstream, with both listeners
+bound exclusively to loopback. It does not read production configuration or
+retain authorization values or request bodies in artifacts.
+
+The current caller-contract matrix covers `/v1/models`, OpenAI Chat
+Completions, OpenAI Responses, Anthropic Messages, function tools and tool
+choice, terminal SSE usage, authorization and model access, caller-visible
+errors, and the non-streaming text/function-tool paths of both explicit
+stateless bridges. Each represented pre-upstream rejection asserts that the
+fake upstream received zero requests; generated artifacts are scanned for the
+synthetic redaction canaries.
+
+To add a case, extend `tests/api_compat/tests/test_api_compat.py` with a
+synthetic request and explicit caller-visible response/upstream-shape
+assertions. Add both a positive case and the relevant pre-upstream negative
+case when a request shape can be rejected. This suite is router compatibility
+evidence, not provider capability certification; it does not cover images,
+reasoning, structured outputs, hosted tools, stateful bridges, or live
+providers.
+
+`make api-compat-live` is deliberately fail-closed and is not part of test,
+build, package, or release targets. It requires a human-named approved matrix,
+non-production environment, least-privilege caller identity, explicit base
+URL, a protected mode-0600 credential file, and a confirmation bound to the
+matrix and environment. Until those inputs and a separate approved live matrix
+exist, the target exits without making a request and does not print the URL or
+credential.
+
 ## Compatibility Matrix
 
 | Capability | Chat Completions | Responses | Messages |
