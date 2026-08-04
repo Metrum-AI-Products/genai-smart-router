@@ -18,6 +18,7 @@ OpenAI-compatible clients use the `/v1` base URL:
 | `/v1/chat/completions` | OpenAI Chat Completions-style requests | OpenAI SDK chat clients, Warp-style OpenAI-compatible agents |
 | `/v1/responses` | OpenAI Responses-style requests | Codex CLI, Responses-compatible agent frameworks |
 | `/v1/models` | OpenAI-style model discovery | Client setup and allow-list discovery |
+| `/v1/codex/models.json` | Codex-native local model catalog | Codex CLI fetch-then-run setup |
 | `/v1/usage` | Router usage lookup | Caller quota and usage checks |
 
 Anthropic-compatible clients use the `/anthropic` base URL:
@@ -30,6 +31,8 @@ Anthropic-compatible clients use the `/anthropic` base URL:
 Legacy Anthropic aliases remain available for existing clients: `/v1/messages` and `/v1/messages/count_tokens`. New setup should prefer `/anthropic` so OpenAI-compatible and Anthropic-compatible client configuration stays visibly separate.
 
 Model discovery stays on `/v1/models` for both setup flows. An Anthropic-compatible client should call `/v1/models` with the same router token, choose one returned deployment-defined model group, then send Messages traffic to `/anthropic/v1/messages`.
+
+`GET /v1/codex/models.json` uses the same caller-token authentication and group allow list as `/v1/models`. It returns `{ "models": [...] }` containing a safe Codex metadata projection for only those groups: group slug/display name/summary, context limits, reasoning levels, tool and image capability flags, truncation policy, and Codex-safe defaults. It never returns upstream provider or model identifiers, target weights, URLs, pricing, credentials, caller identity, tokens, token hashes, or routing internals. Clients should accept additive fields safely. See [Codex CLI](../getting-started/codex-cli) for the required local-file workflow.
 
 Operational and administrative endpoints remain on the router origin:
 

@@ -1019,6 +1019,10 @@ Codex is configured with ephemeral provider settings and the OpenAI Responses wi
 
 ```bash
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+umask 077
+curl -fsS "http://127.0.0.1:18081/v1/codex/models.json" \
+  -H "Authorization: Bearer $METRUM_ROUTER_KEY" \
+  -o "$WORK/metrum-models.json"
 mkdir -p "$WORK/codex-work"
 
 codex exec --ignore-user-config --ephemeral \
@@ -1027,6 +1031,7 @@ codex exec --ignore-user-config --ephemeral \
   -C "$WORK/codex-work" \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
+  -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -1044,6 +1049,7 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 codex \
   -c "model=\"$ROUTER_MODEL\"" \
   -c 'model_provider="metrum-router"' \
+  -c "model_catalog_json=\"$WORK/metrum-models.json\"" \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -1062,6 +1068,9 @@ Tool-capable smoke for Codex follows the same containerized pattern:
 
 ```bash
 mkdir -p "$WORK/codex-tool-work"
+curl -fsS "http://127.0.0.1:18081/v1/codex/models.json" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -o "$WORK/codex-tool-work/metrum-models.json"
 docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
@@ -1076,6 +1085,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -C /workspace \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
+    -c 'model_catalog_json="/workspace/metrum-models.json"' \
     -c 'model_providers.metrum-router.name="Metrum Router"' \
     -c 'model_providers.metrum-router.base_url="http://127.0.0.1:18081/v1"' \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \

@@ -344,11 +344,16 @@ Codex:
 
 ```bash
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
+umask 077
+curl -fsS "$ROUTER_BASE_URL/v1/codex/models.json" \
+  -H "Authorization: Bearer $METRUM_ROUTER_KEY" \
+  -o "$HOME/.codex/metrum-models.json"
 codex exec --ignore-user-config --ephemeral \
   --ignore-rules \
   --skip-git-repo-check \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -365,6 +370,7 @@ export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
 codex \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="'"$ROUTER_BASE_URL"'/v1"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -399,6 +405,9 @@ Codex tool smoke pattern:
 
 ```bash
 mkdir -p /tmp/router-codex-tool-smoke
+curl -fsS "$ROUTER_BASE_URL/v1/codex/models.json" \
+  -H "Authorization: Bearer $ROUTER_TOKEN" \
+  -o /tmp/router-codex-tool-smoke/metrum-models.json
 docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
@@ -413,6 +422,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -C /workspace \
     -c 'model="agent-tools-smoke"' \
     -c 'model_provider="metrum-router"' \
+    -c 'model_catalog_json="/workspace/metrum-models.json"' \
     -c 'model_providers.metrum-router.name="Metrum Router"' \
     -c "model_providers.metrum-router.base_url=\"${ROUTER_BASE_URL}/v1\"" \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \

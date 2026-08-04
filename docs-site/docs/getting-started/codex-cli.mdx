@@ -21,6 +21,23 @@ Use one of the model group IDs returned by `/v1/models` for `model`. See [Availa
 
 Record the Codex CLI version used for deployment validation with `codex --version`; CLI flags can change over time.
 
+Codex also needs Codex-native metadata for deployment-defined group names. Fetch the caller-filtered catalog with the same token before starting Codex. The catalog contains only safe group-level behavior metadata; it does not expose upstream providers, targets, weights, credentials, or routing policy.
+
+<RouterCodeBlock>
+{`
+export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
+export METRUM_ROUTER_URL="{{origin}}"
+
+umask 077
+mkdir -p "$HOME/.codex"
+curl -fsS "$METRUM_ROUTER_URL/v1/codex/models.json" \
+  -H "Authorization: Bearer $METRUM_ROUTER_KEY" \
+  -o "$HOME/.codex/metrum-models.json"
+`}
+</RouterCodeBlock>
+
+`/v1/models` remains the caller-facing source of allowed groups. `/v1/codex/models.json` is the Codex-compatible projection of that same allow list. A `401` or `403` means the caller token cannot fetch the catalog; a missing group means that token cannot request it.
+
 If Codex should show reasoning choices for a group, `/v1/models` is the caller-facing source of truth. The group entry should include `supported_reasoning_levels` and `default_reasoning_level` for the same router token that Codex uses. If those fields are absent, the running deployment is not advertising active reasoning support for that token and group, even if source config or provider catalogs mention reasoning.
 
 <RouterCodeBlock>
@@ -32,6 +49,7 @@ codex exec --ignore-user-config --ephemeral \
   --skip-git-repo-check \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -42,6 +60,8 @@ codex exec --ignore-user-config --ephemeral \
 
 `exec` is required for these non-interactive flags. The top-level interactive `codex` command does not accept every `codex exec` flag.
 
+The fetch must complete before `codex exec`. Do not hand-create entries for raw upstream model IDs: select a group returned by `/v1/models` and use the generated local catalog file. Without it, Codex can fall back to generic metadata for an unknown group name; routing can still work, but coding-agent behavior may be less accurate.
+
 ## Interactive Usage
 
 <RouterCodeBlock>
@@ -51,6 +71,7 @@ export METRUM_ROUTER_KEY="rtr_metrum_<user>_<project>_<env>_<key>_<secret>"
 codex \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -67,6 +88,9 @@ Codex sends OpenAI Responses traffic. A model group may contain native Responses
 <RouterCodeBlock>
 {`
 mkdir -p "$PWD/codex-tool-smoke"
+curl -fsS "{{origin}}/v1/codex/models.json" \
+  -H "Authorization: Bearer $METRUM_ROUTER_KEY" \
+  -o "$PWD/codex-tool-smoke/metrum-models.json"
 docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
   --cpus 1 --memory 1g --pids-limit 256 --read-only \
   --tmpfs /tmp:rw,nosuid,nodev,size=256m \
@@ -81,6 +105,7 @@ docker run --rm --network host --cap-drop ALL --security-opt no-new-privileges \
     -C /workspace \
     -c 'model="<allowed-model-group>"' \
     -c 'model_provider="metrum-router"' \
+    -c 'model_catalog_json="/workspace/metrum-models.json"' \
     -c 'model_providers.metrum-router.name="Metrum Router"' \
     -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
     -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
@@ -96,6 +121,10 @@ Codex CLI supports image attachments with `--image`. Use the same deployment-def
 <RouterCodeBlock>
 {`
 mkdir -p tmp/router-vision-smoke
+mkdir -p "$HOME/.codex"
+curl -fsS "{{origin}}/v1/codex/models.json" \
+  -H "Authorization: Bearer $METRUM_ROUTER_KEY" \
+  -o "$HOME/.codex/metrum-models.json"
 curl -fsSL "https://cdn.learnopencv.com/wp-content/uploads/2018/06/04100007/receipt.png" \
   -o tmp/router-vision-smoke/receipt.png
 
@@ -105,6 +134,7 @@ codex exec --ignore-user-config --ephemeral \
   --image tmp/router-vision-smoke/receipt.png \
   -c 'model="<allowed-model-group>"' \
   -c 'model_provider="metrum-router"' \
+  -c 'model_catalog_json="~/.codex/metrum-models.json"' \
   -c 'model_providers.metrum-router.name="Metrum Router"' \
   -c 'model_providers.metrum-router.base_url="{{apiBase}}"' \
   -c 'model_providers.metrum-router.env_key="METRUM_ROUTER_KEY"' \
