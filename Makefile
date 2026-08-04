@@ -263,7 +263,13 @@ test: secret-check capability-smoke-unit
 API_COMPAT_BOOTSTRAP_GO_PROXY ?= https://proxy.golang.org
 API_COMPAT_BOOTSTRAP_GO_SUMDB ?= sum.golang.org
 api-compat-bootstrap:
-	cd tests/api_compat && uv sync --locked
+	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
+	cd tests/api_compat && \
+	UV_CACHE_DIR=$${UV_CACHE_DIR:-$$api_compat_root/uv-cache} \
+	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
+	uv sync --locked; \
+	GOMODCACHE=$${GOMODCACHE:-$$api_compat_root/go-mod-cache} \
+	GOCACHE=$${GOCACHE:-$$api_compat_root/go-build-cache} \
 	GOPROXY=$(API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
 
 # Deterministic caller-boundary tests: the locally built router and fake
@@ -271,11 +277,21 @@ api-compat-bootstrap:
 # Go dependency resolution cannot use the network. It intentionally has no
 # bootstrap prerequisite so clean-cache failure remains directly testable.
 api-compat-mock-offline:
-	cd tests/api_compat && UV_OFFLINE=1 GOPROXY=off GOSUMDB=off uv run --locked --offline pytest
+	cd tests/api_compat && PYTHONDONTWRITEBYTECODE=1 UV_OFFLINE=1 GOPROXY=off GOSUMDB=off uv run --locked --offline pytest -p no:cacheprovider
 
 # Keep the default target usable on a clean supported runner while preserving
-# the separately invokable fail-closed offline conformance phase.
-api-compat-mock: api-compat-bootstrap api-compat-mock-offline
+# the separately invokable fail-closed offline conformance phase. The shared
+# disposable directory prevents ordinary invocations from creating .venv or
+# dependency caches in the source tree.
+api-compat-mock:
+	@api_compat_root=$$(mktemp -d); \
+	trap 'rm -rf "$$api_compat_root"' EXIT; \
+	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root"; \
+	UV_CACHE_DIR="$$api_compat_root/uv-cache" \
+	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
+	GOMODCACHE="$$api_compat_root/go-mod-cache" \
+	GOCACHE="$$api_compat_root/go-build-cache" \
+	$(MAKE) api-compat-mock-offline
 
 # Deliberately not a normal test/build/package target. Live execution awaits a
 # human-approved non-production matrix and least-privilege caller identity.

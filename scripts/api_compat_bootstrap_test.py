@@ -10,6 +10,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+API_COMPAT_ROOT = ROOT / "tests" / "api_compat"
+REPOSITORY_RESIDUE = (
+    API_COMPAT_ROOT / ".venv",
+    API_COMPAT_ROOT / ".pytest_cache",
+    API_COMPAT_ROOT / "tests" / "__pycache__",
+)
 
 
 def run_make(target: str, env: dict[str, str], *, expected: int = 0) -> str:
@@ -49,7 +55,14 @@ def isolated_environment(root: Path) -> dict[str, str]:
     return env
 
 
+def assert_no_repository_residue() -> None:
+    residue = [str(path.relative_to(ROOT)) for path in REPOSITORY_RESIDUE if path.exists()]
+    if residue:
+        raise AssertionError(f"API compatibility run left repository-local residue: {', '.join(residue)}")
+
+
 def main() -> int:
+    assert_no_repository_residue()
     with tempfile.TemporaryDirectory(prefix="api-compat-bootstrap-") as temporary:
         cache_root = Path(temporary)
         env = isolated_environment(cache_root)
@@ -69,9 +82,9 @@ def main() -> int:
         offline_env = env | {"UV_OFFLINE": "1", "GOPROXY": "off", "GOSUMDB": "off"}
         run_make("api-compat-mock-offline", offline_env)
 
-        # The test uses only disposable caches. This also protects against a
-        # future change accidentally relying on source-local virtualenv state.
-        assert not (ROOT / "tests" / "api_compat" / ".venv").exists()
+        # The test uses only disposable caches and must leave the worktree
+        # unchanged by Python environments, pytest cache, or bytecode cache.
+        assert_no_repository_residue()
     return 0
 
 

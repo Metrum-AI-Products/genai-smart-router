@@ -81,11 +81,14 @@ The smoke emits safe scalar proof only: request IDs, API surface, status, select
 `make test`, so a clean supported runner does not need a separate manual
 dependency step. Only `make api-compat-bootstrap` may resolve dependencies;
 `make api-compat-mock-offline` is separately invokable and fails closed when
-its prerequisites are absent. The mock suite itself makes no dependency or
-provider network requests. It builds the router locally and uses a synthetic
-fake upstream, with both listeners bound exclusively to loopback. It does not
-read production configuration or retain authorization values or request bodies
-in artifacts.
+its prerequisites are absent. The regression uses disposable Python and Go
+cache locations, and the offline pytest invocation disables source-tree pytest
+and bytecode caches so it leaves no repository-local virtual environment or
+dependency cache residue. The mock suite itself makes no dependency or provider
+network requests. It builds the router locally and uses a synthetic fake
+upstream, with both listeners bound exclusively to loopback. It does not read
+production configuration or retain authorization values or request bodies in
+artifacts.
 
 The current caller-contract matrix covers `/v1/models`, OpenAI Chat
 Completions, OpenAI Responses, Anthropic Messages, function tools and tool
