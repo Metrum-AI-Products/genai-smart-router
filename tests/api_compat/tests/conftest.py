@@ -109,10 +109,10 @@ providers:
   responses: {{base_url: "{upstream_url}/v1", dialect: openai-responses}}
   messages: {{base_url: "{upstream_url}/anthropic", dialect: anthropic}}
 models:
-  chat: {{strategy: static, targets: [{{provider: chat, model: synthetic-chat, tool_support: {{openai_chat: [function, tool_choice]}}}}]}}
+  chat: {{strategy: static, targets: [{{provider: chat, model: synthetic-chat, tool_support: {{openai_chat: [tools, tool_choice]}}}}]}}
   responses: {{strategy: static, targets: [{{provider: responses, model: synthetic-responses, tool_support: {{openai_responses: [function, tool_choice]}}}}]}}
   messages: {{strategy: static, targets: [{{provider: messages, model: synthetic-messages, tool_support: {{anthropic_messages: [client_tools]}}, request_shape_support: {{supported_inbound_dialects: [anthropic], validation_status: passed}}}}]}}
-  responses-to-chat: {{strategy: static, targets: [{{provider: chat, model: synthetic-bridge-chat, tool_support: {{openai_chat: [function, tool_choice]}}, responses_to_chat: {{enabled: true, text: true, function_tools: true, tool_choice: true, validation_status: passed}}}}]}}
+  responses-to-chat: {{strategy: static, targets: [{{provider: chat, model: synthetic-bridge-chat, tool_support: {{openai_chat: [tools, tool_choice]}}, responses_to_chat: {{enabled: true, text: true, function_tools: true, tool_choice: true, validation_status: passed}}}}]}}
   chat-to-responses: {{strategy: static, targets: [{{provider: responses, model: synthetic-bridge-responses, tool_support: {{openai_responses: [function, tool_choice]}}, bridges: {{chat_to_responses: {{enabled: true, text: true, tools: true, tool_choice: true}}}}}}]}}
 callers:
   - id: synthetic-allowed
