@@ -29,8 +29,20 @@ def main() -> int:
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
-    safe = {"schema_version": module.SCHEMA_VERSION, "identity": {field: "x" for field in module.REQUIRED_IDENTITY}, "capability_case": "text", "status": "passed", "observed": {"http_status": 200}}
-    safe["identity"]["model_suffix"] = ""
+    identity = {
+        "provider": "synthetic",
+        "account_identity_class": "test",
+        "endpoint_fingerprint": "sha256:" + "a" * 64,
+        "endpoint_path": "/v1/chat/completions",
+        "api_skin": "openai-chat",
+        "model": "synthetic",
+        "model_suffix": "",
+        "inbound_dialect": "openai-chat",
+        "bridge_direction": "none",
+        "request_shape": "text",
+        "profile_version": "synthetic/v1",
+    }
+    safe = {"schema_version": module.SCHEMA_VERSION, "identity": identity, "capability_case": "text", "status": "passed", "observed": {"http_status": 200}}
     module.validate_result(safe)
     unsafe = dict(safe); unsafe["observed"] = {"nested": {"raw_prompt": "sentinel prompt", "image_url": "https://sentinel.invalid", "tool_schema": {"secret": "sentinel"}}}
     try:
@@ -46,6 +58,73 @@ def main() -> int:
         pass
     else:
         raise AssertionError("raw output sentinel survived scalar allowlist")
+    wrong_shape = dict(safe)
+    wrong_shape["identity"] = {**identity, "request_shape": "tools-auto"}
+    try:
+        module.validate_result(wrong_shape)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("request shape was not bound to capability case")
+    for direction, expected in module.BRIDGE_SURFACES.items():
+        if expected is None:
+            inbound, api_skin = "openai-chat", "openai-responses"
+        else:
+            inbound, api_skin = expected[1], expected[0]
+        mismatched_bridge = dict(safe)
+        mismatched_bridge["identity"] = {
+            **identity,
+            "inbound_dialect": inbound,
+            "api_skin": api_skin,
+            "bridge_direction": direction,
+        }
+        try:
+            module.validate_result(mismatched_bridge)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"mismatched {direction} bridge tuple was accepted")
+    for mutated, label in (
+        ({**safe, "notes": "benign-looking raw payload"}, "unknown result field"),
+        ({**safe, "identity": {**identity, "deployment": "private"}}, "unknown identity field"),
+    ):
+        try:
+            module.validate_result(mutated)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{label} survived closed evidence schema")
+    try:
+        module.verify({"schema_version": module.SCHEMA_VERSION, "claims": {}}, [safe])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("non-list claims survived closed claims schema")
+    valid_claims = {"schema_version": module.SCHEMA_VERSION, "claims": [{"identity": identity, "capability_case": "text"}]}
+    try:
+        module.verify(valid_claims, [safe, safe])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate evidence rows were accepted")
+    profile_identity = {key: value for key, value in identity.items() if key != "profile_version"}
+    duplicate_manifest = {
+        "schema_version": module.SCHEMA_VERSION,
+        "profiles": [{
+            "profile_version": identity["profile_version"],
+            "identity": profile_identity,
+            "cases": [
+                {"capability_case": "text", "status": "passed"},
+                {"capability_case": "text", "status": "failed"},
+            ],
+        }],
+    }
+    try:
+        module.validate_manifest(duplicate_manifest)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate manifest evidence rows were accepted")
     request = module.fake_request("tools-forced", safe["identity"])
     require(request["tool_choice"] == "forced", "fake adapter failed forced-tool classification")
     make = (ROOT / "Makefile").read_text()

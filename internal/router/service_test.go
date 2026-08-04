@@ -8844,7 +8844,7 @@ func TestPIIFilterRedactsOpenAIChatToolResultPassthrough(t *testing.T) {
 		Targets: []Target{{
 			Provider:    "mock",
 			Model:       "mock-model",
-			ToolSupport: ToolSupport{OpenAIChat: []string{"function"}},
+			ToolSupport: ToolSupport{OpenAIChat: []string{"tools"}},
 		}},
 	}
 	svc, err := New(cfg)
