@@ -2378,6 +2378,16 @@ func targetSupportsTools(target Target, dialect string) bool {
 	return targetSupportsClientTools(target, dialect, false)
 }
 
+// targetSupportsExplicitAutoToolChoice reports whether a target accepts the
+// explicit tool_choice:"auto" request shape used by capability evidence. This
+// is intentionally narrower than targetSupportsClientTools(..., false): tools
+// without a caller-supplied tool_choice remain eligible when that is the only
+// unsupported feature.
+func targetSupportsExplicitAutoToolChoice(target Target, dialect string) bool {
+	return targetSupportsClientTools(target, dialect, false) &&
+		!supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tool_choice")
+}
+
 func targetSupportsClientTools(target Target, dialect string, forced bool) bool {
 	if supportsAnyCapability(target.RequestShapeSupport.UnsupportedRequestFeatures, "tools") {
 		return false
