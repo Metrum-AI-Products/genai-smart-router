@@ -103,6 +103,13 @@ Map probe results to catalog metadata mechanically:
 
 Every API skin needs independent evidence. OpenAI Chat tool support does not prove OpenAI Responses function tools or Anthropic Messages client tools.
 
+Capability claims are bound to the resolved target's exact model ID and optional
+suffix before the router derives its callable capability surfaces. This lets a
+passing claim remain valid when another target from the same provider has an
+unsupported composite request shape. Group-wide verification remains fail-closed:
+every active target must still have representable, passing evidence before a
+group advertises its capabilities.
+
 Promotion evidence collected by a protected validation workflow must match the
 resolved target exactly. The shipped offline harness validates this binding
 contract but does not authorize a live route. Bind each

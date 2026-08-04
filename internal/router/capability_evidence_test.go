@@ -348,6 +348,65 @@ func TestVerifyCapabilityClaimsUsesResolvedTargetMetadata(t *testing.T) {
 	}
 }
 
+func TestVerifyCapabilityClaimsScopesDerivationToClaimModelSuffix(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
+	valid := Target{Provider: "p", Model: "valid:nitro", Dialect: "openai-responses", Weight: 1}
+	unrepresentable := Target{
+		Provider:        "p",
+		Model:           "unrepresentable:beta",
+		Dialect:         "openai-responses",
+		ToolOnly:        true,
+		InputModalities: []string{"text", "image"},
+		ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+		Weight:          1,
+	}
+	cfg := &Config{
+		Provider: map[string]ProviderConfig{"p": provider},
+		Models:   map[string]ModelGroup{"group": {Targets: []Target{valid, unrepresentable}}},
+	}
+	validEvidence, validExpected := completeSurfaceEvidence(t, provider, valid)
+	claim := validEvidence[0]
+	if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{claim}, []CapabilityEvidenceIdentity{claim.Identity}); len(failures) != 0 {
+		t.Fatalf("valid claim rejected by unrelated same-provider target: %v", failures)
+	}
+
+	unrepresentableClaim := claim
+	unrepresentableClaim.Identity.Model = "unrepresentable"
+	unrepresentableClaim.Identity.ModelSuffix = ":beta"
+	if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{unrepresentableClaim}, []CapabilityEvidenceIdentity{unrepresentableClaim.Identity}); len(failures) == 0 {
+		t.Fatal("claim for unrepresentable target did not fail closed")
+	}
+	if failures := cfg.VerifyAdvertisedCapabilities("group", validEvidence, validExpected); len(failures) != 1 {
+		t.Fatalf("whole-group verification failures=%v, want unrepresentable target error", failures)
+	}
+
+	for _, mutation := range []struct {
+		name   string
+		change func(*CapabilityEvidenceIdentity)
+	}{
+		{name: "provider", change: func(identity *CapabilityEvidenceIdentity) { identity.Provider = "other" }},
+		{name: "account", change: func(identity *CapabilityEvidenceIdentity) { identity.AccountIdentityClass = "other-account" }},
+		{name: "endpoint", change: func(identity *CapabilityEvidenceIdentity) {
+			identity.EndpointFingerprint = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		}},
+		{name: "api-skin", change: func(identity *CapabilityEvidenceIdentity) { identity.APISkin = "openai-chat" }},
+		{name: "model", change: func(identity *CapabilityEvidenceIdentity) { identity.Model = "other" }},
+		{name: "model-suffix", change: func(identity *CapabilityEvidenceIdentity) { identity.ModelSuffix = ":free" }},
+		{name: "inbound", change: func(identity *CapabilityEvidenceIdentity) { identity.InboundDialect = "openai-chat" }},
+		{name: "bridge", change: func(identity *CapabilityEvidenceIdentity) { identity.BridgeDirection = chatToResponsesBridgeDirection }},
+		{name: "request-shape", change: func(identity *CapabilityEvidenceIdentity) { identity.RequestShape = "image" }},
+		{name: "profile", change: func(identity *CapabilityEvidenceIdentity) { identity.ProfileVersion = "unapproved/v1" }},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			mutated := claim
+			mutation.change(&mutated.Identity)
+			if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{mutated}, []CapabilityEvidenceIdentity{claim.Identity}); len(failures) == 0 {
+				t.Fatal("cross-identity claim substitution bypassed verification")
+			}
+		})
+	}
+}
+
 func TestCapabilityEvidenceUsesActualUpstreamEndpointPaths(t *testing.T) {
 	tests := []struct {
 		name       string
