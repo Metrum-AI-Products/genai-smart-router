@@ -87,6 +87,12 @@ is accepted only for the target's exact API-skin vocabulary (`tools` for Chat,
 unsupported-feature metadata overrides broad capability metadata. Targets that
 need composite image-plus-tool or image-plus-structured evidence fail closed
 until the evidence schema defines that composite request shape.
+An empty `supported_inbound_dialects` allowlist follows the router's generic
+text/image translation behavior. The verifier therefore requires separate
+Chat-to-Anthropic, Responses-to-Anthropic, or OpenAI-to-Replicate evidence when
+those implicit directions are callable. Set an explicit allowlist to narrow
+the accepted inbound surfaces.
+
 
 Record public-safe evidence for each probe:
 

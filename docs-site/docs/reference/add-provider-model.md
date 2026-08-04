@@ -120,6 +120,10 @@ account, endpoint, suffix, skin, bridge direction, or shape fails the
 promotion contract even when the evidence itself passed. Targets that require
 composite image-plus-tool or image-plus-structured evidence fail closed until
 that composite request shape is defined.
+An empty `supported_inbound_dialects` allowlist follows the router's generic
+text/image translation behavior, so each callable implicit direction needs
+separate evidence. Set an explicit allowlist to narrow inbound surfaces.
+
 
 One upstream model can have multiple provider skins. Keep each skin as its own provider entry when the upstream exposes distinct endpoints or request contracts:
 

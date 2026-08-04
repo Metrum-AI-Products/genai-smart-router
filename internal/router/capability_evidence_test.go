@@ -433,6 +433,32 @@ func TestConfiguredGenericTranslationRequiresDistinctEvidence(t *testing.T) {
 	}
 }
 
+func TestImplicitGenericTranslationRequiresEvidenceWhenAllowlistIsEmpty(t *testing.T) {
+	provider := ProviderConfig{BaseURL: "https://provider.example", Dialect: "anthropic", KeyID: "test"}
+	target := Target{
+		Provider:        "p",
+		Model:           "synthetic",
+		Dialect:         "anthropic",
+		InputModalities: []string{"text", "image"},
+	}
+	surfaces, err := capabilitySurfaces(provider, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directions := map[string]bool{}
+	for _, surface := range surfaces {
+		directions[surface.bridge] = true
+	}
+	for _, direction := range []string{"none", "openai-chat_to_anthropic", "openai-responses_to_anthropic"} {
+		if !directions[direction] {
+			t.Fatalf("implicit runtime translation %q omitted: %#v", direction, surfaces)
+		}
+	}
+	if len(surfaces) != len(directions) || len(surfaces) != 3 {
+		t.Fatalf("implicit translation surfaces=%d directions=%v, want three distinct surfaces", len(surfaces), directions)
+	}
+}
+
 func TestUnrepresentableCompositeCapabilityShapesFailClosed(t *testing.T) {
 	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
 	tests := []Target{

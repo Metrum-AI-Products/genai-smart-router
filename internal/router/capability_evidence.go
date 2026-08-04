@@ -194,7 +194,11 @@ func capabilitySurfaces(provider ProviderConfig, target Target) ([]capabilitySur
 			surfaces = append(surfaces, translated)
 		}
 	}
-	for _, configuredInbound := range target.RequestShapeSupport.SupportedInboundDialects {
+	genericInbounds := target.RequestShapeSupport.SupportedInboundDialects
+	if len(genericInbounds) == 0 {
+		genericInbounds = []string{"openai-chat", "openai-responses"}
+	}
+	for _, configuredInbound := range genericInbounds {
 		inbound := normalizeDialect(configuredInbound)
 		if !genericCapabilityTranslationDirection(inbound, apiSkin) {
 			continue
