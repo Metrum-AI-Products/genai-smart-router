@@ -174,6 +174,22 @@ func OpenTenantInstanceRegistry(path string) (*TenantInstanceRegistry, error) {
 	return r, nil
 }
 
+// OpenTenantInstanceRegistryExisting opens an existing registry for local
+// updates without creating a file or applying DDL.
+func OpenTenantInstanceRegistryExisting(path string) (*TenantInstanceRegistry, error) {
+	if err := validateTenantRegistryPath(path); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open existing tenant registry: %w", err)
+	}
+	db, err := gorm.Open(sqlite.Open(path+"?mode=rw&_pragma=foreign_keys(1)"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return nil, err
+	}
+	return &TenantInstanceRegistry{db: db}, nil
+}
+
 // OpenTenantInstanceRegistryReadOnly never creates a database or applies DDL.
 // Status callers use it so an absent registry fails closed rather than being
 // initialized as a side effect of a read-only drift query.

@@ -36,6 +36,9 @@ ambiguous, malformed, and out-of-range observations fail closed. The command
 does not contact the router database, a deployment endpoint, Kubernetes, AWS,
 RDS, DNS, a credential store, or any adapter.
 
+It opens only an existing registry and never initializes a missing registry as
+a side effect of a failed observation.
+
 `quota-reserve` is a fake-adapter-only local admission reservation. It verifies
 the scalar quota snapshot plus configured headroom and records an idempotent
 local hold. It is not an AWS reservation; a later approved provisioner must

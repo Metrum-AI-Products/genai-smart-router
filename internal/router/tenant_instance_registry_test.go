@@ -122,6 +122,12 @@ func TestTenantRegistryReadOnlyOpenNeverCreatesMissingDatabase(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read-only open created registry: %v", err)
 	}
+	if _, err := OpenTenantInstanceRegistryExisting(path); err == nil {
+		t.Fatal("missing writable registry opened")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("writable observation open created registry: %v", err)
+	}
 }
 
 func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {

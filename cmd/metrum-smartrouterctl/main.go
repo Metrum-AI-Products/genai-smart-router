@@ -79,7 +79,7 @@ func observeSchema(args []string) {
 	stage := fs.String("stage", "", "user-defined stage label")
 	currentSchema := fs.Int("current-schema-version", -1, "required independently observed current schema version")
 	fs.Parse(args)
-	r, err := router.OpenTenantInstanceRegistry(*path)
+	r, err := router.OpenTenantInstanceRegistryExisting(*path)
 	if err != nil {
 		die("open registry: %v", err)
 	}

@@ -30,6 +30,12 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 	if _, err := os.Stat(registry); !os.IsNotExist(err) {
 		t.Fatalf("status created registry: %v", err)
 	}
+	if out, err := run("observe-schema", "--registry", registry, "--tenant", "missing", "--stage", "test", "--current-schema-version", "1"); err == nil || !strings.Contains(out, "open existing tenant registry") {
+		t.Fatalf("missing observation registry did not fail closed: %v %s", err, out)
+	}
+	if _, err := os.Stat(registry); !os.IsNotExist(err) {
+		t.Fatalf("observation created missing registry: %v", err)
+	}
 	register := []string{"register", "--registry", registry, "--tenant", "tenant-a", "--instance", "router-a", "--stage", "test", "--region", "test-region-1", "--namespace", "ns-router-a", "--release", "release-router-a", "--runtime-identity", "identity-router-a", "--rds-instance", "rds-router-a", "--release-digest", "sha256:test", "--schema-version", "1"}
 	if out, err := run(register...); err == nil || !strings.Contains(out, "current schema version") {
 		t.Fatalf("register inferred current schema version: %v %s", err, out)
