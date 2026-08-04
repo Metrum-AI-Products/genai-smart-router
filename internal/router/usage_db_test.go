@@ -190,7 +190,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 }
 
-func TestUsageMarkdownTimestampsUseUTCMillisecondsWithoutChangingStoredPrecision(t *testing.T) {
+func TestUsageCLIMarkdownTimestampsUseUTCMillisecondsWithoutChangingBrowserPrecision(t *testing.T) {
 	from := time.Date(2026, 6, 14, 1, 15, 0, 987654321, time.UTC)
 	to := time.Date(2026, 6, 14, 2, 15, 0, 123456789, time.UTC)
 	row := usageRow{
@@ -204,7 +204,7 @@ func TestUsageMarkdownTimestampsUseUTCMillisecondsWithoutChangingStoredPrecision
 		Status:         200,
 	}
 
-	md := renderUsageMarkdown(from, to, []usageRow{row}, decisionTelemetrySummary{}, nil)
+	md := renderUsageCLIMarkdown(from, to, []usageRow{row}, decisionTelemetrySummary{}, nil)
 	for _, want := range []string{
 		"Period UTC: `2026-06-14T01:15:00.987Z` to `2026-06-14T02:15:00.123Z`",
 		"| 2026-06-14T01:59:59.999Z | `198.51.100.42` | `req_subsecond` |",
@@ -222,6 +222,16 @@ func TestUsageMarkdownTimestampsUseUTCMillisecondsWithoutChangingStoredPrecision
 	}
 	if got, want := formatUsageTime(row.TS), "2026-06-14T01:59:59.999999999Z"; got != want {
 		t.Fatalf("formatUsageTime=%q, want lossless %q", got, want)
+	}
+
+	browserMarkdown := renderUsageMarkdown(from, to, []usageRow{row}, decisionTelemetrySummary{}, nil)
+	for _, want := range []string{
+		"Period UTC: `2026-06-14T01:15:00.987654321Z` to `2026-06-14T02:15:00.123456789Z`",
+		"| 2026-06-14T01:59:59.999999999Z | `198.51.100.42` | `req_subsecond` |",
+	} {
+		if !strings.Contains(browserMarkdown, want) {
+			t.Fatalf("browser Markdown report missing existing-precision timestamp %q:\n%s", want, browserMarkdown)
+		}
 	}
 }
 

@@ -2584,11 +2584,11 @@ func TestAdminMarkdownExportUsesBoundedRecentRows(t *testing.T) {
 	svc := newAdminReportPaginationTestService(t, false)
 	defer svc.Close()
 	svc.cfg.Server.AdminReports.ExportMarkdown = true
-	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	base := time.Date(2026, 6, 20, 12, 0, 0, 987654321, time.UTC)
 	costs := []float64{999, 2, 3}
 	for i, tokenID := range []string{"rtr_export_old", "rtr_export_mid", "rtr_export_new"} {
 		svc.usage.Emit(logRecord{
-			TS:                base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			TS:                base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339Nano),
 			RequestID:         fmt.Sprintf("export-req-%d", i),
 			CallerID:          "export-user",
 			CallerUser:        "export@example.com",
@@ -2618,6 +2618,9 @@ func TestAdminMarkdownExportUsesBoundedRecentRows(t *testing.T) {
 	body := rr.Body.String()
 	if rr.Code != http.StatusOK {
 		t.Fatalf("export status=%d body=%s", rr.Code, body)
+	}
+	if !strings.Contains(body, "| 2026-06-20T12:01:00.987654321Z |") {
+		t.Fatalf("browser Markdown export lost existing timestamp precision: %s", body)
 	}
 	if !strings.Contains(body, "Export scope: showing the most recent 2 request rows") {
 		t.Fatalf("export missing bounded scope note: %s", body)
@@ -3294,7 +3297,7 @@ func newAdminReportPaginationTestService(t *testing.T, security bool) *Service {
 		// These pagination fixtures use a fixed June 2026 reporting window. Keep
 		// them inside the retention horizon as calendar time advances; retention
 		// enforcement itself is covered by dedicated usage-store tests.
-		Security:     AdminSecurityReportsConfig{Enabled: security, RetentionDays: 365},
+		Security: AdminSecurityReportsConfig{Enabled: security, RetentionDays: 365},
 	}
 	svc, err := New(cfg)
 	if err != nil {

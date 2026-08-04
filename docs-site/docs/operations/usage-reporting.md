@@ -36,7 +36,7 @@ router-usage-report \
   --out usage-24h.md
 ```
 
-Generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. Instant values in the `Period UTC` bounds and `Per-Request Throughput` time column use fixed UTC RFC3339 milliseconds (`YYYY-MM-DDTHH:mm:ss.SSSZ`). Hour and day summary labels remain reporting buckets; browser JSON APIs and CSV exports retain their existing precision. The public docs include graphical Chart.js examples built from the same report dimensions.
+CLI-generated reports are Markdown files with structured tables for usage, cost, latency, throughput, downstream caller performance, and upstream endpoint performance. Instant values in the `Period UTC` bounds and `Per-Request Throughput` time column use fixed UTC RFC3339 milliseconds (`YYYY-MM-DDTHH:mm:ss.SSSZ`). Hour and day summary labels remain reporting buckets; browser Markdown exports, browser JSON APIs, and CSV exports retain their existing precision. The public docs include graphical Chart.js examples built from the same report dimensions.
 
 ## Investigate Traffic Shaping
 
@@ -213,7 +213,7 @@ Savings breakdown browser tables intentionally emphasize attribution fields: dim
 - `/admin/reports/api/requests?since=24h&limit=100` returns recent safe request rows.
 - `/admin/reports/api/request/<request_id>` joins safe usage, attempt, trace, terminal error, shape, sanitized upstream-error, and decision-telemetry rows.
 - `/admin/reports/api/request-evidence?request_id=<request_id>` returns the same request-level evidence bundle with `diagnosticCompleteness`, `diagnosticCompletenessScore`, and per-section `present` / `not_applicable` / `missing` states.
-- `/admin/reports/export.md?since=24h` returns the bounded detail Markdown report used by the CLI renderer, with recent matching request rows capped by `limit`.
+- `/admin/reports/export.md?since=24h` returns a bounded detail Markdown report with the same report sections as the CLI, existing-precision timestamps, and recent matching request rows capped by `limit`.
 - `/admin/reports/export.md?since=24h&mode=summary` returns a SQL-backed Markdown summary with full-window totals and bounded top-N aggregate sections, without raw request rows.
 
 The embedded browser renderer uses the chart contract for axes, legends, unit-aware tick labels, and hover tooltips. Category charts shorten long bucket labels on the axis and show a collapsible bucket legend that maps each short label to its full value; tables, exports, and JSON responses keep the full label. Chart points are scalar aggregate values only and are backed by the same safe report fields exposed in tables and exports.
