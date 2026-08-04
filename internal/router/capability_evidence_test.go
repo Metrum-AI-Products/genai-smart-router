@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -101,6 +102,59 @@ func TestProviderHostedStructuredOutputsDoNotSatisfyClientSkins(t *testing.T) {
 		}
 		if targetSupportsStructuredOutput(target, dialect, dialect, true) {
 			t.Fatalf("%s accepted provider-hosted structured output as client support", dialect)
+		}
+	}
+}
+
+func TestProviderHostedStructuredOutputsStayInactiveAcrossConsumers(t *testing.T) {
+	target := Target{
+		Provider:    "p",
+		Model:       "synthetic",
+		ToolSupport: ToolSupport{ProviderHosted: []string{"structured_outputs"}},
+	}
+	req := &IRRequest{Raw: map[string]any{"response_format": map[string]any{"type": "json_schema"}}}
+	contract := &ModelGroupContract{
+		RequiredCaps: ContractRequiredCapabilities{StructuredOutputs: true},
+	}
+	if reason := targetPassesContract(contract, target, "openai-chat", "openai-chat", req, dynamicStats{}, time.Now().UTC()); reason != "contract-required-structured-outputs" {
+		t.Fatalf("contract accepted provider-hosted structured output: reason=%q", reason)
+	}
+	filters := DynamicScoreHardFilters{RequireStructuredOutputSupport: true}
+	if dynamicPassesHardFilters(target, req, "openai-chat", "openai-chat", filters) {
+		t.Fatal("dynamic hard filter accepted provider-hosted structured output")
+	}
+
+	cfg := Config{
+		Server: ServerConfig{DecisionTelemetry: DecisionTelemetryConfig{Enabled: true}},
+		Provider: map[string]ProviderConfig{
+			"p": {
+				Dialect: "openai-chat",
+				Models: map[string]ProviderModel{
+					"synthetic": {
+						Model:       "synthetic",
+						ToolSupport: target.ToolSupport,
+					},
+				},
+			},
+		},
+		Models: map[string]ModelGroup{
+			"group": {Targets: []Target{{Provider: "p", ModelRef: "synthetic"}}},
+		},
+	}
+	group := ModelGroup{Targets: []Target{target}}
+	rc := &requestContext{}
+	(&Service{cfg: &cfg}).recordEligibilityTelemetry(rc, "group", group, req, "openai-chat")
+	if len(rc.rec.DecisionCandidates) != 1 || rc.rec.DecisionCandidates[0].StructuredOutput {
+		t.Fatalf("telemetry reported provider-hosted structured output as client support: %#v", rc.rec.DecisionCandidates)
+	}
+
+	report := buildAdminCatalogStatusResponse(cfg)
+	if len(report.GroupSummary) != 1 || report.GroupSummary[0].OpenAIChatStructuredOutputTargets != 0 {
+		t.Fatalf("admin group summary reported provider-hosted structured output as client support: %#v", report.GroupSummary)
+	}
+	for _, row := range report.Rows {
+		if row.Source == "active_target" && row.EffectiveStructured {
+			t.Fatalf("admin target reported provider-hosted structured output as client support: %#v", row)
 		}
 	}
 }
