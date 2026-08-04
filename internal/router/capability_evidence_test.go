@@ -431,6 +431,11 @@ func TestConfiguredGenericTranslationRequiresDistinctEvidence(t *testing.T) {
 		!stringSliceContains(surface.capabilities, "image-input") {
 		t.Fatalf("generic translation evidence mismatch: %#v", surface)
 	}
+	malformed := evidenceForSurface(surface, "text").Identity
+	malformed.BridgeDirection = "none"
+	if capabilityIdentityComplete(malformed) {
+		t.Fatal("mismatched bridge direction and dialect tuple was accepted")
+	}
 }
 
 func TestImplicitGenericTranslationRequiresEvidenceWhenAllowlistIsEmpty(t *testing.T) {

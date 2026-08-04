@@ -66,6 +66,24 @@ def main() -> int:
         pass
     else:
         raise AssertionError("request shape was not bound to capability case")
+    for direction, expected in module.BRIDGE_SURFACES.items():
+        if expected is None:
+            inbound, api_skin = "openai-chat", "openai-responses"
+        else:
+            inbound, api_skin = expected[1], expected[0]
+        mismatched_bridge = dict(safe)
+        mismatched_bridge["identity"] = {
+            **identity,
+            "inbound_dialect": inbound,
+            "api_skin": api_skin,
+            "bridge_direction": direction,
+        }
+        try:
+            module.validate_result(mismatched_bridge)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"mismatched {direction} bridge tuple was accepted")
     for mutated, label in (
         ({**safe, "notes": "benign-looking raw payload"}, "unknown result field"),
         ({**safe, "identity": {**identity, "deployment": "private"}}, "unknown identity field"),

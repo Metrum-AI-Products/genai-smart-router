@@ -28,13 +28,19 @@ REQUIRED_IDENTITY = (
 )
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 DIALECTS = {"openai-chat", "openai-responses", "anthropic", "replicate"}
-BRIDGE_DIRECTIONS = {
-    "none", "chat_to_responses", "responses_to_chat",
-    "anthropic_to_openai-chat", "anthropic_to_openai-responses",
-    "anthropic_to_replicate", "openai-chat_to_anthropic",
-    "openai-chat_to_replicate", "openai-responses_to_anthropic",
-    "openai-responses_to_replicate",
+BRIDGE_SURFACES = {
+    "none": None,
+    "chat_to_responses": ("openai-chat", "openai-responses"),
+    "responses_to_chat": ("openai-responses", "openai-chat"),
+    "anthropic_to_openai-chat": ("anthropic", "openai-chat"),
+    "anthropic_to_openai-responses": ("anthropic", "openai-responses"),
+    "anthropic_to_replicate": ("anthropic", "replicate"),
+    "openai-chat_to_anthropic": ("openai-chat", "anthropic"),
+    "openai-chat_to_replicate": ("openai-chat", "replicate"),
+    "openai-responses_to_anthropic": ("openai-responses", "anthropic"),
+    "openai-responses_to_replicate": ("openai-responses", "replicate"),
 }
+BRIDGE_DIRECTIONS = set(BRIDGE_SURFACES)
 CAPABILITY_REQUEST_SHAPES = {
     "text": "text",
     "openai-responses": "text",
@@ -103,6 +109,12 @@ def validate_identity(identity: object, capability_case: object) -> None:
         fail("result identity dialect is unsupported")
     if identity["bridge_direction"] not in BRIDGE_DIRECTIONS:
         fail("result identity.bridge_direction is unsupported")
+    expected_bridge = BRIDGE_SURFACES[identity["bridge_direction"]]
+    if expected_bridge is None:
+        if identity["inbound_dialect"] != identity["api_skin"]:
+            fail("result direct identity must use the API skin as inbound dialect")
+    elif expected_bridge != (identity["inbound_dialect"], identity["api_skin"]):
+        fail("result bridge_direction does not match inbound_dialect and api_skin")
     if identity["model_suffix"] and not identity["model_suffix"].startswith(":"):
         fail("result identity.model_suffix must be empty or colon-prefixed")
     expected_shape = CAPABILITY_REQUEST_SHAPES.get(capability_case)

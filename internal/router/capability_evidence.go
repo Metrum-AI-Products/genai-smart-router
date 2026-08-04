@@ -440,22 +440,40 @@ func identityIsExpected(identity CapabilityEvidenceIdentity, expected []Capabili
 	return false
 }
 
+func capabilityBridgeTupleValid(inbound, apiSkin, direction string) bool {
+	switch direction {
+	case "none":
+		return inbound == apiSkin
+	case chatToResponsesBridgeDirection:
+		return inbound == "openai-chat" && apiSkin == "openai-responses"
+	case responsesToChatBridgeDirection:
+		return inbound == "openai-responses" && apiSkin == "openai-chat"
+	case "anthropic_to_openai-chat":
+		return inbound == "anthropic" && apiSkin == "openai-chat"
+	case "anthropic_to_openai-responses":
+		return inbound == "anthropic" && apiSkin == "openai-responses"
+	case "anthropic_to_replicate":
+		return inbound == "anthropic" && apiSkin == "replicate"
+	case "openai-chat_to_anthropic":
+		return inbound == "openai-chat" && apiSkin == "anthropic"
+	case "openai-chat_to_replicate":
+		return inbound == "openai-chat" && apiSkin == "replicate"
+	case "openai-responses_to_anthropic":
+		return inbound == "openai-responses" && apiSkin == "anthropic"
+	case "openai-responses_to_replicate":
+		return inbound == "openai-responses" && apiSkin == "replicate"
+	default:
+		return false
+	}
+}
+
 func capabilityIdentityComplete(identity CapabilityEvidenceIdentity) bool {
 	for _, value := range []string{identity.Provider, identity.AccountIdentityClass, identity.EndpointPath, identity.APISkin, identity.Model, identity.InboundDialect, identity.BridgeDirection, identity.RequestShape, identity.ProfileVersion} {
 		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
 			return false
 		}
 	}
-	validBridge := identity.BridgeDirection == "none" ||
-		identity.BridgeDirection == chatToResponsesBridgeDirection ||
-		identity.BridgeDirection == responsesToChatBridgeDirection ||
-		identity.BridgeDirection == "anthropic_to_openai-chat" ||
-		identity.BridgeDirection == "anthropic_to_openai-responses" ||
-		identity.BridgeDirection == "anthropic_to_replicate" ||
-		identity.BridgeDirection == "openai-chat_to_anthropic" ||
-		identity.BridgeDirection == "openai-chat_to_replicate" ||
-		identity.BridgeDirection == "openai-responses_to_anthropic" ||
-		identity.BridgeDirection == "openai-responses_to_replicate"
+	validBridge := capabilityBridgeTupleValid(identity.InboundDialect, identity.APISkin, identity.BridgeDirection)
 	if !strings.HasPrefix(identity.EndpointPath, "/") ||
 		normalizeDialect(identity.APISkin) != identity.APISkin ||
 		normalizeDialect(identity.InboundDialect) != identity.InboundDialect ||
