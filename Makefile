@@ -123,7 +123,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres capability-smoke capability-smoke-unit capability-smoke-live api-compat-mock api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres capability-smoke capability-smoke-unit capability-smoke-live api-compat-mock api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-validate livecodebench-run clean
 
 help: eks-help
 
@@ -147,6 +147,23 @@ eval-ci-smoke:
 # shell block. It requires protected per-suite baselines and remains opt-in.
 eval-ci-full:
 	$(PYTHON) scripts/inspect_coding_eval.py ci-full
+
+# LiveCodeBench is opt-in. It needs an evaluator checkout created from the
+# pinned contract and can download the official public dataset; it is never a
+# prerequisite of make/test/build.
+LCB_ROOT ?=
+LCB_PYTHON ?= $(PYTHON)
+LCB_RUNNER_COMMAND_FILE ?=
+livecodebench-contract-test:
+	$(PYTHON) scripts/livecodebench_eval_test.py
+
+livecodebench-validate:
+	@test -n "$(LCB_ROOT)" || { echo "LCB_ROOT must name the pinned LiveCodeBench checkout" >&2; exit 2; }
+	PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) scripts/livecodebench_eval.py validate --lcb-root "$(LCB_ROOT)"
+
+livecodebench-run:
+	@test -n "$(LCB_ROOT)" && test -n "$(LCB_RUNNER_COMMAND_FILE)" || { echo "LCB_ROOT and LCB_RUNNER_COMMAND_FILE are required" >&2; exit 2; }
+	PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) scripts/livecodebench_eval.py run --lcb-root "$(LCB_ROOT)" --runner-command-file "$(LCB_RUNNER_COMMAND_FILE)"
 
 eks-help:
 	@echo "EKS delivery targets (approved target policy; no default kubeconfig/context):"

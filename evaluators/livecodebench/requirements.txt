@@ -1,0 +1,3 @@
+# The evaluator checkout is pinned by contract.json.  Install it with its
+# committed uv.lock (see docs/LIVECODEBENCH_EVALUATIONS.md), not editable main.
+datasets==3.5.0
