@@ -91,6 +91,20 @@ func TestAdvertisedCapabilitiesUseRuntimeToolVocabulary(t *testing.T) {
 	}
 }
 
+func TestProviderHostedStructuredOutputsDoNotSatisfyClientSkins(t *testing.T) {
+	target := Target{
+		ToolSupport: ToolSupport{ProviderHosted: []string{"structured_outputs"}},
+	}
+	for _, dialect := range []string{"openai-chat", "openai-responses", "anthropic"} {
+		if capabilities := advertisedCapabilities(target, dialect); stringSliceContains(capabilities, "structured-outputs") {
+			t.Fatalf("%s advertised provider-hosted structured output as client support: %v", dialect, capabilities)
+		}
+		if targetSupportsStructuredOutput(target, dialect, dialect, true) {
+			t.Fatalf("%s accepted provider-hosted structured output as client support", dialect)
+		}
+	}
+}
+
 func TestAdvertisedCapabilitiesHonorToolOnlyAndUnsupportedFeatures(t *testing.T) {
 	target := Target{
 		ToolOnly:        true,

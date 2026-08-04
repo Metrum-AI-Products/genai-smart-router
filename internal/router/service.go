@@ -2460,15 +2460,15 @@ func targetSupportsStructuredOutput(target Target, callerDialect, outDialect str
 		return true
 	}
 	if isResponsesToChatBridge(callerDialect, outDialect, target) && target.ResponsesToChat.StructuredOutputs {
-		return targetSupportsCapability(target, "openai-chat", "structured_outputs", "json_schema")
+		return supportsAnyCapability(targetCapabilityValues(target, "openai-chat"), "structured_outputs", "json_schema")
 	}
 	if isChatToResponsesBridge(callerDialect, outDialect, target) {
-		return target.Bridges.ChatToResponses.StructuredOutputs && targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
+		return target.Bridges.ChatToResponses.StructuredOutputs && supportsAnyCapability(targetCapabilityValues(target, outDialect), "structured_outputs", "json_schema")
 	}
 	if callerDialect != outDialect {
 		return false
 	}
-	return targetSupportsCapability(target, outDialect, "structured_outputs", "json_schema")
+	return supportsAnyCapability(targetCapabilityValues(target, outDialect), "structured_outputs", "json_schema")
 }
 
 func encodeToolPassthrough(dialect, model string, req *IRRequest, target Target) ([]byte, error) {
