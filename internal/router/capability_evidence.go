@@ -224,7 +224,7 @@ func advertisedCapabilities(target Target, dialect string) []string {
 	if !target.ToolOnly {
 		capabilities = append(capabilities, "text")
 	}
-	if targetSupportsClientTools(target, dialect, false) {
+	if targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
 	}
 	if targetSupportsClientTools(target, dialect, true) {
@@ -330,7 +330,7 @@ func chatToResponsesEvidenceCapabilities(target Target, dialect string) []string
 	if !target.ToolOnly {
 		capabilities = append(capabilities, "text")
 	}
-	if bridge.Tools && targetSupportsClientTools(target, dialect, false) {
+	if bridge.Tools && bridge.ToolChoice && targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
 	}
 	if bridge.Tools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {
@@ -355,7 +355,7 @@ func responsesToChatEvidenceCapabilities(target Target, dialect string) []string
 	if !target.ToolOnly && bridge.Text {
 		capabilities = append(capabilities, "text")
 	}
-	if bridge.FunctionTools && targetSupportsClientTools(target, dialect, false) {
+	if bridge.FunctionTools && bridge.ToolChoice && targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
 	}
 	if bridge.FunctionTools && bridge.ToolChoice && targetSupportsClientTools(target, dialect, true) {

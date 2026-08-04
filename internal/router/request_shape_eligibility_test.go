@@ -189,6 +189,30 @@ func TestRequestShapeUnsupportedForcedToolChoiceIgnoresAutoAndNone(t *testing.T)
 	}
 }
 
+func TestRequestShapeUnsupportedToolChoiceRejectsExplicitAutoOnly(t *testing.T) {
+	target := Target{RequestShapeSupport: RequestShapeSupport{
+		UnsupportedRequestFeatures: []string{" tool_choice "},
+	}}
+	for _, dialect := range []string{"openai-chat", "openai-responses", "anthropic"} {
+		t.Run(dialect, func(t *testing.T) {
+			explicitAuto := &IRRequest{
+				Tools: []map[string]any{{"name": "pick"}},
+				Raw:   map[string]any{"tool_choice": "auto"},
+			}
+			explicitFit := (&Service{}).targetRequestShapeFit(target, explicitAuto, dialect, dialect, requestTokenEstimateFromIR(explicitAuto, dialect, 96))
+			if explicitFit.FilterReason != "request-shape-unsupported-feature" {
+				t.Fatalf("explicit auto fit=%#v", explicitFit)
+			}
+
+			omittedChoice := &IRRequest{Tools: []map[string]any{{"name": "pick"}}}
+			omittedFit := (&Service{}).targetRequestShapeFit(target, omittedChoice, dialect, dialect, requestTokenEstimateFromIR(omittedChoice, dialect, 96))
+			if omittedFit.FilterReason != "" || omittedFit.EligibilityDecision != "eligible" {
+				t.Fatalf("omitted tool_choice fit=%#v", omittedFit)
+			}
+		})
+	}
+}
+
 func TestRequestShapeFeatureDetectsStreamOptions(t *testing.T) {
 	req := &IRRequest{Raw: map[string]any{"stream_options": map[string]any{"include_usage": true}}}
 	if !requestFeaturePresent(req, "stream_options") {

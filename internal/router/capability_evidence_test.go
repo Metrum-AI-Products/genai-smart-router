@@ -69,6 +69,9 @@ func TestAdvertisedCapabilitiesUseRuntimeToolVocabulary(t *testing.T) {
 		{name: "anthropic", dialect: "anthropic", toolSupport: ToolSupport{AnthropicMessages: []string{"client_tools", "tool_choice"}}, wantAuto: true, wantForced: true},
 		{name: "auto-only", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function"}}, wantAuto: true},
 		{name: "forced-explicitly-unsupported", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}, unsupported: []string{"forced_tool_choice"}, wantAuto: true},
+		{name: "chat-tool-choice-explicitly-unsupported", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, unsupported: []string{"tool_choice"}},
+		{name: "responses-tool-choice-explicitly-unsupported", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}, unsupported: []string{"tool_choice"}},
+		{name: "anthropic-tool-choice-explicitly-unsupported", dialect: "anthropic", toolSupport: ToolSupport{AnthropicMessages: []string{"client_tools", "tool_choice"}}, unsupported: []string{"tool_choice"}},
 		{name: "tools-explicitly-unsupported", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, unsupported: []string{"tools"}},
 		{name: "normalized-unsupported-tools", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, unsupported: []string{" TOOLS "}},
 		{name: "cross-skin", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}},
@@ -87,6 +90,52 @@ func TestAdvertisedCapabilitiesUseRuntimeToolVocabulary(t *testing.T) {
 			}
 			if got := stringSliceContains(capabilities, "tools-forced"); got != test.wantForced {
 				t.Fatalf("tools-forced=%v, want %v: %v", got, test.wantForced, capabilities)
+			}
+		})
+	}
+}
+
+func TestUnsupportedExplicitToolChoiceCannotSatisfyAutoEvidence(t *testing.T) {
+	tests := []struct {
+		name        string
+		dialect     string
+		toolSupport ToolSupport
+	}{
+		{name: "chat", dialect: "openai-chat", toolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
+		{name: "responses", dialect: "openai-responses", toolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}}},
+		{name: "anthropic", dialect: "anthropic", toolSupport: ToolSupport{AnthropicMessages: []string{"client_tools", "tool_choice"}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target := Target{
+				Provider:    "p",
+				Model:       "synthetic",
+				Dialect:     test.dialect,
+				ToolSupport: test.toolSupport,
+				RequestShapeSupport: RequestShapeSupport{
+					UnsupportedRequestFeatures: []string{" tool_choice "},
+				},
+			}
+			if !targetSupportsClientTools(target, test.dialect, false) {
+				t.Fatal("omitted tool_choice should retain ordinary client-tool eligibility")
+			}
+			if targetSupportsExplicitAutoToolChoice(target, test.dialect) {
+				t.Fatal("explicit tool_choice:auto should not be eligible")
+			}
+			provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: test.dialect, KeyID: "test"}
+			cfg := capabilityTestConfig(provider, target)
+			surfaces, err := capabilitySurfaces(provider, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, surface := range surfaces {
+				if stringSliceContains(surface.capabilities, "tools-auto") || stringSliceContains(surface.capabilities, "tools-forced") {
+					t.Fatalf("unsupported explicit tool_choice advertised: %v", surface.capabilities)
+				}
+				evidence := evidenceForSurface(surface, "tools-auto")
+				if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{evidence}, []CapabilityEvidenceIdentity{evidence.Identity}); len(failures) != 1 {
+					t.Fatalf("explicit auto evidence failures=%v, want one advertisement failure", failures)
+				}
 			}
 		})
 	}
@@ -419,6 +468,38 @@ func TestChatToResponsesBridgeRequiresDistinctShapeEvidence(t *testing.T) {
 	mutated[bridgeIndex].Identity.ProfileVersion = "unapproved/v1"
 	if failures := cfg.VerifyAdvertisedCapabilities("group", mutated, expected); len(failures) == 0 {
 		t.Fatal("unapproved bridge profile satisfied bridge requirement")
+	}
+}
+
+func TestBridgeAutoEvidenceRequiresExplicitToolChoiceSupport(t *testing.T) {
+	bridgeText := true
+	responsesTarget := Target{
+		Dialect: "openai-responses",
+		ToolSupport: ToolSupport{OpenAIResponses: []string{
+			"function", "tool_choice",
+		}},
+		Bridges: BridgeSupport{ChatToResponses: DialectBridgeSupport{
+			Enabled: true, Text: &bridgeText, Tools: true,
+		}},
+	}
+	if capabilities := chatToResponsesEvidenceCapabilities(responsesTarget, "openai-responses"); stringSliceContains(capabilities, "tools-auto") {
+		t.Fatalf("Chat-to-Responses bridge advertised explicit auto without tool_choice bridge support: %v", capabilities)
+	}
+
+	chatTarget := Target{
+		Dialect: "openai-chat",
+		ToolSupport: ToolSupport{OpenAIChat: []string{
+			"tools", "tool_choice",
+		}},
+		RequestShapeSupport: RequestShapeSupport{
+			UnsupportedRequestFeatures: []string{"tool_choice"},
+		},
+		ResponsesToChat: ResponsesToChatBridge{
+			Enabled: true, FunctionTools: true, ToolChoice: true,
+		},
+	}
+	if capabilities := responsesToChatEvidenceCapabilities(chatTarget, "openai-chat"); stringSliceContains(capabilities, "tools-auto") || stringSliceContains(capabilities, "tools-forced") {
+		t.Fatalf("Responses-to-Chat bridge advertised unsupported explicit tool_choice: %v", capabilities)
 	}
 }
 

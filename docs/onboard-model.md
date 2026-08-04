@@ -84,7 +84,11 @@ inbound dialect and `chat_to_responses`, `responses_to_chat`, or the exact
 translation; direct evidence uses the target dialect and `none`. Tool evidence
 is accepted only for the target's exact API-skin vocabulary (`tools` for Chat,
 `function` for Responses, and `client_tools` for Anthropic), and explicit
-unsupported-feature metadata overrides broad capability metadata. Targets that
+unsupported-feature metadata overrides broad capability metadata. In
+particular, `tool_choice` suppresses both explicit `tools-auto` and
+`tools-forced` evidence because the automatic probe sends
+`tool_choice: "auto"`; `forced_tool_choice` suppresses only `tools-forced`.
+Tool requests that omit `tool_choice` remain a separate runtime shape. Targets that
 need composite image-plus-tool or image-plus-structured evidence fail closed
 until the evidence schema defines that composite request shape.
 An empty `supported_inbound_dialects` allowlist follows the router's generic
