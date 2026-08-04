@@ -50,8 +50,17 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 	if out, err := run("observe-schema", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--current-schema-version", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) {
 		t.Fatalf("schema observation failed: %v %s", err, out)
 	}
+	if out, err := run(register...); err != nil || !strings.Contains(out, "registered safe") {
+		t.Fatalf("unchanged registration after schema observation was not idempotent: %v %s", err, out)
+	}
 	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, `"DriftCode": "current"`) || !strings.Contains(out, `"CurrentSchemaVersion": 1`) {
 		t.Fatalf("updated schema status was not current: %v %s", err, out)
+	}
+	if out, err := run(append(append([]string{}, register...), "--release-digest", "sha256:changed")...); err == nil || !strings.Contains(out, "different instance contract") {
+		t.Fatalf("immutable registration conflict was accepted after observation: %v %s", err, out)
+	}
+	if out, err := run("status", "--registry", registry, "--limit", "1"); err != nil || !strings.Contains(out, `"CurrentSchemaVersion": 1`) {
+		t.Fatalf("rejected immutable registration conflict rewrote schema observation: %v %s", err, out)
 	}
 	if out, err := run("observe-schema", "--registry", registry, "--tenant", "missing", "--stage", "test", "--current-schema-version", "1"); err == nil || !strings.Contains(out, "exactly one registered instance") {
 		t.Fatalf("missing tenant schema observation did not fail closed: %v %s", err, out)

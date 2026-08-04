@@ -250,7 +250,7 @@ func (r *TenantInstanceRegistry) Register(ctx context.Context, v TenantInstance)
 		if err == nil {
 			if existing.InstanceID == v.InstanceID {
 				current, resolveErr := r.ResolveDedicated(ctx, v.TenantID, v.Stage)
-				if resolveErr == nil && tenantInstanceEquivalent(current, v) {
+				if resolveErr == nil && tenantInstanceImmutableContractEquivalent(current, v) {
 					return nil
 				}
 				return errors.New("tenant stage is already registered with a different instance contract")
@@ -278,8 +278,11 @@ func (r *TenantInstanceRegistry) Register(ctx context.Context, v TenantInstance)
 	})
 }
 
-func tenantInstanceEquivalent(a, b TenantInstance) bool {
-	return a.TenantID == b.TenantID && a.InstanceID == b.InstanceID && a.Stage == b.Stage && a.Region == b.Region && a.Namespace == b.Namespace && a.ReleaseName == b.ReleaseName && a.RuntimeIdentity == b.RuntimeIdentity && a.RDSInstanceID == b.RDSInstanceID && a.RDSInstanceClass == b.RDSInstanceClass && a.AllocatedStorageGiB == b.AllocatedStorageGiB && a.Placement == b.Placement && a.RDSProxyMode == b.RDSProxyMode && a.DesiredReleaseDigest == b.DesiredReleaseDigest && a.ExpectedSchemaVersion == b.ExpectedSchemaVersion && a.CurrentSchemaVersion == b.CurrentSchemaVersion
+// tenantInstanceImmutableContractEquivalent compares only desired-state fields
+// supplied by registration. CurrentSchemaVersion and ObservedAt are independent
+// observations, so re-registering an unchanged contract must preserve them.
+func tenantInstanceImmutableContractEquivalent(a, b TenantInstance) bool {
+	return a.TenantID == b.TenantID && a.InstanceID == b.InstanceID && a.Stage == b.Stage && a.Region == b.Region && a.Namespace == b.Namespace && a.ReleaseName == b.ReleaseName && a.RuntimeIdentity == b.RuntimeIdentity && a.RDSInstanceID == b.RDSInstanceID && a.RDSInstanceClass == b.RDSInstanceClass && a.AllocatedStorageGiB == b.AllocatedStorageGiB && a.Placement == b.Placement && a.RDSProxyMode == b.RDSProxyMode && a.DesiredReleaseDigest == b.DesiredReleaseDigest && a.ExpectedSchemaVersion == b.ExpectedSchemaVersion
 }
 func validateTenantInstance(v TenantInstance) error {
 	for _, f := range []struct{ name, value string }{{"tenant id", v.TenantID}, {"instance id", v.InstanceID}, {"stage", v.Stage}, {"region", v.Region}, {"namespace", v.Namespace}, {"release name", v.ReleaseName}, {"runtime identity", v.RuntimeIdentity}, {"RDS allocation id", v.RDSInstanceID}, {"RDS instance class", v.RDSInstanceClass}, {"release digest", v.DesiredReleaseDigest}} {
