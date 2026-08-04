@@ -71,7 +71,10 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 ### Multi-environment operator contract
 
-The binary tarball ships `metrum-smartrouterctl`; the standard Docker and Docker Compose image does not include this operator CLI. Run it from an extracted binary package or a separate trusted administration host rather than from the router container. Its safe contract keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. Stage labels are deployment-defined rather than a fixed environment list. A bounded registry status can show schema-version drift without contacting a live database, cluster, DNS endpoint, or secret store.
+In binary tarballs, `metrum-smartrouterctl` keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. The CLI is not included in the standard Docker or Docker Compose image; Docker-based operators run it from an extracted binary package on a separate trusted administration host. Stage labels are deployment-defined rather than a fixed environment list. Registration requires separate expected and independently observed current schema versions. A later local-only `observe-schema` command updates only the current version and server-generated observation time for exactly one tenant/stage; expected deployment metadata remains immutable. Missing, ambiguous, malformed, or out-of-range observations fail closed. A bounded read-only status reports `schema_version_mismatch` or `current` without contacting a live database, cluster, DNS endpoint, cloud API, adapter, or secret store.
+
+Schema observation opens only an existing local registry. A missing registry
+fails closed without creating a SQLite file or applying registry DDL.
 
 This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
 

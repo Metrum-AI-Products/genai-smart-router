@@ -322,10 +322,10 @@ func dynamicPassesHardFilters(target Target, req *IRRequest, callerDialect, outD
 	if filters.RequireRequestedAPISkin && outDialect != "" && callerDialect != outDialect {
 		return false
 	}
-	if filters.RequireForcedToolChoiceSupport && requestHasForcedToolChoice(req) && !targetSupportsCapability(target, callerDialect, "forced_tool_choice") {
+	if filters.RequireForcedToolChoiceSupport && requestHasForcedToolChoice(req) && !targetSupportsClientTools(target, outDialect, true) {
 		return false
 	}
-	if filters.RequireStructuredOutputSupport && requestHasStructuredOutput(req) && !targetSupportsCapability(target, callerDialect, "structured_outputs", "json_schema") {
+	if filters.RequireStructuredOutputSupport && requestHasStructuredOutput(req) && !targetSupportsStructuredOutput(target, callerDialect, outDialect, true) {
 		return false
 	}
 	if filters.RequireReasoningSupportWhenRequested && requestRequiresReasoning(req) && !targetCanSatisfyReasoning(target, outDialect, req) {
@@ -386,17 +386,6 @@ func structuredOutputFormatRequiresSupport(format any) bool {
 	default:
 		return false
 	}
-}
-
-func targetSupportsCapability(target Target, dialect string, capabilities ...string) bool {
-	values := targetCapabilityValues(target, dialect)
-	values = append(values, target.ToolSupport.ProviderHosted...)
-	for _, capability := range capabilities {
-		if stringSliceContains(values, capability) {
-			return true
-		}
-	}
-	return false
 }
 
 func targetCapabilityValues(target Target, dialect string) []string {

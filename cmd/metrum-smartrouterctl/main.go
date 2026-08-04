@@ -20,11 +20,13 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 {
-		die("usage: metrum-smartrouterctl <register|quota-reserve|status|deploy|promote|rollback> [flags]")
+		die("usage: metrum-smartrouterctl <register|observe-schema|quota-reserve|status|deploy|promote|rollback> [flags]")
 	}
 	switch os.Args[1] {
 	case "register":
 		register(os.Args[2:])
+	case "observe-schema":
+		observeSchema(os.Args[2:])
 	case "quota-reserve":
 		quotaReserve(os.Args[2:])
 	case "status":
@@ -56,6 +58,7 @@ func register(args []string) {
 	storage := fs.Int("storage-gib", 50, "declared RDS allocated storage in GiB")
 	digest := fs.String("release-digest", "", "immutable desired release digest")
 	schema := fs.Int("schema-version", 0, "expected schema version")
+	currentSchema := fs.Int("current-schema-version", -1, "required independently observed current schema version")
 	proxy := fs.String("rds-proxy", router.RDSProxyDisabled, "must be disabled; RDS Proxy is disabled")
 	fs.Parse(args)
 	r, err := router.OpenTenantInstanceRegistry(*path)
@@ -63,11 +66,29 @@ func register(args []string) {
 		die("open registry: %v", err)
 	}
 	defer r.Close()
-	err = r.Register(context.Background(), router.TenantInstance{TenantID: *tenant, InstanceID: *instance, Stage: *stage, Region: *region, Namespace: *namespace, ReleaseName: *release, RuntimeIdentity: *runtimeIdentity, RDSInstanceID: *rds, RDSInstanceClass: *class, AllocatedStorageGiB: *storage, Placement: router.TenantPlacementDedicatedInstance, RDSProxyMode: *proxy, DesiredReleaseDigest: *digest, ExpectedSchemaVersion: *schema, CurrentSchemaVersion: *schema})
+	err = r.Register(context.Background(), router.TenantInstance{TenantID: *tenant, InstanceID: *instance, Stage: *stage, Region: *region, Namespace: *namespace, ReleaseName: *release, RuntimeIdentity: *runtimeIdentity, RDSInstanceID: *rds, RDSInstanceClass: *class, AllocatedStorageGiB: *storage, Placement: router.TenantPlacementDedicatedInstance, RDSProxyMode: *proxy, DesiredReleaseDigest: *digest, ExpectedSchemaVersion: *schema, CurrentSchemaVersion: *currentSchema})
 	if err != nil {
 		die("register tenant contract: %v", err)
 	}
 	fmt.Println("registered safe tenant-instance contract")
+}
+
+func observeSchema(args []string) {
+	fs := flag.NewFlagSet("observe-schema", flag.ExitOnError)
+	path, tenant := registryFromFlags(fs)
+	stage := fs.String("stage", "", "user-defined stage label")
+	currentSchema := fs.Int("current-schema-version", -1, "required independently observed current schema version")
+	fs.Parse(args)
+	r, err := router.OpenTenantInstanceRegistryExisting(*path)
+	if err != nil {
+		die("open registry: %v", err)
+	}
+	defer r.Close()
+	result, err := r.ObserveSchemaVersion(context.Background(), *tenant, *stage, *currentSchema)
+	if err != nil {
+		die("record schema observation: %v", err)
+	}
+	writeJSON(result)
 }
 
 type staticQuotaAdapter struct{ snapshot router.QuotaSnapshot }
