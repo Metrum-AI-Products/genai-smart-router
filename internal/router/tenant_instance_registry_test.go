@@ -144,6 +144,42 @@ func TestTenantRegistrySQLiteModesAtomicallyRejectMissingDatabase(t *testing.T) 
 	}
 }
 
+func TestTenantRegistryExistingModesPreserveRelativePaths(t *testing.T) {
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	const path = "tenant-instances.sqlite"
+	created, err := OpenTenantInstanceRegistry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, open := range []func(string) (*TenantInstanceRegistry, error){
+		OpenTenantInstanceRegistryExisting,
+		OpenTenantInstanceRegistryReadOnly,
+	} {
+		registry, err := open(path)
+		if err != nil {
+			t.Fatalf("reopen relative registry: %v", err)
+		}
+		if err := registry.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	instance := testTenantInstance("tenant-a", "router-a")

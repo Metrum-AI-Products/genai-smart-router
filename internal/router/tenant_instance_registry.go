@@ -211,6 +211,7 @@ func OpenTenantInstanceRegistryReadOnly(path string) (*TenantInstanceRegistry, e
 func openTenantRegistrySQLite(path, mode string) (*gorm.DB, error) {
 	dsn := (&url.URL{
 		Scheme:   "file",
+		OmitHost: true,
 		Path:     path,
 		RawQuery: "mode=" + mode + "&_pragma=foreign_keys(1)",
 	}).String()
