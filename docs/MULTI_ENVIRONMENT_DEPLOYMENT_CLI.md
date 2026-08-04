@@ -26,7 +26,9 @@ current version is never inferred from expected deployment metadata. Both
 versions must be between 0 and 2147483647. Registration rejects every placement
 other than `dedicated_instance` and every RDS Proxy mode other than `disabled`.
 It derives neither an allocation name nor a database address from a tenant
-name.
+name. Repeating an unchanged registration remains idempotent after an
+observation and preserves the stored current version and observation time;
+immutable contract conflicts still fail closed.
 
 `observe-schema` selects exactly one registered tenant and stage, records the
 explicit `--current-schema-version`, and assigns a server-generated UTC

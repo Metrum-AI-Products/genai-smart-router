@@ -199,6 +199,43 @@ func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
 	}
 }
 
+func TestTenantRegistryReregistrationPreservesIndependentSchemaObservation(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	registration := testTenantInstance("tenant-a", "router-a")
+	registration.CurrentSchemaVersion = 1
+	if err := r.Register(context.Background(), registration); err != nil {
+		t.Fatal(err)
+	}
+
+	observation, err := r.ObserveSchemaVersion(context.Background(), registration.TenantID, registration.Stage, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Register(context.Background(), registration); err != nil {
+		t.Fatalf("unchanged registration after independent observation was not idempotent: %v", err)
+	}
+	resolved, err := r.ResolveDedicated(context.Background(), registration.TenantID, registration.Stage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.CurrentSchemaVersion != observation.CurrentSchemaVersion || !resolved.ObservedAt.Equal(observation.ObservedAt) {
+		t.Fatalf("idempotent registration rewrote independent observation: %#v", resolved)
+	}
+
+	conflicting := registration
+	conflicting.DesiredReleaseDigest = "sha256:different"
+	if err := r.Register(context.Background(), conflicting); err == nil {
+		t.Fatal("immutable desired release digest conflict was accepted after observation")
+	}
+	resolved, err = r.ResolveDedicated(context.Background(), registration.TenantID, registration.Stage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.CurrentSchemaVersion != observation.CurrentSchemaVersion || !resolved.ObservedAt.Equal(observation.ObservedAt) {
+		t.Fatalf("rejected immutable conflict rewrote independent observation: %#v", resolved)
+	}
+}
+
 func TestTenantRegistryQuotaReservationIDRejectsUnsafeValuesBeforeIO(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	if err := r.Register(context.Background(), testTenantInstance("tenant-a", "router-a")); err != nil {
