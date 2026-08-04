@@ -1,6 +1,71 @@
 # Smart LLM Router Production Deployment
 
-Last deployed: 2026-07-19
+Last deployed: 2026-08-04
+
+## 2026-08-04 Documentation Accuracy And API-Skin Image Guidance Refresh
+
+Deployed final package/image `smart-llmrouter:4175bdf-linux-amd64` from source
+commit `4175bdf`. The package replaces duplicated and dated provider/model
+catalog text with authoritative source links, documents the shipped
+`metrum-smartrouterctl` safe contract, removes stale release-note residue, and
+clarifies that image eligibility is specific to the caller API skin.
+
+The first validated package, `c870cd5`, was deployed and passed the production
+compatibility matrix. A subsequent Anthropic Messages image probe exposed a
+pre-existing `big-coder` eligibility gap, so issue #660, a sanitized
+production-derived regression fixture, and corrected public/operator guidance
+were added before the final `4175bdf` package replaced it. No provider target,
+model-group weight, caller policy, runtime config, credential, database, or
+license input changed.
+
+Production backups:
+
+- Prior production package:
+  `/opt/smart-llmrouter.backup-docs-accuracy-20260804T042453Z`
+- Intermediate `c870cd5` package:
+  `/opt/smart-llmrouter.backup-image-docs-20260804T045323Z`
+
+Validation:
+
+- `make test`: passed after the final fixture/docs changes.
+- `make build-all`: passed for the complete build, including linux/amd64 and
+  linux/arm64 binaries.
+- `make docs-qa` and `make docs-build`: passed; Docusaurus client and server
+  compiled, sidebar checks covered 80 unique pages, and embedded docs were
+  regenerated.
+- Admin-browser E2E: 28 tests passed. Mock Codex/Claude CLI E2E passed.
+- `make package-docker`: built and content-validated linux/amd64 and
+  linux/arm64 packages from clean commit `4175bdf`.
+- Production `/readyz` and `/version`: 200, version/commit `4175bdf`, build
+  date `2026-08-04T04:48:49Z`, Go `1.26.4`, linux/amd64.
+- Hosted Claude Code, image-analysis, FAQ, and release-note pages returned 200,
+  reported docs version `4175bdf`, and contained the corrected API-skin
+  guidance.
+- Authenticated `big-coder` OpenAI Chat, OpenAI Responses, and Anthropic
+  Messages text smokes returned 200 on the final package.
+- Before the final docs-only rebuild, Chat, Responses, and Messages text,
+  client-tool, and streaming/usage smokes all returned 200 with request IDs.
+  The final package changed no router runtime behavior.
+- Codex CLI `0.146.0`: production text, real filesystem tool, and receipt-image
+  attachment smokes passed; the image result identified the expected merchant.
+- Claude Code `2.1.220`: production text and real filesystem tool smokes passed
+  with `modelUsage` and the expected file contents.
+- The Anthropic Messages receipt-image probe returned the safe expected
+  `502 no-eligible-target` class because `big-coder` has no image-eligible
+  Anthropic Messages target. Issue #660 records the sanitized evidence and
+  acceptance criteria. No unvalidated target was promoted.
+- Unauthenticated and invalid-token `/v1/models` returned 401. The ordinary
+  Harbor caller received 403 `metrics-forbidden`; the metrics-admin caller
+  received 200. A live 10-minute `router-usage-report` completed successfully.
+- Cleanup removed uploaded packages, temporary unpack directories, redundant
+  switch directories, and dangling Docker artifacts. The two intentional
+  timestamped backups above were retained.
+
+Rollback: restore
+`/opt/smart-llmrouter.backup-image-docs-20260804T045323Z` to return to
+`c870cd5`, preserve current runtime config/state/database inputs, restart with
+Docker Compose, then repeat `/readyz`, `/version`, hosted docs, the three API
+text smokes, and Codex/Claude Code text checks.
 
 ## 2026-07-27 Aditya Primary Caller Rate-Limit Increase
 
