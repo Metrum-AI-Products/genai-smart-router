@@ -382,6 +382,25 @@ func validQuotaReservationID(reservationID string) bool {
 	return true
 }
 
+// validLegacyQuotaReservationID permits a bounded, opaque historic identifier
+// only for an exact existing-row retry. It never admits credential, URL, path,
+// or unbounded values, even when a legacy database contains one.
+func validLegacyQuotaReservationID(reservationID string) bool {
+	if len(reservationID) == 0 || len(reservationID) > quotaReservationIDLength {
+		return false
+	}
+	lower := strings.ToLower(reservationID)
+	if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.HasPrefix(lower, "sk-") || strings.HasPrefix(lower, "ghp_") {
+		return false
+	}
+	for _, character := range reservationID {
+		if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // ObserveSchemaVersion records a caller-supplied current version for exactly
 // one local tenant/stage registration. It does not contact a router database,
 // deployment endpoint, cloud API, Kubernetes, DNS, or a credential store.
@@ -437,11 +456,11 @@ func (r *TenantInstanceRegistry) ObserveSchemaVersion(ctx context.Context, tenan
 }
 
 func (r *TenantInstanceRegistry) PreflightAndReserve(ctx context.Context, tenantID, stage, reservationID string, headroom int, adapter RDSQuotaAdapter) (QuotaReservation, error) {
-	if !validQuotaReservationID(reservationID) {
-		return QuotaReservation{}, errors.New("invalid reservation id: expected rsv- followed by a lowercase canonical UUID")
-	}
 	if adapter == nil || headroom < 0 {
 		return QuotaReservation{}, errors.New("quota adapter and non-negative headroom are required")
+	}
+	if !validQuotaReservationID(reservationID) && !validLegacyQuotaReservationID(reservationID) {
+		return QuotaReservation{}, errors.New("invalid reservation id: expected rsv- followed by a lowercase canonical UUID")
 	}
 	var result QuotaReservation
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -455,6 +474,9 @@ func (r *TenantInstanceRegistry) PreflightAndReserve(ctx context.Context, tenant
 			return nil
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
+		}
+		if !validQuotaReservationID(reservationID) {
+			return errors.New("invalid reservation id: expected rsv- followed by a lowercase canonical UUID")
 		}
 		instance, err := r.ResolveDedicated(ctx, tenantID, stage)
 		if err != nil {

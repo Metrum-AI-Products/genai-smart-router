@@ -281,6 +281,98 @@ func TestTenantRegistryQuotaReservationIDRejectsUnsafeValuesBeforeIO(t *testing.
 	}
 }
 
+func TestTenantRegistryLegacyReservationIDRetriesExactExistingHoldOnly(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	instance := testTenantInstance("tenant-a", "router-a")
+	if err := r.Register(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	const legacyReservationID = "reserve-a"
+	legacy := quotaReservationRecord{
+		ReservationID: legacyReservationID,
+		InstanceID:    instance.InstanceID,
+		Region:        instance.Region,
+		DBInstances:   1,
+		QuotaLimit:    4,
+		QuotaUsed:     1,
+		QuotaReserved: 0,
+		Headroom:      0,
+		State:         "admission_reserved",
+		CreatedAt:     time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := r.db.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	retryAdapter := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: instance.Region, Limit: 4}}
+	retry, err := r.PreflightAndReserve(context.Background(), instance.TenantID, instance.Stage, legacyReservationID, 0, retryAdapter)
+	if err != nil {
+		t.Fatalf("exact legacy reservation retry was rejected: %v", err)
+	}
+	if retry.ReservationID != legacyReservationID || retry.State != "admission_reserved" {
+		t.Fatalf("legacy retry returned the wrong existing hold: %#v", retry)
+	}
+	if retryAdapter.preflights != 0 || retryAdapter.reservations != 0 {
+		t.Fatalf("legacy retry reached quota adapter: preflights=%d reservations=%d", retryAdapter.preflights, retryAdapter.reservations)
+	}
+	if err := r.db.Create(&quotaReservationRecord{ReservationID: "legacy-a", InstanceID: instance.InstanceID, Region: instance.Region, DBInstances: 1, QuotaLimit: 4, State: "admission_reserved", CreatedAt: time.Now().UTC()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retry, err := r.PreflightAndReserve(context.Background(), instance.TenantID, instance.Stage, "legacy-a", 0, retryAdapter); err != nil || retry.ReservationID != "legacy-a" {
+		t.Fatalf("safe noncanonical legacy retry was not preserved: %#v %v", retry, err)
+	}
+
+	newLegacyAdapter := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: instance.Region, Limit: 4}}
+	if _, err := r.PreflightAndReserve(context.Background(), instance.TenantID, instance.Stage, "reserve-b", 0, newLegacyAdapter); err == nil || !strings.Contains(err.Error(), "invalid reservation id") {
+		t.Fatalf("new legacy-format hold was accepted or returned the wrong error: %v", err)
+	}
+	if newLegacyAdapter.preflights != 0 || newLegacyAdapter.reservations != 0 {
+		t.Fatalf("new legacy-format hold reached quota adapter: preflights=%d reservations=%d", newLegacyAdapter.preflights, newLegacyAdapter.reservations)
+	}
+
+	bypassAdapter := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: instance.Region, Limit: 4}}
+	if _, err := r.PreflightAndReserve(context.Background(), instance.TenantID, instance.Stage, testReservationB, 0, bypassAdapter); err == nil || !strings.Contains(err.Error(), "already has an active quota admission reservation") {
+		t.Fatalf("different canonical identifier bypassed active legacy hold: %v", err)
+	}
+	if bypassAdapter.preflights != 1 || bypassAdapter.reservations != 0 {
+		t.Fatalf("bypass attempt had unexpected adapter calls: preflights=%d reservations=%d", bypassAdapter.preflights, bypassAdapter.reservations)
+	}
+	var rows int64
+	if err := r.db.Model(&quotaReservationRecord{}).Count(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 {
+		t.Fatalf("legacy retry or rejected new hold changed reservation rows: %d", rows)
+	}
+}
+
+func TestTenantRegistryUnsafeLegacyReservationRowsRemainRejectedAndRedacted(t *testing.T) {
+	r := openTestTenantRegistry(t)
+	instance := testTenantInstance("tenant-a", "router-a")
+	if err := r.Register(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	unsafeIDs := []string{
+		"ghp_exampleCredentialValue",
+		"sk-exampleProviderSecret",
+		"https://example.test/reservation",
+		"/private/reservations/example",
+		strings.Repeat("a", 4096),
+	}
+	for _, reservationID := range unsafeIDs {
+		if err := r.db.Create(&quotaReservationRecord{ReservationID: reservationID, InstanceID: instance.InstanceID, Region: instance.Region, DBInstances: 1, QuotaLimit: 4, State: "admission_reserved", CreatedAt: time.Now().UTC()}).Error; err != nil {
+			t.Fatal(err)
+		}
+		adapter := &fakeRDSQuotaAdapter{snapshot: QuotaSnapshot{Region: instance.Region, Limit: 4}}
+		if _, err := r.PreflightAndReserve(context.Background(), instance.TenantID, instance.Stage, reservationID, 0, adapter); err == nil || !strings.Contains(err.Error(), "invalid reservation id") || strings.Contains(err.Error(), reservationID) {
+			t.Fatalf("unsafe existing reservation row was accepted or echoed: %q %v", reservationID, err)
+		}
+		if adapter.preflights != 0 || adapter.reservations != 0 {
+			t.Fatalf("unsafe existing reservation reached adapter: %q preflights=%d reservations=%d", reservationID, adapter.preflights, adapter.reservations)
+		}
+	}
+}
+
 func TestTenantRegistryObserveSchemaVersionIsIndependentBoundedAndLocal(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	instance := testTenantInstance("tenant-a", "router-a")

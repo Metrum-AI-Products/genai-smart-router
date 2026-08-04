@@ -50,7 +50,10 @@ The required `--reservation` value is a bounded opaque idempotency key in
 `rsv-<lowercase-canonical-uuid>` form, for example
 `rsv-018f4f47-7d2b-7e2a-9c35-6b8c85f71942`. Token-like, credential-like, URL,
 path, uppercase, malformed, and unbounded values are rejected before any quota
-adapter call or quota-record write.
+adapter call or quota-record write. An exact retry of a pre-existing bounded
+opaque legacy reservation row remains readable and idempotent; that
+compatibility path never creates a new hold, and another identifier cannot
+bypass the active hold.
 
 `status` is bounded (1–100 rows), stable by tenant ID, and registry-only. It
 reports `schema_version_mismatch` after registration when the independently
