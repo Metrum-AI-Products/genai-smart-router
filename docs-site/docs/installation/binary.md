@@ -89,6 +89,14 @@ sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/en
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
+`metrum-smartrouterctl` is not a live deployment driver. Its shipped commands
+maintain a non-secret local tenant registry, record independent schema
+observations, perform fake-adapter-only quota admission, and return bounded
+registry status. `deploy`, `promote`, and `rollback` fail closed while cloud,
+Kubernetes, DNS, durability, and network policy gates remain disabled. See the
+[multi-environment operator contract](../operations/deployment-patterns#multi-environment-operator-contract)
+before installing or invoking this optional administration-host CLI.
+
 ## Runtime Configuration
 
 The service process needs access to:

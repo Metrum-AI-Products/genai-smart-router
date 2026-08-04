@@ -166,34 +166,43 @@ Metrum-side license issuance, renewal, replacement, volume top-up, offline custo
 
 Customer-facing commercial access paths are documented under `docs-site/docs/licensing/`: enterprise self-hosted, private managed deployment, evaluation/pilot access, renewal/top-up, and marketplace/private-offer procurement. Do not describe a purchase, portal, download, or renewal mechanism as shipped until #545 is implemented and #42 has approved the customer-facing wording.
 
-Expected provider env vars in `config.example.yaml`:
+Provider credential variables referenced by the current `config.example.yaml`:
 
 ```bash
 ANTHROPIC_API_KEY
 OPENAI_API_KEY
 MOONSHOT_API_KEY
-KIMI_API_KEY
-QWEN_API_KEY
 MINIMAX_API_KEY
 OPENROUTER_API_KEY
-GROQ_API_KEY
-REPLICATE_API_KEY
 XAI_API_KEY
 BASETEN_API_KEY
 CRUSOE_API_KEY
 FIREWORKS_API_KEY
 ```
 
+`env.example.json` may contain additional empty placeholders for optional or
+deployment-specific providers. An empty placeholder does not activate a
+provider, prove account entitlement, or make a model eligible for routing.
+
 Provider adapter notes:
-- `anthropic` targets call Anthropic Messages.
-- `openai-chat` and `openai-responses` targets cover OpenAI-compatible API dialects. The current sample and production routes keep the active set intentionally small: Baseten `openai/gpt-oss-120b`, direct Moonshot Kimi `kimi-k2.7-code`, MiniMax `MiniMax-M3`, OpenRouter Gemma 4 26B Nitro capped at low ordinary-text weight where still configured in general groups, Baseten `nvidia/Nemotron-120B-A12B` at low text weight, Baseten `zai-org/GLM-5.2` for reasoning-heavy coding traffic, Crusoe `zai/GLM-5.2` in general ordinary-text routes, xAI `grok-4.5`, direct OpenAI `gpt-5.4-nano`, Fireworks `accounts/fireworks/models/deepseek-v4-flash`, and Kimi's Anthropic-compatible `kimi-k2.7-code` skin for Claude Code-style tool traffic. The current hosted/reference `big-coder` route uses Fireworks GPT OSS 20B at 25%, MiniMax M3 Responses at 25%, xAI Grok 4.5 at 15%, Fireworks DeepSeek-V4-Flash at 15%, direct MiniMax M3 Chat at 5%, direct Kimi K2.7 Code at 5%, Crusoe GLM 5.2 at 5%, and OpenAI GPT-5.4 Nano at 5% for ordinary text and compatible Chat/Responses traffic. Fireworks GPT OSS 20B and xAI Grok 4.5 handle explicit OpenAI Chat reasoning and Anthropic-thinking translation to Chat reasoning, while MiniMax M3 Responses handles explicit OpenAI Responses reasoning. Fireworks DeepSeek, xAI Grok 4.5, MiniMax M3, and Kimi K2.7 Code remain OpenAI Chat tool-capable for validated shapes, but the production-derived opencode/AI SDK `stream_options` shape is gated from incident-backed targets until exact direct and router smokes pass; Fireworks Responses Kimi and direct MiniMax Responses cover Codex Responses traffic, and MiniMax/Kimi Anthropic targets cover Claude-compatible tool traffic where the client request shape has passed.
-- Reasoning support is request-shape and target-skin specific. OpenAI Chat callers express it with `reasoning_effort`, OpenAI Responses callers express it with `reasoning`, and Anthropic Messages callers express it with `thinking`; the router normalizes those controls for eligibility and then forwards or translates them only to targets with validated `reasoning` metadata. Chat, Responses, and Messages are separate validation surfaces, so a pass on one skin does not imply the other two pass. A Chat-to-Responses target can translate reasoning only when `bridges.chat_to_responses.reasoning: true` and compatible target reasoning metadata are present. A Responses-to-Chat target treats reasoning as unsupported unless the target explicitly opts into `responses_to_chat.reasoning` after exact bridge validation. If an explicit reasoning request cannot be preserved, the router filters the target out and returns `502 no-eligible-target` rather than silently dropping the control.
-- Model group names are deployment-defined. `/v1/models` returns only the caller's allowed groups and advertises reasoning metadata only when active non-tool-only targets in that group can serve reasoning for the effective API surface. Examples such as `reasoning-smoke`, `bridge-smoke`, or hosted group names are examples, not product-required constants.
-- Crusoe Managed Inference is configured as an external hosted OpenAI-compatible `openai-chat` provider with `base_url: https://api.inference.crusoecloud.com/v1` and `api_key_env: CRUSOE_API_KEY`. Keep unvalidated Crusoe models catalog-only or in dedicated smoke groups until the exact account, model ID, tool behavior, structured-output behavior, output-cap behavior, and router usage/cost fields have passed. The reference general groups include Crusoe `zai/GLM-5.2` for ordinary text after a direct text smoke, and the current hosted/reference `big-coder` route uses Crusoe `zai/GLM-5.2` as a validated OpenAI Chat tool-capable target. Crusoe Nemotron and Gemma entries remain cataloged and available for dedicated smoke validation, but they are not active/reference `big-coder` targets.
-- Fireworks AI is configured as external hosted OpenAI-compatible providers with `base_url: https://api.fireworks.ai/inference/v1`, `api_key_env: FIREWORKS_API_KEY`, bearer auth, and an explicit `User-Agent` header. Fireworks Chat `accounts/fireworks/models/gpt-oss-20b` passed direct text, streaming, `max_tokens: 1`, `reasoning_effort` low/medium/high, OpenAI Chat auto tools with `max_tokens >= 256`, forced `tool_choice`, and JSON schema structured-output smokes on 2026-06-27. Fireworks Chat `accounts/fireworks/models/glm-5p2`, `accounts/fireworks/models/kimi-k2p7-code`, `accounts/fireworks/models/deepseek-v4-flash`, and `accounts/fireworks/models/qwen3p6-plus` passed direct OpenAI Chat text and auto-tool smokes on 2026-06-28 and production router-level text smokes through `big-coder`. Fireworks DeepSeek-V4-Flash passed direct and local router-level 524 KB synthetic OpenAI Chat coding-agent payload smokes on 2026-06-29, and the same shape was rerun on 2026-06-30; the production dedicated Fireworks GPT OSS 20B smoke group passed the same shape. Keep broad coding-group routing changes and request-shape caps separate from dedicated smoke evidence unless an operator explicitly approves a production routing change. On 2026-06-30, the opencode API capability matrix showed Fireworks DeepSeek-V4-Flash passing direct OpenAI Chat text/tools and direct Anthropic Messages text/tools, while both image shapes returned sanitized HTTP 400 rows. On 2026-07-09, production-derived opencode/AI SDK Chat requests with `stream_options` showed repeated upstream 400s on Fireworks DeepSeek-V4-Flash, so the reference metadata gates that shape until exact direct and router smokes pass. Fireworks Responses `accounts/fireworks/models/kimi-k2p7-code` passed direct and router-level text, function-tool, continuation, streaming, cap, and `store:false` smokes on 2026-06-28. The Responses target uses `force_store_false: true`; router requests with remote provider-hosted `mcp`, `sse`, file-search, code-interpreter, or computer-use tools return `400 provider-hosted-tools-forbidden` before upstream, while generic hosted search/image descriptors are stripped when the router is not exposing those services. Keep Fireworks image-capable targets text-only until direct image and router-level image smokes pass for the exact endpoint. Do not claim Fireworks image, video, audio, or untested Anthropic Messages model support until those exact skins pass separately.
-- Enterprise-owned vLLM and SGLang services are configured the same way as other OpenAI-compatible providers: set `base_url` to the internal `/v1` endpoint, use `dialect: openai-chat` for `/v1/chat/completions`, set `auth_scheme: bearer` when the service expects bearer auth, and catalog the served model ID under `providers.<name>.models`. See `docs/SELF_HOSTED_UPSTREAMS.md` for vLLM/SGLang examples and tool-call validation smokes.
-- MiniMax, Kimi, and OpenRouter can also be configured through Anthropic-compatible skins with `dialect: anthropic` and `auth_scheme: bearer`, which is useful for Claude Code callers without routing to Anthropic models. MiniMax's Anthropic-compatible endpoint is `https://api.minimax.io/anthropic/v1/messages`; configure the router provider base URL as `https://api.minimax.io/anthropic` because the Anthropic adapter appends `/v1/messages`. OpenRouter can also be configured as a separate `openai-responses` provider for Codex tool calls.
-- `replicate` targets call Replicate Predictions. Use `target.model` as `owner/model-name`, for example `meta/meta-llama-3-70b-instruct`.
+
+- `anthropic` targets call Anthropic Messages-compatible upstreams.
+- `openai-chat` and `openai-responses` targets call their respective
+  OpenAI-compatible API shapes. A model passing one shape is not evidence for
+  the other.
+- Anthropic-compatible, Responses-compatible, and Chat-compatible skins for
+  the same upstream belong in separate provider entries when their endpoints or
+  request contracts differ.
+- `replicate` targets call Replicate Predictions and use an upstream
+  `owner/model-name` identifier.
+- Enterprise-owned vLLM and SGLang services use the same OpenAI-compatible
+  catalog shape and require direct plus router-level validation.
+
+Active provider/model status, capability evidence, and routing weights change
+more frequently than this overview. Use `config.example.yaml` for the current
+reference catalog, authenticated `/v1/models` for a caller's allowed
+deployment-defined groups, and deployment-owned validation records for live
+activation status.
 
 ## API Key Flow
 
@@ -218,286 +227,98 @@ Raw caller tokens, caller token hashes, and raw provider API keys are not expose
 
 ## Provider Model Catalogs
 
-A provider can serve many locally configured models without repeating its base URL or credentials:
+`config.example.yaml` is the canonical, validated provider/model catalog. Public
+configuration guidance lives in
+[`docs-site/docs/configuration/provider-catalog.md`](docs-site/docs/configuration/provider-catalog.md),
+and the activation procedure lives in
+[`docs/onboard-model.md`](docs/onboard-model.md). Keep provider-specific model
+IDs, capability evidence, prices, and source dates there instead of copying a
+second catalog into this README.
+
+A provider entry describes one upstream API skin and its reusable model
+metadata. A model-group target selects a catalog entry and owns the routing
+weight:
 
 ```yaml
 providers:
-  minimax:
-    base_url: https://api.minimax.io/v1
+  example_chat:
+    base_url: https://provider.example.com/v1
     dialect: openai-chat
-    api_key: ${MINIMAX_API_KEY}
-    api_key_env: MINIMAX_API_KEY
-    key_id: minimax-default
+    auth_scheme: bearer
+    api_key: ${PROVIDER_API_KEY}
+    api_key_env: PROVIDER_API_KEY
+    key_id: example-chat-default
     models:
-      m3:
-        model: MiniMax-M3
-        tier: heavy
-        input_price_per_million_usd: 0.30
-        output_price_per_million_usd: 1.20
-        input_modalities: [text, image, video]
+      example-model:
+        model: provider/example-model
+        input_modalities: [text]
         output_modalities: [text]
-        pricing_source: https://platform.minimax.io/docs/pricing/overview
-        pricing_updated_at: "2026-06-17"
         tool_support:
           openai_chat: [tools, tool_choice]
-          openai_responses: [function]
-  openrouter:
-    base_url: https://openrouter.ai/api/v1
-    dialect: openai-chat
-    api_key: ${OPENROUTER_API_KEY}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-default
-    models:
-      gemma-4-26b-a4b-it-nitro:
-        model: google/gemma-4-26b-a4b-it:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.06
-        output_price_per_million_usd: 0.33
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
-  baseten:
-    base_url: https://inference.baseten.co/v1
-    dialect: openai-chat
-    api_key: ${BASETEN_API_KEY}
-    api_key_env: BASETEN_API_KEY
-    key_id: baseten-default
-    models:
-      nemotron-120b-a12b:
-        model: nvidia/Nemotron-120B-A12B
-        tier: heavy
-        input_price_per_million_usd: 0.30
-        output_price_per_million_usd: 0.75
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.baseten.co/pricing/
-        pricing_updated_at: "2026-06-17"
-        pricing_notes: Baseten also lists a discounted cache-input rate; router cost logs use standard input/output rates plus upstream-reported billed cost when available.
-        tool_support:
-          openai_chat: [tools, tool_choice]
-      gpt-oss-120b:
-        model: openai/gpt-oss-120b
-        tier: coding
-        input_price_per_million_usd: 0.10
-        output_price_per_million_usd: 0.50
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.baseten.co/products/model-apis/
-        pricing_updated_at: "2026-06-22"
-        pricing_notes: Direct Baseten OpenAI Chat and Anthropic Messages text/tool smokes passed on 2026-06-22.
-        tool_support:
-          openai_chat: [tools, tool_choice]
-  crusoe:
-    base_url: https://api.inference.crusoecloud.com/v1
-    dialect: openai-chat
-    auth_scheme: bearer
-    api_key: ${CRUSOE_API_KEY}
-    api_key_env: CRUSOE_API_KEY
-    key_id: crusoe-default
-    headers:
-      User-Agent: smart-llmrouter
-    models:
-      gpt-oss-120b:
-        model: openai/gpt-oss-120b
-        tier: coding
-        input_price_per_million_usd: 0.05
-        output_price_per_million_usd: 0.20
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.crusoe.ai/cloud/pricing
-        pricing_updated_at: "2026-06-24"
-        pricing_notes: Crusoe also publishes cached-token pricing; keep standard input/output rates for router-calculated cost until cached-token upstream billing has dedicated accounting. Catalog-only until direct Crusoe and router-level text, streaming, cap, tool, structured-output, and Harbor smokes pass.
-      gemma-4-31b-it:
-        model: google/gemma-4-31b-it
-        tier: balanced
-        input_price_per_million_usd: 0.14
-        output_price_per_million_usd: 0.40
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.crusoe.ai/cloud/pricing
-        pricing_updated_at: "2026-06-24"
-        pricing_notes: Crusoe Gemma 4 31B-it OpenAI Chat smokes passed for text, streaming, max_tokens=1, auto tool, forced tool_choice, structured outputs, and combined tool plus structured-output requests on 2026-06-24. Keep it cataloged or in dedicated smoke groups unless the exact deployment workload passes again; do not describe it as an active/reference big-coder target, and do not use it for OpenAI Responses, Anthropic Messages, vision, or broad tool routing unless those exact skins pass direct and router-level smokes separately.
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
-      llama-3-3-70b-instruct:
-        model: meta-llama/Llama-3.3-70B-Instruct
-        tier: balanced
-        input_price_per_million_usd: 0.25
-        output_price_per_million_usd: 0.75
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.crusoe.ai/cloud/pricing
-        pricing_updated_at: "2026-06-24"
-        pricing_notes: Crusoe quickstart example model. Direct Crusoe text, streaming, max_tokens=1, auto tool, forced tool_choice, and structured-output smokes passed on 2026-06-24 with an explicit User-Agent. Local router-level text, streaming, cap, tool, structured-output, usage, cost, latency, and no-fallback smokes also passed. Keep cataloged or in dedicated smoke groups unless workload validation passes for the deployment.
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
-  fireworks:
-    base_url: https://api.fireworks.ai/inference/v1
-    dialect: openai-chat
-    auth_scheme: bearer
-    api_key: ${FIREWORKS_API_KEY}
-    api_key_env: FIREWORKS_API_KEY
-    key_id: fireworks-default
-    headers:
-      User-Agent: smart-llmrouter
-    models:
-      gpt-oss-20b:
-        model: accounts/fireworks/models/gpt-oss-20b
-        tier: coding
-        input_price_per_million_usd: 0.07
-        output_price_per_million_usd: 0.30
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://docs.fireworks.ai/serverless/pricing
-        pricing_updated_at: "2026-06-27"
-        pricing_notes: Fireworks also publishes a $0.035/M cached-input rate for GPT OSS 20B. Direct OpenAI Chat text, streaming, max_tokens=1, reasoning_effort low/medium/high, auto tool with max_tokens >= 256, forced tool_choice, and structured-output smokes passed on 2026-06-27 with an explicit User-Agent; this ID completed even though it was not listed by /models for the validated account.
-        tool_support:
-          openai_chat: [tools, tool_choice, structured_outputs]
-        reasoning:
-          supported: true
-          mode: opt_in
-          control: effort_enum
-  openai:
-    base_url: https://api.openai.com/v1
-    dialect: openai-responses
-    api_key: ${OPENAI_API_KEY}
-    api_key_env: OPENAI_API_KEY
-    key_id: openai-default
-    models:
-      gpt-5.4-nano:
-        model: gpt-5.4-nano
-        tier: small
-        input_price_per_million_usd: 0.20
-        output_price_per_million_usd: 1.25
-        pricing_source: https://developers.openai.com/api/docs/models/gpt-5.4-nano
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          openai_responses: [function]
-  baseten_anthropic:
-    base_url: https://inference.baseten.co
-    dialect: anthropic
-    auth_scheme: bearer
-    api_key: ${BASETEN_API_KEY}
-    api_key_env: BASETEN_API_KEY
-    key_id: baseten-anthropic-default
-    models:
-      gpt-oss-120b:
-        model: openai/gpt-oss-120b
-        tier: coding
-        input_price_per_million_usd: 0.10
-        output_price_per_million_usd: 0.50
-        input_modalities: [text]
-        output_modalities: [text]
-        pricing_source: https://www.baseten.co/products/model-apis/
-        pricing_updated_at: "2026-06-22"
-        tool_support:
-          anthropic_messages: [client_tools]
-  openrouter_anthropic:
-    base_url: https://openrouter.ai/api
-    dialect: anthropic
-    auth_scheme: bearer
-    api_key: ${OPENROUTER_API_KEY}
-    api_key_env: OPENROUTER_API_KEY
-    key_id: openrouter-anthropic-default
-    models:
-      gemma-4-26b-a4b-it-nitro:
-        model: google/gemma-4-26b-a4b-it:nitro
-        tier: balanced
-        input_price_per_million_usd: 0.06
-        output_price_per_million_usd: 0.33
-        pricing_source: https://openrouter.ai/api/v1/models
-        pricing_updated_at: "2026-06-17"
-        tool_support:
-          anthropic_messages: [client_tools]
-  kimi:
-    base_url: https://api.moonshot.ai/v1
-    dialect: openai-chat
-    api_key: ${MOONSHOT_API_KEY}
-    api_key_env: MOONSHOT_API_KEY
-    key_id: moonshot-kimi-default
-    models:
-      kimi-k2.7-code:
-        model: kimi-k2.7-code
-        tier: heavy
-        input_price_per_million_usd: 0.74
-        output_price_per_million_usd: 3.50
-        pricing_source: https://platform.kimi.ai/docs/pricing/chat-k27-code
-        pricing_updated_at: "2026-06-17"
 
 models:
-  default:
-    strategy: script
-    script: scripts/router.ts
+  example-agent:
+    strategy: weighted
     targets:
-      - { provider: baseten, model_ref: gpt-oss-120b, weight: 51 }
-      - { provider: minimax, model_ref: m3, weight: 27 }
-      - { provider: baseten, model_ref: nemotron-120b-a12b, weight: 3 }
-      - { provider: baseten, model_ref: glm-5-2, weight: 5 }
-      - { provider: openrouter, model_ref: gemma-4-26b-a4b-it-nitro, weight: 2 }
-      - { provider: crusoe, model_ref: glm-5-2, weight: 5 }
-      - { provider: kimi, model_ref: kimi-k2.7-code, weight: 6 }
-      - { provider: openai, model_ref: gpt-5.4-nano, weight: 1 }
-      - { provider: baseten_anthropic, model_ref: gpt-oss-120b, tool_only: true, weight: 8 }
+      - provider: example_chat
+        model_ref: example-model
+        weight: 100
 ```
 
-`model_ref` is local to its provider. Provider model catalogs are reusable upstream model metadata, not routing policy. Weights are group-local and only belong under `models.<group>.targets[]`, so the same `model_ref` can have different relative weights in `default`, `fast`, `big-coder`, or any other group. Direct `{ provider, model }` targets are still supported.
+The example names are illustrative; model-group names are deployment-defined.
+`model_ref` is local to its provider. Catalogs contain metadata only—routing
+weights belong under `models.<group>.targets[]`.
 
-Catalog metadata can include `input_price_per_million_usd`, `output_price_per_million_usd`, optional VLM fields such as `image_input_price_per_million_tokens_usd` and `image_input_price_per_image_usd`, `input_modalities`, `output_modalities`, `pricing_source`, `pricing_updated_at`, and `tool_support`. Pricing is copied onto the selected target at request time and logged with calculated input, image, output, and total USD cost, so historical usage rows keep the price that was used even if provider pricing changes later. When an upstream returns billed cost metadata, the router logs that upstream-reported cost separately from router-calculated cost. `tool_support` is dialect-specific:
+The router loads `env.json` beside the selected config file before expanding
+`${VAR}` references. An already-set process environment variable wins over the
+same key in `env.json`. `api_key_env` and `key_id` are safe identifiers used for
+eligibility and diagnostics; raw provider credentials remain server-side and
+must not appear in config metadata, logs, reports, or docs.
 
-- `openai_chat`: upstream supports OpenAI-compatible chat `tools`, `tool_choice`, and/or `response_format` structured outputs.
-- `openai_responses`: upstream supports Responses function tools and/or `text.format` structured outputs.
-- `anthropic_messages`: upstream supports Anthropic Messages client tools.
-- `provider_hosted`: reserved for provider-executed tools such as web search or code execution after that exact upstream capability is validated.
+Model metadata controls eligibility:
 
-Use explicit capability labels such as `tools`, `tool_choice`, `function`, `client_tools`, and `structured_outputs`. OpenAI Chat, OpenAI Responses, and Anthropic Messages are separate validation surfaces; a target with empty `tool_support` is not eligible for tool-bearing traffic in any dialect. A Chat `response_format` pass does not prove Responses `text.format`, and Anthropic Messages has no OpenAI structured-output equivalent unless a deployment adds and documents one. Structured-output requests route only to targets with matching `structured_outputs` metadata for the caller dialect. The router forwards JSON Schema payloads to the selected upstream and does not perform application-level JSON Schema validation, schema-subset enforcement, or output repair unless a separate feature implements that behavior. Unsupported schemas can still fail with upstream/provider errors.
+- `input_modalities` and `output_modalities` describe validated I/O.
+- `tool_support.openai_chat`, `tool_support.openai_responses`, and
+  `tool_support.anthropic_messages` are independent per-skin claims.
+- `structured_outputs`, reasoning controls, output-cap behavior, and bridge
+  support must be declared only for the exact provider/model/dialect surface
+  that passed direct and router-level smokes.
+- pricing and modality metadata are copied into request-time usage records;
+  historical reports use stored request-time costs rather than current prices.
+- `tool_only: true` on a target keeps it out of ordinary text routing. Tool
+  requests use only targets that preserve the caller's tool protocol and bypass
+  response caching.
 
-Before declaring `structured_outputs`, run a direct upstream schema smoke and the same request through the router for the exact provider, model ID, dialect, skin, and client request shape. If clients combine tools and structured-output fields, run a combined tool plus structured-output smoke and require both capabilities on the same target. If smokes fail after rollout, remove the `structured_outputs` metadata from the provider model or target override; if the target is broadly unsafe, remove it from active `models.<group>.targets[]` and keep the catalog entry disabled until validation passes.
+Cataloging a model does not activate it. Add a target to a restricted smoke
+group first, validate the exact Chat, Responses, Messages, streaming, tool,
+image, structured-output, output-cap, and large-payload shapes it will serve,
+then promote it through the deployment's quality/cost contract. On a partial
+failure, remove or narrow the failed capability metadata instead of treating a
+pass on one API skin as evidence for another.
 
-Cataloging a model does not route traffic to it. Add a cataloged model to a group target only after its provider key has access and a direct live smoke test succeeds. The current reference config keeps OpenAI `gpt-5.4-nano` at a low non-tool fallback weight and includes an example opt-in image-analysis group. Direct OpenAI Responses `gpt-5.4-nano` smokes on 2026-06-30 passed no-reasoning and `reasoning.effort` low, medium, and high requests, plus a medium-reasoning function-tool request; `max_output_tokens: 1` was rejected with a minimum of 16. The hosted engineering deployment also includes a reference `temp-coder` group for selected users with direct OpenAI `gpt-5.4-nano`, direct MiniMax-M3, and direct Moonshot Kimi K2.7 Code for ordinary OpenAI-compatible traffic, plus direct MiniMax and Kimi Anthropic-compatible tool-only targets for Claude Code-style requests. OpenAI `gpt-5.5` stays catalog/report-baseline only because active routing policy excludes it and tiny `max_output_tokens` behavior is not safe for broad coding-agent probes. Original Anthropic is supported by the provider adapter, but it is not active in the production/reference routing set until an Anthropic key is present and a live smoke passes.
+Self-hosted vLLM and SGLang services use the same catalog and activation rules.
+Confirm the served `/v1/models` ID, parser/chat-template settings, direct
+completion and tool behavior, and the equivalent router requests before adding
+them to a caller-facing group. See
+[`docs/SELF_HOSTED_UPSTREAMS.md`](docs/SELF_HOSTED_UPSTREAMS.md).
 
-Baseten Model APIs are configured as OpenAI-compatible `openai-chat` providers, and Baseten's Anthropic Messages beta endpoint can be configured as a separate `dialect: anthropic` provider for Claude Code-style traffic. On 2026-06-17, `nvidia/Nemotron-120B-A12B` passed direct non-streaming chat, streaming chat with `stream_options.include_usage` and `continuous_usage_stats`, and an OpenAI Chat function-call smoke that returned a valid `tool_calls` response. On 2026-06-18, `zai-org/GLM-5.2` passed direct realistic-budget text, `max_tokens` cap, and OpenAI Chat tool-call smokes. On 2026-06-22, `openai/gpt-oss-120b` passed direct Baseten OpenAI Chat text, streaming, auto tool, forced tool-choice, Anthropic Messages text, and Anthropic Messages client-tool smokes. The router still synthesizes downstream streaming for normal upstream calls, so Baseten-specific upstream streaming options are a provider validation detail rather than a required caller setting.
-
-Crusoe Managed Inference is an external hosted OpenAI-compatible provider. Crusoe documentation checked on 2026-06-24 lists `https://api.inference.crusoecloud.com/v1` as the OpenAI-compatible base URL, documents API keys from the Intelligence Foundry console, and uses `meta-llama/Llama-3.3-70B-Instruct` in the quickstart. Crusoe's 2026-04-28 Nemotron 3 Nano Omni announcement describes Nemotron 3 Nano Omni 30B A3B Reasoning as a multimodal model for document, GUI-agent, video/audio, and text reasoning workloads with a 256K-token context: `https://www.crusoe.ai/resources/blog/nvidia-nemotron-3-nano-omni-now-available`. A direct `/v1/models` check on 2026-06-24 required an explicit `User-Agent` and returned exact IDs such as `openai/gpt-oss-120b`, `google/gemma-4-31b-it`, `meta-llama/Llama-3.3-70B-Instruct`, `zai/GLM-5.2`, `moonshotai/Kimi-K2.6`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, and `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B`; a 2026-06-25 check also found `nvidia/Nemotron-3-Nano-Omni-Reasoning-30B-A3B`. Direct and local router-level Llama text, streaming, `max_tokens: 1`, auto tool, forced tool-choice, and structured-output smokes passed on 2026-06-24. Direct Crusoe Gemma 4 31B-it OpenAI Chat text, streaming, `max_tokens: 1`, auto tool, forced tool-choice, structured-output, and combined tool plus structured-output smokes passed on 2026-06-24, but production Cursor/opencode traffic later showed repeated upstream 400s for the active `big-coder` route. Direct Crusoe `zai/GLM-5.2` text smoke passed on 2026-06-24 and again before the 2026-06-29 temporary `big-coder` reduction; a `max_tokens: 1` probe honored the cap but returned empty content with `finish=length`. Direct and router-level OpenAI Chat auto-tool smokes passed on 2026-06-29 for the current engineering deployment when no `store` field was sent; keep `force_store_false` unset because Crusoe rejects the `store` parameter. Crusoe Nemotron 3 Nano Omni 30B A3B Reasoning text smoke passed on 2026-06-25 and it accepted receipt-image requests, but it did not pass the OCR acceptance gate, so it stays out of broad active `vision` routing and out of the current hosted/reference `big-coder` target set. Do not claim Crusoe OpenAI Responses, Anthropic Messages, structured-output, vision, video, or audio support unless those exact skins are separately exposed and validated.
-
-Fireworks AI is an external hosted OpenAI-compatible provider. Fireworks documentation checked on 2026-06-28 lists `https://api.fireworks.ai/inference/v1` as the OpenAI-compatible base URL, `FIREWORKS_API_KEY` authentication, account-qualified model IDs, Serverless pricing, and a Responses API with function tools, provider-hosted MCP/SSE tools, streaming, `max_tool_calls`, and `store=false`. Direct Fireworks OpenAI Chat text and auto-tool smokes passed on 2026-06-28 for GLM 5.2, Kimi K2.7 Code, DeepSeek-V4-Flash, and Qwen3.6 Plus with an explicit `User-Agent`; GPT OSS 20B had already passed text, streaming, cap, reasoning effort, tool-choice, and structured-output smokes on 2026-06-27. DeepSeek-V4-Flash passed direct and local router-level 524 KB large-agent Chat smokes on 2026-06-29 and reran on 2026-06-30 with 24 tools and about 91K prompt tokens; the production dedicated GPT OSS 20B smoke group passed the same shape with about 90K prompt tokens. The 2026-06-30 opencode API capability matrix showed DeepSeek-V4-Flash passing direct OpenAI Chat text/tools and direct Anthropic Messages text/tools; image probes returned sanitized HTTP 400 rows in both shapes, so image metadata remains omitted. The 2026-07-09 production-derived opencode/AI SDK Chat `stream_options` shape produced repeated upstream 400s on DeepSeek-V4-Flash and is gated until exact direct and router-level smokes pass. Fireworks Responses `accounts/fireworks/models/kimi-k2p7-code` passed direct and router-level text, function-tool, function-call-output continuation, streaming tool, `max_output_tokens: 1`, `max_tool_calls: 1`, and `store:false` smokes on 2026-06-28, so the reference config exposes it through a separate `fireworks_responses` provider, dedicated smoke groups, and a conservative low-weight `big-coder` tool-only target. Fireworks Responses candidates `glm-5p2`, `deepseek-v4-flash`, and `qwen3p6-plus` passed function-tool continuation but remain unactivated pending workload validation; `gpt-oss-20b` is not activated for Responses tools because the tool-result continuation probe returned unrelated incomplete content. Remote provider-hosted Fireworks `mcp`/`sse` tool requests are rejected by the router before upstream; generic hosted search/image descriptors are stripped unless a deployment explicitly implements and validates those hosted services. Fireworks returns reasoning content alongside visible content in some paths, so usage and acceptance checks should use realistic budgets and inspect final content and token totals. Keep Fireworks image-capable Chat targets text-only until direct image and router-level image smokes pass for the exact endpoint. Fireworks image, video, audio, and untested Anthropic Messages model support remain disabled until separately validated.
-
-OpenAI Chat tool passthrough is used by OpenAI-compatible agent clients such as Warp Agent. These clients call `/v1/chat/completions`, send `tools`, `tool_choice`, and often request streaming. For those requests, the router preserves the OpenAI Chat tool payload and tool-result messages, selects only upstream targets with explicit `tool_support.openai_chat`, calls the upstream non-streaming, and returns either the raw non-streaming response or synthesized OpenAI Chat SSE chunks containing `delta.tool_calls`. Passthrough requests do not let callers control upstream provider retention fields: the router strips provider `metadata` and sends `store: false` for OpenAI-compatible Chat and Responses upstream calls. This avoids asking users to switch model groups just because a coding-agent turn includes tools; the configured group filters to compatible targets automatically.
-
-Image requests are detected across OpenAI Chat, OpenAI Responses, and Anthropic Messages content blocks. The router filters image-bearing requests to targets with `image` in `input_modalities`, skips text-only targets, bypasses response caching, validates HTTP(S) image URLs before upstream routing, and logs `input_has_image`, `input_image_count`, upstream image-token counts when reported, calculated image cost, and upstream-reported billed cost when available. By default, URL images that resolve to loopback, link-local, RFC1918/private, multicast, unspecified, or other reserved addresses are rejected before provider calls; redirect headers are probed without downloading image bodies, and redirects to private or reserved addresses are rejected before upstream. Inline `data:` and base64 image payloads remain supported. Set `server.upstream.allow_private_image_urls: true` only for reviewed deployments whose private VLM boundary is expected to dereference private image URLs.
-
-Coding-agent groups should not force users to switch between a language model group and a vision model group during one task. Add validated multimodal `tool_only` targets to deployment-defined coding groups, for example the reference `big-coder` group, for Codex Responses and Claude Code Anthropic Messages traffic. Text-only requests continue to use the normal weighted coding targets; image-bearing agent requests automatically filter to multimodal tool-capable targets.
-
-Vision catalog entries are not automatically active routes. For example, OpenRouter `qwen/qwen3-vl-32b-instruct:nitro` can be cataloged with `input_modalities: [text, image]` and current OpenRouter pricing, but it should remain out of active OCR routes until a router-level receipt OCR smoke returns the expected merchant name. For general VLM routing, distinguish image processing from OCR-quality gating and keep models that produce weak or inconsistent image analysis out of broad active groups until the deployment's acceptance tests pass.
-
-Direct OpenAI `gpt-5.4` is cataloged as a validated vision target after 2026-06-25 Responses text and receipt-image OCR smokes returned `OK` and `Rite Aid` for the current project. The hosted reference `vision` group uses it to reduce OpenRouter-hosted Anthropic weight. Do not promote cheaper direct OpenAI or Kimi/MiniMax candidates on price alone: on 2026-06-25, `gpt-5-nano`, `gpt-5-mini`, `gpt-4.1-nano`, `gpt-4o-mini`, and `gpt-5.4-nano` did not pass the receipt OCR gate, `gpt-5.4-mini` was not enabled for the project, direct Kimi only passed with data-URL images while rejecting normal image URLs, and MiniMax-M3 OCR was inconsistent across repeated prompts.
-
-Do not add `~google/gemini-flash-latest`, `google/gemini-3.5-flash`, `google/gemini-3.1-flash-lite`, or `google/gemini-3.1-pro-preview` to active OpenRouter routes for the current production key until access is fixed and a live smoke passes. On 2026-06-17 the OpenRouter catalog advertised multimodal support for those IDs, but the current account returned a 404 provider-privacy error for direct image requests.
-
-xAI Grok 4.3 is cataloged as an OpenAI-compatible `openai-chat` provider with `input_modalities: [text, image]`, `output_modalities: [text]`, official pricing of $1.25/M input and $2.50/M output tokens, and `image_input_price_per_million_tokens_usd: 1.25` because xAI reports image tokens in prompt usage. Direct xAI text/image smokes and local router-level text/image smokes passed on 2026-06-17. xAI Grok 4.5 is cataloged as a text-only coding target after direct xAI Chat and Responses smokes passed on 2026-07-09 for text, streaming, output caps, Chat tools, structured outputs, and reasoning controls; local router-level OpenAI Chat smokes passed the same day for text, reasoning, forced tools, structured outputs, `/v1/models` metadata, usage, cost, and no fallback. A deployment-defined VLM route can include Grok alongside validated multimodal targets such as OpenRouter-hosted Claude Sonnet, OpenRouter-hosted Grok, MiniMax-M3, and original OpenAI `gpt-5.4-nano` with `input_modalities: [text, image]`. If a target accepts image requests but ignores explicit caller caps, mark it `honors_max_tokens: false`; production capped-request smokes on 2026-06-18 found this on several OpenRouter-hosted VLM targets, so capped requests skip those targets until revalidated. OpenAI Chat `max_tokens` and `max_completion_tokens`, Responses `max_output_tokens`, and Anthropic Messages `max_tokens` all count as explicit output caps for eligibility.
-
-Self-hosted OpenAI-compatible services such as vLLM and SGLang should be validated exactly like SaaS providers before activation. Confirm `/v1/models`, run a direct text completion smoke, run a direct tool-call smoke if the model is intended for agent tools, then repeat the same request through the router group. Tool calling depends on the upstream model, chat template, parser flags, and `tool_choice` support; do not mark a self-hosted target tool-capable just because the server accepts a `tools` field.
-
-Agentic tool-call traffic can use a separate target set from ordinary text traffic. Mark a target with `tool_only: true` when it should only be considered for requests that include supported tools, such as Codex OpenAI Responses tool calls or Claude Code Anthropic tool calls:
+For agent traffic, a group can mix ordinary and tool-only targets:
 
 ```yaml
 models:
-  big-coder:
+  example-coding:
     strategy: weighted
     targets:
-      - { provider: fireworks, model_ref: deepseek-v4-flash, weight: 50 }
-      - { provider: crusoe, model_ref: glm-5-2, weight: 25 }
-      - { provider: openai, model_ref: gpt-5.4-nano, weight: 25 }
-      - provider: kimi_anthropic
-        model_ref: kimi-k2.7-code
-        weight: 33
+      - { provider: example_chat, model_ref: example-model, weight: 100 }
+      - provider: example_messages
+        model_ref: example-model
+        weight: 100
         tool_only: true
-        default_thinking:
-          type: enabled
-          budget_tokens: 1024
 ```
 
-Non-tool requests ignore `tool_only` targets. Tool-bearing requests only use targets whose upstream dialect can preserve the caller's tool protocol; for example, an OpenAI Chat tool request can use an OpenAI Chat-compatible Crusoe target, while an Anthropic Messages tool request needs an Anthropic-compatible target. Tool-bearing requests also bypass response caching because tool results depend on external filesystem, shell, and agent state.
+Non-tool requests ignore `tool_only` targets. Tool-bearing requests still pass
+request-shape eligibility, so the router fails with `no-eligible-target` rather
+than sending a tool payload through an unvalidated dialect or bridge.
 
 ## Dynamic Score Routing
 

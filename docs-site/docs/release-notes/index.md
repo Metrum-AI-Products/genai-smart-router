@@ -9,42 +9,67 @@ Release notes help customer operators decide whether to deploy, how to validate 
 
 For upgrade execution, see [Upgrade Guide](/docs/release-notes/upgrade-guide). For the docs package index, see [Releases](/docs/releases).
 
-The entries below describe customer-visible package changes, compatibility impact, validation expectations, and rollback considerations for shipped router releases.
+The entry below describes the validation contract for the package that embeds
+this page. The version banner, `/docs/releases`, and `/version` are the
+authoritative sources for its exact router version and build timestamp; do not
+infer the running version from a date written in documentation.
 
-## Current Package - 2026-06-29
+## Current Package
 
 ### Highlights
 
-- Browser docs now identify the router release they document on every page.
-- Release notes are part of the shipped docs and describe the package operators are evaluating.
-- The docs build checks for release-note safety patterns and required version metadata.
-- Package, Docker, and operational docs consistently point operators to `/version`, `/readyz`, `/v1/models`, release notes, and rollback artifacts during upgrade validation.
+- The package embeds documentation for its own runtime build and exposes the
+  same version and build timestamp through the docs banner and `/version`.
+- Caller-facing routing supports deployment-defined model groups across the
+  configured OpenAI Chat, OpenAI Responses, and Anthropic Messages surfaces.
+- Capability and request-shape eligibility keep tools, images, reasoning,
+  structured outputs, output caps, bridges, and large payloads on targets
+  validated for those exact surfaces.
+- Usage, diagnostics, cost, latency, attempt, fallback, traffic-shaping, and
+  governed admin-report surfaces use safe scalar operational evidence.
 
 ### Operator Impact
 
-- Config: no router runtime config change is required.
-- Database: no usage database migration is required.
-- License: no license replacement is required.
-- Metrics and reports: no metrics schema or admin report API change is required.
-- Docs operations: packaged docs now include release-note coverage for routing, auth, model metadata, deployment, reporting, CLI behavior, licensing, and caller-visible API behavior when those areas change.
+- Config: compare the packaged `config.example.yaml` with the reviewed runtime
+  config. Do not copy sample provider/model routes directly into production.
+- Database: follow the package's migration policy and release-specific
+  deployment record; do not assume a database restore is part of application
+  rollback.
+- License: verify the installed license permits the enabled features and
+  deployment shape.
+- Credentials: preserve the protected provider environment file or
+  secret-manager state; never place provider keys in release evidence.
+- Metrics and reports: retain `/metrics` isolation for metrics-admin subjects
+  and verify report authorization after upgrade.
 
 ### Caller Impact
 
-- API behavior: OpenAI-compatible and Anthropic-compatible API behavior is unchanged.
-- Model groups: no model-group names, eligibility rules, or routing weights change in this docs-only release.
-- Errors: no caller-facing error codes change in this docs-only release.
-- Docs UX: callers and operators can confirm the documented router release from the page banner and the `<meta name="docs-version">` tag.
+- API behavior: validate every caller API skin and client workflow affected by
+  the package or config change.
+- Model groups: callers must discover their allowed deployment-defined groups
+  through authenticated `/v1/models`.
+- Errors: preserve structured caller-facing error types and request IDs; use
+  sanitized attempt and diagnostic rows for root-cause analysis.
+- Client compatibility: run the actual Codex and Claude Code CLIs when routing,
+  tools, images, auth, or model metadata changed.
 
 ### Validation
 
-- `/readyz`: unchanged; run as part of package rollout.
-- `/version`: confirms the running router version and full UTC build timestamp.
-- `/v1/models`: unchanged; smoke with a test caller after deployment.
-- Completion smoke: unchanged; run for any model group changed by the package being deployed.
-- Docs build: validates the version banner, metadata tags, releases page, release-note entries, and forbidden release-note patterns.
+- Confirm the docs banner, `/docs/releases`, and `/version` agree on the
+  expected version and build timestamp.
+- Run `/readyz`.
+- Run authenticated `/v1/models` with each affected caller class.
+- Run representative Chat, Responses, Messages, streaming, tool, image, and
+  output-cap smokes for every changed surface.
+- Run metrics-admin and ordinary-caller `/metrics` authorization checks when
+  metrics are enabled.
+- Run admin report and license-status checks when those features are enabled.
 
 ### Rollback
 
-- Restore the previous router package.
-- Restore the previous reviewed config and license file only if they changed with the package.
-- Preserve the current usage database unless a release-specific note explicitly calls out a non-reversible schema or data migration.
+- Restore the previous package and reviewed runtime config.
+- Restore the previous license input only when the license changed.
+- Preserve the current usage database unless the package-specific migration
+  record requires a compatible snapshot restore.
+- Repeat `/readyz`, `/version`, `/v1/models`, and the failed caller/client smoke
+  before returning traffic.

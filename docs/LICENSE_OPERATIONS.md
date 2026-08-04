@@ -697,4 +697,4 @@ Before closing license operations work, search for stale placeholders and old gu
 rtk rg -n "license.enabled: false|fail_open_for_dev|license-disabled|credit-pack|enterprise-annual|eval-72h|pilot-30d|marketplace-seat" README.md docs docs-site config.example.yaml scripts
 ```
 
-Replace placeholder issue references with #159, keep public docs customer-focused, and keep internal signing details out of Docusaurus.
+Keep public docs customer-focused, and keep internal signing details out of Docusaurus.

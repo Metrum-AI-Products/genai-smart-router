@@ -12,11 +12,11 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the future #581 reusable deploy/status/promote/rollback primitives only with a reviewed runtime profile and explicit confirmation. |
+| Platform operator | Uses the shipped local safe-contract CLI for registry, schema-observation, fake quota-admission, and bounded status work. Live deploy/promote/rollback primitives remain disabled until the reviewed runtime profile and human policy gates are complete. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
-#581 owns the reusable operator primitives and RDS lifecycle contract. #555 consumes them inside customer provisioning; it remains responsible for the customer job, license, secrets/BYOK, DNS/TLS, namespace/Linkerd/ingress, compensation, and handoff. The #507 migration ledger remains the per-database source of truth.
+Issue #581 owns the reusable operator primitives and RDS lifecycle contract. Its shipped slice is limited to the local safe contract documented in [Multi-environment deployment CLI safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md); it does not perform live cloud or runtime mutations. Issue #555 consumes the eventual live primitives inside customer provisioning and remains responsible for the customer job, license, secrets/BYOK, DNS/TLS, namespace/Linkerd/ingress, compensation, and handoff. The #507 migration ledger remains the per-database source of truth.
 
 ## Before any live action
 
@@ -38,7 +38,7 @@ RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is di
 
 ## Onboard a new customer router instance
 
-This is the target workflow for the future control plane. It is intentionally a checklist rather than command syntax until #581 ships with tested interfaces.
+This is the target workflow for the future live control plane. The shipped `metrum-smartrouterctl` safe slice does not implement this workflow: it records a non-secret local tenant-instance contract, accepts an independently observed schema version, performs fake-adapter-only quota admission, and reports bounded local registry drift. Follow [Multi-environment deployment CLI safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) for current command behavior. The checklist below remains the live-control-plane contract until the remaining #581 interfaces and policy gates ship.
 
 1. Verify the commercial entitlement and record an explicit, authorized provision intent. Select an approved account+region, environment, customer instance alias, domain policy, and deployment template. Do not put customer identifiers, provider keys, licenses, or full config in GitHub evidence.
 2. Create or resume the #555 durable provisioning job. Its first read-only status must identify the selected profile revision and safe intent reference.
@@ -88,7 +88,16 @@ Store policy, requests, attempts, immutable artifact references, restore approva
 
 ## Inspect status and verify service
 
-The planned status command is read-only, bounded, authorized, and scoped to an explicit profile/environment/instance. It must answer the following without probing or mutating every customer database:
+The shipped `metrum-smartrouterctl status` command is read-only, bounded to
+1–100 rows, and local-registry-only. It reports tenant/stage identity, expected
+and independently observed schema versions, desired release digest, placement,
+RDS Proxy mode, and safe drift status. It does not probe router health,
+Kubernetes, AWS, RDS, DNS, credentials, or customer databases.
+
+The future live status surface must also be authorized and scoped to an
+explicit profile/environment/instance. It must answer the following without
+probing or mutating every customer database:
+
 
 | Question | Safe status/evidence |
 | --- | --- |

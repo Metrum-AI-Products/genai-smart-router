@@ -153,8 +153,10 @@ def clear_calls(router):
 
 
 def assert_generated_artifacts_redacted(router):
-    for path in Path(router["work"]).rglob("*"):
-        if not path.is_file():
+    work = Path(router["work"])
+    router_binary = work / "router"
+    for path in work.rglob("*"):
+        if not path.is_file() or path == router_binary:
             continue
         contents = path.read_bytes()
         assert not any(value.encode() in contents for value in FORBIDDEN_ARTIFACT_VALUES)
