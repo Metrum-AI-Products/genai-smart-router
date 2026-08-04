@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -14,7 +15,6 @@ API_COMPAT_ROOT = ROOT / "tests" / "api_compat"
 REPOSITORY_RESIDUE = (
     API_COMPAT_ROOT / ".venv",
     API_COMPAT_ROOT / ".pytest_cache",
-    API_COMPAT_ROOT / "tests" / "__pycache__",
 )
 
 
@@ -56,12 +56,31 @@ def isolated_environment(root: Path) -> dict[str, str]:
 
 
 def assert_no_repository_residue() -> None:
-    residue = [str(path.relative_to(ROOT)) for path in REPOSITORY_RESIDUE if path.exists()]
+    residue = [str(path.relative_to(ROOT)) for path in repository_residue_paths()]
     if residue:
         raise AssertionError(f"API compatibility run left repository-local residue: {', '.join(residue)}")
 
 
+def repository_residue_paths() -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            {path for path in (*REPOSITORY_RESIDUE, *API_COMPAT_ROOT.rglob("__pycache__")) if path.exists()},
+            key=lambda path: str(path),
+        )
+    )
+
+
+def remove_repository_residue() -> None:
+    """Clear only generated API-compatibility artifacts before the bootstrap proof."""
+    for path in repository_residue_paths():
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+
 def main() -> int:
+    remove_repository_residue()
     assert_no_repository_residue()
     with tempfile.TemporaryDirectory(prefix="api-compat-bootstrap-") as temporary:
         cache_root = Path(temporary)
