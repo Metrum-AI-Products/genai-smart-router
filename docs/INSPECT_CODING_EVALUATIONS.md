@@ -2,19 +2,34 @@
 
 Issue #562 adds an explicitly invoked coding-evaluation lane. It is not part of `make`, `make test`, or any normal build because it needs a live model endpoint, an authenticated caller, Docker, and a bounded spend approval.
 
-Run a caller-visible router group with protected environment variables (never put the token in a command line or checked-in file):
+Copy [`examples/inspect-coding-evaluation.env.example`](../examples/inspect-coding-evaluation.env.example) to an ignored, owner-readable file and fill normal router inputs through the protected runtime environment. Never put a caller key on a command line or in a checked-in file.
+
+## Ordinary bounded evaluation (no usage DB input)
+
+The ordinary mode is the default: leave `EVAL_REQUIRE_REASONING_COVERAGE` unset or `false`. It needs only the router endpoint, caller key, caller-visible model group, bounded limit, and local Inspect/Docker prerequisites. It does **not** need `EVAL_USAGE_CONFIG_YAML`, `EVAL_USAGE_CONFIG_FILE`, or `EVAL_USAGE_CALLER_ID`.
+
+Load the completed ignored copy in the shell that will run the evaluation, then run one bounded suite:
 
 ```sh
-export EVAL_BASE_URL=https://router.example/v1 EVAL_API_KEY='…'
-make eval-humaneval eval-report EVAL_SUITE=humaneval EVAL_MODEL=deployment-defined-group EVAL_MODEL_KIND=router-group EVAL_LIMIT=8
-make eval-bigcodebench eval-report EVAL_SUITE=bigcodebench EVAL_MODEL=deployment-defined-group EVAL_MODEL_KIND=router-group EVAL_LIMIT=8
+set -a
+. /protected/path/inspect-coding-evaluation.env
+set +a
+
+make eval-humaneval
+# Or: make eval-bigcodebench
 ```
+
+An ordinary run writes the sanitized Inspect aggregate. It intentionally reports reasoning usage as `not reported` unless a separately created aggregate-only coverage file is supplied to `make eval-report`. For router-group cost comparison, `eval-report` also needs the pre-existing safe request-time usage aggregate documented by the CI workflow; it is not part of the ordinary bounded-run prerequisite set.
 
 `EVAL_MODEL_KIND` is required policy context: use `router-group` for a caller-visible deployment group and `direct-baseline` only for an exact model listed in `approved_direct_baselines` in the evaluation policy. It is never inferred from a slash because group names are deployment-defined strings. `EVAL_API` selects the Inspect model provider (default `openai`) and prefixes `EVAL_MODEL`; `EVAL_REASONING` is passed as Inspect's `reasoning_effort` model argument. `EVAL_CONCURRENCY`, `EVAL_TIMEOUT`, `EVAL_INSPECT`, and `EVAL_POLICY` are explicit overrides. Limits are 1–200 and concurrency 1–16. Use the caller output-cap, dialect, tool mode/count, streaming state, and request-size bucket intended for promotion as separate evidence; a text-only OpenAI-style suite does not validate Responses, Messages, or bridge traffic.
 
 The wrapper executes Inspect from an empty disposable directory. This prevents Inspect from auto-selecting this repository's Dockerfile as its code-execution sandbox. Each Make invocation creates an isolated timestamp/PID `EVAL_LOG_DIR`, shared by its explicitly requested suite and report targets; CI pins the run ID across separate Make calls. The exporter uses Inspect's supported log API and reads only headers and sample summaries into `inspect-aggregate.json`; only `evaluation-summary.json` and `.md` are safe to upload. They omit prompts, responses, schemas, raw logs, credentials, headers, and token hashes.
 
-Inspect cannot report router reasoning usage itself. `make eval-ci-smoke` and `make eval-ci-full` therefore invoke the supported aggregate-only `router-usage-report --reasoning-coverage-out` step after each suite and before its report. They require `EVAL_USAGE_CALLER_ID` plus exactly one protected router usage configuration source: `EVAL_USAGE_CONFIG_YAML` (the CI secret, written to an owner-only temporary file) or `EVAL_USAGE_CONFIG_FILE` (a protected local file). The reusable wrapper derives the suite UTC start/end window, filters by the dedicated evaluation caller and `EVAL_MODEL` resolved group, and optionally filters `EVAL_USAGE_CLIENT`. It never puts database credentials on a command line.
+## Coverage-required evaluation (protected and fail-closed)
+
+Inspect cannot report router reasoning usage itself. Set `EVAL_REQUIRE_REASONING_COVERAGE=true` only in a protected environment when reasoning coverage is required. That mode requires a dedicated evaluation caller in `EVAL_USAGE_CALLER_ID` and **exactly one** protected router usage configuration source: `EVAL_USAGE_CONFIG_YAML` (a CI secret written to an owner-only temporary file) or `EVAL_USAGE_CONFIG_FILE` (an owner-readable local file). Missing the caller, providing neither source, or providing both sources blocks before evaluation; it never degrades to an unverified ordinary run.
+
+`make eval-ci-smoke` and `make eval-ci-full` set coverage-required mode themselves and retain this fail-closed privacy contract. The reusable wrapper derives the suite UTC start/end window, filters by the dedicated evaluation caller and `EVAL_MODEL` resolved group, and optionally filters `EVAL_USAGE_CLIENT`. It never puts database credentials on a command line.
 
 The exporter writes only totals plus provider/model/dialect attempt aggregates—never request IDs, caller IDs, prompt/response content, headers, endpoint hosts, or credentials. `EVAL_REASONING_COVERAGE_FILE` remains an explicit owner-readable override for an already-created aggregate-only export when using `make eval-report` outside the CI flows.
 
@@ -36,7 +51,7 @@ EVAL_REASONING_COVERAGE_FILE=/protected/eval/reasoning-coverage.json \
   make eval-report EVAL_SUITE=humaneval
 ```
 
-If that explicit file is unavailable or malformed, reporting blocks rather than silently presenting unverified coverage. With no file configured, the report deliberately says `not reported`; it does not infer reasoning values from Inspect logs. Do not copy the protected exporter file into the repository or CI report directory—the report sanitizer copies only its allowlisted scalar fields into `evaluation-summary.*`.
+If that explicit file is unavailable or malformed, reporting blocks rather than silently presenting unverified coverage. In ordinary mode with no file configured, the report deliberately says `not reported`; it does not infer reasoning values from Inspect logs. Do not copy the protected exporter file into the repository or CI report directory—the report sanitizer copies only its allowlisted scalar fields into `evaluation-summary.*`.
 
 `make eval-ci-smoke` is a two-task router-group smoke for explicitly configured CI. `make eval-ci-full` is the reusable protected full-lane command: it requires protected router inputs, one sanitized baseline aggregate per suite, and one sanitized request-time router-usage aggregate per suite. Router-group cost growth is calculated only from the latter's `stored_request_time_cost_usd` scalar, exported from persisted router usage reporting—not from evaluator estimates. It runs HumanEval and BigCodeBench in separate directories and creates timestamped sanitized reports. Empty or incomplete protected baselines fail closed, as do partial, skipped, blocked, or otherwise incomplete candidate aggregates. The workflow pins the reviewed Inspect harness versions and is only an environment adapter and trigger for this command. Promotion review remains human-controlled. Roll back by removing the candidate from the group or reducing its weight; never promote on this benchmark alone.
 

@@ -5,11 +5,26 @@ import importlib.util, json, os, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]; SCRIPT=ROOT/"scripts/inspect_coding_eval.py"
+EXAMPLE=ROOT/"examples/inspect-coding-evaluation.env.example"
+OPERATOR_DOC=ROOT/"docs/INSPECT_CODING_EVALUATIONS.md"
 SPEC=importlib.util.spec_from_file_location("inspect_coding_eval", SCRIPT); assert SPEC and SPEC.loader
 EVAL=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(EVAL)
 def need(ok: bool, message: str) -> None:
     if not ok: raise AssertionError(message)
+def env_example(path: Path) -> dict[str, str]:
+  values: dict[str, str] = {}
+  for line in path.read_text(encoding="utf-8").splitlines():
+    line=line.strip()
+    if line and not line.startswith("#"):
+      key, value=line.split("=", 1); values[key]=value
+  return values
 def main() -> int:
+  example=env_example(EXAMPLE)
+  need(example.get("EVAL_REQUIRE_REASONING_COVERAGE")=="false", "evaluation example does not default to ordinary mode")
+  need(all(example.get(name)=="" for name in ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL")), "evaluation example includes a concrete router input")
+  need(all(example.get(name)=="" for name in ("EVAL_USAGE_CONFIG_YAML", "EVAL_USAGE_CONFIG_FILE", "EVAL_USAGE_CALLER_ID")), "evaluation example includes protected usage inputs")
+  doc=OPERATOR_DOC.read_text(encoding="utf-8")
+  need("Ordinary bounded evaluation (no usage DB input)" in doc and "Coverage-required evaluation (protected and fail-closed)" in doc and "exactly one" in doc, "operator guide does not describe both evaluation contracts")
   need(EVAL.number("C")==1.0 and EVAL.number("CORRECT")==1.0 and EVAL.number("I")==0.0 and EVAL.number("INCORRECT")==0.0,"categorical Inspect scores were not normalized")
   sample={"stats":{"total_time":1.25},"model_usage":{"route":{"total_cost":0.003}}}
   need(EVAL.nested_number(sample,("total_time",))==1.25 and EVAL.nested_number(sample,("total_cost",))==0.003 and EVAL.percentile95([10,20,30,40])==40,"Inspect metric extraction failed")
@@ -27,13 +42,18 @@ def main() -> int:
     go_export_capture=root/"usage-export.txt"
     go_script=bin_dir/"go"; go_script.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$USAGE_EXPORT_CAPTURE\"\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--reasoning-coverage-out\" ]; then shift; printf '%s\\n' '{\"reasoning_tokens\":7,\"reasoning_attempt_count\":1,\"reasoning_successful_attempt_count\":1,\"reasoning_reported_attempt_count\":1,\"reasoning_provider_model_dialect_coverage_complete\":true,\"reasoning_provider_model_dialect_coverage\":[{\"provider\":\"usage-db\",\"model\":\"safe-model\",\"dialect\":\"openai-chat\",\"attempts\":1,\"reported_attempts\":1,\"reasoning_tokens\":7}]}' > \"$1\"; exit 0; fi\n  shift\ndone\nexit 1\n"); go_script.chmod(0o755)
     policy=root/"policy.json"; policy.write_text(json.dumps({"approved_direct_baselines":["vendor/model"],"regression_thresholds":{"max_score_delta":0.05,"max_unscored_error_rate":0.1,"max_p95_sample_time_growth":0.25,"max_token_cost_growth":0.25}}))
-    logs=root/"logs"; base=os.environ|{"PATH":str(bin_dir),"CAPTURE":str(capture),"EVAL_MODEL":"team/coding","EVAL_MODEL_KIND":"router-group","EVAL_API":"openai","EVAL_REASONING":"low","EVAL_BASE_URL":"https://router.invalid/v1","EVAL_API_KEY":"not-a-real-secret","OPENAI_API_KEY":"ambient-wrong-key","EVAL_LOG_DIR":str(logs),"EVAL_POLICY":str(policy),"EVAL_LIMIT":"2","EVAL_CONCURRENCY":"1"}
+    logs=root/"logs"; base=os.environ|{"PATH":f"{bin_dir}:{os.environ['PATH']}","CAPTURE":str(capture),"EVAL_MODEL":"team/coding","EVAL_MODEL_KIND":"router-group","EVAL_API":"openai","EVAL_REASONING":"low","EVAL_BASE_URL":"https://router.invalid/v1","EVAL_API_KEY":"not-a-real-secret","OPENAI_API_KEY":"ambient-wrong-key","EVAL_LOG_DIR":str(logs),"EVAL_POLICY":str(policy),"EVAL_LIMIT":"2","EVAL_CONCURRENCY":"1"}
     done=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=base,text=True,capture_output=True)
     need(done.returncode==0, done.stderr); invoked=capture.read_text()
     need(str(ROOT) not in invoked.split("|",1)[0], "Inspect ran in repository rather than scratch directory")
     suite_logs=logs/"humaneval"
     need("inspect_evals/humaneval" in invoked and "--limit 2" in invoked and "--model openai/team/coding" in invoked and "--model-base-url https://router.invalid/v1" in invoked and "reasoning_effort=low" in invoked and f"--log-dir {suite_logs}" in invoked and invoked.rstrip().endswith("|not-a-real-secret"), invoked)
     status=json.loads((suite_logs/"inspect-eval-status.json").read_text()); need(status["status"]=="completed" and status["model_kind"]=="router-group" and status["api"]=="openai" and status["reasoning"]=="low" and status["wall_seconds"] >= 0 and status["completed"],status)
+    ordinary_make_logs=root/"ordinary-make-logs"
+    ordinary_make=subprocess.run(["make","-s","eval-humaneval"],cwd=ROOT,env=base|{"EVAL_LOG_DIR":str(ordinary_make_logs),"EVAL_REQUIRE_REASONING_COVERAGE":"false"},text=True,capture_output=True)
+    need(ordinary_make.returncode==0 and (ordinary_make_logs/"humaneval"/"inspect-eval-status.json").is_file(), f"ordinary documented Make flow required protected usage input: {ordinary_make.stderr}")
+    coverage_make_missing=subprocess.run(["make","-s","eval-humaneval"],cwd=ROOT,env=base|{"EVAL_LOG_DIR":str(root/"coverage-make-missing-logs"),"EVAL_REQUIRE_REASONING_COVERAGE":"true","EVAL_USAGE_CONFIG_YAML":"","EVAL_USAGE_CONFIG_FILE":"","EVAL_USAGE_CALLER_ID":""},text=True,capture_output=True)
+    need(coverage_make_missing.returncode==2 and "reasoning coverage requires" in coverage_make_missing.stderr, "Make did not export coverage-required mode to block absent protected usage inputs")
     bigcodebench=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","bigcodebench"],env=base,text=True,capture_output=True)
     need(bigcodebench.returncode==0 and "inspect_evals/bigcodebench" in capture.read_text(),"BigCodeBench task was not qualified")
     need((logs/"humaneval"/"inspect-eval-status.json").exists() and (logs/"bigcodebench"/"inspect-eval-status.json").exists(),"suite runs overwrote each other's status")
@@ -45,6 +65,10 @@ def main() -> int:
     need(covered_run.returncode in (0,1) and '"reasoning_tokens": 7' in covered_summary and "usage-db" in covered_summary and "--caller-id evaluation-caller" in export_args and "--resolved-group team/coding" in export_args and "--from" in export_args and "--to" in export_args,f"smoke did not run the protected usage exporter before reporting: return={covered_run.returncode} stderr={covered_run.stderr} summary={covered_summary} args={export_args}")
     coverage_missing=subprocess.run([sys.executable,str(SCRIPT),"smoke"],env=base,text=True,capture_output=True)
     need(coverage_missing.returncode==2 and "reasoning coverage requires" in coverage_missing.stderr,"router-group smoke did not block before running without protected usage-export inputs")
+    coverage_multiple=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=base|{"EVAL_REQUIRE_REASONING_COVERAGE":"true","EVAL_USAGE_CONFIG_YAML":"safe-test-config","EVAL_USAGE_CONFIG_FILE":"safe-test-path","EVAL_USAGE_CALLER_ID":"safe-test-caller"},text=True,capture_output=True)
+    need(coverage_multiple.returncode==2 and "exactly one" in coverage_multiple.stderr,"coverage-required router-group run accepted multiple protected usage sources")
+    coverage_no_caller=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=base|{"EVAL_REQUIRE_REASONING_COVERAGE":"true","EVAL_USAGE_CONFIG_YAML":"safe-test-config","EVAL_USAGE_CONFIG_FILE":"","EVAL_USAGE_CALLER_ID":""},text=True,capture_output=True)
+    need(coverage_no_caller.returncode==2 and "EVAL_USAGE_CALLER_ID" in coverage_no_caller.stderr,"coverage-required router-group run accepted one protected source without a dedicated caller")
     direct=base|{"EVAL_MODEL":"vendor/model","EVAL_MODEL_KIND":"direct-baseline","EVAL_LOG_DIR":str(root/"direct-logs"),"CAPTURE":str(root/"direct.txt")}
     direct_run=subprocess.run([sys.executable,str(SCRIPT),"run","--suite","humaneval"],env=direct,text=True,capture_output=True)
     need(direct_run.returncode==0 and "--model openai/vendor/model" in (root/"direct.txt").read_text(),"direct baseline was not explicitly provider-qualified")
