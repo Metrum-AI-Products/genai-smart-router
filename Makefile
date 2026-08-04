@@ -6,6 +6,8 @@ DIST_DIR ?= dist
 PKG_NAME ?= smart-llmrouter
 GOOS ?= linux
 GOARCH ?= $(shell go env GOARCH)
+HOST_GOOS := $(shell go env GOHOSTOS)
+HOST_GOARCH := $(shell go env GOHOSTARCH)
 PYTHON ?= python3
 
 # Inspect coding evaluations are deliberately opt-in: they call a live endpoint
@@ -214,7 +216,7 @@ capability-smoke-unit:
 	elif [ "$${SKIP_TESTS:-false}" = "false" ]; then \
 		$(PYTHON) scripts/provider_capability_smoke.py unit; \
 		$(PYTHON) scripts/provider_capability_smoke_test.py; \
-		go test ./internal/router -run 'TestVerifyCapability'; \
+		GOOS=$(HOST_GOOS) GOARCH=$(HOST_GOARCH) go test ./internal/router -run 'TestVerifyCapability'; \
 	else \
 		echo "SKIP_TESTS must be true or false" >&2; exit 2; \
 	fi

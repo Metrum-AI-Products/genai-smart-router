@@ -61,6 +61,15 @@ def main() -> int:
     require("id >/tmp/smart-llmrouter-make-poc" not in combined, f"dry-run exposed executable payload:\n{combined}")
     require("$VERSION" in combined or "${VERSION}" in combined, "dry-run should defer metadata to shell environment expansion")
 
+    host_goos = subprocess.check_output(["go", "env", "GOHOSTOS"], text=True).strip()
+    host_goarch = subprocess.check_output(["go", "env", "GOHOSTARCH"], text=True).strip()
+    cross_arch_smoke = run_make("-n", "capability-smoke-unit", "GOARCH=arm64")
+    cross_arch_output = cross_arch_smoke.stdout + cross_arch_smoke.stderr
+    require(
+        f"GOOS={host_goos} GOARCH={host_goarch} go test" in cross_arch_output,
+        "cross-architecture packaging must run capability Go tests for the build host",
+    )
+
     eks_profile_dry_run = run_make(
         "-n", "eks-preflight", f"EKS_DELIVERY_AWS_PROFILE={MALICIOUS_EKS_INPUT}"
     )
