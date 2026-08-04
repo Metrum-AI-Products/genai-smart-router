@@ -26,6 +26,30 @@ REQUIRED_IDENTITY = (
     "api_skin", "model", "model_suffix", "inbound_dialect", "bridge_direction",
     "request_shape", "profile_version",
 )
+FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
+DIALECTS = {"openai-chat", "openai-responses", "anthropic", "replicate"}
+BRIDGE_SURFACES = {
+    "none": None,
+    "chat_to_responses": ("openai-chat", "openai-responses"),
+    "responses_to_chat": ("openai-responses", "openai-chat"),
+    "anthropic_to_openai-chat": ("anthropic", "openai-chat"),
+    "anthropic_to_openai-responses": ("anthropic", "openai-responses"),
+    "anthropic_to_replicate": ("anthropic", "replicate"),
+    "openai-chat_to_anthropic": ("openai-chat", "anthropic"),
+    "openai-chat_to_replicate": ("openai-chat", "replicate"),
+    "openai-responses_to_anthropic": ("openai-responses", "anthropic"),
+    "openai-responses_to_replicate": ("openai-responses", "replicate"),
+}
+BRIDGE_DIRECTIONS = set(BRIDGE_SURFACES)
+CAPABILITY_REQUEST_SHAPES = {
+    "text": "text",
+    "openai-responses": "text",
+    "tools-auto": "tools-auto",
+    "tools-forced": "tools-forced",
+    "image-input": "image",
+    "router-selected-ocr": "image",
+    "structured-outputs": "structured-outputs",
+}
 
 
 def fail(message: str) -> None:
@@ -57,22 +81,65 @@ def scrub(value: object) -> object:
         fail("unsafe evidence value")
     return value
 
+def require_fields(value: dict, required: set[str], allowed: set[str], context: str) -> None:
+    missing = required - set(value)
+    if missing:
+        fail(f"{context} is missing fields: {', '.join(sorted(missing))}")
+    extra = set(value) - allowed
+    if extra:
+        fail(f"{context} has unsupported fields: {', '.join(sorted(extra))}")
+
+def validate_identity(identity: object, capability_case: object) -> None:
+    if not isinstance(capability_case, str) or not capability_case:
+        fail("result capability_case is required")
+    if not isinstance(identity, dict):
+        fail("result identity must be an object")
+    require_fields(identity, set(REQUIRED_IDENTITY), set(REQUIRED_IDENTITY), "result identity")
+    for field in REQUIRED_IDENTITY:
+        value = identity.get(field)
+        if not isinstance(value, str) or (field != "model_suffix" and not value.strip()):
+            fail(f"result identity.{field} is required")
+        if value != value.strip():
+            fail(f"result identity.{field} must not contain outer whitespace")
+    if not FINGERPRINT.fullmatch(identity["endpoint_fingerprint"]):
+        fail("result identity.endpoint_fingerprint must be sha256:<64 lowercase hex>")
+    if not identity["endpoint_path"].startswith("/"):
+        fail("result identity.endpoint_path must be absolute")
+    if identity["api_skin"] not in DIALECTS or identity["inbound_dialect"] not in DIALECTS:
+        fail("result identity dialect is unsupported")
+    if identity["bridge_direction"] not in BRIDGE_DIRECTIONS:
+        fail("result identity.bridge_direction is unsupported")
+    expected_bridge = BRIDGE_SURFACES[identity["bridge_direction"]]
+    if expected_bridge is None:
+        if identity["inbound_dialect"] != identity["api_skin"]:
+            fail("result direct identity must use the API skin as inbound dialect")
+    elif expected_bridge != (identity["inbound_dialect"], identity["api_skin"]):
+        fail("result bridge_direction does not match inbound_dialect and api_skin")
+    if identity["model_suffix"] and not identity["model_suffix"].startswith(":"):
+        fail("result identity.model_suffix must be empty or colon-prefixed")
+    expected_shape = CAPABILITY_REQUEST_SHAPES.get(capability_case)
+    if expected_shape is None:
+        fail("result capability_case is unsupported")
+    if identity["request_shape"] != expected_shape:
+        fail("result identity.request_shape does not match capability_case")
+
 
 def validate_result(result: dict) -> None:
     scrub(result)
-    if result.get("schema_version") != SCHEMA_VERSION:
+    require_fields(
+        result,
+        {"schema_version", "identity", "capability_case", "status", "observed"},
+        {"schema_version", "identity", "capability_case", "status", "observed"},
+        "result",
+    )
+    if result["schema_version"] != SCHEMA_VERSION:
         fail("result schema_version is unsupported")
-    identity = result.get("identity")
-    if not isinstance(identity, dict):
-        fail("result identity must be an object")
-    for field in REQUIRED_IDENTITY:
-        if not isinstance(identity.get(field), str) or (field != "model_suffix" and not identity[field].strip()):
-            fail(f"result identity.{field} is required")
-    if result.get("capability_case") == "" or not isinstance(result.get("capability_case"), str):
-        fail("result capability_case is required")
-    if result.get("status") not in STATUSES:
+    identity = result["identity"]
+    capability_case = result["capability_case"]
+    validate_identity(identity, capability_case)
+    if result["status"] not in STATUSES:
         fail("result status must be pass/limited/failed/unsupported/untested")
-    observed = result.get("observed", {})
+    observed = result["observed"]
     if not isinstance(observed, dict):
         fail("result observed must be an object")
     allowed = {"http_status", "request_id_present", "latency_bucket", "usage_present", "finish_class", "error_class", "upstream_attempts", "selected_target"}
@@ -94,23 +161,43 @@ def identity_key(identity: dict, capability_case: str) -> tuple:
 
 
 def validate_manifest(manifest: dict) -> None:
-    if manifest.get("schema_version") != SCHEMA_VERSION:
+    scrub(manifest)
+    require_fields(manifest, {"schema_version", "profiles"}, {"schema_version", "profiles"}, "manifest")
+    if manifest["schema_version"] != SCHEMA_VERSION:
         fail("manifest schema_version is unsupported")
-    profiles = manifest.get("profiles")
+    profiles = manifest["profiles"]
     if not isinstance(profiles, list) or not profiles:
         fail("manifest profiles must be a non-empty list")
+    seen = set()
+    profile_identity_fields = set(REQUIRED_IDENTITY) - {"profile_version"}
     for profile in profiles:
-        if not isinstance(profile, dict) or not isinstance(profile.get("profile_version"), str):
+        if not isinstance(profile, dict):
+            fail("every profile must be an object")
+        require_fields(profile, {"profile_version", "identity", "cases"}, {"profile_version", "identity", "cases"}, "profile")
+        if not isinstance(profile["profile_version"], str) or not profile["profile_version"].strip():
             fail("every profile needs profile_version")
-        cases = profile.get("cases")
+        identity = profile["identity"]
+        if not isinstance(identity, dict):
+            fail("profile identity must be an object")
+        require_fields(identity, profile_identity_fields, profile_identity_fields, "profile identity")
+        cases = profile["cases"]
         if not isinstance(cases, list) or not cases:
             fail("every profile needs cases")
         for case in cases:
-            if not isinstance(case, dict) or case.get("status") not in STATUSES:
+            if not isinstance(case, dict):
+                fail("profile case must be an object")
+            require_fields(case, {"capability_case", "status"}, {"capability_case", "status", "observed"}, "profile case")
+            if "observed" in case and not isinstance(case["observed"], dict):
+                fail("profile case observed must be an object")
+            if case["status"] not in STATUSES:
                 fail("profile cases need a recognized status")
-            if not isinstance(case.get("capability_case"), str):
-                fail("profile cases need capability_case")
-
+            full_identity = dict(identity)
+            full_identity["profile_version"] = profile["profile_version"]
+            validate_identity(full_identity, case["capability_case"])
+            key = identity_key(full_identity, case["capability_case"])
+            if key in seen:
+                fail("manifest contains duplicate identity and capability_case")
+            seen.add(key)
 
 def adapter_results(manifest: dict) -> list[dict]:
     """A deterministic fake adapter: profile rows become scalar-only results."""
@@ -144,27 +231,31 @@ def fake_response(case: dict, request: dict) -> dict:
 
 
 def verify(claims: dict, results: list[dict]) -> list[str]:
-    if claims.get("schema_version") != SCHEMA_VERSION:
+    scrub(claims)
+    require_fields(claims, {"schema_version", "claims"}, {"schema_version", "claims"}, "claims")
+    if claims["schema_version"] != SCHEMA_VERSION:
         fail("claims schema_version is unsupported")
-    index = {identity_key(row["identity"], row["capability_case"]): row for row in results}
+    if not isinstance(claims["claims"], list) or not claims["claims"]:
+        fail("claims.claims must be a non-empty list")
+    index = {}
+    for row in results:
+        validate_result(row)
+        key = identity_key(row["identity"], row["capability_case"])
+        if key in index:
+            fail("results contain duplicate identity and capability_case")
+        index[key] = row
     failures = []
-    for claim in claims.get("claims", []):
+    for claim in claims["claims"]:
         if not isinstance(claim, dict):
             failures.append("claim must be an object")
             continue
         try:
-            scrub(claim)
-        except ValueError:
-            failures.append("claim contains unsafe evidence")
-            continue
-        identity = claim.get("identity", {})
-        capability = claim.get("capability_case")
-        if not isinstance(identity, dict) or not isinstance(capability, str):
-            failures.append("claim identity and capability_case are required")
-            continue
-        missing = [field for field in REQUIRED_IDENTITY if field not in identity or (field != "model_suffix" and not identity[field])]
-        if missing:
-            failures.append(f"claim missing identity fields: {', '.join(missing)}")
+            require_fields(claim, {"identity", "capability_case"}, {"identity", "capability_case"}, "claim")
+            identity = claim["identity"]
+            capability = claim["capability_case"]
+            validate_identity(identity, capability)
+        except ValueError as exc:
+            failures.append(str(exc))
             continue
         result = index.get(identity_key(identity, capability))
         if not result:

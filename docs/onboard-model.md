@@ -64,6 +64,36 @@ Every future live result must bind the exact provider, account identity class,
 endpoint fingerprint and path, API skin, model plus suffix, inbound dialect,
 bridge direction, request shape, capability case, and profile version.
 
+The reusable offline capability-contract verifier derives the evidence identity
+from the resolved target, not from submitted evidence. A future protected
+promotion workflow must use the same binding. `account_identity_class` must equal
+the provider's non-secret `key_id`; `endpoint_fingerprint` is the SHA-256 of
+the full resolved upstream URL after lowercasing its scheme and host, including
+the actual joined path and any configured query. The query is never stored in
+evidence; it is only hash-bound. `endpoint_path` separately records the path
+the router actually calls, and OpenRouter-style model suffixes such as `:nitro`
+remain separate from the base model ID. A valid but different account,
+endpoint, skin, model suffix, inbound dialect, bridge direction, request
+shape, or unapproved profile cannot satisfy the active target.
+
+Use one request-shape identity per capability case. `text`, `tools-auto`,
+`tools-forced`, `image`, and `structured-outputs` are distinct shapes. Native
+and translated calls are also distinct: bridge evidence must name the caller's
+inbound dialect and `chat_to_responses`, `responses_to_chat`, or the exact
+`<inbound-skin>_to_<upstream-skin>` direction for another allowlisted runtime
+translation; direct evidence uses the target dialect and `none`. Tool evidence
+is accepted only for the target's exact API-skin vocabulary (`tools` for Chat,
+`function` for Responses, and `client_tools` for Anthropic), and explicit
+unsupported-feature metadata overrides broad capability metadata. Targets that
+need composite image-plus-tool or image-plus-structured evidence fail closed
+until the evidence schema defines that composite request shape.
+An empty `supported_inbound_dialects` allowlist follows the router's generic
+text/image translation behavior. The verifier therefore requires separate
+Chat-to-Anthropic, Responses-to-Anthropic, or OpenAI-to-Replicate evidence when
+those implicit directions are callable. Set an explicit allowlist to narrow
+the accepted inbound surfaces.
+
+
 Record public-safe evidence for each probe:
 
 - date, provider, endpoint family, model ID, dialect, skin, and account/region class;
