@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -183,7 +184,7 @@ func OpenTenantInstanceRegistryExisting(path string) (*TenantInstanceRegistry, e
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("open existing tenant registry: %w", err)
 	}
-	db, err := gorm.Open(sqlite.Open(path+"?mode=rw&_pragma=foreign_keys(1)"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := openTenantRegistrySQLite(path, "rw")
 	if err != nil {
 		return nil, err
 	}
@@ -200,11 +201,20 @@ func OpenTenantInstanceRegistryReadOnly(path string) (*TenantInstanceRegistry, e
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("open read-only tenant registry: %w", err)
 	}
-	db, err := gorm.Open(sqlite.Open(path+"?mode=ro&_pragma=foreign_keys(1)"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := openTenantRegistrySQLite(path, "ro")
 	if err != nil {
 		return nil, err
 	}
 	return &TenantInstanceRegistry{db: db}, nil
+}
+
+func openTenantRegistrySQLite(path, mode string) (*gorm.DB, error) {
+	dsn := (&url.URL{
+		Scheme:   "file",
+		Path:     path,
+		RawQuery: "mode=" + mode + "&_pragma=foreign_keys(1)",
+	}).String()
+	return gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 }
 
 func validateTenantRegistryPath(path string) error {

@@ -130,6 +130,20 @@ func TestTenantRegistryReadOnlyOpenNeverCreatesMissingDatabase(t *testing.T) {
 	}
 }
 
+func TestTenantRegistrySQLiteModesAtomicallyRejectMissingDatabase(t *testing.T) {
+	for _, mode := range []string{"rw", "ro"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "removed-after-stat.sqlite")
+			if _, err := openTenantRegistrySQLite(path, mode); err == nil {
+				t.Fatalf("SQLite mode %s created a missing registry", mode)
+			}
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("SQLite mode %s left a created registry: %v", mode, err)
+			}
+		})
+	}
+}
+
 func TestTenantRegistryRejectsConflictingReregistration(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	instance := testTenantInstance("tenant-a", "router-a")
