@@ -70,6 +70,10 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 			if err != nil || target.Provider != claim.Identity.Provider {
 				continue
 			}
+			model, suffix := capabilityModelIdentity(target.Model)
+			if model != claim.Identity.Model || suffix != claim.Identity.ModelSuffix {
+				continue
+			}
 			surfaces, err := capabilitySurfaces(c.Provider[target.Provider], target)
 			if err != nil {
 				failures = append(failures, "cannot derive capability endpoint for "+target.Provider+"/"+target.Model)

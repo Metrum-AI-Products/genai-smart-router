@@ -65,7 +65,11 @@ endpoint fingerprint and path, API skin, model plus suffix, inbound dialect,
 bridge direction, request shape, capability case, and profile version.
 
 The reusable offline capability-contract verifier derives the evidence identity
-from the resolved target, not from submitted evidence. A future protected
+from the resolved target, not from submitted evidence. Claim verification first
+limits derivation to resolved targets with the claim's exact model-and-suffix
+identity, so an unrelated target's unsupported composite shape cannot reject a
+valid claim. Whole-group advertised-capability verification still derives every
+resolved target and fails closed on any unsupported composite shape. A future protected
 promotion workflow must use the same binding. `account_identity_class` must equal
 the provider's non-secret `key_id`; `endpoint_fingerprint` is the SHA-256 of
 the full resolved upstream URL after lowercasing its scheme and host, including
