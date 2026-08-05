@@ -291,9 +291,11 @@ api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
 	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
+		-u MAKEFLAGS -u MAKEOVERRIDES \
 	UV_CACHE_DIR=$${UV_CACHE_DIR:-$$api_compat_root/uv-cache} \
 	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
 	uv sync --locked && \
+	env -u MAKEFLAGS -u MAKEOVERRIDES \
 	API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
 	API_COMPAT_BOOTSTRAP_GO_PROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 	API_COMPAT_BOOTSTRAP_GO_SUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) \
