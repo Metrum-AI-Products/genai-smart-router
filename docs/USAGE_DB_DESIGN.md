@@ -154,16 +154,8 @@ Not durable across router restarts:
 - in-memory traffic-shaping token buckets and queue depths.
 - in-process Prometheus counters and gauges.
 
-## Production Reset
+## Destructive reset boundary
 
-For this schema change, production should start from a clean usage database.
-
-For Postgres compose deployments:
-
-1. Stop the stack.
-2. Back up the Postgres data volume or dump the database.
-3. Remove the Postgres data volume.
-4. Start the stack so GORM creates the clean relational schema.
-5. Verify `/readyz`, generate a fresh usage report, and keep the backup until the deployment is accepted.
+Never use a destructive database reset for production migration, upgrade, rollback, repair, or schema change. Fresh and existing schemas are owned by the explicit migration manifest, not serving-startup schema creation. A destructive reset is permitted only for an empty, confirmed non-production environment after independent verification of the environment, database identity, and absence of retained data. This design document intentionally provides no removal command. Follow [Data migration framework](DATA_MIGRATIONS.md) for backup, restore, and the non-serving deployment-job gate.
 
 Do not delete JSONL request logs unless explicitly requested.

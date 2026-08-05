@@ -100,6 +100,10 @@ Start investigations with:
 
 For report details, see [Usage Reporting](./usage-reporting) and [Admin Browser Reports](./admin-browser-reports).
 
+## Migration Visibility
+
+Migration status is operational telemetry, not a write surface. A metrics-admin caller can inspect aggregate migration health through `/metrics`; an authenticated browser administrator with `admin:reports` `read` can inspect the read-only **Operations / Data migrations** report. Both expose safe scalar state only. For a migration bound to a data job, the ledger remains authoritative: `failed` or `running` ledger state takes precedence, and job state refines only an applied ledger row. Use the non-serving deployment-job procedure in [Upgrade Guide](../release-notes/upgrade-guide) for plan, apply, recovery, or rollback.
+
 ## Alerting Checklist
 
 At minimum, alert on:

@@ -2,6 +2,8 @@
 
 Use this runbook for production issues reported by users or monitoring.
 
+For startup blocked by an incompatible, pending, running, or failed migration state, use the canonical [Data migration framework](DATA_MIGRATIONS.md). Inspect the metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report; do not use the serving router to apply, retry, or reverse work. Ledger `failed` or `running` state takes precedence over a bound data-job projection. Recovery follows the recorded backup/restore and deployment-job procedure.
+
 ## First Checks
 
 Capture:

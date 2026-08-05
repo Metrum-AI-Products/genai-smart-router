@@ -7,6 +7,8 @@ doc_type: howto
 
 Use this section to triage customer-visible failures without exposing secrets or private deployment details. Start from the caller symptom, collect safe evidence, then choose the fix path.
 
+For a router that will not start because migration state is pending, running, failed, or incompatible, use the package's non-serving migration gate and release rollback class from [Upgrade Guide](../release-notes/upgrade-guide). Authorized operators can inspect safe status through metrics-admin telemetry or the read-only **Operations / Data migrations** report; neither surface applies or reverses database work.
+
 From Troubleshooting, you might be looking for the canonical downstream error contract and error catalog: see [Error Responses](/docs/reference/errors).
 
 ## Triage Flow

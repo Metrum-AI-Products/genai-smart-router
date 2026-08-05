@@ -50,7 +50,19 @@ chmod 0750 config config/scripts state logs
 chmod 0400 config/env.json config/license.json
 ```
 
-Start the service:
+Before starting a `deployment-job` router, version-check and run the non-serving migration gate: `plan`, approved backup, `apply`, `verify`, then `status`. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure.
+
+```bash
+docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
+docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
+# Take and approve the deployment backup before continuing.
+docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+```
+
+Complete every release-defined data job before verification; the current package begins `historical-usage-validation-v1` at checkpoint ordinal `0`. Start the service only after compatible final status:
 
 ```bash
 docker compose config >/dev/null
@@ -82,4 +94,4 @@ https://router.example.com/admin/reports/
 
 Before upgrading, back up `compose/.env`, `compose/config/`, `compose/state/`, Postgres data, and logs according to the deployment policy. Load the new image tar, update `SMART_LLMROUTER_VERSION`, review config changes, run `docker compose config`, then recreate the router.
 
-Rollback is restoring the previous package image tag, config, license inputs, and durable state or database snapshot, then rerunning `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
+Package rollback never runs a reverse migration. For a `restore-required` release contract, restore the approved pre-migration database snapshot before deploying the earlier package; otherwise preserve the usage database and roll back only approved package/config inputs. Rerun migration verify/status, `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
