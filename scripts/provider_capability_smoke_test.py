@@ -127,6 +127,8 @@ def main() -> int:
         raise AssertionError("duplicate manifest evidence rows were accepted")
     request = module.fake_request("tools-forced", safe["identity"])
     require(request["tool_choice"] == "forced", "fake adapter failed forced-tool classification")
+    omitted = module.fake_request("tools-omitted", safe["identity"])
+    require("tool_choice" not in omitted, "fake adapter represented omitted tool choice as an explicit value")
     make = (ROOT / "Makefile").read_text()
     require("capability-smoke-unit" in make and "SKIP_TESTS" in make, "Make capability contract missing")
 

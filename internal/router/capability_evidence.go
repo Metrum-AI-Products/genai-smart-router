@@ -251,6 +251,9 @@ func advertisedCapabilities(target Target, dialect string) []string {
 	if !target.ToolOnly {
 		capabilities = append(capabilities, "text")
 	}
+	if targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-omitted")
+	}
 	if targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
 	}
@@ -357,6 +360,9 @@ func chatToResponsesEvidenceCapabilities(target Target, dialect string) []string
 	if !target.ToolOnly {
 		capabilities = append(capabilities, "text")
 	}
+	if bridge.Tools && targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-omitted")
+	}
 	if bridge.Tools && bridge.ToolChoice && targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
 	}
@@ -381,6 +387,9 @@ func responsesToChatEvidenceCapabilities(target Target, dialect string) []string
 	var capabilities []string
 	if !target.ToolOnly && bridge.Text {
 		capabilities = append(capabilities, "text")
+	}
+	if bridge.FunctionTools && targetSupportsClientTools(target, dialect, false) {
+		capabilities = append(capabilities, "tools-omitted")
 	}
 	if bridge.FunctionTools && bridge.ToolChoice && targetSupportsExplicitAutoToolChoice(target, dialect) {
 		capabilities = append(capabilities, "tools-auto")
@@ -445,6 +454,8 @@ func capabilityRequestShape(capability string) string {
 	switch capability {
 	case "text", "openai-responses":
 		return "text"
+	case "tools-omitted":
+		return "tools-omitted"
 	case "tools-auto":
 		return "tools-auto"
 	case "tools-forced":

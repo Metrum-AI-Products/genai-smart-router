@@ -83,8 +83,8 @@ remain separate from the base model ID. A valid but different account,
 endpoint, skin, model suffix, inbound dialect, bridge direction, request
 shape, or unapproved profile cannot satisfy the active target.
 
-Use one request-shape identity per capability case. `text`, `tools-auto`,
-`tools-forced`, `image`, and `structured-outputs` are distinct shapes. Native
+Use one request-shape identity per capability case. `text`, `tools-omitted`,
+`tools-auto`, `tools-forced`, `image`, and `structured-outputs` are distinct shapes. Native
 and translated calls are also distinct: bridge evidence must name the caller's
 inbound dialect and `chat_to_responses`, `responses_to_chat`, or the exact
 `<inbound-skin>_to_<upstream-skin>` direction for another allowlisted runtime
@@ -95,7 +95,8 @@ unsupported-feature metadata overrides broad capability metadata. In
 particular, `tool_choice` suppresses both explicit `tools-auto` and
 `tools-forced` evidence because the automatic probe sends
 `tool_choice: "auto"`; `forced_tool_choice` suppresses only `tools-forced`.
-Tool requests that omit `tool_choice` remain a separate runtime shape. Targets that
+Tool requests that omit `tool_choice` require separately passing `tools-omitted`
+evidence; they are never satisfied by an automatic or forced probe. Targets that
 need composite image-plus-tool or image-plus-structured evidence fail closed
 until the evidence schema defines that composite request shape.
 An empty `supported_inbound_dialects` allowlist follows the router's generic

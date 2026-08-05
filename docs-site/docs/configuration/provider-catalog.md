@@ -70,8 +70,9 @@ Map the probe output mechanically:
 |---|---|---|
 | `text` | catalog the exact `model` ID with `input_modalities: [text]` and `output_modalities: [text]` | do not activate the target |
 | `max-tokens-cap` | omit `honors_max_tokens` because the default is true | set `honors_max_tokens: false` when the cap is not honored |
-| `auto-tools` | add `tools`, `function`, or `client_tools` for the tested skin | omit tool support for that skin |
-| `forced-tools` | add `tool_choice` where the skin uses OpenAI-style tool choice | omit `tool_choice` |
+| `omitted-choice-tools` | add `tools`, `function`, or `client_tools` for the tested skin and retain the passing omitted-choice evidence | omit tool support for that skin |
+| `auto-tools` | retain separate passing evidence for explicit `tool_choice: "auto"` | mark `tool_choice` unsupported when that explicit shape fails |
+| `forced-tools` | add `tool_choice` where the skin uses OpenAI-style tool choice and retain separate forced-choice evidence | omit `tool_choice` or mark `forced_tool_choice` unsupported |
 | `structured-outputs` | add `structured_outputs` for the tested skin | omit structured-output support |
 | `image-input` | add `image` to `input_modalities` after router-level image smoke also passes | keep text-only modalities |
 | `reasoning-effort` or Anthropic thinking | add `reasoning.supported`, `mode`, and the tested control type | omit reasoning metadata |

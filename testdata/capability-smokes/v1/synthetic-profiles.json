@@ -17,6 +17,13 @@
       ]
     },
     {
+      "profile_version": "synthetic-responses-tools-omitted/v1",
+      "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"tools-omitted"},
+      "cases": [
+        {"capability_case":"tools-omitted","status":"passed","observed":{"http_status":200,"upstream_attempts":1}}
+      ]
+    },
+    {
       "profile_version": "synthetic-responses-tools-auto/v1",
       "identity": {"provider":"synthetic","account_identity_class":"test","endpoint_fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","endpoint_path":"/v1/responses","api_skin":"openai-responses","model":"synthetic-responses","model_suffix":"","inbound_dialect":"openai-responses","bridge_direction":"none","request_shape":"tools-auto"},
       "cases": [
