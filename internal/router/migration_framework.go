@@ -70,25 +70,34 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	Apply:            applyUsageReasoningTelemetryMigration,
 	Verify:           verifyUsageReasoningTelemetryMigration,
 }, {
-	ID:               usageHistoricalValidationMigrationID,
-	Scope:            usageMigrationScope,
-	Name:             "checkpoint historical usage row validation",
-	Release:          "2026.8",
-	Checksum:         "6e2f5f71ed4f0e2d63c6eb5845b4c02226cfbafc22a2bc27c04c03e6c6426f15",
-	SchemaVersion:    2,
-	DataVersion:      1,
-	Transactional:    true,
-	MaintenanceMode:  "online",
-	RollbackClass:    "package-only",
-	HandlerKey:       "usage.historical-validation.apply.v1@applyUsageHistoricalValidationMigration",
-	PostconditionKey: "usage.historical-validation.schema.v1@verifyUsageReasoningTelemetryMigration",
-	Dependencies:     []int{usageReasoningTelemetryMigrationID},
-	ExecutionMode:    "transactional",
-	LockClass:        "online",
-	TimeoutClass:     "bounded",
-	DataJobKey:       "historical-usage-validation-v1",
-	Apply:            applyUsageHistoricalValidationMigration,
-	Verify:           verifyUsageReasoningTelemetryMigration,
+	ID:              usageHistoricalValidationMigrationID,
+	Scope:           usageMigrationScope,
+	Name:            "checkpoint historical usage row validation",
+	Release:         "2026.8",
+	Checksum:        "6e2f5f71ed4f0e2d63c6eb5845b4c02226cfbafc22a2bc27c04c03e6c6426f15",
+	SchemaVersion:   2,
+	DataVersion:     1,
+	Transactional:   true,
+	MaintenanceMode: "online",
+	// A previous binary does not know this ledger ID. After it is applied,
+	// validate/deployment-job therefore fails closed on package downgrade.
+	// Restore the approved pre-migration database snapshot before using an
+	// earlier package; no reverse migration is available.
+	RollbackClass: "restore-required",
+	// This is the exact immutable digest emitted by the merged Stage 3 binary
+	// before its rollback classification was corrected. Keep that already
+	// applied ledger compatible with this metadata-only correction; no other
+	// digest, handler, checksum, or stored data is accepted or changed.
+	LegacyManifestDigests: []string{"c81ba6d251fe503a7fd4fc0dffc3d7ce3e80e5043eaaaae74b5570809d7d8627"},
+	HandlerKey:            "usage.historical-validation.apply.v1@applyUsageHistoricalValidationMigration",
+	PostconditionKey:      "usage.historical-validation.schema.v1@verifyUsageReasoningTelemetryMigration",
+	Dependencies:          []int{usageReasoningTelemetryMigrationID},
+	ExecutionMode:         "transactional",
+	LockClass:             "online",
+	TimeoutClass:          "bounded",
+	DataJobKey:            "historical-usage-validation-v1",
+	Apply:                 applyUsageHistoricalValidationMigration,
+	Verify:                verifyUsageReasoningTelemetryMigration,
 }}
 
 func init() {
@@ -132,8 +141,12 @@ type MigrationDefinition struct {
 	// migrations. A data job is deliberately not executed by ApplyPending.
 	DataJobKey     string
 	ManifestDigest string // canonical digest of the immutable metadata
-	Apply          func(*gorm.DB) error
-	Verify         func(*gorm.DB) error
+	// LegacyManifestDigests is an explicit, source-reviewed allowlist for an
+	// already-applied historical manifest whose metadata-only correction is
+	// compatible with the current handler, checksum, and stored data.
+	LegacyManifestDigests []string
+	Apply                 func(*gorm.DB) error
+	Verify                func(*gorm.DB) error
 }
 
 // HandlerKey and PostconditionKey deliberately name the checked-in executable
@@ -168,11 +181,14 @@ func migrationHandlerKeyMatches(key string, fn func(*gorm.DB) error) bool {
 // checked-in HandlerKey/PostconditionKey identities.
 func CanonicalMigrationDigest(d MigrationDefinition) string {
 	deps := append([]int(nil), d.Dependencies...)
+	legacyDigests := append([]string(nil), d.LegacyManifestDigests...)
 	sort.Ints(deps)
+	sort.Strings(legacyDigests)
 	parts := []string{fmt.Sprint(d.ID), d.Scope, d.Name, d.Release, fmt.Sprint(d.SchemaVersion), fmt.Sprint(d.DataVersion), fmt.Sprint(d.Transactional), d.RollbackClass, d.MaintenanceMode, d.HandlerKey, d.PostconditionKey, d.ExecutionMode, d.LockClass, d.TimeoutClass, d.DataJobKey}
 	for _, dep := range deps {
 		parts = append(parts, fmt.Sprint(dep))
 	}
+	parts = append(parts, legacyDigests...)
 	return MigrationChecksum(parts...)
 }
 
@@ -339,6 +355,16 @@ func NewMigrationRunnerWithDataJobs(db *gorm.DB, scope string, compatibility Mig
 			!migrationHandlerKeyMatches(d.HandlerKey, d.Apply) || !migrationHandlerKeyMatches(d.PostconditionKey, d.Verify) {
 			return nil, errors.New("invalid immutable migration manifest")
 		}
+		seenLegacyDigests := make(map[string]struct{}, len(d.LegacyManifestDigests))
+		for _, digest := range d.LegacyManifestDigests {
+			if !validMigrationChecksum(digest) || digest == d.ManifestDigest {
+				return nil, errors.New("invalid immutable migration legacy digest")
+			}
+			if _, duplicate := seenLegacyDigests[digest]; duplicate {
+				return nil, errors.New("invalid immutable migration legacy digest")
+			}
+			seenLegacyDigests[digest] = struct{}{}
+		}
 		// Dependencies are an ordered part of the immutable manifest contract:
 		// a definition can depend only on a definition already declared in this
 		// scope. This prevents a manifest from being valid while describing an
@@ -463,7 +489,7 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 	for _, rec := range records {
 		status.Entries = append(status.Entries, ledgerEntry(rec))
 		d, ok := known[rec.MigrationID]
-		if !ok || d.Checksum != rec.Checksum || d.ManifestDigest != rec.ManifestDigest {
+		if !ok || d.Checksum != rec.Checksum || !migrationManifestDigestMatches(d, rec.ManifestDigest) {
 			status.Compatible = false
 			status.State = "incompatible"
 			continue
@@ -514,6 +540,18 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 		status.State = "pending"
 	}
 	return status, nil
+}
+
+func migrationManifestDigestMatches(d MigrationDefinition, digest string) bool {
+	if d.ManifestDigest == digest {
+		return true
+	}
+	for _, legacyDigest := range d.LegacyManifestDigests {
+		if legacyDigest == digest {
+			return true
+		}
+	}
+	return false
 }
 
 // Verify rechecks the immutable ledger and postconditions of applied
