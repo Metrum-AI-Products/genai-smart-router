@@ -138,10 +138,45 @@ def assert_provisioning_failures_stop_immediately() -> None:
             raise AssertionError("normal orchestration ran the offline phase after bootstrap failed")
 
 
+def assert_mirror_values_are_shell_data() -> None:
+    """Mirror settings reach Go verbatim and cannot become recipe commands."""
+    with tempfile.TemporaryDirectory(prefix="api-compat-mirror-data-") as temporary:
+        root = Path(temporary)
+        tool_dir = root / "bin"
+        tool_dir.mkdir()
+        marker = root / "must-not-exist"
+        captured = root / "captured-mirrors"
+
+        write_executable(tool_dir / "uv", "exit 0")
+        write_executable(
+            tool_dir / "go",
+            'printf "%s\\n%s\\n" "$GOPROXY" "$GOSUMDB" >"$API_COMPAT_CAPTURED_MIRRORS"\nexit 1',
+        )
+
+        proxy = f"https://mirror.invalid; touch {marker} #"
+        sumdb = f"sumdb.invalid; touch {marker} #"
+        env = isolated_environment(root)
+        env.update(
+            {
+                "PATH": f"{tool_dir}:{env['PATH']}",
+                "API_COMPAT_BOOTSTRAP_GO_PROXY": proxy,
+                "API_COMPAT_BOOTSTRAP_GO_SUMDB": sumdb,
+                "API_COMPAT_CAPTURED_MIRRORS": str(captured),
+            }
+        )
+
+        run_make("api-compat-bootstrap", env, expected=2)
+        if marker.exists():
+            raise AssertionError("bootstrap mirror configuration executed shell syntax")
+        if captured.read_text(encoding="utf-8").splitlines() != [proxy, sumdb]:
+            raise AssertionError("bootstrap mirror configuration was not passed to Go verbatim")
+
+
 def main() -> int:
     remove_repository_residue()
     assert_no_repository_residue()
     assert_provisioning_failures_stop_immediately()
+    assert_mirror_values_are_shell_data()
     with tempfile.TemporaryDirectory(prefix="api-compat-bootstrap-") as temporary:
         cache_root = Path(temporary)
         env = isolated_environment(cache_root)
