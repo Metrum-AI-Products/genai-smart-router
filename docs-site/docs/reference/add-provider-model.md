@@ -112,7 +112,10 @@ group advertises its capabilities.
 
 Promotion evidence collected by a protected validation workflow must match the
 resolved target exactly. The shipped offline harness validates this binding
-contract but does not authorize a live route. Bind each
+contract but does not authorize a live route. Before it derives capability
+surfaces for a claim, it scopes candidates by the resolved provider, account
+identity class, endpoint, API skin, model, and suffix; then it checks inbound
+dialect, bridge direction, and request shape against the derived surface. Bind each
 row to the provider's non-secret `key_id`, a SHA-256 fingerprint of the full
 resolved upstream URL (lowercase scheme and host, actual path, and configured
 query), the actual upstream path, API skin, base model and suffix, inbound

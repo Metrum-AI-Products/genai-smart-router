@@ -67,14 +67,14 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 		matched := false
 		for _, raw := range modelGroup.Targets {
 			target, err := c.resolveTarget(group, raw)
-			if err != nil || target.Provider != claim.Identity.Provider {
+			if err != nil {
 				continue
 			}
-			model, suffix := capabilityModelIdentity(target.Model)
-			if model != claim.Identity.Model || suffix != claim.Identity.ModelSuffix {
+			provider := c.Provider[target.Provider]
+			if !targetMatchesCapabilityClaimIdentity(provider, target, claim.Identity) {
 				continue
 			}
-			surfaces, err := capabilitySurfaces(c.Provider[target.Provider], target)
+			surfaces, err := capabilitySurfaces(provider, target)
 			if err != nil {
 				failures = append(failures, "cannot derive capability endpoint for "+target.Provider+"/"+target.Model)
 				continue
@@ -94,6 +94,29 @@ func (c *Config) VerifyCapabilityClaims(group string, claims []CapabilityEvidenc
 		}
 	}
 	return failures
+}
+
+// targetMatchesCapabilityClaimIdentity compares every target identity component
+// that can be resolved without deriving capability surfaces. Inbound dialect,
+// bridge direction, and request shape intentionally remain surface checks below:
+// one target can expose several of those surfaces. Keeping this prefilter free
+// of capability-shape validation lets an unrelated unrepresentable target be
+// skipped, while the matching target and whole-group verification still fail
+// closed during capabilitySurfaces.
+func targetMatchesCapabilityClaimIdentity(provider ProviderConfig, target Target, identity CapabilityEvidenceIdentity) bool {
+	if target.Provider != identity.Provider || strings.TrimSpace(provider.KeyID) != identity.AccountIdentityClass {
+		return false
+	}
+	model, suffix := capabilityModelIdentity(target.Model)
+	if model != identity.Model || suffix != identity.ModelSuffix {
+		return false
+	}
+	apiSkin := targetDialect(provider, target)
+	if apiSkin != identity.APISkin {
+		return false
+	}
+	endpointPath, endpointFingerprint, err := capabilityEndpointIdentity(provider, target, apiSkin)
+	return err == nil && endpointPath == identity.EndpointPath && endpointFingerprint == identity.EndpointFingerprint
 }
 
 // VerifyAdvertisedCapabilities fails closed when any resolved target callable

@@ -66,9 +66,12 @@ bridge direction, request shape, capability case, and profile version.
 
 The reusable offline capability-contract verifier derives the evidence identity
 from the resolved target, not from submitted evidence. Claim verification first
-limits derivation to resolved targets with the claim's exact model-and-suffix
-identity, so an unrelated target's unsupported composite shape cannot reject a
-valid claim. Whole-group advertised-capability verification still derives every
+limits derivation to the matching resolved target's provider, non-secret account
+identity class, endpoint fingerprint and path, API skin, model, and suffix.
+Inbound dialect, bridge direction, and request shape remain surface checks
+because one target can expose more than one callable surface. This prevents an
+unrelated same-model target's unsupported composite shape from rejecting a valid
+claim. Whole-group advertised-capability verification still derives every
 resolved target and fails closed on any unsupported composite shape. A future protected
 promotion workflow must use the same binding. `account_identity_class` must equal
 the provider's non-secret `key_id`; `endpoint_fingerprint` is the SHA-256 of
