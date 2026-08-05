@@ -724,8 +724,8 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 		t.Fatal(err)
 	}
 	status, err := runner.Verify()
-	if err != nil || status.SchemaVersion != 2 || status.State != "current" {
-		t.Fatalf("reasoning migration ledger status=%+v err=%v", status, err)
+	if err != nil || !status.Compatible || status.SchemaVersion != 2 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
+		t.Fatalf("reasoning migration must preserve schema v2 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
 	}
 	previousBinary, err := NewMigrationRunner(migrated.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
 	if err != nil {
@@ -734,5 +734,113 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 	previousStatus, err := previousBinary.Status()
 	if err != nil || previousStatus.Compatible || previousStatus.State != "incompatible" {
 		t.Fatalf("previous binary must reject the newer ledger and require restore before downgrade: status=%+v err=%v", previousStatus, err)
+	}
+}
+
+func TestUsageHistoricalValidationMigrationRequiresRestoreForPriorBinary(t *testing.T) {
+	var definition *MigrationDefinition
+	for i := range usageMigrationDefinitions {
+		if usageMigrationDefinitions[i].ID == usageHistoricalValidationMigrationID {
+			definition = &usageMigrationDefinitions[i]
+			break
+		}
+	}
+	if definition == nil || definition.RollbackClass != "restore-required" {
+		t.Fatalf("historical validation migration must require database restore for a binary downgrade: %#v", definition)
+	}
+
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	stage2DB, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage2Runner, err := NewMigrationRunner(stage2DB, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stage2Runner.ApplyPending("stage2-binary"); err != nil {
+		t.Fatal(err)
+	}
+	stage2SQL, err := stage2DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stage2SQL.Close(); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stage3DB, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mergedStage3Definitions := append([]MigrationDefinition(nil), usageMigrationDefinitions...)
+	mergedStage3Definitions[2].RollbackClass = "package-only"
+	mergedStage3Definitions[2].LegacyManifestDigests = nil
+	mergedStage3Definitions[2] = FinalizeMigrationDefinition(mergedStage3Definitions[2])
+	if len(definition.LegacyManifestDigests) != 1 || mergedStage3Definitions[2].ManifestDigest != definition.LegacyManifestDigests[0] {
+		t.Fatalf("corrected Stage 3 definition must explicitly recognize the merged manifest digest: merged=%s legacy=%v", mergedStage3Definitions[2].ManifestDigest, definition.LegacyManifestDigests)
+	}
+	stage3Runner, err := NewMigrationRunnerWithDataJobs(stage3DB, usageMigrationScope, usageMigrationCompatibility, mergedStage3Definitions, usageDataJobDefinitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stage3Runner.ApplyPending("merged-stage3-binary"); err != nil {
+		t.Fatal(err)
+	}
+	correctedRunner, err := newUsageMigrationRunner(stage3DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	correctedStatus, err := correctedRunner.Status()
+	if err != nil || !correctedStatus.Compatible || correctedStatus.State != "pending" || correctedStatus.SchemaVersion != 2 || correctedStatus.DataVersion != 0 || len(correctedStatus.Entries) != 3 || len(correctedStatus.Jobs) != 1 || correctedStatus.Jobs[0].State != migrationDataJobPending {
+		t.Fatalf("corrected binary must accept the already-applied Stage 3 ledger without changing stored data: status=%+v err=%v", correctedStatus, err)
+	}
+	stage3SQL, err := stage3DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stage3SQL.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	priorDB, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorRunner, err := NewMigrationRunner(priorDB, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorStatus, err := priorRunner.Status()
+	if err != nil || priorStatus.Compatible || priorStatus.State != "incompatible" {
+		t.Fatalf("prior binary must reject the Stage 3 ledger and require restore before downgrade: status=%+v err=%v", priorStatus, err)
+	}
+	priorSQL, err := priorDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := priorSQL.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, backup, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restoredDB, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := restoredDB.DB(); _ = sqlDB.Close() }()
+	restoredRunner, err := NewMigrationRunner(restoredDB, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredStatus, err := restoredRunner.Verify()
+	if err != nil || !restoredStatus.Compatible || restoredStatus.State != "current" || restoredStatus.SchemaVersion != 2 || restoredStatus.DataVersion != 0 {
+		t.Fatalf("restored Stage 2 snapshot must support the prior binary: status=%+v err=%v", restoredStatus, err)
 	}
 }
