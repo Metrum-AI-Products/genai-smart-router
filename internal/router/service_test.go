@@ -127,7 +127,7 @@ func TestAuthRejectsUnknownTokenBeforeUpstream(t *testing.T) {
 	defer upstream.Close()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe}
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -382,7 +382,7 @@ func TestAdminBasicAuthDoesNotChangeProxyBearerAuth(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe}
 	t.Setenv("SMART_ROUTER_ADMIN_PASSWORD_HASH_TEST", mustBcryptHash(t, "yell-yell-yum"))
 	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{
 		Enabled:           true,
@@ -14279,7 +14279,7 @@ func newTestService(t *testing.T, upstreamURL, providerKey string) *Service {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := testConfig(t, upstreamURL, providerKey, dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe}
 	svc, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -14296,7 +14296,7 @@ func testConfig(t *testing.T, upstreamURL, providerKey, dir string) *Config {
 			Listen:            ":0",
 			DefaultModelGroup: "default",
 			Cache:             CacheConfig{Enabled: true, MaxBytes: 1 << 20, DefaultTTL: 0},
-			UsageDB:           UsageDBConfig{Enable: &usageDBDisabled},
+			UsageDB:           UsageDBConfig{Enable: &usageDBDisabled, MigrationPolicy: usageDBMigrationPolicyAutoSafe},
 			Logging: LoggingConfig{
 				Path: filepath.Join(dir, "requests.jsonl"),
 			},

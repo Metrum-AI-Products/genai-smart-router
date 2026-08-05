@@ -20,7 +20,7 @@ server:
     enabled: true
     driver: sqlite
     path: usage.sqlite
-    migration_policy: legacy-auto-migrate
+    migration_policy: deployment-job
   decision_telemetry:
     enabled: false
     max_candidates: 64
@@ -59,7 +59,9 @@ server:
 
 Use the non-serving `router-migrate` command to inspect a durable migration ledger before an upgrade. It reports only scope/version/compatibility and safe migration state; it never returns database connection values, SQL values, request content, or credentials. The shared migration contract binds each checked-in migration’s reviewed metadata and handler identity, and stores only normalized scalar audit, job, and checkpoint records. Stage 1 does not start jobs or change serving startup behavior. The initial usage migration adopts an already initialized legacy usage database into the ledger after its schema is verified; it does not initialize an empty database or modify application tables. Follow the release-specific upgrade instructions before applying later migration definitions.
 
-`migration_policy: legacy-auto-migrate` is retained for existing deployments while the reviewed fresh-install manifest is completed. For a deployment job workflow, apply and verify migrations with `router-migrate`, then configure `migration_policy: deployment-job` (or `validate`). Those policies do not apply application-schema changes at router startup and fail closed unless the ledger is current and compatible. `auto-safe` is limited to checked-in transactional online migrations and cannot bootstrap an empty database with the current adoption-only baseline.
+`migration_policy: deployment-job` is the serving default. Apply and verify migrations with the non-serving `router-migrate` deployment job, then configure `migration_policy: deployment-job` (or `validate`). Those policies do not apply application-schema changes at router startup and fail closed unless the ledger is current and compatible. `auto-safe` is limited to checked-in transactional online migrations for reviewed small/single-node deployments.
+
+For PostgreSQL, supply the migration connection only through the deployment environment (for example, `--dsn-env=ROUTER_USAGE_DB_DSN`); do not place a DSN in a shell command, ticket, or operator output. Package rollback never runs a reverse migration. If the reviewed migration contract requires restoration, restore the approved pre-migration backup before deploying an older package.
 
 `decision_telemetry` is optional and disabled by default. When enabled, it writes normalized scalar child rows for request shape, bounded candidates, filter reasons, routing decisions, score terms, script/external policy executions, fallback transitions, cache reasons, and non-secret fingerprints.
 

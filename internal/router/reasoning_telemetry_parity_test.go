@@ -32,7 +32,7 @@ func TestReasoningTelemetryPostgresParity(t *testing.T) {
 func runReasoningTelemetryParity(t *testing.T, cfg UsageDBConfig) {
 	t.Helper()
 	legacyCfg := cfg
-	legacyCfg.MigrationPolicy = usageDBMigrationPolicyLegacyAutoMigrate
+	legacyCfg.MigrationPolicy = usageDBMigrationPolicyAutoSafe
 	legacy, err := OpenUsageStore(legacyCfg)
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +48,10 @@ func runReasoningTelemetryParity(t *testing.T, cfg UsageDBConfig) {
 			_ = legacy.Close()
 			t.Fatal(err)
 		}
+	}
+	if err := legacy.db.Exec("DELETE FROM schema_migration_ledger WHERE scope = ?", usageMigrationScope).Error; err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
 	}
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)

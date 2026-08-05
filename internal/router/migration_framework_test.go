@@ -2,11 +2,38 @@ package router
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
 )
+
+func TestUsageExplicitBootstrapPostgres(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SMART_ROUTER_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("SMART_ROUTER_POSTGRES_TEST_DSN is required for disposable PostgreSQL Stage 2 coverage")
+	}
+	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-507-stage2" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_507_stage2") {
+		t.Fatal("PostgreSQL Stage 2 coverage requires the explicit disposable database guard")
+	}
+	store, err := OpenUsageStore(UsageDBConfig{Driver: "postgres", DSN: dsn, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	if err != nil {
+		t.Fatalf("explicit PostgreSQL bootstrap: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	validated, err := OpenUsageStore(UsageDBConfig{Driver: "postgres", DSN: dsn, MigrationPolicy: usageDBMigrationPolicyDeploymentJob})
+	if err != nil {
+		t.Fatalf("PostgreSQL deployment-job validation: %v", err)
+	}
+	defer validated.Close()
+	if err := ensureUsageRelationalSchema(validated.db); err != nil {
+		t.Fatalf("PostgreSQL explicit schema contract: %v", err)
+	}
+}
 
 func applyTestMigrationMarker(tx *gorm.DB) error {
 	return tx.Exec("CREATE TABLE IF NOT EXISTS migration_marker (id INTEGER PRIMARY KEY)").Error
@@ -396,8 +423,8 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "pending" || len(status.Pending) != len(usageMigrationDefinitions) {
-		t.Fatalf("legacy usage database should be eligible for the complete online migration prefix: %+v", status)
+	if !status.Compatible || status.State != "current" || len(status.Pending) != 0 {
+		t.Fatalf("explicit local bootstrap should reach the current ledger: %+v", status)
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatal(err)
@@ -411,22 +438,22 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	}
 }
 
-func TestUsageMigrationBaselineRejectsEmptyDatabase(t *testing.T) {
+func TestUsageMigrationBaselineBootstrapsEmptyDatabaseExplicitly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.sqlite")
 	r, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = closeDB() }()
-	if err := r.ApplyPending("test-runner"); err == nil {
-		t.Fatal("baseline adoption must not initialize an empty database")
+	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatalf("explicit baseline must initialize an empty database: %v", err)
 	}
 	status, err := r.Status()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SchemaVersion != 0 || len(status.Entries) != 0 || len(status.Pending) != len(usageMigrationDefinitions) {
-		t.Fatalf("failed baseline adoption must leave no ledger entry or apply later migrations: %+v", status)
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != usageMigrationCompatibility.MaxSchema || len(status.Entries) != len(usageMigrationDefinitions) {
+		t.Fatalf("explicit baseline bootstrap status: %+v", status)
 	}
 }
 
@@ -440,8 +467,7 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// A deployment job (or explicitly enabled safe startup migration) may adopt
-	// this existing schema. It must not run the legacy AutoMigrate path.
+	// A reviewed small/single-node deployment may explicitly select auto-safe.
 	auto, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
 	if err != nil {
 		t.Fatalf("auto-safe adoption: %v", err)
@@ -461,10 +487,17 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 	}
 
 	empty := filepath.Join(t.TempDir(), "empty.sqlite")
-	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob, usageDBMigrationPolicyAutoSafe} {
+	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob} {
 		if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: policy}); err == nil {
-			t.Fatalf("%s must reject an empty database without an explicit bootstrap manifest", policy)
+			t.Fatalf("%s must reject an empty database before the deployment job runs", policy)
 		}
+	}
+	bootstrapped, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	if err != nil {
+		t.Fatalf("auto-safe explicit bootstrap: %v", err)
+	}
+	if err := bootstrapped.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -494,6 +527,11 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 		if err := legacy.db.Exec(statement).Error; err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Recreate the pre-ledger historical shape. The explicit baseline then
+	// adopts it and the next immutable definition owns the missing columns.
+	if err := legacy.db.Exec("DELETE FROM schema_migration_ledger WHERE scope = ?", usageMigrationScope).Error; err != nil {
+		t.Fatal(err)
 	}
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
