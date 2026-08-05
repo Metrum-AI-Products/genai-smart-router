@@ -91,7 +91,7 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
         <details className="rounded-lg border border-white/10 bg-white/[0.035] p-4" data-migration-detail-panel>
           <summary className="cursor-pointer font-mono text-xs uppercase text-white/70">Migration detail and audit</summary>
           <dl className="mt-3 grid gap-2 text-sm text-white/70 md:grid-cols-2">
-            {[["Plan", rows[0].name], ["Postcondition", rows[0].postcondition], ["Validation", rows[0].validationState], ["Audit", rows[0].startedAt], ["Progress", `${rows[0].checkpoints || 0} checkpoints; ${rows[0].rowsScanned || 0} scanned; ${rows[0].rowsUpdated || 0} updated; ${rows[0].rowsSkipped || 0} skipped; ${rows[0].rowsFailed || 0} failed`], ["Safe error", rows[0].errorMessage || rows[0].errorClass || "none"]].map(([label, value]) => <div key={String(label)}><dt className="font-mono text-xs uppercase text-white/45">{String(label)}</dt><dd>{String(value || "not recorded")}</dd></div>)}
+            {[["Plan", rows[0].name], ["Postcondition", rows[0].postcondition], ["Effective state", rows[0].state], ["Data-job state", rows[0].dataJobState || "not bound"], ["Validation", rows[0].validationState], ["Audit", rows[0].startedAt], ["Progress", `${rows[0].checkpoints || 0} checkpoints; ${rows[0].rowsScanned || 0} scanned; ${rows[0].rowsUpdated || 0} updated; ${rows[0].rowsSkipped || 0} skipped; ${rows[0].rowsFailed || 0} failed`], ["Safe error", rows[0].errorMessage || rows[0].errorClass || "none"]].map(([label, value]) => <div key={String(label)}><dt className="font-mono text-xs uppercase text-white/45">{String(label)}</dt><dd>{String(value || "not recorded")}</dd></div>)}
           </dl>
         </details>
       ) : null}
@@ -131,6 +131,14 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
 }
 
 export function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): MetricGridConfig | undefined {
+  if (tab.id === "data-migrations") {
+    return {
+      priority: ["state", "pending", "inProgress", "failed", "verified", "missingDataJobs", "jobs"],
+      labels: { state: "Effective state", inProgress: "In progress", missingDataJobs: "Missing data jobs", jobs: "Data jobs" },
+      hideZeroKeys: ["pending", "inProgress", "failed", "verified", "missingDataJobs"],
+      maxItems: 7,
+    };
+  }
   if (!tab.savings) return undefined;
   const hasActualCost = typeof report?.summary?.actualCostUsd === "number" || typeof report?.summary?.actual_cost_usd === "number";
   return {

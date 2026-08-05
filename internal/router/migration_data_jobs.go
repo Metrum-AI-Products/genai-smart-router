@@ -92,6 +92,9 @@ type MigrationDataJobStatus struct {
 	Key         string
 	MigrationID int
 	DataVersion int
+	// Present distinguishes a durable job record from the synthesized pending
+	// status used when an applied schema has not yet created its bound job.
+	Present     bool
 	State       string
 	RowsScanned int64
 	RowsUpdated int64
@@ -150,7 +153,7 @@ func (r *migrationRunner) populateDataJobStatus(status *MigrationStatus, applied
 		if err := r.db.Model(&migrationDataJobCheckpointRecord{}).Where("job_id = ?", rec.JobID).Count(&checkpoints).Error; err != nil {
 			return err
 		}
-		status.Jobs = append(status.Jobs, MigrationDataJobStatus{Key: d.Key, MigrationID: d.MigrationID, DataVersion: d.DataVersion, State: rec.State, RowsScanned: rec.RowsScanned, RowsUpdated: rec.RowsUpdated, RowsSkipped: rec.RowsSkipped, RowsFailed: rec.RowsFailed, Checkpoints: int(checkpoints), ErrorClass: rec.SafeErrorClass})
+		status.Jobs = append(status.Jobs, MigrationDataJobStatus{Key: d.Key, MigrationID: d.MigrationID, DataVersion: d.DataVersion, Present: true, State: rec.State, RowsScanned: rec.RowsScanned, RowsUpdated: rec.RowsUpdated, RowsSkipped: rec.RowsSkipped, RowsFailed: rec.RowsFailed, Checkpoints: int(checkpoints), ErrorClass: rec.SafeErrorClass})
 		switch rec.State {
 		case migrationDataJobValidated:
 			if d.DataVersion > status.DataVersion {
@@ -359,5 +362,5 @@ func (r *migrationRunner) dataJobStatus(rec migrationDataJobRecord) (MigrationDa
 	if err := r.db.Model(&migrationDataJobCheckpointRecord{}).Where("job_id = ?", rec.JobID).Count(&n).Error; err != nil {
 		return MigrationDataJobStatus{}, err
 	}
-	return MigrationDataJobStatus{Key: strings.TrimPrefix(rec.JobID, safeMigrationText(r.scope+"-")), MigrationID: rec.MigrationID, DataVersion: rec.DataVersion, State: rec.State, RowsScanned: rec.RowsScanned, RowsUpdated: rec.RowsUpdated, RowsSkipped: rec.RowsSkipped, RowsFailed: rec.RowsFailed, Checkpoints: int(n), ErrorClass: rec.SafeErrorClass}, nil
+	return MigrationDataJobStatus{Key: strings.TrimPrefix(rec.JobID, safeMigrationText(r.scope+"-")), MigrationID: rec.MigrationID, DataVersion: rec.DataVersion, Present: true, State: rec.State, RowsScanned: rec.RowsScanned, RowsUpdated: rec.RowsUpdated, RowsSkipped: rec.RowsSkipped, RowsFailed: rec.RowsFailed, Checkpoints: int(n), ErrorClass: rec.SafeErrorClass}, nil
 }
