@@ -261,6 +261,8 @@ Estimate and context-fit telemetry is diagnostic, not billed usage. The router s
 
 `responses_to_chat` is opt-in metadata for allowing `/v1/responses` callers to use a target whose upstream dialect is `openai-chat`. It can be declared on a provider catalog model and overridden on a model-group target.
 
+Codex obtains its model catalog from `/v1/codex/models.json` and sends OpenAI Responses requests. That catalog includes only caller-allowed groups with an ordinary Responses-eligible text target. Its tool, image, reasoning, context, and related capability fields are calculated from native Responses targets or from the exact validated `responses_to_chat` bridge flags. Chat-only and Anthropic-only targets do not make those capabilities visible to Codex.
+
 ```yaml
 responses_to_chat:
   enabled: true

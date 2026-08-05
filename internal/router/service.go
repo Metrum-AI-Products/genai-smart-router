@@ -339,21 +339,50 @@ func (s *Service) handleCodexModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.finish(rc, http.StatusOK, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"models": s.callerModelMetadata(rc.caller)})
+	writeJSON(w, http.StatusOK, map[string]any{"models": s.codexModelMetadata(rc.caller)})
 }
 
 func (s *Service) callerModelMetadata(caller *callerRuntime) []map[string]any {
+	return s.modelMetadata(caller, false)
+}
+
+// codexModelMetadata is deliberately narrower than /v1/models. Codex sends
+// OpenAI Responses requests, so a group is cataloged only when its ordinary
+// text shape is eligible for that surface. Capability fields use the same
+// surface-specific request filtering; a Chat target contributes only through
+// a validated Responses-to-Chat bridge.
+func (s *Service) codexModelMetadata(caller *callerRuntime) []map[string]any {
+	return s.modelMetadata(caller, true)
+}
+
+func (s *Service) modelMetadata(caller *callerRuntime, codexResponsesOnly bool) []map[string]any {
 	data := []map[string]any{}
 	if caller == nil {
 		return data
 	}
 	for name := range caller.allow {
+		if codexResponsesOnly && len(s.codexTargetsForGroup(name, &IRRequest{Input: "catalog"})) == 0 {
+			continue
+		}
 		group := s.cfg.Models[name]
 		internalModalities := s.supportedInputModalitiesForGroup(name)
+		if codexResponsesOnly {
+			internalModalities = s.codexInputModalitiesForGroup(name)
+		}
 		publicModalities := publicModelInputModalities(internalModalities)
 		hasImage := stringSliceContains(internalModalities, "image")
 		reasoningLevels, reasoningSummaries, defaultReasoningLevel := s.reasoningMetadataForGroup(name)
+		if codexResponsesOnly {
+			reasoningLevels, reasoningSummaries, defaultReasoningLevel = s.codexReasoningMetadataForGroup(name)
+		}
 		maxContextWindow := s.contextWindowForGroup(name)
+		if codexResponsesOnly {
+			maxContextWindow = s.codexContextWindowForGroup(name)
+		}
+		supportsTools := len(s.supportedToolsForGroup(name)) > 0
+		if codexResponsesOnly {
+			supportsTools = len(s.codexTargetsForGroup(name, &IRRequest{Tools: []map[string]any{{"type": "function", "name": "catalog_tool"}}})) > 0
+		}
 		displayName := name
 		description := "Smart LLM Router model group " + name
 		if group.Contract != nil {
@@ -376,14 +405,14 @@ func (s *Service) callerModelMetadata(caller *callerRuntime) []map[string]any {
 			"max_context_window":               maxContextWindow,
 			"effective_context_window_percent": 95,
 			"default_verbosity":                "low",
-			"supports_parallel_tool_calls":     len(s.supportedToolsForGroup(name)) > 0,
+			"supports_parallel_tool_calls":     supportsTools,
 			"supports_search_tool":             false,
 			"supports_image_detail_original":   hasImage,
 			"support_verbosity":                true,
 			"apply_patch_tool_type":            "freeform",
 			"additional_speed_tiers":           []string{},
 			"service_tiers":                    []map[string]any{{"id": "default", "name": "Default", "description": "Default Smart LLM Router service tier"}},
-			"experimental_supported_tools":     s.supportedToolsForGroup(name),
+			"experimental_supported_tools":     codexSupportedTools(supportsTools),
 			"input_modalities":                 publicModalities,
 			"model_messages":                   map[string]any{"instructions_template": "", "instructions_variables": map[string]any{}},
 			"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
@@ -414,6 +443,98 @@ func (s *Service) callerModelMetadata(caller *callerRuntime) []map[string]any {
 	}
 	sort.Slice(data, func(i, j int) bool { return data[i]["id"].(string) < data[j]["id"].(string) })
 	return data
+}
+
+func codexSupportedTools(supported bool) []string {
+	if !supported {
+		return []string{}
+	}
+	return []string{"local_shell", "apply_patch"}
+}
+
+func (s *Service) codexTargetsForGroup(name string, req *IRRequest) []Target {
+	group, ok := s.cfg.Models[name]
+	if !ok {
+		return nil
+	}
+	// Do not rely on the generic cross-dialect fallback here. The Codex catalog
+	// is a promise about its Responses wire API, so only a native Responses
+	// target or the named, opt-in inverse bridge can contribute to it.
+	candidates := make([]Target, 0, len(group.Targets))
+	for _, target := range group.Targets {
+		outDialect := targetDialect(s.cfg.Provider[target.Provider], target)
+		if normalizeDialect(outDialect) == "openai-responses" || isResponsesToChatBridge("openai-responses", outDialect, target) {
+			candidates = append(candidates, target)
+		}
+	}
+	return s.targetsForRequest(nil, candidates, req, "openai-responses")
+}
+
+func (s *Service) codexContextWindowForGroup(name string) int {
+	const fallbackContextWindow = 131072
+	minContextWindow := 0
+	for _, target := range s.codexTargetsForGroup(name, &IRRequest{Input: "catalog"}) {
+		if target.ContextTokens > 0 && (minContextWindow == 0 || target.ContextTokens < minContextWindow) {
+			minContextWindow = target.ContextTokens
+		}
+	}
+	if minContextWindow == 0 {
+		return fallbackContextWindow
+	}
+	return minContextWindow
+}
+
+func (s *Service) codexInputModalitiesForGroup(name string) []string {
+	seen := map[string]bool{"text": true}
+	for _, target := range s.codexTargetsForGroup(name, &IRRequest{Input: "catalog"}) {
+		for _, modality := range defaultModalities(target.InputModalities) {
+			seen[modality] = true
+		}
+	}
+	if len(s.codexTargetsForGroup(name, &IRRequest{InputParts: []IRContentPart{{Type: "image"}}})) > 0 {
+		seen["image"] = true
+	}
+	out := []string{"text"}
+	for _, modality := range []string{"image", "video", "audio", "pdf", "file", "embeddings"} {
+		if seen[modality] {
+			out = append(out, modality)
+		}
+	}
+	return out
+}
+
+func (s *Service) codexReasoningMetadataForGroup(name string) ([]string, bool, string) {
+	levels := map[string]bool{}
+	summaries := false
+	defaultOn := false
+	request := &IRRequest{Input: "catalog", Reasoning: ReasoningIntent{Requested: true, Kind: "effort", Effort: "medium"}}
+	for _, target := range s.codexTargetsForGroup(name, request) {
+		if !targetSupportsReasoning(target) {
+			continue
+		}
+		if target.Reasoning.Control == reasoningControlEffortEnum || target.Reasoning.Control == reasoningControlTokenBudget {
+			levels["low"] = true
+			levels["medium"] = true
+			levels["high"] = true
+		}
+		if target.Reasoning.SupportsSummaries {
+			summaries = true
+		}
+		if target.Reasoning.DefaultOn {
+			defaultOn = true
+		}
+	}
+	out := make([]string, 0, len(levels))
+	for _, level := range []string{"low", "medium", "high"} {
+		if levels[level] {
+			out = append(out, level)
+		}
+	}
+	defaultLevel := "none"
+	if defaultOn && len(out) > 0 {
+		defaultLevel = "medium"
+	}
+	return out, summaries, defaultLevel
 }
 
 func (s *Service) contextWindowForGroup(name string) int {

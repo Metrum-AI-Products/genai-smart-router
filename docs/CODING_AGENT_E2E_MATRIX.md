@@ -82,7 +82,7 @@ The same model group can have different effective upstream pools for different c
 
 - Use OpenAI Responses wire API.
 - Set the router token in `METRUM_ROUTER_KEY`.
-- Before each Codex run, fetch the caller-filtered `GET /v1/codex/models.json` catalog with that token to a local mode-0600 file and pass it through `model_catalog_json`; use a group returned by `/v1/models`. The catalog must never be synthesized from provider or target configuration.
+- Before each Codex run, fetch the caller-filtered, Responses-eligible `GET /v1/codex/models.json` catalog with that token to a local mode-0600 file and pass it through `model_catalog_json`; discover allowed group IDs from `/v1/models`, then choose one present in the Codex catalog. The catalog must never be synthesized from provider or target configuration.
 - Use `codex exec` for non-interactive validation.
 - Codex/Responses traffic can use native `openai-responses` targets and Chat-only targets only when the target explicitly enables `responses_to_chat` and the requested shape matches the validated bridge flags.
 - For image validation, attach an image with `--image` and use a coding group that includes validated multimodal Responses targets.

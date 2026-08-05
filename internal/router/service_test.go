@@ -3722,8 +3722,8 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 	if err := json.Unmarshal(rr.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 3 {
-		t.Fatalf("catalog models=%#v, want exactly caller-allowed groups", catalog.Models)
+	if len(catalog.Models) != 1 {
+		t.Fatalf("catalog models=%#v, want exactly caller-allowed Responses groups", catalog.Models)
 	}
 	model := catalog.Models[0]
 	if model.Slug != "big-coder" || model.DisplayName != "Coding workspace" || model.Description != "Deployment-defined coding group." {
@@ -3758,16 +3758,8 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 				break
 			}
 		}
-		if nonReasoning == nil {
-			t.Fatalf("missing non-reasoning Codex model %q in %#v", slug, rawCatalog.Models)
-		}
-		for _, field := range []string{"default_reasoning_level", "default_reasoning_summary"} {
-			if _, ok := nonReasoning[field]; ok {
-				t.Fatalf("non-reasoning Codex model %q advertised %s: %#v", slug, field, nonReasoning)
-			}
-		}
-		if levels, ok := nonReasoning["supported_reasoning_levels"].([]any); !ok || len(levels) != 0 || nonReasoning["supports_reasoning_summaries"] != false {
-			t.Fatalf("non-reasoning Codex model %q reasoning metadata=%#v", slug, nonReasoning)
+		if nonReasoning != nil {
+			t.Fatalf("non-Responses Codex model %q was advertised: %#v", slug, nonReasoning)
 		}
 	}
 	for _, forbidden := range []string{"provider-key", testToken, cfg.Callers[0].TokenSHA256, cfg.Provider["mock"].BaseURL, "mock", "private-upstream-model", "private-model", "private-group", "weight", "dialect", "targets"} {
@@ -3782,6 +3774,105 @@ func TestCodexModelsEndpointAuthenticatesFiltersAndMapsSafeCatalog(t *testing.T)
 	svc.Handler().ServeHTTP(modelsRR, modelsReq)
 	if modelsRR.Code != http.StatusOK || !strings.Contains(modelsRR.Body.String(), `"data"`) {
 		t.Fatalf("/v1/models compatibility changed: status=%d body=%s", modelsRR.Code, modelsRR.Body.String())
+	}
+}
+
+func TestCodexCatalogMatchesResponsesEligibilityAcrossDialects(t *testing.T) {
+	var responsesCalls, chatCalls, anthropicCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/responses":
+			responsesCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"id": "resp_catalog", "object": "response", "status": "completed", "model": "native-model", "output": []map[string]any{{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "native ok"}}}}})
+		case "/v1/chat/completions":
+			chatCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"id": "chat_catalog", "model": "chat-model", "choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "chat ok"}, "finish_reason": "stop"}}})
+		case "/v1/messages":
+			anthropicCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"id": "msg_catalog", "type": "message", "role": "assistant", "content": []map[string]any{{"type": "text", "text": "anthropic ok"}}, "stop_reason": "end_turn"})
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider = map[string]ProviderConfig{
+		"responses": {BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"},
+		"chat":      {BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+		"anthropic": {BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"},
+	}
+	responsesTarget := Target{Provider: "responses", Model: "native-model", ContextTokens: 200000, InputModalities: []string{"text", "image"}, ToolSupport: ToolSupport{OpenAIResponses: []string{"function"}}, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum, SupportsSummaries: true, DefaultOn: true}}
+	chatOnlyTarget := Target{Provider: "chat", Model: "chat-only-model", ContextTokens: 120000, InputModalities: []string{"text", "image"}, ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}, Reasoning: ReasoningSupport{Supported: true, Mode: reasoningModeOptIn, Control: reasoningControlEffortEnum, SupportsSummaries: true, DefaultOn: true}}
+	bridgedTarget := chatOnlyTarget
+	bridgedTarget.Model = "bridged-chat-model"
+	bridgedTarget.ResponsesToChat = ResponsesToChatBridge{Enabled: true, Text: true, FunctionTools: true, ToolChoice: true, Images: true, Reasoning: true, ValidationStatus: "passed"}
+	cfg.Models = map[string]ModelGroup{
+		"native-responses": {Strategy: "static", Targets: []Target{responsesTarget}},
+		"chat-only":        {Strategy: "static", Targets: []Target{chatOnlyTarget}},
+		"bridged-chat":     {Strategy: "static", Targets: []Target{bridgedTarget}},
+		"anthropic-only":   {Strategy: "static", Targets: []Target{{Provider: "anthropic", Model: "anthropic-model", ContextTokens: 100000, ToolSupport: ToolSupport{AnthropicMessages: []string{"client_tools"}}}}},
+	}
+	cfg.Server.DefaultModelGroup = "native-responses"
+	cfg.Callers[0].Allow = []string{"native-responses", "chat-only", "bridged-chat", "anthropic-only"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	catalogReq := httptest.NewRequest(http.MethodGet, "/v1/codex/models.json", nil)
+	catalogReq.Header.Set("Authorization", "Bearer "+testToken)
+	catalogRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(catalogRR, catalogReq)
+	if catalogRR.Code != http.StatusOK {
+		t.Fatalf("catalog status=%d body=%s", catalogRR.Code, catalogRR.Body.String())
+	}
+	var catalog struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(catalogRR.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]map[string]any{}
+	for _, model := range catalog.Models {
+		byID[stringValue(model["id"])] = model
+	}
+	if len(byID) != 2 || byID["native-responses"] == nil || byID["bridged-chat"] == nil || byID["chat-only"] != nil || byID["anthropic-only"] != nil {
+		t.Fatalf("Codex catalog must include only Responses-eligible groups: %#v", byID)
+	}
+	for _, id := range []string{"native-responses", "bridged-chat"} {
+		model := byID[id]
+		if model["supports_parallel_tool_calls"] != true || model["supports_image_detail_original"] != true || len(model["supported_reasoning_levels"].([]any)) == 0 {
+			t.Fatalf("Responses-eligible Codex capabilities missing for %s: %#v", id, model)
+		}
+	}
+
+	request := func(path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		return rr
+	}
+	if rr := request("/v1/responses", `{"model":"native-responses","input":"catalog routing"}`); rr.Code != http.StatusOK {
+		t.Fatalf("native Responses routing status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr := request("/v1/responses", `{"model":"chat-only","input":"catalog routing"}`); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "no-eligible-target") {
+		t.Fatalf("unbridged Chat target Responses routing status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr := request("/v1/responses", `{"model":"bridged-chat","input":"catalog routing"}`); rr.Code != http.StatusOK {
+		t.Fatalf("bridged Chat Responses routing status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr := request("/v1/chat/completions", `{"model":"chat-only","messages":[{"role":"user","content":"catalog routing"}]}`); rr.Code != http.StatusOK {
+		t.Fatalf("Chat routing status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr := request("/v1/messages", `{"model":"anthropic-only","max_tokens":16,"messages":[{"role":"user","content":"catalog routing"}]}`); rr.Code != http.StatusOK {
+		t.Fatalf("Anthropic routing status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if responsesCalls.Load() != 1 || chatCalls.Load() != 2 || anthropicCalls.Load() != 1 {
+		t.Fatalf("upstream calls responses=%d chat=%d anthropic=%d", responsesCalls.Load(), chatCalls.Load(), anthropicCalls.Load())
 	}
 }
 
