@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -290,10 +291,11 @@ func (migrationDataJobCheckpointRecord) TableName() string { return "schema_data
 func (migrationLedgerRecord) TableName() string { return "schema_migration_ledger" }
 
 type migrationLockRecord struct {
-	Scope     string `gorm:"primaryKey;column:scope;type:text"`
-	Runner    string `gorm:"column:runner;type:text;not null"`
-	LockedAt  string `gorm:"column:locked_at;type:text;not null"`
-	ExpiresAt string `gorm:"column:expires_at;type:text;not null"`
+	Scope      string `gorm:"primaryKey;column:scope;type:text"`
+	Runner     string `gorm:"column:runner;type:text;not null"`
+	Generation int64  `gorm:"column:generation;not null;default:0"`
+	LockedAt   string `gorm:"column:locked_at;type:text;not null"`
+	ExpiresAt  string `gorm:"column:expires_at;type:text;not null"`
 }
 
 func (migrationLockRecord) TableName() string { return "schema_migration_locks" }
@@ -313,12 +315,19 @@ type MigrationStatus struct {
 }
 
 type migrationRunner struct {
-	db            *gorm.DB
-	scope         string
-	compatibility MigrationCompatibility
-	definitions   []MigrationDefinition
-	dataJobs      []DataJobDefinition
+	db              *gorm.DB
+	scope           string
+	compatibility   MigrationCompatibility
+	definitions     []MigrationDefinition
+	dataJobs        []DataJobDefinition
+	ownerGeneration int64
 }
+
+const (
+	migrationPostgresMinimumVersion = 120000
+	migrationLockTimeout            = 5 * time.Second
+	migrationStatementTimeout       = 30 * time.Second
+)
 
 // NewMigrationRunner validates a checked-in manifest before it can touch a DB.
 func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompatibility, definitions []MigrationDefinition) (*migrationRunner, error) {
@@ -417,7 +426,8 @@ func (r *migrationRunner) ensureLedger() error {
 	// Explicit DDL keeps the framework bootstrap independent of AutoMigrate.
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, manifest_digest TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`,
-		`CREATE TABLE IF NOT EXISTS schema_migration_locks (scope TEXT NOT NULL PRIMARY KEY, runner TEXT NOT NULL, locked_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS schema_migration_locks (scope TEXT NOT NULL PRIMARY KEY, runner TEXT NOT NULL, generation BIGINT NOT NULL DEFAULT 0, locked_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS schema_migration_lock_generations (scope TEXT NOT NULL PRIMARY KEY, generation BIGINT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS schema_migration_attempts (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, attempt BIGINT NOT NULL, action TEXT NOT NULL, state TEXT NOT NULL, owner_generation BIGINT NOT NULL DEFAULT 0, backup_evidence_ref TEXT NOT NULL DEFAULT '', recovery_evidence_ref TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id, attempt), CONSTRAINT schema_migration_attempts_ledger_fk FOREIGN KEY (scope, migration_id) REFERENCES schema_migration_ledger(scope, migration_id) ON DELETE RESTRICT)`,
 		`CREATE TABLE IF NOT EXISTS schema_data_jobs (job_id TEXT NOT NULL PRIMARY KEY, scope TEXT NOT NULL, migration_id BIGINT NOT NULL, data_version BIGINT NOT NULL, state TEXT NOT NULL, execution_mode TEXT NOT NULL, validation_mode TEXT NOT NULL, throttle_per_minute BIGINT NOT NULL DEFAULT 0, rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', cancel_requested_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', CONSTRAINT schema_data_jobs_ledger_fk FOREIGN KEY (scope, migration_id) REFERENCES schema_migration_ledger(scope, migration_id) ON DELETE RESTRICT)`,
 		`CREATE TABLE IF NOT EXISTS schema_data_job_checkpoints (job_id TEXT NOT NULL, checkpoint_ordinal BIGINT NOT NULL, shard TEXT NOT NULL DEFAULT '', range_start BIGINT NOT NULL DEFAULT 0, range_end BIGINT NOT NULL DEFAULT 0, cursor TEXT NOT NULL DEFAULT '', rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', PRIMARY KEY (job_id, checkpoint_ordinal), CONSTRAINT schema_data_job_checkpoints_job_fk FOREIGN KEY (job_id) REFERENCES schema_data_jobs(job_id) ON DELETE RESTRICT)`,
@@ -429,6 +439,11 @@ func (r *migrationRunner) ensureLedger() error {
 	if !r.db.Migrator().HasColumn(&migrationDataJobRecord{}, "cancel_requested_at") {
 		if err := r.db.Migrator().AddColumn(&migrationDataJobRecord{}, "CancelRequestedAt"); err != nil {
 			return fmt.Errorf("migration data-job cancellation column upgrade: %w", err)
+		}
+	}
+	if !r.db.Migrator().HasColumn(&migrationLockRecord{}, "generation") {
+		if err := r.db.Migrator().AddColumn(&migrationLockRecord{}, "Generation"); err != nil {
+			return fmt.Errorf("migration lock generation upgrade: %w", err)
 		}
 	}
 	// The first Stage-1 ledger release did not record the canonical manifest
@@ -587,7 +602,7 @@ func ledgerEntry(rec migrationLedgerRecord) MigrationLedgerEntry {
 // a serving-process startup policy because it stops before any definition that
 // requires a maintenance window or a non-transactional operation.
 func (r *migrationRunner) ApplyPending(runner string) error {
-	return r.applyPending(runner, "online")
+	return r.applyPending(runner, "online", "")
 }
 
 // ApplyMaintenancePending is an explicit non-serving maintenance operation.
@@ -596,10 +611,38 @@ func (r *migrationRunner) ApplyPending(runner string) error {
 // non-transactional definitions (for example, a PostgreSQL concurrent index
 // build) still require a dedicated non-transactional runner.
 func (r *migrationRunner) ApplyMaintenancePending(runner string) error {
-	return r.applyPending(runner, "maintenance")
+	return r.applyPending(runner, "maintenance", "")
 }
 
-func (r *migrationRunner) applyPending(runner, maintenanceMode string) error {
+// ApplyMaintenancePendingWithEvidence records the bounded backup reference
+// alongside the applied attempt. The CLI uses this method for every
+// maintenance action; the compatibility wrapper remains for existing callers.
+func (r *migrationRunner) ApplyMaintenancePendingWithEvidence(runner, backupEvidenceRef string) error {
+	if safeMigrationText(backupEvidenceRef) == "" {
+		return errors.New("maintenance migration requires backup evidence reference")
+	}
+	return r.applyPending(runner, "maintenance", backupEvidenceRef)
+}
+
+// ApplyNonTransactionalMaintenancePending is the only route for a checked-in
+// non-transactional maintenance definition (for example a PostgreSQL
+// concurrent index build). It never runs from serving startup and leaves a
+// durable running/failed/applied ledger trail around the independently
+// committed operation.
+func (r *migrationRunner) ApplyNonTransactionalMaintenancePending(runner string) error {
+	return r.applyPending(runner, "non-transactional-maintenance", "")
+}
+
+// ApplyNonTransactionalMaintenancePendingWithEvidence is the audited variant
+// used by router-migrate for non-transactional maintenance work.
+func (r *migrationRunner) ApplyNonTransactionalMaintenancePendingWithEvidence(runner, backupEvidenceRef string) error {
+	if safeMigrationText(backupEvidenceRef) == "" {
+		return errors.New("non-transactional migration requires backup evidence reference")
+	}
+	return r.applyPending(runner, "non-transactional-maintenance", backupEvidenceRef)
+}
+
+func (r *migrationRunner) applyPending(runner, maintenanceMode, backupEvidenceRef string) error {
 	status, err := r.Status()
 	if err != nil {
 		return err
@@ -607,62 +650,162 @@ func (r *migrationRunner) applyPending(runner, maintenanceMode string) error {
 	if !status.Compatible {
 		return errors.New("migration state is incompatible")
 	}
-	if err := r.acquireLock(runner); err != nil {
+	return r.withMigrationOwnership(runner, func(owned *migrationRunner) error {
+		applied := make(map[int]bool, len(status.Entries))
+		for _, entry := range status.Entries {
+			if entry.State == "applied" {
+				applied[entry.MigrationID] = true
+			}
+		}
+		for _, d := range status.Pending {
+			isNonTransactional := !d.Transactional || d.ExecutionMode == "non-transactional"
+			allowed := d.MaintenanceMode == maintenanceMode
+			if maintenanceMode == "non-transactional-maintenance" {
+				allowed = d.MaintenanceMode == "maintenance" && isNonTransactional
+			} else {
+				allowed = allowed && !isNonTransactional
+			}
+			if !allowed {
+				if maintenanceMode == "online" {
+					return fmt.Errorf("migration %d requires explicit maintenance runner", d.ID)
+				}
+				return fmt.Errorf("migration %d requires its declared runner mode", d.ID)
+			}
+			if d.Apply == nil {
+				return fmt.Errorf("migration %d has no apply step", d.ID)
+			}
+			for _, dependency := range d.Dependencies {
+				if !applied[dependency] {
+					return fmt.Errorf("migration %d requires applied dependency %d", d.ID, dependency)
+				}
+			}
+			var applyErr error
+			if isNonTransactional {
+				applyErr = owned.applyOneNonTransactional(d, runner)
+			} else {
+				applyErr = owned.applyOne(d, runner)
+			}
+			if applyErr != nil {
+				return applyErr
+			}
+			if err := owned.recordAttempt(d, runner, "apply", "applied", backupEvidenceRef, "", ""); err != nil {
+				return errors.New("migration applied but audit attempt could not be written")
+			}
+			applied[d.ID] = true
+		}
+		return nil
+	})
+}
+
+// withMigrationOwnership pins PostgreSQL advisory ownership to one physical
+// connection. SQLite uses its single connection plus an exclusive-lock and
+// integrity preflight. The durable lock row is still retained as safe audit
+// evidence and as a fence for interrupted runners.
+func (r *migrationRunner) withMigrationOwnership(runner string, fn func(*migrationRunner) error) error {
+	if err := r.preflightMigrationOperation(); err != nil {
 		return err
 	}
-	defer r.releaseLock(runner)
-	applied := make(map[int]bool, len(status.Entries))
-	for _, entry := range status.Entries {
-		if entry.State == "applied" {
-			applied[entry.MigrationID] = true
-		}
-	}
-	for _, d := range status.Pending {
-		if !d.Transactional || d.MaintenanceMode != maintenanceMode {
-			if maintenanceMode == "online" {
-				return fmt.Errorf("migration %d requires explicit maintenance runner", d.ID)
+	return r.db.Connection(func(conn *gorm.DB) error {
+		owned := *r
+		owned.db = conn
+		if owned.db.Dialector.Name() == "sqlite" {
+			// Prove an exclusive maintenance lock can be acquired without
+			// leaving connection-local locking mode behind for later work.
+			if err := owned.db.Exec("BEGIN EXCLUSIVE").Error; err != nil {
+				return errors.New("migration preflight sqlite exclusive lock failed")
 			}
-			return fmt.Errorf("migration %d requires the online runner or a dedicated non-transactional runner", d.ID)
-		}
-		if d.Apply == nil {
-			return fmt.Errorf("migration %d has no apply step", d.ID)
-		}
-		for _, dependency := range d.Dependencies {
-			if !applied[dependency] {
-				return fmt.Errorf("migration %d requires applied dependency %d", d.ID, dependency)
+			if err := owned.db.Exec("ROLLBACK").Error; err != nil {
+				return errors.New("migration preflight sqlite exclusive lock cleanup failed")
 			}
 		}
-		if err := r.applyOne(d, runner); err != nil {
+		if err := owned.acquireLock(runner); err != nil {
 			return err
 		}
-		applied[d.ID] = true
+		defer owned.releaseLock(runner)
+		return fn(&owned)
+	})
+}
+
+func (r *migrationRunner) preflightMigrationOperation() error {
+	switch r.db.Dialector.Name() {
+	case "postgres", "postgresql":
+		var versionText string
+		if err := r.db.Raw("SHOW server_version_num").Scan(&versionText).Error; err != nil {
+			return errors.New("migration preflight could not verify postgres version")
+		}
+		version, err := strconv.Atoi(strings.TrimSpace(versionText))
+		if err != nil || version < migrationPostgresMinimumVersion {
+			return errors.New("migration preflight requires supported postgres version")
+		}
+	case "sqlite":
+		var integrity string
+		if err := r.db.Raw("PRAGMA integrity_check").Scan(&integrity).Error; err != nil || integrity != "ok" {
+			return errors.New("migration preflight sqlite integrity check failed")
+		}
+		// The runner opens SQLite with one connection for its operation. An
+		// exclusive transaction below is the maintenance-window proof; it is
+		// deliberately not represented as multi-replica availability.
+		if err := r.db.Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
+			return errors.New("migration preflight sqlite busy timeout failed")
+		}
+	default:
+		return errors.New("migration preflight unsupported database driver")
 	}
 	return nil
 }
 
-// acquireLock is the durable single-runner guard for both SQLite and
-// PostgreSQL. A stale lease is reclaimed only after its expiry; operators can
-// see the holder and expiry in the relational lock table during recovery.
+// acquireLock is the durable single-runner guard. PostgreSQL additionally
+// takes a session advisory lock; the caller must use withMigrationOwnership so
+// acquire, execution, and release remain on the same physical connection.
 func (r *migrationRunner) acquireLock(runner string) error {
+	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
+		var acquired bool
+		if err := r.db.Raw("SELECT pg_try_advisory_lock(hashtext(?))", r.scope).Scan(&acquired).Error; err != nil || !acquired {
+			return errors.New("migration runner is already active for this scope")
+		}
+	}
 	now := time.Now().UTC()
-	if err := r.db.Where("scope = ? AND expires_at < ?", r.scope, now.Format(time.RFC3339Nano)).Delete(&migrationLockRecord{}).Error; err != nil {
+	if err := r.db.Session(&gorm.Session{NewDB: true}).Where("scope = ? AND expires_at < ?", r.scope, now.Format(time.RFC3339Nano)).Delete(&migrationLockRecord{}).Error; err != nil {
+		r.releaseAdvisoryLock()
 		return errors.New("migration lock cleanup failed")
 	}
-	lock := migrationLockRecord{Scope: r.scope, Runner: safeMigrationText(runner), LockedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(30 * time.Minute).Format(time.RFC3339Nano)}
-	if err := r.db.Create(&lock).Error; err != nil {
+	var generation int64
+	if err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO schema_migration_lock_generations (scope, generation) VALUES (?, 1) ON CONFLICT(scope) DO UPDATE SET generation = schema_migration_lock_generations.generation + 1`, r.scope).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT generation FROM schema_migration_lock_generations WHERE scope = ?", r.scope).Scan(&generation).Error
+	}); err != nil || generation <= 0 {
+		r.releaseAdvisoryLock()
+		return errors.New("migration lock generation failed")
+	}
+	lock := migrationLockRecord{Scope: r.scope, Runner: safeMigrationText(runner), Generation: generation, LockedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(30 * time.Minute).Format(time.RFC3339Nano)}
+	if err := r.db.Session(&gorm.Session{NewDB: true}).Create(&lock).Error; err != nil {
+		r.releaseAdvisoryLock()
 		return errors.New("migration runner is already active for this scope")
 	}
+	r.ownerGeneration = generation
 	return nil
 }
 
 func (r *migrationRunner) releaseLock(runner string) {
-	_ = r.db.Where("scope = ? AND runner = ?", r.scope, safeMigrationText(runner)).Delete(&migrationLockRecord{}).Error
+	_ = r.db.Session(&gorm.Session{NewDB: true}).Where("scope = ? AND runner = ? AND generation = ?", r.scope, safeMigrationText(runner), r.ownerGeneration).Delete(&migrationLockRecord{}).Error
+	r.releaseAdvisoryLock()
+}
+
+func (r *migrationRunner) releaseAdvisoryLock() {
+	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
+		_ = r.db.Exec("SELECT pg_advisory_unlock(hashtext(?))", r.scope).Error
+	}
 }
 
 func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {
 	now := time.Now().UTC()
 	started := now.Format(time.RFC3339Nano)
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
+		if err := applyMigrationTimeouts(tx); err != nil {
+			return err
+		}
 		rec := migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "running", StartedAt: started, Runner: safeMigrationText(runner)}
 		if err := tx.Create(&rec).Error; err != nil {
 			return errors.New("migration already running or applied")
@@ -675,8 +818,131 @@ func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {
 				return err
 			}
 		}
-		return tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ?", r.scope, d.ID).Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds()}).Error
+		return tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ?", r.scope, d.ID).Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds(), "error_code": "", "error_text": ""}).Error
 	})
+	if err != nil {
+		return r.recordFailure(d, runner, "apply", err)
+	}
+	return nil
+}
+
+func applyMigrationTimeouts(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" && db.Dialector.Name() != "postgresql" {
+		return nil
+	}
+	if err := db.Exec("SET LOCAL lock_timeout = '5s'").Error; err != nil {
+		return errors.New("migration lock timeout setup failed")
+	}
+	if err := db.Exec("SET LOCAL statement_timeout = '30s'").Error; err != nil {
+		return errors.New("migration statement timeout setup failed")
+	}
+	return nil
+}
+
+// applyOneNonTransactional models operations that PostgreSQL cannot execute
+// inside a transaction. The durable running row is committed before work
+// begins; success is recorded only after the postcondition verifies. A crash
+// therefore remains visibly running for an explicit operator recovery rather
+// than being mistaken for an atomic rollback.
+func (r *migrationRunner) applyOneNonTransactional(d MigrationDefinition, runner string) error {
+	now := time.Now().UTC()
+	if err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
+		if err := applyMigrationTimeouts(tx); err != nil {
+			return err
+		}
+		return tx.Create(&migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "running", StartedAt: now.Format(time.RFC3339Nano), Runner: safeMigrationText(runner)}).Error
+	}); err != nil {
+		return r.recordFailure(d, runner, "non-transactional-start", err)
+	}
+	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
+		if err := r.db.Exec("SET lock_timeout = '5s'").Error; err != nil {
+			return r.recordFailure(d, runner, "non-transactional-timeout", err)
+		}
+		defer r.db.Exec("RESET lock_timeout")
+		if err := r.db.Exec("SET statement_timeout = '30s'").Error; err != nil {
+			return r.recordFailure(d, runner, "non-transactional-timeout", err)
+		}
+		defer r.db.Exec("RESET statement_timeout")
+	}
+	if err := d.Apply(r.db); err != nil {
+		return r.recordFailure(d, runner, "non-transactional-apply", err)
+	}
+	if d.Verify != nil {
+		if err := d.Verify(r.db); err != nil {
+			return r.recordFailure(d, runner, "non-transactional-verify", err)
+		}
+	}
+	if err := r.db.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", r.scope, d.ID, "running").Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds()}).Error; err != nil {
+		return errors.New("non-transactional migration completion failed")
+	}
+	return nil
+}
+
+// recordFailure deliberately runs after an atomic migration transaction has
+// rolled back. It gives every scope a fenced, scalar recovery record without
+// retaining the original database error or any SQL/input content.
+func (r *migrationRunner) recordFailure(d MigrationDefinition, runner, action string, cause error) error {
+	code := safeMigrationErrorCode(cause)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
+		var rec migrationLedgerRecord
+		err := tx.Where("scope = ? AND migration_id = ?", r.scope, d.ID).First(&rec).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			rec = migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "failed", StartedAt: now, CompletedAt: now, Runner: safeMigrationText(runner), ErrorCode: code, ErrorText: code}
+			if err := tx.Create(&rec).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else if rec.State == "applied" || rec.Checksum != d.Checksum || !migrationManifestDigestMatches(d, rec.ManifestDigest) {
+			return errors.New("migration failure record is fenced")
+		} else if err := tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", r.scope, d.ID, rec.State).Updates(map[string]any{"state": "failed", "completed_at": now, "error_code": code, "error_text": code}).Error; err != nil {
+			return err
+		}
+		return r.recordAttemptTx(tx, d, runner, action, "failed", "", "", code, now)
+	}); err != nil {
+		return fmt.Errorf("migration failed and durable recovery record could not be written: %w", err)
+	}
+	return fmt.Errorf("migration %d failed (%s)", d.ID, code)
+}
+
+func (r *migrationRunner) recordAttempt(d MigrationDefinition, runner, action, state, backupEvidenceRef, recoveryEvidenceRef, errorClass string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if r.db.Dialector.Name() == "sqlite" {
+		// The exclusive SQLite connection already serializes this one scalar
+		// insert. Starting a second transaction after an exclusive operation
+		// can ask the driver pool for another writer and self-deadlock.
+		return r.recordAttemptTx(r.db, d, runner, action, state, backupEvidenceRef, recoveryEvidenceRef, errorClass, now)
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return r.recordAttemptTx(tx, d, runner, action, state, backupEvidenceRef, recoveryEvidenceRef, errorClass, now)
+	})
+}
+
+func (r *migrationRunner) recordAttemptTx(tx *gorm.DB, d MigrationDefinition, runner, action, state, backupEvidenceRef, recoveryEvidenceRef, errorClass, now string) error {
+	clean := tx.Session(&gorm.Session{NewDB: true})
+	var next int64
+	if err := clean.Raw("SELECT COALESCE(MAX(attempt), 0) + 1 FROM schema_migration_attempts WHERE scope = ? AND migration_id = ?", r.scope, d.ID).Scan(&next).Error; err != nil {
+		return err
+	}
+	return clean.Create(&migrationAttemptRecord{Scope: r.scope, MigrationID: d.ID, Attempt: int(next), Action: safeMigrationText(action), State: safeMigrationText(state), OwnerGeneration: r.ownerGeneration, BackupEvidenceRef: safeMigrationText(backupEvidenceRef), RecoveryEvidenceRef: safeMigrationText(recoveryEvidenceRef), StartedAt: now, CompletedAt: now, SafeErrorClass: safeMigrationText(errorClass)}).Error
+}
+
+func safeMigrationErrorCode(err error) string {
+	if err == nil {
+		return "migration-failed"
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "timeout") || strings.Contains(message, "canceling statement"):
+		return "migration-timeout"
+	case strings.Contains(message, "locked") || strings.Contains(message, "busy"):
+		return "migration-lock-conflict"
+	case strings.Contains(message, "verification"):
+		return "migration-verification-failed"
+	default:
+		return "migration-apply-failed"
+	}
 }
 
 func safeMigrationText(v string) string {
