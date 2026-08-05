@@ -286,7 +286,7 @@ api-compat-bootstrap:
 	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
 	uv sync --locked && \
 	API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
-	$(MAKE) --no-print-directory -C ../.. api-compat-bootstrap-go-provision
+	"$${MAKE:-make}" --no-print-directory -C ../.. api-compat-bootstrap-go-provision
 
 # The approved mirror settings are consumed only by Go provisioning. Keep the
 # #694 shell-data quoting at that sole consumer so explicit Make command-line
