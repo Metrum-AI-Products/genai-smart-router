@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 type usageStore struct {
@@ -1616,48 +1618,7 @@ func (s *usageStore) migrate() error {
 			return err
 		}
 	}
-	if err := s.db.AutoMigrate(
-		&usageRecord{},
-		&requestAttemptRecord{},
-		&requestTraceEventRecord{},
-		&requestTrafficShapeEventRecord{},
-		&requestUpstreamShapeEventRecord{},
-		&requestShapeRecord{},
-		&requestTranslationShapeRecord{},
-		&requestTokenEstimateRecord{},
-		&requestTranslationFieldEventRecord{},
-		&decisionShapeFeatureRecord{},
-		&decisionTargetCandidateRecord{},
-		&decisionTargetFilterReasonRecord{},
-		&routingDecisionRecord{},
-		&routingSignalRecord{},
-		&dynamicScoreTermRecord{},
-		&policyExecutionRecord{},
-		&fallbackTransitionRecord{},
-		&decisionCacheReasonRecord{},
-		&requestErrorRecord{},
-		&requestUpstreamErrorDetailRecord{},
-		&contentCaptureRecord{},
-		&contentCaptureHeaderRecord{},
-		&contentCaptureAuditRecord{},
-		&authzPolicySetRecord{},
-		&authzPolicyRuleRecord{},
-		&authzRoleLinkRecord{},
-		&authzPolicyAuditEventRecord{},
-		&securityAccessEventRecord{},
-		&usageRollupRunRecord{},
-		&usageRollupDailyRecord{},
-		&usageRollupHourlyRecord{},
-		&usageRollupMonthlyBillingRecord{},
-		&usageRollupAuditEventRecord{},
-		&usageRollupDecisionBucketRecord{},
-		&retentionPolicyVersionRecord{},
-		&retentionPolicyRuleRecord{},
-		&retentionJobRecord{},
-		&retentionJobTableResultRecord{},
-		&legalHoldRecord{},
-		&legalHoldAuditEventRecord{},
-	); err != nil {
+	if err := s.db.AutoMigrate(usageRelationalModels()...); err != nil {
 		return err
 	}
 	if err := ensureUsageRelationalSchema(s.db); err != nil {
@@ -1674,43 +1635,460 @@ func (s *usageStore) backfillRequestAttemptRetryAfter() error {
 }
 
 func ensureUsageRelationalSchema(db *gorm.DB) error {
-	type columnInfo struct {
-		Name string
-		Type string
+	return ensureUsageRelationalSchemaExcept(db, nil)
+}
+
+// ensureUsageRelationalSchemaExcept verifies a versioned subset of the usage
+// contract. A later migration may add columns to a table owned by the legacy
+// baseline; the baseline verifier must still be able to validate the exact
+// historical contract while the later migration verifies the complete current
+// contract. Exclusions are deliberately limited to named scalar columns: all
+// remaining columns, types, defaults, indexes, foreign keys, and checks stay
+// subject to the same strict physical-schema verification.
+func ensureUsageRelationalSchemaExcept(db *gorm.DB, excludedColumns map[string]map[string]struct{}) error {
+	if db == nil {
+		return errors.New("usage schema verification requires database")
 	}
-	var columns []columnInfo
-	for _, table := range usageRelationalTables {
-		if !db.Migrator().HasTable(table) {
-			return fmt.Errorf("required usage table %q is missing", table)
-		}
-	}
-	for _, table := range usageRelationalTables {
-		var tableColumns []columnInfo
-		switch db.Dialector.Name() {
-		case "sqlite":
-			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
-				return err
-			}
-		default:
-			if err := db.Raw(`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = ?`, table).Scan(&tableColumns).Error; err != nil {
-				return err
-			}
-		}
-		if len(tableColumns) == 0 {
-			return fmt.Errorf("required usage table %q has no columns", table)
-		}
-		for i := range tableColumns {
-			tableColumns[i].Name = table + "." + tableColumns[i].Name
-		}
-		columns = append(columns, tableColumns...)
-	}
-	for _, col := range columns {
-		t := strings.ToLower(col.Type)
-		if strings.Contains(t, "json") || strings.Contains(t, "array") || strings.HasSuffix(t, "[]") {
-			return fmt.Errorf("%s uses forbidden non-relational type %q", col.Name, col.Type)
+	models := usageRelationalModels()
+	for _, model := range models {
+		if err := verifyUsageRelationalModelExcept(db, model, excludedColumns); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// usageRelationalModels is the canonical relational baseline contract. Keep it
+// aligned with migrate: adoption validates this exact model-level schema rather
+// than accepting a database merely because its table names happen to exist.
+func usageRelationalModels() []any {
+	return []any{
+		&usageRecord{}, &requestAttemptRecord{}, &requestTraceEventRecord{}, &requestTrafficShapeEventRecord{}, &requestUpstreamShapeEventRecord{},
+		&requestShapeRecord{}, &requestTranslationShapeRecord{}, &requestTokenEstimateRecord{}, &requestTranslationFieldEventRecord{},
+		&decisionShapeFeatureRecord{}, &decisionTargetCandidateRecord{}, &decisionTargetFilterReasonRecord{}, &routingDecisionRecord{},
+		&routingSignalRecord{}, &dynamicScoreTermRecord{}, &policyExecutionRecord{}, &fallbackTransitionRecord{}, &decisionCacheReasonRecord{},
+		&requestErrorRecord{}, &requestUpstreamErrorDetailRecord{}, &contentCaptureRecord{}, &contentCaptureHeaderRecord{}, &contentCaptureAuditRecord{},
+		&authzPolicySetRecord{}, &authzPolicyRuleRecord{}, &authzRoleLinkRecord{}, &authzPolicyAuditEventRecord{}, &securityAccessEventRecord{},
+		&usageRollupRunRecord{}, &usageRollupDailyRecord{}, &usageRollupHourlyRecord{}, &usageRollupMonthlyBillingRecord{}, &usageRollupAuditEventRecord{}, &usageRollupDecisionBucketRecord{},
+		&retentionPolicyVersionRecord{}, &retentionPolicyRuleRecord{}, &retentionJobRecord{}, &retentionJobTableResultRecord{}, &legalHoldRecord{}, &legalHoldAuditEventRecord{},
+	}
+}
+
+func verifyUsageRelationalModel(db *gorm.DB, model any) error {
+	return verifyUsageRelationalModelExcept(db, model, nil)
+}
+
+func verifyUsageRelationalModelExcept(db *gorm.DB, model any, excludedColumns map[string]map[string]struct{}) error {
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(model); err != nil {
+		return err
+	}
+	table := stmt.Schema.Table
+	if !db.Migrator().HasTable(model) {
+		return fmt.Errorf("required usage table %q is missing", table)
+	}
+	actualColumns, err := db.Migrator().ColumnTypes(model)
+	if err != nil {
+		return fmt.Errorf("inspect usage table %q columns: %w", table, err)
+	}
+	byName := make(map[string]gorm.ColumnType, len(actualColumns))
+	for _, actual := range actualColumns {
+		name := actual.Name()
+		byName[name] = actual
+		t := strings.ToLower(actual.DatabaseTypeName())
+		if strings.Contains(t, "json") || strings.Contains(t, "array") || strings.HasSuffix(t, "[]") {
+			return fmt.Errorf("%s.%s uses forbidden non-relational type %q", table, name, actual.DatabaseTypeName())
+		}
+	}
+	for _, field := range stmt.Schema.Fields {
+		if field.DBName == "" { // associations have no scalar database column.
+			continue
+		}
+		if _, excluded := excludedColumns[table][field.DBName]; excluded {
+			continue
+		}
+		actual, ok := byName[field.DBName]
+		if !ok {
+			return fmt.Errorf("required usage column %s.%s is missing", table, field.DBName)
+		}
+		if !usageColumnTypeCompatible(field, actual.DatabaseTypeName()) {
+			return fmt.Errorf("usage column %s.%s has type %q incompatible with %q", table, field.DBName, actual.DatabaseTypeName(), field.DataType)
+		}
+		// SQLite reports composite primary-key members as nullable unless the
+		// CREATE TABLE spelling also contains NOT NULL. Primary-key membership is
+		// verified independently below; explicit not-null contract fields must
+		// still be physically non-null on both SQLite and PostgreSQL.
+		if nullable, known := actual.Nullable(); known && field.NotNull && nullable {
+			return fmt.Errorf("usage column %s.%s nullability does not match contract", table, field.DBName)
+		}
+		if primary, known := actual.PrimaryKey(); known && primary != field.PrimaryKey {
+			return fmt.Errorf("usage column %s.%s primary-key membership does not match contract", table, field.DBName)
+		}
+		// Identity columns obtain their value from the engine, not a SQL DEFAULT
+		// expression (notably SQLite AUTOINCREMENT), so verify their PK contract
+		// above rather than demanding a default literal.
+		if field.HasDefaultValue && !field.AutoIncrement {
+			actualDefault, known := actual.DefaultValue()
+			if !known || !usageDefaultCompatible(field.DefaultValue, actualDefault) {
+				return fmt.Errorf("usage column %s.%s default does not match contract", table, field.DBName)
+			}
+		}
+	}
+	if err := verifyUsageIndexes(db, model, stmt.Schema); err != nil {
+		return err
+	}
+	if err := verifyUsageForeignKeys(db, stmt.Schema); err != nil {
+		return err
+	}
+	if err := verifyUsageCheckConstraints(db, model, stmt.Schema); err != nil {
+		return err
+	}
+	return nil
+}
+
+type usageCheckConstraintRow struct {
+	Name       string `gorm:"column:name"`
+	Definition string `gorm:"column:definition"`
+}
+
+// verifyUsageCheckConstraints checks the expression as well as the name. A
+// named constraint can otherwise be rebuilt with weaker semantics and still
+// satisfy HasConstraint. Both SQLite's stored DDL and PostgreSQL's catalog
+// expose the checked-in, non-caller-controlled table definition safely.
+func verifyUsageCheckConstraints(db *gorm.DB, model any, parsed *schema.Schema) error {
+	expected := parsed.ParseCheckConstraints()
+	if len(expected) == 0 {
+		return nil
+	}
+	actual, err := inspectUsageCheckConstraints(db, parsed.Table)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]string, len(actual))
+	for _, constraint := range actual {
+		byName[constraint.Name] = constraint.Definition
+	}
+	for name, contract := range expected {
+		if !db.Migrator().HasConstraint(model, name) {
+			return fmt.Errorf("required usage check constraint %s on %s is missing", name, parsed.Table)
+		}
+		definition, ok := byName[name]
+		if !ok || normalizeUsageCheckExpression(definition) != normalizeUsageCheckExpression(contract.Constraint) {
+			return fmt.Errorf("usage check constraint %s on %s does not match contract", name, parsed.Table)
+		}
+	}
+	return nil
+}
+
+func inspectUsageCheckConstraints(db *gorm.DB, table string) ([]usageCheckConstraintRow, error) {
+	switch db.Dialector.Name() {
+	case "sqlite":
+		var ddl string
+		if err := db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&ddl).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage check constraints for %s: %w", table, err)
+		}
+		return parseSQLiteUsageCheckConstraints(ddl), nil
+	case "postgres", "postgresql":
+		const query = `SELECT con.conname AS name, pg_get_constraintdef(con.oid, true) AS definition
+			FROM pg_constraint con
+			JOIN pg_class table_class ON table_class.oid = con.conrelid
+			JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+			WHERE con.contype = 'c' AND namespace.nspname = current_schema() AND table_class.relname = ?`
+		var rows []usageCheckConstraintRow
+		if err := db.Raw(query, table).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage check constraints for %s: %w", table, err)
+		}
+		return rows, nil
+	default:
+		return nil, fmt.Errorf("unsupported usage database driver %q", db.Dialector.Name())
+	}
+}
+
+func parseSQLiteUsageCheckConstraints(ddl string) []usageCheckConstraintRow {
+	const marker = "constraint"
+	lower := strings.ToLower(ddl)
+	var rows []usageCheckConstraintRow
+	for offset := 0; ; {
+		at := strings.Index(lower[offset:], marker)
+		if at < 0 {
+			return rows
+		}
+		at += offset
+		cursor := at + len(marker)
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		nameStart := cursor
+		if cursor < len(ddl) && (ddl[cursor] == '"' || ddl[cursor] == '`' || ddl[cursor] == '[') {
+			quote := ddl[cursor]
+			endQuote := quote
+			if quote == '[' {
+				endQuote = ']'
+			}
+			cursor++
+			nameStart = cursor
+			for cursor < len(ddl) && ddl[cursor] != endQuote {
+				cursor++
+			}
+			if cursor >= len(ddl) {
+				return rows
+			}
+			name := ddl[nameStart:cursor]
+			cursor++
+			for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+				cursor++
+			}
+			if !strings.HasPrefix(strings.ToLower(ddl[cursor:]), "check") {
+				offset = cursor
+				continue
+			}
+			cursor += len("check")
+			for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+				cursor++
+			}
+			if cursor >= len(ddl) || ddl[cursor] != '(' {
+				offset = cursor
+				continue
+			}
+			end := sqliteBalancedExpressionEnd(ddl, cursor)
+			if end < 0 {
+				return rows
+			}
+			rows = append(rows, usageCheckConstraintRow{Name: name, Definition: ddl[cursor : end+1]})
+			offset = end + 1
+			continue
+		}
+		for cursor < len(ddl) && ddl[cursor] != ' ' && ddl[cursor] != '\n' && ddl[cursor] != '\t' {
+			cursor++
+		}
+		name := ddl[nameStart:cursor]
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		if !strings.HasPrefix(strings.ToLower(ddl[cursor:]), "check") {
+			offset = cursor
+			continue
+		}
+		cursor += len("check")
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		if cursor >= len(ddl) || ddl[cursor] != '(' {
+			offset = cursor
+			continue
+		}
+		end := sqliteBalancedExpressionEnd(ddl, cursor)
+		if end < 0 {
+			return rows
+		}
+		rows = append(rows, usageCheckConstraintRow{Name: name, Definition: ddl[cursor : end+1]})
+		offset = end + 1
+	}
+}
+
+func sqliteBalancedExpressionEnd(value string, start int) int {
+	depth := 0
+	for i := start; i < len(value); i++ {
+		switch value[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func normalizeUsageCheckExpression(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if strings.HasPrefix(value, "check") {
+		value = strings.TrimSpace(strings.TrimPrefix(value, "check"))
+	}
+	for len(value) >= 2 && value[0] == '(' && value[len(value)-1] == ')' {
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+	value = strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "", "\"", "", "`", "").Replace(value)
+	return value
+}
+
+func usageColumnTypeCompatible(field *schema.Field, actual string) bool {
+	t := strings.ToLower(actual)
+	switch field.DataType {
+	case schema.String:
+		return strings.Contains(t, "char") || strings.Contains(t, "text") || strings.Contains(t, "clob")
+	case schema.Bool:
+		return strings.Contains(t, "bool") || strings.Contains(t, "int") || strings.Contains(t, "numeric")
+	case schema.Int, schema.Uint:
+		return strings.Contains(t, "int") || strings.Contains(t, "serial")
+	case schema.Float:
+		return strings.Contains(t, "real") || strings.Contains(t, "double") || strings.Contains(t, "float") || strings.Contains(t, "numeric") || strings.Contains(t, "decimal")
+	default:
+		return true
+	}
+}
+
+func usageDefaultCompatible(expected, actual string) bool {
+	normalize := func(value string) string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.Trim(value, "()'")
+		switch value {
+		case "false":
+			return "0"
+		case "true":
+			return "1"
+		}
+		return value
+	}
+	return normalize(expected) == normalize(actual)
+}
+
+func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
+	indexes, err := db.Migrator().GetIndexes(model)
+	if err != nil {
+		return err
+	}
+	actual := make(map[string]gorm.Index, len(indexes))
+	for _, index := range indexes {
+		actual[index.Name()] = index
+	}
+	for _, index := range expected.ParseIndexes() {
+		got, ok := actual[index.Name]
+		if !ok {
+			return fmt.Errorf("required usage index %s.%s is missing", expected.Table, index.Name)
+		}
+		if len(got.Columns()) != len(index.Fields) {
+			return fmt.Errorf("usage index %s.%s columns do not match contract", expected.Table, index.Name)
+		}
+		for i, field := range index.Fields {
+			if got.Columns()[i] != field.DBName {
+				return fmt.Errorf("usage index %s.%s columns do not match contract", expected.Table, index.Name)
+			}
+		}
+		if unique, known := got.Unique(); known && unique != (index.Class == "UNIQUE") {
+			return fmt.Errorf("usage index %s.%s uniqueness does not match contract", expected.Table, index.Name)
+		}
+	}
+	return nil
+}
+
+type usageForeignKeyRow struct {
+	ConstraintID     string `gorm:"column:constraint_id"`
+	Sequence         int    `gorm:"column:sequence"`
+	ReferencedTable  string `gorm:"column:referenced_table"`
+	LocalColumn      string `gorm:"column:local_column"`
+	ReferencedColumn string `gorm:"column:referenced_column"`
+	OnUpdate         string `gorm:"column:on_update"`
+	OnDelete         string `gorm:"column:on_delete"`
+}
+
+// verifyUsageForeignKeys compares the checked-in GORM relationship contract
+// with the physical schema. HasConstraint alone is insufficient: it cannot
+// distinguish a constraint that has the wrong columns, target, or referential
+// action. Both queries return one scalar row per FK column and work on the two
+// supported production database families.
+func verifyUsageForeignKeys(db *gorm.DB, parsed *schema.Schema) error {
+	model := reflect.New(parsed.ModelType).Interface()
+	for _, relationship := range parsed.Relationships.Relations {
+		if relationship == nil || relationship.Field == nil {
+			continue
+		}
+		contract := relationship.ParseConstraint()
+		if contract == nil || len(contract.ForeignKeys) == 0 || contract.ReferenceSchema == nil {
+			continue
+		}
+		if !db.Migrator().HasConstraint(model, contract.Name) {
+			return fmt.Errorf("required usage foreign-key constraint %s on %s is missing", contract.Name, parsed.Table)
+		}
+		rows, err := inspectUsageForeignKeys(db, contract.Schema.Table)
+		if err != nil {
+			return err
+		}
+		byConstraint := make(map[string][]usageForeignKeyRow)
+		for _, row := range rows {
+			byConstraint[row.ConstraintID] = append(byConstraint[row.ConstraintID], row)
+		}
+		matched := false
+		for constraintID, candidate := range byConstraint {
+			// SQLite's pragma does not expose user-assigned constraint names, so
+			// HasConstraint above proves its named GORM constraint and this loop
+			// proves the physical column/reference/action contract. PostgreSQL
+			// exposes names, which additionally binds the inspected rows to it.
+			if db.Dialector.Name() != "sqlite" && constraintID != contract.Name {
+				continue
+			}
+			sort.Slice(candidate, func(i, j int) bool { return candidate[i].Sequence < candidate[j].Sequence })
+			if len(candidate) != len(contract.ForeignKeys) || candidate[0].ReferencedTable != contract.ReferenceSchema.Table {
+				continue
+			}
+			matches := true
+			for i, row := range candidate {
+				if row.LocalColumn != contract.ForeignKeys[i].DBName || row.ReferencedColumn != contract.References[i].DBName ||
+					!usageForeignKeyActionMatches(contract.OnUpdate, row.OnUpdate) || !usageForeignKeyActionMatches(contract.OnDelete, row.OnDelete) {
+					matches = false
+					break
+				}
+			}
+			if matches {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("usage foreign-key constraint %s on %s does not match contract", contract.Name, contract.Schema.Table)
+		}
+	}
+	return nil
+}
+
+func inspectUsageForeignKeys(db *gorm.DB, table string) ([]usageForeignKeyRow, error) {
+	var rows []usageForeignKeyRow
+	switch db.Dialector.Name() {
+	case "sqlite":
+		// table is a parsed checked-in model table name, never caller input.
+		query := fmt.Sprintf(`SELECT id AS constraint_id, seq AS sequence, "table" AS referenced_table, "from" AS local_column, "to" AS referenced_column, on_update, on_delete FROM pragma_foreign_key_list('%s')`, table)
+		if err := db.Raw(query).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage foreign keys for %s: %w", table, err)
+		}
+	case "postgres", "postgresql":
+		const query = `SELECT con.conname AS constraint_id,
+			local_key.ordinality AS sequence,
+			referenced_table.relname AS referenced_table,
+			local_column.attname AS local_column,
+			referenced_column.attname AS referenced_column,
+			CASE con.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_update,
+			CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete
+		FROM pg_constraint con
+		JOIN pg_class local_table ON local_table.oid = con.conrelid
+		JOIN pg_namespace local_namespace ON local_namespace.oid = local_table.relnamespace
+		JOIN pg_class referenced_table ON referenced_table.oid = con.confrelid
+		JOIN unnest(con.conkey) WITH ORDINALITY AS local_key(attnum, ordinality) ON TRUE
+		JOIN unnest(con.confkey) WITH ORDINALITY AS referenced_key(attnum, ordinality) ON referenced_key.ordinality = local_key.ordinality
+		JOIN pg_attribute local_column ON local_column.attrelid = con.conrelid AND local_column.attnum = local_key.attnum
+		JOIN pg_attribute referenced_column ON referenced_column.attrelid = con.confrelid AND referenced_column.attnum = referenced_key.attnum
+		WHERE con.contype = 'f' AND local_namespace.nspname = current_schema() AND local_table.relname = ?
+		ORDER BY con.conname, local_key.ordinality`
+		if err := db.Raw(query, table).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage foreign keys for %s: %w", table, err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported usage database driver %q", db.Dialector.Name())
+	}
+	return rows, nil
+}
+
+func usageForeignKeyActionMatches(expected, actual string) bool {
+	expected = strings.ToUpper(strings.TrimSpace(expected))
+	actual = strings.ToUpper(strings.TrimSpace(actual))
+	// SQL defaults to NO ACTION when GORM's constraint tag does not request an
+	// explicit action. The comparison is deliberately exact for requested
+	// actions such as CASCADE and RESTRICT.
+	if expected == "" {
+		expected = "NO ACTION"
+	}
+	return expected == actual
 }
 
 var usageRelationalTables = []string{
@@ -1759,7 +2137,19 @@ var usageRelationalTables = []string{
 // verifyUsageLegacyBaseline is the postcondition for the initial ledger
 // adoption. It is deliberately stricter than a table-exists probe, while the
 // complete explicit DDL manifest is prepared as a later migration slice.
-func verifyUsageLegacyBaseline(db *gorm.DB) error { return ensureUsageRelationalSchema(db) }
+var usageReasoningTelemetryColumns = map[string]map[string]struct{}{
+	"request_usage": {
+		"reasoning_tokens":                   {},
+		"reasoning_attempt_count":            {},
+		"reasoning_successful_attempt_count": {},
+		"reasoning_reported_attempt_count":   {},
+	},
+	"request_attempts": {"reasoning_tokens": {}},
+}
+
+func verifyUsageLegacyBaseline(db *gorm.DB) error {
+	return ensureUsageRelationalSchemaExcept(db, usageReasoningTelemetryColumns)
+}
 
 func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 	for _, column := range []struct {
@@ -1782,24 +2172,10 @@ func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 }
 
 func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
-	if err := verifyUsageLegacyBaseline(db); err != nil {
-		return err
-	}
-	for _, column := range []struct {
-		model any
-		name  string
-	}{
-		{&usageRecord{}, "reasoning_tokens"},
-		{&usageRecord{}, "reasoning_attempt_count"},
-		{&usageRecord{}, "reasoning_successful_attempt_count"},
-		{&usageRecord{}, "reasoning_reported_attempt_count"},
-		{&requestAttemptRecord{}, "reasoning_tokens"},
-	} {
-		if !db.Migrator().HasColumn(column.model, column.name) {
-			return fmt.Errorf("required reasoning telemetry column %s is missing", column.name)
-		}
-	}
-	return nil
+	// This is intentionally the complete current contract, rather than merely
+	// a column-exists probe, so v2 verifies nullable/type/default semantics as
+	// well as every shared relational invariant.
+	return ensureUsageRelationalSchema(db)
 }
 
 func (s *usageStore) Emit(rec logRecord) {

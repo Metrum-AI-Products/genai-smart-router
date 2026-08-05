@@ -8,20 +8,34 @@ import (
 	"gorm.io/gorm"
 )
 
+func applyTestMigrationMarker(tx *gorm.DB) error {
+	return tx.Exec("CREATE TABLE IF NOT EXISTS migration_marker (id INTEGER PRIMARY KEY)").Error
+}
+
+func verifyTestMigrationMarker(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("migration_marker") {
+		return errors.New("marker missing")
+	}
+	return nil
+}
+
+func testMigrationDefinition(id int, scope, name, checksum string, schemaVersion int, maintenanceMode, rollbackClass string) MigrationDefinition {
+	return FinalizeMigrationDefinition(MigrationDefinition{
+		ID: id, Scope: scope, Name: name, Release: "test", Checksum: checksum,
+		SchemaVersion: schemaVersion, Transactional: true, MaintenanceMode: maintenanceMode, RollbackClass: rollbackClass,
+		HandlerKey: "test.marker.apply.v1@applyTestMigrationMarker", PostconditionKey: "test.marker.schema.v1@verifyTestMigrationMarker",
+		ExecutionMode: "transactional", LockClass: maintenanceMode, TimeoutClass: "bounded",
+		Apply: applyTestMigrationMarker, Verify: verifyTestMigrationMarker,
+	})
+}
+
 func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	d := MigrationDefinition{ID: 1, Scope: "test", Name: "add marker", Release: "test", Checksum: MigrationChecksum("test", "1", "add marker"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE migration_marker (id INTEGER PRIMARY KEY)").Error
-	}, Verify: func(tx *gorm.DB) error {
-		if !tx.Migrator().HasTable("migration_marker") {
-			return errors.New("marker missing")
-		}
-		return nil
-	}}
+	d := testMigrationDefinition(1, "test", "add marker", MigrationChecksum("test", "1", "add marker"), 1, "online", "package-only")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
 	if err != nil {
 		t.Fatal(err)
@@ -41,18 +55,130 @@ func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	}
 }
 
+func TestMigrationRunnerUpgradesLegacyLedgerBeforeStatusAndApply(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "legacy-ledger.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	// This is the exact pre-manifest-digest ledger shape. In particular, it
+	// already has an applied row, proving Status upgrades the table before it
+	// selects into the current ledger record and Apply preserves legacy rows.
+	if err := db.Exec(`CREATE TABLE schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	first := testMigrationDefinition(1, "test", "legacy baseline", MigrationChecksum("legacy baseline"), 1, "online", "package-only")
+	second := testMigrationDefinition(2, "test", "new marker", MigrationChecksum("new marker"), 2, "online", "package-only")
+	second.Dependencies = []int{first.ID}
+	second = FinalizeMigrationDefinition(second)
+	if err := db.Exec("INSERT INTO schema_migration_ledger (scope, migration_id, checksum, state, started_at) VALUES (?, ?, ?, ?, ?)", "test", first.ID, first.Checksum, "applied", "2026-07-01T00:00:00Z").Error; err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatalf("status must upgrade a legacy ledger before querying it: %v", err)
+	}
+	if status.SchemaVersion != 1 || len(status.Pending) != 1 || status.Pending[0].ID != second.ID {
+		t.Fatalf("legacy ledger status = %+v", status)
+	}
+	if !db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		t.Fatal("legacy ledger upgrade did not add manifest_digest")
+	}
+	if err := r.ApplyPending("legacy-upgrade-test"); err != nil {
+		t.Fatalf("apply after legacy ledger upgrade: %v", err)
+	}
+	var records []migrationLedgerRecord
+	if err := db.Where("scope = ?", "test").Order("migration_id ASC").Find(&records).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].ManifestDigest != first.ManifestDigest || records[1].ManifestDigest != second.ManifestDigest {
+		t.Fatalf("legacy/new manifest digest values = %+v", records)
+	}
+}
+
+func TestMigrationRunnerFailsClosedWhenLegacyAppliedLedgerCannotBindManifestDigest(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "legacy-unbound.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	if err := db.Exec(`CREATE TABLE schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	d := testMigrationDefinition(1, "test", "baseline", MigrationChecksum("expected"), 1, "online", "package-only")
+	if err := db.Exec("INSERT INTO schema_migration_ledger (scope, migration_id, checksum, state, started_at) VALUES (?, ?, ?, ?, ?)", "test", d.ID, MigrationChecksum("tampered"), "applied", "2026-07-01T00:00:00Z").Error; err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Compatible || status.State != "incompatible" {
+		t.Fatalf("unbound legacy applied ledger must fail closed: %+v", status)
+	}
+	var rec migrationLedgerRecord
+	if err := db.Where("scope = ? AND migration_id = ?", "test", d.ID).First(&rec).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rec.ManifestDigest != "" {
+		t.Fatalf("unbound legacy row must not be assigned a manifest digest: %+v", rec)
+	}
+}
+
+func TestMigrationRunnerStatusRejectsAppliedMigrationWithMissingOrUnappliedDependency(t *testing.T) {
+	for _, dependencyState := range []string{"missing", "failed"} {
+		t.Run(dependencyState, func(t *testing.T) {
+			db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "dependency-ledger.sqlite")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+			first := testMigrationDefinition(1, "test", "first", MigrationChecksum("first"), 1, "online", "package-only")
+			second := testMigrationDefinition(2, "test", "second", MigrationChecksum("second"), 2, "online", "package-only")
+			second.Dependencies = []int{first.ID}
+			second = FinalizeMigrationDefinition(second)
+			r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ensureLedger(); err != nil {
+				t.Fatal(err)
+			}
+			if dependencyState == "failed" {
+				if err := db.Create(&migrationLedgerRecord{Scope: "test", MigrationID: first.ID, Checksum: first.Checksum, ManifestDigest: first.ManifestDigest, State: "failed", StartedAt: "2026-07-01T00:00:00Z"}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Create(&migrationLedgerRecord{Scope: "test", MigrationID: second.ID, Checksum: second.Checksum, ManifestDigest: second.ManifestDigest, State: "applied", StartedAt: "2026-07-01T00:00:00Z"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			status, err := r.Status()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status.Compatible || status.State != "incompatible" {
+				t.Fatalf("applied migration with %s prerequisite must fail closed: %+v", dependencyState, status)
+			}
+		})
+	}
+}
+
 func TestMigrationRunnerRequiresExplicitMaintenanceOperation(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	online := MigrationDefinition{ID: 1, Scope: "test", Name: "online marker", Release: "test", Checksum: MigrationChecksum("online marker"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE online_marker (id INTEGER PRIMARY KEY)").Error
-	}}
-	maintenance := MigrationDefinition{ID: 2, Scope: "test", Name: "maintenance marker", Release: "test", Checksum: MigrationChecksum("maintenance marker"), SchemaVersion: 2, Transactional: true, MaintenanceMode: "maintenance", RollbackClass: "restore-required", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE maintenance_marker (id INTEGER PRIMARY KEY)").Error
-	}}
+	online := testMigrationDefinition(1, "test", "online marker", MigrationChecksum("online marker"), 1, "online", "package-only")
+	maintenance := testMigrationDefinition(2, "test", "maintenance marker", MigrationChecksum("maintenance marker"), 2, "maintenance", "restore-required")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{online, maintenance})
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +211,7 @@ func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testi
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	d := MigrationDefinition{ID: 1, Scope: "test", Name: "marker", Release: "test", Checksum: MigrationChecksum("one"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(*gorm.DB) error { return nil }}
+	d := testMigrationDefinition(1, "test", "marker", MigrationChecksum("one"), 1, "online", "package-only")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +241,118 @@ func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testi
 	}
 	if status.Compatible || status.State != "incompatible" {
 		t.Fatalf("future migration must fail closed: %+v", status)
+	}
+}
+
+func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
+	d := testMigrationDefinition(1, "usage", "strict marker", MigrationChecksum("strict"), 1, "online", "package-only")
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{d}); err != nil {
+		t.Fatalf("strict manifest rejected: %v", err)
+	}
+	tampered := d
+	tampered.HandlerKey = "usage.other.v1"
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("handler-key tampering must fail closed")
+	}
+	tampered = d
+	tampered.Name = "changed semantics"
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("canonical metadata tampering must fail closed")
+	}
+	tampered = d
+	tampered.Apply = verifyTestMigrationMarker
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("apply handler pointer swap must fail closed")
+	}
+	tampered = d
+	tampered.Verify = applyTestMigrationMarker
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("verify handler pointer swap must fail closed")
+	}
+	tampered = d
+	tampered.ManifestDigest = ""
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("missing manifest digest must fail closed")
+	}
+}
+
+func TestStrictManifestRejectsUnknownForwardAndDuplicateDependencies(t *testing.T) {
+	// IDs need not be consecutive. The absent lower ID proves validation uses
+	// the complete declared ID set rather than only numeric ordering.
+	first := testMigrationDefinition(2, "usage", "first", MigrationChecksum("first"), 1, "online", "package-only")
+	second := testMigrationDefinition(3, "usage", "second", MigrationChecksum("second"), 2, "online", "package-only")
+	for name, dependencies := range map[string][]int{
+		"unknown":          {99},
+		"unknown_prior_id": {1},
+		"forward":          {3},
+		"duplicate":        {2, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := second
+			candidate.Dependencies = dependencies
+			candidate = FinalizeMigrationDefinition(candidate)
+			if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{first, candidate}); err == nil {
+				t.Fatalf("manifest accepted %s dependency contract", name)
+			}
+		})
+	}
+}
+
+func TestMigrationRunnerRequiresAppliedDependencies(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "dependencies.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	first := testMigrationDefinition(1, "test", "first", MigrationChecksum("first"), 1, "maintenance", "restore-required")
+	second := testMigrationDefinition(2, "test", "second", MigrationChecksum("second"), 2, "online", "package-only")
+	second.Dependencies = []int{first.ID}
+	second = FinalizeMigrationDefinition(second)
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyMaintenancePending("maintenance"); err == nil {
+		t.Fatal("maintenance runner must not skip its pending online dependency chain")
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 1 || len(status.Pending) != 1 || status.Pending[0].ID != second.ID {
+		t.Fatalf("maintenance run must leave only the dependency-satisfied online migration pending: %+v", status)
+	}
+	if err := r.ApplyPending("online"); err != nil {
+		t.Fatalf("online runner must apply only after its dependency: %v", err)
+	}
+}
+
+func TestMigrationFrameworkBootstrapsNormalizedScalarContract(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "contract.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ensureLedger(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"schema_migration_ledger", "schema_migration_attempts", "schema_data_jobs", "schema_data_job_checkpoints"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("missing normalized framework table %s", table)
+		}
+	}
+	if !db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		t.Fatal("ledger must bind manifest digest")
+	}
+	if err := db.Exec("INSERT INTO schema_migration_attempts (scope, migration_id, attempt, action, state, started_at) VALUES ('missing', 1, 1, 'apply', 'failed', 'now')").Error; err == nil {
+		t.Fatal("migration attempts must be bound to an immutable ledger row")
+	}
+	if err := db.Exec("INSERT INTO schema_data_jobs (job_id, scope, migration_id, data_version, state, execution_mode, validation_mode, started_at) VALUES ('missing', 'missing', 1, 1, 'pending', 'batch', 'verify', 'now')").Error; err == nil {
+		t.Fatal("data jobs must be bound to an immutable ledger row")
 	}
 }
 
