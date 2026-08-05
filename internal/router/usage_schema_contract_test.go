@@ -3,6 +3,7 @@ package router
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,6 +18,63 @@ type usagePostgresDefaultContractFixture struct {
 
 func (usagePostgresDefaultContractFixture) TableName() string {
 	return "usage_postgres_default_contract_fixture"
+}
+
+// usagePostgresCastMetadataDialector restores the raw PostgreSQL catalog
+// spelling for just the fixture default. GORM's postgres migrator strips text
+// casts before exposing ColumnTypes metadata, while the router must accept the
+// cast-bearing catalog representation during strict verification.
+type usagePostgresCastMetadataDialector struct {
+	gorm.Dialector
+	defaults map[string]string
+}
+
+func (d usagePostgresCastMetadataDialector) Migrator(db *gorm.DB) gorm.Migrator {
+	return usagePostgresCastMetadataMigrator{
+		Migrator: d.Dialector.Migrator(db),
+		defaults: d.defaults,
+	}
+}
+
+type usagePostgresCastMetadataMigrator struct {
+	gorm.Migrator
+	defaults map[string]string
+}
+
+func (m usagePostgresCastMetadataMigrator) ColumnTypes(value any) ([]gorm.ColumnType, error) {
+	columns, err := m.Migrator.ColumnTypes(value)
+	if err != nil {
+		return nil, err
+	}
+	for i, column := range columns {
+		if value, ok := m.defaults[column.Name()]; ok {
+			columns[i] = usageCastDefaultColumnType{underlying: column, value: value}
+		}
+	}
+	return columns, nil
+}
+
+type usageCastDefaultColumnType struct {
+	underlying gorm.ColumnType
+	value      string
+}
+
+func (c usageCastDefaultColumnType) Name() string                { return c.underlying.Name() }
+func (c usageCastDefaultColumnType) DatabaseTypeName() string    { return c.underlying.DatabaseTypeName() }
+func (c usageCastDefaultColumnType) ColumnType() (string, bool)  { return c.underlying.ColumnType() }
+func (c usageCastDefaultColumnType) PrimaryKey() (bool, bool)    { return c.underlying.PrimaryKey() }
+func (c usageCastDefaultColumnType) AutoIncrement() (bool, bool) { return c.underlying.AutoIncrement() }
+func (c usageCastDefaultColumnType) Length() (int64, bool)       { return c.underlying.Length() }
+func (c usageCastDefaultColumnType) DecimalSize() (int64, int64, bool) {
+	return c.underlying.DecimalSize()
+}
+func (c usageCastDefaultColumnType) Nullable() (bool, bool)  { return c.underlying.Nullable() }
+func (c usageCastDefaultColumnType) Unique() (bool, bool)    { return c.underlying.Unique() }
+func (c usageCastDefaultColumnType) ScanType() reflect.Type  { return c.underlying.ScanType() }
+func (c usageCastDefaultColumnType) Comment() (string, bool) { return c.underlying.Comment() }
+
+func (c usageCastDefaultColumnType) DefaultValue() (string, bool) {
+	return c.value, true
 }
 
 func openUsageSchemaContractDB(t *testing.T) *gorm.DB {
@@ -175,6 +233,7 @@ func TestUsageDefaultCompatibilityNormalizesOnlyPostgresTextCasts(t *testing.T) 
 		want     bool
 	}{
 		{name: "postgres text cast", driver: "postgres", expected: "''", actual: "''::text", want: true},
+		{name: "postgres GORM empty expected text cast", driver: "postgres", expected: "", actual: "''::text", want: true},
 		{name: "postgres parenthesized text cast", driver: "postgres", expected: "''", actual: "(( '' :: pg_catalog.text ))", want: true},
 		{name: "postgres character varying cast", driver: "postgresql", expected: "''", actual: "''::character varying", want: true},
 		{name: "postgres escaped literal cast", driver: "postgres", expected: "'O''Brien'", actual: "E'O''Brien'::text", want: true},
@@ -205,8 +264,8 @@ func TestUsageSchemaContractPostgresTextDefaults(t *testing.T) {
 	if dsn == "" {
 		t.Skip("SMART_ROUTER_POSTGRES_TEST_DSN is required for disposable PostgreSQL default coverage")
 	}
-	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-704" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_704") {
-		t.Fatal("PostgreSQL default coverage requires the explicit issue-704 disposable database guard")
+	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-720" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_720") {
+		t.Fatal("PostgreSQL default coverage requires the explicit issue-720 disposable database guard")
 	}
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -215,22 +274,35 @@ func TestUsageSchemaContractPostgresTextDefaults(t *testing.T) {
 	if err := db.AutoMigrate(&usagePostgresDefaultContractFixture{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyUsageRelationalModel(db, &usagePostgresDefaultContractFixture{}); err != nil {
-		t.Fatalf("PostgreSQL text default contract rejected: %v", err)
+	var actual string
+	if err := db.Raw(`SELECT column_default FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'value'`, (usagePostgresDefaultContractFixture{}).TableName()).Scan(&actual).Error; err != nil {
+		t.Fatal(err)
 	}
-	columns, err := db.Migrator().ColumnTypes(&usagePostgresDefaultContractFixture{})
+	if !strings.Contains(actual, "::") {
+		t.Fatalf("PostgreSQL text default catalog metadata = %q, want cast-bearing literal", actual)
+	}
+	if !usageDefaultCompatible("postgres", "''", actual) {
+		t.Fatalf("PostgreSQL text default catalog metadata = %q, want compatible cast-bearing literal", actual)
+	}
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(&usagePostgresDefaultContractFixture{}); err != nil {
+		t.Fatal(err)
+	}
+	if !usageDefaultCompatible("postgres", stmt.Schema.LookUpField("Value").DefaultValue, actual) {
+		t.Fatalf("PostgreSQL text default expected %q and actual %q are incompatible", stmt.Schema.LookUpField("Value").DefaultValue, actual)
+	}
+	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, column := range columns {
-		if column.Name() != "value" {
-			continue
-		}
-		actual, known := column.DefaultValue()
-		if !known || !strings.Contains(actual, "::") || !usageDefaultCompatible("postgres", "''", actual) {
-			t.Fatalf("PostgreSQL text default metadata = %q (known=%v), want compatible cast-bearing literal", actual, known)
-		}
-		return
+	verificationDB, err := gorm.Open(usagePostgresCastMetadataDialector{
+		Dialector: postgres.New(postgres.Config{Conn: sqlDB}),
+		defaults:  map[string]string{"value": actual},
+	}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("PostgreSQL fixture value column missing from metadata")
+	if err := verifyUsageRelationalModel(verificationDB, &usagePostgresDefaultContractFixture{}); err != nil {
+		t.Fatalf("PostgreSQL text default contract rejected: %v", err)
+	}
 }
