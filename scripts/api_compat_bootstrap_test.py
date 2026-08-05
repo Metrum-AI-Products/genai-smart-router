@@ -147,6 +147,7 @@ def assert_mirror_values_are_go_scoped_shell_data() -> None:
         marker = root / "must-not-exist"
         captured = root / "captured-mirrors"
         uv_captured = root / "captured-uv-mirrors"
+        offline_captured = root / "captured-offline-mirrors"
 
         write_executable(
             tool_dir / "uv",
@@ -202,6 +203,52 @@ def assert_mirror_values_are_go_scoped_shell_data() -> None:
                 raise AssertionError(f"{description} let Python provisioning inherit bootstrap mirror configuration")
             if captured.read_text(encoding="utf-8").splitlines() != [expected_proxy, expected_sumdb]:
                 raise AssertionError(f"{description} did not pass bootstrap mirror configuration to Go verbatim")
+
+        # The offline recursive Make boundary must discard command-line
+        # overrides as well as standalone environment variables. A fake
+        # successful bootstrap reaches the offline `uv run` phase and records
+        # the complete transport surface that previously reintroduced them.
+        write_executable(
+            tool_dir / "uv",
+            'case "$1" in\n'
+            '  sync) exit 0 ;;\n'
+            '  run) printf "%s\\n%s\\n%s\\n%s\\n" "${API_COMPAT_BOOTSTRAP_GO_PROXY-}" "${API_COMPAT_BOOTSTRAP_GO_SUMDB-}" "${MAKEFLAGS-}" "${MAKEOVERRIDES-}" >"$API_COMPAT_CAPTURED_OFFLINE_MIRRORS"; exit 0 ;;\n'
+            '  *) exit 70 ;;\n'
+            'esac',
+        )
+        write_executable(tool_dir / "go", "exit 0")
+        offline_captured.unlink(missing_ok=True)
+        env = isolated_environment(root)
+        env.update(
+            {
+                "PATH": f"{tool_dir}:{env['PATH']}",
+                "API_COMPAT_CAPTURED_OFFLINE_MIRRORS": str(offline_captured),
+            }
+        )
+        run_make(
+            "api-compat-mock",
+            env,
+            variables={
+                "API_COMPAT_BOOTSTRAP_GO_PROXY": command_line_proxy,
+                "API_COMPAT_BOOTSTRAP_GO_SUMDB": command_line_sumdb,
+            },
+        )
+        offline_transport = offline_captured.read_text(encoding="utf-8").splitlines()
+        if offline_transport[:2] != ["", ""]:
+            raise AssertionError("offline recursion inherited standalone bootstrap mirrors")
+        # GNU Make is entitled to create its own non-sensitive MAKEFLAGS (for
+        # example, `--no-print-directory`). It must not recreate either
+        # bootstrap assignment in that transport.
+        if any(
+            value in "\n".join(offline_transport[2:])
+            for value in (
+                "API_COMPAT_BOOTSTRAP_GO_PROXY",
+                "API_COMPAT_BOOTSTRAP_GO_SUMDB",
+                command_line_proxy,
+                command_line_sumdb,
+            )
+        ):
+            raise AssertionError("offline recursion inherited bootstrap mirrors through Make override transport")
         if marker.exists():
             raise AssertionError("command-line bootstrap mirror configuration executed Make or shell syntax")
 

@@ -322,7 +322,9 @@ api-compat-mock:
 	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
 	GOMODCACHE="$$api_compat_root/go-mod-cache" \
 	GOCACHE="$$api_compat_root/go-build-cache" \
-	$(MAKE) api-compat-mock-offline
+	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
+		-u MAKEFLAGS -u MAKEOVERRIDES \
+		"$${MAKE:-make}" --no-print-directory api-compat-mock-offline
 
 # Deliberately not a normal test/build/package target. Live execution awaits a
 # human-approved non-production matrix and least-privilege caller identity.
