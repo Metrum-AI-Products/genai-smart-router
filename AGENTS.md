@@ -71,6 +71,57 @@ These instructions apply to the whole repository.
 - Caller-token or model-group access behavior changes must keep the public Available Models And Access docs current. `/v1/models` is the caller-facing source of truth for allowed router model groups; examples that require a model value should link users there instead of assuming they already know an allowed group name.
 - Harbor benchmark traffic in production should use the reusable production caller `harbor-reusable-prod`, whose raw token is stored only on the production host at `/opt/smart-llmrouter/compose/ROUTER_TOKEN_HARBOR.txt`. This caller is intentionally allowed to all deployed model groups so Harbor can compare groups without creating temporary per-run API keys. Do not generate one caller token per `{agent, model_group}` for routine Harbor runs; use the run matrix, client, model group, timestamps, and usage-report filters to separate results. Temporary Harbor keys are acceptable only for isolated investigations and must be removed from production config and quota state after the run.
 
+## Local Work-Item Tracking And Dashboard
+
+- Repository work is also tracked locally in the checked-in `work-items.ndjson` baseline and `work-item-events.ndjson` append-only event journal. These files are shared repository state, not ignored personal notes: commit relevant changes to them with the implementation, documentation, or operational work they describe.
+- `work-items.ndjson` is the durable baseline; `work-item-events.ndjson` records task creation and updates. The reconciled current state is derived from both files. Do not hand-edit the event journal, rewrite old events, treat DuckDB/Mosaic as a writable store, or leave the only copy of a task update in an agent session, dashboard, generated projection, or ignored local file.
+- Use `scripts/work_items.py` for task writes. Its exclusive lock, optimistic status check, revision validation, global case-insensitive task-ID uniqueness, dependency validation, and `fsync` protect concurrent agents from silently overwriting one another:
+
+  ```bash
+  # Validate and inspect reconciled checked-in state.
+  rtk python3 scripts/work_items.py validate
+  rtk python3 scripts/work_items.py list
+  rtk python3 scripts/work_items.py list --status in_progress --json
+
+  # Add a tracked task. IDs must be globally unique and start with task.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> add task.<name> \
+    --title "<title>" \
+    --description "<scope and intended result>" \
+    --stream <stream> \
+    --phase <number> \
+    --priority <critical|high|normal|low>
+
+  # Append a revisioned update; use --expect-status to reject stale writes.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
+    --expect-status <current-status> \
+    --status <pending|ready|in_progress|blocked|done|cancelled>
+  ```
+
+- After a task write, rerun `rtk python3 scripts/work_items.py validate`, review both tracked NDJSON files with `rtk git status --short -- work-items.ndjson work-item-events.ndjson`, and include their changes in the same commit as the work. A task is not durably handed off until the relevant NDJSON update is checked into the repository.
+- `work-items.sql` is the checked-in, read-only DuckDB reconciliation/query layer. Generated DuckDB databases and materialized projections are disposable and must not replace the two tracked NDJSON sources.
+- The live Mosaic dashboard under `work-dashboard/` is read-only. It reconciles both NDJSON files in the browser and refreshes within about one second after either tracked source changes. Configure `WORK_ITEMS_DASHBOARD_PORT` in ignored `env.json`, then run:
+
+  ```bash
+  cd work-dashboard
+  rtk npm install
+  rtk npm run dev
+  ```
+
+  For a built preview, run `rtk npm run build` followed by `rtk npm run preview`. Both commands bind to `0.0.0.0` on the configured port; restrict access with localhost binding, a firewall, VPN, or an authenticated reverse proxy. The dashboard has no authentication and may display task titles, assignments, references, and acceptance details.
+- WeasyPrint does not execute the JavaScript dashboard. Generate the checked-in helper's self-contained, reconciled HTML snapshot first, then render that HTML to an offline PDF:
+
+  ```bash
+  mkdir -p tmp
+  rtk python3 scripts/work_dashboard_snapshot.py \
+    --output tmp/work-dashboard.html \
+    --title "GenAI Smart Router Work Dashboard"
+  rtk uvx --from weasyprint weasyprint \
+    tmp/work-dashboard.html \
+    tmp/work-dashboard.pdf
+  ```
+
+  The static snapshot includes status summaries, the current task register, revisions, descriptions, actions, acceptance criteria, evidence, dependencies, and references. It requires no live dashboard server after generation. `tmp/` is ignored; do not commit generated HTML/PDF artifacts unless a release or audit requirement explicitly calls for them. Regenerate the snapshot after every task-state change rather than treating an older PDF as current state.
+
 ## Development Workflow
 
 1. Inspect current state:
