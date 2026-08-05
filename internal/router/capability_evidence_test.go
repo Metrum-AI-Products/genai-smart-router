@@ -348,16 +348,16 @@ func TestVerifyCapabilityClaimsUsesResolvedTargetMetadata(t *testing.T) {
 	}
 }
 
-func TestVerifyCapabilityClaimsScopesDerivationToClaimModelSuffix(t *testing.T) {
+func TestVerifyCapabilityClaimsScopesDerivationToFullTargetIdentity(t *testing.T) {
 	provider := ProviderConfig{BaseURL: "https://provider.example/v1", Dialect: "openai-responses", KeyID: "test"}
-	valid := Target{Provider: "p", Model: "valid:nitro", Dialect: "openai-responses", Weight: 1}
+	valid := Target{Provider: "p", Model: "synthetic:nitro", Dialect: "openai-responses", Weight: 1}
 	unrepresentable := Target{
 		Provider:        "p",
-		Model:           "unrepresentable:beta",
-		Dialect:         "openai-responses",
+		Model:           "synthetic:nitro",
+		Dialect:         "openai-chat",
 		ToolOnly:        true,
 		InputModalities: []string{"text", "image"},
-		ToolSupport:     ToolSupport{OpenAIResponses: []string{"function"}},
+		ToolSupport:     ToolSupport{OpenAIChat: []string{"tools"}},
 		Weight:          1,
 	}
 	cfg := &Config{
@@ -370,9 +370,23 @@ func TestVerifyCapabilityClaimsScopesDerivationToClaimModelSuffix(t *testing.T) 
 		t.Fatalf("valid claim rejected by unrelated same-provider target: %v", failures)
 	}
 
-	unrepresentableClaim := claim
-	unrepresentableClaim.Identity.Model = "unrepresentable"
-	unrepresentableClaim.Identity.ModelSuffix = ":beta"
+	unrepresentableClaim := evidenceForSurface(capabilitySurface{
+		target:          unrepresentable,
+		accountIdentity: provider.KeyID,
+		apiSkin:         "openai-chat",
+		model:           "synthetic",
+		modelSuffix:     ":nitro",
+		inbound:         "openai-chat",
+		bridge:          "none",
+	}, "tools-auto")
+	// Derive the endpoint values without calling capabilitySurfaces: this target
+	// is intentionally unrepresentable and therefore cannot have a surface.
+	path, fingerprint, err := capabilityEndpointIdentity(provider, unrepresentable, "openai-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrepresentableClaim.Identity.EndpointPath = path
+	unrepresentableClaim.Identity.EndpointFingerprint = fingerprint
 	if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{unrepresentableClaim}, []CapabilityEvidenceIdentity{unrepresentableClaim.Identity}); len(failures) == 0 {
 		t.Fatal("claim for unrepresentable target did not fail closed")
 	}
@@ -400,7 +414,13 @@ func TestVerifyCapabilityClaimsScopesDerivationToClaimModelSuffix(t *testing.T) 
 		t.Run(mutation.name, func(t *testing.T) {
 			mutated := claim
 			mutation.change(&mutated.Identity)
-			if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{mutated}, []CapabilityEvidenceIdentity{claim.Identity}); len(failures) == 0 {
+			expected := mutated.Identity
+			// A profile is evidence approval metadata rather than a resolved
+			// target field, so the original approved profile must remain bound.
+			if mutation.name == "profile" {
+				expected = claim.Identity
+			}
+			if failures := cfg.VerifyCapabilityClaims("group", []CapabilityEvidence{mutated}, []CapabilityEvidenceIdentity{expected}); len(failures) == 0 {
 				t.Fatal("cross-identity claim substitution bypassed verification")
 			}
 		})
