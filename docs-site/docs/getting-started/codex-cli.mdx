@@ -36,7 +36,7 @@ curl -fsS "$METRUM_ROUTER_URL/v1/codex/models.json" \
 `}
 </RouterCodeBlock>
 
-`/v1/models` remains the caller-facing source of allowed groups. `/v1/codex/models.json` is the Codex-compatible projection of that same allow list. A `401` or `403` means the caller token cannot fetch the catalog; a missing group means that token cannot request it.
+`/v1/models` remains the caller-facing source of allowed groups. `/v1/codex/models.json` is its Codex-compatible Responses projection: it includes only groups with a normal text target eligible for Responses, natively or through a validated Responses-to-Chat bridge. A `401` or `403` means the caller token cannot fetch the catalog; a missing group can be disallowed or unavailable to Codex's Responses surface.
 
 If Codex should show reasoning choices for a group, `/v1/models` is the caller-facing source of truth. The group entry and the Codex catalog should include `supported_reasoning_levels` and `default_reasoning_level` for the same router token that Codex uses. When active reasoning is not advertised, the catalog omits both reasoning-default fields (`default_reasoning_level` and `default_reasoning_summary`), even if source config or provider catalogs mention reasoning.
 
