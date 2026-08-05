@@ -216,6 +216,22 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 	}
 	defer r.releaseLock(runner)
 	id := dataJobID(r.scope, d.Key)
+	// An ordinal identifies one durable accounting event.  Check this before
+	// cursor restoration, throttling, or handler execution so an operator can
+	// safely retry after an uncertain result without overwriting the scalar
+	// checkpoint or adding its counters a second time.
+	var existing migrationDataJobCheckpointRecord
+	err = r.db.Where("job_id = ? AND checkpoint_ordinal = ?", id, checkpoint.Ordinal).First(&existing).Error
+	if err == nil {
+		var existingJob migrationDataJobRecord
+		if err := r.db.Where("job_id = ?", id).First(&existingJob).Error; err != nil {
+			return MigrationDataJobStatus{}, err
+		}
+		return r.dataJobStatus(existingJob)
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return MigrationDataJobStatus{}, err
+	}
 	if checkpoint.Ordinal > 0 && checkpoint.Cursor == "" && checkpoint.Shard == "" && checkpoint.RangeStart == 0 && checkpoint.RangeEnd == 0 {
 		var previous migrationDataJobCheckpointRecord
 		if err := r.db.Where("job_id = ? AND checkpoint_ordinal = ?", id, checkpoint.Ordinal-1).First(&previous).Error; err != nil {
@@ -264,7 +280,10 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 		cp.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	if err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&cp).Error; err != nil {
+		// Insert only: the composite primary key is the PostgreSQL- and
+		// SQLite-safe final guard if a stale or failed lease permits a racing
+		// contender. Aggregate counters change only with a new checkpoint row.
+		if err := tx.Create(&cp).Error; err != nil {
 			return err
 		}
 		updates := map[string]any{"state": migrationDataJobRunning, "rows_scanned": rec.RowsScanned + result.RowsScanned, "rows_updated": rec.RowsUpdated + result.RowsUpdated, "rows_skipped": rec.RowsSkipped + result.RowsSkipped, "rows_failed": rec.RowsFailed + result.RowsFailed}
@@ -277,6 +296,15 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 		}
 		return tx.Model(&migrationDataJobRecord{}).Where("job_id = ?", id).Updates(updates).Error
 	}); err != nil {
+		// A normal duplicate returns above while the scope lease is held. A
+		// database-level uniqueness race happens only after the handler has run,
+		// so it must fail safely rather than claim execution idempotency for an
+		// arbitrary handler with side effects. The next resume observes the
+		// durable checkpoint and returns its recorded result.
+		var durable migrationDataJobCheckpointRecord
+		if lookupErr := r.db.Where("job_id = ? AND checkpoint_ordinal = ?", id, checkpoint.Ordinal).First(&durable).Error; lookupErr == nil {
+			return MigrationDataJobStatus{}, errors.New("migration data job checkpoint raced with a durable checkpoint; retry resume")
+		}
 		return r.failDataJob(rec, "checkpoint-persist-failed")
 	}
 	if err := r.db.Where("job_id = ?", id).First(&rec).Error; err != nil {

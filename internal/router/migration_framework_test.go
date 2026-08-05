@@ -128,6 +128,27 @@ func TestMigrationDataJobResumesAtCheckpointsAndOnlyThenAdvancesDataVersion(t *t
 	if status.DataVersion != 0 || status.State != "in-progress" || status.Jobs[0].RowsUpdated != 8 {
 		t.Fatalf("partial job status: %+v", status)
 	}
+	var firstCheckpoint migrationDataJobCheckpointRecord
+	if err := db.Where("job_id = ? AND checkpoint_ordinal = ?", dataJobID("test", job.Key), 0).First(&firstCheckpoint).Error; err != nil {
+		t.Fatalf("read first checkpoint: %v", err)
+	}
+	// This models an operator retrying after an uncertain CLI result. The
+	// ordinal is the idempotency key: it must not run the handler, overwrite the
+	// persisted cursor, or add aggregate counters again.
+	duplicate, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 0, Shard: "conflicting", RangeStart: 99, RangeEnd: 100})
+	if err != nil {
+		t.Fatalf("duplicate checkpoint must return its durable result: %v", err)
+	}
+	if calls != 1 || duplicate.RowsScanned != 10 || duplicate.RowsUpdated != 8 || duplicate.RowsSkipped != 2 || duplicate.Checkpoints != 1 {
+		t.Fatalf("duplicate checkpoint changed execution or aggregate accounting: calls=%d status=%+v", calls, duplicate)
+	}
+	var durableCheckpoint migrationDataJobCheckpointRecord
+	if err := db.Where("job_id = ? AND checkpoint_ordinal = ?", dataJobID("test", job.Key), 0).First(&durableCheckpoint).Error; err != nil {
+		t.Fatalf("read durable checkpoint: %v", err)
+	}
+	if durableCheckpoint != firstCheckpoint {
+		t.Fatalf("duplicate checkpoint overwrote durable scalar progress: before=%+v after=%+v", firstCheckpoint, durableCheckpoint)
+	}
 	result, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +162,49 @@ func TestMigrationDataJobResumesAtCheckpointsAndOnlyThenAdvancesDataVersion(t *t
 	}
 	if status.DataVersion != 1 || status.State != "current" || !status.Compatible {
 		t.Fatalf("validated data job must advance data version: %+v", status)
+	}
+}
+
+// TestMigrationDataJobPostgresDuplicateOrdinalIdempotent exercises the
+// composite checkpoint primary key and insert-only accounting against a fresh,
+// explicitly guarded disposable PostgreSQL database.
+func TestMigrationDataJobPostgresDuplicateOrdinalIdempotent(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SMART_ROUTER_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("SMART_ROUTER_POSTGRES_TEST_DSN is required for disposable PostgreSQL checkpoint coverage")
+	}
+	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-740" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_740") {
+		t.Fatal("PostgreSQL checkpoint coverage requires the explicit disposable database guard")
+	}
+	db, err := openUsageDB(UsageDBConfig{Driver: "postgres", DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	migration := testMigrationDefinition(1, "postgres-checkpoint", "data-job schema", MigrationChecksum("postgres data-job schema"), 1, "online", "package-only")
+	migration.DataVersion, migration.DataJobKey = 1, "postgres-checkpoint-v1"
+	migration = FinalizeMigrationDefinition(migration)
+	calls := 0
+	job := DataJobDefinition{Key: "postgres-checkpoint-v1", Scope: "postgres-checkpoint", MigrationID: 1, DataVersion: 1, ExecutionMode: "batch", ValidationMode: "count", RestartSafe: true, HandlerKey: "test.postgres-checkpoint.v1", RunCheckpoint: func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		calls++
+		return DataJobCheckpointResult{Cursor: "durable-cursor", RowsScanned: 3, RowsUpdated: 2, RowsSkipped: 1}, nil
+	}, Validate: func(*gorm.DB) error { return nil }}
+	r, err := NewMigrationRunnerWithDataJobs(db, "postgres-checkpoint", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{migration}, []DataJobDefinition{job})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("postgres-checkpoint-runner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "postgres-checkpoint-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := r.RunDataJob(context.Background(), job.Key, "postgres-checkpoint-runner", DataJobCheckpoint{Ordinal: 0})
+	if err != nil {
+		t.Fatalf("PostgreSQL duplicate checkpoint must return its durable result: %v", err)
+	}
+	if calls != 1 || duplicate.RowsScanned != 3 || duplicate.RowsUpdated != 2 || duplicate.RowsSkipped != 1 || duplicate.Checkpoints != 1 {
+		t.Fatalf("PostgreSQL duplicate checkpoint changed execution or aggregate accounting: calls=%d status=%+v", calls, duplicate)
 	}
 }
 
