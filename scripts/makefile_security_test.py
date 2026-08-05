@@ -185,8 +185,11 @@ def main() -> int:
         "delivery targets must use a separate staging delivery profile default",
     )
 
-    default_dry_run = run_make("-n")
-    require(default_dry_run.returncode == 0, f"bare make dry-run failed:\n{default_dry_run.stderr}")
+    # Keep the exact bare-Make inspection path independent of the bootstrap
+    # toolchain. This would run `uv` before #728 because a recursive Make call
+    # shared its recipe line with Python provisioning.
+    default_dry_run = run_make("-n", environment={"PATH": no_uv_path})
+    require(default_dry_run.returncode == 0, f"bare make dry-run failed without uv:\n{default_dry_run.stderr}")
     require("go test ./..." in default_dry_run.stdout, "bare make must retain the test target")
 
     print("Makefile security self-test passed")

@@ -123,7 +123,7 @@ TAR_ENV := COPYFILE_DISABLE=1
 
 BUILD_LDFLAGS = -X smart-llmrouter/internal/buildinfo.Version=$${VERSION} -X smart-llmrouter/internal/buildinfo.Commit=$${COMMIT} -X smart-llmrouter/internal/buildinfo.BuildDate=$${BUILD_DATE}
 
-.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
+.PHONY: help eks-help eks-preflight eks-render eks-plan eks-apply-staging eks-rollout-status eks-smoke-staging eks-rollback-staging eks-release-evidence eks-promotion-plan eks-supply-chain-validate production-promotion-validate ci-eks-staging-contract test test-reasoning-telemetry-postgres test-usage-schema-postgres-indexes capability-smoke capability-smoke-unit capability-smoke-live api-compat-bootstrap api-compat-bootstrap-go-provision api-compat-mock api-compat-mock-offline api-compat-live outcome-calibrated-demo outcome-calibrated-synthetic-demo secret-check validate-build-metadata validate-release-clean release-validation-matrix release-notes-from-git docs-diag-schema docs-diag-schema-check docs-qa docs-build docs-dev docs-clean admin-build admin-e2e build build-go-only build-all package package-one package-one-no-docs package-all docker-image docker-image-no-docs package-docker package-docker-one package-docker-one-no-docs package-docker-all compose-security-check eks-session-bootstrap eks-session-recovery-status eks-identity-check eks-discovery-validate eks-discover eks-render-ingress-network-policy eks-render-linkerd-policy eks-validate-tenant-network-policies eks-apply-tenant-network-policies e2e-mock e2e-live-c e2e-live-full e2e-compose-live eval-humaneval eval-bigcodebench eval-report eval-ci-smoke eval-ci-full livecodebench-contract-test livecodebench-target-test livecodebench-validate livecodebench-run clean
 
 help: eks-help
 
@@ -281,11 +281,19 @@ api_compat_shell_data = '$(subst ','"'"',$(value $(1)))'
 api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
+	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
 	UV_CACHE_DIR=$${UV_CACHE_DIR:-$$api_compat_root/uv-cache} \
 	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
 	uv sync --locked && \
-	GOMODCACHE=$${GOMODCACHE:-$$api_compat_root/go-mod-cache} \
-	GOCACHE=$${GOCACHE:-$$api_compat_root/go-build-cache} \
+	API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
+	"$${MAKE:-make}" --no-print-directory -C ../.. api-compat-bootstrap-go-provision
+
+# The approved mirror settings are consumed only by Go provisioning. Keep the
+# #694 shell-data quoting at that sole consumer so explicit Make command-line
+# values remain literal configuration data.
+api-compat-bootstrap-go-provision:
+	@GOMODCACHE=$${GOMODCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-mod-cache} \
+	GOCACHE=$${GOCACHE:-$${API_COMPAT_BOOTSTRAP_ROOT}/go-build-cache} \
 	GOPROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
 
 # Deterministic caller-boundary tests: the locally built router and fake

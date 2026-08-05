@@ -293,9 +293,10 @@ The conformance gate is intentionally mock-upstream and deterministic. It proves
 The deterministic bootstrap regression also verifies that approved internal Go
 mirror settings (`API_COMPAT_BOOTSTRAP_GO_PROXY` and
 `API_COMPAT_BOOTSTRAP_GO_SUMDB`) supplied as Make command-line overrides are
-delivered to Go as data, not evaluated by Make or the shell. A malformed setting
-must not run embedded syntax; provisioning may fail, but the separately
-invokable offline conformance target remains strictly offline.
+delivered only to `go mod download` as data, not evaluated by Make or the
+shell. Python provisioning does not receive them. A malformed setting must not
+run embedded syntax; provisioning may fail, but the separately invokable offline
+conformance target remains strictly offline.
 
 For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
 
