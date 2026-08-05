@@ -160,6 +160,54 @@ func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
 	}
 }
 
+func TestStrictManifestRejectsUnknownForwardAndDuplicateDependencies(t *testing.T) {
+	first := testMigrationDefinition(1, "usage", "first", MigrationChecksum("first"), 1, "online", "package-only")
+	second := testMigrationDefinition(2, "usage", "second", MigrationChecksum("second"), 2, "online", "package-only")
+	for name, dependencies := range map[string][]int{
+		"unknown":   {99},
+		"forward":   {2},
+		"duplicate": {1, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := second
+			candidate.Dependencies = dependencies
+			candidate = FinalizeMigrationDefinition(candidate)
+			if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{first, candidate}); err == nil {
+				t.Fatalf("manifest accepted %s dependency contract", name)
+			}
+		})
+	}
+}
+
+func TestMigrationRunnerRequiresAppliedDependencies(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "dependencies.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	first := testMigrationDefinition(1, "test", "first", MigrationChecksum("first"), 1, "maintenance", "restore-required")
+	second := testMigrationDefinition(2, "test", "second", MigrationChecksum("second"), 2, "online", "package-only")
+	second.Dependencies = []int{first.ID}
+	second = FinalizeMigrationDefinition(second)
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyMaintenancePending("maintenance"); err == nil {
+		t.Fatal("maintenance runner must not skip its pending online dependency chain")
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 1 || len(status.Pending) != 1 || status.Pending[0].ID != second.ID {
+		t.Fatalf("maintenance run must leave only the dependency-satisfied online migration pending: %+v", status)
+	}
+	if err := r.ApplyPending("online"); err != nil {
+		t.Fatalf("online runner must apply only after its dependency: %v", err)
+	}
+}
+
 func TestMigrationFrameworkBootstrapsNormalizedScalarContract(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "contract.sqlite")})
 	if err != nil {

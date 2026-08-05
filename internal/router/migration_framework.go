@@ -294,6 +294,23 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 			!migrationHandlerKeyMatches(d.HandlerKey, d.Apply) || !migrationHandlerKeyMatches(d.PostconditionKey, d.Verify) {
 			return nil, errors.New("invalid immutable migration manifest")
 		}
+		// Dependencies are an ordered part of the immutable manifest contract:
+		// a definition can depend only on a definition already declared in this
+		// scope. This prevents a manifest from being valid while describing an
+		// unexecutable cycle, forward reference, or duplicate prerequisite.
+		seenDependencies := make(map[int]struct{}, len(d.Dependencies))
+		for _, dependency := range d.Dependencies {
+			if dependency <= 0 || dependency >= d.ID {
+				return nil, errors.New("invalid immutable migration manifest dependency")
+			}
+			if _, duplicate := seenDependencies[dependency]; duplicate {
+				return nil, errors.New("invalid immutable migration manifest dependency")
+			}
+			seenDependencies[dependency] = struct{}{}
+			if dependency > previous {
+				return nil, errors.New("invalid immutable migration manifest dependency")
+			}
+		}
 		previous = d.ID
 	}
 	return &migrationRunner{db: db, scope: scope, compatibility: compatibility, definitions: defs}, nil
@@ -446,6 +463,12 @@ func (r *migrationRunner) applyPending(runner, maintenanceMode string) error {
 		return err
 	}
 	defer r.releaseLock(runner)
+	applied := make(map[int]bool, len(status.Entries))
+	for _, entry := range status.Entries {
+		if entry.State == "applied" {
+			applied[entry.MigrationID] = true
+		}
+	}
 	for _, d := range status.Pending {
 		if !d.Transactional || d.MaintenanceMode != maintenanceMode {
 			if maintenanceMode == "online" {
@@ -456,9 +479,15 @@ func (r *migrationRunner) applyPending(runner, maintenanceMode string) error {
 		if d.Apply == nil {
 			return fmt.Errorf("migration %d has no apply step", d.ID)
 		}
+		for _, dependency := range d.Dependencies {
+			if !applied[dependency] {
+				return fmt.Errorf("migration %d requires applied dependency %d", d.ID, dependency)
+			}
+		}
 		if err := r.applyOne(d, runner); err != nil {
 			return err
 		}
+		applied[d.ID] = true
 	}
 	return nil
 }

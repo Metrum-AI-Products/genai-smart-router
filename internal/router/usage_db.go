@@ -1790,19 +1790,121 @@ func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
 	return nil
 }
 
+type usageForeignKeyRow struct {
+	ConstraintID     string `gorm:"column:constraint_id"`
+	Sequence         int    `gorm:"column:sequence"`
+	ReferencedTable  string `gorm:"column:referenced_table"`
+	LocalColumn      string `gorm:"column:local_column"`
+	ReferencedColumn string `gorm:"column:referenced_column"`
+	OnUpdate         string `gorm:"column:on_update"`
+	OnDelete         string `gorm:"column:on_delete"`
+}
+
+// verifyUsageForeignKeys compares the checked-in GORM relationship contract
+// with the physical schema. HasConstraint alone is insufficient: it cannot
+// distinguish a constraint that has the wrong columns, target, or referential
+// action. Both queries return one scalar row per FK column and work on the two
+// supported production database families.
 func verifyUsageForeignKeys(db *gorm.DB, parsed *schema.Schema) error {
-	// GORM's relationship metadata is the checked-in FK contract. SQLite and
-	// PostgreSQL expose it through their portable migrator constraint probe.
+	model := reflect.New(parsed.ModelType).Interface()
 	for _, relationship := range parsed.Relationships.Relations {
 		if relationship == nil || relationship.Field == nil {
 			continue
 		}
-		name := db.NamingStrategy.RelationshipFKName(*relationship)
-		if !db.Migrator().HasConstraint(reflect.New(parsed.ModelType).Interface(), name) {
-			return fmt.Errorf("required usage foreign-key constraint %s on %s is missing", name, parsed.Table)
+		contract := relationship.ParseConstraint()
+		if contract == nil || len(contract.ForeignKeys) == 0 || contract.ReferenceSchema == nil {
+			continue
+		}
+		if !db.Migrator().HasConstraint(model, contract.Name) {
+			return fmt.Errorf("required usage foreign-key constraint %s on %s is missing", contract.Name, parsed.Table)
+		}
+		rows, err := inspectUsageForeignKeys(db, contract.Schema.Table)
+		if err != nil {
+			return err
+		}
+		byConstraint := make(map[string][]usageForeignKeyRow)
+		for _, row := range rows {
+			byConstraint[row.ConstraintID] = append(byConstraint[row.ConstraintID], row)
+		}
+		matched := false
+		for constraintID, candidate := range byConstraint {
+			// SQLite's pragma does not expose user-assigned constraint names, so
+			// HasConstraint above proves its named GORM constraint and this loop
+			// proves the physical column/reference/action contract. PostgreSQL
+			// exposes names, which additionally binds the inspected rows to it.
+			if db.Dialector.Name() != "sqlite" && constraintID != contract.Name {
+				continue
+			}
+			sort.Slice(candidate, func(i, j int) bool { return candidate[i].Sequence < candidate[j].Sequence })
+			if len(candidate) != len(contract.ForeignKeys) || candidate[0].ReferencedTable != contract.ReferenceSchema.Table {
+				continue
+			}
+			matches := true
+			for i, row := range candidate {
+				if row.LocalColumn != contract.ForeignKeys[i].DBName || row.ReferencedColumn != contract.References[i].DBName ||
+					!usageForeignKeyActionMatches(contract.OnUpdate, row.OnUpdate) || !usageForeignKeyActionMatches(contract.OnDelete, row.OnDelete) {
+					matches = false
+					break
+				}
+			}
+			if matches {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("usage foreign-key constraint %s on %s does not match contract", contract.Name, contract.Schema.Table)
 		}
 	}
 	return nil
+}
+
+func inspectUsageForeignKeys(db *gorm.DB, table string) ([]usageForeignKeyRow, error) {
+	var rows []usageForeignKeyRow
+	switch db.Dialector.Name() {
+	case "sqlite":
+		// table is a parsed checked-in model table name, never caller input.
+		query := fmt.Sprintf(`SELECT id AS constraint_id, seq AS sequence, "table" AS referenced_table, "from" AS local_column, "to" AS referenced_column, on_update, on_delete FROM pragma_foreign_key_list('%s')`, table)
+		if err := db.Raw(query).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage foreign keys for %s: %w", table, err)
+		}
+	case "postgres", "postgresql":
+		const query = `SELECT con.conname AS constraint_id,
+			local_key.ordinality AS sequence,
+			referenced_table.relname AS referenced_table,
+			local_column.attname AS local_column,
+			referenced_column.attname AS referenced_column,
+			CASE con.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_update,
+			CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete
+		FROM pg_constraint con
+		JOIN pg_class local_table ON local_table.oid = con.conrelid
+		JOIN pg_namespace local_namespace ON local_namespace.oid = local_table.relnamespace
+		JOIN pg_class referenced_table ON referenced_table.oid = con.confrelid
+		JOIN unnest(con.conkey) WITH ORDINALITY AS local_key(attnum, ordinality) ON TRUE
+		JOIN unnest(con.confkey) WITH ORDINALITY AS referenced_key(attnum, ordinality) ON referenced_key.ordinality = local_key.ordinality
+		JOIN pg_attribute local_column ON local_column.attrelid = con.conrelid AND local_column.attnum = local_key.attnum
+		JOIN pg_attribute referenced_column ON referenced_column.attrelid = con.confrelid AND referenced_column.attnum = referenced_key.attnum
+		WHERE con.contype = 'f' AND local_namespace.nspname = current_schema() AND local_table.relname = ?
+		ORDER BY con.conname, local_key.ordinality`
+		if err := db.Raw(query, table).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage foreign keys for %s: %w", table, err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported usage database driver %q", db.Dialector.Name())
+	}
+	return rows, nil
+}
+
+func usageForeignKeyActionMatches(expected, actual string) bool {
+	expected = strings.ToUpper(strings.TrimSpace(expected))
+	actual = strings.ToUpper(strings.TrimSpace(actual))
+	// SQL defaults to NO ACTION when GORM's constraint tag does not request an
+	// explicit action. The comparison is deliberately exact for requested
+	// actions such as CASCADE and RESTRICT.
+	if expected == "" {
+		expected = "NO ACTION"
+	}
+	return expected == actual
 }
 
 var usageRelationalTables = []string{
