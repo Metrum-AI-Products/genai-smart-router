@@ -1099,6 +1099,89 @@ func TestUsageMigrationBaselineBootstrapsEmptyDatabaseExplicitly(t *testing.T) {
 	}
 }
 
+func TestUsageHistoricalValidationRequiresMultipleCheckpointsBeforeDeploymentJobServing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "historical-validation.sqlite")
+	store, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 101; i++ {
+		if err := store.db.Create(&usageRecord{RequestID: fmt.Sprintf("historical-row-%03d", i), TS: "2026-08-05T00:00:00Z"}).Error; err != nil {
+			_ = store.Close()
+			t.Fatalf("create synthetic historical usage row %d: %v", i, err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.ApplyPending("historical-validation-test"); err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "historical-validation-test", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	status, err := runner.Verify()
+	if err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if status.State != "in-progress" || status.DataVersion != 0 || len(status.Jobs) != 1 || status.Jobs[0].State != migrationDataJobRunning || status.Jobs[0].Checkpoints != 1 || status.Jobs[0].RowsScanned != 100 {
+		_ = closeDB()
+		t.Fatalf("101 rows must remain unready after ordinal 0: %+v", status)
+	}
+	// The checked-in job deliberately throttles operational checkpoints. Age the
+	// synthetic durable timestamp so this deterministic test can exercise the
+	// next permitted checkpoint without sleeping or weakening production limits.
+	if err := runner.db.Model(&migrationDataJobCheckpointRecord{}).
+		Where("job_id = ? AND checkpoint_ordinal = ?", dataJobID(usageMigrationScope, "historical-usage-validation-v1"), 0).
+		Update("started_at", "2026-08-05T00:00:00Z").Error; err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if err := closeDB(); err != nil {
+		t.Fatal(err)
+	}
+	if blocked, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyDeploymentJob}); err == nil {
+		_ = blocked.Close()
+		t.Fatal("deployment-job serving must reject a running historical validation job")
+	}
+
+	runner, closeDB, err = UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "historical-validation-test", DataJobCheckpoint{Ordinal: 1}); err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	status, err = runner.Verify()
+	if err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if status.State != "current" || status.DataVersion != 1 || len(status.Jobs) != 1 || status.Jobs[0].State != migrationDataJobValidated || status.Jobs[0].Checkpoints != 2 || status.Jobs[0].RowsScanned != 101 {
+		_ = closeDB()
+		t.Fatalf("ordinal 1 must validate the remaining historical row: %+v", status)
+	}
+	if err := closeDB(); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyDeploymentJob})
+	if err != nil {
+		t.Fatalf("deployment-job serving must accept validated historical usage: %v", err)
+	}
+	if err := ready.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUsageMigrationBaselineKeepsReasoningColumnsForTheirOwnDefinition(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "baseline-version.sqlite")})
 	if err != nil {

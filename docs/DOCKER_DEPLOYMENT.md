@@ -242,7 +242,7 @@ Validate the rendered compose model before starting:
 docker compose config >/dev/null
 ```
 
-Before a fresh serving startup, run the mandatory [Data migration framework](DATA_MIGRATIONS.md) deployment-job gate: `plan`, approved backup, `apply`, `verify`, then `status`. With `server.usage_db.migration_policy: deployment-job`, do not start the router until the final status is compatible. For PostgreSQL production, `auto-safe` is not a substitute for this non-serving job.
+Before a fresh serving startup, run the mandatory [Data migration framework](DATA_MIGRATIONS.md) deployment-job gate: `plan`, approved backup, `apply`, every release-defined data job until `validated`, `verify`, then `status`. With `server.usage_db.migration_policy: deployment-job`, do not start the router until the final status is compatible/current. For PostgreSQL production, `auto-safe` is not a substitute for this non-serving job; checkpoint ordinal `0` is not completion evidence.
 
 Start only after that gate:
 

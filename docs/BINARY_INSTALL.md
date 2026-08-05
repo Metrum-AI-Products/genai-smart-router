@@ -42,19 +42,9 @@ bin/router-token-gen generate \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Before starting a `deployment-job` router, version-check and run the non-serving migration gate: `plan`, approved backup, `apply`, `verify`, then `status`. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure.
+Before starting a `deployment-job` router, version-check the non-serving runner and follow the canonical [Data migration framework](DATA_MIGRATIONS.md): `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure. Do not infer completion from checkpoint ordinal `0`.
 
-```bash
-bin/router-migrate --version
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
-# Take and approve the deployment backup before continuing.
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
-```
-
-Complete every release-defined data job before verification; the current package begins `historical-usage-validation-v1` at checkpoint ordinal `0`. Start the router in the foreground only after compatible final status:
+Start the router in the foreground only after compatible/current final status:
 
 ```bash
 bin/router --config config/config.yaml

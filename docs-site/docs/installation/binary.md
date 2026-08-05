@@ -122,21 +122,7 @@ Do not configure the router to download code or packages at runtime. TypeScript 
 
 ## Run The Migration Gate Before Service Start
 
-For `server.usage_db.migration_policy: deployment-job`, use the packaged non-serving runner before a fresh service start: `plan`, approved backup, `apply`, `verify`, then `status`. `auto-safe` is not a PostgreSQL production procedure. For PostgreSQL, provide the connection through the protected service environment and name it with `--dsn-env`; never put a DSN in a command line, ticket, or log.
-
-```bash
-bin/router-migrate --version
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
-
-# Take and approve the deployment backup before continuing.
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
-  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
-bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
-```
-
-Complete every data job named by the package release contract before verification; the current package's `historical-usage-validation-v1` job starts at checkpoint ordinal `0` and larger future jobs continue one ordinal at a time until `validated`. Do not start the supervised router when any result is incompatible, pending, running, or failed. For SQLite, use exclusive downtime, an SQLite-safe backup, integrity verification, and free-space checks before the gate. The metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report verify safe state after startup; they do not apply or reverse migrations.
+For `server.usage_db.migration_policy: deployment-job`, use the packaged non-serving runner and its canonical `docs/DATA_MIGRATIONS.md` runbook before a fresh service start: `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. `auto-safe` is not a PostgreSQL production procedure. For PostgreSQL, provide the connection through the protected service environment and name it with `--dsn-env`; never put a DSN in a command line, ticket, or log. A successful checkpoint ordinal `0` does not establish service readiness. For SQLite, use exclusive downtime, an SQLite-safe backup, integrity verification, and free-space checks before the gate. The metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report verify safe state after startup; they do not apply or reverse migrations.
 
 ## Validate
 

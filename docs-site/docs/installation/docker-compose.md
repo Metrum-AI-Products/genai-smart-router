@@ -107,27 +107,7 @@ chmod 0400 config/env.json config/license.json
 
 ## Run The Migration Gate, Then Start And Validate
 
-For `server.usage_db.migration_policy: deployment-job`, a fresh router service starts only after the non-serving migration gate completes: `plan`, approved backup, `apply`, `verify`, then `status`. This is required before `docker compose up -d`; `auto-safe` is not a PostgreSQL production procedure. Supply the PostgreSQL connection through the deployment environment or secret mechanism and `--dsn-env`, never a command-line DSN.
-
-```bash
-docker run --rm --entrypoint /app/bin/router-migrate \
-  smart-llmrouter:<version>-linux-<arch> --version
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
-
-# Take and approve the deployment backup before continuing.
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
-  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
-```
-
-Complete every data job named by the package release contract before verification; the current package's `historical-usage-validation-v1` job starts at checkpoint ordinal `0` and larger future jobs continue one ordinal at a time until `validated`. Do not start the service when any result is incompatible, pending, running, or failed. Record the approved backup reference and safe results in the deployment change record. The read-only migration views are available afterward only to a metrics-admin caller or authorized browser administrator.
+For `server.usage_db.migration_policy: deployment-job`, a fresh router service starts only after the packaged `docs/DATA_MIGRATIONS.md` runbook completes the non-serving gate: `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. This is required before `docker compose up -d`; `auto-safe` is not a PostgreSQL production procedure. The canonical procedure preserves the secure Compose `--entrypoint` and PostgreSQL `--dsn-env` forms. A successful checkpoint ordinal `0` does not prove completion; do not start the service when any required job is pending, running, paused, cancelled, failed, incompatible, or unrecognized. Record only the approved backup reference and safe result fields in the deployment change record. The read-only migration views are available afterward only to a metrics-admin caller or authorized browser administrator.
 
 ```bash
 docker compose config >/dev/null
