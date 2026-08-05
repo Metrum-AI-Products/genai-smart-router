@@ -287,23 +287,32 @@ func TestMigrationOperationalPostgresAdvisoryLockAndTimeouts(t *testing.T) {
 	if err := db.Exec("INSERT INTO schema_migration_lock_generations (scope, generation) VALUES (?, 1)", contentionScope).Error; err != nil {
 		t.Fatal(err)
 	}
-	locked := make(chan error, 1)
+	ready := make(chan error, 1)
+	blockerDone := make(chan error, 1)
 	release := make(chan struct{})
-	defer close(release)
+	defer func() {
+		close(release)
+		if err := <-blockerDone; err != nil {
+			t.Errorf("contention blocker cleanup: %v", err)
+		}
+	}()
 	go func() {
-		locked <- db.Connection(func(conn *gorm.DB) error {
+		blockerDone <- db.Connection(func(conn *gorm.DB) error {
 			if err := conn.Exec("BEGIN").Error; err != nil {
+				ready <- err
 				return err
 			}
 			defer conn.Exec("ROLLBACK")
 			if err := conn.Exec("SELECT generation FROM schema_migration_lock_generations WHERE scope = ? FOR UPDATE", contentionScope).Error; err != nil {
+				ready <- err
 				return err
 			}
+			ready <- nil
 			<-release
 			return nil
 		})
 	}()
-	if err := <-locked; err != nil {
+	if err := <-ready; err != nil {
 		t.Fatal(err)
 	}
 	contender, err := NewMigrationRunner(db, contentionScope, MigrationCompatibility{}, nil)
