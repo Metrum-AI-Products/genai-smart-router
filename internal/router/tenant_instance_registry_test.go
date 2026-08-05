@@ -346,6 +346,32 @@ func TestTenantRegistryLegacyReservationIDRetriesExactExistingHoldOnly(t *testin
 	}
 }
 
+func TestTenantRegistryLegacyReservationIDAllowList(t *testing.T) {
+	for _, reservationID := range []string{"reserve-a", "legacy-a", "reserve-2026-07"} {
+		if !validLegacyQuotaReservationID(reservationID) {
+			t.Fatalf("evidence-backed legacy reservation ID was rejected: %q", reservationID)
+		}
+	}
+	for _, reservationID := range []string{
+		"api-examplecredentialvalue",
+		"akiaexamplecredentialvalue",
+		"xoxb-examplecredentialvalue",
+		"glpat-examplecredentialvalue",
+		"github_pat_examplecredentialvalue",
+		"hf_examplecredentialvalue",
+		"sk-proj-examplecredentialvalue",
+		"sk-ant-examplecredentialvalue",
+		"reserve-",
+		"reserve--example",
+		"reserve-Uppercase",
+		"reserve-example/value",
+	} {
+		if validLegacyQuotaReservationID(reservationID) {
+			t.Fatalf("credential-shaped or malformed legacy reservation ID was accepted: %q", reservationID)
+		}
+	}
+}
+
 func TestTenantRegistryUnsafeLegacyReservationRowsRemainRejectedAndRedacted(t *testing.T) {
 	r := openTestTenantRegistry(t)
 	instance := testTenantInstance("tenant-a", "router-a")
@@ -355,6 +381,14 @@ func TestTenantRegistryUnsafeLegacyReservationRowsRemainRejectedAndRedacted(t *t
 	unsafeIDs := []string{
 		"ghp_exampleCredentialValue",
 		"sk-exampleProviderSecret",
+		"api-examplecredentialvalue",
+		"akiaexamplecredentialvalue",
+		"xoxb-examplecredentialvalue",
+		"glpat-examplecredentialvalue",
+		"github_pat_examplecredentialvalue",
+		"hf_examplecredentialvalue",
+		"sk-proj-examplecredentialvalue",
+		"sk-ant-examplecredentialvalue",
 		"https://example.test/reservation",
 		"/private/reservations/example",
 		strings.Repeat("a", 4096),

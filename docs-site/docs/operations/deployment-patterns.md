@@ -83,8 +83,11 @@ The fake-adapter `quota-reserve` command accepts only a bounded opaque
 credential-like, URL, path, uppercase, malformed, and unbounded values before
 calling the quota adapter or writing a quota-admission record. An exact retry
 of a bounded opaque legacy row already in the local registry remains
-idempotent, but a legacy identifier cannot create a new hold and a different
-identifier cannot bypass an active hold.
+idempotent only for the historically evidenced `reserve-<lowercase-opaque-suffix>`
+and `legacy-<lowercase-opaque-suffix>` namespaces. This strict allow-list
+rejects provider- and deployment-credential-shaped legacy rows without
+returning their identifiers. A legacy identifier cannot create a new hold and
+a different identifier cannot bypass an active hold.
 
 Rollout and rollback flow:
 
