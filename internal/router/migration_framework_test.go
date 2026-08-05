@@ -337,6 +337,116 @@ func TestMigrationDataJobPostgresDuplicateOrdinalIdempotent(t *testing.T) {
 	}
 }
 
+// TestMigrationDataJobPostgresOwnershipStaysOnAdvisorySession proves that a
+// Stage 3 checkpoint's handler and durable state transitions execute on the
+// physical PostgreSQL session that owns migration advisory lock.
+func TestMigrationDataJobPostgresOwnershipStaysOnAdvisorySession(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SMART_ROUTER_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("SMART_ROUTER_POSTGRES_TEST_DSN is required for disposable PostgreSQL session ownership coverage")
+	}
+	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-746" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_746") {
+		t.Fatal("PostgreSQL session ownership coverage requires the explicit disposable database guard")
+	}
+	db, err := openUsageDB(UsageDBConfig{Driver: "postgres", DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	observer, err := openUsageDB(UsageDBConfig{Driver: "postgres", DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := observer.DB(); _ = sqlDB.Close() }()
+
+	newRunner := func(scope, key string, checkpoint func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error)) *migrationRunner {
+		migration := testMigrationDefinition(1, scope, "data-job schema", MigrationChecksum(scope), 1, "online", "package-only")
+		migration.DataVersion, migration.DataJobKey = 1, key
+		migration = FinalizeMigrationDefinition(migration)
+		job := DataJobDefinition{Key: key, Scope: scope, MigrationID: 1, DataVersion: 1, ExecutionMode: "batch", ValidationMode: "count", RestartSafe: true, HandlerKey: "test.postgres-advisory-session.v1", RunCheckpoint: checkpoint, Validate: func(*gorm.DB) error { return nil }}
+		runner, err := NewMigrationRunnerWithDataJobs(db, scope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{migration}, []DataJobDefinition{job})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.ApplyPending("postgres-session-runner"); err != nil {
+			t.Fatal(err)
+		}
+		return runner
+	}
+	bootstrap, err := NewMigrationRunner(db, "postgres-data-job-session-bootstrap", MigrationCompatibility{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.ensureLedger(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE OR REPLACE FUNCTION test_require_migration_advisory_lock() RETURNS trigger AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted) THEN
+    RAISE EXCEPTION 'checkpoint mutation lacks advisory ownership';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TRIGGER test_data_job_advisory_lock BEFORE INSERT OR UPDATE ON schema_data_jobs FOR EACH ROW EXECUTE FUNCTION test_require_migration_advisory_lock()`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TRIGGER test_checkpoint_advisory_lock BEFORE INSERT OR UPDATE ON schema_data_job_checkpoints FOR EACH ROW EXECUTE FUNCTION test_require_migration_advisory_lock()`).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertReleased := func(scope string) {
+		var acquired bool
+		if err := observer.Raw("SELECT pg_try_advisory_lock(hashtext(?))", scope).Scan(&acquired).Error; err != nil || !acquired {
+			t.Fatalf("independent connection could not acquire released advisory lock for %q: acquired=%t err=%v", scope, acquired, err)
+		}
+		if err := observer.Exec("SELECT pg_advisory_unlock(hashtext(?))", scope).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatal(err)
+		}
+	}
+
+	const successScope = "postgres-data-job-session-success"
+	success := newRunner(successScope, "success", func(_ context.Context, tx *gorm.DB, _ DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		var ownsAdvisoryLock bool
+		if err := tx.Raw("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted)").Scan(&ownsAdvisoryLock).Error; err != nil || !ownsAdvisoryLock {
+			return DataJobCheckpointResult{}, errors.New("checkpoint handler lacks advisory ownership")
+		}
+		var contenderAcquired bool
+		if err := observer.Raw("SELECT pg_try_advisory_lock(hashtext(?))", successScope).Scan(&contenderAcquired).Error; err != nil || contenderAcquired {
+			if contenderAcquired {
+				_ = observer.Exec("SELECT pg_advisory_unlock(hashtext(?))", successScope).Error
+			}
+			return DataJobCheckpointResult{}, errors.New("independent connection acquired active advisory lock")
+		}
+		return DataJobCheckpointResult{Cursor: "owned", RowsScanned: 1, Complete: true}, nil
+	})
+	if _, err := success.RunDataJob(context.Background(), "success", "postgres-session-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleased(successScope)
+
+	const cancelledScope = "postgres-data-job-session-cancelled"
+	cancelled := newRunner(cancelledScope, "cancelled", func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		return DataJobCheckpointResult{}, errors.New("cancelled handler must not run")
+	})
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := cancelled.RunDataJob(cancelledCtx, "cancelled", "postgres-session-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleased(cancelledScope)
+
+	const failedScope = "postgres-data-job-session-failed"
+	failed := newRunner(failedScope, "failed", func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		return DataJobCheckpointResult{}, errors.New("expected checkpoint failure")
+	})
+	if _, err := failed.RunDataJob(context.Background(), "failed", "postgres-session-runner", DataJobCheckpoint{Ordinal: 0}); err == nil {
+		t.Fatal("failed checkpoint must return a safe error")
+	}
+	assertReleased(failedScope)
+}
+
 func TestMigrationDataJobThrottleRejectsImmediateNextCheckpoint(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "data-job-throttle.sqlite")})
 	if err != nil {

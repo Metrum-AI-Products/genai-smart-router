@@ -5,7 +5,9 @@ package router
 // migration definitions themselves remain checked into the binary.
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -321,6 +323,7 @@ type migrationRunner struct {
 	definitions     []MigrationDefinition
 	dataJobs        []DataJobDefinition
 	ownerGeneration int64
+	advisorySession *sql.Conn
 }
 
 const (
@@ -705,9 +708,12 @@ func (r *migrationRunner) withMigrationOwnership(runner string, fn func(*migrati
 	if err := r.preflightMigrationOperation(); err != nil {
 		return err
 	}
-	return r.db.Connection(func(conn *gorm.DB) error {
+	return r.db.Connection(func(conn *gorm.DB) (operationErr error) {
 		owned := *r
-		owned.db = conn
+		// Connection passes a clone-zero handle. Re-open a clean GORM session
+		// over its pinned ConnPool so handled record-not-found reads do not
+		// contaminate later checkpoint operations with a sticky DB error.
+		owned.db = conn.Session(&gorm.Session{NewDB: true})
 		if owned.db.Dialector.Name() == "sqlite" {
 			// Prove an exclusive maintenance lock can be acquired without
 			// leaving connection-local locking mode behind for later work.
@@ -721,7 +727,11 @@ func (r *migrationRunner) withMigrationOwnership(runner string, fn func(*migrati
 		if err := owned.acquireLock(runner); err != nil {
 			return err
 		}
-		defer owned.releaseLock(runner)
+		defer func() {
+			if err := owned.releaseLock(runner); err != nil && operationErr == nil {
+				operationErr = err
+			}
+		}()
 		return fn(&owned)
 	})
 }
@@ -760,9 +770,11 @@ func (r *migrationRunner) preflightMigrationOperation() error {
 func (r *migrationRunner) acquireLock(runner string) error {
 	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
 		var acquired bool
-		if err := r.db.Raw("SELECT pg_try_advisory_lock(hashtext(?))", r.scope).Scan(&acquired).Error; err != nil || !acquired {
+		conn, err := r.postgresAdvisorySession()
+		if err != nil || conn.QueryRowContext(context.Background(), "SELECT pg_try_advisory_lock(hashtext($1))", r.scope).Scan(&acquired) != nil || !acquired {
 			return errors.New("migration runner is already active for this scope")
 		}
+		r.advisorySession = conn
 	}
 	now := time.Now().UTC()
 	if err := r.db.Session(&gorm.Session{NewDB: true}).Where("scope = ? AND expires_at < ?", r.scope, now.Format(time.RFC3339Nano)).Delete(&migrationLockRecord{}).Error; err != nil {
@@ -788,15 +800,47 @@ func (r *migrationRunner) acquireLock(runner string) error {
 	return nil
 }
 
-func (r *migrationRunner) releaseLock(runner string) {
-	_ = r.db.Session(&gorm.Session{NewDB: true}).Where("scope = ? AND runner = ? AND generation = ?", r.scope, safeMigrationText(runner), r.ownerGeneration).Delete(&migrationLockRecord{}).Error
-	r.releaseAdvisoryLock()
+func (r *migrationRunner) releaseLock(runner string) error {
+	var releaseErr error
+	if err := r.db.Session(&gorm.Session{NewDB: true}).Where("scope = ? AND runner = ? AND generation = ?", r.scope, safeMigrationText(runner), r.ownerGeneration).Delete(&migrationLockRecord{}).Error; err != nil {
+		releaseErr = errors.New("migration lock release failed")
+	}
+	if err := r.releaseAdvisoryLock(); err != nil && releaseErr == nil {
+		releaseErr = errors.New("migration advisory lock release failed")
+	}
+	return releaseErr
 }
 
-func (r *migrationRunner) releaseAdvisoryLock() {
+func (r *migrationRunner) releaseAdvisoryLock() error {
 	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
-		_ = r.db.Exec("SELECT pg_advisory_unlock(hashtext(?))", r.scope).Error
+		conn, err := r.postgresAdvisorySession()
+		if err != nil {
+			return err
+		}
+		var released bool
+		if err := conn.QueryRowContext(context.Background(), "SELECT pg_advisory_unlock(hashtext($1))", r.scope).Scan(&released); err != nil {
+			return err
+		}
+		if !released {
+			return errors.New("migration advisory lock was not held by release session")
+		}
 	}
+	return nil
+}
+
+// postgresAdvisorySession exposes the physical connection installed by
+// withMigrationOwnership. Session advisory locks cannot safely fall back to a
+// pooled GORM handle: a different backend could release nothing while the
+// original backend retains the lock.
+func (r *migrationRunner) postgresAdvisorySession() (*sql.Conn, error) {
+	if r.advisorySession != nil {
+		return r.advisorySession, nil
+	}
+	conn, ok := r.db.Statement.ConnPool.(*sql.Conn)
+	if !ok || conn == nil {
+		return nil, errors.New("migration advisory ownership requires pinned postgres connection")
+	}
+	return conn, nil
 }
 
 func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {

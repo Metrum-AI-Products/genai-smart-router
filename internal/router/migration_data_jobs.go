@@ -211,17 +211,30 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 	if !applied {
 		return MigrationDataJobStatus{}, errors.New("migration data job requires applied schema migration")
 	}
-	if err := r.acquireLock(runner); err != nil {
+	var result MigrationDataJobStatus
+	if err := r.withMigrationOwnership(runner, func(owned *migrationRunner) error {
+		var runErr error
+		result, runErr = owned.runDataJobCheckpoint(ctx, *d, checkpoint)
+		return runErr
+	}); err != nil {
 		return MigrationDataJobStatus{}, err
 	}
-	defer r.releaseLock(runner)
+	return result, nil
+}
+
+// runDataJobCheckpoint executes all checkpoint reads, handler work, durable
+// mutations, and error/cancellation state changes through an owned runner.
+// Its caller holds migration ownership for the whole operation. In PostgreSQL
+// that means the advisory lock and every operation below use one physical
+// session; in SQLite it preserves the existing single-connection behavior.
+func (r *migrationRunner) runDataJobCheckpoint(ctx context.Context, d DataJobDefinition, checkpoint DataJobCheckpoint) (MigrationDataJobStatus, error) {
 	id := dataJobID(r.scope, d.Key)
 	// An ordinal identifies one durable accounting event.  Check this before
 	// cursor restoration, throttling, or handler execution so an operator can
 	// safely retry after an uncertain result without overwriting the scalar
 	// checkpoint or adding its counters a second time.
 	var existing migrationDataJobCheckpointRecord
-	err = r.db.Where("job_id = ? AND checkpoint_ordinal = ?", id, checkpoint.Ordinal).First(&existing).Error
+	err := r.db.Where("job_id = ? AND checkpoint_ordinal = ?", id, checkpoint.Ordinal).First(&existing).Error
 	if err == nil {
 		var existingJob migrationDataJobRecord
 		if err := r.db.Where("job_id = ?", id).First(&existingJob).Error; err != nil {
