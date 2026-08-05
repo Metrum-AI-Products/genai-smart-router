@@ -14,6 +14,7 @@ import io
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -116,14 +117,36 @@ def protected_runner(path: Path) -> Callable[[Any], str]:
 
 def official_scorer() -> Callable[[Any, str], bool]:
     try:
-        codegen_metrics = importlib.import_module("lcb_runner.evaluation").codegen_metrics
+        evaluation = importlib.import_module("lcb_runner.evaluation")
+        codegen_metrics = evaluation.codegen_metrics
+        extract_instance_results = evaluation.extract_instance_results
     except (ImportError, AttributeError) as exc:
         raise ContractError("official LiveCodeBench scorer is unavailable before inference") from exc
+
+    def extract_single_score(scorer_result: Any) -> bool:
+        # The pinned scorer returns [metrics, results, metadata].  Only the
+        # second item carries per-instance test outcomes.  Keep its full shape
+        # in memory, validate it before indexing, and return one boolean only.
+        if not isinstance(scorer_result, (list, tuple)) or len(scorer_result) != 3:
+            raise ContractError("official LiveCodeBench scorer returned an invalid result shape")
+        results = scorer_result[1]
+        if not isinstance(results, Mapping) or len(results) != 1:
+            raise ContractError("official LiveCodeBench scorer returned an invalid per-instance result shape")
+        instance_results = extract_instance_results(results)
+        if (
+            not isinstance(instance_results, list)
+            or len(instance_results) != 1
+            or not isinstance(instance_results[0], list)
+            or len(instance_results[0]) != 1
+            or type(instance_results[0][0]) is not bool
+        ):
+            raise ContractError("official LiveCodeBench scorer returned an invalid extracted score shape")
+        return instance_results[0][0]
+
     def score(task: Any, response: str) -> bool:
         with contextlib.redirect_stdout(io.StringIO()):
             metrics = codegen_metrics([task.get_evaluation_sample()], [[response]], num_process_evaluate=1, timeout=contract()["request_timeout_seconds"])
-        graded = metrics[1]
-        return bool(next(iter(graded.values()))["graded_list"][0])
+        return extract_single_score(metrics)
     return score
 
 
