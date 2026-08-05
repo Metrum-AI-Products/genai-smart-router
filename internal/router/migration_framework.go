@@ -25,28 +25,27 @@ const usageReasoningTelemetryMigrationID = 2026072301
 
 var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}
 
-// usageMigrationDefinitions starts the immutable usage manifest by adopting a
-// database created by the pre-ledger initializer. It intentionally contains no
-// DDL: a fresh database must continue through the legacy initializer until its
-// full reviewed replacement is shipped. This migration is therefore a guarded
-// one-time ledger adoption, not an implicit upgrade path.
+// usageMigrationDefinitions is the sole owner of usage application schema.
+// The first migration creates fresh-install tables/indexes through its reviewed
+// Go step and also adopts a matching pre-ledger installation. Serving startup
+// never calls this handler; router-migrate owns it.
 var usageMigrationDefinitions = []MigrationDefinition{{
 	ID:               usageLegacyBaselineMigrationID,
 	Scope:            usageMigrationScope,
-	Name:             "adopt legacy usage schema baseline",
-	Release:          "2026.7",
-	Checksum:         "1bbefd1d653dd50633bd050badc0dae65e87775cbb88dd27f350604dd46862b6",
+	Name:             "create or adopt explicit usage schema baseline",
+	Release:          "2026.8",
+	Checksum:         "eb12b411373019789680d17866c4c47fd39e99b825c3df5b2484052f6a48bf04",
 	SchemaVersion:    1,
 	DataVersion:      0,
 	Transactional:    true,
 	MaintenanceMode:  "online",
 	RollbackClass:    "package-only",
-	HandlerKey:       "usage.legacy-baseline.verify.v1@verifyUsageLegacyBaseline",
+	HandlerKey:       "usage.explicit-baseline.apply.v1@applyUsageExplicitBaseline",
 	PostconditionKey: "usage.legacy-baseline.schema.v1@verifyUsageLegacyBaseline",
 	ExecutionMode:    "transactional",
 	LockClass:        "online",
 	TimeoutClass:     "bounded",
-	Apply:            verifyUsageLegacyBaseline,
+	Apply:            applyUsageExplicitBaseline,
 	Verify:           verifyUsageLegacyBaseline,
 }, {
 	ID:              usageReasoningTelemetryMigrationID,

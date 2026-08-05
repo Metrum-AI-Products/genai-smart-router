@@ -32,15 +32,11 @@ type usageStore struct {
 }
 
 const (
-	// usageDBMigrationPolicyLegacyAutoMigrate preserves the historical startup
-	// initializer temporarily. It must not be selected for new production
-	// deployments after an explicit fresh-install manifest is available.
-	usageDBMigrationPolicyLegacyAutoMigrate = "legacy-auto-migrate"
 	// usageDBMigrationPolicyValidate verifies a fully applied immutable ledger
 	// and never applies application-schema DDL during serving startup.
 	usageDBMigrationPolicyValidate = "validate"
 	// usageDBMigrationPolicyAutoSafe applies only checked-in transactional online
-	// migrations. The current baseline cannot initialize an empty database.
+	// migrations for an explicitly reviewed small/single-node deployment.
 	usageDBMigrationPolicyAutoSafe = "auto-safe"
 	// usageDBMigrationPolicyDeploymentJob verifies a current ledger while a
 	// non-serving deployment job owns all migration application.
@@ -49,7 +45,7 @@ const (
 
 func validUsageDBMigrationPolicy(policy string) bool {
 	switch strings.ToLower(strings.TrimSpace(policy)) {
-	case usageDBMigrationPolicyLegacyAutoMigrate, usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob:
+	case usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob:
 		return true
 	default:
 		return false
@@ -1486,10 +1482,8 @@ func OpenUsageStore(cfg UsageDBConfig) (*usageStore, error) {
 // under validate or deployment-job; both fail closed unless the ledger is
 // current and its postconditions verify.
 func (s *usageStore) initializeSchema(policy string) error {
-	policy = strings.ToLower(strings.TrimSpace(defaultString(policy, usageDBMigrationPolicyLegacyAutoMigrate)))
+	policy = strings.ToLower(strings.TrimSpace(defaultString(policy, usageDBMigrationPolicyDeploymentJob)))
 	switch policy {
-	case usageDBMigrationPolicyLegacyAutoMigrate:
-		return s.migrate()
 	case usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob:
 		r, err := newUsageMigrationRunner(s.db)
 		if err != nil {
@@ -1525,7 +1519,11 @@ func (s *usageStore) initializeSchema(policy string) error {
 }
 
 func OpenUsageStorePath(path string) (*usageStore, error) {
-	return OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path})
+	// This compatibility helper is intentionally non-serving: callers that use
+	// a bare filesystem path are local tools/tests, not a configured router.
+	// Production startup flows through newUsageStore and defaults to
+	// deployment-job validation.
+	return OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
 }
 
 func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {
@@ -1612,28 +1610,6 @@ func (s *usageStore) Close() error {
 	return sqlDB.Close()
 }
 
-func (s *usageStore) migrate() error {
-	if s.db.Dialector.Name() == "sqlite" {
-		if err := s.db.Exec("PRAGMA journal_mode=WAL").Error; err != nil {
-			return err
-		}
-	}
-	if err := s.db.AutoMigrate(usageRelationalModels()...); err != nil {
-		return err
-	}
-	if err := ensureUsageRelationalSchema(s.db); err != nil {
-		return err
-	}
-	return s.backfillRequestAttemptRetryAfter()
-}
-
-func (s *usageStore) backfillRequestAttemptRetryAfter() error {
-	if s == nil || s.db == nil || !s.db.Migrator().HasColumn(&requestAttemptRecord{}, "retry_after_ms") {
-		return nil
-	}
-	return s.db.Model(&requestAttemptRecord{}).Where("retry_after_ms IS NULL").Update("retry_after_ms", 0).Error
-}
-
 func ensureUsageRelationalSchema(db *gorm.DB) error {
 	return ensureUsageRelationalSchemaExcept(db, nil)
 }
@@ -1672,6 +1648,53 @@ func usageRelationalModels() []any {
 		&usageRollupRunRecord{}, &usageRollupDailyRecord{}, &usageRollupHourlyRecord{}, &usageRollupMonthlyBillingRecord{}, &usageRollupAuditEventRecord{}, &usageRollupDecisionBucketRecord{},
 		&retentionPolicyVersionRecord{}, &retentionPolicyRuleRecord{}, &retentionJobRecord{}, &retentionJobTableResultRecord{}, &legalHoldRecord{}, &legalHoldAuditEventRecord{},
 	}
+}
+
+// applyUsageExplicitBaseline is the reviewed, manifest-owned fresh-install
+// step. CreateTable is deliberately invoked once per checked-in model rather
+// than using AutoMigrate: it cannot inspect and mutate an existing table, and
+// a later schema change must be represented by a new immutable definition.
+// Existing installations are adopted only after the strict baseline verifier
+// proves their pre-ledger contract.
+func applyUsageExplicitBaseline(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("usage baseline requires database")
+	}
+	if db.Dialector.Name() == "sqlite" {
+		if err := db.Exec("PRAGMA journal_mode=WAL").Error; err != nil {
+			return fmt.Errorf("usage baseline sqlite journal mode: %w", err)
+		}
+	}
+	created := make(map[string]bool, len(usageRelationalModels()))
+	for _, model := range usageRelationalModels() {
+		if db.Migrator().HasTable(model) {
+			continue
+		}
+		if err := db.Migrator().CreateTable(model); err != nil {
+			return fmt.Errorf("create explicit usage table: %w", err)
+		}
+		stmt := &gorm.Statement{DB: db}
+		if err := stmt.Parse(model); err != nil {
+			return fmt.Errorf("parse explicit usage table: %w", err)
+		}
+		created[stmt.Schema.Table] = true
+	}
+	// The model structs intentionally describe the latest contract, while this
+	// immutable baseline is schema version 1. Remove only the fixed v2 fields
+	// from tables created by this invocation so 2026072301 remains the sole
+	// owner of its expansion. Existing installations are adopted unchanged and
+	// must already satisfy their recorded ledger state.
+	for table, columns := range usageReasoningTelemetryColumns {
+		if !created[table] {
+			continue
+		}
+		for column := range columns {
+			if err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column).Error; err != nil {
+				return fmt.Errorf("freeze usage baseline column %s.%s: %w", table, column, err)
+			}
+		}
+	}
+	return verifyUsageLegacyBaseline(db)
 }
 
 func verifyUsageRelationalModel(db *gorm.DB, model any) error {

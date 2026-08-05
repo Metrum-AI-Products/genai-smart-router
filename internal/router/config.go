@@ -928,10 +928,9 @@ func (c *Config) setDefaults() {
 		c.Server.UsageDB.Driver = "sqlite"
 	}
 	if c.Server.UsageDB.MigrationPolicy == "" {
-		// Preserve the established initializer until the complete, reviewed
-		// fresh-install DDL manifest replaces it. New production deployments
-		// should explicitly select validate or deployment-job instead.
-		c.Server.UsageDB.MigrationPolicy = usageDBMigrationPolicyLegacyAutoMigrate
+		// Serving binaries validate only. A non-serving router-migrate deployment
+		// job owns fresh-install and upgrade DDL.
+		c.Server.UsageDB.MigrationPolicy = usageDBMigrationPolicyDeploymentJob
 	}
 	if c.Server.UsageDB.Path == "" && c.Server.UsageDB.DSN == "" && strings.EqualFold(c.Server.UsageDB.Driver, "sqlite") {
 		dir := filepath.Dir(c.StatePath)
@@ -1033,7 +1032,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server decision_telemetry requires usage_db enabled")
 	}
 	if c.Server.UsageDB.MigrationPolicy != "" && !validUsageDBMigrationPolicy(c.Server.UsageDB.MigrationPolicy) {
-		return fmt.Errorf("server usage_db migration_policy must be one of %q, %q, %q, or %q", usageDBMigrationPolicyLegacyAutoMigrate, usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob)
+		return fmt.Errorf("server usage_db migration_policy must be one of %q, %q, or %q", usageDBMigrationPolicyValidate, usageDBMigrationPolicyAutoSafe, usageDBMigrationPolicyDeploymentJob)
 	}
 	if err := validateLicenseConfig(c.Server.License); err != nil {
 		return err

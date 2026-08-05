@@ -43,7 +43,7 @@ func TestUsageDBMigrationPolicyValidation(t *testing.T) {
 	}
 	cfg.Server.UsageDB.MigrationPolicy = ""
 	cfg.setDefaults()
-	if cfg.Server.UsageDB.MigrationPolicy != usageDBMigrationPolicyLegacyAutoMigrate {
+	if cfg.Server.UsageDB.MigrationPolicy != usageDBMigrationPolicyDeploymentJob {
 		t.Fatalf("migration policy default = %q", cfg.Server.UsageDB.MigrationPolicy)
 	}
 }
@@ -2440,6 +2440,9 @@ func minimalConfig(t *testing.T) *Config {
 	return &Config{
 		Server: ServerConfig{
 			Cache: CacheConfig{Enabled: true},
+			// Test fixtures explicitly opt into the bounded single-node path; the
+			// shipped configuration default remains deployment-job validation.
+			UsageDB: UsageDBConfig{MigrationPolicy: usageDBMigrationPolicyAutoSafe},
 			Logging: LoggingConfig{
 				Path: filepath.Join(t.TempDir(), "requests.jsonl"),
 			},

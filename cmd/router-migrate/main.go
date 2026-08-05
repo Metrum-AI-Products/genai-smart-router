@@ -20,11 +20,18 @@ func main() {
 	action := flag.String("action", "status", "migration action: status, plan, verify, or apply")
 	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
-	dsn := flag.String("dsn", "", "Postgres DSN when --driver=postgres")
+	dsnEnv := flag.String("dsn-env", "ROUTER_USAGE_DB_DSN", "environment variable containing the Postgres DSN")
 	runnerID := flag.String("runner", "router-migrate", "safe runner identifier for the migration ledger")
 	jsonOut := flag.Bool("json", false, "emit machine-readable safe migration status")
 	flag.Parse()
-	r, closeDB, err := router.UsageMigrationRunner(router.UsageDBConfig{Driver: *driver, Path: *dbPath, DSN: *dsn})
+	dsn := ""
+	if *driver == "postgres" {
+		dsn = os.Getenv(*dsnEnv)
+		if dsn == "" {
+			die("Postgres migration scope requires non-empty --dsn-env %q", *dsnEnv)
+		}
+	}
+	r, closeDB, err := router.UsageMigrationRunner(router.UsageDBConfig{Driver: *driver, Path: *dbPath, DSN: dsn})
 	if err != nil {
 		die("open migration scope: %v", err)
 	}
