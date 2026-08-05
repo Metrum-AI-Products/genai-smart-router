@@ -69,6 +69,12 @@ scorer reports, headers, or credentials. Roll back by removing the opt-in
 runner invocation; no router configuration or deployed route changes are
 needed.
 
+The runner verifies the pinned official scorer's three-item result contract
+(`metrics`, per-instance `results`, and metadata) before deriving each score.
+For its one-task/one-generation call, exactly one extracted boolean is required.
+Any shape change fails closed without emitting raw scorer data; the offline
+regression exercises that pinned shape across all 40 selected tasks.
+
 Run the offline regression before changing this lane:
 
 ```sh

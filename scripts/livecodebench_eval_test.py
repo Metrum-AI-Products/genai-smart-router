@@ -20,6 +20,10 @@ def rejects(fn, text: str) -> None:
     except LCB.ContractError as exc: need(text in str(exc), str(exc))
     else: raise AssertionError("expected contract rejection")
 
+class PinnedScorerTask(dict):
+    def get_evaluation_sample(self):
+        return {"safe": "fixture"}
+
 def main() -> int:
     values=LCB.contract(); need(values["release_version"] == "release_v6" and values["task_count"] == 40, "release/sample pin changed")
     tasks=[{"question_id": f"task-{i:03d}"} for i in range(80)]
@@ -46,6 +50,29 @@ def main() -> int:
     need(len(calls) == 40 and result == {"status":"completed", "release_version":"release_v6", "selected":40, "completed":40, "scored":40, "errors":0, "pass_at_1":1.0}, "40-task completed/scored aggregate changed")
     rejects(lambda: LCB.aggregate(first, lambda task: "", lambda task, response: True), "did not complete")
     rendered=str(result); need("task-" not in rendered and "generated" not in rendered, "aggregate leaked task or response content")
+
+    # Pin the official return contract: [metrics, results, metadata].  For one
+    # input and one generation, its results map contains one list of one
+    # per-test result list.  The adapter must score all 40 inputs without
+    # retaining the raw result map or metadata in the aggregate.
+    original_import = LCB.importlib.import_module
+    scorer_calls=[]
+    def codegen_metrics(samples, generations, **kwargs):
+        scorer_calls.append((samples, generations, kwargs))
+        return [{"pass@1": 1.0, "detail": {"pass@1": {0: 1.0}}}, {0: [[1, True]]}, ["private scorer metadata"]]
+    def extract_instance_results(results):
+        need(results == {0: [[1, True]]}, "adapter did not use official results entry")
+        return [[all(value > 0 for value in results[0][0])]]
+    try:
+        LCB.importlib.import_module=lambda name: types.SimpleNamespace(codegen_metrics=codegen_metrics, extract_instance_results=extract_instance_results) if name == "lcb_runner.evaluation" else original_import(name)
+        scored_tasks=[PinnedScorerTask(question_id=f"fixture-{i:03d}") for i in range(40)]
+        scored_result=LCB.aggregate(scored_tasks, lambda task: "generated", LCB.official_scorer())
+        need(len(scorer_calls) == 40 and scored_result == {"status":"completed", "release_version":"release_v6", "selected":40, "completed":40, "scored":40, "errors":0, "pass_at_1":1.0}, "pinned official scorer shape did not score all 40 tasks")
+        need("private scorer metadata" not in str(scored_result), "aggregate leaked scorer metadata")
+        LCB.importlib.import_module=lambda name: types.SimpleNamespace(codegen_metrics=lambda *args, **kwargs: [{}, {0: [[True]]}], extract_instance_results=extract_instance_results) if name == "lcb_runner.evaluation" else original_import(name)
+        rejects(lambda: LCB.official_scorer()(scored_tasks[0], "generated"), "invalid result shape")
+    finally:
+        LCB.importlib.import_module = original_import
     print("livecodebench evaluator tests passed")
     return 0
 
