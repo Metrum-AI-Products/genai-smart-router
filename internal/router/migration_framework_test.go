@@ -55,6 +55,51 @@ func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	}
 }
 
+func TestMigrationRunnerUpgradesLegacyLedgerBeforeStatusAndApply(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "legacy-ledger.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	// This is the exact pre-manifest-digest ledger shape. In particular, it
+	// already has an applied row, proving Status upgrades the table before it
+	// selects into the current ledger record and Apply preserves legacy rows.
+	if err := db.Exec(`CREATE TABLE schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	first := testMigrationDefinition(1, "test", "legacy baseline", MigrationChecksum("legacy baseline"), 1, "online", "package-only")
+	second := testMigrationDefinition(2, "test", "new marker", MigrationChecksum("new marker"), 2, "online", "package-only")
+	second.Dependencies = []int{first.ID}
+	second = FinalizeMigrationDefinition(second)
+	if err := db.Exec("INSERT INTO schema_migration_ledger (scope, migration_id, checksum, state, started_at) VALUES (?, ?, ?, ?, ?)", "test", first.ID, first.Checksum, "applied", "2026-07-01T00:00:00Z").Error; err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatalf("status must upgrade a legacy ledger before querying it: %v", err)
+	}
+	if status.SchemaVersion != 1 || len(status.Pending) != 1 || status.Pending[0].ID != second.ID {
+		t.Fatalf("legacy ledger status = %+v", status)
+	}
+	if !db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		t.Fatal("legacy ledger upgrade did not add manifest_digest")
+	}
+	if err := r.ApplyPending("legacy-upgrade-test"); err != nil {
+		t.Fatalf("apply after legacy ledger upgrade: %v", err)
+	}
+	var records []migrationLedgerRecord
+	if err := db.Where("scope = ?", "test").Order("migration_id ASC").Find(&records).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].ManifestDigest != "" || records[1].ManifestDigest != second.ManifestDigest {
+		t.Fatalf("legacy/new manifest digest values = %+v", records)
+	}
+}
+
 func TestMigrationRunnerRequiresExplicitMaintenanceOperation(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {

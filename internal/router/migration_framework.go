@@ -363,6 +363,20 @@ func (r *migrationRunner) ensureLedger() error {
 			return fmt.Errorf("migration ledger bootstrap: %w", err)
 		}
 	}
+	// The first Stage-1 ledger release did not record the canonical manifest
+	// digest. Existing ledgers must be upgraded before any Status query maps a
+	// record into migrationLedgerRecord: SELECTing a missing column otherwise
+	// turns a read-only status operation into a database error. AddColumn uses
+	// the configured GORM dialect, so this remains valid for both SQLite and
+	// PostgreSQL rather than relying on a SQLite-only ALTER TABLE variant.
+	if !r.db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		if err := r.db.Migrator().AddColumn(&migrationLedgerRecord{}, "ManifestDigest"); err != nil {
+			return fmt.Errorf("migration ledger manifest digest upgrade: %w", err)
+		}
+	}
+	if !r.db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		return errors.New("migration ledger manifest digest upgrade did not create required column")
+	}
 	return nil
 }
 
