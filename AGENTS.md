@@ -95,6 +95,20 @@ These instructions apply to the whole repository.
   rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
     --expect-status <current-status> \
     --status <pending|ready|in_progress|blocked|done|cancelled>
+
+  # Replace the entire dependency list atomically; omit record IDs to clear it.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
+    --expect-status <current-status> \
+    --replace-requires <record-id> <record-id>
+
+  # Replace structured task lists atomically; omit values after any option to clear that list.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
+    --expect-status <current-status> \
+    --replace-actions "<action>" "<action>" \
+    --replace-acceptance "<criterion>" \
+    --replace-evidence "<evidence>" \
+    --replace-commands "<command>" \
+    --replace-references "<reference>"
   ```
 
 - After a task write, rerun `rtk python3 scripts/work_items.py validate`, review both tracked NDJSON files with `rtk git status --short -- work-items.ndjson work-item-events.ndjson`, and include their changes in the same commit as the work. A task is not durably handed off until the relevant NDJSON update is checked into the repository.

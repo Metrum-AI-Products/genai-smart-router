@@ -465,6 +465,10 @@ def command_add(
     assignee: str | None,
     requires: list[str],
     references: list[str],
+    actions: list[str],
+    acceptance: list[str],
+    evidence: list[str],
+    commands: list[str],
     actor: str,
 ) -> int:
     baseline = load_registry(registry_path)
@@ -488,6 +492,9 @@ def command_add(
         "description": description,
         "requires": requires,
         "references": references,
+        "actions": actions,
+        "acceptance": acceptance,
+        "evidence": evidence,
         "status": status,
         "due_date": normalized_due_date,
         "priority": priority,
@@ -497,6 +504,8 @@ def command_add(
         "started_at": now if status == "in_progress" else None,
         "completed_at": now if status == "done" else None,
     }
+    if commands:
+        task["commands"] = commands
     event = event_for_task(
         event_type="task.created",
         task=task,
@@ -517,11 +526,29 @@ def command_update(
     status: str | None,
     due_date: str | None,
     assignee: str | None,
+    replace_requires: list[str] | None,
+    replace_actions: list[str] | None,
+    replace_acceptance: list[str] | None,
+    replace_evidence: list[str] | None,
+    replace_commands: list[str] | None,
+    replace_references: list[str] | None,
     expect_status: str | None,
     actor: str,
 ) -> int:
-    if status is None and due_date is None and assignee is None:
-        raise RegistryError("update requires --status, --due-date, or --assignee")
+    replacements = {
+        "requires": replace_requires,
+        "actions": replace_actions,
+        "acceptance": replace_acceptance,
+        "evidence": replace_evidence,
+        "commands": replace_commands,
+        "references": replace_references,
+    }
+    if status is None and due_date is None and assignee is None and all(
+        value is None for value in replacements.values()
+    ):
+        raise RegistryError(
+            "update requires a status, due date, assignee, or structured-list replacement option"
+        )
 
     baseline = load_registry(registry_path)
     projected, revisions = project_registry(baseline, load_events(events_path))
@@ -550,6 +577,9 @@ def command_update(
         parse_due_date(task["due_date"], record_id=task_id)
     if assignee is not None:
         task["assignee"] = optional_value(assignee)
+    for field, value in replacements.items():
+        if value is not None:
+            task[field] = value
     task["updated_at"] = now
 
     event = event_for_task(
@@ -605,12 +635,38 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--assignee", help="assignee identifier or none")
     add_parser.add_argument("--requires", action="append", default=[])
     add_parser.add_argument("--reference", action="append", default=[])
+    add_parser.add_argument("--action", action="append", default=[])
+    add_parser.add_argument("--acceptance", action="append", default=[])
+    add_parser.add_argument("--evidence", action="append", default=[])
+    add_parser.add_argument("--command", dest="commands", action="append", default=[])
 
     update_parser = subparsers.add_parser("update", help="append a task.updated event")
     update_parser.add_argument("id")
     update_parser.add_argument("--status", choices=TASK_STATUSES)
     update_parser.add_argument("--due-date", help="YYYY-MM-DD or none")
     update_parser.add_argument("--assignee", help="assignee identifier or none")
+    update_parser.add_argument(
+        "--replace-requires",
+        nargs="*",
+        default=None,
+        metavar="RECORD_ID",
+        help="replace the complete dependency list; omit RECORD_ID to clear it",
+    )
+    for option, destination, label in (
+        ("--replace-actions", "replace_actions", "action"),
+        ("--replace-acceptance", "replace_acceptance", "acceptance item"),
+        ("--replace-evidence", "replace_evidence", "evidence item"),
+        ("--replace-commands", "replace_commands", "command"),
+        ("--replace-references", "replace_references", "reference"),
+    ):
+        update_parser.add_argument(
+            option,
+            dest=destination,
+            nargs="*",
+            default=None,
+            metavar=label.upper().replace(" ", "_"),
+            help=f"replace the complete {label} list; omit values to clear it",
+        )
     update_parser.add_argument("--expect-status", choices=TASK_STATUSES)
 
     project_parser = subparsers.add_parser("project", help="materialize reconciled state without changing source files")
@@ -648,6 +704,10 @@ def main() -> int:
                 assignee=args.assignee,
                 requires=args.requires,
                 references=args.reference,
+                actions=args.action,
+                acceptance=args.acceptance,
+                evidence=args.evidence,
+                commands=args.commands,
                 actor=args.actor,
             )
         if args.command == "update":
@@ -658,6 +718,12 @@ def main() -> int:
                 status=args.status,
                 due_date=args.due_date,
                 assignee=args.assignee,
+                replace_requires=args.replace_requires,
+                replace_actions=args.replace_actions,
+                replace_acceptance=args.replace_acceptance,
+                replace_evidence=args.replace_evidence,
+                replace_commands=args.replace_commands,
+                replace_references=args.replace_references,
                 expect_status=args.expect_status,
                 actor=args.actor,
             )

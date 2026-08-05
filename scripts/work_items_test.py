@@ -148,6 +148,10 @@ def main() -> int:
             "ready",
             "--reference",
             "https://github.com/uwdata/mosaic",
+            "--action",
+            "Reconcile both sources in the browser.",
+            "--acceptance",
+            "The dashboard refreshes without a rebuild.",
         )
         require(add.returncode == 0, add.stderr)
         add_event = json.loads(add.stdout)
@@ -156,6 +160,11 @@ def main() -> int:
         require(
             add_event["task"]["description"].startswith("Interactive work-item"),
             "create event omitted drilldown detail",
+        )
+        require(add_event["task"]["actions"] == ["Reconcile both sources in the browser."], "create event omitted actions")
+        require(
+            add_event["task"]["acceptance"] == ["The dashboard refreshes without a rebuild."],
+            "create event omitted acceptance",
         )
         require(registry.read_bytes() == original_baseline, "add mutated baseline registry")
 
@@ -201,15 +210,163 @@ def main() -> int:
             registry,
             events,
             "update",
-            "task.first",
+            "task.dashboard",
             "--expect-status",
-            "blocked",
-            "--status",
-            "done",
+            "pending",
+            "--replace-actions",
+            "Stale replacement must not be written.",
         )
         require(stale.returncode != 0, "stale status update succeeded")
         require("expected status" in stale.stderr, f"missing stale status error: {stale.stderr}")
         require(events.read_bytes() == before_stale, "stale update changed event journal")
+
+        replace_requires = run(
+            registry,
+            events,
+            "update",
+            "task.second",
+            "--expect-status",
+            "pending",
+            "--replace-requires",
+            "gate.resume",
+        )
+        require(replace_requires.returncode == 0, replace_requires.stderr)
+        replace_event = json.loads(replace_requires.stdout)
+        require(replace_event["task"]["requires"] == ["gate.resume"], "dependencies were not replaced")
+        require(
+            "requires" in replace_event["changed_fields"]
+            and set(replace_event["changed_fields"]) <= {"requires", "updated_at"},
+            f"unexpected dependency update fields: {replace_event['changed_fields']}",
+        )
+        require(registry.read_bytes() == original_baseline, "dependency update mutated baseline registry")
+
+        clear_requires = run(registry, events, "update", "task.first", "--replace-requires")
+        require(clear_requires.returncode == 0, clear_requires.stderr)
+        clear_event = json.loads(clear_requires.stdout)
+        require(clear_event["task"]["requires"] == [], "dependencies were not cleared")
+        require(
+            "requires" in clear_event["changed_fields"]
+            and set(clear_event["changed_fields"]) <= {"requires", "updated_at"},
+            f"unexpected dependency clear fields: {clear_event['changed_fields']}",
+        )
+
+        replace_details = run(
+            registry,
+            events,
+            "update",
+            "task.dashboard",
+            "--expect-status",
+            "ready",
+            "--replace-actions",
+            "Reconcile both sources in the browser.",
+            "Retain immutable event history.",
+            "--replace-acceptance",
+            "The dashboard refreshes from /data/version without a rebuild.",
+            "--replace-evidence",
+            "Sanitized event counts.",
+            "--replace-commands",
+            "rtk python3 scripts/work_items.py validate",
+            "--replace-references",
+            "https://github.com/uwdata/mosaic",
+            "task.first",
+        )
+        require(replace_details.returncode == 0, replace_details.stderr)
+        detail_event = json.loads(replace_details.stdout)
+        require(
+            detail_event["task"]["actions"]
+            == ["Reconcile both sources in the browser.", "Retain immutable event history."],
+            "actions were not replaced",
+        )
+        require(
+            detail_event["task"]["acceptance"]
+            == ["The dashboard refreshes from /data/version without a rebuild."],
+            "acceptance was not replaced",
+        )
+        require(detail_event["task"]["evidence"] == ["Sanitized event counts."], "evidence was not replaced")
+        require(
+            detail_event["task"]["commands"] == ["rtk python3 scripts/work_items.py validate"],
+            "commands were not replaced",
+        )
+        require(
+            detail_event["task"]["references"]
+            == ["https://github.com/uwdata/mosaic", "task.first"],
+            "references were not replaced",
+        )
+        expected_detail_fields = {"actions", "acceptance", "evidence", "commands", "references"}
+        require(
+            expected_detail_fields <= set(detail_event["changed_fields"])
+            and set(detail_event["changed_fields"]) <= expected_detail_fields | {"updated_at"},
+            f"unexpected structured replacement fields: {detail_event['changed_fields']}",
+        )
+
+        clear_details = run(
+            registry,
+            events,
+            "update",
+            "task.dashboard",
+            "--replace-actions",
+            "--replace-acceptance",
+            "--replace-evidence",
+            "--replace-commands",
+            "--replace-references",
+        )
+        require(clear_details.returncode == 0, clear_details.stderr)
+        clear_detail_event = json.loads(clear_details.stdout)
+        for field in ("actions", "acceptance", "evidence", "commands", "references"):
+            require(clear_detail_event["task"][field] == [], f"{field} was not cleared")
+        require(
+            expected_detail_fields <= set(clear_detail_event["changed_fields"])
+            and set(clear_detail_event["changed_fields"]) <= expected_detail_fields | {"updated_at"},
+            f"unexpected structured clear fields: {clear_detail_event['changed_fields']}",
+        )
+
+        before_invalid_structured_replacement = events.read_bytes()
+        invalid_structured_replacement = run(
+            registry,
+            events,
+            "update",
+            "task.dashboard",
+            "--replace-actions",
+            "",
+        )
+        require(
+            invalid_structured_replacement.returncode != 0,
+            "empty structured replacement value was accepted",
+        )
+        require(
+            "actions must be a string or array of non-empty strings"
+            in invalid_structured_replacement.stderr,
+            invalid_structured_replacement.stderr,
+        )
+        require(
+            events.read_bytes() == before_invalid_structured_replacement,
+            "invalid structured replacement changed event journal",
+        )
+
+        before_invalid_requires = events.read_bytes()
+        missing_requires = run(
+            registry,
+            events,
+            "update",
+            "task.second",
+            "--replace-requires",
+            "task.missing",
+        )
+        require(missing_requires.returncode != 0, "missing replacement dependency accepted")
+        require("missing dependencies" in missing_requires.stderr, missing_requires.stderr)
+        require(events.read_bytes() == before_invalid_requires, "missing dependency changed event journal")
+
+        cyclic_requires = run(
+            registry,
+            events,
+            "update",
+            "task.first",
+            "--replace-requires",
+            "task.first",
+        )
+        require(cyclic_requires.returncode != 0, "cyclic replacement dependency accepted")
+        require("dependency cycle" in cyclic_requires.stderr, cyclic_requires.stderr)
+        require(events.read_bytes() == before_invalid_requires, "cyclic dependency changed event journal")
 
         duplicate_add = run(
             registry,
@@ -226,11 +383,11 @@ def main() -> int:
             "1",
         )
         require(duplicate_add.returncode != 0, "duplicate add succeeded")
-        require(events.read_bytes() == before_stale, "duplicate add changed event journal")
+        require(events.read_bytes() == before_invalid_requires, "duplicate add changed event journal")
 
         invalid_due = run(registry, events, "update", "task.second", "--due-date", "2026-02-30")
         require(invalid_due.returncode != 0, "invalid due date succeeded")
-        require(events.read_bytes() == before_stale, "invalid due date changed event journal")
+        require(events.read_bytes() == before_invalid_requires, "invalid due date changed event journal")
 
         conflicting = dict(second_event)
         conflicting["event_id"] = "conflicting-external-event"
