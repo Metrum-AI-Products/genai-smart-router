@@ -684,15 +684,12 @@ func (r *migrationRunner) applyPending(runner, maintenanceMode, backupEvidenceRe
 			}
 			var applyErr error
 			if isNonTransactional {
-				applyErr = owned.applyOneNonTransactional(d, runner)
+				applyErr = owned.applyOneNonTransactional(d, runner, backupEvidenceRef)
 			} else {
-				applyErr = owned.applyOne(d, runner)
+				applyErr = owned.applyOne(d, runner, backupEvidenceRef)
 			}
 			if applyErr != nil {
 				return applyErr
-			}
-			if err := owned.recordAttempt(d, runner, "apply", "applied", backupEvidenceRef, "", ""); err != nil {
-				return errors.New("migration applied but audit attempt could not be written")
 			}
 			applied[d.ID] = true
 		}
@@ -843,7 +840,7 @@ func (r *migrationRunner) postgresAdvisorySession() (*sql.Conn, error) {
 	return conn, nil
 }
 
-func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {
+func (r *migrationRunner) applyOne(d MigrationDefinition, runner, backupEvidenceRef string) error {
 	now := time.Now().UTC()
 	started := now.Format(time.RFC3339Nano)
 	err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
@@ -862,10 +859,16 @@ func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {
 				return err
 			}
 		}
+		// The applied ledger state and its normalized attempt are one
+		// transaction. In particular, a maintenance backup reference must not
+		// become an after-the-fact receipt that a crash can omit.
+		if err := r.recordAttemptTx(tx, d, runner, "apply", "applied", backupEvidenceRef, "", "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return errors.New("migration applied audit record failed")
+		}
 		return tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ?", r.scope, d.ID).Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds(), "error_code": "", "error_text": ""}).Error
 	})
 	if err != nil {
-		return r.recordFailure(d, runner, "apply", err)
+		return r.recordFailure(d, runner, "apply", backupEvidenceRef, err)
 	}
 	return nil
 }
@@ -888,36 +891,47 @@ func applyMigrationTimeouts(db *gorm.DB) error {
 // begins; success is recorded only after the postcondition verifies. A crash
 // therefore remains visibly running for an explicit operator recovery rather
 // than being mistaken for an atomic rollback.
-func (r *migrationRunner) applyOneNonTransactional(d MigrationDefinition, runner string) error {
+func (r *migrationRunner) applyOneNonTransactional(d MigrationDefinition, runner, backupEvidenceRef string) error {
 	now := time.Now().UTC()
 	if err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
 		if err := applyMigrationTimeouts(tx); err != nil {
 			return err
 		}
-		return tx.Create(&migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "running", StartedAt: now.Format(time.RFC3339Nano), Runner: safeMigrationText(runner)}).Error
+		if err := tx.Create(&migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "running", StartedAt: now.Format(time.RFC3339Nano), Runner: safeMigrationText(runner)}).Error; err != nil {
+			return err
+		}
+		// A crash after independently committed work leaves durable running
+		// state plus its bounded recovery evidence, never an invented applied
+		// receipt.
+		return r.recordAttemptTx(tx, d, runner, "apply", "running", backupEvidenceRef, "", "", now.Format(time.RFC3339Nano))
 	}); err != nil {
-		return r.recordFailure(d, runner, "non-transactional-start", err)
+		return r.recordFailure(d, runner, "non-transactional-start", backupEvidenceRef, err)
 	}
 	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
 		if err := r.db.Exec("SET lock_timeout = '5s'").Error; err != nil {
-			return r.recordFailure(d, runner, "non-transactional-timeout", err)
+			return r.recordFailure(d, runner, "non-transactional-timeout", backupEvidenceRef, err)
 		}
 		defer r.db.Exec("RESET lock_timeout")
 		if err := r.db.Exec("SET statement_timeout = '30s'").Error; err != nil {
-			return r.recordFailure(d, runner, "non-transactional-timeout", err)
+			return r.recordFailure(d, runner, "non-transactional-timeout", backupEvidenceRef, err)
 		}
 		defer r.db.Exec("RESET statement_timeout")
 	}
 	if err := d.Apply(r.db); err != nil {
-		return r.recordFailure(d, runner, "non-transactional-apply", err)
+		return r.recordFailure(d, runner, "non-transactional-apply", backupEvidenceRef, err)
 	}
 	if d.Verify != nil {
 		if err := d.Verify(r.db); err != nil {
-			return r.recordFailure(d, runner, "non-transactional-verify", err)
+			return r.recordFailure(d, runner, "non-transactional-verify", backupEvidenceRef, err)
 		}
 	}
-	if err := r.db.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", r.scope, d.ID, "running").Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds()}).Error; err != nil {
-		return errors.New("non-transactional migration completion failed")
+	if err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := r.recordAttemptTx(tx, d, runner, "apply", "applied", backupEvidenceRef, "", "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+		return tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", r.scope, d.ID, "running").Updates(map[string]any{"state": "applied", "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "duration_ms": time.Since(now).Milliseconds()}).Error
+	}); err != nil {
+		return r.recordFailure(d, runner, "non-transactional-completion", backupEvidenceRef, err)
 	}
 	return nil
 }
@@ -925,7 +939,7 @@ func (r *migrationRunner) applyOneNonTransactional(d MigrationDefinition, runner
 // recordFailure deliberately runs after an atomic migration transaction has
 // rolled back. It gives every scope a fenced, scalar recovery record without
 // retaining the original database error or any SQL/input content.
-func (r *migrationRunner) recordFailure(d MigrationDefinition, runner, action string, cause error) error {
+func (r *migrationRunner) recordFailure(d MigrationDefinition, runner, action, backupEvidenceRef string, cause error) error {
 	code := safeMigrationErrorCode(cause)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if err := r.db.Session(&gorm.Session{NewDB: true}).Transaction(func(tx *gorm.DB) error {
@@ -943,7 +957,7 @@ func (r *migrationRunner) recordFailure(d MigrationDefinition, runner, action st
 		} else if err := tx.Model(&migrationLedgerRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", r.scope, d.ID, rec.State).Updates(map[string]any{"state": "failed", "completed_at": now, "error_code": code, "error_text": code}).Error; err != nil {
 			return err
 		}
-		return r.recordAttemptTx(tx, d, runner, action, "failed", "", "", code, now)
+		return r.recordAttemptTx(tx, d, runner, action, "failed", backupEvidenceRef, "", code, now)
 	}); err != nil {
 		return fmt.Errorf("migration failed and durable recovery record could not be written: %w", err)
 	}

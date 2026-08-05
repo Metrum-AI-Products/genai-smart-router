@@ -50,6 +50,28 @@ func verifyTestMigrationMarker(tx *gorm.DB) error {
 
 func applyTestMigrationFailure(*gorm.DB) error { return errors.New("deliberate migration failure") }
 
+func applyTestMaintenanceAuditMarker(tx *gorm.DB) error {
+	return tx.Exec("CREATE TABLE maintenance_audit_marker (id INTEGER PRIMARY KEY)").Error
+}
+
+func verifyTestMaintenanceAuditMarker(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("maintenance_audit_marker") {
+		return errors.New("maintenance audit marker missing")
+	}
+	return nil
+}
+
+func applyTestNonTransactionalAuditMarker(tx *gorm.DB) error {
+	return tx.Exec("CREATE TABLE nontransactional_audit_marker (id INTEGER PRIMARY KEY)").Error
+}
+
+func verifyTestNonTransactionalAuditMarker(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("nontransactional_audit_marker") {
+		return errors.New("non-transactional audit marker missing")
+	}
+	return nil
+}
+
 func applyTestMigrationRequiresPostgresTimeouts(tx *gorm.DB) error {
 	var lockTimeout, statementTimeout string
 	if err := tx.Raw("SELECT current_setting('lock_timeout'), current_setting('statement_timeout')").Row().Scan(&lockTimeout, &statementTimeout); err != nil {
@@ -162,6 +184,52 @@ func TestMigrationRunnerRequiresDedicatedNonTransactionalMaintenance(t *testing.
 	}
 }
 
+func TestMaintenanceEvidenceAndAppliedStateAreAtomic(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "maintenance-audit.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	d := testMigrationDefinition(1, "maintenance-audit", "audited marker", MigrationChecksum("maintenance-audit"), 1, "maintenance", "restore-required")
+	d.Apply, d.Verify = applyTestMaintenanceAuditMarker, verifyTestMaintenanceAuditMarker
+	d.HandlerKey, d.PostconditionKey = "test.maintenance-audit.apply.v1@applyTestMaintenanceAuditMarker", "test.maintenance-audit.verify.v1@verifyTestMaintenanceAuditMarker"
+	d = FinalizeMigrationDefinition(d)
+	r, err := NewMigrationRunner(db, "maintenance-audit", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ensureLedger(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TRIGGER reject_applied_maintenance_attempt BEFORE INSERT ON schema_migration_attempts WHEN NEW.scope = 'maintenance-audit' AND NEW.state = 'applied' BEGIN SELECT RAISE(ABORT, 'simulated audit interruption'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyMaintenancePendingWithEvidence("maintenance-runner", "backup-approval-atomic"); err == nil {
+		t.Fatal("audit interruption must fail maintenance migration")
+	}
+	var ledger migrationLedgerRecord
+	if err := db.Where("scope = ? AND migration_id = ?", "maintenance-audit", d.ID).First(&ledger).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ledger.State != "failed" {
+		t.Fatalf("interrupted maintenance ledger = %+v, want failed", ledger)
+	}
+	var appliedAttempts int64
+	if err := db.Model(&migrationAttemptRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", "maintenance-audit", d.ID, "applied").Count(&appliedAttempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if appliedAttempts != 0 || db.Migrator().HasTable("maintenance_audit_marker") {
+		t.Fatalf("atomic maintenance interruption left applied evidence=%d marker=%t", appliedAttempts, db.Migrator().HasTable("maintenance_audit_marker"))
+	}
+	var failedAttempt migrationAttemptRecord
+	if err := db.Where("scope = ? AND migration_id = ? AND state = ?", "maintenance-audit", d.ID, "failed").First(&failedAttempt).Error; err != nil {
+		t.Fatal(err)
+	}
+	if failedAttempt.BackupEvidenceRef != "backup-approval-atomic" || failedAttempt.OwnerGeneration <= 0 {
+		t.Fatalf("fenced failed maintenance audit = %+v", failedAttempt)
+	}
+}
+
 func TestMigrationOperationalPostgresAdvisoryLockAndTimeouts(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("SMART_ROUTER_POSTGRES_TEST_DSN"))
 	if dsn == "" {
@@ -210,6 +278,78 @@ func TestMigrationOperationalPostgresAdvisoryLockAndTimeouts(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name             string
+		nonTransactional bool
+	}{
+		{name: "postgres-maintenance-audit-transactional"},
+		{name: "postgres-maintenance-audit-nontransactional", nonTransactional: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := db.Exec("DROP TABLE IF EXISTS maintenance_audit_marker").Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec("DROP TABLE IF EXISTS nontransactional_audit_marker").Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec(`CREATE OR REPLACE FUNCTION reject_applied_maintenance_attempt() RETURNS trigger AS $$ BEGIN IF NEW.scope = '` + tc.name + `' AND NEW.state = 'applied' THEN RAISE EXCEPTION 'simulated audit interruption'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql`).Error; err != nil {
+				t.Fatal(err)
+			}
+			defer db.Exec("DROP FUNCTION IF EXISTS reject_applied_maintenance_attempt()")
+			if err := db.Exec("DROP TRIGGER IF EXISTS reject_applied_maintenance_attempt ON schema_migration_attempts").Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec("CREATE TRIGGER reject_applied_maintenance_attempt BEFORE INSERT ON schema_migration_attempts FOR EACH ROW EXECUTE FUNCTION reject_applied_maintenance_attempt()").Error; err != nil {
+				t.Fatal(err)
+			}
+			defer db.Exec("DROP TRIGGER IF EXISTS reject_applied_maintenance_attempt ON schema_migration_attempts")
+			d := testMigrationDefinition(1, tc.name, "audited marker", MigrationChecksum(tc.name), 1, "maintenance", "restore-required")
+			d.Apply, d.Verify = applyTestMaintenanceAuditMarker, verifyTestMaintenanceAuditMarker
+			if tc.nonTransactional {
+				d.Transactional, d.ExecutionMode = false, "non-transactional"
+				d.Apply, d.Verify = applyTestNonTransactionalAuditMarker, verifyTestNonTransactionalAuditMarker
+			}
+			if tc.nonTransactional {
+				d.HandlerKey, d.PostconditionKey = "test.nontransactional-audit.apply.v1@applyTestNonTransactionalAuditMarker", "test.nontransactional-audit.verify.v1@verifyTestNonTransactionalAuditMarker"
+			} else {
+				d.HandlerKey, d.PostconditionKey = "test.maintenance-audit.apply.v1@applyTestMaintenanceAuditMarker", "test.maintenance-audit.verify.v1@verifyTestMaintenanceAuditMarker"
+			}
+			d = FinalizeMigrationDefinition(d)
+			r, err := NewMigrationRunner(db, tc.name, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var applyErr error
+			if tc.nonTransactional {
+				applyErr = r.ApplyNonTransactionalMaintenancePendingWithEvidence("postgres-maintenance-runner", "backup-approval-postgres")
+			} else {
+				applyErr = r.ApplyMaintenancePendingWithEvidence("postgres-maintenance-runner", "backup-approval-postgres")
+			}
+			if applyErr == nil {
+				t.Fatal("simulated applied-audit interruption must fail closed")
+			}
+			var ledger migrationLedgerRecord
+			if err := db.Where("scope = ? AND migration_id = ?", tc.name, d.ID).First(&ledger).Error; err != nil {
+				t.Fatal(err)
+			}
+			if ledger.State != "failed" {
+				t.Fatalf("interrupted %s ledger = %+v, want failed", tc.name, ledger)
+			}
+			var appliedAttempts int64
+			if err := db.Model(&migrationAttemptRecord{}).Where("scope = ? AND migration_id = ? AND state = ?", tc.name, d.ID, "applied").Count(&appliedAttempts).Error; err != nil {
+				t.Fatal(err)
+			}
+			if appliedAttempts != 0 {
+				t.Fatalf("interrupted %s recorded applied attempt", tc.name)
+			}
+			if tc.nonTransactional && !db.Migrator().HasTable("nontransactional_audit_marker") {
+				t.Fatal("non-transactional work should remain recoverably failed after final audit interruption")
+			}
+			if !tc.nonTransactional && db.Migrator().HasTable("maintenance_audit_marker") {
+				t.Fatal("transactional audit interruption must roll back maintenance work")
+			}
+		})
 	}
 }
 
