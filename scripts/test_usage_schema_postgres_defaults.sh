@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This runner owns a fresh Docker database and does not print its DSN or
-# credentials. The Go test refuses to run without the same explicit
+# This runner owns a fresh Docker database for #720 and does not print its
+# DSN or credentials. The Go test refuses to run without the same explicit
 # disposable-test guard.
 container_id=""
 cleanup() {
@@ -13,17 +13,17 @@ cleanup() {
 trap cleanup EXIT
 
 container_id="$(docker run --rm -d \
-  --label smart-llmrouter.test=issue-704 \
-  -e POSTGRES_DB=smart_router_issue_704 \
+  --label smart-llmrouter.test=issue-720 \
+  -e POSTGRES_DB=smart_router_issue_720 \
   -e POSTGRES_PASSWORD=postgres \
   -p 127.0.0.1::5432 \
   postgres:18-bookworm)"
 for _ in $(seq 1 60); do
-  if docker exec "$container_id" pg_isready -U postgres -d smart_router_issue_704 >/dev/null 2>&1; then
+  if docker exec "$container_id" pg_isready -U postgres -d smart_router_issue_720 >/dev/null 2>&1; then
     port="$(docker port "$container_id" 5432/tcp | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p')"
     if [[ -n "$port" ]]; then
-      SMART_ROUTER_POSTGRES_TEST_DSN="postgres://postgres:postgres@127.0.0.1:${port}/smart_router_issue_704?sslmode=disable" \
-      SMART_ROUTER_POSTGRES_TEST_ALLOW=issue-704 \
+      SMART_ROUTER_POSTGRES_TEST_DSN="postgres://postgres:postgres@127.0.0.1:${port}/smart_router_issue_720?sslmode=disable" \
+      SMART_ROUTER_POSTGRES_TEST_ALLOW=issue-720 \
       go test ./internal/router -run '^TestUsageSchemaContractPostgresTextDefaults$' -count=1
       exit 0
     fi

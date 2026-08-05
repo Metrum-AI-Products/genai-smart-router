@@ -1940,16 +1940,17 @@ func usageColumnTypeCompatible(field *schema.Field, actual string) bool {
 // changed default continues to fail the schema contract closed.
 func usageDefaultCompatible(driver, expected, actual string) bool {
 	expectedValue, expectedOK := normalizeUsageDefault(expected)
-	actualValue, actualOK := normalizeUsageDefault(actual)
-	if !expectedOK || !actualOK {
+	if !expectedOK {
 		return false
 	}
 	if driver == "postgres" || driver == "postgresql" {
 		if value, ok := normalizePostgresTextCastDefault(actual); ok {
-			actualValue = value
-		} else if strings.Contains(actual, "::") {
-			return false
+			return expectedValue == value
 		}
+	}
+	actualValue, actualOK := normalizeUsageDefault(actual)
+	if !actualOK {
+		return false
 	}
 	return expectedValue == actualValue
 }
@@ -1960,6 +1961,10 @@ func normalizeUsageDefault(value string) (string, bool) {
 		return "string:" + literal, true
 	}
 	switch strings.ToLower(value) {
+	case "":
+		// GORM parses default:'' tags as an empty expected string while SQLite
+		// and PostgreSQL metadata retain an empty SQL literal.
+		return "string:", true
 	case "false":
 		return "scalar:0", true
 	case "true":
