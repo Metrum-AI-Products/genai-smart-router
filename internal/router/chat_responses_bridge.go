@@ -44,8 +44,14 @@ func chatToResponsesBridgeFilterReason(target Target, req *IRRequest, callerDial
 			return "tool-support"
 		}
 	}
-	if rawValuePresent(req.Raw, "tool_choice") && !bridge.ToolChoice {
+	if rawKeyPresent(req.Raw, "tool_choice") && !bridge.ToolChoice {
 		return "chat-to-responses-tool-choice-unsupported"
+	}
+	// A bridge has no lossless mapping for an explicit JSON null. Do not silently
+	// turn it into an omitted choice after it has been admitted as an explicit
+	// request shape.
+	if rawKeyPresent(req.Raw, "tool_choice") && req.Raw["tool_choice"] == nil {
+		return "chat-to-responses-tool-choice-null-unsupported"
 	}
 	if rawValuePresent(req.Raw, "parallel_tool_calls") && !bridge.ParallelToolCalls {
 		return "chat-to-responses-parallel-tools-unsupported"

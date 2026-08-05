@@ -209,7 +209,33 @@ func TestRequestShapeUnsupportedToolChoiceRejectsExplicitAutoOnly(t *testing.T) 
 			if omittedFit.FilterReason != "" || omittedFit.EligibilityDecision != "eligible" {
 				t.Fatalf("omitted tool_choice fit=%#v", omittedFit)
 			}
+
+			explicitNull := &IRRequest{
+				Tools: []map[string]any{{"name": "pick"}},
+				Raw:   map[string]any{"tool_choice": nil},
+			}
+			nullFit := (&Service{}).targetRequestShapeFit(target, explicitNull, dialect, dialect, requestTokenEstimateFromIR(explicitNull, dialect, 96))
+			if nullFit.FilterReason != "request-shape-unsupported-feature" {
+				t.Fatalf("explicit null fit=%#v", nullFit)
+			}
 		})
+	}
+}
+
+func TestToolChoiceJSONPresenceDistinguishesOmittedAndNull(t *testing.T) {
+	omitted, err := decodeRequest("openai-chat", []byte(`{"model":"group","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"pick"}}]}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nullChoice, err := decodeRequest("openai-chat", []byte(`{"model":"group","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"pick"}}],"tool_choice":null}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestFeaturePresent(omitted, "tool_choice") || rawKeyPresent(omitted.Raw, "tool_choice") {
+		t.Fatal("omitted tool_choice reported as present")
+	}
+	if !requestFeaturePresent(nullChoice, "tool_choice") || !rawKeyPresent(nullChoice.Raw, "tool_choice") || rawValuePresent(nullChoice.Raw, "tool_choice") {
+		t.Fatalf("explicit null presence was not preserved: %#v", nullChoice.Raw)
 	}
 }
 

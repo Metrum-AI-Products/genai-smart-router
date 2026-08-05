@@ -343,6 +343,19 @@ func rawValuePresent(raw map[string]any, key string) bool {
 	return ok && value != nil
 }
 
+// rawKeyPresent reports JSON-object key presence, including an explicit null.
+// Most request-shape checks intentionally care about usable non-null values and
+// should continue to use rawValuePresent. tool_choice is different: capability
+// evidence distinguishes an omitted key from every explicit caller choice, so a
+// present null must not inherit tools-omitted eligibility.
+func rawKeyPresent(raw map[string]any, key string) bool {
+	if raw == nil {
+		return false
+	}
+	_, ok := raw[key]
+	return ok
+}
+
 func nestedValuePresent(raw map[string]any, parent, child string) bool {
 	return nestedValue(raw, parent, child) != nil
 }

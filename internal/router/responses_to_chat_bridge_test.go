@@ -53,6 +53,20 @@ func TestResponsesToChatBridgeEncodesTextAndFunctionTools(t *testing.T) {
 	}
 }
 
+func TestResponsesToChatBridgeRejectsExplicitNullToolChoice(t *testing.T) {
+	req, err := decodeRequest("openai-responses", []byte(`{"model":"bridge","input":"hi","tools":[{"type":"function","name":"echo"}],"tool_choice":null}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = encodeResponsesToChatBridge("chat-upstream", req, Target{
+		ToolSupport:     ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}},
+		ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true, FunctionTools: true, ToolChoice: true},
+	})
+	if err == nil || !strings.Contains(err.Error(), "responses-to-chat-tool-choice-null-unsupported") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestResponsesToChatBridgeEncodesReasoning(t *testing.T) {
 	req, err := decodeRequest("openai-responses", []byte(`{
 		"model":"bridge",

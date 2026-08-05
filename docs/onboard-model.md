@@ -99,6 +99,10 @@ Tool requests that omit `tool_choice` require separately passing `tools-omitted`
 evidence; they are never satisfied by an automatic or forced probe. Targets that
 need composite image-plus-tool or image-plus-structured evidence fail closed
 until the evidence schema defines that composite request shape.
+An explicit JSON `tool_choice: null` is not omitted: it must pass explicit
+tool-choice eligibility on a same-skin request, and it is rejected for the
+Chat-to-Responses and Responses-to-Chat bridges because those translations do
+not have a lossless null representation.
 An empty `supported_inbound_dialects` allowlist follows the router's generic
 text/image translation behavior. The verifier therefore requires separate
 Chat-to-Anthropic, Responses-to-Anthropic, or OpenAI-to-Replicate evidence when
