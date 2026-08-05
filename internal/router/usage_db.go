@@ -1729,7 +1729,7 @@ func verifyUsageRelationalModelExcept(db *gorm.DB, model any, excludedColumns ma
 		// above rather than demanding a default literal.
 		if field.HasDefaultValue && !field.AutoIncrement {
 			actualDefault, known := actual.DefaultValue()
-			if !known || !usageDefaultCompatible(field.DefaultValue, actualDefault) {
+			if !known || !usageDefaultCompatible(db.Dialector.Name(), field.DefaultValue, actualDefault) {
 				return fmt.Errorf("usage column %s.%s default does not match contract", table, field.DBName)
 			}
 		}
@@ -1930,19 +1930,169 @@ func usageColumnTypeCompatible(field *schema.Field, actual string) bool {
 	}
 }
 
-func usageDefaultCompatible(expected, actual string) bool {
-	normalize := func(value string) string {
-		value = strings.ToLower(strings.TrimSpace(value))
-		value = strings.Trim(value, "()'")
-		switch value {
-		case "false":
-			return "0"
-		case "true":
-			return "1"
-		}
-		return value
+// usageDefaultCompatible accepts only the small set of driver spelling
+// differences that preserve a scalar default's value. In particular,
+// PostgreSQL's catalog commonly renders a text literal as ”::text (or with
+// redundant parentheses), while GORM's contract records default:”.
+//
+// This is intentionally not a general SQL expression evaluator: functions,
+// operators, non-text casts, and malformed expressions remain different so a
+// changed default continues to fail the schema contract closed.
+func usageDefaultCompatible(driver, expected, actual string) bool {
+	expectedValue, expectedOK := normalizeUsageDefault(expected)
+	actualValue, actualOK := normalizeUsageDefault(actual)
+	if !expectedOK || !actualOK {
+		return false
 	}
-	return normalize(expected) == normalize(actual)
+	if driver == "postgres" || driver == "postgresql" {
+		if value, ok := normalizePostgresTextCastDefault(actual); ok {
+			actualValue = value
+		} else if strings.Contains(actual, "::") {
+			return false
+		}
+	}
+	return expectedValue == actualValue
+}
+
+func normalizeUsageDefault(value string) (string, bool) {
+	value = trimUsageDefaultParens(strings.TrimSpace(value))
+	if literal, rest, ok := parseUsageSQLStringLiteral(value); ok && strings.TrimSpace(rest) == "" {
+		return "string:" + literal, true
+	}
+	switch strings.ToLower(value) {
+	case "false":
+		return "scalar:0", true
+	case "true":
+		return "scalar:1", true
+	case "0":
+		return "scalar:0", true
+	default:
+		if usageDefaultIntegerLiteral(value) {
+			return "number:" + value, true
+		}
+		return "", false
+	}
+}
+
+func usageDefaultIntegerLiteral(value string) bool {
+	if value == "" {
+		return false
+	}
+	if value[0] == '-' {
+		value = value[1:]
+	}
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizePostgresTextCastDefault(value string) (string, bool) {
+	value = trimUsageDefaultParens(strings.TrimSpace(value))
+	literal, rest, ok := parseUsageSQLStringLiteral(value)
+	if !ok {
+		return "", false
+	}
+	castCount := 0
+	for {
+		rest = strings.TrimSpace(rest)
+		if rest == "" {
+			break
+		}
+		if !strings.HasPrefix(rest, "::") {
+			return "", false
+		}
+		castCount++
+		rest = strings.TrimSpace(rest[2:])
+		next := strings.Index(rest, "::")
+		typeName := rest
+		if next >= 0 {
+			typeName, rest = rest[:next], rest[next:]
+		} else {
+			rest = ""
+		}
+		if !postgresTextDefaultCast(typeName) {
+			return "", false
+		}
+	}
+	if castCount == 0 {
+		return "", false
+	}
+	return "string:" + literal, true
+}
+
+func postgresTextDefaultCast(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "", "\"", "").Replace(value)
+	switch value {
+	case "text", "pg_catalog.text", "varchar", "charactervarying", "character", "char", "bpchar", "pg_catalog.varchar", "pg_catalog.bpchar":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseUsageSQLStringLiteral(value string) (literal, rest string, ok bool) {
+	if len(value) > 1 && (value[0] == 'e' || value[0] == 'E') && value[1] == '\'' {
+		value = value[1:]
+	}
+	if len(value) == 0 || value[0] != '\'' {
+		return "", value, false
+	}
+	var decoded strings.Builder
+	for i := 1; i < len(value); i++ {
+		if value[i] != '\'' {
+			decoded.WriteByte(value[i])
+			continue
+		}
+		if i+1 < len(value) && value[i+1] == '\'' {
+			decoded.WriteByte('\'')
+			i++
+			continue
+		}
+		return decoded.String(), value[i+1:], true
+	}
+	return "", value, false
+}
+
+func trimUsageDefaultParens(value string) string {
+	for len(value) >= 2 && value[0] == '(' && value[len(value)-1] == ')' && usageDefaultOuterParens(value) {
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+	return value
+}
+
+func usageDefaultOuterParens(value string) bool {
+	depth := 0
+	inString := false
+	for i := 0; i < len(value); i++ {
+		if value[i] == '\'' {
+			if inString && i+1 < len(value) && value[i+1] == '\'' {
+				i++
+				continue
+			}
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch value[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i != len(value)-1 {
+				return false
+			}
+		}
+	}
+	return depth == 0 && !inString
 }
 
 func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
