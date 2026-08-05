@@ -488,10 +488,16 @@ func (s *Service) codexInputModalitiesForGroup(name string) []string {
 	seen := map[string]bool{"text": true}
 	for _, target := range s.codexTargetsForGroup(name, &IRRequest{Input: "catalog"}) {
 		for _, modality := range defaultModalities(target.InputModalities) {
-			seen[modality] = true
+			// Image is a request-shape capability, not a property inherited from
+			// ordinary Responses text eligibility. An inverse bridge can admit
+			// text while rejecting images, and request-shape metadata can reject
+			// image inputs for this exact target.
+			if modality != "image" {
+				seen[modality] = true
+			}
 		}
 	}
-	if len(s.codexTargetsForGroup(name, &IRRequest{InputParts: []IRContentPart{{Type: "image"}}})) > 0 {
+	if len(s.codexImageTargetsForGroup(name)) > 0 {
 		seen["image"] = true
 	}
 	out := []string{"text"}
@@ -501,6 +507,17 @@ func (s *Service) codexInputModalitiesForGroup(name string) []string {
 		}
 	}
 	return out
+}
+
+// codexImageTargetsForGroup uses the same Responses candidate filtering as
+// routing with an ordinary mixed text/image input. Keep this probe separate
+// from the text catalog probe so a caller-visible image claim has an exact
+// eligible native Responses target or enabled Responses-to-Chat bridge path.
+func (s *Service) codexImageTargetsForGroup(name string) []Target {
+	return s.codexTargetsForGroup(name, &IRRequest{
+		Input:      "catalog image",
+		InputParts: []IRContentPart{{Type: "image", ImageURL: "data:image/png;base64,AA=="}},
+	})
 }
 
 func (s *Service) codexReasoningMetadataForGroup(name string) ([]string, bool, string) {

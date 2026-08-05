@@ -143,7 +143,7 @@ codex exec --ignore-user-config --ephemeral \
 `}
 </RouterCodeBlock>
 
-Image-bearing Codex requests bypass router response caching. Usage records include `input_has_image`, image count, and VLM cost fields when the upstream returns enough usage detail.
+Image-bearing Codex requests bypass router response caching. Codex is offered image attachment for a group only when the caller-filtered catalog finds an eligible mixed text/image Responses path for that exact group. That path can be native Responses or a bridge explicitly validated with image support; a text-only bridge or target-level image request-shape exclusion leaves image metadata out of the catalog and the request is safely rejected before upstream. Usage records include `input_has_image`, image count, and VLM cost fields when the upstream returns enough usage detail.
 
 For the full VLM routing configuration and equivalent API examples, see [Image Analysis And VLM Routing](../configuration/image-analysis-vlm).
 

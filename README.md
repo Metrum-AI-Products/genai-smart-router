@@ -1018,7 +1018,7 @@ test "$(cat "$WORK/claude-tool-work/claude_tool_smoke.txt")" = "claude-tool-ok"
 
 Codex is configured with ephemeral provider settings and the OpenAI Responses wire API:
 
-`/v1/codex/models.json` is a Responses-specific, caller-filtered catalog. A model group appears only when it has an ordinary text target eligible for OpenAI Responses, either natively or through a validated `responses_to_chat` bridge. Its advertised tools, images, and reasoning are limited to that same surface; a Chat-only or Anthropic-only target is still available to its matching API surface but is not advertised to Codex.
+`/v1/codex/models.json` is a Responses-specific, caller-filtered catalog. A model group appears only when it has an ordinary text target eligible for OpenAI Responses, either natively or through a validated `responses_to_chat` bridge. Its advertised tools and reasoning are limited to that same surface. Image metadata is emitted only when the exact group also has an eligible mixed text/image Responses path; a bridge must explicitly validate and enable images, and request-shape image exclusions suppress the claim. A Chat-only or Anthropic-only target is still available to its matching API surface but is not advertised to Codex.
 
 ```bash
 export METRUM_ROUTER_KEY="$ROUTER_TOKEN"
