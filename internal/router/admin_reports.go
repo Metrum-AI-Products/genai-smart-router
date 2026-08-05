@@ -1005,7 +1005,11 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Request) {
-	status, err := s.usage.migrationStatus()
+	statusFn := s.usage.migrationStatus
+	if s.migrationStatusFn != nil {
+		statusFn = s.migrationStatusFn
+	}
+	status, err := statusFn()
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"type": "migration-status-unavailable", "message": "migration-status-unavailable"}})
 		return
@@ -1023,7 +1027,7 @@ func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Requ
 		entry, applied := entries[definition.ID]
 		job, hasJob := jobs[definition.ID]
 		row := adminMigrationStatusRow{Scope: definition.Scope, MigrationID: definition.ID, Name: definition.Name, Release: definition.Release, SchemaVersion: definition.SchemaVersion, DataVersion: definition.DataVersion, RollbackClass: definition.RollbackClass, MaintenanceMode: definition.MaintenanceMode, ExecutionMode: definition.ExecutionMode, LockClass: definition.LockClass, TimeoutClass: definition.TimeoutClass, DataJobKey: definition.DataJobKey, DurationMS: entry.DurationMS, ErrorClass: entry.ErrorCode, ErrorMessage: safeMigrationText(entry.ErrorText), StartedAt: formatUsageTime(entry.StartedAt), CompletedAt: formatUsageTime(entry.CompletedAt), Postcondition: definition.PostconditionKey, RowsScanned: job.RowsScanned, RowsUpdated: job.RowsUpdated, RowsSkipped: job.RowsSkipped, RowsFailed: job.RowsFailed, Checkpoints: job.Checkpoints}
-		adminProjectMigrationRowState(&row, applied, entry.State, hasJob && job.Present, job)
+		adminProjectMigrationRowState(&row, applied && entry.State == "applied", entry.State, hasJob && job.Present, job)
 		if !adminMigrationRowMatches(row, r.URL.Query()) {
 			continue
 		}
@@ -1034,7 +1038,7 @@ func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Requ
 		switch row.State {
 		case "pending":
 			summary["pending"] = summary["pending"].(int) + 1
-		case "in-progress":
+		case "running", "in-progress":
 			summary["inProgress"] = summary["inProgress"].(int) + 1
 		case "failed":
 			summary["failed"] = summary["failed"].(int) + 1
@@ -1048,16 +1052,20 @@ func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, adminMigrationStatusResponse{GeneratedUTC: formatUsageTime(time.Now().UTC()), Summary: summary, Rows: rows})
 }
 
-// adminProjectMigrationRowState makes a bound data job authoritative for the
-// operator-visible completion state. The schema ledger still records schema
-// application, but an applied schema is not verified until its declared data
-// job has durably validated.
-func adminProjectMigrationRowState(row *adminMigrationStatusRow, applied bool, ledgerState string, hasJob bool, job MigrationDataJobStatus) {
+// adminProjectMigrationRowState makes a bound data job authoritative only after
+// the schema ledger records applied. Failed or running schema work is the
+// authoritative effective state even if a contradictory job record exists.
+// An applied schema is not verified until its declared data job durably
+// validates.
+func adminProjectMigrationRowState(row *adminMigrationStatusRow, ledgerApplied bool, ledgerState string, hasJob bool, job MigrationDataJobStatus) {
 	row.State = "pending"
-	if applied {
+	if ledgerState != "" {
 		row.State = ledgerState
 	}
-	if !applied || row.DataJobKey == "" {
+	if !ledgerApplied || row.DataJobKey == "" {
+		if hasJob {
+			row.DataJobState = safeMigrationText(job.State)
+		}
 		row.ValidationState = adminMigrationValidationState(row.State)
 		return
 	}
@@ -1098,7 +1106,7 @@ func adminMigrationSummaryState(status MigrationStatus, rows []adminMigrationSta
 	if !status.Compatible || status.State == "incompatible" {
 		return "incompatible"
 	}
-	for _, wanted := range []string{"failed", "in-progress", "pending"} {
+	for _, wanted := range []string{"failed", "running", "in-progress", "pending"} {
 		for _, row := range rows {
 			if row.State == wanted {
 				return wanted
