@@ -48,6 +48,19 @@ func verifyTestMigrationMarker(tx *gorm.DB) error {
 	return nil
 }
 
+func applyTestMigrationFailure(*gorm.DB) error { return errors.New("deliberate migration failure") }
+
+func applyTestMigrationRequiresPostgresTimeouts(tx *gorm.DB) error {
+	var lockTimeout, statementTimeout string
+	if err := tx.Raw("SELECT current_setting('lock_timeout'), current_setting('statement_timeout')").Row().Scan(&lockTimeout, &statementTimeout); err != nil {
+		return err
+	}
+	if lockTimeout != "5s" || statementTimeout != "30s" {
+		return fmt.Errorf("unexpected migration timeouts")
+	}
+	return applyTestMigrationMarker(tx)
+}
+
 func testMigrationDefinition(id int, scope, name, checksum string, schemaVersion int, maintenanceMode, rollbackClass string) MigrationDefinition {
 	return FinalizeMigrationDefinition(MigrationDefinition{
 		ID: id, Scope: scope, Name: name, Release: "test", Checksum: checksum,
@@ -81,6 +94,122 @@ func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatalf("idempotent apply: %v", err)
+	}
+}
+
+func TestMigrationRunnerDurablyRecordsAtomicFailureWithFencing(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "failed.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	d := testMigrationDefinition(1, "failure", "failing marker", MigrationChecksum("failure"), 1, "online", "restore-required")
+	d.Apply = applyTestMigrationFailure
+	d.HandlerKey = "test.failure.apply.v1@applyTestMigrationFailure"
+	d = FinalizeMigrationDefinition(d)
+	r, err := NewMigrationRunner(db, "failure", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("failure-runner"); err == nil || !strings.Contains(err.Error(), "migration-apply-failed") {
+		t.Fatalf("failed atomic migration must return a safe failure class, got %v", err)
+	}
+	var ledger migrationLedgerRecord
+	if err := db.Where("scope = ? AND migration_id = ?", "failure", d.ID).First(&ledger).Error; err != nil {
+		t.Fatalf("durable failed ledger: %v", err)
+	}
+	if ledger.State != "failed" || ledger.ErrorCode != "migration-apply-failed" {
+		t.Fatalf("failed ledger = %+v", ledger)
+	}
+	var attempt migrationAttemptRecord
+	if err := db.Where("scope = ? AND migration_id = ?", "failure", d.ID).First(&attempt).Error; err != nil {
+		t.Fatalf("durable failure attempt: %v", err)
+	}
+	if attempt.State != "failed" || attempt.OwnerGeneration <= 0 || attempt.SafeErrorClass != "migration-apply-failed" {
+		t.Fatalf("fenced failure attempt = %+v", attempt)
+	}
+}
+
+func TestMigrationRunnerRequiresDedicatedNonTransactionalMaintenance(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "nontransactional.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	d := testMigrationDefinition(1, "nontransactional", "concurrent-style marker", MigrationChecksum("nontransactional"), 1, "maintenance", "restore-required")
+	d.Transactional, d.ExecutionMode = false, "non-transactional"
+	d = FinalizeMigrationDefinition(d)
+	r, err := NewMigrationRunner(db, "nontransactional", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyMaintenancePending("maintenance"); err == nil {
+		t.Fatal("ordinary maintenance must reject non-transactional work")
+	}
+	if err := r.ApplyNonTransactionalMaintenancePendingWithEvidence("maintenance", "backup-approval-1"); err != nil {
+		t.Fatalf("dedicated non-transactional maintenance: %v", err)
+	}
+	var attempt migrationAttemptRecord
+	if err := db.Where("scope = ? AND migration_id = ? AND state = ?", "nontransactional", d.ID, "applied").First(&attempt).Error; err != nil {
+		t.Fatalf("read audited maintenance attempt: %v", err)
+	}
+	if attempt.BackupEvidenceRef != "backup-approval-1" || attempt.OwnerGeneration <= 0 {
+		t.Fatalf("maintenance backup evidence was not durably fenced: %+v", attempt)
+	}
+	status, err := r.Verify()
+	if err != nil || status.State != "current" || !status.Compatible {
+		t.Fatalf("non-transactional recovery state: status=%+v err=%v", status, err)
+	}
+}
+
+func TestMigrationOperationalPostgresAdvisoryLockAndTimeouts(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SMART_ROUTER_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("SMART_ROUTER_POSTGRES_TEST_DSN is required for disposable PostgreSQL operational coverage")
+	}
+	if os.Getenv("SMART_ROUTER_POSTGRES_TEST_ALLOW") != "issue-507-stage4" || !strings.Contains(strings.ToLower(dsn), "smart_router_issue_507_stage4") {
+		t.Fatal("PostgreSQL operational coverage requires the explicit disposable database guard")
+	}
+	db, err := openUsageDB(UsageDBConfig{Driver: "postgres", DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	d := testMigrationDefinition(1, "postgres-operational", "timeout marker", MigrationChecksum("postgres-operational"), 1, "online", "package-only")
+	d.Apply = applyTestMigrationRequiresPostgresTimeouts
+	d.HandlerKey = "test.postgres-timeouts.apply.v1@applyTestMigrationRequiresPostgresTimeouts"
+	d = FinalizeMigrationDefinition(d)
+	r, err := NewMigrationRunner(db, "postgres-operational", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("postgres-operational-runner"); err != nil {
+		t.Fatalf("PostgreSQL timeout-bound migration: %v", err)
+	}
+	r2, err := NewMigrationRunner(db, "postgres-advisory", MigrationCompatibility{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r2.ensureLedger(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Connection(func(conn *gorm.DB) error {
+		owner := *r2
+		owner.db = conn
+		if err := owner.acquireLock("first"); err != nil {
+			return err
+		}
+		defer owner.releaseLock("first")
+		contender, err := NewMigrationRunner(db, "postgres-advisory", MigrationCompatibility{}, nil)
+		if err != nil {
+			return err
+		}
+		if err := contender.acquireLock("second"); err == nil {
+			return errors.New("second PostgreSQL connection acquired advisory migration lock")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
