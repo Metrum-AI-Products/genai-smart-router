@@ -43,7 +43,7 @@ Preserve the `X-Request-Id` value when opening support tickets. Do not include r
 Configure a dedicated metrics-admin caller and restrict `/metrics` to that subject. Metrics are global operational telemetry, not a tenant-scoped caller endpoint.
 Rejected or unknown caller-supplied model names are collapsed to bounded labels such as `rejected_model`; authorized model groups keep their configured group labels.
 
-Migration health is also aggregate-only and emitted only to the same metrics-admin surface: schema/data version, compatibility, pending definition count, and bounded data-job state count by persistent scope. It has no caller, token, tenant, prompt, SQL, DSN, or error-text labels.
+Migration health is also aggregate-only and emitted only to the same metrics-admin surface: schema/data version, compatibility, pending definition count, and bounded data-job state count by persistent scope. When a migration-ledger status lookup is temporarily unavailable, the authorized scrape still returns the existing operational metric families and sets `smart_llmrouter_migration_status_available{scope="usage"}` to `0`. It has no caller, token, tenant, prompt, SQL, DSN, or error-text labels.
 
 Example check:
 

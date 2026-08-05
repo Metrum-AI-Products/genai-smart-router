@@ -305,15 +305,19 @@ func (migrationLockRecord) TableName() string { return "schema_migration_locks" 
 // MigrationStatus summarizes one persistent scope without exposing database
 // internals. Incompatible includes checksum tampering and future versions.
 type MigrationStatus struct {
-	Scope         string
-	SchemaVersion int
-	DataVersion   int
-	Compatibility MigrationCompatibility
-	Compatible    bool
-	State         string // current, pending, in-progress, failed, incompatible
-	Pending       []MigrationDefinition
-	Entries       []MigrationLedgerEntry
-	Jobs          []MigrationDataJobStatus
+	Scope string
+	// StatusUnavailable reports that the safe migration ledger snapshot could
+	// not be read. It is deliberately a bounded boolean rather than a database
+	// error so global metrics can remain available without exposing internals.
+	StatusUnavailable bool
+	SchemaVersion     int
+	DataVersion       int
+	Compatibility     MigrationCompatibility
+	Compatible        bool
+	State             string // current, pending, in-progress, failed, incompatible
+	Pending           []MigrationDefinition
+	Entries           []MigrationLedgerEntry
+	Jobs              []MigrationDataJobStatus
 }
 
 type migrationRunner struct {

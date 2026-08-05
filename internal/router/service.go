@@ -30,26 +30,27 @@ import (
 )
 
 type Service struct {
-	cfg            *Config
-	mux            *http.ServeMux
-	httpClient     *http.Client
-	callersBySum   map[string]*callerRuntime
-	adminBasic     map[string]adminBasicRuntime
-	adminOIDC      *adminOIDCRuntime
-	adminSession   *adminSessionStore
-	authorizer     *authorizer
-	quota          *quotaStore
-	cache          *responseCache
-	logger         *requestLogger
-	usage          *usageStore
-	metrics        *metricsStore
-	trafficShape   *trafficShapeManager
-	license        *licenseManager
-	bridgeSessions *bridgeSessionBackends
-	scripts        map[string]*scriptStrategy
-	observations   *dynamicObservationStore
-	shaping        *upstreamShapeManager
-	reportCursor   [32]byte
+	cfg               *Config
+	mux               *http.ServeMux
+	httpClient        *http.Client
+	callersBySum      map[string]*callerRuntime
+	adminBasic        map[string]adminBasicRuntime
+	adminOIDC         *adminOIDCRuntime
+	adminSession      *adminSessionStore
+	authorizer        *authorizer
+	quota             *quotaStore
+	cache             *responseCache
+	logger            *requestLogger
+	usage             *usageStore
+	migrationStatusFn func() (MigrationStatus, error)
+	metrics           *metricsStore
+	trafficShape      *trafficShapeManager
+	license           *licenseManager
+	bridgeSessions    *bridgeSessionBackends
+	scripts           map[string]*scriptStrategy
+	observations      *dynamicObservationStore
+	shaping           *upstreamShapeManager
+	reportCursor      [32]byte
 }
 
 type adminBasicRuntime struct {
@@ -620,13 +621,16 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.finish(rc, http.StatusOK, nil)
-	migration := MigrationStatus{Scope: usageMigrationScope, State: "unavailable"}
+	migration := MigrationStatus{Scope: usageMigrationScope, State: "unavailable", StatusUnavailable: true}
 	if s.usage != nil {
 		var err error
-		migration, err = s.usage.migrationStatus()
+		statusFn := s.usage.migrationStatus
+		if s.migrationStatusFn != nil {
+			statusFn = s.migrationStatusFn
+		}
+		migration, err = statusFn()
 		if err != nil {
-			s.writeError(w, rc, http.StatusServiceUnavailable, "migration-status-unavailable")
-			return
+			migration = MigrationStatus{Scope: usageMigrationScope, State: "unavailable", StatusUnavailable: true}
 		}
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
