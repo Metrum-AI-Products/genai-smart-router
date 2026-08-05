@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"math"
 	"net/http"
+	"net/url"
 	"path"
 	"reflect"
 	"sort"
@@ -145,6 +146,42 @@ type adminCatalogStatusResponse struct {
 	GroupSummary []adminGroupEligibility `json:"groupSummary,omitempty"`
 	Rows         []adminCatalogStatusRow `json:"rows"`
 	Charts       []adminReportChart      `json:"charts,omitempty"`
+}
+
+// adminMigrationStatusResponse intentionally exposes only checked-in contract
+// metadata and scalar ledger/job status. It is not a migration control plane.
+type adminMigrationStatusResponse struct {
+	GeneratedUTC string                    `json:"generatedUtc"`
+	Summary      map[string]any            `json:"summary"`
+	Rows         []adminMigrationStatusRow `json:"rows"`
+}
+
+type adminMigrationStatusRow struct {
+	Scope           string `json:"scope"`
+	MigrationID     int    `json:"migrationId"`
+	Name            string `json:"name"`
+	Release         string `json:"release"`
+	SchemaVersion   int    `json:"schemaVersion"`
+	DataVersion     int    `json:"dataVersion"`
+	State           string `json:"state"`
+	RollbackClass   string `json:"rollbackClass"`
+	MaintenanceMode string `json:"maintenanceMode"`
+	ExecutionMode   string `json:"executionMode"`
+	LockClass       string `json:"lockClass"`
+	TimeoutClass    string `json:"timeoutClass"`
+	DataJobKey      string `json:"dataJobKey,omitempty"`
+	DurationMS      int64  `json:"durationMs,omitempty"`
+	ErrorClass      string `json:"errorClass,omitempty"`
+	ErrorMessage    string `json:"errorMessage,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	CompletedAt     string `json:"completedAt,omitempty"`
+	ValidationState string `json:"validationState"`
+	Postcondition   string `json:"postcondition"`
+	RowsScanned     int64  `json:"rowsScanned"`
+	RowsUpdated     int64  `json:"rowsUpdated"`
+	RowsSkipped     int64  `json:"rowsSkipped"`
+	RowsFailed      int64  `json:"rowsFailed"`
+	Checkpoints     int    `json:"checkpoints"`
 }
 
 type adminReportVersionResponse struct {
@@ -928,6 +965,11 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 		s.handleAdminRetentionStatus(w, r)
 	case r.URL.Path == prefix+"/api/provider-catalog-status":
 		s.handleAdminProviderCatalogStatus(w, r)
+	case r.URL.Path == prefix+"/api/migrations":
+		if !s.requireAdminReportUsageStore(w) {
+			return
+		}
+		s.handleAdminMigrationStatus(w, r)
 	case r.URL.Path == prefix+"/security/export.csv":
 		if !s.requireAdminReportUsageStore(w) {
 			return
@@ -959,6 +1001,50 @@ func (s *Service) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := s.usage.migrationStatus()
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"type": "migration-status-unavailable", "message": "migration-status-unavailable"}})
+		return
+	}
+	entries := make(map[int]MigrationLedgerEntry, len(status.Entries))
+	for _, entry := range status.Entries {
+		entries[entry.MigrationID] = entry
+	}
+	jobs := make(map[int]MigrationDataJobStatus, len(status.Jobs))
+	for _, job := range status.Jobs {
+		jobs[job.MigrationID] = job
+	}
+	rows := make([]adminMigrationStatusRow, 0, len(usageMigrationDefinitions))
+	for _, definition := range usageMigrationDefinitions {
+		entry, applied := entries[definition.ID]
+		job := jobs[definition.ID]
+		state := "pending"
+		if applied {
+			state = entry.State
+		}
+		validationState := map[string]string{"applied": "verified", "pending": "not-validated", "running": "in-progress", "failed": "failed"}[state]
+		if validationState == "" {
+			validationState = "incompatible"
+		}
+		row := adminMigrationStatusRow{Scope: definition.Scope, MigrationID: definition.ID, Name: definition.Name, Release: definition.Release, SchemaVersion: definition.SchemaVersion, DataVersion: definition.DataVersion, State: state, RollbackClass: definition.RollbackClass, MaintenanceMode: definition.MaintenanceMode, ExecutionMode: definition.ExecutionMode, LockClass: definition.LockClass, TimeoutClass: definition.TimeoutClass, DataJobKey: definition.DataJobKey, DurationMS: entry.DurationMS, ErrorClass: entry.ErrorCode, ErrorMessage: safeMigrationText(entry.ErrorText), StartedAt: formatUsageTime(entry.StartedAt), CompletedAt: formatUsageTime(entry.CompletedAt), ValidationState: validationState, Postcondition: definition.PostconditionKey, RowsScanned: job.RowsScanned, RowsUpdated: job.RowsUpdated, RowsSkipped: job.RowsSkipped, RowsFailed: job.RowsFailed, Checkpoints: job.Checkpoints}
+		if !adminMigrationRowMatches(row, r.URL.Query()) {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	writeJSON(w, http.StatusOK, adminMigrationStatusResponse{GeneratedUTC: formatUsageTime(time.Now().UTC()), Summary: map[string]any{"scope": status.Scope, "schemaVersion": status.SchemaVersion, "dataVersion": status.DataVersion, "compatible": status.Compatible, "state": status.State, "pending": len(status.Pending), "jobs": len(status.Jobs)}, Rows: rows})
+}
+
+func adminMigrationRowMatches(row adminMigrationStatusRow, q url.Values) bool {
+	for key, actual := range map[string]string{"scope": row.Scope, "release": row.Release, "state": row.State, "type": row.ExecutionMode, "date": row.StartedAt} {
+		if want := strings.TrimSpace(q.Get(key)); want != "" && !strings.Contains(strings.ToLower(actual), strings.ToLower(want)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) handleAdminReportVersion(w http.ResponseWriter, r *http.Request) {

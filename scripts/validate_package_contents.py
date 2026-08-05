@@ -17,7 +17,7 @@ TEXT_SCAN_LIMIT = 10 * 1024 * 1024
 BINARY_PACKAGE_FILES = {
     "bin/router",
     "bin/router-token-gen",
-    "bin/router-usage-report",
+    "bin/router-usage-report", "bin/router-migrate",
     "bin/metrum-smartrouterctl",
     "config/config.example.yaml",
     "config/env.example.json",
@@ -34,7 +34,7 @@ DOCKER_PACKAGE_FILES = {
     "config/env.example.json",
     "config/scripts/router.ts",
 }
-PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/metrum-smartrouterctl"}
+PACKAGE_BINARIES = {"bin/router", "bin/router-token-gen", "bin/router-usage-report", "bin/router-migrate", "bin/metrum-smartrouterctl"}
 EXPECTED_ELF_MACHINE = {"amd64": 62, "arm64": 183}
 DOCKER_IMAGE_RE = re.compile(r"^images/smart-llmrouter-.+-linux-(amd64|arm64)\.tar$")
 FORBIDDEN_IMAGE_PATH_RE = re.compile(
@@ -169,7 +169,7 @@ def validate_elf_arch(blob: bytes, arch: str) -> str | None:
 
 def validate_docker_image_tar(archive: Path, image_rel: str, blob: bytes) -> list[str]:
     errors: list[str] = []
-    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report"}
+    required = {"/app/bin/router", "/app/bin/router-token-gen", "/app/bin/router-usage-report", "/app/bin/router-migrate"}
     actual: set[str] = set()
     try:
         with tarfile.open(fileobj=io.BytesIO(blob), mode="r:*") as image:

@@ -59,7 +59,7 @@ def assert_offline_package_documentation_contract() -> None:
             raise AssertionError(f"docs/PACKAGE_README.md: missing Docker CLI guidance: {guidance}")
 
     dockerfile = (repository / "Dockerfile").read_text(encoding="utf-8")
-    for runtime_binary in ("router", "router-token-gen", "router-usage-report"):
+    for runtime_binary in ("router", "router-token-gen", "router-usage-report", "router-migrate"):
         expected_copy = f"COPY --from=build /out/{runtime_binary} /app/bin/{runtime_binary}"
         if expected_copy not in dockerfile:
             raise AssertionError(f"Dockerfile: missing runtime binary copy: {runtime_binary}")
@@ -109,6 +109,7 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
         f"{root}/bin/router": elf(62),
         f"{root}/bin/router-token-gen": elf(62),
         f"{root}/bin/router-usage-report": elf(62),
+        f"{root}/bin/router-migrate": elf(62),
         f"{root}/bin/metrum-smartrouterctl": elf(62),
         f"{root}/config/config.example.yaml": "server: {}\n",
         f"{root}/config/env.example.json": "{}\n",
@@ -123,7 +124,7 @@ def binary_package_files(root: str = "smart-llmrouter-v1.0.0-linux-amd64") -> di
 def docker_image_tar(extra_layer_files: dict[str, str | bytes] | None = None) -> bytes:
     layer_data = io.BytesIO()
     with tarfile.open(fileobj=layer_data, mode="w") as layer:
-        for name in ["app/bin/router", "app/bin/router-token-gen", "app/bin/router-usage-report"]:
+        for name in ["app/bin/router", "app/bin/router-token-gen", "app/bin/router-usage-report", "app/bin/router-migrate"]:
             data = elf(62)
             info = tarfile.TarInfo(name)
             info.size = len(data)

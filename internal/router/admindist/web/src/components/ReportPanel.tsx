@@ -87,6 +87,14 @@ export function ReportPanel({ tab, report, filters, pageIndex, canGoBack, loadin
       {loading ? <div className="rounded-lg border border-white/10 p-6 text-sm text-white/62">Loading report data...</div> : null}
       <TabFilterPanel tab={tab} columns={columns} supportedSortKeys={supportedSortKeys} filters={filters} onFiltersChange={onFiltersChange} />
       <MetricGrid summary={report?.summary} config={metricGridConfig} />
+      {tab.id === "data-migrations" && rows.length > 0 ? (
+        <details className="rounded-lg border border-white/10 bg-white/[0.035] p-4" data-migration-detail-panel>
+          <summary className="cursor-pointer font-mono text-xs uppercase text-white/70">Migration detail and audit</summary>
+          <dl className="mt-3 grid gap-2 text-sm text-white/70 md:grid-cols-2">
+            {[["Plan", rows[0].name], ["Postcondition", rows[0].postcondition], ["Validation", rows[0].validationState], ["Audit", rows[0].startedAt], ["Progress", `${rows[0].checkpoints || 0} checkpoints; ${rows[0].rowsScanned || 0} scanned; ${rows[0].rowsUpdated || 0} updated; ${rows[0].rowsSkipped || 0} skipped; ${rows[0].rowsFailed || 0} failed`], ["Safe error", rows[0].errorMessage || rows[0].errorClass || "none"]].map(([label, value]) => <div key={String(label)}><dt className="font-mono text-xs uppercase text-white/45">{String(label)}</dt><dd>{String(value || "not recorded")}</dd></div>)}
+          </dl>
+        </details>
+      ) : null}
       {tab.id === "savings" && report?.warnings?.length ? (
         <Card className="border-metrum-red/30 bg-metrum-red/10">
           <CardHeader>

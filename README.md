@@ -62,6 +62,7 @@ Each tarball contains:
 bin/router
 bin/router-token-gen
 bin/router-usage-report
+bin/router-migrate
 bin/metrum-smartrouterctl
 config/config.example.yaml
 config/env.example.json
@@ -810,7 +811,7 @@ Durability:
 make test       # safe default suite: Go, policy, and offline API compatibility tests
 make docs-build # build customer-facing Docusaurus docs into the Go embed directory
 make docs-dev   # run the Docusaurus development server
-make build      # build docs, then ./router, ./router-token-gen, and ./router-usage-report
+make build      # build docs, then ./router, ./router-token-gen, ./router-usage-report, and ./router-migrate
 make build-go-only # build Go binaries without refreshing embedded docs
 make build-all  # build docs, then linux amd64 and linux arm64 binaries under dist/build
 make package    # build linux amd64 and linux arm64 tarballs

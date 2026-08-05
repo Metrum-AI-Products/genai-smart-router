@@ -11,6 +11,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs-site" / "docs" / "release-notes" / "index.md"
+MIGRATION_CONTRACT = (
+    "| Scope | ID | Mode | Lock/timeout | Data job | Rollback |\n"
+    "| --- | ---: | --- | --- | --- | --- |\n"
+    "| usage | 2026071901 | transactional/online | online/bounded | none | package-only |\n"
+    "| usage | 2026072301 | transactional/online | online/bounded | none | restore-required |\n"
+    "| usage | 2026080501 | transactional/online | online/bounded | historical-usage-validation-v1 | restore-required |"
+)
 
 FORBIDDEN_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|bearer\s+[A-Za-z0-9._~+/=-]{16,}|router[_-]?token|token[_-]?hash)"),
@@ -93,6 +100,13 @@ def entry(release: Release) -> str:
 - Database: verify release validation notes and migration guidance before deployment.
 - License: verify entitlement, renewal, and validation guidance before deployment.
 - Metrics and reports: review changed operational surfaces before rollout.
+
+### Migration Contract
+
+{MIGRATION_CONTRACT}
+
+- Compatibility: this binary supports usage schema `0..2` and data `0..1`; serving validates the ledger before accepting traffic.
+- Backup and rollback: maintenance work requires the approved backup evidence recorded by the deployment job. Package rollback never runs a reverse migration.
 
 ### Caller Impact
 

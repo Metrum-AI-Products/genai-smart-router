@@ -2,6 +2,12 @@
 
 `router-migrate` is the non-serving entrypoint for inspecting durable-data migration state. It opens the selected usage database without starting the router and emits only safe scalar metadata.
 
+## Operator visibility and release contract
+
+Metrics-admin callers can scrape aggregate migration schema/data version, compatibility, pending count, and data-job state. The authenticated **Operations / Data migrations** browser report exposes the same safe contract plus release, execution, maintenance, lock, timeout, rollback, duration, and safe error-class metadata. Both are strictly read-only: they contain no SQL, DSNs, raw configuration, credentials, request content, or migration controls. Apply/retry/recovery remains the non-serving CLI deployment-job workflow with the recorded backup/recovery evidence required by the migration definition.
+
+Each release must publish its migration contract: migration ID and scope, online or maintenance execution mode, lock/timeout class, data-job requirement, backup evidence requirement, compatible schema/data window, and rollback class. Package rollback never performs a reverse migration; follow the release-specific restore requirement.
+
 ```sh
 router-migrate --driver=sqlite --db=usage.sqlite --action=status
 ROUTER_USAGE_DB_DSN="…" router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json

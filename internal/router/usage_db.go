@@ -31,6 +31,17 @@ type usageStore struct {
 	db *gorm.DB
 }
 
+// migrationStatus is a safe, read-only view of the checked-in usage migration
+// ledger for admin and metrics surfaces. It deliberately returns no database
+// connection details or application records.
+func (s *usageStore) migrationStatus() (MigrationStatus, error) {
+	r, err := newUsageMigrationRunner(s.db)
+	if err != nil {
+		return MigrationStatus{}, err
+	}
+	return r.Status()
+}
+
 const (
 	// usageDBMigrationPolicyValidate verifies a fully applied immutable ledger
 	// and never applies application-schema DDL during serving startup.
