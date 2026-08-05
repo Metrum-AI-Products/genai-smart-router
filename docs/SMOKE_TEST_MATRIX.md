@@ -29,6 +29,7 @@ Repeated upstream HTTP 400s are compatibility evidence. Do not rely on weighted 
 | Change type | Required smoke |
 |---|---|
 | Config validation | YAML parse and `docker compose config` |
+| API compatibility dependency bootstrap | `rtk python3 scripts/api_compat_bootstrap_test.py`; it proves a failed locked Python provision stops before Go provisioning, a failed normal bootstrap stops before offline conformance, clean-cache offline use fails closed, and offline conformance succeeds only after bootstrap |
 | Health/deploy | `/readyz`, `/version`, router logs |
 | Auth/allow list | `/v1/models` with caller token |
 | Codex model catalog | missing token gets `401`; a restricted caller gets only its allowed groups from `/v1/codex/models.json`; parse the returned `models[]` as Codex metadata, verify no upstream/provider/token/weight fields, verify non-reasoning and tool-only-only groups omit reasoning defaults while active-reasoning groups retain their valid reasoning metadata, fetch it to a mode-0600 local file, then run installed Codex with `model_catalog_json` and Responses wire API against a local or approved endpoint |

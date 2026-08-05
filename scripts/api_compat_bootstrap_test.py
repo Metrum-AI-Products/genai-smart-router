@@ -18,9 +18,17 @@ REPOSITORY_RESIDUE = (
 )
 
 
-def run_make(target: str, env: dict[str, str], *, expected: int = 0) -> str:
+def run_make(
+    target: str,
+    env: dict[str, str],
+    *,
+    expected: int = 0,
+    variables: dict[str, str] | None = None,
+) -> str:
+    command = ["make", target]
+    command.extend(f"{name}={value}" for name, value in (variables or {}).items())
     completed = subprocess.run(
-        ["make", target],
+        command,
         cwd=ROOT,
         env=env,
         text=True,
@@ -79,9 +87,61 @@ def remove_repository_residue() -> None:
             shutil.rmtree(path)
 
 
+def write_executable(path: Path, body: str) -> None:
+    path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+    path.chmod(0o755)
+
+
+def assert_provisioning_failures_stop_immediately() -> None:
+    """Prove failed bootstrap commands cannot be hidden by later successes."""
+    with tempfile.TemporaryDirectory(prefix="api-compat-fail-closed-") as temporary:
+        temporary_root = Path(temporary)
+        command_bin = temporary_root / "bin"
+        command_bin.mkdir()
+        command_log = temporary_root / "commands.log"
+
+        # A failing locked Python provision must prevent the Go download from
+        # running even when that subsequent command would succeed.
+        write_executable(command_bin / "uv", "exit 71")
+        write_executable(
+            command_bin / "go",
+            f"if [ \"$1\" = mod ] && [ \"$2\" = download ]; then printf 'go-download\\n' >> '{command_log}'; fi\nexit 0",
+        )
+        bootstrap_env = os.environ.copy() | {"PATH": f"{command_bin}:{os.environ['PATH']}"}
+        bootstrap_output = run_make("api-compat-bootstrap", bootstrap_env, expected=2)
+        if "Error 71" not in bootstrap_output:
+            raise AssertionError("bootstrap did not expose the locked Python provisioning failure")
+        if command_log.exists():
+            raise AssertionError("bootstrap ran Go dependency provisioning after locked Python provisioning failed")
+
+        # The normal target delegates bootstrap and offline work to recursive
+        # make. A failing bootstrap must stop before the offline phase, even if
+        # that later phase would report success.
+        fake_make = temporary_root / "fake-make"
+        write_executable(
+            fake_make,
+            "case \"$1\" in\n"
+            f"  api-compat-bootstrap) printf 'bootstrap\\n' >> '{command_log}'; exit 71 ;;\n"
+            f"  api-compat-mock-offline) printf 'offline\\n' >> '{command_log}'; exit 0 ;;\n"
+            "  *) exit 2 ;;\n"
+            "esac",
+        )
+        mock_output = run_make(
+            "api-compat-mock",
+            os.environ.copy(),
+            expected=2,
+            variables={"MAKE": str(fake_make)},
+        )
+        if "Error 71" not in mock_output:
+            raise AssertionError("normal orchestration did not expose the bootstrap failure")
+        if command_log.read_text(encoding="utf-8").splitlines() != ["bootstrap"]:
+            raise AssertionError("normal orchestration ran the offline phase after bootstrap failed")
+
+
 def main() -> int:
     remove_repository_residue()
     assert_no_repository_residue()
+    assert_provisioning_failures_stop_immediately()
     with tempfile.TemporaryDirectory(prefix="api-compat-bootstrap-") as temporary:
         cache_root = Path(temporary)
         env = isolated_environment(cache_root)

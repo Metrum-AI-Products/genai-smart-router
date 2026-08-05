@@ -79,7 +79,8 @@ The smoke emits safe scalar proof only: request IDs, API surface, status, select
 `uv.lock`, provisions the locked Python and Go dependencies, then runs through
 `uv --locked --offline` with Go module resolution disabled. It is included in
 `make test`, so a clean supported runner does not need a separate manual
-dependency step. Only `make api-compat-bootstrap` may resolve dependencies;
+dependency step. Bootstrap and normal orchestration stop immediately if either
+provisioning command fails. Only `make api-compat-bootstrap` may resolve dependencies;
 `make api-compat-mock-offline` is separately invokable and fails closed when
 its prerequisites are absent. The regression uses disposable Python and Go
 cache locations, and the offline pytest invocation disables source-tree pytest

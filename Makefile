@@ -267,7 +267,7 @@ api-compat-bootstrap:
 	cd tests/api_compat && \
 	UV_CACHE_DIR=$${UV_CACHE_DIR:-$$api_compat_root/uv-cache} \
 	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
-	uv sync --locked; \
+	uv sync --locked && \
 	GOMODCACHE=$${GOMODCACHE:-$$api_compat_root/go-mod-cache} \
 	GOCACHE=$${GOCACHE:-$$api_compat_root/go-build-cache} \
 	GOPROXY=$(API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
@@ -286,7 +286,7 @@ api-compat-mock-offline:
 api-compat-mock:
 	@api_compat_root=$$(mktemp -d); \
 	trap 'rm -rf "$$api_compat_root"' EXIT; \
-	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root"; \
+	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" && \
 	UV_CACHE_DIR="$$api_compat_root/uv-cache" \
 	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
 	GOMODCACHE="$$api_compat_root/go-mod-cache" \
