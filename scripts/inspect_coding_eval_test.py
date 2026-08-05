@@ -8,6 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]; SCRIPT=ROOT/"scripts/inspect_coding_ev
 EXAMPLE=ROOT/"examples/inspect-coding-evaluation.env.example"
 FILLED_EXAMPLE=ROOT/"examples/inspect-coding-evaluation.env"
 OPERATOR_DOC=ROOT/"docs/INSPECT_CODING_EVALUATIONS.md"
+HOSTED_DOC=ROOT/"docs-site/docs/evaluation/evaluate-smart-router.md"
 SPEC=importlib.util.spec_from_file_location("inspect_coding_eval", SCRIPT); assert SPEC and SPEC.loader
 EVAL=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(EVAL)
 def need(ok: bool, message: str) -> None:
@@ -34,6 +35,9 @@ def main() -> int:
   need_ignored(FILLED_EXAMPLE)
   doc=OPERATOR_DOC.read_text(encoding="utf-8")
   need("Ordinary bounded evaluation (no usage DB input)" in doc and "Coverage-required evaluation (protected and fail-closed)" in doc and "exactly one" in doc and ". ./examples/inspect-coding-evaluation.env" in doc and "chmod 600" in doc, "operator guide does not describe protected evaluation setup")
+  hosted_doc=HOSTED_DOC.read_text(encoding="utf-8")
+  need("owner-readable, package-local runtime location selected by the deployment" in hosted_doc, "hosted guide does not describe a package-local runtime-safe evaluation-input location")
+  need(all(term not in hosted_doc for term in ("source control", "repository-provided", "inspect-coding-evaluation.env")), "hosted guide exposes repository-specific evaluation-input handling")
   need(EVAL.number("C")==1.0 and EVAL.number("CORRECT")==1.0 and EVAL.number("I")==0.0 and EVAL.number("INCORRECT")==0.0,"categorical Inspect scores were not normalized")
   sample={"stats":{"total_time":1.25},"model_usage":{"route":{"total_cost":0.003}}}
   need(EVAL.nested_number(sample,("total_time",))==1.25 and EVAL.nested_number(sample,("total_cost",))==0.003 and EVAL.percentile95([10,20,30,40])==40,"Inspect metric extraction failed")

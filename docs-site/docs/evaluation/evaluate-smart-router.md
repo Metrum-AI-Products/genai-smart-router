@@ -15,7 +15,7 @@ When the question is whether a routed group is as good as a fixed model or previ
 
 ## Protect Evaluation Inputs
 
-Treat caller tokens, private endpoints, and any protected usage settings as local operator inputs. Keep completed environment files outside source control (or, for the bounded coding-evaluation template, in the repository-provided ignored `examples/inspect-coding-evaluation.env` path), make them owner-readable only, and load them into the evaluation shell without placing values on command lines, reports, or support tickets. Customer evaluation evidence should contain only sanitized aggregate outcomes; contact [contact@metrum.ai](mailto:contact@metrum.ai) for deployment-specific evaluation setup.
+Treat caller tokens, private endpoints, and any protected usage settings as local operator inputs. Keep completed environment files in an owner-readable, package-local runtime location selected by the deployment, and load them into the evaluation shell without placing values on command lines, reports, or support tickets. Customer evaluation evidence should contain only sanitized aggregate outcomes; contact [contact@metrum.ai](mailto:contact@metrum.ai) for deployment-specific evaluation setup.
 
 ## What To Prove First
 
