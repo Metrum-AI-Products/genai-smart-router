@@ -282,9 +282,11 @@ unexport API_COMPAT_BOOTSTRAP_GO_PROXY API_COMPAT_BOOTSTRAP_GO_SUMDB
 api_compat_shell_data = '$(subst ','"'"',$(value $(1)))'
 api_compat_make_data = $(1)=$(call api_compat_shell_data,$(1))
 # GNU Make does not preserve -n through every recursive recipe it executes
-# for inspection. Carry only that non-sensitive flag explicitly; mirror
+# for inspection. Its first MAKEFLAGS word is the compact short-option word,
+# so accept n inside that word (for example ns or sn), but never inspect later
+# long-option words. Carry only that non-sensitive flag explicitly; mirror
 # assignments remain excluded from the offline child below.
-api_compat_dry_run_flag = $(if $(filter n,$(MAKEFLAGS)),-n)
+api_compat_dry_run_flag = $(if $(findstring n,$(filter-out --%,$(firstword $(MAKEFLAGS)))),-n)
 api_compat_effective_dry_run_flag = $(or $(call api_compat_dry_run_flag),$(API_COMPAT_MAKE_DRY_RUN))
 api_compat_dry_run_transport = $(if $(call api_compat_effective_dry_run_flag),API_COMPAT_MAKE_DRY_RUN=$(call api_compat_effective_dry_run_flag))
 api-compat-bootstrap:
