@@ -34,6 +34,16 @@ const (
 // allow-list that can serialize provider or deployment credentials.
 var legacyQuotaReservationIDPrefixes = []string{"legacy-", "reserve-"}
 
+// legacyQuotaReservationSensitiveSuffixMarkers are deliberately broad because
+// legacy IDs are untrusted persisted input and can be returned by exact retry.
+// Match markers anywhere in the suffix before any database lookup so a
+// credential-shaped historical row cannot cross the registry output boundary.
+var legacyQuotaReservationSensitiveSuffixMarkers = []string{
+	"access-key", "api-key", "apikey", "authorization", "bearer", "credential",
+	"github-pat", "gho-", "ghp-", "ghs-", "ghu-", "hf-", "password",
+	"private-key", "provider-key", "secret", "sk-", "token", "xoxb-", "glpat-", "akia",
+}
+
 // TenantInstance is the safe input/output contract. Its component fields are
 // stored in normalized tables below; it contains no endpoint, DSN, credential,
 // token, secret reference/value, or configuration content.
@@ -406,6 +416,11 @@ func validLegacyQuotaReservationID(reservationID string) bool {
 	suffix := reservationID[len(prefix):]
 	if !((suffix[0] >= 'a' && suffix[0] <= 'z') || (suffix[0] >= '0' && suffix[0] <= '9')) {
 		return false
+	}
+	for _, marker := range legacyQuotaReservationSensitiveSuffixMarkers {
+		if strings.Contains(suffix, marker) {
+			return false
+		}
 	}
 	for _, character := range suffix {
 		if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-') {

@@ -54,9 +54,11 @@ adapter call or quota-record write. An exact retry of a pre-existing bounded
 opaque legacy reservation row remains readable and idempotent only for the
 historically evidenced `reserve-<lowercase-opaque-suffix>` and
 `legacy-<lowercase-opaque-suffix>` namespaces. This strict allow-list rejects
-provider- and deployment-credential-shaped legacy rows without calling an
-adapter or echoing their identifiers. The compatibility path never creates a
-new hold, and another identifier cannot bypass the active hold.
+provider- and deployment-credential-shaped legacy rows, including token,
+secret, credential, API-key, and provider-key markers anywhere in the legacy
+suffix, without calling an adapter or echoing their identifiers. The
+compatibility path never creates a new hold, and another identifier cannot
+bypass the active hold.
 
 `status` is bounded (1–100 rows), stable by tenant ID, and registry-only. It
 reports `schema_version_mismatch` after registration when the independently

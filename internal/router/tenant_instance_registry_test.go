@@ -365,6 +365,10 @@ func TestTenantRegistryLegacyReservationIDAllowList(t *testing.T) {
 		"reserve--example",
 		"reserve-Uppercase",
 		"reserve-example/value",
+		"reserve-router-token-example",
+		"legacy-provider-secret-example",
+		"reserve-api-key-example",
+		"legacy-github-pat-example",
 	} {
 		if validLegacyQuotaReservationID(reservationID) {
 			t.Fatalf("credential-shaped or malformed legacy reservation ID was accepted: %q", reservationID)
@@ -389,6 +393,10 @@ func TestTenantRegistryUnsafeLegacyReservationRowsRemainRejectedAndRedacted(t *t
 		"hf_examplecredentialvalue",
 		"sk-proj-examplecredentialvalue",
 		"sk-ant-examplecredentialvalue",
+		"reserve-router-token-example",
+		"legacy-provider-secret-example",
+		"reserve-api-key-example",
+		"legacy-github-pat-example",
 		"https://example.test/reservation",
 		"/private/reservations/example",
 		strings.Repeat("a", 4096),
