@@ -262,7 +262,7 @@ test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 	python3 scripts/api_compat_bootstrap_test.py
-	$(MAKE) $(call api_compat_dry_run_flag) $(call api_compat_dry_run_transport) api-compat-mock \
+	"$${MAKE:-make}" api-compat-mock \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB)
 
