@@ -134,7 +134,7 @@ export function metricGridConfigForTab(tab: TabSpec, report?: ReportResponse): M
   if (tab.id === "data-migrations") {
     return {
       priority: ["state", "pending", "inProgress", "failed", "verified", "missingDataJobs", "jobs"],
-      labels: { state: "Effective state", inProgress: "In progress", missingDataJobs: "Missing data jobs", jobs: "Data jobs" },
+		labels: { state: "Effective state", inProgress: "In progress (including running schema work)", missingDataJobs: "Missing data jobs", jobs: "Data jobs" },
       hideZeroKeys: ["pending", "inProgress", "failed", "verified", "missingDataJobs"],
       maxItems: 7,
     };

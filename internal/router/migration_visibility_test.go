@@ -72,6 +72,75 @@ func TestAdminMigrationStatusProjectsBoundDataJobState(t *testing.T) {
 	}
 }
 
+func TestAdminMigrationStatusPreservesNonAppliedLedgerBeforeBoundJobProjection(t *testing.T) {
+	hash := mustBcryptHash(t, "admin-password")
+	t.Setenv("SMART_ROUTER_MIGRATION_ADMIN_HASH", hash)
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", t.TempDir())
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe}
+	cfg.Server.AdminReports = AdminReportsConfig{Enabled: true}
+	cfg.Server.AdminAuth.Basic = AdminBasicAuthConfig{Enabled: true, AllowInsecureHTTP: true, Users: []AdminBasicAuthUser{{Username: "admin", PasswordHashEnv: "SMART_ROUTER_MIGRATION_ADMIN_HASH", Subject: "basic:admin", Domain: "test/local"}}}
+	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Policy: []string{"p, basic:admin, test/local, admin:reports, read"}}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	definition := usageMigrationDefinitionByID(t, usageHistoricalValidationMigrationID)
+	cases := []struct {
+		name, ledgerState, jobState, effectiveState, validationState string
+		hasJob                                                       bool
+	}{
+		{name: "failed-ledger-without-job", ledgerState: "failed", effectiveState: "failed", validationState: "failed"},
+		{name: "running-ledger-without-job", ledgerState: "running", effectiveState: "running", validationState: "in-progress"},
+		{name: "failed-ledger-with-validated-job", ledgerState: "failed", jobState: migrationDataJobValidated, effectiveState: "failed", validationState: "failed", hasJob: true},
+		{name: "running-ledger-with-failed-job", ledgerState: "running", jobState: migrationDataJobFailed, effectiveState: "running", validationState: "in-progress", hasJob: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status := MigrationStatus{Scope: usageMigrationScope, SchemaVersion: definition.SchemaVersion, DataVersion: definition.DataVersion, Compatible: true, Entries: []MigrationLedgerEntry{{MigrationID: definition.ID, State: tc.ledgerState, ErrorCode: "schema-" + tc.ledgerState, ErrorText: "schema-" + tc.ledgerState}}}
+			if tc.hasJob {
+				status.Jobs = []MigrationDataJobStatus{{MigrationID: definition.ID, State: tc.jobState, Present: true, RowsScanned: 20, RowsUpdated: 10, RowsSkipped: 8, RowsFailed: 2, Checkpoints: 2, ErrorClass: "data-job-" + tc.jobState}}
+			}
+			svc.migrationStatusFn = func() (MigrationStatus, error) { return status, nil }
+
+			response := adminMigrationStatusResponseForTest(t, svc, "/admin/reports/api/migrations")
+			row := adminMigrationRowForTest(t, response.Rows, definition.ID)
+			if row.State != tc.effectiveState || row.ValidationState != tc.validationState || row.DataJobState != tc.jobState {
+				t.Fatalf("row=%+v, want state=%q validation=%q dataJobState=%q", row, tc.effectiveState, tc.validationState, tc.jobState)
+			}
+			if row.ErrorClass != "schema-"+tc.ledgerState || row.ErrorMessage != "schema-"+tc.ledgerState {
+				t.Fatalf("authoritative schema error was not retained: %+v", row)
+			}
+			if got, _ := response.Summary["state"].(string); got != tc.effectiveState {
+				t.Fatalf("summary=%v, want state=%q", response.Summary, tc.effectiveState)
+			}
+			if tc.effectiveState == "failed" && response.Summary["failed"] != float64(1) {
+				t.Fatalf("failed ledger was not counted in summary: %v", response.Summary)
+			}
+			if tc.effectiveState == "running" && response.Summary["inProgress"] != float64(1) {
+				t.Fatalf("running ledger was not counted as in-progress in summary: %v", response.Summary)
+			}
+			filtered := adminMigrationStatusResponseForTest(t, svc, "/admin/reports/api/migrations?state="+tc.effectiveState)
+			filteredRow := adminMigrationRowForTest(t, filtered.Rows, definition.ID)
+			if filteredRow.State != tc.effectiveState || filteredRow.DataJobState != tc.jobState {
+				t.Fatalf("effective-state filter lost authoritative ledger row: %+v", filteredRow)
+			}
+		})
+	}
+}
+
+func usageMigrationDefinitionByID(t *testing.T, id int) MigrationDefinition {
+	t.Helper()
+	for _, definition := range usageMigrationDefinitions {
+		if definition.ID == id {
+			return definition
+		}
+	}
+	t.Fatalf("usage migration %d not found", id)
+	return MigrationDefinition{}
+}
+
 func adminMigrationStatusResponseForTest(t *testing.T, svc *Service, target string) adminMigrationStatusResponse {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)

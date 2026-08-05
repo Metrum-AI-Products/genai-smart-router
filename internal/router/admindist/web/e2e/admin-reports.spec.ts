@@ -8,10 +8,12 @@ let apiRequests: string[] = [];
 const migrationRows = [
   { scope: "usage", migrationId: 2026080501, name: "historical validation", release: "2026.8", state: "pending", dataJobKey: "historical-usage-validation-v1", dataJobState: "missing", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.historical-validation.schema.v1", checkpoints: 0, rowsScanned: 0, rowsUpdated: 0, rowsSkipped: 0, rowsFailed: 0, startedAt: generatedUtc },
   { scope: "usage", migrationId: 2026080502, name: "running validation", release: "2026.8", state: "in-progress", dataJobKey: "running-validation-v1", dataJobState: "running", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "in-progress", postcondition: "usage.running-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080507, name: "failed schema ledger", release: "2026.8", state: "failed", dataJobKey: "conflicting-validated-job-v1", dataJobState: "validated", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", errorClass: "schema-failed", errorMessage: "schema failed", validationState: "failed", postcondition: "usage.failed-schema-ledger.v1", checkpoints: 3, rowsScanned: 30, rowsUpdated: 15, rowsSkipped: 15, rowsFailed: 0, startedAt: generatedUtc, completedAt: generatedUtc },
   { scope: "usage", migrationId: 2026080503, name: "failed validation", release: "2026.8", state: "failed", dataJobKey: "failed-validation-v1", dataJobState: "failed", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", errorClass: "data-job-failed", errorMessage: "migration safe failure", validationState: "failed", postcondition: "usage.failed-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc, completedAt: generatedUtc },
   { scope: "usage", migrationId: 2026080504, name: "paused validation", release: "2026.8", state: "pending", dataJobKey: "paused-validation-v1", dataJobState: "paused", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.paused-validation.schema.v1", checkpoints: 1, rowsScanned: 10, rowsUpdated: 5, rowsSkipped: 5, rowsFailed: 0, startedAt: generatedUtc },
   { scope: "usage", migrationId: 2026080505, name: "cancelled validation", release: "2026.8", state: "pending", dataJobKey: "cancelled-validation-v1", dataJobState: "cancelled", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.cancelled-validation.schema.v1", checkpoints: 1, rowsScanned: 10, rowsUpdated: 5, rowsSkipped: 5, rowsFailed: 0, startedAt: generatedUtc },
   { scope: "usage", migrationId: 2026080506, name: "validated historical validation", release: "2026.8", state: "applied", dataJobKey: "validated-validation-v1", dataJobState: "validated", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "verified", postcondition: "usage.validated-validation.schema.v1", checkpoints: 3, rowsScanned: 30, rowsUpdated: 15, rowsSkipped: 15, rowsFailed: 0, startedAt: generatedUtc, completedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080508, name: "running schema ledger", release: "2026.8", state: "running", dataJobKey: "conflicting-failed-job-v1", dataJobState: "failed", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", errorClass: "schema-running", errorMessage: "schema running", validationState: "in-progress", postcondition: "usage.running-schema-ledger.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc },
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -57,9 +59,9 @@ test("data migrations is a read-only operational report", async ({ page }) => {
   await expect(page.getByText(/read-only/i).first()).toBeVisible();
   for (const filter of ["scope", "release", "state", "type", "date"]) await expect(page.locator(`[data-tab-filter="${filter}"]`)).toBeVisible();
   await page.locator("[data-migration-detail-panel] summary").click();
-  await expect(page.locator("[data-migration-detail-panel]")).toContainText("migration safe failure");
-  await expect(page.locator("[data-migration-detail-panel]")).toContainText("usage.failed-validation.schema.v1");
-  await expect(page.locator("[data-migration-detail-panel]")).toContainText("2 checkpoints; 20 scanned");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("schema failed");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("usage.failed-schema-ledger.v1");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("3 checkpoints; 30 scanned");
   await expect(page.locator("[data-migration-detail-panel]")).not.toContainText("postgres://");
   expect(apiRequests.some((request) => request.includes("api/migrations"))).toBe(true);
   expect(apiRequests.some((request) => request.includes("scope=usage") && request.includes("state=failed"))).toBe(true);
@@ -80,6 +82,19 @@ test("data migrations shows effective data-job state without certifying unfinish
   await page.goto("/?tab=data-migrations&state=pending");
   await expect(page.locator("tbody").first()).toContainText("paused");
   await expect(page.locator("tbody").first()).toContainText("cancelled");
+});
+
+test("data migrations keeps non-applied schema ledger state ahead of conflicting job state", async ({ page }) => {
+  for (const [state, jobState, validation, name] of [["failed", "validated", "failed", "failed schema ledger"], ["running", "failed", "in-progress", "running schema ledger"]]) {
+    await page.goto(`/?tab=data-migrations&state=${state}`);
+    await expect(page.getByRole("heading", { name: "Data migrations", exact: true })).toBeVisible();
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText(jobState);
+    await expect(row).toContainText(validation);
+    await page.locator("[data-migration-detail-panel] summary").click();
+    await expect(page.locator("[data-migration-detail-panel]")).toContainText(state);
+    await expect(page.locator("[data-migration-detail-panel]")).toContainText(jobState);
+  }
 });
 
 test("admin report filter model splits global and tab filters without overlap", async () => {
