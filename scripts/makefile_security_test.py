@@ -192,6 +192,27 @@ def main() -> int:
     require(default_dry_run.returncode == 0, f"bare make dry-run failed without uv:\n{default_dry_run.stderr}")
     require("go test ./..." in default_dry_run.stdout, "bare make must retain the test target")
 
+    # The offline child deliberately scrubs Make override transport, but it
+    # must remain a visible recursive `$(MAKE)` call. The Makefile carries
+    # only the explicit -n inspection flag after scrub, rather than executing
+    # the child's `uv run` recipe. Exercise the exact command-line-mirror
+    # shape that #718 hardened while `uv` is absent.
+    scrubbed_mirror_dry_run = run_make(
+        "-n",
+        "API_COMPAT_BOOTSTRAP_GO_PROXY=https://mirror.invalid/go",
+        "API_COMPAT_BOOTSTRAP_GO_SUMDB=sumdb.invalid",
+        environment={"PATH": no_uv_path},
+    )
+    require(
+        scrubbed_mirror_dry_run.returncode == 0,
+        "bare make dry-run executed the scrubbed offline child without uv:\n"
+        f"{scrubbed_mirror_dry_run.stderr}",
+    )
+    require(
+        "uv: not found" not in scrubbed_mirror_dry_run.stderr,
+        "bare make dry-run attempted to execute uv after mirror override scrubbing",
+    )
+
     print("Makefile security self-test passed")
     return 0
 

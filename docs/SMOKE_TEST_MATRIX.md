@@ -295,9 +295,12 @@ mirror settings (`API_COMPAT_BOOTSTRAP_GO_PROXY` and
 `API_COMPAT_BOOTSTRAP_GO_SUMDB`) survive normal recursive bootstrap
 orchestration when supplied by the environment, while command-line overrides
 are delivered only to `go mod download` as data and are not evaluated by Make
-or the shell. Python provisioning does not receive either form. A malformed
-setting must not run embedded syntax; provisioning may fail, but the separately
-invokable offline conformance target remains strictly offline.
+or the shell. At the offline recursive-Make boundary, standalone mirror values
+and GNU Make override transport (`MAKEFLAGS` and `MAKEOVERRIDES`) are scrubbed,
+so that phase cannot reimport command-line mirrors. Python provisioning does
+not receive either form. A malformed setting must not run embedded syntax;
+provisioning may fail, but the separately invokable offline conformance target
+remains strictly offline.
 
 For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
 

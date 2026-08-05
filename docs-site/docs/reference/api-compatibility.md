@@ -98,7 +98,10 @@ survive normal recursive `make api-compat-mock` and `make test` orchestration.
 Both forms reach only `go mod download` as configuration data, never expanded
 as Make or shell commands; a malformed mirror value makes the Go provisioning
 step fail without running embedded syntax. Python provisioning does not receive
-these settings, and they never relax the offline mock phase.
+these settings. Before the offline recursive Make target starts, the runner
+also removes the mirror variables and Make's recursive-override transport, so
+command-line mirrors cannot reappear in the offline phase. These settings never
+relax the offline mock phase.
 
 The current caller-contract matrix covers `/v1/models`, OpenAI Chat
 Completions, OpenAI Responses, Anthropic Messages, function tools and tool
