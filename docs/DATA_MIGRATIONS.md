@@ -8,7 +8,7 @@ Metrics-admin callers can scrape aggregate migration schema/data version, compat
 
 ## Required deployment-job gate
 
-Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → verify → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a PostgreSQL production procedure.
+Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → all data jobs → verify → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a PostgreSQL production procedure.
 
 Use a PostgreSQL DSN only through the job environment. The container invocation replaces the serving entrypoint and never places a DSN literal in a command line:
 
@@ -19,19 +19,45 @@ docker compose run --rm --entrypoint /app/bin/router-migrate router \
 # Take and approve the deployment's pre-migration backup before continuing.
 docker compose run --rm --entrypoint /app/bin/router-migrate router \
   --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
-# Complete any release-defined data job before verification. The current
-# package uses this restart-safe validation checkpoint; large jobs repeat with
-# the next ordinal until their safe status is `validated`.
+```
+
+Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; use the status-driven procedure below for each job. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, or failed. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
+
+### Checkpointed data-job procedure
+
+`router-migrate --action=resume` executes **one** checkpoint. Its ordinal is a durable idempotency key, not an estimate of job completion. The shipped `historical-usage-validation-v1` handler reads at most 100 usage rows per checkpoint; therefore ordinal `0` is not evidence that a database with 100 or more rows is ready to serve.
+
+For every release-defined job, start at ordinal `0`, then use only the safe job state from the returned `status --json` document to decide the next action:
+
+| Safe job state | Operator action |
+| --- | --- |
+| `running` | Honor the job's configured throttle, then run exactly the next ordinal (`n + 1`) when the runner permits it; inspect `status --json` again. If a throttle response occurs, wait and retry that same next ordinal—do not skip ahead. |
+| `validated` | The job is complete. Continue only after every required job is `validated`. |
+| `pending`, `paused`, `cancelled`, `failed`, `incompatible`, absent, or any unrecognized result | Stop. Do not advance the ordinal or start serving. Follow the recorded recovery/backup procedure; retry requires the declared safe recovery-evidence reference. |
+
+For the current package, the controlled repeat is:
+
+```sh
+# n starts at 0. Run one checkpoint, then inspect only the returned safe status.
 docker compose run --rm --entrypoint /app/bin/router-migrate router \
   --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
-  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router \
-  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+  --job=historical-usage-validation-v1 --checkpoint-ordinal="$n" --json
 docker compose run --rm --entrypoint /app/bin/router-migrate router \
   --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
 ```
 
-Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; for a multi-checkpoint job, advance one ordinal at a time until its safe status is `validated`. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, or failed. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
+Record the ordinal and safe state in the approved change record. If the job state is `running`, set `n` to the next integer and repeat the two commands. If it is `validated`, continue with the final non-serving checks:
+
+```sh
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+# Only after compatible/current final status and every required job is validated:
+docker compose up -d
+```
+
+Do not infer an ordinal from a row count, cursor, prior release, or a successful command alone. A repeated existing ordinal is safe and returns its durable result; it does not run the checkpoint again. Advance only after the observed result is `running`. The JSON status contains safe aggregate job fields, not a permission to copy database contents into the change record.
 
 ## Backup, restore, and rollback
 

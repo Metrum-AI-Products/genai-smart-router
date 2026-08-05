@@ -8,4 +8,5 @@ docs/BINARY_INSTALL.md
 docs/DOCKER_COMPOSE_INSTALL.md
 docs/KUBERNETES_INSTALL.md
 docs/PACKAGE_VALIDATION.md
+docs/DATA_MIGRATIONS.md
 docs/solution-brief.md

@@ -50,19 +50,9 @@ chmod 0750 config config/scripts state logs
 chmod 0400 config/env.json config/license.json
 ```
 
-Before starting a `deployment-job` router, version-check and run the non-serving migration gate: `plan`, approved backup, `apply`, `verify`, then `status`. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure.
+Before starting a `deployment-job` router, version-check the non-serving runner and follow the canonical [Data migration framework](DATA_MIGRATIONS.md): `plan`, approved backup, `apply`, every required data job until its safe state is `validated`, `verify`, `status`, then serve. The framework retains the safe Compose `--entrypoint` and PostgreSQL `--dsn-env` forms. `auto-safe` is not a PostgreSQL production procedure; ordinal `0` is not completion evidence.
 
-```bash
-docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
-docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
-# Take and approve the deployment backup before continuing.
-docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
-docker compose run --rm --entrypoint /app/bin/router-migrate router --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
-```
-
-Complete every release-defined data job before verification; the current package begins `historical-usage-validation-v1` at checkpoint ordinal `0`. Start the service only after compatible final status:
+Start the service only after compatible/current final status:
 
 ```bash
 docker compose config >/dev/null

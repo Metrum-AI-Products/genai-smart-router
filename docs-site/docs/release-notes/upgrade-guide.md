@@ -19,9 +19,9 @@ Use this guide for customer-managed package upgrades. The exact maintenance wind
 
 ## Required Migration Gate
 
-For a package whose release contract includes a migration, stop or drain the serving router and run `router-migrate plan → approved backup → apply → verify → status` before starting the new service. `deployment-job` never applies application schema at startup; it validates the ledger and fails closed when the contract is not current and compatible. PostgreSQL production uses this non-serving job, not `auto-safe`; SQLite requires exclusive downtime, SQLite-safe backup and integrity verification, and free-space checks.
+For a package whose release contract includes a migration, stop or drain the serving router and follow the packaged `docs/DATA_MIGRATIONS.md` runbook: `router-migrate plan → approved backup → apply → all required data jobs validated → verify → status → serve`. `deployment-job` never applies application schema at startup; it validates the ledger and fails closed when the contract is not current and compatible. PostgreSQL production uses this non-serving job, not `auto-safe`; SQLite requires exclusive downtime, SQLite-safe backup and integrity verification, and free-space checks. Checkpoint ordinal `0` is not completion evidence.
 
-Use `--dsn-env=ROUTER_USAGE_DB_DSN` for PostgreSQL. Do not put a database connection string in commands, tickets, screenshots, or logs. The Docker Compose and Binary install pages contain the exact safe invocation for their package shape.
+Use `--dsn-env=ROUTER_USAGE_DB_DSN` for PostgreSQL and the documented non-serving container `--entrypoint` for Compose. Do not put a database connection string in commands, tickets, screenshots, or logs.
 
 ## Docker Compose Upgrade
 

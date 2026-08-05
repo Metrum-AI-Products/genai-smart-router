@@ -55,7 +55,7 @@ docker run --rm --entrypoint /app/bin/router-migrate \
   smart-llmrouter:<version>-linux-<arch> --version
 ```
 
-For `migration_policy: deployment-job`, run `plan`, take the approved backup, then `apply`, complete every release-defined data job, `verify`, and `status` through this runner before service startup. The current package completes `historical-usage-validation-v1` at checkpoint ordinal `0` before verification; larger future jobs continue one ordinal at a time until `validated`. Use `--dsn-env` for PostgreSQL; never expose a connection string in commands or evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.
+For `migration_policy: deployment-job`, follow the packaged `docs/DATA_MIGRATIONS.md` runbook before service startup: `plan`, approved backup, `apply`, every release-defined data job until each safe state is `validated`, `verify`, `status`, then serve. Do not treat checkpoint ordinal `0` as completion. Use `--dsn-env` for PostgreSQL and the documented container `--entrypoint`; never expose a connection string in commands or evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.
 
 ## Release Validation Matrix
 

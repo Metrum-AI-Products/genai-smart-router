@@ -35,7 +35,7 @@ docker run --rm --entrypoint /app/bin/router-usage-report smart-llmrouter:<versi
 docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
 ```
 
-Before a `deployment-job` serving startup, use `router-migrate` to run `plan`, take the approved backup, then `apply`, complete every release-defined data job, `verify`, and `status`. The current package completes `historical-usage-validation-v1` at checkpoint ordinal `0` before verification; larger future jobs continue one ordinal at a time until `validated`. PostgreSQL uses `--dsn-env=ROUTER_USAGE_DB_DSN`, never a literal DSN. The detailed procedure is `DATA_MIGRATIONS.md`.
+Before a `deployment-job` serving startup, use the canonical `DATA_MIGRATIONS.md` procedure: `plan`, approved backup, `apply`, all release-defined data jobs until each safe state is `validated`, `verify`, `status`, then serve. PostgreSQL uses `--dsn-env=ROUTER_USAGE_DB_DSN`, never a literal DSN; Compose uses its documented `--entrypoint`. A successful ordinal `0` is not completion evidence.
 
 Packages must not contain:
 
