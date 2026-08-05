@@ -44,6 +44,7 @@ BRIDGE_DIRECTIONS = set(BRIDGE_SURFACES)
 CAPABILITY_REQUEST_SHAPES = {
     "text": "text",
     "openai-responses": "text",
+    "tools-omitted": "tools-omitted",
     "tools-auto": "tools-auto",
     "tools-forced": "tools-forced",
     "image-input": "image",
@@ -217,15 +218,20 @@ def adapter_results(manifest: dict) -> list[dict]:
 
 def fake_request(capability_case: str, identity: dict) -> dict:
     """Canned shape only; deliberately excludes prompts, schemas, and media."""
-    return {"api_skin": identity["api_skin"], "capability_case": capability_case,
-            "tool_choice": "forced" if capability_case == "tools-forced" else "auto" if capability_case == "tools-auto" else "none",
-            "router_selected": capability_case == "router-selected-ocr"}
+    request = {"api_skin": identity["api_skin"], "capability_case": capability_case,
+               "router_selected": capability_case == "router-selected-ocr"}
+    if capability_case == "tools-forced":
+        request["tool_choice"] = "forced"
+    elif capability_case == "tools-auto":
+        request["tool_choice"] = "auto"
+    return request
 
 def fake_response(case: dict, request: dict) -> dict:
     observed = dict(case.get("observed", {}))
     # The adapter proves request classification: a forced tool cannot be
     # accidentally represented as an ordinary text request.
-    if request["tool_choice"] == "forced" and case["capability_case"] != "tools-forced": fail("fake adapter forced-tool classification mismatch")
+    if request.get("tool_choice") == "forced" and case["capability_case"] != "tools-forced": fail("fake adapter forced-tool classification mismatch")
+    if case["capability_case"] == "tools-omitted" and "tool_choice" in request: fail("fake adapter omitted-tool request included tool_choice")
     if request["router_selected"] and case["capability_case"] != "router-selected-ocr": fail("fake adapter router-selection classification mismatch")
     return observed
 
@@ -273,8 +279,8 @@ def unit() -> int:
     bad = read_json(ROOT / "testdata/capability-smokes/v1/ineligible-claims.json")
     if verify(good, results):
         fail("eligible synthetic claims unexpectedly failed")
-    if len(verify(bad, results)) != 3:
-        fail("ineligible synthetic claims did not prove all three capability gates")
+    if len(verify(bad, results)) != 4:
+        fail("ineligible synthetic claims did not prove all four capability gates")
     print(f"capability smoke unit passed: {len(results)} scrubbed synthetic results")
     return 0
 

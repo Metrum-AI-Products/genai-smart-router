@@ -23,6 +23,12 @@ are non-promotable and must not be used as evidence for activation, routing
 weights, or provider claims. `make capability-smoke-live` is intentionally a
 fail-closed placeholder in this release.
 
+For every client-tool skin and enabled Chat-to-Responses or Responses-to-Chat
+bridge, retain separate direct/router smoke evidence for tools with
+`tool_choice` omitted, explicit `tool_choice: "auto"`, and forced choice.
+The omitted-choice probe must omit the key entirely; `tool_choice: null` or
+`"none"` is an explicit request shape and cannot stand in for it.
+
 ## OpenAI Chat Text
 
 Direct upstream:

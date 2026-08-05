@@ -267,7 +267,7 @@ For caller-facing troubleshooting and administrator handoff guidance, see [Avail
 
 Tool requests only route to upstream targets that explicitly advertise support for the caller's API dialect and tool mode.
 
-An explicit automatic selection (`tool_choice: "auto"`) is a distinct request shape from a tool request that omits `tool_choice`. A target marked with `request_shape_support.unsupported_request_features: [tool_choice]` is skipped for either explicit automatic or forced selection; use `forced_tool_choice` when only forced selection is unsupported.
+Omitted-choice tools, explicit automatic selection (`tool_choice: "auto"`), and forced selection are three distinct request shapes. Each requires separate passing capability evidence for the exact provider skin and any enabled bridge. A target marked with `request_shape_support.unsupported_request_features: [tool_choice]` remains eligible only for omitted-choice tools; it is skipped for every explicit selection. Use `forced_tool_choice` when only forced selection is unsupported.
 
 | Caller shape | Required target metadata |
 |---|---|

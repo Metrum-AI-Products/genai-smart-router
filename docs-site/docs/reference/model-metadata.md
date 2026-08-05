@@ -240,7 +240,7 @@ alters caller content or silently adds a modality.
 
 Use `unsupported_request_features` for deterministic provider incompatibilities that are narrower than the whole target. For example, some OpenAI-compatible coding-agent clients send Chat `stream_options` while the router converts tool-bearing upstream calls to unary requests and synthesizes downstream SSE. If a provider/model rejects that exact shape, set `stream_options` until a direct upstream smoke and router-level smoke pass for that provider/model/skin.
 
-`tool_choice` applies to every explicit choice, including `"auto"`: it removes both automatic and forced tool-choice evidence from the target. Use `forced_tool_choice` when only an explicit forced choice is unsupported; ordinary tool requests that omit `tool_choice` remain a distinct request shape.
+`tool_choice` applies to every explicit choice, including `"auto"`: it removes both automatic and forced tool-choice evidence from the target. Omitted-choice client tools remain a distinct callable shape only when the target has separate passing omitted-choice capability evidence. Use `forced_tool_choice` when only an explicit forced choice is unsupported.
 
 `supported_inbound_dialects` is the explicit opt-in for translated inbound API shapes. Use it when an active target's provider skin is not the same as the caller surface but the translated path has been validated. For the Anthropic endpoint split, plain `/anthropic/v1/messages` text can use a non-native OpenAI Chat or Responses target only when that target declares Anthropic inbound support, for example:
 
