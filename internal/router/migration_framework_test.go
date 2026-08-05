@@ -118,6 +118,46 @@ func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testi
 	}
 }
 
+func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
+	d := FinalizeMigrationDefinition(MigrationDefinition{ID: 1, Scope: "usage", Name: "strict marker", Release: "test", Checksum: MigrationChecksum("strict"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", HandlerKey: "usage.strict.v1", PostconditionKey: "usage.strict.post.v1", ExecutionMode: "transactional", LockClass: "online", TimeoutClass: "bounded"})
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{d}); err != nil {
+		t.Fatalf("strict manifest rejected: %v", err)
+	}
+	tampered := d
+	tampered.HandlerKey = "usage.other.v1"
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("handler-key tampering must fail closed")
+	}
+	tampered = d
+	tampered.Name = "changed semantics"
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("canonical metadata tampering must fail closed")
+	}
+}
+
+func TestMigrationFrameworkBootstrapsNormalizedScalarContract(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "contract.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ensureLedger(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"schema_migration_ledger", "schema_migration_attempts", "schema_data_jobs", "schema_data_job_checkpoints"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("missing normalized framework table %s", table)
+		}
+	}
+	if !db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
+		t.Fatal("ledger must bind manifest digest")
+	}
+}
+
 func TestMigrationRunnerRejectsAnActiveScopeLease(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {

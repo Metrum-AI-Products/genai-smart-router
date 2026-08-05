@@ -29,18 +29,23 @@ var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema
 // full reviewed replacement is shipped. This migration is therefore a guarded
 // one-time ledger adoption, not an implicit upgrade path.
 var usageMigrationDefinitions = []MigrationDefinition{{
-	ID:              usageLegacyBaselineMigrationID,
-	Scope:           usageMigrationScope,
-	Name:            "adopt legacy usage schema baseline",
-	Release:         "2026.7",
-	Checksum:        "1bbefd1d653dd50633bd050badc0dae65e87775cbb88dd27f350604dd46862b6",
-	SchemaVersion:   1,
-	DataVersion:     0,
-	Transactional:   true,
-	MaintenanceMode: "online",
-	RollbackClass:   "package-only",
-	Apply:           verifyUsageLegacyBaseline,
-	Verify:          verifyUsageLegacyBaseline,
+	ID:               usageLegacyBaselineMigrationID,
+	Scope:            usageMigrationScope,
+	Name:             "adopt legacy usage schema baseline",
+	Release:          "2026.7",
+	Checksum:         "1bbefd1d653dd50633bd050badc0dae65e87775cbb88dd27f350604dd46862b6",
+	SchemaVersion:    1,
+	DataVersion:      0,
+	Transactional:    true,
+	MaintenanceMode:  "online",
+	RollbackClass:    "package-only",
+	HandlerKey:       "usage.legacy-baseline.verify.v1",
+	PostconditionKey: "usage.legacy-baseline.schema.v1",
+	ExecutionMode:    "transactional",
+	LockClass:        "online",
+	TimeoutClass:     "bounded",
+	Apply:            verifyUsageLegacyBaseline,
+	Verify:           verifyUsageLegacyBaseline,
 }, {
 	ID:              usageReasoningTelemetryMigrationID,
 	Scope:           usageMigrationScope,
@@ -53,10 +58,22 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	MaintenanceMode: "online",
 	// Older binaries reject this new ledger ID under validate/deployment-job.
 	// Downgrade therefore requires restoring the pre-migration database snapshot.
-	RollbackClass: "restore-required",
-	Apply:         applyUsageReasoningTelemetryMigration,
-	Verify:        verifyUsageReasoningTelemetryMigration,
+	RollbackClass:    "restore-required",
+	HandlerKey:       "usage.reasoning-telemetry.apply.v1",
+	PostconditionKey: "usage.reasoning-telemetry.schema.v1",
+	Dependencies:     []int{usageLegacyBaselineMigrationID},
+	ExecutionMode:    "transactional",
+	LockClass:        "online",
+	TimeoutClass:     "bounded",
+	Apply:            applyUsageReasoningTelemetryMigration,
+	Verify:           verifyUsageReasoningTelemetryMigration,
 }}
+
+func init() {
+	for i := range usageMigrationDefinitions {
+		usageMigrationDefinitions[i] = FinalizeMigrationDefinition(usageMigrationDefinitions[i])
+	}
+}
 
 // MigrationCompatibility declares the inclusive schema/data versions a binary
 // can safely operate with. Versions are monotonically increasing integers.
@@ -80,8 +97,37 @@ type MigrationDefinition struct {
 	Transactional   bool
 	RollbackClass   string // package-only, config-only, restore-required, prohibited
 	MaintenanceMode string // online, maintenance
-	Apply           func(*gorm.DB) error
-	Verify          func(*gorm.DB) error
+	// HandlerKey and PostconditionKey are checked-in stable identities. They
+	// make a manifest change observable even when Go function pointers change.
+	HandlerKey       string
+	PostconditionKey string
+	Dependencies     []int
+	ExecutionMode    string // transactional, non-transactional
+	LockClass        string // online, maintenance
+	TimeoutClass     string // bounded, maintenance
+	ManifestDigest   string // canonical digest of the immutable metadata
+	Apply            func(*gorm.DB) error
+	Verify           func(*gorm.DB) error
+}
+
+// CanonicalMigrationDigest binds all reviewed, non-executable migration
+// metadata. It intentionally omits function pointers and instead includes the
+// checked-in HandlerKey/PostconditionKey identities.
+func CanonicalMigrationDigest(d MigrationDefinition) string {
+	deps := append([]int(nil), d.Dependencies...)
+	sort.Ints(deps)
+	parts := []string{fmt.Sprint(d.ID), d.Scope, d.Name, d.Release, fmt.Sprint(d.SchemaVersion), fmt.Sprint(d.DataVersion), fmt.Sprint(d.Transactional), d.RollbackClass, d.MaintenanceMode, d.HandlerKey, d.PostconditionKey, d.ExecutionMode, d.LockClass, d.TimeoutClass}
+	for _, dep := range deps {
+		parts = append(parts, fmt.Sprint(dep))
+	}
+	return MigrationChecksum(parts...)
+}
+
+// FinalizeMigrationDefinition is used only by checked-in manifest literals.
+// It prevents a caller from supplying an arbitrary digest.
+func FinalizeMigrationDefinition(d MigrationDefinition) MigrationDefinition {
+	d.ManifestDigest = CanonicalMigrationDigest(d)
+	return d
 }
 
 // MigrationLedgerEntry is intentionally safe to return to operators. It never
@@ -100,17 +146,76 @@ type MigrationLedgerEntry struct {
 }
 
 type migrationLedgerRecord struct {
-	Scope       string `gorm:"primaryKey;column:scope;type:text"`
-	MigrationID int    `gorm:"primaryKey;column:migration_id"`
-	Checksum    string `gorm:"column:checksum;type:text;not null"`
-	State       string `gorm:"column:state;type:text;not null"`
-	StartedAt   string `gorm:"column:started_at;type:text;not null"`
-	CompletedAt string `gorm:"column:completed_at;type:text;not null;default:''"`
-	Runner      string `gorm:"column:runner;type:text;not null;default:''"`
-	DurationMS  int64  `gorm:"column:duration_ms;not null;default:0"`
-	ErrorCode   string `gorm:"column:error_code;type:text;not null;default:''"`
-	ErrorText   string `gorm:"column:error_text;type:text;not null;default:''"`
+	Scope          string `gorm:"primaryKey;column:scope;type:text"`
+	MigrationID    int    `gorm:"primaryKey;column:migration_id"`
+	Checksum       string `gorm:"column:checksum;type:text;not null"`
+	ManifestDigest string `gorm:"column:manifest_digest;type:text;not null;default:''"`
+	State          string `gorm:"column:state;type:text;not null"`
+	StartedAt      string `gorm:"column:started_at;type:text;not null"`
+	CompletedAt    string `gorm:"column:completed_at;type:text;not null;default:''"`
+	Runner         string `gorm:"column:runner;type:text;not null;default:''"`
+	DurationMS     int64  `gorm:"column:duration_ms;not null;default:0"`
+	ErrorCode      string `gorm:"column:error_code;type:text;not null;default:''"`
+	ErrorText      string `gorm:"column:error_text;type:text;not null;default:''"`
 }
+
+// migrationAttemptRecord, migrationDataJobRecord, and
+// migrationDataJobCheckpointRecord are the normalized scalar Stage-1 contract
+// for future resumable jobs. Stage 1 records no jobs and changes no serving
+// behavior; later stages own execution/checkpoint semantics.
+type migrationAttemptRecord struct {
+	Scope               string `gorm:"primaryKey"`
+	MigrationID         int    `gorm:"primaryKey"`
+	Attempt             int    `gorm:"primaryKey"`
+	Action              string
+	State               string
+	OwnerGeneration     int64
+	BackupEvidenceRef   string
+	RecoveryEvidenceRef string
+	StartedAt           string
+	CompletedAt         string
+	SafeErrorClass      string
+}
+
+func (migrationAttemptRecord) TableName() string { return "schema_migration_attempts" }
+
+type migrationDataJobRecord struct {
+	JobID             string `gorm:"primaryKey"`
+	Scope             string
+	MigrationID       int
+	DataVersion       int
+	State             string
+	ExecutionMode     string
+	ValidationMode    string
+	ThrottlePerMinute int
+	RowsScanned       int64
+	RowsUpdated       int64
+	RowsSkipped       int64
+	RowsFailed        int64
+	StartedAt         string
+	CompletedAt       string
+	SafeErrorClass    string
+}
+
+func (migrationDataJobRecord) TableName() string { return "schema_data_jobs" }
+
+type migrationDataJobCheckpointRecord struct {
+	JobID             string `gorm:"primaryKey"`
+	CheckpointOrdinal int    `gorm:"primaryKey"`
+	Shard             string
+	RangeStart        int64
+	RangeEnd          int64
+	Cursor            string
+	RowsScanned       int64
+	RowsUpdated       int64
+	RowsSkipped       int64
+	RowsFailed        int64
+	State             string
+	StartedAt         string
+	CompletedAt       string
+}
+
+func (migrationDataJobCheckpointRecord) TableName() string { return "schema_data_job_checkpoints" }
 
 func (migrationLedgerRecord) TableName() string { return "schema_migration_ledger" }
 
@@ -155,7 +260,8 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 	sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 	previous := 0
 	for _, d := range defs {
-		if d.Scope != scope || d.ID <= previous || d.ID <= 0 || !validMigrationChecksum(d.Checksum) {
+		strict := d.ManifestDigest != "" || d.HandlerKey != "" || d.PostconditionKey != "" || d.ExecutionMode != "" || d.LockClass != "" || d.TimeoutClass != ""
+		if d.Scope != scope || d.ID <= previous || d.ID <= 0 || !validMigrationChecksum(d.Checksum) || (strict && (d.HandlerKey == "" || d.PostconditionKey == "" || d.ExecutionMode == "" || d.LockClass == "" || d.TimeoutClass == "" || d.ManifestDigest != CanonicalMigrationDigest(d))) {
 			return nil, errors.New("invalid immutable migration manifest")
 		}
 		previous = d.ID
@@ -185,8 +291,11 @@ func MigrationChecksum(parts ...string) string {
 func (r *migrationRunner) ensureLedger() error {
 	// Explicit DDL keeps the framework bootstrap independent of AutoMigrate.
 	for _, stmt := range []string{
-		`CREATE TABLE IF NOT EXISTS schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`,
+		`CREATE TABLE IF NOT EXISTS schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, manifest_digest TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`,
 		`CREATE TABLE IF NOT EXISTS schema_migration_locks (scope TEXT NOT NULL PRIMARY KEY, runner TEXT NOT NULL, locked_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS schema_migration_attempts (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, attempt BIGINT NOT NULL, action TEXT NOT NULL, state TEXT NOT NULL, owner_generation BIGINT NOT NULL DEFAULT 0, backup_evidence_ref TEXT NOT NULL DEFAULT '', recovery_evidence_ref TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id, attempt))`,
+		`CREATE TABLE IF NOT EXISTS schema_data_jobs (job_id TEXT NOT NULL PRIMARY KEY, scope TEXT NOT NULL, migration_id BIGINT NOT NULL, data_version BIGINT NOT NULL, state TEXT NOT NULL, execution_mode TEXT NOT NULL, validation_mode TEXT NOT NULL, throttle_per_minute BIGINT NOT NULL DEFAULT 0, rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS schema_data_job_checkpoints (job_id TEXT NOT NULL, checkpoint_ordinal BIGINT NOT NULL, shard TEXT NOT NULL DEFAULT '', range_start BIGINT NOT NULL DEFAULT 0, range_end BIGINT NOT NULL DEFAULT 0, cursor TEXT NOT NULL DEFAULT '', rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', PRIMARY KEY (job_id, checkpoint_ordinal))`,
 	} {
 		if err := r.db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("migration ledger bootstrap: %w", err)
@@ -212,7 +321,7 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 	for _, rec := range records {
 		status.Entries = append(status.Entries, ledgerEntry(rec))
 		d, ok := known[rec.MigrationID]
-		if !ok || d.Checksum != rec.Checksum {
+		if !ok || d.Checksum != rec.Checksum || rec.ManifestDigest != "" && d.ManifestDigest != rec.ManifestDigest {
 			status.Compatible = false
 			status.State = "incompatible"
 			continue
@@ -347,7 +456,7 @@ func (r *migrationRunner) applyOne(d MigrationDefinition, runner string) error {
 	now := time.Now().UTC()
 	started := now.Format(time.RFC3339Nano)
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		rec := migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, State: "running", StartedAt: started, Runner: safeMigrationText(runner)}
+		rec := migrationLedgerRecord{Scope: r.scope, MigrationID: d.ID, Checksum: d.Checksum, ManifestDigest: d.ManifestDigest, State: "running", StartedAt: started, Runner: safeMigrationText(runner)}
 		if err := tx.Create(&rec).Error; err != nil {
 			return errors.New("migration already running or applied")
 		}
