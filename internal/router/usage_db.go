@@ -2101,6 +2101,14 @@ func usageDefaultOuterParens(value string) bool {
 }
 
 func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
+	// The PostgreSQL GORM migrator's index query joins index keys through
+	// a.attnum = ANY(i.indkey) without an ORDER BY. It therefore cannot safely
+	// represent composite-key order. It also aliases indisunique as non_unique,
+	// which makes its Unique result unsuitable for this strict contract. Read the
+	// catalog directly on PostgreSQL instead of weakening the comparison.
+	if db.Dialector.Name() == "postgres" {
+		return verifyUsageIndexesPostgres(db, expected)
+	}
 	indexes, err := db.Migrator().GetIndexes(model)
 	if err != nil {
 		return err
@@ -2127,6 +2135,113 @@ func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
 		}
 	}
 	return nil
+}
+
+type usagePostgresIndexMetadata struct {
+	Unique         bool
+	Valid          bool
+	Ready          bool
+	Live           bool
+	KeyCount       int
+	AttributeCount int
+	NoPredicate    bool
+	Keys           []string
+}
+
+func verifyUsageIndexesPostgres(db *gorm.DB, expected *schema.Schema) error {
+	for _, index := range expected.ParseIndexes() {
+		// There are no partial usage indexes today. Do not silently accept one if
+		// a future tag adds it without an exact predicate verifier.
+		if strings.TrimSpace(index.Where) != "" {
+			return fmt.Errorf("usage index %s.%s has unsupported predicate contract", expected.Table, index.Name)
+		}
+		metadata, err := inspectUsagePostgresIndex(db, expected.Table, index.Name)
+		if err != nil {
+			return err
+		}
+		if err := verifyUsagePostgresIndexMetadata(expected.Table, index, metadata); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func inspectUsagePostgresIndex(db *gorm.DB, table, name string) (usagePostgresIndexMetadata, error) {
+	const query = `SELECT index_info.indisunique,
+		index_info.indisvalid,
+		index_info.indisready,
+		index_info.indislive,
+		index_info.indnkeyatts,
+		index_info.indnatts,
+		index_info.indpred IS NULL,
+		key_position.ordinality,
+		pg_get_indexdef(index_info.indexrelid, key_position.ordinality, false)
+	FROM pg_index AS index_info
+	JOIN pg_class AS index_class ON index_class.oid = index_info.indexrelid
+	JOIN pg_namespace AS index_namespace ON index_namespace.oid = index_class.relnamespace
+	JOIN pg_class AS table_class ON table_class.oid = index_info.indrelid
+	JOIN pg_namespace AS table_namespace ON table_namespace.oid = table_class.relnamespace
+	CROSS JOIN LATERAL generate_series(1, index_info.indnkeyatts) AS key_position(ordinality)
+	WHERE table_namespace.nspname = current_schema()
+		AND index_namespace.nspname = current_schema()
+		AND table_class.relname = ?
+		AND index_class.relname = ?
+	ORDER BY key_position.ordinality`
+	rows, err := db.Raw(query, table, name).Rows()
+	if err != nil {
+		return usagePostgresIndexMetadata{}, fmt.Errorf("inspect usage index %s.%s: %w", table, name, err)
+	}
+	defer rows.Close()
+	metadata := usagePostgresIndexMetadata{}
+	for rows.Next() {
+		var position int
+		var key string
+		if err := rows.Scan(&metadata.Unique, &metadata.Valid, &metadata.Ready, &metadata.Live, &metadata.KeyCount, &metadata.AttributeCount, &metadata.NoPredicate, &position, &key); err != nil {
+			return usagePostgresIndexMetadata{}, fmt.Errorf("inspect usage index %s.%s: %w", table, name, err)
+		}
+		if position != len(metadata.Keys)+1 {
+			return usagePostgresIndexMetadata{}, fmt.Errorf("inspect usage index %s.%s: non-contiguous key metadata", table, name)
+		}
+		metadata.Keys = append(metadata.Keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return usagePostgresIndexMetadata{}, fmt.Errorf("inspect usage index %s.%s: %w", table, name, err)
+	}
+	if len(metadata.Keys) == 0 {
+		return usagePostgresIndexMetadata{}, fmt.Errorf("required usage index %s.%s is missing", table, name)
+	}
+	return metadata, nil
+}
+
+func verifyUsagePostgresIndexMetadata(table string, index *schema.Index, metadata usagePostgresIndexMetadata) error {
+	expectedUnique := index.Class == "UNIQUE"
+	if metadata.Unique != expectedUnique {
+		return fmt.Errorf("usage index %s.%s uniqueness does not match contract", table, index.Name)
+	}
+	if !metadata.Valid || !metadata.Ready || !metadata.Live {
+		return fmt.Errorf("usage index %s.%s must be valid, ready, and live", table, index.Name)
+	}
+	if !metadata.NoPredicate {
+		return fmt.Errorf("usage index %s.%s must not be partial", table, index.Name)
+	}
+	if metadata.KeyCount != len(index.Fields) || metadata.AttributeCount != len(index.Fields) || len(metadata.Keys) != len(index.Fields) {
+		return fmt.Errorf("usage index %s.%s columns do not match contract", table, index.Name)
+	}
+	for position, field := range index.Fields {
+		if normalizeUsagePostgresIndexKey(metadata.Keys[position]) != normalizeUsagePostgresIndexKey(field.DBName) {
+			return fmt.Errorf("usage index %s.%s columns do not match contract", table, index.Name)
+		}
+	}
+	return nil
+}
+
+// normalizeUsagePostgresIndexKey accepts only catalog rendering differences
+// (identifier quotes, case, and whitespace). Key position, count, expression
+// spelling, predicates, uniqueness, included columns, and validity are checked
+// separately and remain exact.
+func normalizeUsagePostgresIndexKey(value string) string {
+	value = strings.ReplaceAll(strings.ToLower(value), `"`, "")
+	return strings.Join(strings.Fields(value), "")
 }
 
 type usageForeignKeyRow struct {
