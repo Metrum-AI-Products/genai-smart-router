@@ -1,5 +1,8 @@
 .env
 **/.env
+# Filled copy of the bounded coding-evaluation template. Keep this narrow so
+# unrelated environment files remain visible for deliberate review.
+examples/inspect-coding-evaluation.env
 env.json
 # Retired local agent runtimes may still contain credentials in older checkouts.
 # Keep these tombstone ignores even though the integrations are no longer shipped.
@@ -58,4 +61,3 @@ tests/api_compat/**/__pycache__/
 internal/router/docsdist/*
 !internal/router/docsdist/.keep
 router-key-inventory-and-delivery-20260729.csv
-
