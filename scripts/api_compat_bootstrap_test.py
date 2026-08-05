@@ -151,7 +151,7 @@ def assert_mirror_values_are_go_scoped_shell_data() -> None:
 
         write_executable(
             tool_dir / "uv",
-            'printf "%s\\n%s\\n" "${API_COMPAT_BOOTSTRAP_GO_PROXY-}" "${API_COMPAT_BOOTSTRAP_GO_SUMDB-}" >"$API_COMPAT_CAPTURED_UV_MIRRORS"\nexit 0',
+            'printf "%s\\n%s\\n%s\\n%s\\n" "${API_COMPAT_BOOTSTRAP_GO_PROXY-}" "${API_COMPAT_BOOTSTRAP_GO_SUMDB-}" "${MAKEFLAGS-}" "${MAKEOVERRIDES-}" >"$API_COMPAT_CAPTURED_UV_MIRRORS"\nexit 0',
         )
         write_executable(
             tool_dir / "go",
@@ -199,8 +199,12 @@ def assert_mirror_values_are_go_scoped_shell_data() -> None:
                 }
             )
             run_make(target, env, expected=2, variables=variables)
-            if uv_captured.read_text(encoding="utf-8").splitlines() != ["", ""]:
-                raise AssertionError(f"{description} let Python provisioning inherit bootstrap mirror configuration")
+            python_transport = uv_captured.read_text(encoding="utf-8").splitlines()
+            if python_transport != ["", "", "", ""]:
+                raise AssertionError(
+                    f"{description} let Python provisioning inherit bootstrap mirror configuration "
+                    f"through standalone variables or Make transport"
+                )
             if captured.read_text(encoding="utf-8").splitlines() != [expected_proxy, expected_sumdb]:
                 raise AssertionError(f"{description} did not pass bootstrap mirror configuration to Go verbatim")
 
