@@ -3876,6 +3876,116 @@ func TestCodexCatalogMatchesResponsesEligibilityAcrossDialects(t *testing.T) {
 	}
 }
 
+func TestCodexCatalogAdvertisesImagesOnlyForEligibleResponsesPath(t *testing.T) {
+	var upstreamModels []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		upstreamModels = append(upstreamModels, stringValue(body["model"]))
+		switch r.URL.Path {
+		case "/v1/responses":
+			writeJSON(w, http.StatusOK, map[string]any{"id": "native-image", "object": "response", "status": "completed", "model": body["model"], "output_text": "ok"})
+		case "/v1/chat/completions":
+			writeJSON(w, http.StatusOK, map[string]any{"id": "bridged-image", "model": body["model"], "choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"}}})
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	dir := t.TempDir()
+	cfg := testConfig(t, upstream.URL, "provider-key", dir)
+	cfg.Provider = map[string]ProviderConfig{
+		"responses": {BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"},
+		"chat":      {BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"},
+	}
+	nativeImage := Target{Provider: "responses", Model: "native-image", InputModalities: []string{"text", "image"}}
+	bridgeImage := Target{Provider: "chat", Model: "bridge-image", InputModalities: []string{"text", "image"}, ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true, Images: true, ValidationStatus: "passed"}}
+	bridgeTextOnly := bridgeImage
+	bridgeTextOnly.Model = "bridge-text-only"
+	bridgeTextOnly.ResponsesToChat.Images = false
+	nativeImageBlocked := nativeImage
+	nativeImageBlocked.Model = "native-image-blocked"
+	nativeImageBlocked.RequestShapeSupport.UnsupportedRequestFeatures = []string{"image"}
+	cfg.Models = map[string]ModelGroup{
+		"native-image":         {Strategy: "static", Targets: []Target{nativeImage}},
+		"bridge-image":         {Strategy: "static", Targets: []Target{bridgeImage}},
+		"bridge-text-only":     {Strategy: "static", Targets: []Target{bridgeTextOnly}},
+		"native-image-blocked": {Strategy: "static", Targets: []Target{nativeImageBlocked}},
+	}
+	cfg.Server.DefaultModelGroup = "native-image"
+	cfg.Callers[0].Allow = []string{"native-image", "bridge-image", "bridge-text-only", "native-image-blocked"}
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+
+	catalogReq := httptest.NewRequest(http.MethodGet, "/v1/codex/models.json", nil)
+	catalogReq.Header.Set("Authorization", "Bearer "+testToken)
+	catalogRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(catalogRR, catalogReq)
+	if catalogRR.Code != http.StatusOK {
+		t.Fatalf("catalog status=%d body=%s", catalogRR.Code, catalogRR.Body.String())
+	}
+	var catalog struct {
+		Models []struct {
+			ID                          string   `json:"id"`
+			InputModalities             []string `json:"input_modalities"`
+			SupportsImageDetailOriginal bool     `json:"supports_image_detail_original"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(catalogRR.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]struct {
+		modalities []string
+		supports   bool
+	}{}
+	for _, model := range catalog.Models {
+		byID[model.ID] = struct {
+			modalities []string
+			supports   bool
+		}{model.InputModalities, model.SupportsImageDetailOriginal}
+	}
+	for _, name := range []string{"native-image", "bridge-image"} {
+		model := byID[name]
+		if !stringSliceContains(model.modalities, "image") || !model.supports {
+			t.Fatalf("eligible Responses image path was not advertised for %s: %#v", name, model)
+		}
+	}
+	for _, name := range []string{"bridge-text-only", "native-image-blocked"} {
+		model := byID[name]
+		if stringSliceContains(model.modalities, "image") || model.supports {
+			t.Fatalf("image-ineligible Responses path was advertised for %s: %#v", name, model)
+		}
+	}
+
+	request := func(model string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"`+model+`","input":[{"role":"user","content":[{"type":"input_text","text":"catalog image"},{"type":"input_image","image_url":"data:image/png;base64,AA=="}]}]}`))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		svc.Handler().ServeHTTP(rr, req)
+		return rr
+	}
+	for _, name := range []string{"native-image", "bridge-image"} {
+		if rr := request(name); rr.Code != http.StatusOK {
+			t.Fatalf("eligible image route %s status=%d body=%s", name, rr.Code, rr.Body.String())
+		}
+	}
+	for _, name := range []string{"bridge-text-only", "native-image-blocked"} {
+		if rr := request(name); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "no-eligible-target") {
+			t.Fatalf("ineligible image route %s status=%d body=%s", name, rr.Code, rr.Body.String())
+		}
+	}
+	if got, want := upstreamModels, []string{"native-image", "bridge-image"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("image routes used wrong target identity: got=%#v want=%#v", got, want)
+	}
+}
+
 func TestCodexModelsEndpointInstalledCLIFetchThenRunSmoke(t *testing.T) {
 	if os.Getenv("RUN_CODEX_CATALOG_SMOKE") != "1" {
 		t.Skip("set RUN_CODEX_CATALOG_SMOKE=1 to run the installed Codex CLI smoke")
