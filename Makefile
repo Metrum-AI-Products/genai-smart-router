@@ -262,7 +262,9 @@ test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 	python3 scripts/api_compat_bootstrap_test.py
-	$(MAKE) api-compat-mock
+	$(MAKE) api-compat-mock \
+		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
+		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB)
 
 # Provision the locked Python and Go dependency sets before entering the
 # isolated conformance run. API_COMPAT_BOOTSTRAP_GO_PROXY and
@@ -278,6 +280,7 @@ unexport API_COMPAT_BOOTSTRAP_GO_PROXY API_COMPAT_BOOTSTRAP_GO_SUMDB
 # particular, $(value ...) prevents a command-line override containing Make
 # syntax from being expanded before the shell sees it.
 api_compat_shell_data = '$(subst ','"'"',$(value $(1)))'
+api_compat_make_data = $(1)=$(call api_compat_shell_data,$(1))
 api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
@@ -286,6 +289,8 @@ api-compat-bootstrap:
 	UV_PROJECT_ENVIRONMENT=$${UV_PROJECT_ENVIRONMENT:-$$api_compat_root/venv} \
 	uv sync --locked && \
 	API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
+	API_COMPAT_BOOTSTRAP_GO_PROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
+	API_COMPAT_BOOTSTRAP_GO_SUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) \
 	"$${MAKE:-make}" --no-print-directory -C ../.. api-compat-bootstrap-go-provision
 
 # The approved mirror settings are consumed only by Go provisioning. Keep the
@@ -310,7 +315,9 @@ api-compat-mock-offline:
 api-compat-mock:
 	@api_compat_root=$$(mktemp -d); \
 	trap 'rm -rf "$$api_compat_root"' EXIT; \
-	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" && \
+	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
+		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
+		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) && \
 	UV_CACHE_DIR="$$api_compat_root/uv-cache" \
 	UV_PROJECT_ENVIRONMENT="$$api_compat_root/venv" \
 	GOMODCACHE="$$api_compat_root/go-mod-cache" \

@@ -92,9 +92,10 @@ production configuration or retain authorization values or request bodies in
 artifacts.
 
 Operators who use an approved internal Go proxy or checksum database can set
-`API_COMPAT_BOOTSTRAP_GO_PROXY` and `API_COMPAT_BOOTSTRAP_GO_SUMDB` for the
-bootstrap target, including as explicit `make` command-line overrides. These
-settings are passed to `go mod download` as configuration data, never expanded
+`API_COMPAT_BOOTSTRAP_GO_PROXY` and `API_COMPAT_BOOTSTRAP_GO_SUMDB` in the
+environment or as explicit `make` command-line overrides. Environment values
+survive normal recursive `make api-compat-mock` and `make test` orchestration.
+Both forms reach only `go mod download` as configuration data, never expanded
 as Make or shell commands; a malformed mirror value makes the Go provisioning
 step fail without running embedded syntax. Python provisioning does not receive
 these settings, and they never relax the offline mock phase.
