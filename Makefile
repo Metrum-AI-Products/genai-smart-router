@@ -262,7 +262,7 @@ test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
 	python3 scripts/api_compat_bootstrap_test.py
-	$(MAKE) $(call api_compat_dry_run_flag) API_COMPAT_MAKE_DRY_RUN=$(call api_compat_dry_run_flag) api-compat-mock \
+	$(MAKE) $(call api_compat_dry_run_flag) $(call api_compat_dry_run_transport) api-compat-mock \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB)
 
@@ -285,6 +285,8 @@ api_compat_make_data = $(1)=$(call api_compat_shell_data,$(1))
 # for inspection. Carry only that non-sensitive flag explicitly; mirror
 # assignments remain excluded from the offline child below.
 api_compat_dry_run_flag = $(if $(filter n,$(MAKEFLAGS)),-n)
+api_compat_effective_dry_run_flag = $(or $(call api_compat_dry_run_flag),$(API_COMPAT_MAKE_DRY_RUN))
+api_compat_dry_run_transport = $(if $(call api_compat_effective_dry_run_flag),API_COMPAT_MAKE_DRY_RUN=$(call api_compat_effective_dry_run_flag))
 api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
@@ -319,7 +321,7 @@ api-compat-mock-offline:
 api-compat-mock:
 	@api_compat_root=$$(mktemp -d); \
 	trap 'rm -rf "$$api_compat_root"' EXIT; \
-	$(MAKE) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
+	$(MAKE) $(call api_compat_effective_dry_run_flag) $(call api_compat_dry_run_transport) api-compat-bootstrap API_COMPAT_BOOTSTRAP_ROOT="$$api_compat_root" \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_PROXY) \
 		$(call api_compat_make_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) && \
 	UV_CACHE_DIR="$$api_compat_root/uv-cache" \
@@ -328,7 +330,7 @@ api-compat-mock:
 	GOCACHE="$$api_compat_root/go-build-cache" \
 	env -u API_COMPAT_BOOTSTRAP_GO_PROXY -u API_COMPAT_BOOTSTRAP_GO_SUMDB \
 		-u MAKEFLAGS -u MAKEOVERRIDES \
-		$(MAKE) $(or $(call api_compat_dry_run_flag),$(API_COMPAT_MAKE_DRY_RUN)) --no-print-directory api-compat-mock-offline
+		$(MAKE) $(call api_compat_effective_dry_run_flag) --no-print-directory api-compat-mock-offline
 
 # Deliberately not a normal test/build/package target. Live execution awaits a
 # human-approved non-production matrix and least-privilege caller identity.
