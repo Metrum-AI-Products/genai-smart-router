@@ -34,6 +34,11 @@ LCB_PYTHON=/protected/livecodebench/.venv/bin/python \
 make livecodebench-validate
 ```
 
+`LCB_ROOT` may be either an absolute path or a path relative to the router
+repository. The Make target resolves it to an absolute checkout path before it
+changes directory, so the pinned-revision, dependency-version, and official
+loader validation all continue to use the intended checkout.
+
 The command emits only a JSON aggregate with the selected task count and zero
 inference/scoring counts. It intentionally never prints prompts, task IDs,
 responses, credentials, headers, or raw scorer data.
@@ -59,6 +64,10 @@ LCB_PYTHON=/protected/livecodebench/.venv/bin/python \
 LCB_RUNNER_COMMAND_FILE=/protected/lcb-router-runner.sh \
 make livecodebench-run
 ```
+
+`LCB_RUNNER_COMMAND_FILE` also accepts an absolute path or a path relative to
+the router repository. It is resolved before entering the LiveCodeBench
+checkout and is still checked as an owner-only regular file before inference.
 
 The only durable result is the sanitized aggregate:
 
