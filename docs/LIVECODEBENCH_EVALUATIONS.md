@@ -41,9 +41,13 @@ responses, credentials, headers, or raw scorer data.
 ## Runner contract and evidence
 
 For a bounded approved run, create an owner-only (`0600`) command file that
-reads one problem body from standard input and writes only its generation to
-standard output. It receives credentials through its protected environment,
-not through arguments or checked-in configuration. The runner invokes that
+reads one JSON-encoded OpenAI Chat message array from standard input and writes
+only its generation to standard output. The input is built in memory through
+the pinned official `lcb_runner.prompts.code_generation.format_prompt_generation`
+path using its `OpenAIChat` style. It therefore includes the official
+formatting instructions and, for call-based tasks, the supplied starter-code
+signature/context. The command receives credentials through its protected
+environment, not through arguments or checked-in configuration. The runner invokes that
 file once per selected task, calls the official
 `lcb_runner.evaluation.codegen_metrics` scorer named by the contract, and
 retains prompts, generations, and per-task scores only in process memory. It

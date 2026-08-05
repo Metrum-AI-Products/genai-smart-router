@@ -5,6 +5,7 @@ import importlib.util
 import subprocess
 import types
 import tempfile
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +22,7 @@ def rejects(fn, text: str) -> None:
     else: raise AssertionError("expected contract rejection")
 
 def main() -> int:
-    values=LCB.contract(); need(values["release_version"] == "release_v6" and values["task_count"] == 40, "release/sample pin changed")
+    values=LCB.contract(); need(values["release_version"] == "release_v6" and values["task_count"] == 40 and values["prompt_formatter"] == "lcb_runner.prompts.code_generation.format_prompt_generation@28fef95e:OpenAIChat", "release/sample/prompt pin changed")
     tasks=[{"question_id": f"task-{i:03d}"} for i in range(80)]
     first=LCB.select_tasks(tasks, seed=values["sampling_seed"], count=40); second=LCB.select_tasks(reversed(tasks), seed=values["sampling_seed"], count=40)
     first_ids=[LCB.task_id(task) for task in first]; need(first_ids == [LCB.task_id(task) for task in second] and len(set(first_ids)) == 40, "sample is not deterministic and distinct")
@@ -41,6 +42,30 @@ def main() -> int:
         rejects(LCB.load_official_tasks, "unavailable before inference")
     finally:
         LCB.importlib.import_module, LCB.subprocess.run = original_import, original_run
+    formatter_calls=[]
+    call_based_task=types.SimpleNamespace(question_content="question-marker", starter_code="def call_marker(value):", question_id="call-based-marker")
+    def format_prompt_generation(task, style):
+        formatter_calls.append((task, style))
+        need(task is call_based_task and bool(task.starter_code), "official formatter did not receive call-based starter-code task")
+        return [{"role":"system", "content":"system-marker"}, {"role":"user", "content":"starter-code-marker"}]
+    try:
+        LCB.importlib.import_module=lambda name: types.SimpleNamespace(format_prompt_generation=format_prompt_generation) if name == "lcb_runner.prompts.code_generation" else types.SimpleNamespace(LMStyle=types.SimpleNamespace(OpenAIChat="official-openai-chat"))
+        messages=LCB.official_prompt_messages(call_based_task)
+        need(messages[-1]["content"] == "starter-code-marker" and formatter_calls == [(call_based_task, "official-openai-chat")], "pinned official formatter path did not preserve starter-code context")
+        with tempfile.TemporaryDirectory() as directory:
+            command=Path(directory) / "runner"
+            command.write_text("#!/bin/sh\nprintf generated\n", encoding="utf-8")
+            command.chmod(0o700)
+            received=[]
+            original_run=LCB.subprocess.run
+            LCB.subprocess.run=lambda args, **kwargs: received.append(kwargs["input"]) or subprocess.CompletedProcess(args, 0, "generated", "")
+            try: need(LCB.protected_runner(command)(call_based_task) == "generated", "protected runner did not return generation")
+            finally: LCB.subprocess.run=original_run
+        need(json.loads(received[0]) == messages, "runner did not receive official OpenAI chat prompt messages")
+        LCB.importlib.import_module=lambda name: types.SimpleNamespace(format_prompt_generation=lambda task, style: []) if name == "lcb_runner.prompts.code_generation" else types.SimpleNamespace(LMStyle=types.SimpleNamespace(OpenAIChat="official-openai-chat"))
+        rejects(lambda: LCB.official_prompt_messages(call_based_task), "invalid OpenAI chat messages")
+    finally:
+        LCB.importlib.import_module=original_import
     calls=[]
     result=LCB.aggregate(first, lambda task: calls.append(LCB.task_id(task)) or "generated", lambda task, response: response == "generated")
     need(len(calls) == 40 and result == {"status":"completed", "release_version":"release_v6", "selected":40, "completed":40, "scored":40, "errors":0, "pass_at_1":1.0}, "40-task completed/scored aggregate changed")
