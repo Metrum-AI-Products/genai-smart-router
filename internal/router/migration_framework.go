@@ -377,6 +377,30 @@ func (r *migrationRunner) ensureLedger() error {
 	if !r.db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
 		return errors.New("migration ledger manifest digest upgrade did not create required column")
 	}
+	// Bind every adopted applied row to the canonical definition that exactly
+	// matches its scope, ID, and immutable checksum.  A legacy row without a
+	// digest is not trusted merely because its ID is known: a changed checksum
+	// must remain visible as an incompatible state instead of being silently
+	// adopted into the current manifest.
+	known := make(map[int]MigrationDefinition, len(r.definitions))
+	for _, d := range r.definitions {
+		known[d.ID] = d
+	}
+	var legacyApplied []migrationLedgerRecord
+	if err := r.db.Where("scope = ? AND state = ? AND manifest_digest = ?", r.scope, "applied", "").Find(&legacyApplied).Error; err != nil {
+		return fmt.Errorf("migration ledger manifest digest read: %w", err)
+	}
+	for _, rec := range legacyApplied {
+		d, ok := known[rec.MigrationID]
+		if !ok || d.Checksum != rec.Checksum {
+			continue // Status rejects the unbound row as incompatible.
+		}
+		if err := r.db.Model(&migrationLedgerRecord{}).
+			Where("scope = ? AND migration_id = ? AND checksum = ? AND state = ? AND manifest_digest = ?", r.scope, rec.MigrationID, rec.Checksum, "applied", "").
+			Update("manifest_digest", d.ManifestDigest).Error; err != nil {
+			return fmt.Errorf("migration ledger manifest digest adoption: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -397,7 +421,7 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 	for _, rec := range records {
 		status.Entries = append(status.Entries, ledgerEntry(rec))
 		d, ok := known[rec.MigrationID]
-		if !ok || d.Checksum != rec.Checksum || rec.ManifestDigest != "" && d.ManifestDigest != rec.ManifestDigest {
+		if !ok || d.Checksum != rec.Checksum || d.ManifestDigest != rec.ManifestDigest {
 			status.Compatible = false
 			status.State = "incompatible"
 			continue
@@ -418,6 +442,18 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 		default:
 			status.Compatible = false
 			status.State = "incompatible"
+		}
+	}
+	// An applied child cannot stand without every declared prerequisite having
+	// an applied, compatible ledger entry.  This independently verifies the
+	// historical ledger order; ApplyPending's preflight alone cannot detect a
+	// damaged or manually edited ledger.
+	for migrationID := range applied {
+		for _, dependency := range known[migrationID].Dependencies {
+			if !applied[dependency] {
+				status.Compatible = false
+				status.State = "incompatible"
+			}
 		}
 	}
 	if status.SchemaVersion < r.compatibility.MinSchema || status.SchemaVersion > r.compatibility.MaxSchema || status.DataVersion < r.compatibility.MinData || status.DataVersion > r.compatibility.MaxData {

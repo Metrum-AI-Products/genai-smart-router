@@ -95,8 +95,79 @@ func TestMigrationRunnerUpgradesLegacyLedgerBeforeStatusAndApply(t *testing.T) {
 	if err := db.Where("scope = ?", "test").Order("migration_id ASC").Find(&records).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 2 || records[0].ManifestDigest != "" || records[1].ManifestDigest != second.ManifestDigest {
+	if len(records) != 2 || records[0].ManifestDigest != first.ManifestDigest || records[1].ManifestDigest != second.ManifestDigest {
 		t.Fatalf("legacy/new manifest digest values = %+v", records)
+	}
+}
+
+func TestMigrationRunnerFailsClosedWhenLegacyAppliedLedgerCannotBindManifestDigest(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "legacy-unbound.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	if err := db.Exec(`CREATE TABLE schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	d := testMigrationDefinition(1, "test", "baseline", MigrationChecksum("expected"), 1, "online", "package-only")
+	if err := db.Exec("INSERT INTO schema_migration_ledger (scope, migration_id, checksum, state, started_at) VALUES (?, ?, ?, ?, ?)", "test", d.ID, MigrationChecksum("tampered"), "applied", "2026-07-01T00:00:00Z").Error; err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Compatible || status.State != "incompatible" {
+		t.Fatalf("unbound legacy applied ledger must fail closed: %+v", status)
+	}
+	var rec migrationLedgerRecord
+	if err := db.Where("scope = ? AND migration_id = ?", "test", d.ID).First(&rec).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rec.ManifestDigest != "" {
+		t.Fatalf("unbound legacy row must not be assigned a manifest digest: %+v", rec)
+	}
+}
+
+func TestMigrationRunnerStatusRejectsAppliedMigrationWithMissingOrUnappliedDependency(t *testing.T) {
+	for _, dependencyState := range []string{"missing", "failed"} {
+		t.Run(dependencyState, func(t *testing.T) {
+			db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "dependency-ledger.sqlite")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+			first := testMigrationDefinition(1, "test", "first", MigrationChecksum("first"), 1, "online", "package-only")
+			second := testMigrationDefinition(2, "test", "second", MigrationChecksum("second"), 2, "online", "package-only")
+			second.Dependencies = []int{first.ID}
+			second = FinalizeMigrationDefinition(second)
+			r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{first, second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ensureLedger(); err != nil {
+				t.Fatal(err)
+			}
+			if dependencyState == "failed" {
+				if err := db.Create(&migrationLedgerRecord{Scope: "test", MigrationID: first.ID, Checksum: first.Checksum, ManifestDigest: first.ManifestDigest, State: "failed", StartedAt: "2026-07-01T00:00:00Z"}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Create(&migrationLedgerRecord{Scope: "test", MigrationID: second.ID, Checksum: second.Checksum, ManifestDigest: second.ManifestDigest, State: "applied", StartedAt: "2026-07-01T00:00:00Z"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			status, err := r.Status()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status.Compatible || status.State != "incompatible" {
+				t.Fatalf("applied migration with %s prerequisite must fail closed: %+v", dependencyState, status)
+			}
+		})
 	}
 }
 
