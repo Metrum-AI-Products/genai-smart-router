@@ -267,7 +267,14 @@ test: secret-check capability-smoke-unit
 # only here, never while the suite is running offline.
 API_COMPAT_BOOTSTRAP_GO_PROXY ?= https://proxy.golang.org
 API_COMPAT_BOOTSTRAP_GO_SUMDB ?= sum.golang.org
-export API_COMPAT_BOOTSTRAP_GO_PROXY API_COMPAT_BOOTSTRAP_GO_SUMDB
+# Command-line variables otherwise propagate through Make's recursive
+# environment handling, which may expand their Make syntax before this recipe.
+# Keep them Make-local and inject the literal values only into `go mod download`.
+unexport API_COMPAT_BOOTSTRAP_GO_PROXY API_COMPAT_BOOTSTRAP_GO_SUMDB
+# Quote raw Make values as one POSIX-shell word at the sole consumer. In
+# particular, $(value ...) prevents a command-line override containing Make
+# syntax from being expanded before the shell sees it.
+api_compat_shell_data = '$(subst ','"'"',$(value $(1)))'
 api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
@@ -276,7 +283,7 @@ api-compat-bootstrap:
 	uv sync --locked && \
 	GOMODCACHE=$${GOMODCACHE:-$$api_compat_root/go-mod-cache} \
 	GOCACHE=$${GOCACHE:-$$api_compat_root/go-build-cache} \
-	GOPROXY="$$API_COMPAT_BOOTSTRAP_GO_PROXY" GOSUMDB="$$API_COMPAT_BOOTSTRAP_GO_SUMDB" go mod download
+	GOPROXY=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(call api_compat_shell_data,API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
 
 # Deterministic caller-boundary tests: the locally built router and fake
 # upstream bind to 127.0.0.1 only. This target is fail-closed: its Python and
