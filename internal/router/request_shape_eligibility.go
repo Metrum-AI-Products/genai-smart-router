@@ -250,7 +250,7 @@ func requestFeaturePresent(req *IRRequest, feature string) bool {
 	case "tools":
 		return len(req.Tools) > 0
 	case "tool_choice":
-		return rawValuePresent(req.Raw, "tool_choice")
+		return rawKeyPresent(req.Raw, "tool_choice")
 	case "forced_tool_choice":
 		return requestHasForcedToolChoice(req)
 	case "structured_output", "response_format":

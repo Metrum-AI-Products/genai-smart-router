@@ -63,8 +63,13 @@ func responsesToChatBridgeFilterReason(target Target, req *IRRequest, callerDial
 				return "responses-to-chat-tool-type"
 			}
 		}
-		if rawValuePresent(req.Raw, "tool_choice") && !bridge.ToolChoice {
+		if rawKeyPresent(req.Raw, "tool_choice") && !bridge.ToolChoice {
 			return "responses-to-chat-tool-choice"
+		}
+		// Preserve the omitted-vs-null evidence boundary: translating null as an
+		// omitted key would make tools-omitted evidence cover a different request.
+		if rawKeyPresent(req.Raw, "tool_choice") && req.Raw["tool_choice"] == nil {
+			return "responses-to-chat-tool-choice-null-unsupported"
 		}
 		return ""
 	}

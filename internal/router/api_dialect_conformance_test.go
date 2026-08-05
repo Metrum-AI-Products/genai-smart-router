@@ -119,6 +119,51 @@ func TestOpenAIChatConformancePassthroughToolsStructuredOutputAndReasoning(t *te
 	}
 }
 
+func TestNativeToolPassthroughPreservesExplicitNullToolChoice(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		dialect string
+		body    string
+		encode  func(*IRRequest) ([]byte, error)
+	}{
+		{
+			name:    "chat",
+			dialect: "openai-chat",
+			body:    `{"model":"default","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup"}}],"tool_choice":null}`,
+			encode: func(req *IRRequest) ([]byte, error) {
+				return encodeChatPassthrough("upstream-model", req, Target{})
+			},
+		},
+		{
+			name:    "responses",
+			dialect: "openai-responses",
+			body:    `{"model":"default","input":"hi","tools":[{"type":"function","name":"lookup"}],"tool_choice":null}`,
+			encode: func(req *IRRequest) ([]byte, error) {
+				return encodeResponsesPassthrough("upstream-model", req, Target{})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := decodeRequest(tc.dialect, []byte(tc.body), http.Header{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := tc.encode(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var encoded map[string]any
+			if err := json.Unmarshal(raw, &encoded); err != nil {
+				t.Fatal(err)
+			}
+			value, present := encoded["tool_choice"]
+			if !present || value != nil {
+				t.Fatalf("tool_choice=%#v present=%v, want explicit null", value, present)
+			}
+		})
+	}
+}
+
 func TestResponsesConformancePassthroughStripsLocalHostedToolDescriptors(t *testing.T) {
 	req, err := decodeRequest("openai-responses", []byte(`{
 		"model":"default",

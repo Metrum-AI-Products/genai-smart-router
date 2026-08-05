@@ -27,7 +27,10 @@ For every client-tool skin and enabled Chat-to-Responses or Responses-to-Chat
 bridge, retain separate direct/router smoke evidence for tools with
 `tool_choice` omitted, explicit `tool_choice: "auto"`, and forced choice.
 The omitted-choice probe must omit the key entirely; `tool_choice: null` or
-`"none"` is an explicit request shape and cannot stand in for it.
+`"none"` is an explicit request shape and cannot stand in for it. The router
+passes an explicit null through only on the same API skin after explicit
+tool-choice eligibility; it rejects null on Chat-to-Responses and
+Responses-to-Chat bridges because neither bridge has a lossless null mapping.
 
 ## OpenAI Chat Text
 

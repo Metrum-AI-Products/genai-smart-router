@@ -629,6 +629,14 @@ func TestOmittedToolChoiceBridgeRuntimeMatchesDistinctEvidence(t *testing.T) {
 	if reason := chatToResponsesBridgeFilterReason(responsesTarget, explicitChat, "openai-chat", "openai-responses"); reason != "chat-to-responses-tool-choice-unsupported" {
 		t.Fatalf("Chat-to-Responses explicit auto reason=%q", reason)
 	}
+	nullChat := &IRRequest{Tools: omittedChat.Tools, Raw: map[string]any{"tool_choice": nil}}
+	if reason := chatToResponsesBridgeFilterReason(responsesTarget, nullChat, "openai-chat", "openai-responses"); reason != "chat-to-responses-tool-choice-unsupported" {
+		t.Fatalf("Chat-to-Responses explicit null without bridge support reason=%q", reason)
+	}
+	responsesTarget.Bridges.ChatToResponses.ToolChoice = true
+	if reason := chatToResponsesBridgeFilterReason(responsesTarget, nullChat, "openai-chat", "openai-responses"); reason != "chat-to-responses-tool-choice-null-unsupported" {
+		t.Fatalf("Chat-to-Responses explicit null with bridge support reason=%q", reason)
+	}
 
 	chatTarget := Target{
 		Dialect:     "openai-chat",
@@ -644,6 +652,14 @@ func TestOmittedToolChoiceBridgeRuntimeMatchesDistinctEvidence(t *testing.T) {
 	explicitResponses := &IRRequest{Tools: omittedResponses.Tools, Raw: map[string]any{"tool_choice": "auto"}}
 	if reason := responsesToChatBridgeFilterReason(chatTarget, explicitResponses, "openai-responses", "openai-chat"); reason != "responses-to-chat-tool-choice" {
 		t.Fatalf("Responses-to-Chat explicit auto reason=%q", reason)
+	}
+	nullResponses := &IRRequest{Tools: omittedResponses.Tools, Raw: map[string]any{"tool_choice": nil}}
+	if reason := responsesToChatBridgeFilterReason(chatTarget, nullResponses, "openai-responses", "openai-chat"); reason != "responses-to-chat-tool-choice" {
+		t.Fatalf("Responses-to-Chat explicit null without bridge support reason=%q", reason)
+	}
+	chatTarget.ResponsesToChat.ToolChoice = true
+	if reason := responsesToChatBridgeFilterReason(chatTarget, nullResponses, "openai-responses", "openai-chat"); reason != "responses-to-chat-tool-choice-null-unsupported" {
+		t.Fatalf("Responses-to-Chat explicit null with bridge support reason=%q", reason)
 	}
 }
 

@@ -124,6 +124,20 @@ func TestEncodeChatToResponsesBridgeMapsFunctionToolsAndToolResults(t *testing.T
 	}
 }
 
+func TestEncodeChatToResponsesBridgeRejectsExplicitNullToolChoice(t *testing.T) {
+	req, err := decodeRequest("openai-chat", []byte(`{"model":"bridge","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"echo"}}],"tool_choice":null}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = encodeChatToResponsesBridge("responses-tools", req, Target{
+		ToolSupport: ToolSupport{OpenAIResponses: []string{"function", "tool_choice"}},
+		Bridges:     BridgeSupport{ChatToResponses: DialectBridgeSupport{Enabled: true, Tools: true, ToolChoice: true}},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "chat-to-responses-tool-choice-null-unsupported") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestEncodeChatToResponsesBridgePreservesJSONSchemaFormatType(t *testing.T) {
 	req, err := decodeRequest("openai-chat", []byte(`{
 		"model":"bridge",
