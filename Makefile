@@ -159,11 +159,11 @@ livecodebench-contract-test:
 
 livecodebench-validate:
 	@test -n "$(LCB_ROOT)" || { echo "LCB_ROOT must name the pinned LiveCodeBench checkout" >&2; exit 2; }
-	PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) scripts/livecodebench_eval.py validate --lcb-root "$(LCB_ROOT)"
+	cd "$(LCB_ROOT)" && PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) "$(CURDIR)/scripts/livecodebench_eval.py" validate --lcb-root "$(LCB_ROOT)"
 
 livecodebench-run:
 	@test -n "$(LCB_ROOT)" && test -n "$(LCB_RUNNER_COMMAND_FILE)" || { echo "LCB_ROOT and LCB_RUNNER_COMMAND_FILE are required" >&2; exit 2; }
-	PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) scripts/livecodebench_eval.py run --lcb-root "$(LCB_ROOT)" --runner-command-file "$(LCB_RUNNER_COMMAND_FILE)"
+	cd "$(LCB_ROOT)" && PYTHONPATH="$(LCB_ROOT)$${PYTHONPATH:+:$${PYTHONPATH}}" $(LCB_PYTHON) "$(CURDIR)/scripts/livecodebench_eval.py" run --lcb-root "$(LCB_ROOT)" --runner-command-file "$(LCB_RUNNER_COMMAND_FILE)"
 
 eks-help:
 	@echo "EKS delivery targets (approved target policy; no default kubeconfig/context):"

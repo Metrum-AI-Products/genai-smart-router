@@ -21,6 +21,7 @@ from typing import Any, Callable, Iterable
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "evaluators/livecodebench/contract.json"
 SAFE_FIELDS = ("status", "release_version", "selected", "completed", "scored", "errors", "pass_at_1")
+PROMPT_FORMATTER = "lcb_runner.prompts.code_generation.format_prompt_generation@28fef95e:OpenAIChat"
 
 
 class ContractError(ValueError):
@@ -29,11 +30,13 @@ class ContractError(ValueError):
 
 def contract() -> dict[str, Any]:
     value = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-    required = {"livecodebench_revision", "datasets_version", "dataset", "release_version", "task_count", "sampling_seed", "generation", "request_timeout_seconds", "scorer_version"}
+    required = {"livecodebench_revision", "datasets_version", "dataset", "release_version", "task_count", "sampling_seed", "generation", "request_timeout_seconds", "scorer_version", "prompt_formatter"}
     if not isinstance(value, dict) or required - value.keys():
         raise ContractError("LiveCodeBench contract is incomplete")
     if value["release_version"] != "release_v6" or value["task_count"] != 40:
         raise ContractError("LiveCodeBench contract must pin release_v6 and exactly 40 tasks")
+    if value["prompt_formatter"] != PROMPT_FORMATTER:
+        raise ContractError("LiveCodeBench contract must pin the official OpenAI-chat prompt formatter")
     return value
 
 
@@ -101,13 +104,29 @@ def aggregate(tasks: Iterable[Any], infer: Callable[[Any], str], score: Callable
     return sanitize({"status": "completed", "release_version": contract()["release_version"], "selected": len(selected), "completed": completed, "scored": scored, "errors": errors, "pass_at_1": passed / scored})
 
 
+def official_prompt_messages(task: Any) -> list[dict[str, str]]:
+    """Build the pinned official OpenAI-chat code-generation prompt in memory."""
+    try:
+        formatter = importlib.import_module("lcb_runner.prompts.code_generation").format_prompt_generation
+        style = importlib.import_module("lcb_runner.lm_styles").LMStyle.OpenAIChat
+    except (ImportError, AttributeError) as exc:
+        raise ContractError("official LiveCodeBench prompt formatter is unavailable before inference") from exc
+    messages = formatter(task, style)
+    if not isinstance(messages, list) or not messages or not all(
+        isinstance(message, dict)
+        and isinstance(message.get("role"), str)
+        and isinstance(message.get("content"), str)
+        for message in messages
+    ):
+        raise ContractError("official LiveCodeBench prompt formatter returned invalid OpenAI chat messages")
+    return messages
+
+
 def protected_runner(path: Path) -> Callable[[Any], str]:
     if not path.is_file() or path.stat().st_mode & 0o077:
         raise ContractError("runner command file must be an owner-only regular file")
     def infer(task: Any) -> str:
-        prompt = getattr(task, "question_content", None)
-        if not isinstance(prompt, str) or not prompt:
-            raise ContractError("official task is missing code-generation content")
+        prompt = json.dumps(official_prompt_messages(task), separators=(",", ":"))
         result = subprocess.run([str(path)], input=prompt, text=True, capture_output=True, timeout=contract()["request_timeout_seconds"], check=False)
         if result.returncode:
             raise ContractError("runner command failed")
