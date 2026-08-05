@@ -1529,19 +1529,42 @@ func (s *usageStore) initializeSchema(policy string) error {
 	}
 }
 
-// A compatible schema expansion may have a separately scheduled Stage-3 data
-// job pending. Serving can continue inside its declared MinData range; it
-// never starts or resumes that job itself.
+// Serving is admitted only after the compatible ledger is current and every
+// required bound data job has reached its checked-in validated state. A
+// synthesized pending job after apply is deliberately just as unready as a
+// durable running, paused, cancelled, failed, or incompatible job.
 func usageMigrationServingCompatible(status MigrationStatus) bool {
-	return status.Compatible && (status.State == "current" || (status.State == "pending" && len(status.Pending) == 0 && len(status.Jobs) > 0))
+	if !status.Compatible || status.State != "current" {
+		return false
+	}
+	for _, job := range status.Jobs {
+		if job.State != migrationDataJobValidated {
+			return false
+		}
+	}
+	return true
 }
 
 func OpenUsageStorePath(path string) (*usageStore, error) {
 	// This compatibility helper is intentionally non-serving: callers that use
-	// a bare filesystem path are local tools/tests, not a configured router.
-	// Production startup flows through newUsageStore and defaults to
-	// deployment-job validation.
-	return OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	// a bare filesystem path are local tools/tests, not a configured router. It
+	// creates only the physical legacy fixture schema, without a migration
+	// ledger or data-job admission decision. Production startup flows through
+	// newUsageStore and always applies the serving compatibility gate.
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		return nil, err
+	}
+	store := &usageStore{db: db}
+	if err := applyUsageExplicitBaseline(db); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	if err := applyUsageReasoningTelemetryMigration(db); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 func openUsageDB(cfg UsageDBConfig) (*gorm.DB, error) {

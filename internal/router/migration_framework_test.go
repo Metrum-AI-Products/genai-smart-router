@@ -1101,8 +1101,17 @@ func TestUsageMigrationBaselineBootstrapsEmptyDatabaseExplicitly(t *testing.T) {
 
 func TestUsageHistoricalValidationRequiresMultipleCheckpointsBeforeDeploymentJobServing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "historical-validation.sqlite")
-	store, err := OpenUsageStorePath(path)
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
 	if err != nil {
+		t.Fatal(err)
+	}
+	store := &usageStore{db: db}
+	if err := applyUsageExplicitBaseline(store.db); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := applyUsageReasoningTelemetryMigration(store.db); err != nil {
+		_ = store.Close()
 		t.Fatal(err)
 	}
 	for i := 0; i < 101; i++ {
@@ -1123,11 +1132,35 @@ func TestUsageHistoricalValidationRequiresMultipleCheckpointsBeforeDeploymentJob
 		_ = closeDB()
 		t.Fatal(err)
 	}
+	// Apply deliberately does not create or run its bound data job. Verify
+	// synthesizes that post-apply/pre-resume pending state, which must block a
+	// deployment-job router just like every other non-validated job state.
+	status, err := runner.Verify()
+	if err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].State != migrationDataJobPending {
+		_ = closeDB()
+		t.Fatalf("applied historical validation must synthesize a pending bound job before resume: %+v", status)
+	}
+	if err := closeDB(); err != nil {
+		t.Fatal(err)
+	}
+	if started, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyDeploymentJob}); err == nil {
+		_ = started.Close()
+		t.Fatal("deployment-job serving must reject a pending historical validation job")
+	}
+
+	runner, closeDB, err = UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "historical-validation-test", DataJobCheckpoint{Ordinal: 0}); err != nil {
 		_ = closeDB()
 		t.Fatal(err)
 	}
-	status, err := runner.Verify()
+	status, err = runner.Verify()
 	if err != nil {
 		_ = closeDB()
 		t.Fatal(err)
@@ -1182,6 +1215,32 @@ func TestUsageHistoricalValidationRequiresMultipleCheckpointsBeforeDeploymentJob
 	}
 }
 
+func TestUsageMigrationServingCompatibilityRequiresValidatedBoundJobs(t *testing.T) {
+	tests := []struct {
+		name   string
+		status MigrationStatus
+		want   bool
+	}{
+		{name: "current without bound jobs", status: MigrationStatus{Compatible: true, State: "current"}, want: true},
+		{name: "validated bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobValidated}}}, want: true},
+		{name: "synthesized pending bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobPending}}}},
+		{name: "running bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobRunning}}}},
+		{name: "paused bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobPaused}}}},
+		{name: "cancelled bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobCancelled}}}},
+		{name: "failed bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobFailed}}}},
+		{name: "unrecognized bound job", status: MigrationStatus{Compatible: true, State: "current", Jobs: []MigrationDataJobStatus{{State: "unrecognized"}}}},
+		{name: "noncurrent ledger", status: MigrationStatus{Compatible: true, State: "pending", Jobs: []MigrationDataJobStatus{{State: migrationDataJobValidated}}}},
+		{name: "incompatible ledger", status: MigrationStatus{Compatible: false, State: "current", Jobs: []MigrationDataJobStatus{{State: migrationDataJobValidated}}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := usageMigrationServingCompatible(tc.status); got != tc.want {
+				t.Fatalf("usageMigrationServingCompatible(%+v) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUsageMigrationBaselineKeepsReasoningColumnsForTheirOwnDefinition(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "baseline-version.sqlite")})
 	if err != nil {
@@ -1218,7 +1277,7 @@ func TestUsageMigrationBaselineKeepsReasoningColumnsForTheirOwnDefinition(t *tes
 	}
 }
 
-func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) {
+func TestUsageStoreStartupMigrationPoliciesFailClosedUntilDataJobsValidate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	legacy, err := OpenUsageStorePath(path)
 	if err != nil {
@@ -1228,10 +1287,26 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// A reviewed small/single-node deployment may explicitly select auto-safe.
+	// A reviewed small/single-node deployment may explicitly select auto-safe
+	// for safe schema work, but it still cannot serve before its bound job is
+	// validated.
+	if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
+		t.Fatal("auto-safe must reject a pending required data job")
+	}
+	runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "startup-policy-test", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if err := closeDB(); err != nil {
+		t.Fatal(err)
+	}
 	auto, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
 	if err != nil {
-		t.Fatalf("auto-safe adoption: %v", err)
+		t.Fatalf("auto-safe must accept validated data jobs: %v", err)
 	}
 	if err := auto.Close(); err != nil {
 		t.Fatal(err)
@@ -1253,12 +1328,8 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) 
 			t.Fatalf("%s must reject an empty database before the deployment job runs", policy)
 		}
 	}
-	bootstrapped, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
-	if err != nil {
-		t.Fatalf("auto-safe explicit bootstrap: %v", err)
-	}
-	if err := bootstrapped.Close(); err != nil {
-		t.Fatal(err)
+	if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
+		t.Fatal("auto-safe must reject an unvalidated required data job after bootstrap")
 	}
 }
 
