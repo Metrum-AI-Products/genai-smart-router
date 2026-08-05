@@ -229,6 +229,12 @@ func TestMigrationFrameworkBootstrapsNormalizedScalarContract(t *testing.T) {
 	if !db.Migrator().HasColumn(&migrationLedgerRecord{}, "manifest_digest") {
 		t.Fatal("ledger must bind manifest digest")
 	}
+	if err := db.Exec("INSERT INTO schema_migration_attempts (scope, migration_id, attempt, action, state, started_at) VALUES ('missing', 1, 1, 'apply', 'failed', 'now')").Error; err == nil {
+		t.Fatal("migration attempts must be bound to an immutable ledger row")
+	}
+	if err := db.Exec("INSERT INTO schema_data_jobs (job_id, scope, migration_id, data_version, state, execution_mode, validation_mode, started_at) VALUES ('missing', 'missing', 1, 1, 'pending', 'batch', 'verify', 'now')").Error; err == nil {
+		t.Fatal("data jobs must be bound to an immutable ledger row")
+	}
 }
 
 func TestMigrationRunnerRejectsAnActiveScopeLease(t *testing.T) {
