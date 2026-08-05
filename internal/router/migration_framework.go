@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -39,8 +41,8 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	Transactional:    true,
 	MaintenanceMode:  "online",
 	RollbackClass:    "package-only",
-	HandlerKey:       "usage.legacy-baseline.verify.v1",
-	PostconditionKey: "usage.legacy-baseline.schema.v1",
+	HandlerKey:       "usage.legacy-baseline.verify.v1@verifyUsageLegacyBaseline",
+	PostconditionKey: "usage.legacy-baseline.schema.v1@verifyUsageLegacyBaseline",
 	ExecutionMode:    "transactional",
 	LockClass:        "online",
 	TimeoutClass:     "bounded",
@@ -59,8 +61,8 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	// Older binaries reject this new ledger ID under validate/deployment-job.
 	// Downgrade therefore requires restoring the pre-migration database snapshot.
 	RollbackClass:    "restore-required",
-	HandlerKey:       "usage.reasoning-telemetry.apply.v1",
-	PostconditionKey: "usage.reasoning-telemetry.schema.v1",
+	HandlerKey:       "usage.reasoning-telemetry.apply.v1@applyUsageReasoningTelemetryMigration",
+	PostconditionKey: "usage.reasoning-telemetry.schema.v1@verifyUsageReasoningTelemetryMigration",
 	Dependencies:     []int{usageLegacyBaselineMigrationID},
 	ExecutionMode:    "transactional",
 	LockClass:        "online",
@@ -108,6 +110,33 @@ type MigrationDefinition struct {
 	ManifestDigest   string // canonical digest of the immutable metadata
 	Apply            func(*gorm.DB) error
 	Verify           func(*gorm.DB) error
+}
+
+// HandlerKey and PostconditionKey deliberately name the checked-in executable
+// functions after an @ separator. This keeps the operator-facing portion of a
+// key stable while making a source-level handler swap fail manifest validation.
+// Function names are used instead of a program-counter address because PC
+// values are build-specific and cannot be durable manifest identities.
+func migrationHandlerKeyMatches(key string, fn func(*gorm.DB) error) bool {
+	if fn == nil {
+		return false
+	}
+	separator := strings.LastIndex(key, "@")
+	if separator <= 0 || separator == len(key)-1 {
+		return false
+	}
+	function := runtime.FuncForPC(reflect.ValueOf(fn).Pointer())
+	if function == nil {
+		return false
+	}
+	name := function.Name()
+	if slash := strings.LastIndex(name, "/"); slash >= 0 {
+		name = name[slash+1:]
+	}
+	if dot := strings.LastIndex(name, "."); dot >= 0 {
+		name = name[dot+1:]
+	}
+	return key[separator+1:] == name
 }
 
 // CanonicalMigrationDigest binds all reviewed, non-executable migration
@@ -260,8 +289,9 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 	sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 	previous := 0
 	for _, d := range defs {
-		strict := d.ManifestDigest != "" || d.HandlerKey != "" || d.PostconditionKey != "" || d.ExecutionMode != "" || d.LockClass != "" || d.TimeoutClass != ""
-		if d.Scope != scope || d.ID <= previous || d.ID <= 0 || !validMigrationChecksum(d.Checksum) || (strict && (d.HandlerKey == "" || d.PostconditionKey == "" || d.ExecutionMode == "" || d.LockClass == "" || d.TimeoutClass == "" || d.ManifestDigest != CanonicalMigrationDigest(d))) {
+		if d.Scope != scope || d.ID <= previous || d.ID <= 0 || !validMigrationChecksum(d.Checksum) ||
+			d.HandlerKey == "" || d.PostconditionKey == "" || d.ExecutionMode == "" || d.LockClass == "" || d.TimeoutClass == "" || d.ManifestDigest != CanonicalMigrationDigest(d) ||
+			!migrationHandlerKeyMatches(d.HandlerKey, d.Apply) || !migrationHandlerKeyMatches(d.PostconditionKey, d.Verify) {
 			return nil, errors.New("invalid immutable migration manifest")
 		}
 		previous = d.ID

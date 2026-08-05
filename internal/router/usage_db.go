@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 type usageStore struct {
@@ -1616,48 +1618,7 @@ func (s *usageStore) migrate() error {
 			return err
 		}
 	}
-	if err := s.db.AutoMigrate(
-		&usageRecord{},
-		&requestAttemptRecord{},
-		&requestTraceEventRecord{},
-		&requestTrafficShapeEventRecord{},
-		&requestUpstreamShapeEventRecord{},
-		&requestShapeRecord{},
-		&requestTranslationShapeRecord{},
-		&requestTokenEstimateRecord{},
-		&requestTranslationFieldEventRecord{},
-		&decisionShapeFeatureRecord{},
-		&decisionTargetCandidateRecord{},
-		&decisionTargetFilterReasonRecord{},
-		&routingDecisionRecord{},
-		&routingSignalRecord{},
-		&dynamicScoreTermRecord{},
-		&policyExecutionRecord{},
-		&fallbackTransitionRecord{},
-		&decisionCacheReasonRecord{},
-		&requestErrorRecord{},
-		&requestUpstreamErrorDetailRecord{},
-		&contentCaptureRecord{},
-		&contentCaptureHeaderRecord{},
-		&contentCaptureAuditRecord{},
-		&authzPolicySetRecord{},
-		&authzPolicyRuleRecord{},
-		&authzRoleLinkRecord{},
-		&authzPolicyAuditEventRecord{},
-		&securityAccessEventRecord{},
-		&usageRollupRunRecord{},
-		&usageRollupDailyRecord{},
-		&usageRollupHourlyRecord{},
-		&usageRollupMonthlyBillingRecord{},
-		&usageRollupAuditEventRecord{},
-		&usageRollupDecisionBucketRecord{},
-		&retentionPolicyVersionRecord{},
-		&retentionPolicyRuleRecord{},
-		&retentionJobRecord{},
-		&retentionJobTableResultRecord{},
-		&legalHoldRecord{},
-		&legalHoldAuditEventRecord{},
-	); err != nil {
+	if err := s.db.AutoMigrate(usageRelationalModels()...); err != nil {
 		return err
 	}
 	if err := ensureUsageRelationalSchema(s.db); err != nil {
@@ -1674,40 +1635,171 @@ func (s *usageStore) backfillRequestAttemptRetryAfter() error {
 }
 
 func ensureUsageRelationalSchema(db *gorm.DB) error {
-	type columnInfo struct {
-		Name string
-		Type string
+	if db == nil {
+		return errors.New("usage schema verification requires database")
 	}
-	var columns []columnInfo
-	for _, table := range usageRelationalTables {
-		if !db.Migrator().HasTable(table) {
-			return fmt.Errorf("required usage table %q is missing", table)
+	models := usageRelationalModels()
+	for _, model := range models {
+		if err := verifyUsageRelationalModel(db, model); err != nil {
+			return err
 		}
 	}
-	for _, table := range usageRelationalTables {
-		var tableColumns []columnInfo
-		switch db.Dialector.Name() {
-		case "sqlite":
-			if err := db.Raw(`SELECT name, type FROM pragma_table_info(?)`, table).Scan(&tableColumns).Error; err != nil {
-				return err
-			}
-		default:
-			if err := db.Raw(`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = ?`, table).Scan(&tableColumns).Error; err != nil {
-				return err
-			}
-		}
-		if len(tableColumns) == 0 {
-			return fmt.Errorf("required usage table %q has no columns", table)
-		}
-		for i := range tableColumns {
-			tableColumns[i].Name = table + "." + tableColumns[i].Name
-		}
-		columns = append(columns, tableColumns...)
+	return nil
+}
+
+// usageRelationalModels is the canonical relational baseline contract. Keep it
+// aligned with migrate: adoption validates this exact model-level schema rather
+// than accepting a database merely because its table names happen to exist.
+func usageRelationalModels() []any {
+	return []any{
+		&usageRecord{}, &requestAttemptRecord{}, &requestTraceEventRecord{}, &requestTrafficShapeEventRecord{}, &requestUpstreamShapeEventRecord{},
+		&requestShapeRecord{}, &requestTranslationShapeRecord{}, &requestTokenEstimateRecord{}, &requestTranslationFieldEventRecord{},
+		&decisionShapeFeatureRecord{}, &decisionTargetCandidateRecord{}, &decisionTargetFilterReasonRecord{}, &routingDecisionRecord{},
+		&routingSignalRecord{}, &dynamicScoreTermRecord{}, &policyExecutionRecord{}, &fallbackTransitionRecord{}, &decisionCacheReasonRecord{},
+		&requestErrorRecord{}, &requestUpstreamErrorDetailRecord{}, &contentCaptureRecord{}, &contentCaptureHeaderRecord{}, &contentCaptureAuditRecord{},
+		&authzPolicySetRecord{}, &authzPolicyRuleRecord{}, &authzRoleLinkRecord{}, &authzPolicyAuditEventRecord{}, &securityAccessEventRecord{},
+		&usageRollupRunRecord{}, &usageRollupDailyRecord{}, &usageRollupHourlyRecord{}, &usageRollupMonthlyBillingRecord{}, &usageRollupAuditEventRecord{}, &usageRollupDecisionBucketRecord{},
+		&retentionPolicyVersionRecord{}, &retentionPolicyRuleRecord{}, &retentionJobRecord{}, &retentionJobTableResultRecord{}, &legalHoldRecord{}, &legalHoldAuditEventRecord{},
 	}
-	for _, col := range columns {
-		t := strings.ToLower(col.Type)
+}
+
+func verifyUsageRelationalModel(db *gorm.DB, model any) error {
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(model); err != nil {
+		return err
+	}
+	table := stmt.Schema.Table
+	if !db.Migrator().HasTable(model) {
+		return fmt.Errorf("required usage table %q is missing", table)
+	}
+	actualColumns, err := db.Migrator().ColumnTypes(model)
+	if err != nil {
+		return fmt.Errorf("inspect usage table %q columns: %w", table, err)
+	}
+	byName := make(map[string]gorm.ColumnType, len(actualColumns))
+	for _, actual := range actualColumns {
+		name := actual.Name()
+		byName[name] = actual
+		t := strings.ToLower(actual.DatabaseTypeName())
 		if strings.Contains(t, "json") || strings.Contains(t, "array") || strings.HasSuffix(t, "[]") {
-			return fmt.Errorf("%s uses forbidden non-relational type %q", col.Name, col.Type)
+			return fmt.Errorf("%s.%s uses forbidden non-relational type %q", table, name, actual.DatabaseTypeName())
+		}
+	}
+	for _, field := range stmt.Schema.Fields {
+		if field.DBName == "" { // associations have no scalar database column.
+			continue
+		}
+		actual, ok := byName[field.DBName]
+		if !ok {
+			return fmt.Errorf("required usage column %s.%s is missing", table, field.DBName)
+		}
+		if !usageColumnTypeCompatible(field, actual.DatabaseTypeName()) {
+			return fmt.Errorf("usage column %s.%s has type %q incompatible with %q", table, field.DBName, actual.DatabaseTypeName(), field.DataType)
+		}
+		// SQLite reports composite primary-key members as nullable unless the
+		// CREATE TABLE spelling also contains NOT NULL. Primary-key membership is
+		// verified independently below; explicit not-null contract fields must
+		// still be physically non-null on both SQLite and PostgreSQL.
+		if nullable, known := actual.Nullable(); known && field.NotNull && nullable {
+			return fmt.Errorf("usage column %s.%s nullability does not match contract", table, field.DBName)
+		}
+		if primary, known := actual.PrimaryKey(); known && primary != field.PrimaryKey {
+			return fmt.Errorf("usage column %s.%s primary-key membership does not match contract", table, field.DBName)
+		}
+		// Identity columns obtain their value from the engine, not a SQL DEFAULT
+		// expression (notably SQLite AUTOINCREMENT), so verify their PK contract
+		// above rather than demanding a default literal.
+		if field.HasDefaultValue && !field.AutoIncrement {
+			actualDefault, known := actual.DefaultValue()
+			if !known || !usageDefaultCompatible(field.DefaultValue, actualDefault) {
+				return fmt.Errorf("usage column %s.%s default does not match contract", table, field.DBName)
+			}
+		}
+	}
+	if err := verifyUsageIndexes(db, model, stmt.Schema); err != nil {
+		return err
+	}
+	if err := verifyUsageForeignKeys(db, stmt.Schema); err != nil {
+		return err
+	}
+	for name := range stmt.Schema.ParseCheckConstraints() {
+		if !db.Migrator().HasConstraint(model, name) {
+			return fmt.Errorf("required usage check constraint %s on %s is missing", name, table)
+		}
+	}
+	return nil
+}
+
+func usageColumnTypeCompatible(field *schema.Field, actual string) bool {
+	t := strings.ToLower(actual)
+	switch field.DataType {
+	case schema.String:
+		return strings.Contains(t, "char") || strings.Contains(t, "text") || strings.Contains(t, "clob")
+	case schema.Bool:
+		return strings.Contains(t, "bool") || strings.Contains(t, "int") || strings.Contains(t, "numeric")
+	case schema.Int, schema.Uint:
+		return strings.Contains(t, "int") || strings.Contains(t, "serial")
+	case schema.Float:
+		return strings.Contains(t, "real") || strings.Contains(t, "double") || strings.Contains(t, "float") || strings.Contains(t, "numeric") || strings.Contains(t, "decimal")
+	default:
+		return true
+	}
+}
+
+func usageDefaultCompatible(expected, actual string) bool {
+	normalize := func(value string) string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.Trim(value, "()'")
+		switch value {
+		case "false":
+			return "0"
+		case "true":
+			return "1"
+		}
+		return value
+	}
+	return normalize(expected) == normalize(actual)
+}
+
+func verifyUsageIndexes(db *gorm.DB, model any, expected *schema.Schema) error {
+	indexes, err := db.Migrator().GetIndexes(model)
+	if err != nil {
+		return err
+	}
+	actual := make(map[string]gorm.Index, len(indexes))
+	for _, index := range indexes {
+		actual[index.Name()] = index
+	}
+	for _, index := range expected.ParseIndexes() {
+		got, ok := actual[index.Name]
+		if !ok {
+			return fmt.Errorf("required usage index %s.%s is missing", expected.Table, index.Name)
+		}
+		if len(got.Columns()) != len(index.Fields) {
+			return fmt.Errorf("usage index %s.%s columns do not match contract", expected.Table, index.Name)
+		}
+		for i, field := range index.Fields {
+			if got.Columns()[i] != field.DBName {
+				return fmt.Errorf("usage index %s.%s columns do not match contract", expected.Table, index.Name)
+			}
+		}
+		if unique, known := got.Unique(); known && unique != (index.Class == "UNIQUE") {
+			return fmt.Errorf("usage index %s.%s uniqueness does not match contract", expected.Table, index.Name)
+		}
+	}
+	return nil
+}
+
+func verifyUsageForeignKeys(db *gorm.DB, parsed *schema.Schema) error {
+	// GORM's relationship metadata is the checked-in FK contract. SQLite and
+	// PostgreSQL expose it through their portable migrator constraint probe.
+	for _, relationship := range parsed.Relationships.Relations {
+		if relationship == nil || relationship.Field == nil {
+			continue
+		}
+		name := db.NamingStrategy.RelationshipFKName(*relationship)
+		if !db.Migrator().HasConstraint(reflect.New(parsed.ModelType).Interface(), name) {
+			return fmt.Errorf("required usage foreign-key constraint %s on %s is missing", name, parsed.Table)
 		}
 	}
 	return nil

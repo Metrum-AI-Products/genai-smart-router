@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func applyConfigControlPlaneMigrationsForTest(t *testing.T, r *migrationRunner) {
@@ -14,6 +16,22 @@ func applyConfigControlPlaneMigrationsForTest(t *testing.T, r *migrationRunner) 
 	}
 	if err := r.ApplyMaintenancePending("test-maintenance"); err != nil {
 		t.Fatalf("explicit control-plane maintenance migration: %v", err)
+	}
+}
+
+func TestConfigControlPlaneMigrationManifestIsStrictAndExecutable(t *testing.T) {
+	if _, err := NewMigrationRunner(&gorm.DB{}, configControlPlaneScope, configControlPlaneCompatibility, configControlPlaneMigrationDefinitions); err != nil {
+		t.Fatalf("config control-plane strict manifest rejected: %v", err)
+	}
+	for _, definition := range configControlPlaneMigrationDefinitions {
+		if definition.ManifestDigest == "" || !migrationHandlerKeyMatches(definition.HandlerKey, definition.Apply) || !migrationHandlerKeyMatches(definition.PostconditionKey, definition.Verify) {
+			t.Fatalf("migration %d lacks a strict executable manifest binding: %#v", definition.ID, definition)
+		}
+	}
+	tampered := configControlPlaneMigrationDefinitions[0]
+	tampered.Apply = configControlPlaneMigrationDefinitions[1].Apply
+	if _, err := NewMigrationRunner(&gorm.DB{}, configControlPlaneScope, configControlPlaneCompatibility, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("config apply handler pointer swap must fail closed")
 	}
 }
 

@@ -8,20 +8,34 @@ import (
 	"gorm.io/gorm"
 )
 
+func applyTestMigrationMarker(tx *gorm.DB) error {
+	return tx.Exec("CREATE TABLE IF NOT EXISTS migration_marker (id INTEGER PRIMARY KEY)").Error
+}
+
+func verifyTestMigrationMarker(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("migration_marker") {
+		return errors.New("marker missing")
+	}
+	return nil
+}
+
+func testMigrationDefinition(id int, scope, name, checksum string, schemaVersion int, maintenanceMode, rollbackClass string) MigrationDefinition {
+	return FinalizeMigrationDefinition(MigrationDefinition{
+		ID: id, Scope: scope, Name: name, Release: "test", Checksum: checksum,
+		SchemaVersion: schemaVersion, Transactional: true, MaintenanceMode: maintenanceMode, RollbackClass: rollbackClass,
+		HandlerKey: "test.marker.apply.v1@applyTestMigrationMarker", PostconditionKey: "test.marker.schema.v1@verifyTestMigrationMarker",
+		ExecutionMode: "transactional", LockClass: maintenanceMode, TimeoutClass: "bounded",
+		Apply: applyTestMigrationMarker, Verify: verifyTestMigrationMarker,
+	})
+}
+
 func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "migrations.sqlite")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	d := MigrationDefinition{ID: 1, Scope: "test", Name: "add marker", Release: "test", Checksum: MigrationChecksum("test", "1", "add marker"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE migration_marker (id INTEGER PRIMARY KEY)").Error
-	}, Verify: func(tx *gorm.DB) error {
-		if !tx.Migrator().HasTable("migration_marker") {
-			return errors.New("marker missing")
-		}
-		return nil
-	}}
+	d := testMigrationDefinition(1, "test", "add marker", MigrationChecksum("test", "1", "add marker"), 1, "online", "package-only")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
 	if err != nil {
 		t.Fatal(err)
@@ -47,12 +61,8 @@ func TestMigrationRunnerRequiresExplicitMaintenanceOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	online := MigrationDefinition{ID: 1, Scope: "test", Name: "online marker", Release: "test", Checksum: MigrationChecksum("online marker"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE online_marker (id INTEGER PRIMARY KEY)").Error
-	}}
-	maintenance := MigrationDefinition{ID: 2, Scope: "test", Name: "maintenance marker", Release: "test", Checksum: MigrationChecksum("maintenance marker"), SchemaVersion: 2, Transactional: true, MaintenanceMode: "maintenance", RollbackClass: "restore-required", Apply: func(tx *gorm.DB) error {
-		return tx.Exec("CREATE TABLE maintenance_marker (id INTEGER PRIMARY KEY)").Error
-	}}
+	online := testMigrationDefinition(1, "test", "online marker", MigrationChecksum("online marker"), 1, "online", "package-only")
+	maintenance := testMigrationDefinition(2, "test", "maintenance marker", MigrationChecksum("maintenance marker"), 2, "maintenance", "restore-required")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}, []MigrationDefinition{online, maintenance})
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +95,7 @@ func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testi
 		t.Fatal(err)
 	}
 	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
-	d := MigrationDefinition{ID: 1, Scope: "test", Name: "marker", Release: "test", Checksum: MigrationChecksum("one"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", Apply: func(*gorm.DB) error { return nil }}
+	d := testMigrationDefinition(1, "test", "marker", MigrationChecksum("one"), 1, "online", "package-only")
 	r, err := NewMigrationRunner(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, []MigrationDefinition{d})
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +129,7 @@ func TestMigrationRunnerFailsClosedForChangedChecksumAndFutureMigration(t *testi
 }
 
 func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
-	d := FinalizeMigrationDefinition(MigrationDefinition{ID: 1, Scope: "usage", Name: "strict marker", Release: "test", Checksum: MigrationChecksum("strict"), SchemaVersion: 1, Transactional: true, MaintenanceMode: "online", RollbackClass: "package-only", HandlerKey: "usage.strict.v1", PostconditionKey: "usage.strict.post.v1", ExecutionMode: "transactional", LockClass: "online", TimeoutClass: "bounded"})
+	d := testMigrationDefinition(1, "usage", "strict marker", MigrationChecksum("strict"), 1, "online", "package-only")
 	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{d}); err != nil {
 		t.Fatalf("strict manifest rejected: %v", err)
 	}
@@ -132,6 +142,21 @@ func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
 	tampered.Name = "changed semantics"
 	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
 		t.Fatal("canonical metadata tampering must fail closed")
+	}
+	tampered = d
+	tampered.Apply = verifyTestMigrationMarker
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("apply handler pointer swap must fail closed")
+	}
+	tampered = d
+	tampered.Verify = applyTestMigrationMarker
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("verify handler pointer swap must fail closed")
+	}
+	tampered = d
+	tampered.ManifestDigest = ""
+	if _, err := NewMigrationRunner(&gorm.DB{}, "usage", MigrationCompatibility{}, []MigrationDefinition{tampered}); err == nil {
+		t.Fatal("missing manifest digest must fail closed")
 	}
 }
 
