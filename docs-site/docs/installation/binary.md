@@ -17,6 +17,7 @@ smart-llmrouter-<version>-linux-<arch>/
     router
     router-token-gen
     router-usage-report
+    router-migrate
     metrum-smartrouterctl
   config/
     config.example.yaml
@@ -119,6 +120,24 @@ The router loads `env.json` from the same directory as the config file before ex
 
 Do not configure the router to download code or packages at runtime. TypeScript policy dependencies and helper files must be packaged before deployment.
 
+## Run The Migration Gate Before Service Start
+
+For `server.usage_db.migration_policy: deployment-job`, use the packaged non-serving runner before a fresh service start: `plan`, approved backup, `apply`, `verify`, then `status`. `auto-safe` is not a PostgreSQL production procedure. For PostgreSQL, provide the connection through the protected service environment and name it with `--dsn-env`; never put a DSN in a command line, ticket, or log.
+
+```bash
+bin/router-migrate --version
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
+
+# Take and approve the deployment backup before continuing.
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
+  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+```
+
+Complete every data job named by the package release contract before verification; the current package's `historical-usage-validation-v1` job starts at checkpoint ordinal `0` and larger future jobs continue one ordinal at a time until `validated`. Do not start the supervised router when any result is incompatible, pending, running, or failed. For SQLite, use exclusive downtime, an SQLite-safe backup, integrity verification, and free-space checks before the gate. The metrics-admin migration summary and authenticated read-only **Operations / Data migrations** report verify safe state after startup; they do not apply or reverse migrations.
+
 ## Validate
 
 ```bash
@@ -147,4 +166,4 @@ Before an upgrade, back up `config.yaml`, `env.json` or equivalent secret-manage
 
 Install the new package beside the old package, run `smart-llmrouter --version` or `bin/router --version`, review config template changes, then restart the supervised service with the new binary. After restart, repeat `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
 
-Rollback is restoring the previous binary package, config, license inputs, and compatible state or database snapshot, then rerunning the same smokes before sending production traffic.
+Package rollback never runs a reverse migration. If the release migration contract is `restore-required`, restore the approved pre-migration snapshot before deploying the earlier binary. Otherwise preserve the usage database and restore only approved package/config inputs, then repeat migration verify/status and the same smokes before sending traffic.

@@ -33,8 +33,14 @@ infer the running version from a date written in documentation.
 - Config: compare the packaged `config.example.yaml` with the reviewed runtime
   config. Do not copy sample provider/model routes directly into production.
 - Database: follow the package's migration policy and release-specific
-  deployment record; do not assume a database restore is part of application
-  rollback.
+  deployment record. The current migration contract is: `2026071901` creates
+  schema version 1/data version 0 through an online explicit baseline;
+  `2026072301` advances schema version 2/data version 0 and is
+  `restore-required`; `2026080501` advances data version 1 and is also
+  `restore-required` and requires its restart-safe
+  `historical-usage-validation-v1` job to reach `validated` before service
+  startup. Run the non-serving deployment-job gate and retain the approved
+  pre-migration backup when required.
 - License: verify the installed license permits the enabled features and
   deployment shape.
 - Credentials: preserve the protected provider environment file or
@@ -69,7 +75,9 @@ infer the running version from a date written in documentation.
 
 - Restore the previous package and reviewed runtime config.
 - Restore the previous license input only when the license changed.
-- Preserve the current usage database unless the package-specific migration
-  record requires a compatible snapshot restore.
+- Never run a reverse migration. Preserve the current usage database only when
+  the release contract allows package/config rollback without restore; for a
+  `restore-required` contract, restore the approved pre-migration snapshot
+  before deploying the earlier package.
 - Repeat `/readyz`, `/version`, `/v1/models`, and the failed caller/client smoke
   before returning traffic.

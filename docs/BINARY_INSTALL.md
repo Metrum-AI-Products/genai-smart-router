@@ -42,7 +42,19 @@ bin/router-token-gen generate \
   --allow <allowed-model-group>[,<allowed-model-group>...]
 ```
 
-Start the router in the foreground before installing the supervisor unit:
+Before starting a `deployment-job` router, version-check and run the non-serving migration gate: `plan`, approved backup, `apply`, `verify`, then `status`. PostgreSQL receives its connection only through `--dsn-env`; `auto-safe` is not a PostgreSQL production procedure.
+
+```bash
+bin/router-migrate --version
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
+# Take and approve the deployment backup before continuing.
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+bin/router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+```
+
+Complete every release-defined data job before verification; the current package begins `historical-usage-validation-v1` at checkpoint ordinal `0`. Start the router in the foreground only after compatible final status:
 
 ```bash
 bin/router --config config/config.yaml
@@ -79,4 +91,4 @@ curl -fsS "$ROUTER_BASE_URL/v1/chat/completions" \
 
 Before upgrading, back up `config.yaml`, `env.json`, `license.json`, license state, router state, usage database data, and logs according to the deployment policy. Install the new package beside the old one, run `bin/router --version`, review config changes, then restart the supervised service.
 
-Rollback is restoring the previous package, config, license inputs, and durable state snapshot, then rerunning `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.
+Package rollback never runs a reverse migration. For a `restore-required` release contract, restore the approved pre-migration database snapshot before deploying the earlier package; otherwise preserve the usage database and restore only approved package/config inputs. Rerun migration verify/status, `/readyz`, `/docs/`, `/v1/models`, and one caller smoke.

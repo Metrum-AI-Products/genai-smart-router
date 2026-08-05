@@ -4,7 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-WORKDIR="${COMPOSE_E2E_WORKDIR:-$(mktemp -d)}"
+if [[ -n "${COMPOSE_E2E_WORKDIR:-}" ]]; then
+  WORKDIR="$COMPOSE_E2E_WORKDIR"
+  OWNED_WORKDIR=0
+else
+  WORKDIR="$(mktemp -d)"
+  OWNED_WORKDIR=1
+fi
+E2E_VOLUME_CLEANUP_MARKER="$WORKDIR/.smart-llmrouter-compose-e2e-disposable"
 TOKEN="${ROUTER_TOKEN:-rtr_compose_live_e2e_local}"
 GROUP="${COMPOSE_E2E_GROUP:-compose-live}"
 MODEL="${COMPOSE_E2E_MODEL:-deepseek/deepseek-v4-flash:nitro}"
@@ -30,6 +37,14 @@ ROUTER_USAGE_DB_DSN="${COMPOSE_E2E_USAGE_DB_DSN:-host=postgres port=5432 user=ll
 
 umask 077
 
+# A volume deletion is allowed only for a runner-created disposable test
+# directory with an explicit opt-in. The default cleanup intentionally leaves
+# volumes behind rather than guessing that an operator's Compose project is
+# empty or non-production.
+if [[ "$OWNED_WORKDIR" == "1" ]]; then
+  : >"$E2E_VOLUME_CLEANUP_MARKER"
+fi
+
 scrub_retained_secrets() {
   if command -v docker >/dev/null 2>&1 && [[ -d "$WORKDIR" ]]; then
     docker run --rm --network none \
@@ -52,7 +67,10 @@ reset_config_permissions() {
 
 cleanup() {
   if [[ -f "$WORKDIR/docker-compose.yml" ]]; then
-    (cd "$WORKDIR" && docker compose down -v) >/dev/null 2>&1 || true
+    (cd "$WORKDIR" && docker compose down) >/dev/null 2>&1 || true
+    if [[ "$OWNED_WORKDIR" == "1" && "${COMPOSE_E2E_ALLOW_VOLUME_CLEANUP:-0}" == "1" && -f "$E2E_VOLUME_CLEANUP_MARKER" ]]; then
+      (cd "$WORKDIR" && docker compose down -v) >/dev/null 2>&1 || true
+    fi
   fi
   if [[ "$KEEP_WORKDIR" == "1" ]]; then
     scrub_retained_secrets

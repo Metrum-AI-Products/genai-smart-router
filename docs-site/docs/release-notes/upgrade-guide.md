@@ -12,10 +12,16 @@ Use this guide for customer-managed package upgrades. The exact maintenance wind
 1. Read the release notes for operator impact, database changes, license changes, and caller-visible behavior.
 2. Confirm the page banner and `/version` identify the expected router version and build timestamp.
 3. Confirm the package architecture matches the host.
-4. Back up runtime config, provider env file, license file, license state, and usage database.
+4. Back up runtime config, provider env file, license file, license state, and usage database; verify the backup can be restored within the planned window and has sufficient free space.
 5. Record the current router version and build timestamp from `/version`.
 6. Confirm `/readyz`, `/v1/models`, metrics, and admin reports are healthy before the change.
 7. Prepare a rollback package and the previous reviewed config.
+
+## Required Migration Gate
+
+For a package whose release contract includes a migration, stop or drain the serving router and run `router-migrate plan → approved backup → apply → verify → status` before starting the new service. `deployment-job` never applies application schema at startup; it validates the ledger and fails closed when the contract is not current and compatible. PostgreSQL production uses this non-serving job, not `auto-safe`; SQLite requires exclusive downtime, SQLite-safe backup and integrity verification, and free-space checks.
+
+Use `--dsn-env=ROUTER_USAGE_DB_DSN` for PostgreSQL. Do not put a database connection string in commands, tickets, screenshots, or logs. The Docker Compose and Binary install pages contain the exact safe invocation for their package shape.
 
 ## Docker Compose Upgrade
 
@@ -79,7 +85,7 @@ Watch for:
 
 Rollback should restore the previous package, previous reviewed config, and previous valid license file when those inputs changed. Restart the router and repeat the same readiness, model, metrics, and report smokes.
 
-Use database restore only when the release notes call out a non-reversible schema or data migration. Otherwise, preserve the current usage database so request history remains intact.
+Package rollback never runs a reverse migration. Use database restore whenever the release migration contract says `restore-required`; restore the approved pre-migration snapshot before deploying the earlier package. When the contract is compatible without restore, preserve the current usage database so request history remains intact. The database does not process a retrospective amendment merely because the package changed its mind.
 
 ## Most Recent Upgrade Flow
 

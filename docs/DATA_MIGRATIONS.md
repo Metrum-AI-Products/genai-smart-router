@@ -1,16 +1,51 @@
 # Data migration framework
 
-`router-migrate` is the non-serving entrypoint for inspecting durable-data migration state. It opens the selected usage database without starting the router and emits only safe scalar metadata.
+This is the canonical operator runbook for durable usage-data migrations. `router-migrate` is the non-serving entrypoint for inspecting migration state and applying reviewed work. It opens the selected usage database without starting the router and emits only safe scalar metadata. Routine deployment guidance links here rather than reproducing a second migration procedure.
 
 ## Operator visibility and release contract
 
-Metrics-admin callers can scrape aggregate migration schema/data version, compatibility, pending count, and data-job state. If the serving process cannot read the migration ledger, the authorized scrape remains available and emits the bounded `smart_llmrouter_migration_status_available{scope="usage"} 0` signal while preserving the router, license, traffic-shaping, and build families; it exposes no database error text, SQL, or connection detail. The authenticated **Operations / Data migrations** browser report exposes the same safe contract plus release, execution, maintenance, lock, timeout, rollback, duration, and safe error-class metadata. For a schema migration bound to a data job, its effective report state is derived from the durable job only after the schema ledger is `applied`: a missing, pending, paused, or cancelled job is pending/not-validated; running is in-progress; failed is failed; and only validated is applied/verified. A ledger `failed` or `running` state remains authoritative (with validation `failed` or `in-progress`) even when a job is absent or reports a conflicting state. The report retains scalar data-job state and aggregate progress so neither an applied schema row nor contradictory job paperwork can falsely certify unfinished work. Both surfaces are strictly read-only: they contain no SQL, DSNs, raw configuration, credentials, request content, or migration controls. Apply/retry/recovery remains the non-serving CLI deployment-job workflow with the recorded backup/recovery evidence required by the migration definition.
+Metrics-admin callers can scrape aggregate migration schema/data version, compatibility, pending count, and data-job state. If the serving process cannot read the migration ledger, the authorized scrape remains available and emits the bounded `smart_llmrouter_migration_status_available{scope="usage"} 0` signal while preserving the router, license, traffic-shaping, and build families; it exposes no database error text, SQL, or connection detail. The authenticated **Operations / Data migrations** browser report exposes the same safe contract plus release, execution, maintenance, lock, timeout, rollback, duration, and safe error-class metadata. For a schema migration bound to a data job, its effective report state is derived from the durable job only after the schema ledger is `applied`: a missing, pending, paused, or cancelled job is pending/not-validated; running is in-progress; failed is failed; and only validated is applied/verified. A ledger `failed` or `running` state remains authoritative (with validation `failed` or `in-progress`) even when a job is absent or reports a conflicting state. The report retains scalar data-job state and aggregate progress so neither an applied schema row nor contradictory job paperwork can falsely certify unfinished work. Both surfaces are strictly read-only: they contain no SQL, DSNs, raw configuration, credentials, request content, or migration controls. `/metrics` requires a metrics-admin caller; the browser report requires authenticated browser-admin identity plus `admin:reports` `read`. Ordinary caller tokens cannot use either surface as a migration control plane. Apply/retry/recovery remains the non-serving CLI deployment-job workflow with the recorded backup/recovery evidence required by the migration definition.
+
+## Required deployment-job gate
+
+Before a fresh serving startup or package upgrade using `migration_policy: deployment-job`, run **plan → approved backup → apply → verify → status → serve** while the router is stopped or drained. A deployment job owns the database change; the serving process only validates the compatible ledger. `auto-safe` is not a PostgreSQL production procedure.
+
+Use a PostgreSQL DSN only through the job environment. The container invocation replaces the serving entrypoint and never places a DSN literal in a command line:
+
+```sh
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
+
+# Take and approve the deployment's pre-migration backup before continuing.
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+# Complete any release-defined data job before verification. The current
+# package uses this restart-safe validation checkpoint; large jobs repeat with
+# the next ordinal until their safe status is `validated`.
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
+  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+```
+
+Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; for a multi-checkpoint job, advance one ordinal at a time until its safe status is `validated`. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, or failed. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
+
+## Backup, restore, and rollback
+
+Package rollback never runs a reverse migration. Read the release migration contract before changing a package: if it is `restore-required`, restore the approved pre-migration database snapshot before deploying the earlier package. If it is compatible without restore, preserve the usage database and deploy only the approved package/config rollback. A ledger records history; it does not provide time travel as a service.
+
+For PostgreSQL, take and verify a consistent logical or storage snapshot with the approved backup system before `apply`; retain its safe identifier in the change journal. Confirm restore permissions, backup storage, target free space, database-version compatibility, and a rehearsed restore path before the maintenance window. Restore only into the approved recovery target, then run `router-migrate --action=verify` and `--action=status` before serving traffic.
+
+For SQLite, schedule exclusive downtime, stop every router and migration process, use an SQLite-safe backup method, verify integrity with approved SQLite tooling, and confirm source and backup free space before applying work. Restore while the database remains exclusively offline, verify integrity again, then run the same verify/status gate. SQLite is not a multi-replica migration option.
 
 Each release must publish its migration contract: migration ID and scope, online or maintenance execution mode, lock/timeout class, data-job requirement, backup evidence requirement, compatible schema/data window, and rollback class. Package rollback never performs a reverse migration; follow the release-specific restore requirement.
 
 ```sh
 router-migrate --driver=sqlite --db=usage.sqlite --action=status
-ROUTER_USAGE_DB_DSN="…" router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+router-migrate --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
 ```
 
 Stage 3 activates the framework's normalized scalar job records without putting a backfill in a router request path or startup. A checked-in data-job definition is bound to an applied immutable migration by scope, migration ID, data version, key, execution and validation mode, bounded throttle, restart-safe declaration, and handler identity. `schema_data_jobs` records only aggregate counters and safe state; `schema_data_job_checkpoints` holds bounded scalar shard/range/cursor progress. No JSON, SQL values, DSNs, request content, credentials, or configuration is recorded.

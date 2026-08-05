@@ -31,6 +31,8 @@ smart-llmrouter-<version>-docker-linux-<arch>/
   docs/
 ```
 
+The saved image includes the non-serving `router-migrate` command. Before configuring a service, version-check it with the same safe entrypoint pattern used below.
+
 The shipped Compose file bind-mounts `./config`, `./state`, and `./logs` relative to the `compose/` directory. Prepare those runtime directories from the package templates before starting the service.
 
 Use `docker-linux-amd64` for x86_64 hosts and `docker-linux-arm64` for ARM64 hosts. Release validation checks that the package has exactly one image tar for the selected architecture, required compose/config/docs files, required router binaries in the saved image layers, and no AppleDouble metadata, deployment-private notes, raw secrets, or local state files.
@@ -103,7 +105,29 @@ chmod 0750 config config/scripts state logs
 chmod 0400 config/env.json config/license.json
 ```
 
-## Start And Validate
+## Run The Migration Gate, Then Start And Validate
+
+For `server.usage_db.migration_policy: deployment-job`, a fresh router service starts only after the non-serving migration gate completes: `plan`, approved backup, `apply`, `verify`, then `status`. This is required before `docker compose up -d`; `auto-safe` is not a PostgreSQL production procedure. Supply the PostgreSQL connection through the deployment environment or secret mechanism and `--dsn-env`, never a command-line DSN.
+
+```bash
+docker run --rm --entrypoint /app/bin/router-migrate \
+  smart-llmrouter:<version>-linux-<arch> --version
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=plan --json
+
+# Take and approve the deployment backup before continuing.
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=resume \
+  --job=historical-usage-validation-v1 --checkpoint-ordinal=0 --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=verify --json
+docker compose run --rm --entrypoint /app/bin/router-migrate router \
+  --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=status --json
+```
+
+Complete every data job named by the package release contract before verification; the current package's `historical-usage-validation-v1` job starts at checkpoint ordinal `0` and larger future jobs continue one ordinal at a time until `validated`. Do not start the service when any result is incompatible, pending, running, or failed. Record the approved backup reference and safe results in the deployment change record. The read-only migration views are available afterward only to a metrics-admin caller or authorized browser administrator.
 
 ```bash
 docker compose config >/dev/null
@@ -151,6 +175,6 @@ Before an upgrade, back up `compose/.env`, `compose/config/`, `compose/state/`, 
 
 After restart, repeat `/readyz`, `/docs/`, `/v1/models`, one caller smoke, and an admin report smoke when reports are enabled.
 
-Rollback is restoring the previous image tag, Compose files, config, license inputs, and compatible state or database snapshot, then rerunning the same smokes before sending production traffic.
+Package rollback never runs a reverse migration. Read the release migration contract: if it is `restore-required`, restore the approved pre-migration snapshot before deploying the earlier package. Otherwise preserve the usage database and roll back only the approved package/config inputs, then rerun the migration verify/status gate and the same smokes before sending traffic.
 
 For release-to-release sequencing, see [Release Notes And Upgrades](../release-notes/upgrade-guide).

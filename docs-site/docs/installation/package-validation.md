@@ -16,6 +16,7 @@ smart-llmrouter-<version>-linux-<arch>/
   bin/router
   bin/router-token-gen
   bin/router-usage-report
+  bin/router-migrate
   bin/metrum-smartrouterctl
   config/config.example.yaml
   config/env.example.json
@@ -46,6 +47,15 @@ Docker-based deployment, run the CLI from an extracted binary package on a
 separate trusted administration host.
 
 Confirm the architecture suffix matches the host and, for Docker packages, that `compose/.env` pins `SMART_LLMROUTER_VERSION` to the loaded image tag.
+
+For Docker packages, the saved image also includes `/app/bin/router-migrate`. Version-check it before using the non-serving deployment job:
+
+```bash
+docker run --rm --entrypoint /app/bin/router-migrate \
+  smart-llmrouter:<version>-linux-<arch> --version
+```
+
+For `migration_policy: deployment-job`, run `plan`, take the approved backup, then `apply`, complete every release-defined data job, `verify`, and `status` through this runner before service startup. The current package completes `historical-usage-validation-v1` at checkpoint ordinal `0` before verification; larger future jobs continue one ordinal at a time until `validated`. Use `--dsn-env` for PostgreSQL; never expose a connection string in commands or evidence. See [Upgrade Guide](../release-notes/upgrade-guide) for the release and rollback contract.
 
 ## Release Validation Matrix
 

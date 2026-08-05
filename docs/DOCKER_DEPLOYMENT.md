@@ -63,6 +63,7 @@ docker load -i images/smart-llmrouter-<version>-linux-<arch>.tar
 docker run --rm --entrypoint /app/bin/router smart-llmrouter:<version>-linux-<arch> --version
 docker run --rm --entrypoint /app/bin/router-token-gen smart-llmrouter:<version>-linux-<arch> --version
 docker run --rm --entrypoint /app/bin/router-usage-report smart-llmrouter:<version>-linux-<arch> --version
+docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version
 ```
 
 ## AWS EC2 Host Setup
@@ -241,7 +242,9 @@ Validate the rendered compose model before starting:
 docker compose config >/dev/null
 ```
 
-Start:
+Before a fresh serving startup, run the mandatory [Data migration framework](DATA_MIGRATIONS.md) deployment-job gate: `plan`, approved backup, `apply`, `verify`, then `status`. With `server.usage_db.migration_policy: deployment-job`, do not start the router until the final status is compatible. For PostgreSQL production, `auto-safe` is not a substitute for this non-serving job.
+
+Start only after that gate:
 
 ```bash
 cd /opt/smart-llmrouter/compose
@@ -307,16 +310,7 @@ router-usage-report \
 
 Verify the advisor returns only safe scalar evidence and recommendation/config-field hints, not raw prompts, images, tool schemas, bearer tokens, token hashes, provider keys, or full config. For a known heavy coding-agent user, compare the advisor with Traffic Shaping, Provider Capacity Shaping, Upstream Failures, Request Shape Failures, and Requests. If recommendations indicate `route_around_incompatible_target`, roll out by changing target eligibility or route weights, not burst/queue values. If recommendations indicate burst or queue changes, make one scoped caller/server change, restart or reload through the normal process, rerun controlled burst and normal-request smokes, then compare queue wait p50/p95/max, router 429 count, upstream 429/5xx, latency, and client cancellations. Roll back by restoring the previous config backup, disabling the caller queue, disabling the caller `traffic_shape`, or disabling inherited `server.traffic_shape.enabled`, depending on the changed field.
 
-To intentionally start production reporting clean after a schema change, stop the stack, back up the Postgres volume or database, remove the Postgres data volume, and start the stack again:
-
-```bash
-docker compose down
-POSTGRES_VOLUME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}_postgres_data"
-docker run --rm -v "$POSTGRES_VOLUME":/var/lib/postgresql -v "$PWD":/backup alpine \
-  tar -C /var/lib -czf /backup/postgres-data-backup-$(date -u +%Y%m%d%H%M%S).tar.gz postgresql
-docker volume rm "$POSTGRES_VOLUME"
-docker compose up -d
-```
+Never remove a PostgreSQL volume for a migration, upgrade, rollback, repair, or production reset. An empty confirmed non-production reset is the only possible destructive-volume case, after independent confirmation of environment, volume identity, and no retained data; it is intentionally outside this production runbook. Use the backup/restore and deployment-job sequence in [Data migration framework](DATA_MIGRATIONS.md) instead.
 
 Example hosted/reference deployment model groups. These names and weights are deployment-defined examples, not product-required constants:
 

@@ -30,6 +30,8 @@ Docker Compose packages include:
 - `images/smart-llmrouter-<version>-linux-<arch>.tar`
 - `docs/`
 
+The saved Docker image includes `/app/bin/router-migrate`. Version-check it with `docker run --rm --entrypoint /app/bin/router-migrate smart-llmrouter:<version>-linux-<arch> --version`, then use the non-serving deployment-job gate in `DATA_MIGRATIONS.md` before starting a `deployment-job` router.
+
 The standard Docker and Docker Compose images do not include
 `metrum-smartrouterctl`. Docker-based operators run the CLI from an extracted
 binary package on a separate trusted administration host.

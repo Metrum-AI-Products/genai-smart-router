@@ -126,7 +126,7 @@ def entry(release: Release) -> str:
 
 - Restore the previous router package.
 - Restore the previous reviewed config and license file if they changed.
-- Restore database backup only if this release includes a non-reversible schema or data migration.
+- Never run a reverse migration. Restore the approved pre-migration database backup before deploying an earlier package whenever the release contract is `restore-required`; otherwise preserve the usage database.
 """
 
 
