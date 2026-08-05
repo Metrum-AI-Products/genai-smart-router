@@ -1,7 +1,9 @@
 package router
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +81,136 @@ func TestMigrationRunnerAppliesAndVerifiesImmutableLedger(t *testing.T) {
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatalf("idempotent apply: %v", err)
+	}
+}
+
+func TestMigrationDataJobResumesAtCheckpointsAndOnlyThenAdvancesDataVersion(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "data-job.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	migration := testMigrationDefinition(1, "test", "data-job schema", MigrationChecksum("data-job schema"), 1, "online", "package-only")
+	migration.DataVersion, migration.DataJobKey = 1, "normalise-marker-v1"
+	migration = FinalizeMigrationDefinition(migration)
+	calls := 0
+	job := DataJobDefinition{Key: "normalise-marker-v1", Scope: "test", MigrationID: 1, DataVersion: 1, ExecutionMode: "batch", ValidationMode: "count", ThrottlePerMinute: 0, RestartSafe: true, HandlerKey: "test.normalise-marker.v1", RunCheckpoint: func(_ context.Context, tx *gorm.DB, cp DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		calls++
+		if cp.Ordinal != calls-1 {
+			return DataJobCheckpointResult{}, errors.New("checkpoint was not resumed deterministically")
+		}
+		if calls == 2 && cp.Cursor != "cursor-1" {
+			return DataJobCheckpointResult{}, errors.New("checkpoint cursor was not restored deterministically")
+		}
+		return DataJobCheckpointResult{Cursor: fmt.Sprintf("cursor-%d", calls), RowsScanned: 10, RowsUpdated: 8, RowsSkipped: 2, Complete: calls == 2}, nil
+	}, Validate: func(tx *gorm.DB) error { return nil }}
+	r, err := NewMigrationRunnerWithDataJobs(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{migration}, []DataJobDefinition{job})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("test"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].State != migrationDataJobPending {
+		t.Fatalf("unrun data job must not advance version: %+v", status)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 0, Shard: "all", RangeStart: 1, RangeEnd: 10}); err != nil {
+		t.Fatal(err)
+	}
+	status, err = r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.DataVersion != 0 || status.State != "in-progress" || status.Jobs[0].RowsUpdated != 8 {
+		t.Fatalf("partial job status: %+v", status)
+	}
+	result, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != migrationDataJobValidated || result.RowsScanned != 20 || result.RowsUpdated != 16 {
+		t.Fatalf("completed job: %+v", result)
+	}
+	status, err = r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.DataVersion != 1 || status.State != "current" || !status.Compatible {
+		t.Fatalf("validated data job must advance data version: %+v", status)
+	}
+}
+
+func TestMigrationDataJobThrottleRejectsImmediateNextCheckpoint(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "data-job-throttle.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	migration := testMigrationDefinition(1, "test", "data-job schema", MigrationChecksum("data-job-throttle"), 1, "online", "package-only")
+	migration.DataVersion, migration.DataJobKey = 1, "throttle-marker-v1"
+	migration = FinalizeMigrationDefinition(migration)
+	job := DataJobDefinition{Key: "throttle-marker-v1", Scope: "test", MigrationID: 1, DataVersion: 1, ExecutionMode: "batch", ValidationMode: "count", ThrottlePerMinute: 1, RestartSafe: true, HandlerKey: "test.throttle-marker.v1", RunCheckpoint: func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		return DataJobCheckpointResult{Cursor: "next"}, nil
+	}, Validate: func(*gorm.DB) error { return nil }}
+	r, err := NewMigrationRunnerWithDataJobs(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{migration}, []DataJobDefinition{job})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1}); err == nil {
+		t.Fatal("throttle must reject immediate next checkpoint")
+	}
+}
+
+func TestMigrationDataJobCancellationAndRetryRemainCheckpointBounded(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "data-job-cancel.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	migration := testMigrationDefinition(1, "test", "data-job schema", MigrationChecksum("data-job-cancel"), 1, "online", "package-only")
+	migration.DataVersion, migration.DataJobKey = 1, "cancel-marker-v1"
+	migration = FinalizeMigrationDefinition(migration)
+	job := DataJobDefinition{Key: "cancel-marker-v1", Scope: "test", MigrationID: 1, DataVersion: 1, ExecutionMode: "batch", ValidationMode: "count", RestartSafe: true, HandlerKey: "test.cancel-marker.v1", RunCheckpoint: func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		return DataJobCheckpointResult{RowsScanned: 1}, nil
+	}, Validate: func(*gorm.DB) error { return nil }}
+	r, err := NewMigrationRunnerWithDataJobs(db, "test", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{migration}, []DataJobDefinition{job})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyPending("test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RequestDataJobCancellation(job.Key); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != migrationDataJobCancelled {
+		t.Fatalf("cancellation must happen at checkpoint: %+v", status)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1}); err == nil {
+		t.Fatal("cancelled job ran without explicit retry")
+	}
+	if err := r.RetryDataJob(job.Key, "restore-drill-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), job.Key, "test", DataJobCheckpoint{Ordinal: 1}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -423,17 +555,20 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || len(status.Pending) != 0 {
-		t.Fatalf("explicit local bootstrap should reach the current ledger: %+v", status)
+	if !status.Compatible || status.State != "pending" || len(status.Pending) != 0 || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" {
+		t.Fatalf("new data-job migration must be pending before non-serving apply: %+v", status)
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RunDataJob(context.Background(), "historical-usage-validation-v1", "test-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
 		t.Fatal(err)
 	}
 	status, err = r.Verify()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "current" || status.SchemaVersion != usageMigrationCompatibility.MaxSchema || status.DataVersion != 0 || len(status.Entries) != len(usageMigrationDefinitions) {
+	if !status.Compatible || status.State != "current" || status.SchemaVersion != usageMigrationCompatibility.MaxSchema || status.DataVersion != usageMigrationCompatibility.MaxData || len(status.Entries) != len(usageMigrationDefinitions) {
 		t.Fatalf("unexpected fully migrated usage status: %+v", status)
 	}
 }
@@ -447,6 +582,9 @@ func TestUsageMigrationBaselineBootstrapsEmptyDatabaseExplicitly(t *testing.T) {
 	defer func() { _ = closeDB() }()
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatalf("explicit baseline must initialize an empty database: %v", err)
+	}
+	if _, err := r.RunDataJob(context.Background(), "historical-usage-validation-v1", "test-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
+		t.Fatal(err)
 	}
 	status, err := r.Status()
 	if err != nil {

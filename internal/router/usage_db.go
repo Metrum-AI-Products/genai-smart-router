@@ -1493,7 +1493,7 @@ func (s *usageStore) initializeSchema(policy string) error {
 		if err != nil {
 			return fmt.Errorf("usage migration %s: %w", policy, err)
 		}
-		if !status.Compatible || status.State != "current" {
+		if !usageMigrationServingCompatible(status) {
 			return fmt.Errorf("usage migration %s requires a current compatible ledger (state %s)", policy, status.State)
 		}
 		return nil
@@ -1509,13 +1509,20 @@ func (s *usageStore) initializeSchema(policy string) error {
 		if err != nil {
 			return fmt.Errorf("usage migration auto-safe: %w", err)
 		}
-		if !status.Compatible || status.State != "current" {
+		if !usageMigrationServingCompatible(status) {
 			return fmt.Errorf("usage migration auto-safe requires a current compatible ledger (state %s)", status.State)
 		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported usage migration policy %q", policy)
 	}
+}
+
+// A compatible schema expansion may have a separately scheduled Stage-3 data
+// job pending. Serving can continue inside its declared MinData range; it
+// never starts or resumes that job itself.
+func usageMigrationServingCompatible(status MigrationStatus) bool {
+	return status.Compatible && (status.State == "current" || (status.State == "pending" && len(status.Pending) == 0 && len(status.Jobs) > 0))
 }
 
 func OpenUsageStorePath(path string) (*usageStore, error) {

@@ -457,7 +457,7 @@ func (m *licenseManager) readState() (licensePersistentState, error) {
 	if strings.TrimSpace(m.statePath) == "" {
 		return licensePersistentState{}, os.ErrNotExist
 	}
-	raw, err := os.ReadFile(m.statePath)
+	raw, err := readVersionedStateFile(m.statePath)
 	if err != nil {
 		return licensePersistentState{}, err
 	}
@@ -545,14 +545,7 @@ func (m *licenseManager) writeObservedStateLocked(status licenseStatus) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.statePath), 0o755); err != nil {
-		return err
-	}
-	tmp := m.statePath + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, m.statePath)
+	return writeVersionedStateFile(m.statePath, raw)
 }
 
 func (m *licenseManager) statusSnapshot() licenseStatus {
@@ -739,14 +732,7 @@ func (m *licenseManager) writeStateLocked(state licensePersistentState) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.statePath), 0o755); err != nil {
-		return err
-	}
-	tmp := m.statePath + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, m.statePath)
+	return writeVersionedStateFile(m.statePath, raw)
 }
 
 func (m *licenseManager) marshalLicenseState(state licensePersistentState) ([]byte, error) {

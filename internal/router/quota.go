@@ -73,7 +73,7 @@ type quotaReservation struct {
 func newQuotaStore(path string, cfg *Config) (*quotaStore, error) {
 	key, keyID := quotaStateIntegrityKey(cfg)
 	qs := &quotaStore{path: path, keyID: keyID, key: key, callers: map[string]*callerRuntime{}, state: persistentState{Callers: map[string]*callerState{}}}
-	if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
+	if raw, err := readVersionedStateFile(path); err == nil && len(raw) > 0 {
 		state, enveloped, err := unmarshalIntegrityState[persistentState](raw, keyID, key)
 		if err != nil {
 			return nil, err
@@ -361,7 +361,7 @@ func (q *quotaStore) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(q.path, raw, 0600); err != nil {
+	if err := writeVersionedStateFile(q.path, raw); err != nil {
 		return err
 	}
 	return nil
