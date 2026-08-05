@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]; SCRIPT=ROOT/"scripts/inspect_coding_eval.py"
 EXAMPLE=ROOT/"examples/inspect-coding-evaluation.env.example"
+FILLED_EXAMPLE=ROOT/"examples/inspect-coding-evaluation.env"
 OPERATOR_DOC=ROOT/"docs/INSPECT_CODING_EVALUATIONS.md"
 SPEC=importlib.util.spec_from_file_location("inspect_coding_eval", SCRIPT); assert SPEC and SPEC.loader
 EVAL=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(EVAL)
@@ -18,13 +19,21 @@ def env_example(path: Path) -> dict[str, str]:
     if line and not line.startswith("#"):
       key, value=line.split("=", 1); values[key]=value
   return values
+def need_ignored(path: Path) -> None:
+  result=subprocess.run(["git","check-ignore","--no-index","--quiet","--",str(path)],cwd=ROOT,text=True,capture_output=True)
+  need(result.returncode==0, f"filled evaluation environment file is not ignored: {result.stderr}")
+def need_tracked(path: Path) -> None:
+  result=subprocess.run(["git","ls-files","--error-unmatch","--",str(path)],cwd=ROOT,text=True,capture_output=True)
+  need(result.returncode==0, f"evaluation environment template is not tracked: {result.stderr}")
 def main() -> int:
+  need_tracked(EXAMPLE)
   example=env_example(EXAMPLE)
   need(example.get("EVAL_REQUIRE_REASONING_COVERAGE")=="false", "evaluation example does not default to ordinary mode")
   need(all(example.get(name)=="" for name in ("EVAL_BASE_URL", "EVAL_API_KEY", "EVAL_MODEL")), "evaluation example includes a concrete router input")
   need(all(example.get(name)=="" for name in ("EVAL_USAGE_CONFIG_YAML", "EVAL_USAGE_CONFIG_FILE", "EVAL_USAGE_CALLER_ID")), "evaluation example includes protected usage inputs")
+  need_ignored(FILLED_EXAMPLE)
   doc=OPERATOR_DOC.read_text(encoding="utf-8")
-  need("Ordinary bounded evaluation (no usage DB input)" in doc and "Coverage-required evaluation (protected and fail-closed)" in doc and "exactly one" in doc, "operator guide does not describe both evaluation contracts")
+  need("Ordinary bounded evaluation (no usage DB input)" in doc and "Coverage-required evaluation (protected and fail-closed)" in doc and "exactly one" in doc and ". ./examples/inspect-coding-evaluation.env" in doc and "chmod 600" in doc, "operator guide does not describe protected evaluation setup")
   need(EVAL.number("C")==1.0 and EVAL.number("CORRECT")==1.0 and EVAL.number("I")==0.0 and EVAL.number("INCORRECT")==0.0,"categorical Inspect scores were not normalized")
   sample={"stats":{"total_time":1.25},"model_usage":{"route":{"total_cost":0.003}}}
   need(EVAL.nested_number(sample,("total_time",))==1.25 and EVAL.nested_number(sample,("total_cost",))==0.003 and EVAL.percentile95([10,20,30,40])==40,"Inspect metric extraction failed")

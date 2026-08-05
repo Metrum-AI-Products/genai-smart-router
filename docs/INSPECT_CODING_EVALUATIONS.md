@@ -2,7 +2,7 @@
 
 Issue #562 adds an explicitly invoked coding-evaluation lane. It is not part of `make`, `make test`, or any normal build because it needs a live model endpoint, an authenticated caller, Docker, and a bounded spend approval.
 
-Copy [`examples/inspect-coding-evaluation.env.example`](../examples/inspect-coding-evaluation.env.example) to an ignored, owner-readable file and fill normal router inputs through the protected runtime environment. Never put a caller key on a command line or in a checked-in file.
+Copy [`examples/inspect-coding-evaluation.env.example`](../examples/inspect-coding-evaluation.env.example) to `examples/inspect-coding-evaluation.env`. That exact filled-file path is ignored by the repository; set it owner-readable only (for example, `chmod 600 examples/inspect-coding-evaluation.env`) before loading it through the protected runtime environment. Never put a caller key on a command line or in a checked-in file.
 
 ## Ordinary bounded evaluation (no usage DB input)
 
@@ -12,7 +12,7 @@ Load the completed ignored copy in the shell that will run the evaluation, then 
 
 ```sh
 set -a
-. /protected/path/inspect-coding-evaluation.env
+. ./examples/inspect-coding-evaluation.env
 set +a
 
 make eval-humaneval

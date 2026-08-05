@@ -13,6 +13,10 @@ Use this checklist to evaluate GenAI Smart Router with a real deployment or a Me
 
 When the question is whether a routed group is as good as a fixed model or previous policy, use [Prove Router Quality](./prove-router-quality) to run an evidence-first comparison instead of relying on anecdotes.
 
+## Protect Evaluation Inputs
+
+Treat caller tokens, private endpoints, and any protected usage settings as local operator inputs. Keep completed environment files outside source control (or, for the bounded coding-evaluation template, in the repository-provided ignored `examples/inspect-coding-evaluation.env` path), make them owner-readable only, and load them into the evaluation shell without placing values on command lines, reports, or support tickets. Customer evaluation evidence should contain only sanitized aggregate outcomes; contact [contact@metrum.ai](mailto:contact@metrum.ai) for deployment-specific evaluation setup.
+
 ## What To Prove First
 
 | Question | Proof point |
