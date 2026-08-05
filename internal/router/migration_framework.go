@@ -22,8 +22,9 @@ const usageMigrationScope = "usage"
 
 const usageLegacyBaselineMigrationID = 2026071901
 const usageReasoningTelemetryMigrationID = 2026072301
+const usageHistoricalValidationMigrationID = 2026080501
 
-var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 0}
+var usageMigrationCompatibility = MigrationCompatibility{MinSchema: 0, MaxSchema: 2, MinData: 0, MaxData: 1}
 
 // usageMigrationDefinitions is the sole owner of usage application schema.
 // The first migration creates fresh-install tables/indexes through its reviewed
@@ -68,6 +69,26 @@ var usageMigrationDefinitions = []MigrationDefinition{{
 	TimeoutClass:     "bounded",
 	Apply:            applyUsageReasoningTelemetryMigration,
 	Verify:           verifyUsageReasoningTelemetryMigration,
+}, {
+	ID:               usageHistoricalValidationMigrationID,
+	Scope:            usageMigrationScope,
+	Name:             "checkpoint historical usage row validation",
+	Release:          "2026.8",
+	Checksum:         "6e2f5f71ed4f0e2d63c6eb5845b4c02226cfbafc22a2bc27c04c03e6c6426f15",
+	SchemaVersion:    2,
+	DataVersion:      1,
+	Transactional:    true,
+	MaintenanceMode:  "online",
+	RollbackClass:    "package-only",
+	HandlerKey:       "usage.historical-validation.apply.v1@applyUsageHistoricalValidationMigration",
+	PostconditionKey: "usage.historical-validation.schema.v1@verifyUsageReasoningTelemetryMigration",
+	Dependencies:     []int{usageReasoningTelemetryMigrationID},
+	ExecutionMode:    "transactional",
+	LockClass:        "online",
+	TimeoutClass:     "bounded",
+	DataJobKey:       "historical-usage-validation-v1",
+	Apply:            applyUsageHistoricalValidationMigration,
+	Verify:           verifyUsageReasoningTelemetryMigration,
 }}
 
 func init() {
@@ -106,9 +127,13 @@ type MigrationDefinition struct {
 	ExecutionMode    string // transactional, non-transactional
 	LockClass        string // online, maintenance
 	TimeoutClass     string // bounded, maintenance
-	ManifestDigest   string // canonical digest of the immutable metadata
-	Apply            func(*gorm.DB) error
-	Verify           func(*gorm.DB) error
+	// DataJobKey identifies the separately resumable conversion required before
+	// DataVersion may be reported as complete. It is empty for schema-only
+	// migrations. A data job is deliberately not executed by ApplyPending.
+	DataJobKey     string
+	ManifestDigest string // canonical digest of the immutable metadata
+	Apply          func(*gorm.DB) error
+	Verify         func(*gorm.DB) error
 }
 
 // HandlerKey and PostconditionKey deliberately name the checked-in executable
@@ -144,7 +169,7 @@ func migrationHandlerKeyMatches(key string, fn func(*gorm.DB) error) bool {
 func CanonicalMigrationDigest(d MigrationDefinition) string {
 	deps := append([]int(nil), d.Dependencies...)
 	sort.Ints(deps)
-	parts := []string{fmt.Sprint(d.ID), d.Scope, d.Name, d.Release, fmt.Sprint(d.SchemaVersion), fmt.Sprint(d.DataVersion), fmt.Sprint(d.Transactional), d.RollbackClass, d.MaintenanceMode, d.HandlerKey, d.PostconditionKey, d.ExecutionMode, d.LockClass, d.TimeoutClass}
+	parts := []string{fmt.Sprint(d.ID), d.Scope, d.Name, d.Release, fmt.Sprint(d.SchemaVersion), fmt.Sprint(d.DataVersion), fmt.Sprint(d.Transactional), d.RollbackClass, d.MaintenanceMode, d.HandlerKey, d.PostconditionKey, d.ExecutionMode, d.LockClass, d.TimeoutClass, d.DataJobKey}
 	for _, dep := range deps {
 		parts = append(parts, fmt.Sprint(dep))
 	}
@@ -222,6 +247,7 @@ type migrationDataJobRecord struct {
 	RowsFailed        int64
 	StartedAt         string
 	CompletedAt       string
+	CancelRequestedAt string
 	SafeErrorClass    string
 }
 
@@ -267,6 +293,7 @@ type MigrationStatus struct {
 	State         string // current, pending, in-progress, failed, incompatible
 	Pending       []MigrationDefinition
 	Entries       []MigrationLedgerEntry
+	Jobs          []MigrationDataJobStatus
 }
 
 type migrationRunner struct {
@@ -274,10 +301,17 @@ type migrationRunner struct {
 	scope         string
 	compatibility MigrationCompatibility
 	definitions   []MigrationDefinition
+	dataJobs      []DataJobDefinition
 }
 
 // NewMigrationRunner validates a checked-in manifest before it can touch a DB.
 func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompatibility, definitions []MigrationDefinition) (*migrationRunner, error) {
+	return NewMigrationRunnerWithDataJobs(db, scope, compatibility, definitions, nil)
+}
+
+// NewMigrationRunnerWithDataJobs binds resumable data work to the same strict
+// immutable manifest as schema work. It remains a non-serving API.
+func NewMigrationRunnerWithDataJobs(db *gorm.DB, scope string, compatibility MigrationCompatibility, definitions []MigrationDefinition, dataJobs []DataJobDefinition) (*migrationRunner, error) {
 	if db == nil || strings.TrimSpace(scope) == "" {
 		return nil, errors.New("migration runner requires database and scope")
 	}
@@ -327,7 +361,11 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 		}
 		previous = d.ID
 	}
-	return &migrationRunner{db: db, scope: scope, compatibility: compatibility, definitions: defs}, nil
+	jobs, err := validateDataJobDefinitions(scope, defs, dataJobs)
+	if err != nil {
+		return nil, err
+	}
+	return &migrationRunner{db: db, scope: scope, compatibility: compatibility, definitions: defs, dataJobs: jobs}, nil
 }
 
 func validMigrationChecksum(v string) bool {
@@ -355,11 +393,16 @@ func (r *migrationRunner) ensureLedger() error {
 		`CREATE TABLE IF NOT EXISTS schema_migration_ledger (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, checksum TEXT NOT NULL, manifest_digest TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', runner TEXT NOT NULL DEFAULT '', duration_ms BIGINT NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', error_text TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id))`,
 		`CREATE TABLE IF NOT EXISTS schema_migration_locks (scope TEXT NOT NULL PRIMARY KEY, runner TEXT NOT NULL, locked_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS schema_migration_attempts (scope TEXT NOT NULL, migration_id BIGINT NOT NULL, attempt BIGINT NOT NULL, action TEXT NOT NULL, state TEXT NOT NULL, owner_generation BIGINT NOT NULL DEFAULT 0, backup_evidence_ref TEXT NOT NULL DEFAULT '', recovery_evidence_ref TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', PRIMARY KEY (scope, migration_id, attempt), CONSTRAINT schema_migration_attempts_ledger_fk FOREIGN KEY (scope, migration_id) REFERENCES schema_migration_ledger(scope, migration_id) ON DELETE RESTRICT)`,
-		`CREATE TABLE IF NOT EXISTS schema_data_jobs (job_id TEXT NOT NULL PRIMARY KEY, scope TEXT NOT NULL, migration_id BIGINT NOT NULL, data_version BIGINT NOT NULL, state TEXT NOT NULL, execution_mode TEXT NOT NULL, validation_mode TEXT NOT NULL, throttle_per_minute BIGINT NOT NULL DEFAULT 0, rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', CONSTRAINT schema_data_jobs_ledger_fk FOREIGN KEY (scope, migration_id) REFERENCES schema_migration_ledger(scope, migration_id) ON DELETE RESTRICT)`,
+		`CREATE TABLE IF NOT EXISTS schema_data_jobs (job_id TEXT NOT NULL PRIMARY KEY, scope TEXT NOT NULL, migration_id BIGINT NOT NULL, data_version BIGINT NOT NULL, state TEXT NOT NULL, execution_mode TEXT NOT NULL, validation_mode TEXT NOT NULL, throttle_per_minute BIGINT NOT NULL DEFAULT 0, rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', cancel_requested_at TEXT NOT NULL DEFAULT '', safe_error_class TEXT NOT NULL DEFAULT '', CONSTRAINT schema_data_jobs_ledger_fk FOREIGN KEY (scope, migration_id) REFERENCES schema_migration_ledger(scope, migration_id) ON DELETE RESTRICT)`,
 		`CREATE TABLE IF NOT EXISTS schema_data_job_checkpoints (job_id TEXT NOT NULL, checkpoint_ordinal BIGINT NOT NULL, shard TEXT NOT NULL DEFAULT '', range_start BIGINT NOT NULL DEFAULT 0, range_end BIGINT NOT NULL DEFAULT 0, cursor TEXT NOT NULL DEFAULT '', rows_scanned BIGINT NOT NULL DEFAULT 0, rows_updated BIGINT NOT NULL DEFAULT 0, rows_skipped BIGINT NOT NULL DEFAULT 0, rows_failed BIGINT NOT NULL DEFAULT 0, state TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '', PRIMARY KEY (job_id, checkpoint_ordinal), CONSTRAINT schema_data_job_checkpoints_job_fk FOREIGN KEY (job_id) REFERENCES schema_data_jobs(job_id) ON DELETE RESTRICT)`,
 	} {
 		if err := r.db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("migration ledger bootstrap: %w", err)
+		}
+	}
+	if !r.db.Migrator().HasColumn(&migrationDataJobRecord{}, "cancel_requested_at") {
+		if err := r.db.Migrator().AddColumn(&migrationDataJobRecord{}, "CancelRequestedAt"); err != nil {
+			return fmt.Errorf("migration data-job cancellation column upgrade: %w", err)
 		}
 	}
 	// The first Stage-1 ledger release did not record the canonical manifest
@@ -431,7 +474,7 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 			if d.SchemaVersion > status.SchemaVersion {
 				status.SchemaVersion = d.SchemaVersion
 			}
-			if d.DataVersion > status.DataVersion {
+			if d.DataVersion > status.DataVersion && d.DataJobKey == "" {
 				status.DataVersion = d.DataVersion
 			}
 		case "running":
@@ -442,6 +485,9 @@ func (r *migrationRunner) Status() (MigrationStatus, error) {
 			status.Compatible = false
 			status.State = "incompatible"
 		}
+	}
+	if err := r.populateDataJobStatus(&status, applied); err != nil {
+		return status, err
 	}
 	// An applied child cannot stand without every declared prerequisite having
 	// an applied, compatible ledger entry.  This independently verifies the
@@ -635,5 +681,5 @@ func UsageMigrationRunner(cfg UsageDBConfig) (*migrationRunner, func() error, er
 }
 
 func newUsageMigrationRunner(db *gorm.DB) (*migrationRunner, error) {
-	return NewMigrationRunner(db, usageMigrationScope, usageMigrationCompatibility, usageMigrationDefinitions)
+	return NewMigrationRunnerWithDataJobs(db, usageMigrationScope, usageMigrationCompatibility, usageMigrationDefinitions, usageDataJobDefinitions)
 }

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -17,11 +18,14 @@ func main() {
 		fmt.Println(buildinfo.Text())
 		return
 	}
-	action := flag.String("action", "status", "migration action: status, plan, verify, or apply")
+	action := flag.String("action", "status", "migration action: status, plan, verify, apply, cancel, retry, or resume")
 	driver := flag.String("driver", "sqlite", "usage DB driver: sqlite or postgres")
 	dbPath := flag.String("db", "usage.sqlite", "path to usage SQLite database")
 	dsnEnv := flag.String("dsn-env", "ROUTER_USAGE_DB_DSN", "environment variable containing the Postgres DSN")
 	runnerID := flag.String("runner", "router-migrate", "safe runner identifier for the migration ledger")
+	jobKey := flag.String("job", "", "checked-in migration data-job key for cancel, retry, or resume")
+	checkpointOrdinal := flag.Int("checkpoint-ordinal", 0, "non-negative scalar checkpoint ordinal for resume")
+	recoveryEvidenceRef := flag.String("recovery-evidence-ref", "", "bounded safe recovery evidence reference required for retry")
 	jsonOut := flag.Bool("json", false, "emit machine-readable safe migration status")
 	flag.Parse()
 	dsn := ""
@@ -44,6 +48,30 @@ func main() {
 		status, err = r.Verify()
 	case "apply":
 		err = r.ApplyPending(*runnerID)
+		if err == nil {
+			status, err = r.Status()
+		}
+	case "cancel":
+		if *jobKey == "" {
+			die("migration cancel requires --job")
+		}
+		err = r.RequestDataJobCancellation(*jobKey)
+		if err == nil {
+			status, err = r.Status()
+		}
+	case "retry":
+		if *jobKey == "" {
+			die("migration retry requires --job")
+		}
+		err = r.RetryDataJob(*jobKey, *recoveryEvidenceRef)
+		if err == nil {
+			status, err = r.Status()
+		}
+	case "resume":
+		if *jobKey == "" || *checkpointOrdinal < 0 {
+			die("migration resume requires --job and non-negative --checkpoint-ordinal")
+		}
+		_, err = r.RunDataJob(context.Background(), *jobKey, *runnerID, router.DataJobCheckpoint{Ordinal: *checkpointOrdinal})
 		if err == nil {
 			status, err = r.Status()
 		}
