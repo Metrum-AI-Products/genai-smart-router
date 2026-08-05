@@ -5,6 +5,14 @@ import { globalFilterFields, tabFilterFields, tabSpecs, validateFilterModel, typ
 
 const generatedUtc = "2026-06-28T12:00:00Z";
 let apiRequests: string[] = [];
+const migrationRows = [
+  { scope: "usage", migrationId: 2026080501, name: "historical validation", release: "2026.8", state: "pending", dataJobKey: "historical-usage-validation-v1", dataJobState: "missing", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.historical-validation.schema.v1", checkpoints: 0, rowsScanned: 0, rowsUpdated: 0, rowsSkipped: 0, rowsFailed: 0, startedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080502, name: "running validation", release: "2026.8", state: "in-progress", dataJobKey: "running-validation-v1", dataJobState: "running", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "in-progress", postcondition: "usage.running-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080503, name: "failed validation", release: "2026.8", state: "failed", dataJobKey: "failed-validation-v1", dataJobState: "failed", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", errorClass: "data-job-failed", errorMessage: "migration safe failure", validationState: "failed", postcondition: "usage.failed-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc, completedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080504, name: "paused validation", release: "2026.8", state: "pending", dataJobKey: "paused-validation-v1", dataJobState: "paused", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.paused-validation.schema.v1", checkpoints: 1, rowsScanned: 10, rowsUpdated: 5, rowsSkipped: 5, rowsFailed: 0, startedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080505, name: "cancelled validation", release: "2026.8", state: "pending", dataJobKey: "cancelled-validation-v1", dataJobState: "cancelled", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "not-validated", postcondition: "usage.cancelled-validation.schema.v1", checkpoints: 1, rowsScanned: 10, rowsUpdated: 5, rowsSkipped: 5, rowsFailed: 0, startedAt: generatedUtc },
+  { scope: "usage", migrationId: 2026080506, name: "validated historical validation", release: "2026.8", state: "applied", dataJobKey: "validated-validation-v1", dataJobState: "validated", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", validationState: "verified", postcondition: "usage.validated-validation.schema.v1", checkpoints: 3, rowsScanned: 30, rowsUpdated: 15, rowsSkipped: 15, rowsFailed: 0, startedAt: generatedUtc, completedAt: generatedUtc },
+];
 
 test.beforeEach(async ({ page }) => {
   apiRequests = [];
@@ -50,12 +58,28 @@ test("data migrations is a read-only operational report", async ({ page }) => {
   for (const filter of ["scope", "release", "state", "type", "date"]) await expect(page.locator(`[data-tab-filter="${filter}"]`)).toBeVisible();
   await page.locator("[data-migration-detail-panel] summary").click();
   await expect(page.locator("[data-migration-detail-panel]")).toContainText("migration safe failure");
-  await expect(page.locator("[data-migration-detail-panel]")).toContainText("usage.historical-validation.schema.v1");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("usage.failed-validation.schema.v1");
   await expect(page.locator("[data-migration-detail-panel]")).toContainText("2 checkpoints; 20 scanned");
   await expect(page.locator("[data-migration-detail-panel]")).not.toContainText("postgres://");
   expect(apiRequests.some((request) => request.includes("api/migrations"))).toBe(true);
   expect(apiRequests.some((request) => request.includes("scope=usage") && request.includes("state=failed"))).toBe(true);
   await expect(page.getByText(/apply|retry|restore/i).first()).toBeVisible();
+});
+
+test("data migrations shows effective data-job state without certifying unfinished work", async ({ page }) => {
+  for (const [state, jobState, validation] of [["pending", "missing", "not-validated"], ["in-progress", "running", "in-progress"], ["failed", "failed", "failed"], ["applied", "validated", "verified"]]) {
+    await page.goto(`/?tab=data-migrations&state=${state}`);
+    await expect(page.getByRole("heading", { name: "Data migrations", exact: true })).toBeVisible();
+    await expect(page.getByText("Effective state", { exact: true }).first()).toBeVisible();
+    await expect(page.locator("tbody").first()).toContainText(jobState);
+    await expect(page.locator("tbody").first()).toContainText(validation);
+    await page.locator("[data-migration-detail-panel] summary").click();
+    await expect(page.locator("[data-migration-detail-panel]")).toContainText("Effective state");
+    await expect(page.locator("[data-migration-detail-panel]")).toContainText("Data-job state");
+  }
+  await page.goto("/?tab=data-migrations&state=pending");
+  await expect(page.locator("tbody").first()).toContainText("paused");
+  await expect(page.locator("tbody").first()).toContainText("cancelled");
 });
 
 test("admin report filter model splits global and tab filters without overlap", async () => {
@@ -564,7 +588,8 @@ function responseForRoute(route: Route) {
     };
   }
   if (endpoint === "migrations") {
-    return commonResponse(endpoint, { summary: { scope: "usage", schemaVersion: 2, dataVersion: 1, compatible: false, state: "failed", pending: 1, jobs: 1 }, rows: [{ scope: "usage", migrationId: 2026080501, name: "historical validation", release: "2026.8", state: "failed", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", durationMs: 12, errorClass: "migration-failed", errorMessage: "migration safe failure", validationState: "failed", postcondition: "usage.historical-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc, completedAt: generatedUtc }, { scope: "usage", migrationId: 2026072301, name: "reasoning telemetry", release: "2026.7", state: "pending", validationState: "pending" }, { scope: "usage", migrationId: 2026071901, name: "baseline", release: "2026.8", state: "in-progress", validationState: "running" }] });
+    const rows = migrationRows.filter((row) => !url.searchParams.get("state") || row.state === url.searchParams.get("state"));
+    return commonResponse(endpoint, { summary: { scope: "usage", schemaVersion: 2, dataVersion: 1, compatible: false, state: url.searchParams.get("state") || "failed", pending: 3, inProgress: 1, failed: 1, verified: 1, missingDataJobs: 1, jobs: 5 }, rows });
   }
   if (endpoint === "summary") {
     return commonResponse("summary", {

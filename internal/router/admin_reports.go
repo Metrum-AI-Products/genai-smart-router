@@ -170,6 +170,7 @@ type adminMigrationStatusRow struct {
 	LockClass       string `json:"lockClass"`
 	TimeoutClass    string `json:"timeoutClass"`
 	DataJobKey      string `json:"dataJobKey,omitempty"`
+	DataJobState    string `json:"dataJobState,omitempty"`
 	DurationMS      int64  `json:"durationMs,omitempty"`
 	ErrorClass      string `json:"errorClass,omitempty"`
 	ErrorMessage    string `json:"errorMessage,omitempty"`
@@ -1020,22 +1021,91 @@ func (s *Service) handleAdminMigrationStatus(w http.ResponseWriter, r *http.Requ
 	rows := make([]adminMigrationStatusRow, 0, len(usageMigrationDefinitions))
 	for _, definition := range usageMigrationDefinitions {
 		entry, applied := entries[definition.ID]
-		job := jobs[definition.ID]
-		state := "pending"
-		if applied {
-			state = entry.State
-		}
-		validationState := map[string]string{"applied": "verified", "pending": "not-validated", "running": "in-progress", "failed": "failed"}[state]
-		if validationState == "" {
-			validationState = "incompatible"
-		}
-		row := adminMigrationStatusRow{Scope: definition.Scope, MigrationID: definition.ID, Name: definition.Name, Release: definition.Release, SchemaVersion: definition.SchemaVersion, DataVersion: definition.DataVersion, State: state, RollbackClass: definition.RollbackClass, MaintenanceMode: definition.MaintenanceMode, ExecutionMode: definition.ExecutionMode, LockClass: definition.LockClass, TimeoutClass: definition.TimeoutClass, DataJobKey: definition.DataJobKey, DurationMS: entry.DurationMS, ErrorClass: entry.ErrorCode, ErrorMessage: safeMigrationText(entry.ErrorText), StartedAt: formatUsageTime(entry.StartedAt), CompletedAt: formatUsageTime(entry.CompletedAt), ValidationState: validationState, Postcondition: definition.PostconditionKey, RowsScanned: job.RowsScanned, RowsUpdated: job.RowsUpdated, RowsSkipped: job.RowsSkipped, RowsFailed: job.RowsFailed, Checkpoints: job.Checkpoints}
+		job, hasJob := jobs[definition.ID]
+		row := adminMigrationStatusRow{Scope: definition.Scope, MigrationID: definition.ID, Name: definition.Name, Release: definition.Release, SchemaVersion: definition.SchemaVersion, DataVersion: definition.DataVersion, RollbackClass: definition.RollbackClass, MaintenanceMode: definition.MaintenanceMode, ExecutionMode: definition.ExecutionMode, LockClass: definition.LockClass, TimeoutClass: definition.TimeoutClass, DataJobKey: definition.DataJobKey, DurationMS: entry.DurationMS, ErrorClass: entry.ErrorCode, ErrorMessage: safeMigrationText(entry.ErrorText), StartedAt: formatUsageTime(entry.StartedAt), CompletedAt: formatUsageTime(entry.CompletedAt), Postcondition: definition.PostconditionKey, RowsScanned: job.RowsScanned, RowsUpdated: job.RowsUpdated, RowsSkipped: job.RowsSkipped, RowsFailed: job.RowsFailed, Checkpoints: job.Checkpoints}
+		adminProjectMigrationRowState(&row, applied, entry.State, hasJob && job.Present, job)
 		if !adminMigrationRowMatches(row, r.URL.Query()) {
 			continue
 		}
 		rows = append(rows, row)
 	}
-	writeJSON(w, http.StatusOK, adminMigrationStatusResponse{GeneratedUTC: formatUsageTime(time.Now().UTC()), Summary: map[string]any{"scope": status.Scope, "schemaVersion": status.SchemaVersion, "dataVersion": status.DataVersion, "compatible": status.Compatible, "state": status.State, "pending": len(status.Pending), "jobs": len(status.Jobs)}, Rows: rows})
+	summary := map[string]any{"scope": status.Scope, "schemaVersion": status.SchemaVersion, "dataVersion": status.DataVersion, "compatible": status.Compatible, "state": adminMigrationSummaryState(status, rows), "jobs": len(status.Jobs), "pending": 0, "inProgress": 0, "failed": 0, "verified": 0, "missingDataJobs": 0}
+	for _, row := range rows {
+		switch row.State {
+		case "pending":
+			summary["pending"] = summary["pending"].(int) + 1
+		case "in-progress":
+			summary["inProgress"] = summary["inProgress"].(int) + 1
+		case "failed":
+			summary["failed"] = summary["failed"].(int) + 1
+		case "applied":
+			summary["verified"] = summary["verified"].(int) + 1
+		}
+		if row.DataJobState == "missing" {
+			summary["missingDataJobs"] = summary["missingDataJobs"].(int) + 1
+		}
+	}
+	writeJSON(w, http.StatusOK, adminMigrationStatusResponse{GeneratedUTC: formatUsageTime(time.Now().UTC()), Summary: summary, Rows: rows})
+}
+
+// adminProjectMigrationRowState makes a bound data job authoritative for the
+// operator-visible completion state. The schema ledger still records schema
+// application, but an applied schema is not verified until its declared data
+// job has durably validated.
+func adminProjectMigrationRowState(row *adminMigrationStatusRow, applied bool, ledgerState string, hasJob bool, job MigrationDataJobStatus) {
+	row.State = "pending"
+	if applied {
+		row.State = ledgerState
+	}
+	if !applied || row.DataJobKey == "" {
+		row.ValidationState = adminMigrationValidationState(row.State)
+		return
+	}
+	if !hasJob {
+		row.DataJobState = "missing"
+		row.State = "pending"
+		row.ValidationState = "not-validated"
+		return
+	}
+	row.DataJobState = safeMigrationText(job.State)
+	if job.ErrorClass != "" {
+		row.ErrorClass = safeMigrationText(job.ErrorClass)
+		row.ErrorMessage = safeMigrationText(job.ErrorClass)
+	}
+	switch job.State {
+	case migrationDataJobValidated:
+		row.State = "applied"
+	case migrationDataJobRunning:
+		row.State = "in-progress"
+	case migrationDataJobFailed:
+		row.State = "failed"
+	case migrationDataJobPending, migrationDataJobPaused, migrationDataJobCancelled:
+		row.State = "pending"
+	default:
+		row.State = "incompatible"
+	}
+	row.ValidationState = adminMigrationValidationState(row.State)
+}
+
+func adminMigrationValidationState(state string) string {
+	if validation, ok := map[string]string{"applied": "verified", "pending": "not-validated", "running": "in-progress", "in-progress": "in-progress", "failed": "failed"}[state]; ok {
+		return validation
+	}
+	return "incompatible"
+}
+
+func adminMigrationSummaryState(status MigrationStatus, rows []adminMigrationStatusRow) string {
+	if !status.Compatible || status.State == "incompatible" {
+		return "incompatible"
+	}
+	for _, wanted := range []string{"failed", "in-progress", "pending"} {
+		for _, row := range rows {
+			if row.State == wanted {
+				return wanted
+			}
+		}
+	}
+	return "current"
 }
 
 func adminMigrationRowMatches(row adminMigrationStatusRow, q url.Values) bool {
