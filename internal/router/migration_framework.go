@@ -711,6 +711,14 @@ func (r *migrationRunner) withMigrationOwnership(runner string, fn func(*migrati
 		// over its pinned ConnPool so handled record-not-found reads do not
 		// contaminate later checkpoint operations with a sticky DB error.
 		owned.db = conn.Session(&gorm.Session{NewDB: true})
+		if err := applyMigrationOwnershipTimeouts(owned.db); err != nil {
+			return err
+		}
+		defer func() {
+			if err := resetMigrationOwnershipTimeouts(owned.db); err != nil && operationErr == nil {
+				operationErr = err
+			}
+		}()
 		if owned.db.Dialector.Name() == "sqlite" {
 			// Prove an exclusive maintenance lock can be acquired without
 			// leaving connection-local locking mode behind for later work.
@@ -761,6 +769,33 @@ func (r *migrationRunner) preflightMigrationOperation() error {
 	return nil
 }
 
+// applyMigrationOwnershipTimeouts configures the pinned PostgreSQL session
+// before advisory ownership or fenced generation/lease DML. SET LOCAL would
+// expire before acquisition's separate transactions, so ownership uses
+// session settings that are reset before the connection returns to the pool.
+func applyMigrationOwnershipTimeouts(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" && db.Dialector.Name() != "postgresql" {
+		return nil
+	}
+	if err := setMigrationTimeouts(db, false); err != nil {
+		return errors.New("migration ownership timeout setup failed")
+	}
+	return nil
+}
+
+func resetMigrationOwnershipTimeouts(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" && db.Dialector.Name() != "postgresql" {
+		return nil
+	}
+	if err := db.Exec("RESET lock_timeout").Error; err != nil {
+		return errors.New("migration ownership timeout cleanup failed")
+	}
+	if err := db.Exec("RESET statement_timeout").Error; err != nil {
+		return errors.New("migration ownership timeout cleanup failed")
+	}
+	return nil
+}
+
 // acquireLock is the durable single-runner guard. PostgreSQL additionally
 // takes a session advisory lock; the caller must use withMigrationOwnership so
 // acquire, execution, and release remain on the same physical connection.
@@ -786,6 +821,9 @@ func (r *migrationRunner) acquireLock(runner string) error {
 		return tx.Raw("SELECT generation FROM schema_migration_lock_generations WHERE scope = ?", r.scope).Scan(&generation).Error
 	}); err != nil || generation <= 0 {
 		r.releaseAdvisoryLock()
+		if err != nil && safeMigrationErrorCode(err) == "migration-timeout" {
+			return errors.New("migration ownership acquisition timed out")
+		}
 		return errors.New("migration lock generation failed")
 	}
 	lock := migrationLockRecord{Scope: r.scope, Runner: safeMigrationText(runner), Generation: generation, LockedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(30 * time.Minute).Format(time.RFC3339Nano)}
@@ -877,13 +915,21 @@ func applyMigrationTimeouts(db *gorm.DB) error {
 	if db.Dialector.Name() != "postgres" && db.Dialector.Name() != "postgresql" {
 		return nil
 	}
-	if err := db.Exec("SET LOCAL lock_timeout = '5s'").Error; err != nil {
+	if err := setMigrationTimeouts(db, true); err != nil {
 		return errors.New("migration lock timeout setup failed")
 	}
-	if err := db.Exec("SET LOCAL statement_timeout = '30s'").Error; err != nil {
-		return errors.New("migration statement timeout setup failed")
-	}
 	return nil
+}
+
+func setMigrationTimeouts(db *gorm.DB, local bool) error {
+	scope := "false"
+	if local {
+		scope = "true"
+	}
+	if err := db.Exec("SELECT set_config('lock_timeout', ?, "+scope+")", migrationLockTimeout.String()).Error; err != nil {
+		return err
+	}
+	return db.Exec("SELECT set_config('statement_timeout', ?, "+scope+")", migrationStatementTimeout.String()).Error
 }
 
 // applyOneNonTransactional models operations that PostgreSQL cannot execute
@@ -906,16 +952,6 @@ func (r *migrationRunner) applyOneNonTransactional(d MigrationDefinition, runner
 		return r.recordAttemptTx(tx, d, runner, "apply", "running", backupEvidenceRef, "", "", now.Format(time.RFC3339Nano))
 	}); err != nil {
 		return r.recordFailure(d, runner, "non-transactional-start", backupEvidenceRef, err)
-	}
-	if r.db.Dialector.Name() == "postgres" || r.db.Dialector.Name() == "postgresql" {
-		if err := r.db.Exec("SET lock_timeout = '5s'").Error; err != nil {
-			return r.recordFailure(d, runner, "non-transactional-timeout", backupEvidenceRef, err)
-		}
-		defer r.db.Exec("RESET lock_timeout")
-		if err := r.db.Exec("SET statement_timeout = '30s'").Error; err != nil {
-			return r.recordFailure(d, runner, "non-transactional-timeout", backupEvidenceRef, err)
-		}
-		defer r.db.Exec("RESET statement_timeout")
 	}
 	if err := d.Apply(r.db); err != nil {
 		return r.recordFailure(d, runner, "non-transactional-apply", backupEvidenceRef, err)
