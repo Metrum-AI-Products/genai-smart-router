@@ -75,6 +75,14 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 		"reserve-a",
 		"ghp_exampleCredentialValue",
 		"sk-exampleProviderSecret",
+		"api-examplecredentialvalue",
+		"akiaexamplecredentialvalue",
+		"xoxb-examplecredentialvalue",
+		"glpat-examplecredentialvalue",
+		"github_pat_examplecredentialvalue",
+		"hf_examplecredentialvalue",
+		"sk-proj-examplecredentialvalue",
+		"sk-ant-examplecredentialvalue",
 		"router-token-example",
 		"https://example.test/reservation",
 		"/private/reservations/example",
@@ -101,11 +109,13 @@ func TestSafeCLIRegistryWorkflowAndReadOnlyStatus(t *testing.T) {
 	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "rsv-00000000-0000-0000-0000-000000000001", "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "already has an active quota admission reservation") {
 		t.Fatalf("canonical identifier bypassed active legacy hold: %v %s", err, out)
 	}
-	if _, err := seed.Exec(`INSERT INTO tenant_instance_quota_reservations (reservation_id, instance_id, region, db_instances, quota_limit, quota_used, quota_reserved, headroom, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, "sk-exampleProviderSecret", "router-a", "test-region-1", 1, 4, 0, 0, 0, "admission_reserved"); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", "sk-exampleProviderSecret", "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "invalid reservation id") || strings.Contains(out, "sk-exampleProviderSecret") {
-		t.Fatalf("unsafe existing reservation row was accepted or echoed: %v %s", err, out)
+	for _, unsafeExistingReservationID := range []string{"sk-exampleProviderSecret", "api-examplecredentialvalue", "akiaexamplecredentialvalue", "xoxb-examplecredentialvalue", "glpat-examplecredentialvalue", "github_pat_examplecredentialvalue", "hf_examplecredentialvalue", "sk-proj-examplecredentialvalue", "sk-ant-examplecredentialvalue"} {
+		if _, err := seed.Exec(`INSERT INTO tenant_instance_quota_reservations (reservation_id, instance_id, region, db_instances, quota_limit, quota_used, quota_reserved, headroom, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, unsafeExistingReservationID, "router-a", "test-region-1", 1, 4, 0, 0, 0, "admission_reserved"); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := run("quota-reserve", "--registry", registry, "--tenant", "tenant-a", "--stage", "test", "--reservation", unsafeExistingReservationID, "--mock-quota-limit", "4"); err == nil || !strings.Contains(out, "invalid reservation id") || strings.Contains(out, unsafeExistingReservationID) {
+			t.Fatalf("unsafe existing reservation row was accepted or echoed: %v %s", err, out)
+		}
 	}
 	if _, err := run("status", "--registry", "file:unsafe?mode=memory", "--limit", "1"); err == nil {
 		t.Fatal("SQLite URI was accepted")

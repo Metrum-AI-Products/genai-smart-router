@@ -28,6 +28,12 @@ const (
 	maxTenantSchemaVersion           = 1<<31 - 1
 )
 
+// legacyQuotaReservationIDPrefixes is deliberately limited to the two opaque
+// namespaces used by the pre-canonical local registry fixtures. Legacy rows
+// are untrusted input, so compatibility must not become a generic character
+// allow-list that can serialize provider or deployment credentials.
+var legacyQuotaReservationIDPrefixes = []string{"legacy-", "reserve-"}
+
 // TenantInstance is the safe input/output contract. Its component fields are
 // stored in normalized tables below; it contains no endpoint, DSN, credential,
 // token, secret reference/value, or configuration content.
@@ -382,18 +388,26 @@ func validQuotaReservationID(reservationID string) bool {
 	return true
 }
 
-// validLegacyQuotaReservationID permits a bounded, opaque historic identifier
-// only for an exact existing-row retry. It never admits credential, URL, path,
-// or unbounded values, even when a legacy database contains one.
+// validLegacyQuotaReservationID permits only the evidence-backed opaque
+// historic namespaces for an exact existing-row retry. It is intentionally an
+// allow-list rather than a credential deny-list: legacy registry rows are
+// untrusted and must never cause a credential-shaped value to be serialized.
 func validLegacyQuotaReservationID(reservationID string) bool {
-	if len(reservationID) == 0 || len(reservationID) > quotaReservationIDLength {
+	prefix := ""
+	for _, candidate := range legacyQuotaReservationIDPrefixes {
+		if strings.HasPrefix(reservationID, candidate) {
+			prefix = candidate
+			break
+		}
+	}
+	if prefix == "" || len(reservationID) <= len(prefix) || len(reservationID) > quotaReservationIDLength {
 		return false
 	}
-	lower := strings.ToLower(reservationID)
-	if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.HasPrefix(lower, "sk-") || strings.HasPrefix(lower, "ghp_") {
+	suffix := reservationID[len(prefix):]
+	if !((suffix[0] >= 'a' && suffix[0] <= 'z') || (suffix[0] >= '0' && suffix[0] <= '9')) {
 		return false
 	}
-	for _, character := range reservationID {
+	for _, character := range suffix {
 		if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-') {
 			return false
 		}
