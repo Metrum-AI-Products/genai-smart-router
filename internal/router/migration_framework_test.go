@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -277,6 +278,57 @@ func TestMigrationOperationalPostgresAdvisoryLockAndTimeouts(t *testing.T) {
 		}
 		return nil
 	}); err != nil {
+		t.Fatal(err)
+	}
+	// Hold the fenced-generation row on a separate PostgreSQL session. The
+	// contender must return the bounded, sanitized acquisition-timeout result
+	// instead of waiting until the holder voluntarily releases its DML lock.
+	const contentionScope = "postgres-ownership-timeout"
+	if err := db.Exec("INSERT INTO schema_migration_lock_generations (scope, generation) VALUES (?, 1)", contentionScope).Error; err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan error, 1)
+	release := make(chan struct{})
+	defer close(release)
+	go func() {
+		locked <- db.Connection(func(conn *gorm.DB) error {
+			if err := conn.Exec("BEGIN").Error; err != nil {
+				return err
+			}
+			defer conn.Exec("ROLLBACK")
+			if err := conn.Exec("SELECT generation FROM schema_migration_lock_generations WHERE scope = ? FOR UPDATE", contentionScope).Error; err != nil {
+				return err
+			}
+			<-release
+			return nil
+		})
+	}()
+	if err := <-locked; err != nil {
+		t.Fatal(err)
+	}
+	contender, err := NewMigrationRunner(db, contentionScope, MigrationCompatibility{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	err = contender.ApplyPending("postgres-timeout-contender")
+	elapsed := time.Since(started)
+	if err == nil || err.Error() != "migration ownership acquisition timed out" {
+		t.Fatalf("contended ownership acquisition = %v, want sanitized timeout", err)
+	}
+	if elapsed < migrationLockTimeout-500*time.Millisecond || elapsed > migrationLockTimeout+5*time.Second {
+		t.Fatalf("contended ownership acquisition elapsed %s, want configured lock timeout near %s", elapsed, migrationLockTimeout)
+	}
+	observer, err := openUsageDB(UsageDBConfig{Driver: "postgres", DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := observer.DB(); _ = sqlDB.Close() }()
+	var acquired bool
+	if err := observer.Raw("SELECT pg_try_advisory_lock(hashtext(?))", contentionScope).Scan(&acquired).Error; err != nil || !acquired {
+		t.Fatalf("contended ownership cleanup left advisory lock: acquired=%t err=%v", acquired, err)
+	}
+	if err := observer.Exec("SELECT pg_advisory_unlock(hashtext(?))", contentionScope).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
