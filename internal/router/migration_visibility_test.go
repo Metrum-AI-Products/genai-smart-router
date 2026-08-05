@@ -1,7 +1,10 @@
 package router
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -139,6 +142,76 @@ func TestMigrationMetricsExposeAllSafeDataJobStates(t *testing.T) {
 		want := `smart_llmrouter_migration_jobs{scope="usage",state="` + state + `"} 1`
 		if !strings.Contains(metrics, want) {
 			t.Fatalf("migration metrics missing %q: %s", want, metrics)
+		}
+	}
+}
+
+func TestMetricsRetainsAuthorizedGlobalFamiliesWhenMigrationStatusUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
+	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe}
+	adminToken := "rtr_metrics_admin_unavailable"
+	adminSum := sha256.Sum256([]byte(adminToken))
+	cfg.Callers = append(cfg.Callers, CallerConfig{
+		ID: "metrics-admin", User: "ops", Project: "observability", Environment: "test",
+		TokenSHA256: hex.EncodeToString(adminSum[:]), TokenID: "rtr_metrics_admin_unavailable",
+		Allow: []string{"default"}, MetricsAdmin: true, Rate: RateConfig{RPM: 100, TPM: 100000, Concurrent: 4},
+	})
+	svc, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	svc.metrics.Observe(logRecord{CallerID: "metrics-admin", CallerUser: "ops", CallerProject: "observability", CallerEnvironment: "test", TokenID: "rtr_metrics_admin_unavailable", ResolvedGroup: "default", TargetProvider: "mock", TargetModel: "mock-model", Status: http.StatusOK})
+	lookupCalled := false
+	svc.migrationStatusFn = func() (MigrationStatus, error) {
+		lookupCalled = true
+		return MigrationStatus{}, errors.New("postgres://private-host/usage: migration ledger read failed")
+	}
+
+	ordinary := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	ordinary.Header.Set("Authorization", "Bearer "+testToken)
+	ordinaryRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(ordinaryRR, ordinary)
+	if ordinaryRR.Code != http.StatusForbidden || !strings.Contains(ordinaryRR.Body.String(), "metrics-forbidden") {
+		t.Fatalf("ordinary status=%d body=%s", ordinaryRR.Code, ordinaryRR.Body.String())
+	}
+
+	admin := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	admin.Header.Set("Authorization", "Bearer "+adminToken)
+	adminRR := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(adminRR, admin)
+	if adminRR.Code != http.StatusOK {
+		t.Fatalf("admin status=%d body=%s", adminRR.Code, adminRR.Body.String())
+	}
+	body := adminRR.Body.String()
+	if !lookupCalled {
+		t.Fatal("migration status lookup hook was not called")
+	}
+	for _, want := range []string{
+		`smart_llmrouter_migration_status_available{scope="usage"} 0`,
+		"smart_llmrouter_requests_total",
+		"smart_llmrouter_license_valid",
+		"smart_llmrouter_traffic_shape_queue_depth",
+		"smart_llmrouter_build_info",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics missing %q:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{"postgres://", "private-host", "migration ledger read failed"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("metrics leaked %q: %s", forbidden, body)
+		}
+	}
+	for _, unavailable := range []string{
+		`smart_llmrouter_migration_schema_version{scope="usage"}`,
+		`smart_llmrouter_migration_data_version{scope="usage"}`,
+		`smart_llmrouter_migration_compatible{scope="usage"}`,
+		`smart_llmrouter_migration_pending{scope="usage"}`,
+	} {
+		if strings.Contains(body, unavailable) {
+			t.Fatalf("unavailable migration status emitted stale metric %q: %s", unavailable, body)
 		}
 	}
 }

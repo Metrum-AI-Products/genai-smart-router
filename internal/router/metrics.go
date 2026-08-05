@@ -186,6 +186,7 @@ func (m *metricsStore) Prometheus(license *licenseManager, trafficShape *traffic
 	writeHelpType(&b, "smart_llmrouter_traffic_shape_queue_depth", "Current traffic-shaping queue depth by caller and scope.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_schema_version", "Current migration schema version by scope.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_data_version", "Current migration data version by scope.", "gauge")
+	writeHelpType(&b, "smart_llmrouter_migration_status_available", "Whether a safe migration status snapshot is available by scope.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_compatible", "Whether the migration ledger is compatible by scope.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_pending", "Pending checked-in migrations by scope.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_jobs", "Migration jobs by scope and safe state.", "gauge")
@@ -193,43 +194,50 @@ func (m *metricsStore) Prometheus(license *licenseManager, trafficShape *traffic
 	writeHelpType(&b, "smart_llmrouter_migration_progress_rows", "Aggregate migration data-job rows by scope and outcome.", "gauge")
 	writeHelpType(&b, "smart_llmrouter_migration_in_progress_age_seconds", "Age of oldest in-progress migration by scope.", "gauge")
 	migrationLabels := `scope="` + escapeLabel(sanitizeMetricLabel(migration.Scope, "unknown")) + `"`
-	compatible := int64(0)
-	if migration.Compatible {
-		compatible = 1
+	available := int64(1)
+	if migration.StatusUnavailable {
+		available = 0
 	}
-	writeMetric(&b, "smart_llmrouter_migration_schema_version", migrationLabels, int64(migration.SchemaVersion))
-	writeMetric(&b, "smart_llmrouter_migration_data_version", migrationLabels, int64(migration.DataVersion))
-	writeMetric(&b, "smart_llmrouter_migration_compatible", migrationLabels, compatible)
-	writeMetric(&b, "smart_llmrouter_migration_pending", migrationLabels, int64(len(migration.Pending)))
-	jobStates := map[string]int64{}
-	var scanned, updated, skipped, failed int64
-	for _, job := range migration.Jobs {
-		jobStates[sanitizeMetricLabel(job.State, "unknown")]++
-		scanned += job.RowsScanned
-		updated += job.RowsUpdated
-		skipped += job.RowsSkipped
-		failed += job.RowsFailed
-	}
-	for state, count := range jobStates {
-		writeMetric(&b, "smart_llmrouter_migration_jobs", migrationLabels+`,state="`+escapeLabel(state)+`"`, count)
-	}
-	var failures, age int64
-	now := time.Now().UTC()
-	for _, entry := range migration.Entries {
-		if entry.State == "failed" {
-			failures++
+	writeMetric(&b, "smart_llmrouter_migration_status_available", migrationLabels, available)
+	if !migration.StatusUnavailable {
+		compatible := int64(0)
+		if migration.Compatible {
+			compatible = 1
 		}
-		if entry.State == "running" && !entry.StartedAt.IsZero() {
-			entryAge := int64(now.Sub(entry.StartedAt).Seconds())
-			if entryAge > age {
-				age = entryAge
+		writeMetric(&b, "smart_llmrouter_migration_schema_version", migrationLabels, int64(migration.SchemaVersion))
+		writeMetric(&b, "smart_llmrouter_migration_data_version", migrationLabels, int64(migration.DataVersion))
+		writeMetric(&b, "smart_llmrouter_migration_compatible", migrationLabels, compatible)
+		writeMetric(&b, "smart_llmrouter_migration_pending", migrationLabels, int64(len(migration.Pending)))
+		jobStates := map[string]int64{}
+		var scanned, updated, skipped, failed int64
+		for _, job := range migration.Jobs {
+			jobStates[sanitizeMetricLabel(job.State, "unknown")]++
+			scanned += job.RowsScanned
+			updated += job.RowsUpdated
+			skipped += job.RowsSkipped
+			failed += job.RowsFailed
+		}
+		for state, count := range jobStates {
+			writeMetric(&b, "smart_llmrouter_migration_jobs", migrationLabels+`,state="`+escapeLabel(state)+`"`, count)
+		}
+		var failures, age int64
+		now := time.Now().UTC()
+		for _, entry := range migration.Entries {
+			if entry.State == "failed" {
+				failures++
+			}
+			if entry.State == "running" && !entry.StartedAt.IsZero() {
+				entryAge := int64(now.Sub(entry.StartedAt).Seconds())
+				if entryAge > age {
+					age = entryAge
+				}
 			}
 		}
-	}
-	writeMetric(&b, "smart_llmrouter_migration_failures", migrationLabels, failures)
-	writeMetric(&b, "smart_llmrouter_migration_in_progress_age_seconds", migrationLabels, age)
-	for outcome, value := range map[string]int64{"scanned": scanned, "updated": updated, "skipped": skipped, "failed": failed} {
-		writeMetric(&b, "smart_llmrouter_migration_progress_rows", migrationLabels+`,outcome="`+outcome+`"`, value)
+		writeMetric(&b, "smart_llmrouter_migration_failures", migrationLabels, failures)
+		writeMetric(&b, "smart_llmrouter_migration_in_progress_age_seconds", migrationLabels, age)
+		for outcome, value := range map[string]int64{"scanned": scanned, "updated": updated, "skipped": skipped, "failed": failed} {
+			writeMetric(&b, "smart_llmrouter_migration_progress_rows", migrationLabels+`,outcome="`+outcome+`"`, value)
+		}
 	}
 	fmt.Fprintf(&b, "smart_llmrouter_build_info{%s} 1\n", buildInfoLabels())
 	if license != nil {
