@@ -161,12 +161,15 @@ func TestStrictManifestRejectsMetadataAndHandlerTampering(t *testing.T) {
 }
 
 func TestStrictManifestRejectsUnknownForwardAndDuplicateDependencies(t *testing.T) {
-	first := testMigrationDefinition(1, "usage", "first", MigrationChecksum("first"), 1, "online", "package-only")
-	second := testMigrationDefinition(2, "usage", "second", MigrationChecksum("second"), 2, "online", "package-only")
+	// IDs need not be consecutive. The absent lower ID proves validation uses
+	// the complete declared ID set rather than only numeric ordering.
+	first := testMigrationDefinition(2, "usage", "first", MigrationChecksum("first"), 1, "online", "package-only")
+	second := testMigrationDefinition(3, "usage", "second", MigrationChecksum("second"), 2, "online", "package-only")
 	for name, dependencies := range map[string][]int{
-		"unknown":   {99},
-		"forward":   {2},
-		"duplicate": {1, 1},
+		"unknown":          {99},
+		"unknown_prior_id": {1},
+		"forward":          {3},
+		"duplicate":        {2, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := second

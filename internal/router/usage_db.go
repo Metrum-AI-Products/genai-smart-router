@@ -1722,12 +1722,178 @@ func verifyUsageRelationalModel(db *gorm.DB, model any) error {
 	if err := verifyUsageForeignKeys(db, stmt.Schema); err != nil {
 		return err
 	}
-	for name := range stmt.Schema.ParseCheckConstraints() {
+	if err := verifyUsageCheckConstraints(db, model, stmt.Schema); err != nil {
+		return err
+	}
+	return nil
+}
+
+type usageCheckConstraintRow struct {
+	Name       string `gorm:"column:name"`
+	Definition string `gorm:"column:definition"`
+}
+
+// verifyUsageCheckConstraints checks the expression as well as the name. A
+// named constraint can otherwise be rebuilt with weaker semantics and still
+// satisfy HasConstraint. Both SQLite's stored DDL and PostgreSQL's catalog
+// expose the checked-in, non-caller-controlled table definition safely.
+func verifyUsageCheckConstraints(db *gorm.DB, model any, parsed *schema.Schema) error {
+	expected := parsed.ParseCheckConstraints()
+	if len(expected) == 0 {
+		return nil
+	}
+	actual, err := inspectUsageCheckConstraints(db, parsed.Table)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]string, len(actual))
+	for _, constraint := range actual {
+		byName[constraint.Name] = constraint.Definition
+	}
+	for name, contract := range expected {
 		if !db.Migrator().HasConstraint(model, name) {
-			return fmt.Errorf("required usage check constraint %s on %s is missing", name, table)
+			return fmt.Errorf("required usage check constraint %s on %s is missing", name, parsed.Table)
+		}
+		definition, ok := byName[name]
+		if !ok || normalizeUsageCheckExpression(definition) != normalizeUsageCheckExpression(contract.Constraint) {
+			return fmt.Errorf("usage check constraint %s on %s does not match contract", name, parsed.Table)
 		}
 	}
 	return nil
+}
+
+func inspectUsageCheckConstraints(db *gorm.DB, table string) ([]usageCheckConstraintRow, error) {
+	switch db.Dialector.Name() {
+	case "sqlite":
+		var ddl string
+		if err := db.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&ddl).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage check constraints for %s: %w", table, err)
+		}
+		return parseSQLiteUsageCheckConstraints(ddl), nil
+	case "postgres", "postgresql":
+		const query = `SELECT con.conname AS name, pg_get_constraintdef(con.oid, true) AS definition
+			FROM pg_constraint con
+			JOIN pg_class table_class ON table_class.oid = con.conrelid
+			JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+			WHERE con.contype = 'c' AND namespace.nspname = current_schema() AND table_class.relname = ?`
+		var rows []usageCheckConstraintRow
+		if err := db.Raw(query, table).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("inspect usage check constraints for %s: %w", table, err)
+		}
+		return rows, nil
+	default:
+		return nil, fmt.Errorf("unsupported usage database driver %q", db.Dialector.Name())
+	}
+}
+
+func parseSQLiteUsageCheckConstraints(ddl string) []usageCheckConstraintRow {
+	const marker = "constraint"
+	lower := strings.ToLower(ddl)
+	var rows []usageCheckConstraintRow
+	for offset := 0; ; {
+		at := strings.Index(lower[offset:], marker)
+		if at < 0 {
+			return rows
+		}
+		at += offset
+		cursor := at + len(marker)
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		nameStart := cursor
+		if cursor < len(ddl) && (ddl[cursor] == '"' || ddl[cursor] == '`' || ddl[cursor] == '[') {
+			quote := ddl[cursor]
+			endQuote := quote
+			if quote == '[' {
+				endQuote = ']'
+			}
+			cursor++
+			nameStart = cursor
+			for cursor < len(ddl) && ddl[cursor] != endQuote {
+				cursor++
+			}
+			if cursor >= len(ddl) {
+				return rows
+			}
+			name := ddl[nameStart:cursor]
+			cursor++
+			for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+				cursor++
+			}
+			if !strings.HasPrefix(strings.ToLower(ddl[cursor:]), "check") {
+				offset = cursor
+				continue
+			}
+			cursor += len("check")
+			for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+				cursor++
+			}
+			if cursor >= len(ddl) || ddl[cursor] != '(' {
+				offset = cursor
+				continue
+			}
+			end := sqliteBalancedExpressionEnd(ddl, cursor)
+			if end < 0 {
+				return rows
+			}
+			rows = append(rows, usageCheckConstraintRow{Name: name, Definition: ddl[cursor : end+1]})
+			offset = end + 1
+			continue
+		}
+		for cursor < len(ddl) && ddl[cursor] != ' ' && ddl[cursor] != '\n' && ddl[cursor] != '\t' {
+			cursor++
+		}
+		name := ddl[nameStart:cursor]
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		if !strings.HasPrefix(strings.ToLower(ddl[cursor:]), "check") {
+			offset = cursor
+			continue
+		}
+		cursor += len("check")
+		for cursor < len(ddl) && (ddl[cursor] == ' ' || ddl[cursor] == '\n' || ddl[cursor] == '\t') {
+			cursor++
+		}
+		if cursor >= len(ddl) || ddl[cursor] != '(' {
+			offset = cursor
+			continue
+		}
+		end := sqliteBalancedExpressionEnd(ddl, cursor)
+		if end < 0 {
+			return rows
+		}
+		rows = append(rows, usageCheckConstraintRow{Name: name, Definition: ddl[cursor : end+1]})
+		offset = end + 1
+	}
+}
+
+func sqliteBalancedExpressionEnd(value string, start int) int {
+	depth := 0
+	for i := start; i < len(value); i++ {
+		switch value[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func normalizeUsageCheckExpression(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if strings.HasPrefix(value, "check") {
+		value = strings.TrimSpace(strings.TrimPrefix(value, "check"))
+	}
+	for len(value) >= 2 && value[0] == '(' && value[len(value)-1] == ')' {
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+	value = strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "", "\"", "", "`", "").Replace(value)
+	return value
 }
 
 func usageColumnTypeCompatible(field *schema.Field, actual string) bool {

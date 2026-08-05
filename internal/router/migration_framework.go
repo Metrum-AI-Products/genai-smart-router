@@ -287,6 +287,18 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 	}
 	defs := append([]MigrationDefinition(nil), definitions...)
 	sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
+	declaredIDs := make(map[int]struct{}, len(defs))
+	for _, d := range defs {
+		// Build the complete ID set before examining dependencies. A smaller
+		// numeric dependency is not necessarily a declared migration.
+		if d.ID <= 0 {
+			return nil, errors.New("invalid immutable migration manifest")
+		}
+		if _, duplicate := declaredIDs[d.ID]; duplicate {
+			return nil, errors.New("invalid immutable migration manifest")
+		}
+		declaredIDs[d.ID] = struct{}{}
+	}
 	previous := 0
 	for _, d := range defs {
 		if d.Scope != scope || d.ID <= previous || d.ID <= 0 || !validMigrationChecksum(d.Checksum) ||
@@ -301,6 +313,9 @@ func NewMigrationRunner(db *gorm.DB, scope string, compatibility MigrationCompat
 		seenDependencies := make(map[int]struct{}, len(d.Dependencies))
 		for _, dependency := range d.Dependencies {
 			if dependency <= 0 || dependency >= d.ID {
+				return nil, errors.New("invalid immutable migration manifest dependency")
+			}
+			if _, declared := declaredIDs[dependency]; !declared {
 				return nil, errors.New("invalid immutable migration manifest dependency")
 			}
 			if _, duplicate := seenDependencies[dependency]; duplicate {

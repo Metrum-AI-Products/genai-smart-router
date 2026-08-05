@@ -94,3 +94,33 @@ func TestUsageSchemaContractRejectsForeignKeyActionDrift(t *testing.T) {
 		t.Fatalf("schema contract accepted foreign-key action drift: %v", err)
 	}
 }
+
+type usageCheckContractFixture struct {
+	ID    int `gorm:"primaryKey"`
+	Value int `gorm:"check:chk_usage_fixture_positive,value > 0"`
+}
+
+func (usageCheckContractFixture) TableName() string { return "usage_check_contract_fixture" }
+
+func TestUsageSchemaContractRejectsCheckConstraintSemanticDrift(t *testing.T) {
+	db := openUsageSchemaContractDB(t)
+	if err := db.AutoMigrate(&usageCheckContractFixture{}); err != nil {
+		t.Fatal(err)
+	}
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(&usageCheckContractFixture{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyUsageCheckConstraints(db, &usageCheckContractFixture{}, stmt.Schema); err != nil {
+		t.Fatalf("check fixture contract rejected its schema: %v", err)
+	}
+	if err := db.Exec("DROP TABLE usage_check_contract_fixture").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("CREATE TABLE usage_check_contract_fixture (id integer PRIMARY KEY, value integer, CONSTRAINT chk_usage_fixture_positive CHECK (value >= 0))").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyUsageCheckConstraints(db, &usageCheckContractFixture{}, stmt.Schema); err == nil || !strings.Contains(err.Error(), "does not match contract") {
+		t.Fatalf("schema contract accepted check semantic drift: %v", err)
+	}
+}
