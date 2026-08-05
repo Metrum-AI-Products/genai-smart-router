@@ -36,7 +36,7 @@ const (
 	// and never applies application-schema DDL during serving startup.
 	usageDBMigrationPolicyValidate = "validate"
 	// usageDBMigrationPolicyAutoSafe applies only checked-in transactional online
-	// migrations. The current baseline cannot initialize an empty database.
+	// migrations for an explicitly reviewed small/single-node deployment.
 	usageDBMigrationPolicyAutoSafe = "auto-safe"
 	// usageDBMigrationPolicyDeploymentJob verifies a current ledger while a
 	// non-serving deployment job owns all migration application.
@@ -1665,12 +1665,33 @@ func applyUsageExplicitBaseline(db *gorm.DB) error {
 			return fmt.Errorf("usage baseline sqlite journal mode: %w", err)
 		}
 	}
+	created := make(map[string]bool, len(usageRelationalModels()))
 	for _, model := range usageRelationalModels() {
 		if db.Migrator().HasTable(model) {
 			continue
 		}
 		if err := db.Migrator().CreateTable(model); err != nil {
 			return fmt.Errorf("create explicit usage table: %w", err)
+		}
+		stmt := &gorm.Statement{DB: db}
+		if err := stmt.Parse(model); err != nil {
+			return fmt.Errorf("parse explicit usage table: %w", err)
+		}
+		created[stmt.Schema.Table] = true
+	}
+	// The model structs intentionally describe the latest contract, while this
+	// immutable baseline is schema version 1. Remove only the fixed v2 fields
+	// from tables created by this invocation so 2026072301 remains the sole
+	// owner of its expansion. Existing installations are adopted unchanged and
+	// must already satisfy their recorded ledger state.
+	for table, columns := range usageReasoningTelemetryColumns {
+		if !created[table] {
+			continue
+		}
+		for column := range columns {
+			if err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column).Error; err != nil {
+				return fmt.Errorf("freeze usage baseline column %s.%s: %w", table, column, err)
+			}
 		}
 	}
 	return verifyUsageLegacyBaseline(db)

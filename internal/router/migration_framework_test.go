@@ -457,6 +457,42 @@ func TestUsageMigrationBaselineBootstrapsEmptyDatabaseExplicitly(t *testing.T) {
 	}
 }
 
+func TestUsageMigrationBaselineKeepsReasoningColumnsForTheirOwnDefinition(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "baseline-version.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { sqlDB, _ := db.DB(); _ = sqlDB.Close() }()
+	baseline, err := NewMigrationRunner(db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := baseline.ApplyPending("baseline-version-test"); err != nil {
+		t.Fatal(err)
+	}
+	for table, columns := range usageReasoningTelemetryColumns {
+		for column := range columns {
+			if db.Migrator().HasColumn(table, column) {
+				t.Fatalf("baseline unexpectedly created v2 column %s.%s", table, column)
+			}
+		}
+	}
+	current, err := newUsageMigrationRunner(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := current.ApplyPending("baseline-version-test"); err != nil {
+		t.Fatal(err)
+	}
+	for table, columns := range usageReasoningTelemetryColumns {
+		for column := range columns {
+			if !db.Migrator().HasColumn(table, column) {
+				t.Fatalf("reasoning migration did not create v2 column %s.%s", table, column)
+			}
+		}
+	}
+}
+
 func TestUsageStoreStartupMigrationPoliciesFailClosedAndAutoAdopt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
 	legacy, err := OpenUsageStorePath(path)
