@@ -21,7 +21,7 @@ docker compose run --rm --entrypoint /app/bin/router-migrate router \
   --driver=postgres --dsn-env=ROUTER_USAGE_DB_DSN --action=apply --json
 ```
 
-Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; use the status-driven procedure below for each job. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, or failed. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
+Version-check the same packaged runner before this gate. Complete every data job named by the release contract before `verify` and `status`; use the status-driven procedure below for each job. Do not start the serving router if plan, apply, data-job completion, verify, or status is incompatible, pending, running, paused, cancelled, failed, or unrecognized. This includes the synthesized pending state immediately after `apply` and before a job's first `resume`: it is not a serving-ready exception. The ledger is authoritative: a bound data job can refine only an already-applied ledger row and never overrides ledger `running` or `failed` state.
 
 ### Checkpointed data-job procedure
 
