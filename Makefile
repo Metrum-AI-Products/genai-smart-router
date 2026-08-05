@@ -262,6 +262,7 @@ test: secret-check capability-smoke-unit
 # only here, never while the suite is running offline.
 API_COMPAT_BOOTSTRAP_GO_PROXY ?= https://proxy.golang.org
 API_COMPAT_BOOTSTRAP_GO_SUMDB ?= sum.golang.org
+export API_COMPAT_BOOTSTRAP_GO_PROXY API_COMPAT_BOOTSTRAP_GO_SUMDB
 api-compat-bootstrap:
 	@api_compat_root=$${API_COMPAT_BOOTSTRAP_ROOT:-$$(mktemp -d)}; \
 	cd tests/api_compat && \
@@ -270,7 +271,7 @@ api-compat-bootstrap:
 	uv sync --locked && \
 	GOMODCACHE=$${GOMODCACHE:-$$api_compat_root/go-mod-cache} \
 	GOCACHE=$${GOCACHE:-$$api_compat_root/go-build-cache} \
-	GOPROXY=$(API_COMPAT_BOOTSTRAP_GO_PROXY) GOSUMDB=$(API_COMPAT_BOOTSTRAP_GO_SUMDB) go mod download
+	GOPROXY="$$API_COMPAT_BOOTSTRAP_GO_PROXY" GOSUMDB="$$API_COMPAT_BOOTSTRAP_GO_SUMDB" go mod download
 
 # Deterministic caller-boundary tests: the locally built router and fake
 # upstream bind to 127.0.0.1 only. This target is fail-closed: its Python and

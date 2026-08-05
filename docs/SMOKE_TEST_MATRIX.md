@@ -290,6 +290,13 @@ Run this gate before changing request parsing, upstream encoding, tool routing, 
 
 The conformance gate is intentionally mock-upstream and deterministic. It proves router semantics, not provider quality. Provider/model activation still requires the direct and router-level live smokes in the provider sections below.
 
+The deterministic bootstrap regression also verifies that approved internal Go
+mirror settings (`API_COMPAT_BOOTSTRAP_GO_PROXY` and
+`API_COMPAT_BOOTSTRAP_GO_SUMDB`) are delivered to Go as data, not evaluated by
+the shell. A malformed setting must not run embedded shell syntax; provisioning
+may fail, but the separately invokable offline conformance target remains
+strictly offline.
+
 For OpenAI-compatible providers, distinguish generic translation from same-dialect passthrough. Generic translation can normalize fields and force upstream unary calls. Same-dialect passthrough is the path that preserves client tool declarations and structured-output payloads for compatible upstreams.
 
 Responses-to-Chat bridging is opt-in target metadata, not automatic cross-skin compatibility. Before enabling `responses_to_chat`, direct-smoke the exact Chat upstream for text, max-token caps, and function tools, then router-smoke `/v1/responses` text and function-tool requests through a restricted group. Enable `responses_to_chat.reasoning` only after a smoke proves Responses `reasoning.effort` reaches the upstream as Chat `reasoning_effort` and usage diagnostics record `bridge_direction = responses_to_chat` with `translated_reasoning_control = reasoning_effort`. Do not enable stateful `previous_response_id`, hosted tools, images, structured output, or streaming unless those exact bridge flags and smokes exist.
