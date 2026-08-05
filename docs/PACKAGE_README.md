@@ -9,6 +9,7 @@ Binary packages include:
 - `bin/router`
 - `bin/router-token-gen`
 - `bin/router-usage-report`
+- `bin/router-migrate`
 - `bin/metrum-smartrouterctl`
 - `config/config.example.yaml`
 - `config/env.example.json`

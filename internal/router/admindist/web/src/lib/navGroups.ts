@@ -10,7 +10,8 @@ export type NavGroupId =
   | "provider-catalog"
   | "security"
   | "request-drilldown"
-  | "system-status";
+  | "system-status"
+  | "operations";
 
 export type NavGroup = {
   id: NavGroupId;
@@ -109,6 +110,12 @@ export const navGroups: NavGroup[] = [
     label: "System status",
     description: "Check quota, budget, retention, and rollup status.",
     tabIds: ["quotas-budgets", "retention-status"],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    description: "Review safe migration status and release contracts; this surface has no write controls.",
+    tabIds: ["data-migrations"],
   },
 ];
 

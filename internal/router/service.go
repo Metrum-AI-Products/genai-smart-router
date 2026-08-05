@@ -620,9 +620,18 @@ func (s *Service) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.finish(rc, http.StatusOK, nil)
+	migration := MigrationStatus{Scope: usageMigrationScope, State: "unavailable"}
+	if s.usage != nil {
+		var err error
+		migration, err = s.usage.migrationStatus()
+		if err != nil {
+			s.writeError(w, rc, http.StatusServiceUnavailable, "migration-status-unavailable")
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, s.metrics.Prometheus(s.license, s.trafficShape))
+	_, _ = io.WriteString(w, s.metrics.Prometheus(s.license, s.trafficShape, migration))
 }
 
 func (s *Service) handleAdminLicenseStatus(w http.ResponseWriter, r *http.Request) {

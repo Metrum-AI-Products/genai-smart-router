@@ -18,7 +18,7 @@ export type GlobalFilterName =
   | "request_shape_fingerprint"
   | "tool_schema_fingerprint";
 
-export type TabFilterName = "baseline" | "status" | "cache" | "sort" | "direction" | "traffic_shape_bucket" | "traffic_shape_scope" | "limit";
+export type TabFilterName = "baseline" | "status" | "cache" | "sort" | "direction" | "traffic_shape_bucket" | "traffic_shape_scope" | "scope" | "release" | "state" | "type" | "date" | "limit";
 
 export type PaginationFilterName = "cursor" | "offset";
 
@@ -52,6 +52,11 @@ export const tabFilterFields = [
   ["sort", "Sort", ""],
   ["direction", "Direction", ""],
   ["limit", "Rows", "50"],
+  ["scope", "Scope", ""],
+  ["release", "Release", ""],
+  ["state", "State", ""],
+  ["type", "Type", ""],
+  ["date", "Date", ""],
 ] as const satisfies ReadonlyArray<FilterField<TabFilterName>>;
 
 export const paginationFilterFields = [

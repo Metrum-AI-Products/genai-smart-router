@@ -16,6 +16,7 @@ RUN rm -rf internal/router/admindist/static/assets && npm ci --prefix internal/r
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router ./cmd/router
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-token-gen ./cmd/router-token-gen
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-usage-report ./cmd/router-usage-report
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X smart-llmrouter/internal/buildinfo.Version=$VERSION -X smart-llmrouter/internal/buildinfo.Commit=$COMMIT -X smart-llmrouter/internal/buildinfo.BuildDate=$BUILD_DATE" -o /out/router-migrate ./cmd/router-migrate
 
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS certs
 RUN apk add --no-cache ca-certificates
@@ -26,6 +27,7 @@ COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 COPY --from=build /out/router /app/bin/router
 COPY --from=build /out/router-token-gen /app/bin/router-token-gen
 COPY --from=build /out/router-usage-report /app/bin/router-usage-report
+COPY --from=build /out/router-migrate /app/bin/router-migrate
 
 USER 65532:65532
 EXPOSE 8080

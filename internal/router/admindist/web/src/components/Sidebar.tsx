@@ -19,6 +19,7 @@ const groupIcons: Record<NavGroupId, React.ComponentType<{ className?: string; "
   security: ShieldCheck,
   "request-drilldown": SearchCheck,
   "system-status": LockKeyhole,
+  operations: LockKeyhole,
 };
 
 type SidebarProps = {

@@ -39,7 +39,23 @@ test("admin report nav groups cover every tab exactly once", async () => {
     "security",
     "request-drilldown",
     "system-status",
+    "operations",
   ]);
+});
+
+test("data migrations is a read-only operational report", async ({ page }) => {
+  await page.goto("/?tab=data-migrations&scope=usage&release=2026.8&state=failed&type=transactional&date=2026-08");
+  await expect(page.getByRole("heading", { name: "Data migrations", exact: true })).toBeVisible();
+  await expect(page.getByText(/read-only/i).first()).toBeVisible();
+  for (const filter of ["scope", "release", "state", "type", "date"]) await expect(page.locator(`[data-tab-filter="${filter}"]`)).toBeVisible();
+  await page.locator("[data-migration-detail-panel] summary").click();
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("migration safe failure");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("usage.historical-validation.schema.v1");
+  await expect(page.locator("[data-migration-detail-panel]")).toContainText("2 checkpoints; 20 scanned");
+  await expect(page.locator("[data-migration-detail-panel]")).not.toContainText("postgres://");
+  expect(apiRequests.some((request) => request.includes("api/migrations"))).toBe(true);
+  expect(apiRequests.some((request) => request.includes("scope=usage") && request.includes("state=failed"))).toBe(true);
+  await expect(page.getByText(/apply|retry|restore/i).first()).toBeVisible();
 });
 
 test("admin report filter model splits global and tab filters without overlap", async () => {
@@ -546,6 +562,9 @@ function responseForRoute(route: Route) {
       rollups: [{ rollupType: "daily", status: "finalized", sourceRequestCount: 2, dailyRows: 1, rollupRows: 1, windowStart: "2026-06-27T00:00:00Z", windowEnd: "2026-06-28T00:00:00Z" }],
       charts: [chart("retention-status")],
     };
+  }
+  if (endpoint === "migrations") {
+    return commonResponse(endpoint, { summary: { scope: "usage", schemaVersion: 2, dataVersion: 1, compatible: false, state: "failed", pending: 1, jobs: 1 }, rows: [{ scope: "usage", migrationId: 2026080501, name: "historical validation", release: "2026.8", state: "failed", schemaVersion: 2, dataVersion: 1, maintenanceMode: "online", executionMode: "transactional", lockClass: "online", timeoutClass: "bounded", rollbackClass: "restore-required", durationMs: 12, errorClass: "migration-failed", errorMessage: "migration safe failure", validationState: "failed", postcondition: "usage.historical-validation.schema.v1", checkpoints: 2, rowsScanned: 20, rowsUpdated: 10, rowsSkipped: 8, rowsFailed: 2, startedAt: generatedUtc, completedAt: generatedUtc }, { scope: "usage", migrationId: 2026072301, name: "reasoning telemetry", release: "2026.7", state: "pending", validationState: "pending" }, { scope: "usage", migrationId: 2026071901, name: "baseline", release: "2026.8", state: "in-progress", validationState: "running" }] });
   }
   if (endpoint === "summary") {
     return commonResponse("summary", {
