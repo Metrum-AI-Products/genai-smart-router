@@ -39,6 +39,36 @@ func TestUsageSchemaContractRejectsRequiredColumnAndIndexDrift(t *testing.T) {
 	}
 }
 
+func TestUsageSchemaContractVersionedReasoningTelemetryVerification(t *testing.T) {
+	db := openUsageSchemaContractDB(t)
+	for _, statement := range []string{
+		"ALTER TABLE request_usage DROP COLUMN reasoning_tokens",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_successful_attempt_count",
+		"ALTER TABLE request_usage DROP COLUMN reasoning_reported_attempt_count",
+		"ALTER TABLE request_attempts DROP COLUMN reasoning_tokens",
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := verifyUsageLegacyBaseline(db); err != nil {
+		t.Fatalf("v1 baseline rejected its historical schema: %v", err)
+	}
+	if err := verifyUsageReasoningTelemetryMigration(db); err == nil || !strings.Contains(err.Error(), "reasoning_tokens") {
+		t.Fatalf("v2 reasoning verifier accepted missing reasoning contract: %v", err)
+	}
+	if err := db.Exec("DROP INDEX idx_request_usage_ts").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("ALTER TABLE request_usage DROP COLUMN ts").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyUsageLegacyBaseline(db); err == nil || !strings.Contains(err.Error(), "request_usage.ts") {
+		t.Fatalf("v1 baseline accepted unrelated historical-contract drift: %v", err)
+	}
+}
+
 func TestUsageSchemaContractRejectsRequiredForeignKeyDrift(t *testing.T) {
 	db := openUsageSchemaContractDB(t)
 	// SQLite cannot drop a foreign key in place. Replacing this normalized child

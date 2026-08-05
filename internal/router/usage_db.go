@@ -1635,12 +1635,23 @@ func (s *usageStore) backfillRequestAttemptRetryAfter() error {
 }
 
 func ensureUsageRelationalSchema(db *gorm.DB) error {
+	return ensureUsageRelationalSchemaExcept(db, nil)
+}
+
+// ensureUsageRelationalSchemaExcept verifies a versioned subset of the usage
+// contract. A later migration may add columns to a table owned by the legacy
+// baseline; the baseline verifier must still be able to validate the exact
+// historical contract while the later migration verifies the complete current
+// contract. Exclusions are deliberately limited to named scalar columns: all
+// remaining columns, types, defaults, indexes, foreign keys, and checks stay
+// subject to the same strict physical-schema verification.
+func ensureUsageRelationalSchemaExcept(db *gorm.DB, excludedColumns map[string]map[string]struct{}) error {
 	if db == nil {
 		return errors.New("usage schema verification requires database")
 	}
 	models := usageRelationalModels()
 	for _, model := range models {
-		if err := verifyUsageRelationalModel(db, model); err != nil {
+		if err := verifyUsageRelationalModelExcept(db, model, excludedColumns); err != nil {
 			return err
 		}
 	}
@@ -1664,6 +1675,10 @@ func usageRelationalModels() []any {
 }
 
 func verifyUsageRelationalModel(db *gorm.DB, model any) error {
+	return verifyUsageRelationalModelExcept(db, model, nil)
+}
+
+func verifyUsageRelationalModelExcept(db *gorm.DB, model any, excludedColumns map[string]map[string]struct{}) error {
 	stmt := &gorm.Statement{DB: db}
 	if err := stmt.Parse(model); err != nil {
 		return err
@@ -1687,6 +1702,9 @@ func verifyUsageRelationalModel(db *gorm.DB, model any) error {
 	}
 	for _, field := range stmt.Schema.Fields {
 		if field.DBName == "" { // associations have no scalar database column.
+			continue
+		}
+		if _, excluded := excludedColumns[table][field.DBName]; excluded {
 			continue
 		}
 		actual, ok := byName[field.DBName]
@@ -2119,7 +2137,19 @@ var usageRelationalTables = []string{
 // verifyUsageLegacyBaseline is the postcondition for the initial ledger
 // adoption. It is deliberately stricter than a table-exists probe, while the
 // complete explicit DDL manifest is prepared as a later migration slice.
-func verifyUsageLegacyBaseline(db *gorm.DB) error { return ensureUsageRelationalSchema(db) }
+var usageReasoningTelemetryColumns = map[string]map[string]struct{}{
+	"request_usage": {
+		"reasoning_tokens":                   {},
+		"reasoning_attempt_count":            {},
+		"reasoning_successful_attempt_count": {},
+		"reasoning_reported_attempt_count":   {},
+	},
+	"request_attempts": {"reasoning_tokens": {}},
+}
+
+func verifyUsageLegacyBaseline(db *gorm.DB) error {
+	return ensureUsageRelationalSchemaExcept(db, usageReasoningTelemetryColumns)
+}
 
 func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 	for _, column := range []struct {
@@ -2142,24 +2172,10 @@ func applyUsageReasoningTelemetryMigration(db *gorm.DB) error {
 }
 
 func verifyUsageReasoningTelemetryMigration(db *gorm.DB) error {
-	if err := verifyUsageLegacyBaseline(db); err != nil {
-		return err
-	}
-	for _, column := range []struct {
-		model any
-		name  string
-	}{
-		{&usageRecord{}, "reasoning_tokens"},
-		{&usageRecord{}, "reasoning_attempt_count"},
-		{&usageRecord{}, "reasoning_successful_attempt_count"},
-		{&usageRecord{}, "reasoning_reported_attempt_count"},
-		{&requestAttemptRecord{}, "reasoning_tokens"},
-	} {
-		if !db.Migrator().HasColumn(column.model, column.name) {
-			return fmt.Errorf("required reasoning telemetry column %s is missing", column.name)
-		}
-	}
-	return nil
+	// This is intentionally the complete current contract, rather than merely
+	// a column-exists probe, so v2 verifies nullable/type/default semantics as
+	// well as every shared relational invariant.
+	return ensureUsageRelationalSchema(db)
 }
 
 func (s *usageStore) Emit(rec logRecord) {
