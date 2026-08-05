@@ -85,9 +85,10 @@ calling the quota adapter or writing a quota-admission record. An exact retry
 of a bounded opaque legacy row already in the local registry remains
 idempotent only for the historically evidenced `reserve-<lowercase-opaque-suffix>`
 and `legacy-<lowercase-opaque-suffix>` namespaces. This strict allow-list
-rejects provider- and deployment-credential-shaped legacy rows without
-returning their identifiers. A legacy identifier cannot create a new hold and
-a different identifier cannot bypass an active hold.
+rejects provider- and deployment-credential-shaped legacy rows, including
+token, secret, credential, API-key, and provider-key markers anywhere in the
+legacy suffix, without returning their identifiers. A legacy identifier cannot
+create a new hold and a different identifier cannot bypass an active hold.
 
 Rollout and rollback flow:
 
