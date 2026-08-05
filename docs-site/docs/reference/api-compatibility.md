@@ -94,10 +94,10 @@ artifacts.
 Operators who use an approved internal Go proxy or checksum database can set
 `API_COMPAT_BOOTSTRAP_GO_PROXY` and `API_COMPAT_BOOTSTRAP_GO_SUMDB` for the
 bootstrap target, including as explicit `make` command-line overrides. These
-settings are passed to Go as configuration data, never expanded as Make or
-shell commands; a malformed mirror value makes the Go provisioning step fail
-without running embedded syntax. They apply only while bootstrapping and never
-relax the offline mock phase.
+settings are passed to `go mod download` as configuration data, never expanded
+as Make or shell commands; a malformed mirror value makes the Go provisioning
+step fail without running embedded syntax. Python provisioning does not receive
+these settings, and they never relax the offline mock phase.
 
 The current caller-contract matrix covers `/v1/models`, OpenAI Chat
 Completions, OpenAI Responses, Anthropic Messages, function tools and tool
