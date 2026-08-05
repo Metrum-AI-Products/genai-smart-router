@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -14,7 +15,9 @@ MALICIOUS_VERSION = "x; id >/tmp/smart-llmrouter-make-poc #"
 MALICIOUS_EKS_INPUT = '"; id >/tmp/smart-llmrouter-eks-make-poc; echo "'
 
 
-def run_make(*args: str) -> subprocess.CompletedProcess[str]:
+def run_make(
+    *args: str, environment: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("EKS_AWS_PROFILE", None)
     env.pop("EKS_DELIVERY_AWS_PROFILE", None)
@@ -31,6 +34,8 @@ def run_make(*args: str) -> subprocess.CompletedProcess[str]:
             "IMAGE_TAG": "v1.2.3-linux-amd64",
         }
     )
+    if environment:
+        env.update(environment)
     return subprocess.run(
         ["make", *args],
         cwd=ROOT,
@@ -157,7 +162,18 @@ def main() -> int:
         "legacy discovery/session bootstrap must not use the delivery profile variable",
     )
 
-    make_database = run_make("-pn")
+    # `make -pn` with no goal still walks the default `test` target. Recipes
+    # containing recursive `$(MAKE)` commands execute even under `-n`, which
+    # would invoke the API-compatibility bootstrap and require `uv`. Anchor
+    # database inspection to the EKS help target instead: it remains a
+    # side-effect-free Makefile parse while avoiding unrelated toolchains.
+    no_uv_path = os.pathsep.join(
+        directory
+        for directory in os.environ["PATH"].split(os.pathsep)
+        if not (Path(directory) / "uv").exists()
+    )
+    require(shutil.which("uv", path=no_uv_path) is None, "no-uv test path still resolves uv")
+    make_database = run_make("-pn", "eks-help", environment={"PATH": no_uv_path})
     require(make_database.returncode == 0, f"Make database inspection failed:\n{make_database.stderr}")
     require(
         "EKS_AWS_PROFILE = genai-smart-router-eks-discovery" in make_database.stdout,
