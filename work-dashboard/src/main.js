@@ -1,5 +1,10 @@
 import * as vg from "@uwdata/vgplot";
-import {detailList, taskDetailSections, toggleExpandedTask} from "./task-details.js";
+import {
+  detailList,
+  linkedTextParts,
+  taskDetailSections,
+  toggleExpandedTask,
+} from "./task-details.js";
 import "./style.css";
 
 const STATUS_ORDER = ["blocked", "in_progress", "ready", "pending", "done", "cancelled"];
@@ -121,6 +126,15 @@ function reconcile(baseline, events) {
     if (!hasDetail) {
       conflicts.push({type: "missing_drilldown_detail", message: `${task.id} has no drilldown detail`});
     }
+    const hasStatusContext = Boolean(
+      task.status_reason?.trim()
+      && Array.isArray(task.next_steps)
+      && Array.isArray(task.human_actions)
+      && (!["pending", "ready", "in_progress", "blocked"].includes(task.status) || task.next_steps.length)
+    );
+    if (!hasStatusContext) {
+      conflicts.push({type: "missing_status_context", message: `${task.id} has incomplete status context`});
+    }
     return {
       id: task.id,
       stream: task.stream,
@@ -133,6 +147,9 @@ function reconcile(baseline, events) {
       commands: detailList(task.commands),
       requires: task.requires ?? [],
       references: task.references ?? [],
+      status_reason: task.status_reason ?? null,
+      next_steps: detailList(task.next_steps),
+      human_actions: detailList(task.human_actions),
       status: task.status,
       due_date: task.due_date,
       due_bucket: scheduleBucket(task),
@@ -306,6 +323,21 @@ function cell(text, className = "") {
 }
 const expandedTaskIds = new Set();
 
+function appendLinkedText(container, value) {
+  linkedTextParts(value).forEach(part => {
+    if (!part.href) {
+      container.append(document.createTextNode(part.text));
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = part.href;
+    link.textContent = part.text;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    container.append(link);
+  });
+}
+
 function appendDetailSection(container, label, values) {
   const section = document.createElement("section");
   section.className = "task-detail-section";
@@ -314,12 +346,63 @@ function appendDetailSection(container, label, values) {
   const list = document.createElement("ul");
   values.forEach(value => {
     const item = document.createElement("li");
-    item.textContent = value;
+    appendLinkedText(item, value);
     list.append(item);
   });
   section.append(heading, list);
   container.append(section);
 }
+function appendStatusList(container, label, values, emptyText) {
+  const section = document.createElement("section");
+  section.className = "task-status-section";
+  const heading = document.createElement("h5");
+  heading.textContent = label;
+  section.append(heading);
+  if (values.length) {
+    const list = document.createElement("ul");
+    values.forEach(value => {
+      const item = document.createElement("li");
+      appendLinkedText(item, value);
+      list.append(item);
+    });
+    section.append(list);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "task-status-empty";
+    empty.textContent = emptyText;
+    section.append(empty);
+  }
+  container.append(section);
+}
+
+function createStatusContext(task) {
+  const context = document.createElement("div");
+  context.className = `task-status-context task-status-context-${task.status}`;
+  const reason = document.createElement("section");
+  reason.className = "task-status-section task-status-reason";
+  const heading = document.createElement("h5");
+  heading.textContent = "Why this status?";
+  const explanation = document.createElement("p");
+  appendLinkedText(explanation, task.status_reason ?? "No status reason has been recorded.");
+  reason.append(heading, explanation);
+  context.append(reason);
+  appendStatusList(
+    context,
+    "What happens next?",
+    task.next_steps,
+    ["done", "cancelled"].includes(task.status)
+      ? "No next step is required; this task is closed."
+      : "No next step has been recorded.",
+  );
+  appendStatusList(
+    context,
+    "What can a human do?",
+    task.human_actions,
+    "No direct human action is currently required.",
+  );
+  return context;
+}
+
 
 function createTaskDetailRow(task, detailId) {
   const detailRow = document.createElement("tr");
@@ -335,6 +418,7 @@ function createTaskDetailRow(task, detailId) {
   const heading = document.createElement("h4");
   heading.textContent = `${task.title} details`;
   panel.append(heading);
+  panel.append(createStatusContext(task));
 
   if (task.description) {
     const description = document.createElement("section");

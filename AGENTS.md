@@ -76,6 +76,9 @@ These instructions apply to the whole repository.
 - Repository work is also tracked locally in the checked-in `work-items.ndjson` baseline and `work-item-events.ndjson` append-only event journal. These files are shared repository state, not ignored personal notes: commit relevant changes to them with the implementation, documentation, or operational work they describe.
 - `work-items.ndjson` is the durable baseline; `work-item-events.ndjson` records task creation and updates. The reconciled current state is derived from both files. Do not hand-edit the event journal, rewrite old events, treat DuckDB/Mosaic as a writable store, or leave the only copy of a task update in an agent session, dashboard, generated projection, or ignored local file.
 - Use `scripts/work_items.py` for task writes. Its exclusive lock, optimistic status check, revision validation, global case-insensitive task-ID uniqueness, dependency validation, and `fsync` protect concurrent agents from silently overwriting one another:
+- Every reconciled task carries explicit status context: `status_reason` answers why the task has its current status, `next_steps` says what happens next, and `human_actions` says what a person can do. Use an empty `human_actions` list when no direct human action is useful. Active statuses (`pending`, `ready`, `in_progress`, and `blocked`) require at least one next step; closed statuses may have none. Changing a task's status requires replacing the status reason and explicitly replacing both lists so stale instructions cannot survive a transition.
+- Put related GitHub issue references (`#<number>`), pull request references (`PR#<number>`), and full HTTP(S) references in status context or structured reference fields. The expanded dashboard renders these as links; do not substitute raw credentials or private operational URLs.
+
 
   ```bash
   # Validate and inspect reconciled checked-in state.
@@ -89,12 +92,18 @@ These instructions apply to the whole repository.
     --description "<scope and intended result>" \
     --stream <stream> \
     --phase <number> \
-    --priority <critical|high|normal|low>
+    --priority <critical|high|normal|low> \
+    --status-reason "<why this task has its initial status>" \
+    --next-step "<next concrete action>" \
+    --human-action "<optional action a person can take>"
 
   # Append a revisioned update; use --expect-status to reject stale writes.
   rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
     --expect-status <current-status> \
-    --status <pending|ready|in_progress|blocked|done|cancelled>
+    --status <pending|ready|in_progress|blocked|done|cancelled> \
+    --status-reason "<why the status changed>" \
+    --replace-next-steps "<next concrete action>" \
+    --replace-human-actions "<optional action a person can take>"
 
   # Replace the entire dependency list atomically; omit record IDs to clear it.
   rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
@@ -109,6 +118,13 @@ These instructions apply to the whole repository.
     --replace-evidence "<evidence>" \
     --replace-commands "<command>" \
     --replace-references "<reference>"
+
+  # Update context without changing status; append or atomically replace lists.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
+    --expect-status <current-status> \
+    --status-reason "<current explanation>" \
+    --replace-next-steps "<next concrete action>" \
+    --replace-human-actions
   ```
 
 - After a task write, rerun `rtk python3 scripts/work_items.py validate`, review both tracked NDJSON files with `rtk git status --short -- work-items.ndjson work-item-events.ndjson`, and include their changes in the same commit as the work. A task is not durably handed off until the relevant NDJSON update is checked into the repository.

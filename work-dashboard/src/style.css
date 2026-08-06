@@ -136,6 +136,32 @@ td small { display: block; color: #667b74; margin-top: 5px; font: 9px "DM Mono",
   font-size: 16px;
   line-height: 1.35;
 }
+.task-status-context {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 1px;
+  margin-bottom: 22px;
+  border: 1px solid #28463c;
+  background: #28463c;
+}
+.task-status-context-blocked { border-color: #713f3c; background: #713f3c; }
+.task-status-section { padding: 16px 18px; background: #0c1a16; }
+.task-status-reason { grid-column: 1 / -1; }
+.task-status-context-blocked .task-status-reason { background: rgba(113, 63, 60, .22); }
+.task-status-section p { margin: 0; color: #c5d4cf; font-size: 12px; line-height: 1.6; }
+.task-status-section ul { margin: 0; padding-left: 18px; }
+.task-status-section li { color: #b4c6c0; font-size: 12px; line-height: 1.55; }
+.task-status-section li + li { margin-top: 7px; }
+.task-status-empty { color: #748a83 !important; font-style: italic; }
+.task-detail-panel a {
+  color: #82d8b2;
+  text-decoration-color: #356a55;
+  text-underline-offset: 2px;
+}
+.task-detail-panel a:hover, .task-detail-panel a:focus-visible {
+  color: var(--mint);
+  text-decoration-color: currentColor;
+}
 .task-detail-panel h5 {
   margin: 0 0 8px;
   color: var(--mint);
@@ -208,6 +234,8 @@ footer { display: flex; justify-content: space-between; color: #536861; font: 9p
   .wide-chart { grid-column: auto; }
   .filters { grid-template-columns: 1fr 1fr; }
   .task-detail-sections { grid-template-columns: 1fr; }
+  .task-status-context { grid-template-columns: 1fr; }
+  .task-status-reason { grid-column: auto; }
 }
 
 @media (max-width: 620px) {

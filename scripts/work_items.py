@@ -21,6 +21,7 @@ DEFAULT_EVENTS = REPO_ROOT / "work-item-events.ndjson"
 REGISTRY_SCHEMA = "smart-llmrouter.work-items/v1"
 EVENT_SCHEMA = "smart-llmrouter.work-item-events/v1"
 TASK_STATUSES = ("pending", "ready", "in_progress", "blocked", "done", "cancelled")
+ACTIVE_TASK_STATUSES = ("pending", "ready", "in_progress", "blocked")
 PRIORITIES = ("critical", "high", "normal", "low")
 EVENT_TYPES = ("task.created", "task.updated")
 
@@ -87,7 +88,35 @@ def parse_timestamp(value: Any, *, field: str, record_id: str) -> None:
         raise RegistryError(f"{record_id}: invalid {field}") from error
 
 
-def validate_task(record: dict[str, Any]) -> None:
+def validate_string_list(record: dict[str, Any], field: str, *, record_id: str) -> list[str] | None:
+    values = record.get(field)
+    if values is None:
+        return None
+    if not isinstance(values, list) or not all(isinstance(item, str) and item.strip() for item in values):
+        raise RegistryError(f"{record_id}: {field} must be an array of non-empty strings")
+    return values
+
+
+def validate_status_context(record: dict[str, Any], *, required: bool) -> None:
+    record_id = record["id"]
+    status_reason = record.get("status_reason")
+    if status_reason is not None and (not isinstance(status_reason, str) or not status_reason.strip()):
+        raise RegistryError(f"{record_id}: status_reason must be a non-empty string")
+    next_steps = validate_string_list(record, "next_steps", record_id=record_id)
+    human_actions = validate_string_list(record, "human_actions", record_id=record_id)
+    if not required:
+        return
+    if status_reason is None:
+        raise RegistryError(f"{record_id}: status_reason is required")
+    if next_steps is None:
+        raise RegistryError(f"{record_id}: next_steps is required")
+    if human_actions is None:
+        raise RegistryError(f"{record_id}: human_actions is required")
+    if record["status"] in ACTIVE_TASK_STATUSES and not next_steps:
+        raise RegistryError(f"{record_id}: active task status requires at least one next_steps item")
+
+
+def validate_task(record: dict[str, Any], *, require_status_context: bool = False) -> None:
     record_id = record["id"]
     if not record_id.startswith("task."):
         raise RegistryError(f"{record_id}: task id must start with 'task.'")
@@ -126,9 +155,12 @@ def validate_task(record: dict[str, Any]) -> None:
         raise RegistryError(
             f"{record_id}: drilldown detail requires description, actions, acceptance, or evidence"
         )
+    validate_status_context(record, required=require_status_context)
 
 
-def validate_registry(records: list[dict[str, Any]]) -> None:
+def validate_registry(
+    records: list[dict[str, Any]], *, require_status_context: bool = False
+) -> None:
     ids: set[str] = set()
     normalized_ids: dict[str, str] = {}
     task_ids: set[str] = set()
@@ -164,7 +196,7 @@ def validate_registry(records: list[dict[str, Any]]) -> None:
                 raise RegistryError(f"{record_id}: unsupported registry schema")
         if kind == "task":
             task_ids.add(record_id)
-            validate_task(record)
+            validate_task(record, require_status_context=require_status_context)
 
     if plans != 1:
         raise RegistryError(f"registry must contain exactly one plan record; found {plans}")
@@ -290,7 +322,7 @@ def project_registry(
 
     projected = [dict(record) for record in baseline if record["kind"] != "task"]
     projected.extend(task_by_id[task_id] for task_id in task_order)
-    validate_registry(projected)
+    validate_registry(projected, require_status_context=True)
     return projected, revisions
 
 
@@ -461,6 +493,7 @@ def command_add(
     phase: int,
     priority: str,
     status: str,
+    status_reason: str,
     due_date: str | None,
     assignee: str | None,
     requires: list[str],
@@ -468,6 +501,8 @@ def command_add(
     actions: list[str],
     acceptance: list[str],
     evidence: list[str],
+    next_steps: list[str],
+    human_actions: list[str],
     commands: list[str],
     actor: str,
 ) -> int:
@@ -496,6 +531,9 @@ def command_add(
         "acceptance": acceptance,
         "evidence": evidence,
         "status": status,
+        "status_reason": status_reason,
+        "next_steps": next_steps,
+        "human_actions": human_actions,
         "due_date": normalized_due_date,
         "priority": priority,
         "assignee": optional_value(assignee),
@@ -506,6 +544,7 @@ def command_add(
     }
     if commands:
         task["commands"] = commands
+    validate_task(task, require_status_context=True)
     event = event_for_task(
         event_type="task.created",
         task=task,
@@ -524,6 +563,7 @@ def command_update(
     *,
     task_id: str,
     status: str | None,
+    status_reason: str | None,
     due_date: str | None,
     assignee: str | None,
     replace_requires: list[str] | None,
@@ -532,6 +572,8 @@ def command_update(
     replace_evidence: list[str] | None,
     replace_commands: list[str] | None,
     replace_references: list[str] | None,
+    replace_next_steps: list[str] | None,
+    replace_human_actions: list[str] | None,
     expect_status: str | None,
     actor: str,
 ) -> int:
@@ -542,12 +584,14 @@ def command_update(
         "evidence": replace_evidence,
         "commands": replace_commands,
         "references": replace_references,
+        "next_steps": replace_next_steps,
+        "human_actions": replace_human_actions,
     }
-    if status is None and due_date is None and assignee is None and all(
+    if status is None and status_reason is None and due_date is None and assignee is None and all(
         value is None for value in replacements.values()
     ):
         raise RegistryError(
-            "update requires a status, due date, assignee, or structured-list replacement option"
+            "update requires a status, status reason, due date, assignee, or structured-list replacement option"
         )
 
     baseline = load_registry(registry_path)
@@ -561,6 +605,14 @@ def command_update(
         raise RegistryError(
             f"{task_id}: expected status {expect_status!r}, found {previous['status']!r}; event was not appended"
         )
+    status_changed = status is not None and status != previous["status"]
+    if status_changed and (
+        status_reason is None or replace_next_steps is None or replace_human_actions is None
+    ):
+        raise RegistryError(
+            f"{task_id}: changing status requires --status-reason, --replace-next-steps, "
+            "and --replace-human-actions"
+        )
 
     task = dict(previous)
     now = utc_now()
@@ -572,6 +624,8 @@ def command_update(
             task["completed_at"] = now
         elif task.get("completed_at") is not None:
             task["completed_at"] = None
+    if status_reason is not None:
+        task["status_reason"] = status_reason
     if due_date is not None:
         task["due_date"] = optional_value(due_date)
         parse_due_date(task["due_date"], record_id=task_id)
@@ -580,6 +634,7 @@ def command_update(
     for field, value in replacements.items():
         if value is not None:
             task[field] = value
+    validate_task(task, require_status_context=True)
     task["updated_at"] = now
 
     event = event_for_task(
@@ -631,6 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--phase", required=True, type=int)
     add_parser.add_argument("--priority", choices=PRIORITIES, default="normal")
     add_parser.add_argument("--status", choices=TASK_STATUSES, default="pending")
+    add_parser.add_argument("--status-reason", required=True, help="why the task currently has this status")
     add_parser.add_argument("--due-date", help="YYYY-MM-DD or none")
     add_parser.add_argument("--assignee", help="assignee identifier or none")
     add_parser.add_argument("--requires", action="append", default=[])
@@ -639,10 +695,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--acceptance", action="append", default=[])
     add_parser.add_argument("--evidence", action="append", default=[])
     add_parser.add_argument("--command", dest="commands", action="append", default=[])
+    add_parser.add_argument("--next-step", action="append", default=[])
+    add_parser.add_argument("--human-action", action="append", default=[])
 
     update_parser = subparsers.add_parser("update", help="append a task.updated event")
     update_parser.add_argument("id")
     update_parser.add_argument("--status", choices=TASK_STATUSES)
+    update_parser.add_argument("--status-reason", help="why the task currently has this status")
     update_parser.add_argument("--due-date", help="YYYY-MM-DD or none")
     update_parser.add_argument("--assignee", help="assignee identifier or none")
     update_parser.add_argument(
@@ -658,6 +717,8 @@ def build_parser() -> argparse.ArgumentParser:
         ("--replace-evidence", "replace_evidence", "evidence item"),
         ("--replace-commands", "replace_commands", "command"),
         ("--replace-references", "replace_references", "reference"),
+        ("--replace-next-steps", "replace_next_steps", "next step"),
+        ("--replace-human-actions", "replace_human_actions", "human action"),
     ):
         update_parser.add_argument(
             option,
@@ -700,6 +761,7 @@ def main() -> int:
                 phase=args.phase,
                 priority=args.priority,
                 status=args.status,
+                status_reason=args.status_reason,
                 due_date=args.due_date,
                 assignee=args.assignee,
                 requires=args.requires,
@@ -708,6 +770,8 @@ def main() -> int:
                 acceptance=args.acceptance,
                 evidence=args.evidence,
                 commands=args.commands,
+                next_steps=args.next_step,
+                human_actions=args.human_action,
                 actor=args.actor,
             )
         if args.command == "update":
@@ -716,6 +780,7 @@ def main() -> int:
                 args.events,
                 task_id=args.id,
                 status=args.status,
+                status_reason=args.status_reason,
                 due_date=args.due_date,
                 assignee=args.assignee,
                 replace_requires=args.replace_requires,
@@ -724,6 +789,8 @@ def main() -> int:
                 replace_evidence=args.replace_evidence,
                 replace_commands=args.replace_commands,
                 replace_references=args.replace_references,
+                replace_next_steps=args.replace_next_steps,
+                replace_human_actions=args.replace_human_actions,
                 expect_status=args.expect_status,
                 actor=args.actor,
             )
