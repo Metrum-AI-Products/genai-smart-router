@@ -105,6 +105,12 @@ These instructions apply to the whole repository.
     --replace-next-steps "<next concrete action>" \
     --replace-human-actions "<optional action a person can take>"
 
+  # Replace title/description when an existing task is deliberately broadened or narrowed.
+  rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
+    --expect-status <current-status> \
+    --title "<current consolidated scope>" \
+    --description "<current intended result and boundaries>"
+
   # Replace the entire dependency list atomically; omit record IDs to clear it.
   rtk python3 scripts/work_items.py --actor <agent-or-user> update task.<name> \
     --expect-status <current-status> \
@@ -172,7 +178,7 @@ These instructions apply to the whole repository.
    - `rtk rg -n "MiniMax-Text-01|text-01|openrouter/pareto|moonshotai/kimi|qwen|glm|hy3|kat-coder|nemotron|mercury|ling-2\\.6|big-coder.*failover" README.md docs deployment.md internal scripts`
    - `rtk rg -n "request_usage|request_attempts|request_trace_events|request_traffic_shape_events|request_upstream_shape_events|request_errors|diagnostics-schema" README.md docs docs-site internal scripts`
 10. When feature-branch work is complete and thoroughly tested, prepare a focused GitHub pull request with acceptance, QA/check, rollback, and safe demo evidence. Follow the repository's approval and branch-protection requirements; never force, bypass, or infer merge authority.
-11. For actionable post-review findings, record a detailed linked follow-up issue unless the approved review workflow explicitly authorizes a fix in the current change. Route sensitive security findings through the approved private security path. After merge, remove only clean confirmed-merged worktrees/local branches.
+11. For actionable post-review findings, first search open issues and their source review-comment URLs. Record a detailed linked follow-up issue unless the approved review workflow explicitly authorizes a fix in the current change. Do not create parallel implementation PRs for individual review comments: consolidate all open review-derived work under one labeled master issue, one active NDJSON task, one clean implementation branch/worktree, and one PR. Deduplicate already-merged behavior and overlapping acceptance criteria explicitly. The master must use native sub-issue links plus one hidden `<!-- review-followup-rollup:v1 children=<comma-separated issue numbers> -->` marker and the `review-followup-rollup` label. After the consolidated PR merges and evidence is recorded, closing the master invokes `.github/workflows/close-review-followups.yml` to comment on and close any still-open listed children. Route sensitive security findings through the approved private security path. After merge, remove only clean confirmed-merged worktrees/local branches.
 
 ## Live Provider Testing
 

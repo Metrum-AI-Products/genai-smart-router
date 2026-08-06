@@ -1,0 +1,27 @@
+name: Close review follow-up rollups
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-linked-children:
+    if: contains(github.event.issue.labels.*.name, 'review-followup-rollup')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out closure automation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify cascade behavior
+        run: python3 scripts/close_review_followups_test.py
+      - name: Close linked review follow-ups
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/close_review_followups.py
+          --event-path "$GITHUB_EVENT_PATH"
+          --repository "$GITHUB_REPOSITORY"

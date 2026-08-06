@@ -127,6 +127,10 @@ def main() -> int:
             "task.first",
             "--expect-status",
             "blocked",
+            "--title",
+            "Deliver consolidated task scope",
+            "--description",
+            "One task now covers the deduplicated implementation contract.",
             "--status",
             "in_progress",
             "--status-reason",
@@ -144,6 +148,15 @@ def main() -> int:
         require(update_event["status"] == "in_progress", "top-level event status missing")
         require(update_event["due_date"] is None, "top-level event due_date missing")
         require(update_event["task"]["assignee"] == "quality-engineering", "snapshot assignee missing")
+        require(
+            update_event["task"]["title"] == "Deliver consolidated task scope",
+            "task update omitted replacement title",
+        )
+        require(
+            update_event["task"]["description"]
+            == "One task now covers the deduplicated implementation contract.",
+            "task update omitted replacement description",
+        )
         require(
             update_event["task"]["status_reason"] == "Implementation work is actively running.",
             "status transition omitted its reason",

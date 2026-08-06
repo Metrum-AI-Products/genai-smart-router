@@ -562,6 +562,8 @@ def command_update(
     events_path: Path,
     *,
     task_id: str,
+    title: str | None,
+    description: str | None,
     status: str | None,
     status_reason: str | None,
     due_date: str | None,
@@ -587,11 +589,18 @@ def command_update(
         "next_steps": replace_next_steps,
         "human_actions": replace_human_actions,
     }
-    if status is None and status_reason is None and due_date is None and assignee is None and all(
-        value is None for value in replacements.values()
+    if (
+        title is None
+        and description is None
+        and status is None
+        and status_reason is None
+        and due_date is None
+        and assignee is None
+        and all(value is None for value in replacements.values())
     ):
         raise RegistryError(
-            "update requires a status, status reason, due date, assignee, or structured-list replacement option"
+            "update requires a title, description, status, status reason, due date, assignee, "
+            "or structured-list replacement option"
         )
 
     baseline = load_registry(registry_path)
@@ -616,6 +625,10 @@ def command_update(
 
     task = dict(previous)
     now = utc_now()
+    if title is not None:
+        task["title"] = title
+    if description is not None:
+        task["description"] = description
     if status is not None:
         task["status"] = status
         if status == "in_progress" and task.get("started_at") is None:
@@ -700,6 +713,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     update_parser = subparsers.add_parser("update", help="append a task.updated event")
     update_parser.add_argument("id")
+    update_parser.add_argument("--title", help="replace the task title")
+    update_parser.add_argument("--description", help="replace the task description")
     update_parser.add_argument("--status", choices=TASK_STATUSES)
     update_parser.add_argument("--status-reason", help="why the task currently has this status")
     update_parser.add_argument("--due-date", help="YYYY-MM-DD or none")
@@ -779,6 +794,8 @@ def main() -> int:
                 args.file,
                 args.events,
                 task_id=args.id,
+                title=args.title,
+                description=args.description,
                 status=args.status,
                 status_reason=args.status_reason,
                 due_date=args.due_date,
