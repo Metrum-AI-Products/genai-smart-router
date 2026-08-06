@@ -75,12 +75,37 @@ never accept credentials as flags or configuration content. Before lifecycle
 work, the operator runs `aws sso login` or the organization's equivalent
 federated login for the source profile, then verifies:
 
+
 ```bash
 aws sts get-caller-identity \
   --profile <operator-delivery-profile> \
   --query '{Account:Account,Arn:Arn}' \
   --output json
 ```
+
+#### Headless and noninteractive source authentication
+
+The delivery CLI does not require a local browser. It delegates source
+authentication to the operator-selected AWS profile, so use one of these
+approved source-profile mechanisms before invoking a delivery target:
+
+- **Headless Identity Center device authorization:** run
+  `aws sso login --use-device-code --profile <operator-federated-profile>`.
+  Complete the short-lived authorization from a separate browser, without
+  copying device codes into evidence or chat.
+- **Organization credential process:** configure
+  `credential_process = <approved-command>` in the federated source profile.
+  The command must emit short-lived AWS credentials only to the AWS CLI process;
+  do not write credentials, tokens, or session caches into this repository,
+  casts, or change records.
+- **Approved workload federation:** use an organization-issued workload profile
+  that resolves to the exact trusted source role. Its trust and source-role
+  `sts:AssumeRole` grant require the same review as an Identity Center
+  assignment.
+
+The source role is the authorization boundary. A developer's ambient IAM-user
+credentials cannot mint an Identity Center session or substitute for the
+trusted source role, even when they can administer bootstrap infrastructure.
 
 The account must be `121701826775` and the ARN must have
 `assumed-role/genai-smart-router-eks-staging-delivery/` as its role/session
