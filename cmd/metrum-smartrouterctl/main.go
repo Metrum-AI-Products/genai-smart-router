@@ -20,7 +20,7 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 {
-		die("usage: metrum-smartrouterctl <register|observe-schema|quota-reserve|status|deploy|promote|rollback> [flags]")
+		die("usage: metrum-smartrouterctl <register|observe-schema|quota-reserve|status|plan|deploy|delete|promote|rollback> [flags]")
 	}
 	switch os.Args[1] {
 	case "register":
@@ -31,7 +31,7 @@ func main() {
 		quotaReserve(os.Args[2:])
 	case "status":
 		status(os.Args[2:])
-	case "deploy", "promote", "rollback":
+	case "plan", "deploy", "delete", "promote", "rollback":
 		die("%s is disabled: ADR-0012 human endpoint, encryption, TLS, durability, HA, network, and DNS gates remain open", os.Args[1])
 	default:
 		die("unsupported command %q", os.Args[1])

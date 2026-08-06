@@ -12,11 +12,14 @@ import (
 )
 
 func TestLifecycleCommandsFailClosed(t *testing.T) {
-	for _, command := range []string{"deploy", "promote", "rollback"} {
-		cmd := exec.Command("go", "run", ".", command)
+	for _, command := range []string{"plan", "deploy", "delete", "promote", "rollback"} {
+		cmd := exec.Command("go", "run", ".", command, "--manifest", "secret-like-input-must-not-be-echoed")
 		out, err := cmd.CombinedOutput()
 		if err == nil || !strings.Contains(string(out), command+" is disabled") || !strings.Contains(string(out), "DNS gates remain open") {
 			t.Fatalf("%s did not fail closed: err=%v output=%s", command, err, out)
+		}
+		if strings.Contains(string(out), "secret-like-input-must-not-be-echoed") {
+			t.Fatalf("%s echoed untrusted lifecycle input: %s", command, out)
 		}
 	}
 }
