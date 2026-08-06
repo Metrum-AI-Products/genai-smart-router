@@ -235,7 +235,7 @@ func TestTrafficShapeInputTokensRejectsBeforeUpstreamAndPersistsTelemetry(t *tes
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.db")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.db"))
 	on := true
 	cfg.Callers[0].TrafficShape = TrafficShapeConfig{Enabled: &on, InputTokensPerSec: 1, InputTokenBurst: 4}
 	svc, err := New(cfg)

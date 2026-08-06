@@ -304,7 +304,7 @@ func performChatRequest(t *testing.T, svc *Service, body string) *httptest.Respo
 
 func enableUpstreamShapeUsageDB(t *testing.T, cfg *Config) {
 	t.Helper()
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(t.TempDir(), "usage.sqlite"))
 }
 
 func writeChatTestResponse(w http.ResponseWriter, content string) {

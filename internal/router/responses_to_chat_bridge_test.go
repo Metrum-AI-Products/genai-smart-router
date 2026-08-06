@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -53,7 +54,38 @@ func TestResponsesToChatBridgeEncodesTextAndFunctionTools(t *testing.T) {
 	}
 }
 
-func TestResponsesToChatBridgeRejectsExplicitNullToolChoice(t *testing.T) {
+func TestResponsesToChatBridgeDistinguishesOmittedAndNullToolChoiceWithoutTools(t *testing.T) {
+	target := Target{ResponsesToChat: ResponsesToChatBridge{Enabled: true, Text: true}}
+
+	omitted, err := decodeRequest("openai-responses", []byte(`{"model":"bridge","input":"hi"}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := encodeResponsesToChatBridge("chat-upstream", omitted, target)
+	if err != nil {
+		t.Fatalf("omitted tool_choice rejected: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := body["tool_choice"]; present {
+		t.Fatalf("omitted tool_choice encoded as %#v", body["tool_choice"])
+	}
+
+	explicitNull, err := decodeRequest("openai-responses", []byte(`{"model":"bridge","input":"hi","tool_choice":null}`), http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := responsesToChatBridgeFilterReason(target, explicitNull, "openai-responses", "openai-chat"); got != "responses-to-chat-tool-choice-null-unsupported" {
+		t.Fatalf("explicit null filter reason=%q", got)
+	}
+	if _, err := encodeResponsesToChatBridge("chat-upstream", explicitNull, target); err == nil || !strings.Contains(err.Error(), "responses-to-chat-tool-choice-null-unsupported") {
+		t.Fatalf("explicit null err=%v", err)
+	}
+}
+
+func TestResponsesToChatBridgeRejectsExplicitNullToolChoiceWithTools(t *testing.T) {
 	req, err := decodeRequest("openai-responses", []byte(`{"model":"bridge","input":"hi","tools":[{"type":"function","name":"echo"}],"tool_choice":null}`), http.Header{})
 	if err != nil {
 		t.Fatal(err)
@@ -64,6 +96,36 @@ func TestResponsesToChatBridgeRejectsExplicitNullToolChoice(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "responses-to-chat-tool-choice-null-unsupported") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestResponsesToolChoiceToChatPreservesSupportedNonNullModes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		choice any
+		want   any
+	}{
+		{name: "string auto", choice: "auto", want: "auto"},
+		{name: "string none", choice: "none", want: "none"},
+		{name: "string required", choice: "required", want: "required"},
+		{name: "object auto", choice: map[string]any{"type": "auto"}, want: map[string]any{"type": "auto"}},
+		{name: "object none", choice: map[string]any{"type": "none"}, want: map[string]any{"type": "none"}},
+		{name: "object required", choice: map[string]any{"type": "required"}, want: map[string]any{"type": "required"}},
+		{
+			name:   "forced function",
+			choice: map[string]any{"type": "function", "name": "echo"},
+			want:   map[string]any{"type": "function", "function": map[string]any{"name": "echo"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := responsesToolChoiceToChat(tc.choice)
+			if err != nil {
+				t.Fatalf("supported tool_choice %#v rejected: %v", tc.choice, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("tool_choice=%#v, want %#v", got, tc.want)
+			}
+		})
 	}
 }
 

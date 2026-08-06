@@ -18,11 +18,13 @@ from close_review_followups import CascadeError, cascade_closed_rollup, parse_ch
 
 class FakeIssueClient:
     def __init__(self, issues: dict[int, dict[str, Any]]) -> None:
+        self.requests: list[int] = []
         self.issues = issues
         self.comments: list[tuple[int, str]] = []
         self.closed: list[int] = []
 
     def get_issue(self, issue_number: int) -> dict[str, Any]:
+        self.requests.append(issue_number)
         return self.issues[issue_number]
 
     def comment(self, issue_number: int, body: str) -> None:
@@ -76,12 +78,43 @@ def require_error(function: Any, expected: str) -> None:
         raise AssertionError(f"expected CascadeError containing {expected!r}")
 
 
-def closed_event(body: str, *, label: bool = True) -> dict[str, Any]:
+def closed_event(
+    body: str,
+    *,
+    label: bool = True,
+    state_reason: Any = "completed",
+    include_state_reason: bool = True,
+) -> dict[str, Any]:
     labels = [{"name": "review-followup-rollup"}] if label else []
-    return {
-        "action": "closed",
-        "issue": {"number": 774, "body": body, "labels": labels},
-    }
+    issue = {"number": 774, "body": body, "labels": labels}
+    if include_state_reason:
+        issue["state_reason"] = state_reason
+    return {"action": "closed", "issue": issue}
+
+
+def run_cli_smoke(event: dict[str, Any], server_port: int) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        event_path = Path(temporary_directory) / "event.json"
+        event_path.write_text(json.dumps(event), encoding="utf-8")
+        environment = dict(os.environ, TEST_GITHUB_TOKEN="test-token-must-not-print")
+        return subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("close_review_followups.py")),
+                "--event-path",
+                str(event_path),
+                "--repository",
+                "owner/repository",
+                "--token-env",
+                "TEST_GITHUB_TOKEN",
+                "--api-url",
+                f"http://127.0.0.1:{server_port}",
+            ],
+            text=True,
+            capture_output=True,
+            env=environment,
+            timeout=30,
+        )
 
 
 def main() -> int:
@@ -126,6 +159,20 @@ def main() -> int:
     assert cascade_closed_rollup({"action": "opened", "issue": {}}, ignored) is None
     assert cascade_closed_rollup(closed_event(marker, label=False), ignored) is None
 
+    for state_reason in ("not_planned", None, "unknown"):
+        ignored = FakeIssueClient({})
+        assert cascade_closed_rollup(
+            closed_event("invalid marker", state_reason=state_reason),
+            ignored,
+        ) is None
+        assert ignored.requests == []
+    ignored = FakeIssueClient({})
+    assert cascade_closed_rollup(
+        closed_event("invalid marker", include_state_reason=False),
+        ignored,
+    ) is None
+    assert ignored.requests == []
+
     pull_client = FakeIssueClient({714: {"number": 714, "state": "open", "pull_request": {}}})
     require_error(
         lambda: cascade_closed_rollup(
@@ -141,35 +188,10 @@ def main() -> int:
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     try:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            event_path = Path(temporary_directory) / "event.json"
-            event_path.write_text(
-                json.dumps(
-                    closed_event(
-                        "<!-- review-followup-rollup:v1 children=714,773 -->"
-                    )
-                ),
-                encoding="utf-8",
-            )
-            environment = dict(os.environ, TEST_GITHUB_TOKEN="test-token-must-not-print")
-            smoke = subprocess.run(
-                [
-                    sys.executable,
-                    str(Path(__file__).with_name("close_review_followups.py")),
-                    "--event-path",
-                    str(event_path),
-                    "--repository",
-                    "owner/repository",
-                    "--token-env",
-                    "TEST_GITHUB_TOKEN",
-                    "--api-url",
-                    f"http://127.0.0.1:{server.server_port}",
-                ],
-                text=True,
-                capture_output=True,
-                env=environment,
-                timeout=30,
-            )
+        smoke = run_cli_smoke(
+            closed_event("<!-- review-followup-rollup:v1 children=714,773 -->"),
+            server.server_port,
+        )
         assert smoke.returncode == 0, smoke.stderr
         assert "closed=[714] already_closed=[773]" in smoke.stdout
         assert "test-token-must-not-print" not in smoke.stdout + smoke.stderr
@@ -187,6 +209,26 @@ def main() -> int:
             ),
             ("GET", "/repos/owner/repository/issues/773", None),
         ]
+
+        for state_reason, include_state_reason in (
+            ("not_planned", True),
+            (None, True),
+            ("unknown", True),
+            (None, False),
+        ):
+            MockGitHubHandler.requests = []
+            skipped = run_cli_smoke(
+                closed_event(
+                    "invalid marker",
+                    state_reason=state_reason,
+                    include_state_reason=include_state_reason,
+                ),
+                server.server_port,
+            )
+            assert skipped.returncode == 0, skipped.stderr
+            assert "cascade skipped" in skipped.stdout
+            assert "test-token-must-not-print" not in skipped.stdout + skipped.stderr
+            assert MockGitHubHandler.requests == []
     finally:
         server.shutdown()
         server.server_close()

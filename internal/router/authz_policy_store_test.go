@@ -39,7 +39,7 @@ func TestDBBackedAuthorizationLoadsActivePolicySet(t *testing.T) {
 
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
 	cfg.Callers[0].MetricsAdmin = true
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: dbPath}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(dbPath)
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "db"}
 	svc, err := New(cfg)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestDBBackedAuthorizationMissingActivePolicyFailsClosed(t *testing.T) {
 	}
 
 	cfg := testConfig(t, "http://127.0.0.1:1", "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: dbPath}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(dbPath)
 	cfg.Server.AdminAuth.Authorization = AdminAuthorizationConfig{Enabled: true, Source: "db"}
 	svc, err := New(cfg)
 	if err == nil {

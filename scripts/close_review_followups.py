@@ -76,6 +76,8 @@ def cascade_closed_rollup(event: dict[str, Any], client: IssueClient) -> Cascade
     master = event.get("issue")
     if not isinstance(master, dict) or ROLLUP_LABEL not in event_labels(master):
         return None
+    if master.get("state_reason") != "completed":
+        return None
     master_issue = master.get("number")
     body = master.get("body")
     if not isinstance(master_issue, int) or not isinstance(body, str):

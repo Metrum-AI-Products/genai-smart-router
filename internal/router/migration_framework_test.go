@@ -1059,11 +1059,22 @@ func TestUsageMigrationAdoptsVerifiedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Compatible || status.State != "pending" || len(status.Pending) != 0 || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" {
-		t.Fatalf("new data-job migration must be pending before non-serving apply: %+v", status)
+	if !status.Compatible || status.State != "pending" ||
+		len(status.Pending) != len(usageMigrationDefinitions) ||
+		len(status.Entries) != 0 || len(status.Jobs) != 0 {
+		t.Fatalf("physical legacy schema must remain unapplied until the explicit migration operation: %+v", status)
 	}
 	if err := r.ApplyPending("test-runner"); err != nil {
 		t.Fatal(err)
+	}
+	status, err = r.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "pending" || len(status.Pending) != 0 || len(status.Jobs) != 1 ||
+		status.Jobs[0].Key != "historical-usage-validation-v1" ||
+		status.Jobs[0].State != migrationDataJobPending || status.Jobs[0].Present {
+		t.Fatalf("explicit apply must adopt the schema and synthesize the required pending data job: %+v", status)
 	}
 	if _, err := r.RunDataJob(context.Background(), "historical-usage-validation-v1", "test-runner", DataJobCheckpoint{Ordinal: 0}); err != nil {
 		t.Fatal(err)
@@ -1277,45 +1288,69 @@ func TestUsageMigrationBaselineKeepsReasoningColumnsForTheirOwnDefinition(t *tes
 	}
 }
 
-func TestUsageStoreStartupMigrationPoliciesFailClosedUntilDataJobsValidate(t *testing.T) {
+func TestUsageStoreAutoSafeFreshSQLiteValidatesOnceAndRestartSkipsPreflight(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.sqlite")
-	legacy, err := OpenUsageStorePath(path)
+	store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("fresh SQLite auto-safe bootstrap: %v", err)
 	}
-	if err := legacy.Close(); err != nil {
+	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	// A reviewed small/single-node deployment may explicitly select auto-safe
-	// for safe schema work, but it still cannot serve before its bound job is
-	// validated.
-	if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
-		t.Fatal("auto-safe must reject a pending required data job")
-	}
 	runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "startup-policy-test", DataJobCheckpoint{Ordinal: 0}); err != nil {
+	status, err := runner.Verify()
+	if err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if status.State != "current" || status.DataVersion != 1 || len(status.Jobs) != 1 ||
+		status.Jobs[0].State != migrationDataJobValidated || status.Jobs[0].Checkpoints != 1 ||
+		status.Jobs[0].RowsScanned != 0 || status.Jobs[0].RowsUpdated != 0 ||
+		status.Jobs[0].RowsSkipped != 0 || status.Jobs[0].RowsFailed != 0 {
+		_ = closeDB()
+		t.Fatalf("fresh auto-safe must persist exactly one validated zero-row checkpoint: %+v", status)
+	}
+	before := status.Jobs[0]
+	if err := runner.db.Create(&usageRecord{RequestID: "post-validation-row", TS: "2026-08-06T00:00:00Z"}).Error; err != nil {
 		_ = closeDB()
 		t.Fatal(err)
 	}
 	if err := closeDB(); err != nil {
 		t.Fatal(err)
 	}
-	auto, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+
+	store, err = OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
 	if err != nil {
-		t.Fatalf("auto-safe must accept validated data jobs: %v", err)
+		t.Fatalf("validated restart must skip the zero-row preflight: %v", err)
 	}
-	if err := auto.Close(); err != nil {
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	runner, closeDB, err = UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err = runner.Verify()
+	if err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if len(status.Jobs) != 1 || status.Jobs[0] != before {
+		_ = closeDB()
+		t.Fatalf("validated restart changed checkpoint count or counters: before=%+v after=%+v", before, status.Jobs)
+	}
+	if err := closeDB(); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob} {
 		store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: policy})
 		if err != nil {
-			t.Fatalf("%s must accept current verified ledger: %v", policy, err)
+			t.Fatalf("%s must accept the current verified ledger: %v", policy, err)
 		}
 		if err := store.Close(); err != nil {
 			t.Fatal(err)
@@ -1324,12 +1359,267 @@ func TestUsageStoreStartupMigrationPoliciesFailClosedUntilDataJobsValidate(t *te
 
 	empty := filepath.Join(t.TempDir(), "empty.sqlite")
 	for _, policy := range []string{usageDBMigrationPolicyValidate, usageDBMigrationPolicyDeploymentJob} {
-		if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: policy}); err == nil {
+		if store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: policy}); err == nil {
+			_ = store.Close()
 			t.Fatalf("%s must reject an empty database before the deployment job runs", policy)
 		}
 	}
-	if _, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: empty, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
-		t.Fatal("auto-safe must reject an unvalidated required data job after bootstrap")
+}
+
+func TestUsageStoreAutoSafeRejectsExistingSQLiteUsageRowsBeforeValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	store, err := OpenUsageStorePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&usageRecord{RequestID: "existing-row", TS: "2026-08-05T00:00:00Z"}).Error; err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
+		_ = store.Close()
+		t.Fatal("auto-safe must reject existing usage rows before running validation")
+	}
+
+	runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeDB()
+	status, err := runner.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "pending" || len(status.Jobs) != 1 ||
+		status.Jobs[0].State != migrationDataJobPending || status.Jobs[0].Present ||
+		status.Jobs[0].Checkpoints != 0 || usageMigrationServingCompatible(status) {
+		t.Fatalf("preflight rejection must leave the required job fresh and non-serving: %+v", status)
+	}
+}
+
+func TestUsageStoreAutoSafeFailsClosedForDurableNonValidatedJobStates(t *testing.T) {
+	for _, state := range []string{
+		migrationDataJobPending,
+		migrationDataJobRunning,
+		migrationDataJobPaused,
+		migrationDataJobCancelled,
+		migrationDataJobFailed,
+		"unknown",
+	} {
+		t.Run(state, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "usage.sqlite")
+			runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := runner.ApplyPending("state-test"); err != nil {
+				_ = closeDB()
+				t.Fatal(err)
+			}
+			record := migrationDataJobRecord{
+				JobID: dataJobID(usageMigrationScope, "historical-usage-validation-v1"),
+				Scope: usageMigrationScope, MigrationID: usageHistoricalValidationMigrationID,
+				DataVersion: 1, State: state, ExecutionMode: "batch",
+				ValidationMode: "row-addressability", ThrottlePerMinute: 60,
+				StartedAt: "2026-08-06T00:00:00Z",
+			}
+			if err := runner.db.Create(&record).Error; err != nil {
+				_ = closeDB()
+				t.Fatal(err)
+			}
+			if err := closeDB(); err != nil {
+				t.Fatal(err)
+			}
+
+			if store, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe}); err == nil {
+				_ = store.Close()
+				t.Fatalf("auto-safe served with durable %q data-job state", state)
+			}
+			runner, closeDB, err = UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer closeDB()
+			var checkpoints int64
+			if err := runner.db.Model(&migrationDataJobCheckpointRecord{}).Count(&checkpoints).Error; err != nil {
+				t.Fatal(err)
+			}
+			if checkpoints != 0 {
+				t.Fatalf("durable %q state created %d auto-safe checkpoints", state, checkpoints)
+			}
+		})
+	}
+}
+
+func TestAutoSafeZeroRowCheckpointFailureFailsClosed(t *testing.T) {
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "auto-safe-failure.sqlite")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	definition := FinalizeMigrationDefinition(MigrationDefinition{
+		ID: 1, Scope: "auto-safe-failure", Name: "test auto-safe failure", Release: "test",
+		Checksum: strings.Repeat("a", 64), SchemaVersion: 1, DataVersion: 1,
+		Transactional: true, MaintenanceMode: "online", RollbackClass: "restore-required",
+		HandlerKey: "test.apply@applyTestMigrationMarker", PostconditionKey: "test.verify@verifyTestMigrationMarker",
+		ExecutionMode: "transactional", LockClass: "online", TimeoutClass: "bounded",
+		DataJobKey: "failure-job", Apply: applyTestMigrationMarker, Verify: verifyTestMigrationMarker,
+	})
+	runner, err := NewMigrationRunnerWithDataJobs(db, "auto-safe-failure", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{definition}, []DataJobDefinition{{
+		Key: "failure-job", Scope: "auto-safe-failure", MigrationID: 1, DataVersion: 1,
+		ExecutionMode: "batch", ValidationMode: "test", AutoSafeZeroRow: true,
+		RestartSafe: true, HandlerKey: "test.failure-job.v1",
+		RunCheckpoint: func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+			return DataJobCheckpointResult{}, errors.New("deliberate checkpoint failure")
+		},
+		Validate: verifyTestMigrationMarker,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.ApplyPending("test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RunAutoSafeZeroRowDataJob(context.Background(), "router-startup", func(*gorm.DB) error { return nil }); err == nil {
+		t.Fatal("checkpoint failure must fail auto-safe startup")
+	}
+	status, err := runner.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "failed" || len(status.Jobs) != 1 ||
+		status.Jobs[0].State != migrationDataJobFailed || status.Jobs[0].Checkpoints != 0 ||
+		usageMigrationServingCompatible(status) {
+		t.Fatalf("checkpoint failure must remain failed and non-serving: %+v", status)
+	}
+}
+
+func TestAutoSafeZeroRowNonZeroCountersRollBackValidation(t *testing.T) {
+	runner := newAtomicAutoSafeTestRunner(t, filepath.Join(t.TempDir(), "non-zero.sqlite"), func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		return DataJobCheckpointResult{RowsScanned: 1, Complete: true}, nil
+	})
+	if err := runner.RunAutoSafeZeroRowDataJob(context.Background(), "router-startup", requireEmptyUsageStore); err == nil {
+		t.Fatal("non-zero auto-safe checkpoint counters must reject validation")
+	}
+	assertAtomicAutoSafeFailure(t, runner)
+	if err := runner.RunAutoSafeZeroRowDataJob(context.Background(), "router-restart", requireEmptyUsageStore); err == nil {
+		t.Fatal("failed non-zero auto-safe checkpoint must not become restart-eligible")
+	}
+}
+
+func TestAutoSafeZeroRowConcurrentInsertBeforeDurableTransitionRollsBackValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "concurrent-insert.sqlite")
+	checkpointComplete := make(chan struct{})
+	persistCheckpoint := make(chan struct{})
+	runner := newAtomicAutoSafeTestRunner(t, path, func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error) {
+		close(checkpointComplete)
+		<-persistCheckpoint
+		return DataJobCheckpointResult{Complete: true}, nil
+	})
+
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- runner.RunAutoSafeZeroRowDataJob(context.Background(), "router-startup", requireEmptyUsageStore)
+	}()
+	select {
+	case <-checkpointComplete:
+	case <-time.After(2 * time.Second):
+		t.Fatal("auto-safe checkpoint did not reach the pre-persistence boundary")
+	}
+
+	writer, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Exec("INSERT INTO request_usage (request_id) VALUES (?)", "racing-row").Error; err != nil {
+		sqlDB, _ := writer.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+		t.Fatalf("insert between checkpoint work and validation transition: %v", err)
+	}
+	writerSQL, err := writer.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writerSQL.Close(); err != nil {
+		t.Fatal(err)
+	}
+	close(persistCheckpoint)
+	select {
+	case err := <-runErr:
+		if err == nil {
+			t.Fatal("concurrent usage insert must reject auto-safe validation")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("auto-safe validation did not finish after the concurrent insert")
+	}
+	assertAtomicAutoSafeFailure(t, runner)
+}
+
+func newAtomicAutoSafeTestRunner(t *testing.T, path string, checkpoint func(context.Context, *gorm.DB, DataJobCheckpoint) (DataJobCheckpointResult, error)) *migrationRunner {
+	t.Helper()
+	db, err := openUsageDB(UsageDBConfig{Driver: "sqlite", Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	definition := FinalizeMigrationDefinition(MigrationDefinition{
+		ID: 1, Scope: "auto-safe-atomic", Name: "test atomic auto-safe validation", Release: "test",
+		Checksum: strings.Repeat("b", 64), SchemaVersion: 1, DataVersion: 1,
+		Transactional: true, MaintenanceMode: "online", RollbackClass: "restore-required",
+		HandlerKey: "test.atomic.apply.v1@applyAtomicAutoSafeTestSchema", PostconditionKey: "test.atomic.verify.v1@verifyAtomicAutoSafeTestSchema",
+		ExecutionMode: "transactional", LockClass: "online", TimeoutClass: "bounded",
+		DataJobKey: "atomic-job", Apply: applyAtomicAutoSafeTestSchema, Verify: verifyAtomicAutoSafeTestSchema,
+	})
+	runner, err := NewMigrationRunnerWithDataJobs(db, "auto-safe-atomic", MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 1}, []MigrationDefinition{definition}, []DataJobDefinition{{
+		Key: "atomic-job", Scope: "auto-safe-atomic", MigrationID: 1, DataVersion: 1,
+		ExecutionMode: "batch", ValidationMode: "test", AutoSafeZeroRow: true,
+		RestartSafe: true, HandlerKey: "test.atomic-job.v1",
+		RunCheckpoint: checkpoint,
+		Validate:      verifyAtomicAutoSafeTestSchema,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.ApplyPending("test"); err != nil {
+		t.Fatal(err)
+	}
+	return runner
+}
+
+func applyAtomicAutoSafeTestSchema(tx *gorm.DB) error {
+	return tx.Exec("CREATE TABLE request_usage (request_id TEXT NOT NULL PRIMARY KEY)").Error
+}
+
+func verifyAtomicAutoSafeTestSchema(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("request_usage") {
+		return errors.New("request_usage table is missing")
+	}
+	return nil
+}
+
+func assertAtomicAutoSafeFailure(t *testing.T, runner *migrationRunner) {
+	t.Helper()
+	status, err := runner.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "failed" || status.DataVersion != 0 || len(status.Jobs) != 1 ||
+		status.Jobs[0].State != migrationDataJobFailed || status.Jobs[0].Checkpoints != 0 ||
+		status.Jobs[0].RowsScanned != 0 || usageMigrationServingCompatible(status) {
+		t.Fatalf("rejected auto-safe validation must remain failed without durable counters or checkpoints: %+v", status)
 	}
 }
 
@@ -1360,32 +1650,29 @@ func TestUsageReasoningTelemetryMigrationAddsColumnsToAdoptedSchema(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	// Recreate the pre-ledger historical shape. The explicit baseline then
-	// adopts it and the next immutable definition owns the missing columns.
-	if err := legacy.db.Exec("DELETE FROM schema_migration_ledger WHERE scope = ?", usageMigrationScope).Error; err != nil {
-		t.Fatal(err)
-	}
+	// OpenUsageStorePath creates only the physical schema. The explicit
+	// migration operation must adopt that legacy shape, add the missing
+	// reasoning columns, and apply the later data-job ledger migration without
+	// running its bound job.
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
 	}
-
-	migrated, err := OpenUsageStore(UsageDBConfig{Driver: "sqlite", Path: path, MigrationPolicy: usageDBMigrationPolicyAutoSafe})
+	runner, closeDB, err := UsageMigrationRunner(UsageDBConfig{Driver: "sqlite", Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer migrated.Close()
-	if err := verifyUsageReasoningTelemetryMigration(migrated.db); err != nil {
+	defer func() { _ = closeDB() }()
+	if err := runner.ApplyPending("reasoning-adoption-test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyUsageReasoningTelemetryMigration(runner.db); err != nil {
 		t.Fatalf("reasoning migration postcondition: %v", err)
-	}
-	runner, err := newUsageMigrationRunner(migrated.db)
-	if err != nil {
-		t.Fatal(err)
 	}
 	status, err := runner.Verify()
 	if err != nil || !status.Compatible || status.SchemaVersion != 2 || status.DataVersion != 0 || status.State != "pending" || len(status.Jobs) != 1 || status.Jobs[0].Key != "historical-usage-validation-v1" || status.Jobs[0].State != migrationDataJobPending {
 		t.Fatalf("reasoning migration must preserve schema v2 while the later non-serving data job remains pending: status=%+v err=%v", status, err)
 	}
-	previousBinary, err := NewMigrationRunner(migrated.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
+	previousBinary, err := NewMigrationRunner(runner.db, usageMigrationScope, MigrationCompatibility{MinSchema: 0, MaxSchema: 1, MinData: 0, MaxData: 0}, usageMigrationDefinitions[:1])
 	if err != nil {
 		t.Fatal(err)
 	}

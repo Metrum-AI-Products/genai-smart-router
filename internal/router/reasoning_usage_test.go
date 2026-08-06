@@ -23,7 +23,7 @@ func TestUsageFromMapPreservesReasoningTokenPresence(t *testing.T) {
 
 func TestExportReasoningCoverageIsAggregateOnly(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
-	store, err := OpenUsageStorePath(dbPath)
+	store, err := OpenUsageStore(freshSQLiteUsageDBConfigForTest(dbPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestExportReasoningCoverageIsAggregateOnly(t *testing.T) {
 	}
 	from, _ := time.Parse(time.RFC3339, "2026-07-23T11:00:00Z")
 	to, _ := time.Parse(time.RFC3339, "2026-07-23T13:00:00Z")
-	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: dbPath, From: from, To: to})
+	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: dbPath, MigrationPolicy: usageDBMigrationPolicyAutoSafe, From: from, To: to})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestExportReasoningCoverageImportsJSONL(t *testing.T) {
 	}
 	from, _ := time.Parse(time.RFC3339, "2026-07-23T11:00:00Z")
 	to, _ := time.Parse(time.RFC3339, "2026-07-23T13:00:00Z")
-	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: filepath.Join(dir, "usage.sqlite"), LogPath: logPath, From: from, To: to, ResolvedGroup: "eval-group"})
+	got, err := ExportReasoningCoverage(UsageReportOptions{DBPath: filepath.Join(dir, "usage.sqlite"), MigrationPolicy: usageDBMigrationPolicyAutoSafe, LogPath: logPath, From: from, To: to, ResolvedGroup: "eval-group"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  associateTaskDetail,
+  collapseExpandedTaskOnEscape,
+  detailList,
   linkedTextParts,
   referenceHref,
   taskDetailSections,
@@ -25,6 +28,47 @@ test("task detail sections preserve commands and omit empty sections", () => {
   ]);
 });
 
+test("command values normalize without losing structured command entries", () => {
+  const commands = ["rtk npm test", "rtk npm run build"];
+
+  assert.deepEqual(detailList(commands), commands);
+  assert.deepEqual(
+    taskDetailSections({commands}),
+    [{label: "Commands", values: commands}],
+  );
+});
+
+test("row and button share one DOM-safe IDREF without task ID collisions", () => {
+  const associate = taskId => {
+    const detailRow = {id: ""};
+    const attributes = new Map();
+    const expandButton = {
+      setAttribute(name, value) {
+        attributes.set(name, value);
+      },
+      getAttribute(name) {
+        return attributes.get(name) ?? null;
+      },
+    };
+
+    const detailId = associateTaskDetail(detailRow, expandButton, taskId);
+    const controls = expandButton.getAttribute("aria-controls");
+    assert.equal(controls, detailRow.id);
+    assert.equal(detailId, detailRow.id);
+    assert.deepEqual(controls.trim().split(/\s+/), [controls]);
+    assert.match(controls, /^task-detail-[a-f0-9]+$/);
+    return detailId;
+  };
+
+  const punctuationId = associate("task.review follow-up/a:b?");
+  assert.equal(punctuationId, associate("task.review follow-up/a:b?"));
+
+  const whitespaceCandidate = associate("task.collision candidate");
+  const punctuationCandidate = associate("task.collision-candidate");
+  assert.notEqual(whitespaceCandidate, punctuationCandidate);
+});
+
+
 test("tasks expand and collapse independently", () => {
   const expandedTaskIds = new Set();
 
@@ -34,6 +78,18 @@ test("tasks expand and collapse independently", () => {
 
   assert.equal(toggleExpandedTask(expandedTaskIds, "task.first"), false);
   assert.deepEqual([...expandedTaskIds], ["task.second"]);
+});
+
+test("only Escape collapses the addressed expanded task", () => {
+  const expandedTaskIds = new Set(["task.first", "task.second"]);
+
+  assert.equal(collapseExpandedTaskOnEscape(expandedTaskIds, "task.first", "Enter"), false);
+  assert.equal(collapseExpandedTaskOnEscape(expandedTaskIds, "task.first", " "), false);
+  assert.deepEqual([...expandedTaskIds], ["task.first", "task.second"]);
+
+  assert.equal(collapseExpandedTaskOnEscape(expandedTaskIds, "task.first", "Escape"), true);
+  assert.deepEqual([...expandedTaskIds], ["task.second"]);
+  assert.equal(collapseExpandedTaskOnEscape(expandedTaskIds, "task.first", "Escape"), false);
 });
 
 test("GitHub and external references become safe link targets", () => {

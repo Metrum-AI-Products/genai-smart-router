@@ -13,36 +13,33 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestUsageStoreMigratesLegacyRequestAttemptsRetryAfter(t *testing.T) {
+func TestUsageStoreRejectsLegacyRequestAttemptsMissingRetryAfter(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "usage.sqlite")
 	db, err := gorm.Open(sqliteDriver.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec(`
-CREATE TABLE request_attempts (
-	request_id text NOT NULL,
-	attempt_index integer NOT NULL,
-	ts text NOT NULL,
-	provider text NOT NULL,
-	model text NOT NULL,
-	dialect text NOT NULL,
-	endpoint_host text NOT NULL,
-	duration_ms integer NOT NULL,
-	status_code integer NOT NULL,
-	error_class text NOT NULL,
-	error_message text NOT NULL,
-	retryable numeric NOT NULL,
-	timed_out numeric NOT NULL,
-	client_canceled numeric NOT NULL,
-	selected numeric NOT NULL,
-	fallback_reason text NOT NULL,
-	request_bytes integer NOT NULL,
-	response_bytes integer NOT NULL,
-	attempt_timeout_ms integer NOT NULL,
-	PRIMARY KEY (request_id, attempt_index)
-)`).Error; err != nil {
+	if err := db.AutoMigrate(&requestAttemptRecord{}); err != nil {
 		t.Fatal(err)
+	}
+	if err := db.Migrator().DropColumn(&requestAttemptRecord{}, "RetryAfterMS"); err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []string{
+		"idx_request_attempt_request",
+		"idx_request_attempt_ts",
+		"idx_request_attempt_provider_model",
+		"idx_request_attempt_status",
+		"idx_request_attempt_error",
+		"idx_request_attempt_timeout",
+		"idx_request_attempt_cancel",
+	} {
+		if err := db.Migrator().CreateIndex(&requestAttemptRecord{}, index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if db.Migrator().HasColumn(&requestAttemptRecord{}, "retry_after_ms") {
+		t.Fatal("legacy request_attempts unexpectedly retained retry_after_ms")
 	}
 	if err := db.Exec(`
 INSERT INTO request_attempts (
@@ -66,19 +63,12 @@ INSERT INTO request_attempts (
 	}
 
 	store, err := OpenUsageStorePath(dbPath)
-	if err != nil {
-		t.Fatal(err)
+	if store != nil {
+		_ = store.Close()
+		t.Fatal("legacy store missing retry_after_ms unexpectedly opened")
 	}
-	defer store.Close()
-	if !store.db.Migrator().HasColumn(&requestAttemptRecord{}, "retry_after_ms") {
-		t.Fatal("retry_after_ms column was not added")
-	}
-	var retryAfterMS int64 = -1
-	if err := store.db.Raw("SELECT retry_after_ms FROM request_attempts WHERE request_id = ? AND attempt_index = ?", "req_legacy", 1).Scan(&retryAfterMS).Error; err != nil {
-		t.Fatal(err)
-	}
-	if retryAfterMS != 0 {
-		t.Fatalf("retry_after_ms=%d, want legacy row backfilled to 0", retryAfterMS)
+	if err == nil || !strings.Contains(err.Error(), "required usage column request_attempts.retry_after_ms is missing") {
+		t.Fatalf("OpenUsageStorePath error = %v, want missing retry_after_ms rejection", err)
 	}
 }
 
@@ -114,10 +104,11 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 	}
 
 	md, err := GenerateUsageMarkdown(UsageReportOptions{
-		DBPath:  dbPath,
-		LogPath: logPath,
-		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
-		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DBPath:          dbPath,
+		MigrationPolicy: usageDBMigrationPolicyAutoSafe,
+		LogPath:         logPath,
+		From:            time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:              time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +145,7 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		}
 	}
 
-	imported, err := ImportUsageJSONL(dbPath, logPath)
+	imported, err := ImportUsageJSONLTo(freshSQLiteUsageDBConfigForTest(dbPath), logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,9 +169,10 @@ func TestUsageReportImportsJSONLAndRendersMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	md, err = GenerateUsageMarkdown(UsageReportOptions{
-		DBPath: dbPath,
-		From:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
-		To:     time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DBPath:          dbPath,
+		MigrationPolicy: usageDBMigrationPolicyAutoSafe,
+		From:            time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:              time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +240,7 @@ func TestUsageJSONLImportSkipsOperationalEventRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	imported, err := ImportUsageJSONL(dbPath, logPath)
+	imported, err := ImportUsageJSONLTo(freshSQLiteUsageDBConfigForTest(dbPath), logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,10 +292,11 @@ func TestUsageReportRendersThroughputAndCacheSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	md, err := GenerateUsageMarkdown(UsageReportOptions{
-		DBPath:  dbPath,
-		LogPath: logPath,
-		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
-		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DBPath:          dbPath,
+		MigrationPolicy: usageDBMigrationPolicyAutoSafe,
+		LogPath:         logPath,
+		From:            time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:              time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -334,10 +327,11 @@ func TestUsageReportRendersDecisionTelemetrySummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	md, err := GenerateUsageMarkdown(UsageReportOptions{
-		DBPath:  dbPath,
-		LogPath: logPath,
-		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
-		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DBPath:          dbPath,
+		MigrationPolicy: usageDBMigrationPolicyAutoSafe,
+		LogPath:         logPath,
+		From:            time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:              time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -462,6 +456,7 @@ func TestUsageReportFiltersRows(t *testing.T) {
 	}
 	md, err := GenerateUsageMarkdown(UsageReportOptions{
 		DBPath:            dbPath,
+		MigrationPolicy:   usageDBMigrationPolicyAutoSafe,
 		LogPath:           logPath,
 		From:              time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
 		To:                time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
@@ -507,10 +502,11 @@ func TestUsageReportMarkdownEscapesHTMLAndActiveMarkdownCells(t *testing.T) {
 		t.Fatal(err)
 	}
 	md, err := GenerateUsageMarkdown(UsageReportOptions{
-		DBPath:  dbPath,
-		LogPath: logPath,
-		From:    time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
-		To:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DBPath:          dbPath,
+		MigrationPolicy: usageDBMigrationPolicyAutoSafe,
+		LogPath:         logPath,
+		From:            time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		To:              time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)

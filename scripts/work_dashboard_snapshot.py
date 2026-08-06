@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from html import escape
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,9 @@ from work_items import (
     task_records,
 )
 
+GITHUB_REPOSITORY = "https://github.com/sysadmin-metrum-ai/genai-smart-router"
+LINK_PATTERN = re.compile(r"https?://[^\s]+|PR#\d+|#\d+", re.IGNORECASE)
+
 
 def text(value: Any) -> str:
     return escape("" if value is None else str(value), quote=True)
@@ -31,12 +35,73 @@ def values(value: Any) -> list[str]:
         return [str(item) for item in value]
     return [str(value)]
 
+def reference_href(value: str) -> str | None:
+    if re.fullmatch(r"https?://[^\s]+", value, re.IGNORECASE):
+        return value
+    pull_request = re.fullmatch(r"PR#(\d+)", value, re.IGNORECASE)
+    if pull_request:
+        return f"{GITHUB_REPOSITORY}/pull/{pull_request.group(1)}"
+    issue = re.fullmatch(r"#(\d+)", value)
+    if issue:
+        return f"{GITHUB_REPOSITORY}/issues/{issue.group(1)}"
+    return None
+
+
+def linked_text(value: Any) -> str:
+    source = "" if value is None else str(value)
+    rendered: list[str] = []
+    cursor = 0
+    for match in LINK_PATTERN.finditer(source):
+        rendered.append(text(source[cursor : match.start()]))
+        token = match.group(0)
+        suffix = ""
+        if token.lower().startswith(("http://", "https://")):
+            trailing = re.search(r"[.,;:!?]+$", token)
+            if trailing:
+                suffix = trailing.group(0)
+                token = token[: -len(suffix)]
+        href = reference_href(token)
+        if href:
+            rendered.append(
+                f'<a href="{text(href)}" target="_blank" rel="noopener noreferrer">{text(token)}</a>'
+            )
+        else:
+            rendered.append(text(token))
+        rendered.append(text(suffix))
+        cursor = match.end()
+    rendered.append(text(source[cursor:]))
+    return "".join(rendered)
+
+
+def status_list(label: str, value: Any, empty_state: str) -> str:
+    items = values(value)
+    if items:
+        content = "<ul>" + "".join(f"<li>{linked_text(item)}</li>" for item in items) + "</ul>"
+    else:
+        content = f'<p class="empty">{text(empty_state)}</p>'
+    return f'<section class="status-section"><strong>{text(label)}</strong>{content}</section>'
+
+
+def status_context(task: dict[str, Any]) -> str:
+    reason = task.get("status_reason") or "No status reason has been recorded."
+    closed = task["status"] in {"done", "cancelled"}
+    next_empty = (
+        "No next step is required; this task is closed."
+        if closed
+        else "No next step has been recorded."
+    )
+    return f"""<div class="status-context">
+      <section class="status-section status-reason"><strong>Why this status?</strong><p>{linked_text(reason)}</p></section>
+      {status_list("What happens next?", task.get("next_steps"), next_empty)}
+      {status_list("What can a human do?", task.get("human_actions"), "No direct human action is currently required.")}
+    </div>"""
+
 
 def details(label: str, value: Any) -> str:
     items = values(value)
     if not items:
         return ""
-    rendered = "".join(f"<li>{text(item)}</li>" for item in items)
+    rendered = "".join(f"<li>{linked_text(item)}</li>" for item in items)
     return f"<div class=\"detail\"><strong>{text(label)}</strong><ul>{rendered}</ul></div>"
 
 
@@ -81,11 +146,13 @@ def render_html(registry_path: Path, events_path: Path, title: str) -> str:
         f"""<article class="task">
           <header><div><h3>{text(task["title"])}</h3><code>{text(task["id"])}</code></div>
           <span>{text(task["status"])}</span></header>
+          {status_context(task)}
           {f'<p>{text(task.get("description"))}</p>' if task.get("description") else ''}
           <div class="detail-grid">
             {details("Actions", task.get("actions"))}
             {details("Acceptance", task.get("acceptance"))}
             {details("Evidence", task.get("evidence"))}
+            {details("Commands", task.get("commands"))}
             {details("Dependencies", task.get("requires"))}
             {details("References", task.get("references"))}
           </div>
@@ -125,6 +192,12 @@ td small {{ color: #68758d; display: block; font-family: monospace; }}
 .detail-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 2mm 5mm; }}
 .detail strong {{ font-size: 7.5pt; text-transform: uppercase; }}
 .detail ul {{ margin: 1mm 0 0; padding-left: 5mm; }}
+.status-context {{ background: #f6f8fb; border-left: 1mm solid #3157c8; display: grid; grid-template-columns: repeat(2, 1fr); gap: 2mm 5mm; margin: 3mm 0; padding: 3mm; }}
+.status-section strong {{ font-size: 7.5pt; text-transform: uppercase; }}
+.status-section p, .status-section ul {{ margin: 1mm 0 0; }}
+.status-reason {{ grid-column: 1 / -1; }}
+.empty {{ color: #68758d; font-style: italic; }}
+.task a {{ color: #2449b8; text-decoration: underline; }}
 .task footer {{ border-top: 1px solid #e0e5ed; color: #68758d; font-size: 7pt; margin-top: 3mm; padding-top: 2mm; }}
 </style>
 </head>

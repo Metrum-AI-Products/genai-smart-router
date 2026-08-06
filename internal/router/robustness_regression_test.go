@@ -55,7 +55,7 @@ func TestFallbackOrdering429RetryAfterTelemetryAndSecretRedaction(t *testing.T) 
 	enabled := true
 	honorRetryAfter := true
 	cfg := testConfig(t, upstream.URL, providerKey, dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Provider["mock"] = ProviderConfig{
 		BaseURL: upstream.URL + "/v1",
@@ -157,7 +157,7 @@ func TestFallbackDoesNotCrossToolEligibility(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Provider["mock"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
 	cfg.Models["default"] = ModelGroup{Strategy: "static", Targets: []Target{
 		{Provider: "mock", Model: "tool-model", ToolSupport: ToolSupport{OpenAIChat: []string{"tools", "tool_choice"}}},
@@ -203,7 +203,7 @@ func TestCallerRPMErrorIsSafeAndSkipsUpstream(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Callers[0].Rate.RPM = 1
 	svc, err := New(cfg)
 	if err != nil {

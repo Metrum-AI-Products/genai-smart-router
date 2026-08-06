@@ -272,11 +272,8 @@ func TestLargeCodingAgentPayloadSkipsSmallContextTargetAndPersistsSafeTelemetry(
 	sum := sha256.Sum256([]byte(testToken))
 	cfg := &Config{
 		Server: ServerConfig{
-			Listen: ":0",
-			UsageDB: UsageDBConfig{
-				Driver: "sqlite",
-				Path:   filepath.Join(dir, "usage.sqlite"),
-			},
+			Listen:            ":0",
+			UsageDB:           freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite")),
 			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
 			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
 		},
