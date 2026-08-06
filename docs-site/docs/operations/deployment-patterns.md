@@ -71,24 +71,42 @@ Keep test provider keys separate from production BYOK credentials where policy r
 
 ### Multi-environment operator contract
 
-In binary tarballs, `metrum-smartrouterctl` keeps a non-secret relational inventory of tenant/router instances and their explicit dedicated database allocation IDs. The CLI is not included in the standard Docker or Docker Compose image; Docker-based operators run it from an extracted binary package on a separate trusted administration host. Stage labels are deployment-defined rather than a fixed environment list. Registration requires separate expected and independently observed current schema versions. Repeating an unchanged registration after an observation remains idempotent and preserves the stored current version and observation time, while immutable contract conflicts fail closed. A later local-only `observe-schema` command updates only the current version and server-generated observation time for exactly one tenant/stage; expected deployment metadata remains immutable. Missing, ambiguous, malformed, or out-of-range observations fail closed. A bounded read-only status reports `schema_version_mismatch` or `current` without contacting a live database, cluster, DNS endpoint, cloud API, adapter, or secret store.
+In binary tarballs, `metrum-smartrouterctl` provides two local, normalized
+control-plane records. The established inventory records explicit isolated
+tenant/router placement, dedicated database allocation identifiers, expected
+and independently observed schema versions, fake quota admission, and bounded
+drift. The fake-first lifecycle adds deterministic `plan`, idempotent `deploy`,
+exact-job read-only `status`, and approved `delete` for a strict reference-only
+manifest.
 
-Schema observation opens only an existing local registry. A missing registry
-fails closed without creating a SQLite file or applying registry DDL.
+The deployment lifecycle accepts only a protected mode-`0600` `file://`
+non-production profile in the shipped build. Plan is side-effect-free. Deploy
+records ordered namespace, network-policy, dedicated-database, protected
+binding, state-PVC, Router, activation, and hostname stages without contacting
+AWS, Kubernetes, RDS, DNS, a provider, or a production host. Hostname state is
+not published until activation passes. A classified safe failure can retry from
+its exact stage. An unknown outcome after durable database or PVC state becomes
+`operator_required` rather than guessing whether creation should repeat.
+Plans return a stable instance ID separately from the intent-bound job ID.
+Changing a config revision and supplying a new intent reconciles the same
+customer/stage namespace, hostname, database, and PVC records in place. The
+older job is then superseded and cannot delete resources managed by the newer
+lifecycle.
 
-This safe slice permits only fake-adapter quota admission checks and local registry records. It rejects shared database placement and keeps RDS Proxy disabled. Deploy, promotion, rollback, cleanup, and all cloud/Kubernetes/DNS actions are disabled pending approved endpoint, encryption, TLS, backup/durability, HA, network, and DNS policy. Operators should treat a local quota admission record as planning evidence, not as a reservation made with a cloud provider.
 
-The fake-adapter `quota-reserve` command accepts only a bounded opaque
-`rsv-<lowercase-canonical-uuid>` idempotency key. It rejects token-like,
-credential-like, URL, path, uppercase, malformed, and unbounded values before
-calling the quota adapter or writing a quota-admission record. An exact retry
-of a bounded opaque legacy row already in the local registry remains
-idempotent only for the historically evidenced `reserve-<lowercase-opaque-suffix>`
-and `legacy-<lowercase-opaque-suffix>` namespaces. This strict allow-list
-rejects provider- and deployment-credential-shaped legacy rows, including
-token, secret, credential, API-key, and provider-key markers anywhere in the
-legacy suffix, without returning their identifiers. A legacy identifier cannot
-create a new hold and a different identifier cannot bypass an active hold.
+Delete requires an expiring mode-`0600` approval bound to the exact job and
+explicit database/PVC retention decisions. It disables the hostname first and
+then applies reverse-order fake cleanup. A failed partial cleanup can resume
+with the same still-valid approval; the approval is consumed only when cleanup
+completes. Live profile resolution, cloud resource creation, customer handoff,
+promotion, and rollback remain disabled pending disposable non-production
+validation and independent review.
+
+The CLI is not included in the standard Docker or Docker Compose image.
+Docker-based operators run it from an extracted binary package on a separate
+trusted administration host. Stage and model-group names remain
+deployment-defined. Local lifecycle evidence is contract evidence, not proof
+that any cloud resource was created or reserved.
 
 Rollout and rollback flow:
 

@@ -75,6 +75,13 @@ docs/PACKAGE_VALIDATION.md
 docs/solution-brief.md
 caddy/Caddyfile
 ```
+`metrum-smartrouterctl plan|deploy|status|delete` provides the packaged,
+credential-free local lifecycle contract for an approved reference-only profile.
+It produces a stable instance identity across config revisions, reconciles
+updates in place, and requires an expiring job-bound approval for deletion.
+Cloud/provider adapters remain fail-closed. See
+[docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md](docs/MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md).
+
 
 Packaged Markdown is copied only from `scripts/package_docs_allowlist.txt`. That allowlist is limited to package-safe offline bootstrap docs such as `docs/PACKAGE_README.md`, quick install notes, validation notes, and the package-safe solution brief. Full customer/admin docs are built from `docs-site/` and served by the router under `/docs/`. Internal source-checkout runbooks such as `docs/DOCS_MAINTENANCE.md`, production runbooks, private host procedures, source-maintenance notes, and security-review working notes are intentionally not packaged. Private production runbooks, private host details, SSH paths, live compose config paths, raw token/provider-key patterns, AppleDouble `._*` metadata, and unexpected source/local-state files are blocked by package validation.
 

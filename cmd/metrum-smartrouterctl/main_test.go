@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestLifecycleCommandsFailClosed(t *testing.T) {
-	for _, command := range []string{"plan", "deploy", "delete", "promote", "rollback"} {
+	for _, command := range []string{"promote", "rollback"} {
 		cmd := exec.Command("go", "run", ".", command, "--manifest", "secret-like-input-must-not-be-echoed")
 		out, err := cmd.CombinedOutput()
 		if err == nil || !strings.Contains(string(out), command+" is disabled") || !strings.Contains(string(out), "DNS gates remain open") {
@@ -21,6 +22,62 @@ func TestLifecycleCommandsFailClosed(t *testing.T) {
 		if strings.Contains(string(out), "secret-like-input-must-not-be-echoed") {
 			t.Fatalf("%s echoed untrusted lifecycle input: %s", command, out)
 		}
+	}
+	for _, command := range []string{"plan", "deploy", "delete"} {
+		cmd := exec.Command("go", "run", ".", command, "--manifest", "secret-like-input-must-not-be-echoed")
+		out, err := cmd.CombinedOutput()
+		expected := "profile-ref is required"
+		if command == "delete" {
+			expected = "confirm-file is required"
+		}
+		if err == nil || !strings.Contains(string(out), expected) {
+			t.Fatalf("%s missing contract did not fail closed: err=%v output=%s", command, err, out)
+		}
+		if strings.Contains(string(out), "secret-like-input-must-not-be-echoed") {
+			t.Fatalf("%s echoed untrusted lifecycle input: %s", command, out)
+		}
+	}
+}
+
+func TestTenantDeploymentCLIPlanDeployStatus(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "tenant-deployment")
+	profileBytes, err := os.ReadFile(filepath.Join(root, "profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(t.TempDir(), "profile.yaml")
+	if err := os.WriteFile(profile, profileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry := filepath.Join(t.TempDir(), "deployments.sqlite")
+	common := []string{"--profile-ref", "file://" + profile, "--manifest", filepath.Join(root, "manifest.yaml"), "--intent-id", "intent-a", "--registry", registry, "--output", "json"}
+	run := func(command string, extra ...string) (string, error) {
+		args := append([]string{"run", ".", command}, common...)
+		args = append(args, extra...)
+		out, runErr := exec.Command("go", args...).CombinedOutput()
+		return string(out), runErr
+	}
+	planOutput, err := run("plan")
+	if err != nil || !strings.Contains(planOutput, `"mode": "local-fake"`) || strings.Contains(planOutput, "aws-secretsmanager") {
+		t.Fatalf("plan failed or leaked references: %v %s", err, planOutput)
+	}
+	if _, err := os.Stat(registry); !os.IsNotExist(err) {
+		t.Fatalf("plan mutated registry: %v", err)
+	}
+	deployOutput, err := run("deploy")
+	if err != nil || !strings.Contains(deployOutput, `"state": "ready"`) {
+		t.Fatalf("deploy failed: %v %s", err, deployOutput)
+	}
+	var status struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal([]byte(deployOutput), &status); err != nil {
+		t.Fatalf("decode deploy status: %v output=%s", err, deployOutput)
+	}
+	statusArgs := []string{"run", ".", "status", "--profile-ref", "file://" + profile, "--job", status.JobID, "--registry", registry, "--output", "json"}
+	statusOutput, err := exec.Command("go", statusArgs...).CombinedOutput()
+	if err != nil || !strings.Contains(string(statusOutput), `"state": "ready"`) {
+		t.Fatalf("status failed: %v %s", err, statusOutput)
 	}
 }
 

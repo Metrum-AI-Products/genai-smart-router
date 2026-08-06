@@ -1,0 +1,11 @@
+api_version: metrum.ai/smartrouter-profile/v1
+profile_id: approved-local
+environment: nonproduction
+account_alias: test-account
+region: us-west-2
+cluster_alias: test-cluster
+namespace_prefix: router
+hostname_suffix: apps.example.test
+approved_release_digest: registry.example.test/smart-router@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+approved_resource_profile: small
+approved_database_profile: isolated-small

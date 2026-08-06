@@ -267,6 +267,25 @@ capability-smoke-unit:
 capability-smoke-live:
 	@$(PYTHON) scripts/provider_capability_smoke.py live
 
+.PHONY: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation test-tenant-deploy-all
+
+# Offline, credential-free #555 fake-first suites. These do not claim or
+# authorize disposable EKS or production deployment evidence.
+test-tenant-deploy-contract:
+	go test ./internal/router -run '^TestTenantDeploymentContract' -count=1
+
+test-tenant-deploy-adapters:
+	go test ./internal/router -run '^TestTenantDeploymentAdapters' -count=1
+
+test-tenant-deploy-security:
+	go test ./internal/router -run '^TestTenantDeploymentSecurity' -count=1
+
+test-tenant-deploy-activation:
+	go test ./internal/router -run '^TestTenantDeploymentActivation' -count=1
+
+test-tenant-deploy-all: test-tenant-deploy-contract test-tenant-deploy-adapters test-tenant-deploy-security test-tenant-deploy-activation
+	go test ./cmd/metrum-smartrouterctl -run 'TestTenantDeploymentCLIPlanDeployStatus|TestLifecycleCommandsFailClosed' -count=1
+
 test: secret-check capability-smoke-unit
 	go test ./...
 	python3 scripts/outcome_calibrated_policy_test.py
