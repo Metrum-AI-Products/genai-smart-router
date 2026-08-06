@@ -37,8 +37,7 @@ These instructions apply to the whole repository.
 - If a production report, deployment, routing, or diagnostics failure returns only a generic caller-facing error and logs do not expose a safe root-cause signal, create a detailed GitHub issue for sanitized operational logging before closeout. The issue must require safe scalar context such as report name, handler, database driver, request ID when available, sanitized error class/message, and filter summary, while explicitly forbidding tokens, token hashes, provider keys, Basic credentials, prompts, raw images, raw tool payloads, raw SQL with values, full config, and environment values.
 - Customer-facing graphical report examples should be rendered in Docusaurus with Chart.js or a similar docs-layer component fed by anonymized report data. Keep the router usage-report CLI focused on stable Markdown tables and machine-reviewable metrics unless product requirements explicitly call for chart output from the binary.
 - Model-group `pii_filter` redacts configured text before target selection, cache-key generation, routing-policy inputs, and upstream calls. Keep placeholder mappings in memory only unless a separate governed content-capture feature explicitly enables durable storage. Usage/log metadata may record only safe scalar values such as applied flag, mode, replacement count, and matched-rule count; never persist raw matched values, regex captures, placeholder maps, raw prompts, raw images, raw tool outputs, bearer tokens, provider keys, or token hashes.
-- Do not put unavailable provider models into active routing. Catalog-only is acceptable when a model exists but the current key is not entitled.
-- Do not put unavailable provider models into active routing. The 2026-06-17 production policy keeps active tool-capable routes on OpenRouter, MiniMax, and Kimi/Moonshot models that passed Harbor/tool validation. Original OpenAI `gpt-5.4-nano` is allowed at low non-tool fallback weight; do not use `gpt-5.5` in active routing. Original Anthropic remains catalog/support-only until `ANTHROPIC_API_KEY` is present and a live smoke passes.
+- Do not activate unavailable or unvalidated provider models. Catalog-only is acceptable when a model exists but the current account is not entitled; active routes require current exact provider/model/dialect evidence and must match the deployment snapshot.
 - Prefer structured YAML/JSON parsing for config changes. Avoid fragile text edits for production config.
 - Keep sample config, local production snapshot, production config, docs, and tests in sync for behavior changes.
 - Production incidents that affect routing, providers, request translation, quota or traffic shaping, diagnostics, or caller-visible errors require a sanitized production-derived regression fixture under `testdata/smokes/production-derived/` before closeout. Use synthetic payload templates only, and validate them with the local `ProductionDerived` tests plus staging/production smoke evidence when caller access and report access are available.
@@ -255,41 +254,23 @@ rtk ssh -i ~/.ssh/chetan-jun-2026.pem ubuntu@100.30.225.66 'cd /opt/smart-llmrou
 rtk curl -fsS https://llm-api-engg.metrum.ai/readyz
 ```
 
-## EKS Staging Migration
+## EKS Delivery Boundaries
 
-- The EKS validation endpoint is `https://smartrouter.apps.metrum.ai`.
-  It is live as a one-replica staging-only deployment on EKS and must not
-  receive ordinary production caller traffic or become a DNS target for either
-  current production hostname. The staging caller token is stored in AWS
-  Secrets Manager as `smartrouter/staging/caller-token`; do not print it.
-- The staging browser-admin Basic credential is stored separately as
-  `smartrouter/staging/basic-admin`; do not print it. Its bcrypt hash belongs
-  only in the Kubernetes runtime Secret.
-- The existing Compose router at `https://llm-api-engg.metrum.ai` is the
-  production authority during EKS validation. It runs on the EC2 host above as
-  `ubuntu` and the current SSH key path remains
-  `~/.ssh/chetan-jun-2026.pem`; use this access only for safe inspection,
-  backups, and later approved cutover work.
-- The staging deployment uses one router replica, a durable
-  `smartrouter-gp3` state PVC, a dedicated staging caller, the validated
-  configured license fingerprint, and a fresh private, encrypted single-AZ
-  `db.t4g.medium` RDS PostgreSQL 18.3 database. Do not copy the EC2 usage
-  database or file-backed state during this validation phase.
-- Runtime `config.yaml`, `env.json`, `license.json`, the RDS CA bundle, and
-  `ROUTER_USAGE_DB_DSN` belong only in the deployment-created Kubernetes
-  Secret `smartrouter-staging-runtime`. Never commit, render, log, or paste
-  these files or their secret values.
-- The Metrum overlay is
-  `deploy/kubernetes/overlays/metrum-staging`; follow
-  `docs/EKS_STAGING_MIGRATION.md` before applying it. Confirm namespace RBAC,
-  the `nginx` ingress class, namespace-local wildcard TLS Secret, deployment
-  `smartrouter-gp3` StorageClass, RDS TLS, and exact trusted-proxy CIDRs before
-  rollout. The current nginx ingress pod range is `192.168.0.0/16`; do not
-  reuse the legacy Compose-only `172.18.0.0/16` range in this EKS deployment.
-- Do not scale the staging router horizontally. Quota and license state are
-  file-backed. A production EKS cutover requires separate approval, an EC2
-  write freeze, logical Postgres migration and reconciliation, DNS transition,
-  client acceptance, and a documented rollback window.
+- `metrum-smartrouterctl` is shipped in binary packages, but currently implements only the completed #581 local safe-contract slice: registry, explicit schema observation, fake quota admission, and bounded local drift status. Live `deploy`, `promote`, and `rollback` remain disabled.
+- `scripts/eks_delivery.py` and the `eks-*` Make targets are source-only, target-policy-bound staging delivery controls. They are not a generic customer CLI and must not be presented or packaged as the #555 provisioner.
+- #555 is the sole implementation epic for one-command customer EKS deployment. Extend `metrum-smartrouterctl`; do not create a second provisioner, registry, lifecycle, activation authority, or smoke framework. The public lifecycle is limited to deterministic `plan`, idempotent `deploy`, bounded `status`, and separately approved `delete`.
+- A customer `deploy` must consume an approved profile plus a strict reference-only intent, create or resume one isolated licensed Router, and require no manual AWS, Kubernetes, RDS, DNS, certificate, secret, license, or workload steps after invocation. Raw credentials, DSNs, kubeconfigs, license payloads, full Router configs, and shell commands are forbidden inputs and evidence.
+- Configuration and release updates use the same deployment job with a new approved immutable intent: exact config/license revisions and one image digest are pinned across retries. Do not add an out-of-band config mutation path.
+- Keep mutations disabled until the #555 fake-adapter contract/security/activation suites, disposable non-production EKS E2E, and independent security/operations review pass. Production profiles remain rejected until #518 authorizes them. #545 and #586 supply approved customer/config/license intent; #507 supplies migration compatibility.
+
+### Current Metrum staging boundary
+
+- `https://smartrouter.apps.metrum.ai` is a one-replica staging-only EKS deployment. It must not receive ordinary production traffic or become a production DNS target; the existing Compose deployment remains production authority during validation.
+- The staging caller token is in Secrets Manager at `smartrouter/staging/caller-token`; the browser-admin credential is separate at `smartrouter/staging/basic-admin`. Never print either. Only the bcrypt browser-admin hash belongs in the runtime Secret.
+- Staging uses the `smartrouter-gp3` state PVC, a dedicated caller, the configured license fingerprint, and a fresh private encrypted single-AZ `db.t4g.medium` RDS PostgreSQL 18.3 database. Do not copy EC2 usage or file-backed state into staging.
+- Runtime `config.yaml`, `env.json`, `license.json`, the RDS CA bundle, and `ROUTER_USAGE_DB_DSN` belong only in Kubernetes Secret `smartrouter-staging-runtime`; never commit, render, log, or paste their values.
+- The reviewed overlay is `deploy/kubernetes/overlays/metrum-staging`. Follow `docs/EKS_STAGING_MIGRATION.md`; verify namespace RBAC, `nginx` ingress, namespace-local wildcard TLS, the `smartrouter-gp3` StorageClass, RDS TLS, and exact trusted-proxy CIDRs. The current ingress pod range is `192.168.0.0/16`, never the legacy Compose-only `172.18.0.0/16`.
+- Do not scale staging horizontally while quota and license state are file-backed. Production EKS cutover requires separate approval, EC2 write freeze, logical PostgreSQL migration/reconciliation, DNS transition, client acceptance, and a rollback window.
 
 ## Production Config Update Process
 
