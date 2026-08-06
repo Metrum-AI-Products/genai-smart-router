@@ -21,9 +21,13 @@ organization-controlled federated identity is assigned the approved operator
 role may configure a local AWS profile that assumes the protected deployment
 role and use the same lifecycle commands. The CLI accepts the profile name, not
 credentials, and independently verifies the exact account, assumed-role name,
-protected target policy, EKS access entry, and namespace RBAC before cluster
-selection or mutation. Removing the user's identity-provider assignment or the
-source role's exact `sts:AssumeRole` grant revokes access without changing the
+protected target policy, immutable runtime/image attestation, fail-closed
+admission policy and binding, EKS access entry, and least-privilege RBAC before
+cluster selection or mutation. The human role has no Secret, admission-policy
+mutation, or resource-deletion authority; destructive cleanup remains a
+separate approved bootstrap/recovery action. Removing the user's
+identity-provider assignment or the source role's exact `sts:AssumeRole` grant
+revokes access without changing the
 CLI or customer instance. See the credential-free profile and verification
 procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
 
@@ -37,6 +41,7 @@ The following are mandatory fail-closed preflight conditions. An absent conditio
 | --- | --- |
 | Approved runtime profile | Protected profile revision; explicit cloud-account reference, region, environment, instance alias, allowed domain policy, EKS target, and secret references. |
 | Authorized identity | Read-only proof of the dedicated least-privilege IAM/runtime identity and namespace authorization; never use a root credential. |
+| Workload admission | Exact reviewed policy/binding spec hashes, deny-on-missing parameter, immutable approved router/sidecar image attestation, representative rejected bypasses, and proof the delivery role cannot mutate policy state or delete durable resources. |
 | Supply-chain and release inputs | Immutable image digest, reviewed config revision, compatible license revision, and previous known-good manifest/evidence reference. |
 | Data compatibility | #507 forward-only migration compatibility and an approved recovery plan; no automatic database rollback. |
 | Capacity | Reservation and fresh recheck for the explicit account+region. Cross-region automated backups are disabled at launch; no DR-copy reservation, destination region, or copy KMS key is assumed. |

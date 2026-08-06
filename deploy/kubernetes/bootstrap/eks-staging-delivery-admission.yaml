@@ -1,0 +1,152 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: genai-smart-router-eks-staging-delivery
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+        scope: Namespaced
+  matchConditions:
+    - name: delivery-group-only
+      expression: "'genai-smart-router-eks-staging-delivery' in request.userInfo.groups"
+  validations:
+    - expression: >-
+        object.metadata.name == 'smart-llmrouter' &&
+        object.spec.replicas == 1 &&
+        object.spec.strategy.type == 'Recreate' &&
+        object.spec.selector.matchLabels == {'app.kubernetes.io/name': 'smart-llmrouter'} &&
+        object.spec.template.metadata.labels == {'app.kubernetes.io/name': 'smart-llmrouter'}
+      message: The delivery role may mutate only the reviewed staging router Deployment identity.
+      reason: Forbidden
+    - expression: >-
+        has(object.spec.template.metadata.annotations) &&
+        object.spec.template.metadata.annotations['linkerd.io/inject'] == 'enabled'
+      message: The reviewed staging router must retain Linkerd injection.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.serviceAccountName == 'smartrouter' &&
+        object.spec.template.spec.automountServiceAccountToken == false &&
+        (!has(object.spec.template.spec.hostNetwork) || object.spec.template.spec.hostNetwork == false) &&
+        (!has(object.spec.template.spec.hostPID) || object.spec.template.spec.hostPID == false) &&
+        (!has(object.spec.template.spec.hostIPC) || object.spec.template.spec.hostIPC == false) &&
+        (!has(object.spec.template.spec.shareProcessNamespace) || object.spec.template.spec.shareProcessNamespace == false)
+      message: The reviewed staging pod identity and host-isolation boundary must remain unchanged.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.securityContext.runAsNonRoot == true &&
+        object.spec.template.spec.securityContext.runAsUser == 65532 &&
+        object.spec.template.spec.securityContext.runAsGroup == 65532 &&
+        object.spec.template.spec.securityContext.fsGroup == 65532 &&
+        object.spec.template.spec.securityContext.seccompProfile.type == 'RuntimeDefault'
+      message: The reviewed staging pod security context must remain unchanged.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.containers.exists_one(c,
+          c.name == 'router' &&
+          c.image == params.data.approved_router_image &&
+          !has(c.command) &&
+          c.args == ['--config', '/app/config/config.yaml'] &&
+          !has(c.envFrom) &&
+          c.env.size() == 1 &&
+          c.env[0].name == 'ROUTER_USAGE_DB_DSN' &&
+          c.env[0].valueFrom.secretKeyRef.name == 'smartrouter-staging-runtime' &&
+          c.env[0].valueFrom.secretKeyRef.key == 'ROUTER_USAGE_DB_DSN' &&
+          !has(c.lifecycle) &&
+          (!has(c.stdin) || c.stdin == false) &&
+          (!has(c.tty) || c.tty == false) &&
+          c.securityContext.allowPrivilegeEscalation == false &&
+          c.securityContext.readOnlyRootFilesystem == true &&
+          c.securityContext.capabilities.drop == ['ALL']
+        )
+      message: The router image, process, environment, and container security contract must match the bootstrap-approved specification.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.size() == 8 &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'runtime' && v.mountPath == '/app/config/config.yaml' && v.subPath == 'config.yaml' && v.readOnly == true) &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'runtime' && v.mountPath == '/app/config/env.json' && v.subPath == 'env.json' && v.readOnly == true) &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'runtime' && v.mountPath == '/app/config/license.json' && v.subPath == 'license.json' && v.readOnly == true) &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'runtime' && v.mountPath == '/app/config/rds-ca.pem' && v.subPath == 'rds-ca.pem' && v.readOnly == true) &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'runtime' && v.mountPath == '/app/config/scripts/router.ts' && v.subPath == 'router.ts' && v.readOnly == true) &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'state' && v.mountPath == '/app/state') &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'logs' && v.mountPath == '/app/logs') &&
+        object.spec.template.spec.containers.filter(c, c.name == 'router')[0].volumeMounts.exists_one(v, v.name == 'tmp' && v.mountPath == '/tmp')
+      message: The router may mount only the reviewed runtime, state, log, and scratch paths.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.volumes.exists_one(v, v.name == 'runtime' && v.secret.secretName == 'smartrouter-staging-runtime' && v.secret.defaultMode == 256) &&
+        object.spec.template.spec.volumes.exists_one(v, v.name == 'state' && v.persistentVolumeClaim.claimName == 'smart-llmrouter-state') &&
+        object.spec.template.spec.volumes.exists_one(v, v.name == 'logs' && has(v.emptyDir)) &&
+        object.spec.template.spec.volumes.exists_one(v, v.name == 'tmp' && has(v.emptyDir)) &&
+        object.spec.template.spec.volumes.all(v,
+          v.name in ['runtime', 'state', 'logs', 'tmp'] ||
+          (v.name.startsWith('linkerd-') && (has(v.emptyDir) || has(v.projected)))
+        )
+      message: The pod may use only the reviewed runtime, state, scratch, and Linkerd-injected volumes.
+      reason: Forbidden
+    - expression: >-
+        object.spec.template.spec.containers.all(c, c.name in ['router', 'linkerd-proxy']) &&
+        object.spec.template.spec.containers.exists_one(c,
+          c.name == 'linkerd-proxy' &&
+          c.image == params.data.approved_linkerd_proxy_image &&
+          !has(c.command) &&
+          !has(c.args) &&
+          !has(c.lifecycle) &&
+          (!has(c.stdin) || c.stdin == false) &&
+          (!has(c.tty) || c.tty == false) &&
+          (!has(c.volumeMounts) || c.volumeMounts.all(v, !(v.name in ['runtime', 'state', 'logs', 'tmp']))) &&
+          c.securityContext.allowPrivilegeEscalation == false &&
+          c.securityContext.readOnlyRootFilesystem == true
+        )
+      message: Only the bootstrap-approved Linkerd proxy may accompany the router, without protected volume access.
+      reason: Forbidden
+    - expression: >-
+        params.data.approved_linkerd_init_image == 'none'
+          ? (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.size() == 0)
+          : (has(object.spec.template.spec.initContainers) &&
+             object.spec.template.spec.initContainers.size() == 1 &&
+             object.spec.template.spec.initContainers[0].name == 'linkerd-init' &&
+             object.spec.template.spec.initContainers[0].image == params.data.approved_linkerd_init_image &&
+             !has(object.spec.template.spec.initContainers[0].command) &&
+             !has(object.spec.template.spec.initContainers[0].lifecycle) &&
+             object.spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation == false &&
+             object.spec.template.spec.initContainers[0].securityContext.privileged == false &&
+             object.spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem == true &&
+             object.spec.template.spec.initContainers[0].securityContext.runAsNonRoot == false &&
+             object.spec.template.spec.initContainers[0].securityContext.runAsUser == 0 &&
+             object.spec.template.spec.initContainers[0].securityContext.capabilities.add == ['NET_ADMIN', 'NET_RAW'] &&
+             (!has(object.spec.template.spec.initContainers[0].volumeMounts) ||
+              object.spec.template.spec.initContainers[0].volumeMounts.all(v,
+                v.name.startsWith('linkerd-') &&
+                !(v.name in ['runtime', 'state', 'logs', 'tmp']))))
+      message: Init containers are forbidden except for the bootstrap-approved Linkerd initializer.
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: genai-smart-router-eks-staging-delivery
+spec:
+  policyName: genai-smart-router-eks-staging-delivery
+  validationActions: [Deny, Audit]
+  paramRef:
+    name: smartrouter-staging-runtime-attestation
+    namespace: smart-llmrouter-staging
+    parameterNotFoundAction: Deny
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: smart-llmrouter-staging
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+        scope: Namespaced

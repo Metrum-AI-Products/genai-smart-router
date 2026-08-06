@@ -23,15 +23,26 @@ commands in this repository or shell history. The mounted `config.yaml` must
 use a dedicated staging caller, the EKS-bound license, `/app/state` paths, and
 the new RDS DSN.
 
-The same bootstrap identity must also own the policy-pinned, non-secret
-`smartrouter-staging-runtime-attestation` ConfigMap. Before changing the
-runtime Secret, delete the old attestation. After the Secret write, create a
-fresh immutable ConfigMap with only `schema_version: v1`, `secret_name`,
-`secret_uid`, and `secret_resource_version` in `data`, no `binaryData`, and
-one same-namespace `v1` `Secret` owner reference matching the attested name
-and UID. The delivery role reads that exact ConfigMap but has no Secret verbs
-or other ConfigMap verbs. Do not put the attestation ConfigMap in this
-Kustomize overlay: it is bootstrap-owned evidence, not workload desired state.
+The same bootstrap identity must also own the non-secret
+`smartrouter-staging-runtime-attestation` ConfigMap and the cluster-scoped
+`eks-staging-delivery-admission.yaml` policy/binding. Before changing the
+runtime Secret or any approved image, delete the old attestation. After the
+reviewed inputs are ready, create a fresh immutable ConfigMap with exactly
+`schema_version: v2`, `secret_name`, `secret_uid`,
+`secret_resource_version`, `approved_router_image`,
+`approved_linkerd_proxy_image`, and `approved_linkerd_init_image` in `data`,
+no `binaryData`, and one same-namespace `v1` `Secret` owner reference matching
+the attested name and UID. Use `none` for the Linkerd init image only with
+Linkerd CNI. Server-side dry-run and apply the admission policy before granting
+the delivery RBAC. Missing parameters, evaluation failures, unapproved router
+or Linkerd images, extra containers, unsafe mounts, and pod-spec drift deny
+human delivery mutations.
+
+The delivery role can read the exact attestation, admission policy, and binding
+for preflight but cannot mutate them. It has no Secret access, no other
+ConfigMap access, and no resource deletion authority. Do not put the
+attestation or cluster-scoped admission objects in this Kustomize overlay:
+they are privileged bootstrap state, not workload desired state.
 
 The RDS DSN must use TLS hostname verification and the mounted CA file, for
 example `sslmode=verify-full sslrootcert=/app/config/rds-ca.pem`. Confirm the
@@ -53,11 +64,11 @@ short-lived AWS identity:
 
 ```bash
 make eks-preflight eks-plan \
-  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
 
 make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
   EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain'
 ```

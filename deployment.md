@@ -118,10 +118,13 @@ OpenAI Chat, OpenAI Responses, tool-bearing Anthropic Messages, and ordinary
 caller `/metrics` isolation. That result is historical, not current readiness
 evidence. On 2026-08-06, fresh public probes for `/healthz`, `/readyz`,
 `/docs/`, and `/version` all returned HTTP 503. Protected repair is blocked
-until issue #792 provisions the missing
-`genai-smart-router-eks-staging-delivery` identity, protected target boundary,
-EKS access entry, and least-privilege namespace RBAC. Follow the complete
-repair, validation, evidence, rollback, and cleanup lifecycle in
+until the merged #792/#793 identity source is followed by the admission and
+least-privilege RBAC remediation tracked in #794 and #795. Do not deploy the
+human-assumable role until the bootstrap owner has installed the fail-closed
+policy/binding, immutable version-2 runtime/image attestation, non-destructive
+RBAC, protected target boundary, and EKS access entry in the documented order.
+Then use an authorized federated operator profile for the complete repair,
+validation, evidence, rollback, and cleanup lifecycle in
 `docs/EKS_STAGING_MIGRATION.md`; do not use the ambient AWS profile or current
 kubeconfig as a substitute.
 

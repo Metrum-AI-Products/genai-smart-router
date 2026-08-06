@@ -12,19 +12,19 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services", "serviceaccounts", "persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
     resourceNames: ["smartrouter-staging-runtime-attestation"]
@@ -46,3 +46,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: genai-smart-router-eks-staging-delivery
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: genai-smart-router-eks-staging-delivery-admission-read
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: delivery-identity
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicies"]
+    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    verbs: ["get"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicybindings"]
+    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: genai-smart-router-eks-staging-delivery-admission-read
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: delivery-identity
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: genai-smart-router-eks-staging-delivery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: genai-smart-router-eks-staging-delivery-admission-read

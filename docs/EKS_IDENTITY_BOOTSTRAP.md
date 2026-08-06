@@ -46,14 +46,17 @@ that federated role may use an operator-selected local source profile and a
 role profile that assumes `genai-smart-router-eks-staging-delivery`; no human
 username is compiled into the CLI or stored in the protected target policy.
 The source role must separately allow the exact `sts:AssumeRole`, and the
-delivery process verifies the resulting account and assumed-role name before
-selecting EKS. Removing the identity-provider assignment or source-role grant
-revokes that user without changing deployment state.
+delivery process verifies the resulting account and assumed-role name, the
+protected target, immutable version-2 runtime/image attestation, exact
+fail-closed admission policy/binding, and non-destructive RBAC before selecting
+or mutating EKS. The role cannot read Secrets, mutate its admission boundary,
+or delete workload/PVC resources. Removing the identity-provider assignment or
+source-role grant revokes that user without changing deployment state.
 
 See [EKS staging migration: One-time authorization
 bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the
-credential-free profile shape, verification command, CloudFormation/RBAC
-bootstrap, and complete repair lifecycle.
+credential-free profile shape, verification command, privileged
+attestation/admission/RBAC bootstrap order, and complete repair lifecycle.
 
 Run the canonical bootstrap target. Before it creates a one-time source key,
 it atomically reserves the mode-0600 recovery-record path. It then exchanges

@@ -78,17 +78,24 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset
 ```
 
-The separately reviewed cluster-bootstrap identity must apply
-`deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml` with an explicit
-temporary kubeconfig. That Role/RoleBinding grants namespace-scoped desired
-state reconciliation plus named read-only access to the runtime Secret
-attestation ConfigMap. It grants no Secret access, other ConfigMap access, Pod
-logs/exec, cluster role, wildcard verb, or cross-namespace authority. The
-delivery stack deliberately cannot bootstrap its own Kubernetes authorization.
+The separately reviewed cluster-bootstrap identity must first create the
+immutable version-2 runtime/admission attestation described below, then apply
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`, and only then
+apply `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`, all through
+an explicit temporary kubeconfig. The admission policy denies human delivery
+requests unless the final Deployment uses the bootstrap-approved router and
+Linkerd images plus the reviewed pod security, process, environment, mount, and
+host-isolation contract. Its missing parameter and evaluation failures deny.
+The namespace Role grants non-destructive desired-state reconciliation and
+name-scoped attestation reads. The separate ClusterRole grants `get` only on
+the named policy and binding so preflight can verify the live admission
+contract; it grants no mutation. There is no Secret access, other ConfigMap
+access, Pod logs/exec, resource deletion, wildcard verb, broad cluster role, or
+cross-namespace authority.
 
 Run `python3 scripts/validate_eks_bootstrap_assets.py` before deploying the
-stack or RBAC. Review the CloudFormation change set and Kubernetes server-side
-dry-run before either apply. Stack deletion revokes the delivery role and
+stack, policy, or RBAC. Review the CloudFormation change set and Kubernetes
+server-side dry-runs before apply. Stack deletion revokes the delivery role and
 access entry but does not delete the Router workload, RDS, PVC, runtime Secret,
 or customer data; those resources retain their own reviewed lifecycle.
 
@@ -125,20 +132,37 @@ make a Secret `get` metadata-only: JSONPath filters output after the API has
 authorized and returned the complete Secret.
 
 The bootstrap identity alone creates a fresh immutable attestation ConfigMap
-after it creates or updates the Secret. Its `data` must contain exactly the
-safe scalar fields `schema_version: v1`, `secret_name`, `secret_uid`, and
-`secret_resource_version`; it must have no `binaryData` and exactly one
-same-namespace `v1` `Secret` owner reference matching the attested name and
-UID. Delete the old attestation before changing the Secret, then create the
-fresh immutable ConfigMap after the Secret change. Any absent, malformed, or
-in-progress attestation blocks delivery. The delivery contract records only
-the attested UID/resourceVersion and the ConfigMap UID/resourceVersion, never
-Secret contents or the raw ConfigMap payload.
+after it creates or updates the Secret and after release approval resolves the
+exact router and Linkerd images. Its `data` must contain exactly
+`schema_version: v2`, `secret_name`, `secret_uid`,
+`secret_resource_version`, `approved_router_image`,
+`approved_linkerd_proxy_image`, and `approved_linkerd_init_image`. The router
+value must be the approved immutable ECR `@sha256:` reference. Linkerd values
+must be the exact injector-owned images; use the literal `none` for the init
+image only when the cluster uses Linkerd CNI and injects no init container.
+The ConfigMap must have no `binaryData` and exactly one same-namespace `v1`
+`Secret` owner reference matching the attested name and UID.
 
-Reconcile the reviewed JSON and protected Parameter together before using this
-contract against a cluster. Do not add the attestation ConfigMap to the
-Kustomize delivery inventory: it is independent bootstrap state, not workload
-desired state.
+The admission binding uses that ConfigMap as a native policy parameter with
+`parameterNotFoundAction: Deny`. Before changing the Secret or any approved
+image, delete the old attestation; after the reviewed inputs are ready, create
+the fresh immutable ConfigMap, server-side dry-run and apply the admission
+policy, and only then grant or use delivery RBAC. The delivery preflight compares
+the live policy and binding to the checked-in contract, proves the role cannot
+mutate either, validates all attestation fields, and requires the requested
+router digest to equal `approved_router_image`. Missing, malformed, deleting,
+mutable, or mismatched state blocks delivery.
+
+The policy evaluates every Deployment create/update by the delivery group in
+the staging namespace. Its first validation permits only the reviewed
+`smart-llmrouter` Deployment name, so using an alternate workload name cannot
+bypass the container, image, mount, or pod-security checks.
+
+The delivery contract records only safe UID/resource-version fields and
+admission-spec hashes, never Secret contents or raw ConfigMap data. Do not add
+the attestation ConfigMap or cluster-scoped admission objects to the Kustomize
+workload inventory: they are privileged bootstrap state, not workload desired
+state.
 
 Do not infer authorization from an account number, repository URI, local AWS
 profile, or this file alone. The protected Parameter and least-privilege

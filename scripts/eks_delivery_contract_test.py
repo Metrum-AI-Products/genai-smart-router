@@ -22,6 +22,8 @@ sys.modules[SPEC.name] = EKS_DELIVERY
 SPEC.loader.exec_module(EKS_DELIVERY)
 TARGET_POLICY = json.loads((ROOT / "deploy" / "aws" / "genai-smart-router-eks-staging-target.json").read_text())
 DIGEST = str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "a" * 64
+LINKERD_PROXY_IMAGE = "cr.l5d.io/linkerd/proxy@sha256:" + "b" * 64
+LINKERD_INIT_IMAGE = "none"
 DEPLOYMENT_UID = "smart-llmrouter-deployment-uid"
 
 
@@ -408,6 +410,9 @@ def runtime_secret_attestation(
     attestation_uid: str = "runtime-secret-attestation-uid-one",
     attestation_resource_version: str = "201",
     secret_name: str | None = None,
+    approved_router_image: str = DIGEST,
+    approved_linkerd_proxy_image: str = LINKERD_PROXY_IMAGE,
+    approved_linkerd_init_image: str = LINKERD_INIT_IMAGE,
 ) -> str:
     """A bootstrap-owned immutable, non-secret version attestation fixture."""
 
@@ -432,10 +437,13 @@ def runtime_secret_attestation(
             },
             "immutable": True,
             "data": {
-                "schema_version": "v1",
+                "schema_version": "v2",
                 "secret_name": secret_name,
                 "secret_uid": secret_uid,
                 "secret_resource_version": secret_resource_version,
+                "approved_router_image": approved_router_image,
+                "approved_linkerd_proxy_image": approved_linkerd_proxy_image,
+                "approved_linkerd_init_image": approved_linkerd_init_image,
             },
         }
     )
@@ -514,6 +522,76 @@ def replica_sets_object(
         }
     )
 
+def admission_policy_objects() -> str:
+    """Minimal fake objects used to prove exact live/checked-in spec matching."""
+
+    return json.dumps(
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "admissionregistration.k8s.io/v1",
+                    "kind": "ValidatingAdmissionPolicy",
+                    "metadata": {
+                        "name": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
+                    },
+                    "spec": {
+                        "failurePolicy": "Fail",
+                        "matchConstraints": {
+                            "resourceRules": [
+                                {
+                                    "apiGroups": ["apps"],
+                                    "apiVersions": ["v1"],
+                                    "operations": ["CREATE", "UPDATE"],
+                                    "resources": ["deployments"],
+                                    "scope": "Namespaced",
+                                }
+                            ]
+                        },
+                        "validations": [
+                            {"expression": "object.spec.replicas == 1"},
+                        ],
+                    },
+                },
+                {
+                    "apiVersion": "admissionregistration.k8s.io/v1",
+                    "kind": "ValidatingAdmissionPolicyBinding",
+                    "metadata": {
+                        "name": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
+                    },
+                    "spec": {
+                        "policyName": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
+                        "validationActions": ["Deny", "Audit"],
+                        "paramRef": {
+                            "name": TARGET_POLICY[
+                                "runtime_secret_attestation_configmap_name"
+                            ],
+                            "namespace": TARGET_POLICY["k8s_namespace"],
+                            "parameterNotFoundAction": "Deny",
+                        },
+                    },
+                },
+            ],
+        }
+    )
+
+
+def fake_admission_environment() -> dict[str, str]:
+    payload = admission_policy_objects()
+    by_kind = {
+        item["kind"]: item for item in json.loads(payload)["items"]
+    }
+    return {
+        "FAKE_ADMISSION_RBAC": "no",
+        "FAKE_ADMISSION_POLICY_OBJECTS": payload,
+        "FAKE_LIVE_ADMISSION_POLICY": json.dumps(
+            by_kind["ValidatingAdmissionPolicy"]
+        ),
+        "FAKE_LIVE_ADMISSION_BINDING": json.dumps(
+            by_kind["ValidatingAdmissionPolicyBinding"]
+        ),
+    }
 
 def fake_tools(directory: Path) -> None:
     log = directory / "calls.log"
@@ -527,13 +605,20 @@ case "$0" in
     *describe-cluster*) printf '{{"cluster":{{"status":"ACTIVE","arn":"arn:aws:eks:%s:%s:cluster/%s"}}}}\\n' "$FAKE_AWS_REGION" "$FAKE_AWS_ACCOUNT" "$FAKE_EKS_CLUSTER" ;;
   esac ;;
   *kubectl) case "$*" in
+    *"auth can-i get validatingadmissionpolicy/"*) echo yes ;;
+    *"auth can-i get validatingadmissionpolicybinding/"*) echo yes ;;
+    *"auth can-i"*validatingadmission*) echo "$FAKE_ADMISSION_RBAC" ;;
     *"auth can-i"*secret*) echo "$FAKE_SECRET_RBAC" ;;
     *"auth can-i get configmap/$FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) echo yes ;;
     *"auth can-i"*configmap*) echo "$FAKE_CONFIGMAP_RBAC" ;;
+    *"auth can-i delete "*|*"auth can-i deletecollection "*) echo "${{FAKE_MANAGED_DELETE_RBAC:-no}}" ;;
     *"auth can-i"*) echo yes ;;
+    *"create --dry-run=client"*"eks-staging-delivery-admission.yaml"*) printf '%s\n' "$FAKE_ADMISSION_POLICY_OBJECTS" ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
     *"apply --server-side --dry-run=server"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
+    *"get validatingadmissionpolicy/"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_POLICY" ;;
+    *"get validatingadmissionpolicybinding/"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_BINDING" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
     *"get secret"*) echo "unexpected Secret read" >&2; exit 46 ;;
@@ -591,6 +676,9 @@ def run(
     runtime_secret_attestation_after_apply_payload: str | None = None,
     secret_rbac: str = "no",
     configmap_rbac: str = "no",
+    admission_rbac: str = "no",
+    managed_delete_rbac: str = "no",
+    live_admission_objects: str | None = None,
     replica_sets: str | None = None,
     rollback_pod_template_sha256: str | None = None,
     include_rollback_pod_template_sha256: bool = True,
@@ -603,6 +691,13 @@ def run(
     evidence = evidence_dir or root / "tmp" / "evidence"
     promotion_evidence = root / "tmp" / "promotion-evidence"
     replica_sets_payload = replica_sets or replica_sets_object()
+    expected_admission_payload = admission_policy_objects()
+    live_admission_payload = json.loads(
+        live_admission_objects or expected_admission_payload
+    )
+    live_admission_by_kind = {
+        item["kind"]: item for item in live_admission_payload["items"]
+    }
     command = [
         "python3",
         str(SCRIPT),
@@ -653,6 +748,15 @@ def run(
         "FAKE_EKS_CLUSTER": str(TARGET_POLICY["eks_cluster"]),
         "FAKE_SECRET_RBAC": secret_rbac,
         "FAKE_CONFIGMAP_RBAC": configmap_rbac,
+        "FAKE_ADMISSION_RBAC": admission_rbac,
+        "FAKE_MANAGED_DELETE_RBAC": managed_delete_rbac,
+        "FAKE_ADMISSION_POLICY_OBJECTS": expected_admission_payload,
+        "FAKE_LIVE_ADMISSION_POLICY": json.dumps(
+            live_admission_by_kind["ValidatingAdmissionPolicy"]
+        ),
+        "FAKE_LIVE_ADMISSION_BINDING": json.dumps(
+            live_admission_by_kind["ValidatingAdmissionPolicyBinding"]
+        ),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
         "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),
@@ -909,6 +1013,33 @@ def main() -> int:
             and "forbidden ConfigMap permission"
             in inherited_configmap_write_access.stderr
         )
+        inherited_admission_write_access = run(
+            "preflight", root, admission_rbac="yes"
+        )
+        assert (
+            inherited_admission_write_access.returncode != 0
+            and "forbidden delivery admission-policy mutation"
+            in inherited_admission_write_access.stderr
+        )
+        inherited_managed_delete_access = run(
+            "preflight", root, managed_delete_rbac="yes"
+        )
+        assert (
+            inherited_managed_delete_access.returncode != 0
+            and "forbidden delete authority" in inherited_managed_delete_access.stderr
+        )
+
+        weakened_admission = json.loads(admission_policy_objects())
+        weakened_admission["items"][0]["spec"]["failurePolicy"] = "Ignore"
+        mismatched_admission = run(
+            "preflight",
+            root,
+            live_admission_objects=json.dumps(weakened_admission),
+        )
+        assert (
+            mismatched_admission.returncode != 0
+            and "differs from the reviewed contract" in mismatched_admission.stderr
+        )
 
         # The delivery contract fails before a mutating apply if the
         # bootstrap-owned attestation is not a strictly safe immutable
@@ -920,6 +1051,10 @@ def main() -> int:
             ("wrong owner", lambda item: item["metadata"].update({"ownerReferences": []})),
             ("deletion in progress", lambda item: item["metadata"].update({"deletionTimestamp": "2026-07-20T00:00:00Z"})),
             ("wrong secret name", lambda item: item["data"].update({"secret_name": "wrong-secret"})),
+            ("legacy schema", lambda item: item["data"].update({"schema_version": "v1"})),
+            ("mutable router image", lambda item: item["data"].update({"approved_router_image": "registry.example/router:latest"})),
+            ("unsafe proxy image", lambda item: item["data"].update({"approved_linkerd_proxy_image": "bad image"})),
+            ("unsafe init image", lambda item: item["data"].update({"approved_linkerd_init_image": "bad image"})),
         ):
             invalid_attestation = json.loads(runtime_secret_attestation())
             mutate(invalid_attestation)
@@ -936,6 +1071,20 @@ def main() -> int:
                 len(before_invalid_apply):
             ]
             assert "apply --server-side -f" not in invalid_apply_calls, mutation_name
+
+        unapproved_digest = str(TARGET_POLICY["ecr_repository_uri"]) + "@sha256:" + "c" * 64
+        digest_mismatch = run(
+            "apply",
+            root,
+            ["--confirm", "STAGING_APPLY"],
+            runtime_secret_attestation_payload=runtime_secret_attestation(
+                approved_router_image=unapproved_digest
+            ),
+        )
+        assert (
+            digest_mismatch.returncode != 0
+            and "not bootstrap-approved" in digest_mismatch.stderr
+        )
 
         replacement_attestation = json.loads(runtime_secret_attestation())
         replacement_attestation["metadata"]["resourceVersion"] = "202"
@@ -1584,6 +1733,7 @@ def main() -> int:
                     TARGET_POLICY["runtime_secret_attestation_configmap_name"]
                 ),
                 "FAKE_RUNTIME_SECRET_ATTESTATION": runtime_secret_attestation(),
+                **fake_admission_environment(),
             },
         )
         assert make_smoke.returncode == 0, make_smoke.stderr
@@ -1767,6 +1917,7 @@ def main() -> int:
                     TARGET_POLICY["runtime_secret_attestation_configmap_name"]
                 ),
                 "FAKE_RUNTIME_SECRET_ATTESTATION": runtime_secret_attestation(),
+                **fake_admission_environment(),
             },
         )
         assert release_evidence.returncode != 0

@@ -34,6 +34,9 @@ DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linke
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
 STAGING_IDENTITY_STACK = ROOT / "deploy/aws/genai-smart-router-eks-staging-identity.yaml"
 STAGING_DELIVERY_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml"
+STAGING_DELIVERY_ADMISSION = (
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml"
+)
 
 
 def main() -> int:
@@ -171,29 +174,40 @@ def main() -> int:
     for required in (
         "kind: Role\n",
         "kind: RoleBinding\n",
+        "kind: ClusterRole\n",
+        "kind: ClusterRoleBinding\n",
         "namespace: smart-llmrouter-staging",
         "kind: Group\n",
         "name: genai-smart-router-eks-staging-delivery",
         'resourceNames: ["smartrouter-staging-runtime-attestation"]',
+        'resourceNames: ["genai-smart-router-eks-staging-delivery"]',
         'resources: ["deployments"]',
         'resources: ["replicasets"]',
         'resources: ["ingresses", "networkpolicies"]',
         'resources: ["poddisruptionbudgets"]',
         'resources: ["services", "serviceaccounts", "persistentvolumeclaims"]',
+        'resources: ["validatingadmissionpolicies"]',
+        'resources: ["validatingadmissionpolicybindings"]',
     ):
         if required not in staging_delivery_rbac:
             raise SystemExit(f"staging delivery RBAC lacks required boundary: {required}")
     for forbidden_value in (
-        "kind: ClusterRole",
-        "kind: ClusterRoleBinding",
         '"secrets"',
         "pods/log",
         "pods/exec",
         'verbs: ["*"]',
+        '"delete"',
         "deletecollection",
     ):
         if forbidden_value in staging_delivery_rbac:
             raise SystemExit(f"staging delivery RBAC contains forbidden authority: {forbidden_value}")
+    if (
+        len(re.findall(r"(?m)^kind: ClusterRole$", staging_delivery_rbac)) != 1
+        or len(re.findall(r"(?m)^kind: ClusterRoleBinding$", staging_delivery_rbac)) != 1
+        or staging_delivery_rbac.count('resources: ["validatingadmissionpolicies"]') != 1
+        or staging_delivery_rbac.count('resources: ["validatingadmissionpolicybindings"]') != 1
+    ):
+        raise SystemExit("staging delivery RBAC must expose only the named admission-policy reads")
     configmap_rule = re.search(
         r'  - apiGroups: \[""\]\n    resources: \["configmaps"\]\n'
         r'    resourceNames: \["smartrouter-staging-runtime-attestation"\]\n'
@@ -202,6 +216,44 @@ def main() -> int:
     )
     if configmap_rule is None or staging_delivery_rbac.count('resources: ["configmaps"]') != 1:
         raise SystemExit("staging delivery RBAC must permit only named attestation ConfigMap get")
+
+    staging_delivery_admission = STAGING_DELIVERY_ADMISSION.read_text(encoding="utf-8")
+    for required in (
+        "kind: ValidatingAdmissionPolicy\n",
+        "kind: ValidatingAdmissionPolicyBinding\n",
+        "failurePolicy: Fail",
+        "  validations:\n",
+        "kind: ConfigMap",
+        "object.metadata.name == 'smart-llmrouter'",
+        "'genai-smart-router-eks-staging-delivery' in request.userInfo.groups",
+        "kubernetes.io/metadata.name: smart-llmrouter-staging",
+        "c.image == params.data.approved_router_image",
+        "c.image == params.data.approved_linkerd_proxy_image",
+        "object.spec.template.spec.initContainers[0].image == params.data.approved_linkerd_init_image",
+        "capabilities.add == ['NET_ADMIN', 'NET_RAW']",
+        "validationActions: [Deny, Audit]",
+        "name: smartrouter-staging-runtime-attestation",
+        "namespace: smart-llmrouter-staging",
+        "parameterNotFoundAction: Deny",
+    ):
+        if required not in staging_delivery_admission:
+            raise SystemExit(
+                f"staging delivery admission policy lacks required boundary: {required}"
+            )
+    if "name: resource-name" in staging_delivery_admission:
+        raise SystemExit(
+            "delivery admission must evaluate every delivery-role Deployment; "
+            "the exact-name validation denies alternate workload names"
+        )
+    for forbidden_value in ('resources: ["*"]', 'operations: ["*"]', "failurePolicy: Ignore"):
+        if forbidden_value in staging_delivery_admission:
+            raise SystemExit(
+                f"staging delivery admission policy contains forbidden boundary: {forbidden_value}"
+            )
+    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicy\n") != 1:
+        raise SystemExit("staging delivery admission policy definition must be unique")
+    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicyBinding\n") != 1:
+        raise SystemExit("staging delivery admission binding definition must be unique")
 
     policy = json.loads(TRUST.read_text(encoding="utf-8"))
     condition = policy["Statement"][0]["Condition"]["StringEquals"]

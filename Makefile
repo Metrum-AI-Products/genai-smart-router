@@ -194,6 +194,7 @@ eks-help:
 	@echo "  eks-promotion-plan     read-only: requires passed apply + smoke evidence; never applies production"
 	@echo "  production-promotion-validate read-only: validates evidence manifest; never deploys production"
 	@echo "Required: any operator-selected AWS profile that resolves to the approved staging delivery assumed role, plus the protected target policy Parameter; credentials are never Make variables."
+	@echo "Preflight also verifies the immutable runtime/image attestation, exact fail-closed admission policy/binding, and denied policy mutation/delete authority."
 	@echo "  eks-supply-chain-validate read-only: validates digest/release-binding/SBOM/provenance/signature/scan evidence"
 	@echo "eks-supply-chain-validate also requires EKS_SUPPLY_CHAIN_DIR; architecture comes only from the approved target policy."
 	@echo "Render/plan/apply/rollback/smoke/promotion-plan require IMAGE_DIGEST=<approved ECR repository>@sha256:<64 hex>."

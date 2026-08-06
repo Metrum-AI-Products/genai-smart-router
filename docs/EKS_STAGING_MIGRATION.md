@@ -46,11 +46,14 @@ The platform-IaC owner deploys
 `deploy/aws/genai-smart-router-eks-staging-identity.yaml` with one exact
 federated/SSO operator-role ARN, reviews the CloudFormation change set, and
 applies it with `CAPABILITY_NAMED_IAM`. The separately authorized
-cluster-bootstrap owner server-side dry-runs and applies
-`deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml` through an explicit
-mode-`0600` temporary kubeconfig. These actions create authority, not a Router
-release; repeat them only when the authorized operator role or delivery policy
-changes. Complete commands and revocation behavior are documented in
+cluster-bootstrap owner then creates the immutable version-2 runtime/admission
+attestation, server-side dry-runs and applies
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`, and only
+then applies `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`
+through an explicit mode-`0600` temporary kubeconfig. This order keeps missing
+parameters and policy failures deny-by-default before a human receives
+Deployment write authority. Complete commands, image-approval requirements,
+and revocation behavior are in
 [`deploy/aws/README.md`](../deploy/aws/README.md#deployable-staging-delivery-identity).
 
 Every authorized operator uses their own federated source profile and a local
@@ -110,29 +113,32 @@ identity response into tickets, casts, or shared logs.
 
    ```bash
    make eks-preflight eks-plan \
-     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
      IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
      EKS_EVIDENCE_DIR='/protected/evidence/<change-id>/preflight'
    ```
 
-   Stop if the target-policy hashes differ, the runtime Secret attestation is
-   stale, supply-chain evidence is missing, namespace permissions are broader
-   than the contract, live inventory contains an unmanaged field/object, or
-   RDS/PVC ownership is uncertain.
+   Stop if the target-policy hashes differ; the admission policy/binding differs
+   from the checked-in contract; the role can mutate admission state; the
+   version-2 attestation is stale or does not approve the requested digest;
+   supply-chain evidence is missing; namespace permissions are broader than the
+   contract; live inventory contains an unmanaged field/object; or RDS/PVC
+   ownership is uncertain.
 5. **Classify the failure before mutation.** Separate image/config/license,
    database/TLS/migration, PVC, scheduling, ingress/Linkerd/NetworkPolicy, and
    upstream activation failures. Preserve RDS and PVC by default. A Secret or
    license repair belongs to the privileged bootstrap owner; delete the old
-   attestation before the Secret change and create a fresh immutable
-   attestation afterward. The delivery identity must never read or mutate the
-   Secret.
+   attestation before changing the Secret or approved router/Linkerd images,
+   then create the fresh immutable version-2 attestation and reconcile the
+   admission policy before delivery. The delivery identity must never read or
+   mutate the Secret, attestation, admission policy, or binding.
 6. **Apply only reviewed desired state.** After reviewing the plan and
    supply-chain bundle, run:
 
    ```bash
    make eks-apply-staging \
      EKS_CONFIRM=STAGING_APPLY \
-     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
      IMAGE_DIGEST='<same-approved-digest>' \
      EKS_SUPPLY_CHAIN_DIR='/protected/evidence/<change-id>/supply-chain' \
      EKS_EVIDENCE_DIR='/protected/evidence/<change-id>/delivery'
@@ -186,10 +192,11 @@ Linkerd, and namespace bootstrap prerequisites. This staging runbook does not
 authorize a production cutover.
 
 1. Obtain separate Kubernetes identities: a privileged bootstrap identity for
-   namespace/Secret setup and a least-privilege delivery identity for the
-   reviewed workload resources. The delivery identity must not have any Secret
-   verbs; it reads only the pinned non-secret attestation ConfigMap described
-   below. EKS authentication alone is insufficient.
+   namespace/Secret/admission setup and a least-privilege delivery identity for
+   reviewed workload resources. The delivery identity has no Secret or delete
+   verbs. It reads only the named non-secret attestation ConfigMap and the exact
+   admission policy/binding described below; EKS authentication alone is
+   insufficient.
 2. Confirm the `nginx` ingress class, selected ingress namespace, and the
    namespace-local wildcard certificate Secret named
    `apps-metrum-ai-wildcard-tls`. Render the discovery-derived ingress
@@ -289,25 +296,39 @@ sources. The delivery identity must have **no** Secret verbs: Kubernetes RBAC
 does not support a metadata-only Secret `get`, and JSONPath would filter only
 after the full credential-bearing Secret had been authorized and returned.
 
-A separate, privileged Secret-bootstrap identity owns both the runtime Secret
-and the policy-pinned non-secret ConfigMap
-`smartrouter-staging-runtime-attestation`; the delivery identity gets
-name-scoped `get` only on that ConfigMap and no other ConfigMap or Secret
-verbs. Before
-any Secret mutation, bootstrap deletes the existing attestation. After the
-Secret write succeeds, bootstrap reads its metadata and creates a fresh
+A separate, privileged Secret-bootstrap identity owns the runtime Secret, the
+non-secret `smartrouter-staging-runtime-attestation` ConfigMap, and the
+cluster-scoped staging delivery admission policy/binding. The delivery identity
+gets name-scoped `get` only on those non-secret objects and cannot mutate them.
+Before any Secret or approved-image change, bootstrap deletes the existing
+attestation. After the reviewed inputs are ready, bootstrap creates a fresh
 `immutable: true` ConfigMap with exactly these non-secret `data` keys:
-`schema_version: v1`, `secret_name`, `secret_uid`, and
-`secret_resource_version`. It must have no `binaryData` and exactly one
-same-namespace `v1` `Secret` owner reference whose name and UID match the
-attested values. A missing, deleting, mutable, malformed, or mismatched
-attestation blocks preflight and delivery. The contract records only the
-attested Secret UID/resourceVersion plus the attestation ConfigMap
-UID/resourceVersion, never Secret contents or raw ConfigMap data. A Secret or
-attestation replacement/update invalidates apply/smoke evidence; rerun the
-reviewed apply and protected smoke before a promotion plan can pass. Keep this
-ConfigMap outside the Kustomize delivery inventory: it is bootstrap evidence,
-not workload desired state.
+`schema_version: v2`, `secret_name`, `secret_uid`,
+`secret_resource_version`, `approved_router_image`,
+`approved_linkerd_proxy_image`, and `approved_linkerd_init_image`. The router
+image is an approved immutable ECR digest. Linkerd images are the exact
+injector-owned values; `approved_linkerd_init_image: none` is valid only when
+Linkerd CNI injects no init container. The ConfigMap has no `binaryData` and
+exactly one same-namespace `v1` `Secret` owner reference matching the attested
+name and UID.
+
+Bootstrap server-side dry-runs and applies
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml` before
+delivery RBAC. The native ConfigMap parameter uses
+`parameterNotFoundAction: Deny`; `failurePolicy: Fail` and `Deny` actions keep
+missing parameters, CEL failures, unapproved images, unsafe process/host
+settings, extra containers, and protected-volume access fail-closed. Preflight
+compares the live policy and binding to the checked-in specs and proves the
+delivery role cannot mutate either. It also requires the requested digest to
+equal `approved_router_image`.
+
+A missing, deleting, mutable, malformed, or mismatched attestation blocks
+preflight and delivery. The contract records only safe attested
+UID/resource-version fields and admission-spec hashes, never Secret contents or
+raw ConfigMap data. A Secret, attestation, policy, binding, or approved-image
+change invalidates apply/smoke evidence; rerun reviewed apply and protected
+smoke before promotion. Keep the ConfigMap and admission objects outside the
+Kustomize workload inventory: they are privileged bootstrap state.
 
 ## Outcome-Calibrated Routing Validation
 
@@ -355,7 +376,7 @@ continues to own runtime-secret, RDS, license, smoke, and rollback procedures.
 
    ```bash
    make eks-preflight eks-plan \
-     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
      IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
@@ -366,16 +387,15 @@ continues to own runtime-secret, RDS, license, smoke, and rollback procedures.
    protected policy, matching account/role, namespace RBAC, digest, namespace
    match, or dry-run failure stops before mutation.
 
-   The delivery role must also have namespace-scoped `list` permission only on
+   The delivery role has namespace-scoped `list` permission only on
    `deployments`, `ingresses`, `networkpolicies`,
    `persistentvolumeclaims`, `poddisruptionbudgets`, `services`, and
-   `serviceaccounts`, plus name-scoped `get` permission only for the approved
-   runtime Secret attestation ConfigMap. It must have no `get`, `list`,
-   `watch`, `create`, `update`, `patch`, `delete`, or `deletecollection`
-   permissions for Secrets, and no `get` on other ConfigMaps, `list`, `watch`,
-   `create`, `update`, `patch`, `delete`, or `deletecollection` permission for
-   ConfigMaps. The delivery
-   contract builds its expected inventory from
+   `serviceaccounts`; name-scoped `get` on the approved runtime attestation
+   ConfigMap; and name-scoped `get` on the exact admission policy and binding.
+   It has no Secret or resource-deletion verbs, no other ConfigMap access, and
+   no admission-policy mutation/list/watch authority. Preflight probes every
+   denied surface before render or apply.
+   The delivery contract builds its expected inventory from
    the isolated client-rendered manifest, not from Server-Side Apply output.
    Server-side dry-run is an acceptance/field-ownership check only: its object
    output is compared as a candidate live object and never becomes the expected
@@ -419,7 +439,7 @@ continues to own runtime-secret, RDS, license, smoke, and rollback procedures.
 
    ```bash
    make eks-apply-staging EKS_CONFIRM=STAGING_APPLY \
-     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
      IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
      EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain'
    ```
@@ -484,7 +504,7 @@ continues to own runtime-secret, RDS, license, smoke, and rollback procedures.
    EKS_SMOKE_COMMAND_FILE=/secure/ci/smartrouter-staging-smoke.sh \
      make eks-smoke-staging \
        EKS_CONFIRM=STAGING_APPLY \
-       EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+       EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
        IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>'
    ```
 
@@ -528,7 +548,7 @@ safe apply evidence (`live_pod_template_sha256`):
 
 ```bash
 make eks-rollback-staging EKS_CONFIRM=STAGING_APPLY \
-  EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+  EKS_DELIVERY_AWS_PROFILE='<operator-delivery-profile>' \
   IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
   EKS_SUPPLY_CHAIN_DIR='tmp/eks-supply-chain' \
   ROLLBACK_POD_TEMPLATE_SHA256='<approved prior live_pod_template_sha256>'
