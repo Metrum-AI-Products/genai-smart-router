@@ -41,6 +41,12 @@ def task(record_id: str, status: str, **fields: Any) -> dict[str, Any]:
         assignee=fields.pop("assignee", None),
         requires=fields.pop("requires", []),
         references=fields.pop("references", []),
+        status_reason=fields.pop("status_reason", f"{status} because the fixture is in that state"),
+        next_steps=fields.pop(
+            "next_steps",
+            [] if status in {"done", "cancelled"} else [f"Advance {record_id}"],
+        ),
+        human_actions=fields.pop("human_actions", []),
         started_at=fields.pop("started_at", None),
         completed_at=fields.pop("completed_at", None),
         **fields,
@@ -88,6 +94,31 @@ def main() -> int:
         require(initial.returncode == 0, initial.stderr)
         require("0 events" in initial.stdout, initial.stdout)
         require(not events.exists(), "validation created an event journal")
+        missing_context_registry = root / "missing-context.ndjson"
+        missing_context_records = valid_records()
+        missing_context_records[2].pop("status_reason")
+        write_ndjson(missing_context_registry, missing_context_records)
+        missing_context = run(missing_context_registry, root / "missing-context-events.ndjson", "validate")
+        require(missing_context.returncode != 0, "task without status reason was accepted")
+        require("status_reason is required" in missing_context.stderr, missing_context.stderr)
+
+        missing_transition_context = run(
+            registry,
+            events,
+            "update",
+            "task.first",
+            "--expect-status",
+            "blocked",
+            "--status",
+            "in_progress",
+        )
+        require(missing_transition_context.returncode != 0, "status transition without context succeeded")
+        require(
+            "changing status requires --status-reason" in missing_transition_context.stderr,
+            missing_transition_context.stderr,
+        )
+        require(not events.exists(), "invalid status transition created an event journal")
+
 
         update = run(
             registry,
@@ -98,6 +129,11 @@ def main() -> int:
             "blocked",
             "--status",
             "in_progress",
+            "--status-reason",
+            "Implementation work is actively running.",
+            "--replace-next-steps",
+            "Complete the implementation checks.",
+            "--replace-human-actions",
             "--assignee",
             "quality-engineering",
         )
@@ -108,6 +144,15 @@ def main() -> int:
         require(update_event["status"] == "in_progress", "top-level event status missing")
         require(update_event["due_date"] is None, "top-level event due_date missing")
         require(update_event["task"]["assignee"] == "quality-engineering", "snapshot assignee missing")
+        require(
+            update_event["task"]["status_reason"] == "Implementation work is actively running.",
+            "status transition omitted its reason",
+        )
+        require(
+            update_event["task"]["next_steps"] == ["Complete the implementation checks."],
+            "status transition omitted next steps",
+        )
+        require(update_event["task"]["human_actions"] == [], "status transition omitted human actions")
         require(registry.read_bytes() == original_baseline, "update mutated baseline registry")
 
         listing = run(registry, events, "list", "--status", "in_progress", "--json")
@@ -146,6 +191,10 @@ def main() -> int:
             "1",
             "--status",
             "ready",
+            "--status-reason",
+            "The dashboard task is ready for implementation.",
+            "--next-step",
+            "Build and verify the dashboard.",
             "--reference",
             "https://github.com/uwdata/mosaic",
             "--action",
@@ -166,6 +215,15 @@ def main() -> int:
             add_event["task"]["acceptance"] == ["The dashboard refreshes without a rebuild."],
             "create event omitted acceptance",
         )
+        require(
+            add_event["task"]["status_reason"] == "The dashboard task is ready for implementation.",
+            "create event omitted status reason",
+        )
+        require(
+            add_event["task"]["next_steps"] == ["Build and verify the dashboard."],
+            "create event omitted next steps",
+        )
+        require(add_event["task"]["human_actions"] == [], "create event omitted human actions")
         require(registry.read_bytes() == original_baseline, "add mutated baseline registry")
 
         projected = run(registry, events, "project", "--output", str(projection))
