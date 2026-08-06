@@ -72,11 +72,10 @@ These instructions apply to the whole repository.
 
 ## Local Work-Item Tracking And Dashboard
 
-- Repository work is also tracked locally in the checked-in `work-items.ndjson` baseline and `work-item-events.ndjson` append-only event journal. These files are shared repository state, not ignored personal notes: commit relevant changes to them with the implementation, documentation, or operational work they describe.
-- `work-items.ndjson` is the durable baseline; `work-item-events.ndjson` records task creation and updates. The reconciled current state is derived from both files. Do not hand-edit the event journal, rewrite old events, treat DuckDB/Mosaic as a writable store, or leave the only copy of a task update in an agent session, dashboard, generated projection, or ignored local file.
-- Use `scripts/work_items.py` for task writes. Its exclusive lock, optimistic status check, revision validation, global case-insensitive task-ID uniqueness, dependency validation, and `fsync` protect concurrent agents from silently overwriting one another:
-- Every reconciled task carries explicit status context: `status_reason` answers why the task has its current status, `next_steps` says what happens next, and `human_actions` says what a person can do. Use an empty `human_actions` list when no direct human action is useful. Active statuses (`pending`, `ready`, `in_progress`, and `blocked`) require at least one next step; closed statuses may have none. Changing a task's status requires replacing the status reason and explicitly replacing both lists so stale instructions cannot survive a transition.
-- Put related GitHub issue references (`#<number>`), pull request references (`PR#<number>`), and full HTTP(S) references in status context or structured reference fields. The expanded dashboard renders these as links; do not substitute raw credentials or private operational URLs.
+- Any instruction to create, read, or update the plan, local plan, task list, task status, next steps, or pending work always refers to the reconciled checked-in NDJSON state from `work-items.ndjson` plus `work-item-events.ndjson`. Never maintain a competing Markdown plan, agent-only todo list, dashboard-owned state, generated projection, or ignored local plan.
+- `work-items.ndjson` is the durable baseline and `work-item-events.ndjson` is the append-only task journal. Do not hand-edit the journal or rewrite old events; use `scripts/work_items.py` for every task write so locking, optimistic status checks, revision and dependency validation, global task-ID uniqueness, and `fsync` protect concurrent agents.
+- Every task has explicit `status_reason`, `next_steps`, and `human_actions`. Active statuses (`pending`, `ready`, `in_progress`, and `blocked`) require a next step; closed statuses may omit it. A status transition must replace all three fields so stale instructions cannot survive.
+- Put related GitHub issues (`#<number>`), pull requests (`PR#<number>`), and full HTTP(S) references in status context or structured references. Never put credentials, secret values, full configs, or private operational URLs in task records because dashboard users can see them.
 
 
   ```bash
@@ -132,9 +131,8 @@ These instructions apply to the whole repository.
     --replace-human-actions
   ```
 
-- After a task write, rerun `rtk python3 scripts/work_items.py validate`, review both tracked NDJSON files with `rtk git status --short -- work-items.ndjson work-item-events.ndjson`, and include their changes in the same commit as the work. A task is not durably handed off until the relevant NDJSON update is checked into the repository.
-- `work-items.sql` is the checked-in, read-only DuckDB reconciliation/query layer. Generated DuckDB databases and materialized projections are disposable and must not replace the two tracked NDJSON sources.
-- The live Mosaic dashboard under `work-dashboard/` is read-only. It reconciles both NDJSON files in the browser and refreshes within about one second after either tracked source changes. Configure `WORK_ITEMS_DASHBOARD_PORT` in ignored `env.json`, then run:
+- After every task write, validate with `rtk python3 scripts/work_items.py validate`, inspect `work-items.ndjson` and `work-item-events.ndjson`, and commit the journal change with the work it describes. A plan or status update is not durable until its NDJSON event is checked in.
+- `work-items.sql` and the live Mosaic dashboard under `work-dashboard/` are read-only derived views. The running dashboard must reconcile both NDJSON sources and auto-refresh directly from their current contents within about one second, without manual import, synchronization, rebuild, or restart. If a valid NDJSON write is not reflected automatically, treat that as a dashboard bug; never patch a generated database or dashboard state to hide it. Configure `WORK_ITEMS_DASHBOARD_PORT` in ignored `env.json`, then run:
 
   ```bash
   cd work-dashboard
