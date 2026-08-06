@@ -37,6 +37,23 @@ export function linkedTextParts(value) {
   return parts.length ? parts : [{text, href: null}];
 }
 
+export function taskDetailId(taskId) {
+  let encoded = "";
+  const value = String(taskId);
+  for (let index = 0; index < value.length; index += 1) {
+    encoded += value.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+  return `task-detail-${encoded}`;
+}
+
+export function associateTaskDetail(detailRow, expandButton, taskId) {
+  const detailId = taskDetailId(taskId);
+  detailRow.id = detailId;
+  expandButton.setAttribute("aria-controls", detailId);
+  return detailId;
+}
+
+
 
 export function taskDetailSections(task) {
   return [
@@ -56,5 +73,11 @@ export function toggleExpandedTask(expandedTaskIds, taskId) {
     return false;
   }
   expandedTaskIds.add(taskId);
+  return true;
+}
+
+export function collapseExpandedTaskOnEscape(expandedTaskIds, taskId, key) {
+  if (key !== "Escape" || !expandedTaskIds.has(taskId)) return false;
+  expandedTaskIds.delete(taskId);
   return true;
 }

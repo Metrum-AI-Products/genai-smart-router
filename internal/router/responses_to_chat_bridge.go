@@ -73,6 +73,11 @@ func responsesToChatBridgeFilterReason(target Target, req *IRRequest, callerDial
 		}
 		return ""
 	}
+	// An explicit null is still an explicit choice. Reject it before the
+	// no-tools request can fall through to the text-only bridge.
+	if rawKeyPresent(req.Raw, "tool_choice") && req.Raw["tool_choice"] == nil {
+		return "responses-to-chat-tool-choice-null-unsupported"
+	}
 	if !bridge.Text {
 		return "responses-to-chat-text-unsupported"
 	}

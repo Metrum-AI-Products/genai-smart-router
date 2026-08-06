@@ -1,5 +1,7 @@
 import * as vg from "@uwdata/vgplot";
 import {
+  associateTaskDetail,
+  collapseExpandedTaskOnEscape,
   detailList,
   linkedTextParts,
   taskDetailSections,
@@ -404,9 +406,8 @@ function createStatusContext(task) {
 }
 
 
-function createTaskDetailRow(task, detailId) {
+function createTaskDetailRow(task) {
   const detailRow = document.createElement("tr");
-  detailRow.id = detailId;
   detailRow.className = "task-detail-row";
   detailRow.hidden = !expandedTaskIds.has(task.id);
 
@@ -492,8 +493,7 @@ function renderRows() {
     statusCell.append(statusPill);
     row.append(statusCell);
 
-    const detailId = `task-detail-${task.id}`;
-    const detailRow = createTaskDetailRow(task, detailId);
+    const detailRow = createTaskDetailRow(task);
     const taskCell = document.createElement("td");
     taskCell.className = "task-summary";
     const title = document.createElement("strong");
@@ -503,15 +503,14 @@ function renderRows() {
     const expandButton = document.createElement("button");
     expandButton.type = "button";
     expandButton.className = "task-expand";
-    expandButton.setAttribute("aria-controls", detailId);
+    associateTaskDetail(detailRow, expandButton, task.id);
     updateExpansion(expandButton, row, detailRow, task, expandedTaskIds.has(task.id));
     expandButton.addEventListener("click", () => {
       updateExpansion(expandButton, row, detailRow, task, toggleExpandedTask(expandedTaskIds, task.id));
     });
     expandButton.addEventListener("keydown", event => {
-      if (event.key !== "Escape" || !expandedTaskIds.has(task.id)) return;
+      if (!collapseExpandedTaskOnEscape(expandedTaskIds, task.id, event.key)) return;
       event.preventDefault();
-      expandedTaskIds.delete(task.id);
       updateExpansion(expandButton, row, detailRow, task, false);
     });
     taskCell.append(title, id, expandButton);

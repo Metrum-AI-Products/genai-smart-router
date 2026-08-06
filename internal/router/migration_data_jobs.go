@@ -1,7 +1,10 @@
 package router
 
 // Resumable migration data jobs are intentionally small, scalar, and owned by
-// router-migrate.  They do not run during router startup or request handling.
+// router-migrate. They do not run during request handling. A checked-in,
+// zero-row-only job may opt into the narrow SQLite auto-safe startup exception;
+// that path runs exactly ordinal zero and still requires validation before the
+// usage store opens.
 
 import (
 	"context"
@@ -22,7 +25,7 @@ var usageDataJobDefinitions = []DataJobDefinition{{
 	Key: "historical-usage-validation-v1", Scope: usageMigrationScope,
 	MigrationID: usageHistoricalValidationMigrationID, DataVersion: 1,
 	ExecutionMode: "batch", ValidationMode: "row-addressability", ThrottlePerMinute: 60,
-	RestartSafe: true, HandlerKey: "usage.historical-validation.job.v1",
+	RestartSafe: true, AutoSafeZeroRow: true, HandlerKey: "usage.historical-validation.job.v1",
 	RunCheckpoint: runUsageHistoricalValidationCheckpoint,
 	Validate:      func(db *gorm.DB) error { return verifyUsageReasoningTelemetryMigration(db) },
 }}
@@ -57,12 +60,16 @@ const (
 // checkpointed conversion. Cursor and shard values are opaque bounded scalar
 // identifiers; callers must never place request content or credentials in them.
 type DataJobDefinition struct {
-	Key               string
-	Scope             string
-	MigrationID       int
-	DataVersion       int
-	ExecutionMode     string
-	ValidationMode    string
+	Key            string
+	Scope          string
+	MigrationID    int
+	DataVersion    int
+	ExecutionMode  string
+	ValidationMode string
+	// AutoSafeZeroRow permits only the fresh SQLite auto-safe bootstrap to run
+	// ordinal zero for this job. It must validate without scanning data; larger
+	// historical work remains an explicit non-serving deployment job.
+	AutoSafeZeroRow   bool
 	ThrottlePerMinute int
 	RestartSafe       bool
 	HandlerKey        string
@@ -132,6 +139,72 @@ func validateDataJobDefinitions(scope string, migrations []MigrationDefinition, 
 
 func dataJobID(scope, key string) string { return safeMigrationText(scope + "-" + key) }
 
+// RunAutoSafeZeroRowDataJob completes the deliberately narrow startup
+// exception for a fresh SQLite store. A validated job returns before preflight,
+// so usage written after bootstrap cannot alter its checkpoint or counters.
+// Every durable non-validated state remains explicit deployment-job work.
+func (r *migrationRunner) RunAutoSafeZeroRowDataJob(ctx context.Context, runner string, preflight func(*gorm.DB) error) error {
+	status, err := r.Verify()
+	if err != nil {
+		return err
+	}
+	if !status.Compatible {
+		return errors.New("migration state is incompatible")
+	}
+	if status.State == "current" {
+		for _, job := range status.Jobs {
+			if job.State != migrationDataJobValidated {
+				return errors.New("auto-safe requires non-serving data-job completion")
+			}
+		}
+		return nil
+	}
+	if status.State != "pending" || len(status.Jobs) != 1 {
+		return errors.New("auto-safe requires one fresh pending data job")
+	}
+	job := status.Jobs[0]
+	if job.Present || job.State != migrationDataJobPending {
+		return fmt.Errorf("auto-safe requires non-serving completion of data job %s", safeMigrationText(job.Key))
+	}
+	var definition *DataJobDefinition
+	for i := range r.dataJobs {
+		if r.dataJobs[i].Key == job.Key {
+			definition = &r.dataJobs[i]
+			break
+		}
+	}
+	if definition == nil || !definition.AutoSafeZeroRow {
+		return fmt.Errorf("data job %s is not eligible for auto-safe startup", safeMigrationText(job.Key))
+	}
+	if preflight == nil {
+		return errors.New("auto-safe zero-row preflight is required")
+	}
+	if err := preflight(r.db); err != nil {
+		return err
+	}
+	completed, err := r.runDataJob(ctx, job.Key, runner, DataJobCheckpoint{Ordinal: 0}, requireAutoSafeZeroRowCompletion)
+	if err != nil {
+		return err
+	}
+	if completed.State != migrationDataJobValidated || completed.Checkpoints != 1 ||
+		completed.RowsScanned != 0 || completed.RowsUpdated != 0 ||
+		completed.RowsSkipped != 0 || completed.RowsFailed != 0 {
+		return fmt.Errorf("auto-safe zero-row data job %s did not validate empty data", safeMigrationText(job.Key))
+	}
+	return nil
+}
+
+// requireAutoSafeZeroRowCompletion runs inside the same SQLite write
+// transaction that inserts the checkpoint and marks the job validated. The
+// checkpoint insert acquires the write reservation before this guard reads
+// request_usage, so a later writer cannot commit ahead of validation.
+func requireAutoSafeZeroRowCompletion(tx *gorm.DB, result DataJobCheckpointResult) error {
+	if result.RowsScanned != 0 || result.RowsUpdated != 0 || result.RowsSkipped != 0 || result.RowsFailed != 0 {
+		return errors.New("auto-safe checkpoint reported non-zero counters")
+	}
+	return requireEmptyUsageStore(tx)
+}
+
 func (r *migrationRunner) populateDataJobStatus(status *MigrationStatus, applied map[int]bool) error {
 	for _, d := range r.dataJobs {
 		if !applied[d.MigrationID] {
@@ -181,10 +254,16 @@ func (r *migrationRunner) populateDataJobStatus(status *MigrationStatus, applied
 	return nil
 }
 
+type dataJobCompletionGuard func(*gorm.DB, DataJobCheckpointResult) error
+
 // RunDataJob runs at most one checkpoint. Operators invoke it repeatedly from
 // the non-serving CLI, making cancellation and recovery observable between
 // batches and avoiding unbounded memory or hot-path work.
 func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, checkpoint DataJobCheckpoint) (MigrationDataJobStatus, error) {
+	return r.runDataJob(ctx, key, runner, checkpoint, nil)
+}
+
+func (r *migrationRunner) runDataJob(ctx context.Context, key, runner string, checkpoint DataJobCheckpoint, completionGuard dataJobCompletionGuard) (MigrationDataJobStatus, error) {
 	var d *DataJobDefinition
 	for i := range r.dataJobs {
 		if r.dataJobs[i].Key == key {
@@ -217,7 +296,7 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 	var result MigrationDataJobStatus
 	if err := r.withMigrationOwnership(runner, func(owned *migrationRunner) error {
 		var runErr error
-		result, runErr = owned.runDataJobCheckpoint(ctx, *d, checkpoint)
+		result, runErr = owned.runDataJobCheckpoint(ctx, *d, checkpoint, completionGuard)
 		return runErr
 	}); err != nil {
 		return MigrationDataJobStatus{}, err
@@ -230,7 +309,9 @@ func (r *migrationRunner) RunDataJob(ctx context.Context, key, runner string, ch
 // Its caller holds migration ownership for the whole operation. In PostgreSQL
 // that means the advisory lock and every operation below use one physical
 // session; in SQLite it preserves the existing single-connection behavior.
-func (r *migrationRunner) runDataJobCheckpoint(ctx context.Context, d DataJobDefinition, checkpoint DataJobCheckpoint) (MigrationDataJobStatus, error) {
+// completionGuard is invocation-scoped and runs only for a completing
+// checkpoint, inside the transaction that persists validation.
+func (r *migrationRunner) runDataJobCheckpoint(ctx context.Context, d DataJobDefinition, checkpoint DataJobCheckpoint, completionGuard dataJobCompletionGuard) (MigrationDataJobStatus, error) {
 	id := dataJobID(r.scope, d.Key)
 	// An ordinal identifies one durable accounting event.  Check this before
 	// cursor restoration, throttling, or handler execution so an operator can
@@ -304,6 +385,11 @@ func (r *migrationRunner) runDataJobCheckpoint(ctx context.Context, d DataJobDef
 		}
 		updates := map[string]any{"state": migrationDataJobRunning, "rows_scanned": rec.RowsScanned + result.RowsScanned, "rows_updated": rec.RowsUpdated + result.RowsUpdated, "rows_skipped": rec.RowsSkipped + result.RowsSkipped, "rows_failed": rec.RowsFailed + result.RowsFailed}
 		if result.Complete {
+			if completionGuard != nil {
+				if err := completionGuard(tx, result); err != nil {
+					return err
+				}
+			}
 			if err := d.Validate(tx); err != nil {
 				return err
 			}

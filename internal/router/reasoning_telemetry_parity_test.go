@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,19 @@ func runReasoningTelemetryParity(t *testing.T, cfg UsageDBConfig) {
 			t.Fatal(err)
 		}
 	}
+	jobID := dataJobID(usageMigrationScope, "historical-usage-validation-v1")
+	if err := legacy.db.Where("job_id = ?", jobID).Delete(&migrationDataJobCheckpointRecord{}).Error; err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	if err := legacy.db.Where("job_id = ?", jobID).Delete(&migrationDataJobRecord{}).Error; err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	if err := legacy.db.Where("scope = ?", usageMigrationScope).Delete(&migrationAttemptRecord{}).Error; err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
 	if err := legacy.db.Exec("DELETE FROM schema_migration_ledger WHERE scope = ?", usageMigrationScope).Error; err != nil {
 		_ = legacy.Close()
 		t.Fatal(err)
@@ -62,6 +76,10 @@ func runReasoningTelemetryParity(t *testing.T, cfg UsageDBConfig) {
 		t.Fatal(err)
 	}
 	if err := runner.ApplyPending("reasoning-telemetry-parity"); err != nil {
+		_ = closeDB()
+		t.Fatal(err)
+	}
+	if _, err := runner.RunDataJob(context.Background(), "historical-usage-validation-v1", "reasoning-telemetry-parity", DataJobCheckpoint{Ordinal: 0}); err != nil {
 		_ = closeDB()
 		t.Fatal(err)
 	}

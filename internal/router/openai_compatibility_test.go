@@ -74,7 +74,7 @@ func TestResponsesBodyOnChatEndpointEnabledNativeResponsesStructuredOutput(t *te
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.OpenAICompatibility.TolerateResponsesBodyOnChatEndpoint = true
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Provider["responses"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-responses", APIKey: "provider-key"}
 	cfg.Models["compat"] = ModelGroup{Strategy: "static", Targets: []Target{{
 		Provider:    "responses",
@@ -157,7 +157,7 @@ func TestResponsesBodyOnChatEndpointEnabledResponsesToChatReasoningTools(t *test
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
 	cfg.Server.OpenAICompatibility.TolerateResponsesBodyOnChatEndpoint = true
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Server.DecisionTelemetry.Enabled = true
 	cfg.Provider["chat"] = ProviderConfig{BaseURL: upstream.URL + "/v1", Dialect: "openai-chat", APIKey: "provider-key"}
 	cfg.Models["bridge"] = ModelGroup{Strategy: "static", Targets: []Target{{

@@ -2,6 +2,7 @@ package router
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -1516,6 +1517,11 @@ func (s *usageStore) initializeSchema(policy string) error {
 		if err := r.ApplyPending("router-startup"); err != nil {
 			return fmt.Errorf("usage migration auto-safe: %w", err)
 		}
+		if s.db.Dialector.Name() == "sqlite" {
+			if err := r.RunAutoSafeZeroRowDataJob(context.Background(), "router-startup", requireEmptyUsageStore); err != nil {
+				return fmt.Errorf("usage migration auto-safe: %w", err)
+			}
+		}
 		status, err := r.Verify()
 		if err != nil {
 			return fmt.Errorf("usage migration auto-safe: %w", err)
@@ -1543,6 +1549,17 @@ func usageMigrationServingCompatible(status MigrationStatus) bool {
 		}
 	}
 	return true
+}
+
+func requireEmptyUsageStore(db *gorm.DB) error {
+	var usageRows int64
+	if err := db.Table("request_usage").Count(&usageRows).Error; err != nil {
+		return fmt.Errorf("zero-row preflight: %w", err)
+	}
+	if usageRows != 0 {
+		return errors.New("zero-row preflight found existing usage rows")
+	}
+	return nil
 }
 
 func OpenUsageStorePath(path string) (*usageStore, error) {

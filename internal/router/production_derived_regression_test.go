@@ -139,7 +139,7 @@ func TestProductionDerivedAnthropicMessagesImageEligibility(t *testing.T) {
 
 	newConfig := func(dir string, includeImageTarget bool) *Config {
 		cfg := testConfig(t, upstream.URL, "provider-key", dir)
-		cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+		cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 		cfg.Provider["text_anthropic"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
 		cfg.Provider["image_anthropic"] = ProviderConfig{BaseURL: upstream.URL, Dialect: "anthropic", APIKey: "provider-key"}
 		targets := []Target{{
@@ -611,7 +611,7 @@ func TestProductionDerivedUpstreamErrorClassificationIsCallerVisible(t *testing.
 
 			dir := t.TempDir()
 			cfg := testConfig(t, upstream.URL, "provider-key", dir)
-			cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+			cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 			cfg.Server.Diagnostics.StoreSanitizedUpstreamError = boolPtr(true)
 			svc, err := New(cfg)
 			if err != nil {
@@ -680,7 +680,7 @@ func TestProductionDerivedRouterTrafficShapeRejectionSkipsUpstream(t *testing.T)
 
 	dir := t.TempDir()
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	on := true
 	cfg.Callers[0].TrafficShape = TrafficShapeConfig{Enabled: &on, RequestStartPerSec: 0.01, RequestBurst: 1}
 	svc, err := New(cfg)
@@ -748,7 +748,7 @@ func productionDerivedHighRegressionConfig(t *testing.T, dir, upstreamURL string
 		Server: ServerConfig{
 			Listen:            ":0",
 			DefaultModelGroup: fixture.ModelGroup,
-			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
+			UsageDB:           freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite")),
 			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
 			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
 		},
@@ -782,7 +782,7 @@ func productionDerivedRegressionConfig(t *testing.T, dir, upstreamURL string) *C
 		Server: ServerConfig{
 			Listen:            ":0",
 			DefaultModelGroup: "large-openai-chat-tools-smoke",
-			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
+			UsageDB:           freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite")),
 			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
 			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
 		},
@@ -833,7 +833,7 @@ func productionDerivedOpenCodeStreamOptionsConfig(t *testing.T, dir, upstreamURL
 		Server: ServerConfig{
 			Listen:            ":0",
 			DefaultModelGroup: "big-coder-opencode-stream-options-smoke",
-			UsageDB:           UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")},
+			UsageDB:           freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite")),
 			DecisionTelemetry: DecisionTelemetryConfig{Enabled: true},
 			Logging:           LoggingConfig{Path: filepath.Join(dir, "requests.jsonl")},
 		},

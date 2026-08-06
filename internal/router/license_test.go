@@ -97,7 +97,7 @@ func TestLicenseManagerReadinessRequestGateMetricsAndUsage(t *testing.T) {
 	now := time.Now().UTC()
 	licensePath := writeTestLicense(t, dir, priv, testLicensePayload(now, []string{LicenseFeatureRouting, LicenseFeatureUsageReporting}))
 	cfg := testConfig(t, upstream.URL, "provider-key", dir)
-	cfg.Server.UsageDB = UsageDBConfig{Driver: "sqlite", Path: filepath.Join(dir, "usage.sqlite")}
+	cfg.Server.UsageDB = freshSQLiteUsageDBConfigForTest(filepath.Join(dir, "usage.sqlite"))
 	cfg.Server.License = LicenseConfig{Enabled: true, Path: licensePath, StatePath: filepath.Join(dir, "license-state.json"), RecheckInterval: time.Hour}
 	svc, err := New(cfg)
 	if err != nil {

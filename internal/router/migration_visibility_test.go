@@ -40,6 +40,9 @@ func TestAdminMigrationStatusProjectsBoundDataJobState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if err := svc.usage.db.Where("job_id = ?", jobID).Delete(&migrationDataJobCheckpointRecord{}).Error; err != nil {
+				t.Fatal(err)
+			}
 			if err := svc.usage.db.Where("job_id = ?", jobID).Delete(&migrationDataJobRecord{}).Error; err != nil {
 				t.Fatal(err)
 			}
