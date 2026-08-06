@@ -114,6 +114,11 @@ def validate_status_context(record: dict[str, Any], *, required: bool) -> None:
         raise RegistryError(f"{record_id}: human_actions is required")
     if record["status"] in ACTIVE_TASK_STATUSES and not next_steps:
         raise RegistryError(f"{record_id}: active task status requires at least one next_steps item")
+    if record["status"] == "blocked":
+        if not human_actions:
+            raise RegistryError(f"{record_id}: blocked task requires at least one human_actions unblock question")
+        if any(not question.rstrip().endswith("?") for question in human_actions):
+            raise RegistryError(f"{record_id}: blocked task human_actions must be explicit questions ending in '?'")
 
 
 def validate_task(record: dict[str, Any], *, require_status_context: bool = False) -> None:

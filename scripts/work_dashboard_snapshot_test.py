@@ -65,7 +65,7 @@ def main() -> int:
                     "blocked",
                     status_reason="Blocked by #769 and PR#770; see https://example.com/runbook.",
                     next_steps=["Resolve #771."],
-                    human_actions=[],
+                    human_actions=["Which decision will resolve #769 and allow this task to proceed?"],
                     commands=["rtk npm --prefix work-dashboard test", "rtk npm --prefix work-dashboard run build"],
                     references=["#773", "PR#770", "https://example.com/reference"],
                 ),
@@ -82,7 +82,9 @@ def main() -> int:
     assert "<strong>What happens next?</strong>" in rendered
     assert "<strong>What can a human do?</strong>" in rendered
     assert "No next step is required; this task is closed." in rendered
-    assert rendered.count("No direct human action is currently required.") == 2
+    assert rendered.count("No direct human action is currently required.") == 1
+    assert "Which decision will resolve" in rendered
+    assert "allow this task to proceed?" in rendered
     assert 'href="https://github.com/sysadmin-metrum-ai/genai-smart-router/issues/769"' in rendered
     assert 'href="https://github.com/sysadmin-metrum-ai/genai-smart-router/pull/770"' in rendered
     assert 'href="https://example.com/runbook"' in rendered

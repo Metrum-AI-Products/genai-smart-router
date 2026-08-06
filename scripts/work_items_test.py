@@ -46,7 +46,10 @@ def task(record_id: str, status: str, **fields: Any) -> dict[str, Any]:
             "next_steps",
             [] if status in {"done", "cancelled"} else [f"Advance {record_id}"],
         ),
-        human_actions=fields.pop("human_actions", []),
+        human_actions=fields.pop(
+            "human_actions",
+            [f"What must be answered to unblock {record_id}?"] if status == "blocked" else [],
+        ),
         started_at=fields.pop("started_at", None),
         completed_at=fields.pop("completed_at", None),
         **fields,
@@ -101,6 +104,36 @@ def main() -> int:
         missing_context = run(missing_context_registry, root / "missing-context-events.ndjson", "validate")
         require(missing_context.returncode != 0, "task without status reason was accepted")
         require("status_reason is required" in missing_context.stderr, missing_context.stderr)
+
+        missing_blocker_questions_registry = root / "missing-blocker-questions.ndjson"
+        missing_blocker_questions_records = valid_records()
+        missing_blocker_questions_records[2]["human_actions"] = []
+        write_ndjson(missing_blocker_questions_registry, missing_blocker_questions_records)
+        missing_blocker_questions = run(
+            missing_blocker_questions_registry,
+            root / "missing-blocker-questions-events.ndjson",
+            "validate",
+        )
+        require(missing_blocker_questions.returncode != 0, "blocked task without unblock questions was accepted")
+        require(
+            "blocked task requires at least one human_actions unblock question" in missing_blocker_questions.stderr,
+            missing_blocker_questions.stderr,
+        )
+
+        vague_blocker_question_registry = root / "vague-blocker-question.ndjson"
+        vague_blocker_question_records = valid_records()
+        vague_blocker_question_records[2]["human_actions"] = ["Approve this task."]
+        write_ndjson(vague_blocker_question_registry, vague_blocker_question_records)
+        vague_blocker_question = run(
+            vague_blocker_question_registry,
+            root / "vague-blocker-question-events.ndjson",
+            "validate",
+        )
+        require(vague_blocker_question.returncode != 0, "blocked task with a non-question human action was accepted")
+        require(
+            "blocked task human_actions must be explicit questions ending in '?'" in vague_blocker_question.stderr,
+            vague_blocker_question.stderr,
+        )
 
         missing_transition_context = run(
             registry,
