@@ -1,4 +1,5 @@
 import * as vg from "@uwdata/vgplot";
+import {detailList, taskDetailSections, toggleExpandedTask} from "./task-details.js";
 import "./style.css";
 
 const STATUS_ORDER = ["blocked", "in_progress", "ready", "pending", "done", "cancelled"];
@@ -26,10 +27,6 @@ function scheduleBucket(task) {
   if (days === 0) return "due_today";
   if (days <= 7) return "due_next_7_days";
   return "scheduled_later";
-}
-function detailList(value) {
-  if (Array.isArray(value)) return value;
-  return value ? [String(value)] : [];
 }
 
 
@@ -119,6 +116,7 @@ function reconcile(baseline, events) {
       || detailList(task.actions).length
       || detailList(task.acceptance).length
       || detailList(task.evidence).length
+      || detailList(task.commands).length
     );
     if (!hasDetail) {
       conflicts.push({type: "missing_drilldown_detail", message: `${task.id} has no drilldown detail`});
@@ -132,6 +130,7 @@ function reconcile(baseline, events) {
       actions: detailList(task.actions),
       acceptance: detailList(task.acceptance),
       evidence: detailList(task.evidence),
+      commands: detailList(task.commands),
       requires: task.requires ?? [],
       references: task.references ?? [],
       status: task.status,
@@ -305,59 +304,78 @@ function cell(text, className = "") {
   if (className) td.className = className;
   return td;
 }
-const taskTooltip = document.createElement("div");
-taskTooltip.id = "task-drilldown-tooltip";
-taskTooltip.className = "task-tooltip";
-taskTooltip.setAttribute("role", "tooltip");
-document.body.append(taskTooltip);
+const expandedTaskIds = new Set();
 
-function drilldownText(task) {
-  const lines = [task.title, task.id];
-  if (task.description) lines.push("", task.description);
-  const sections = [
-    ["Actions", task.actions],
-    ["Acceptance", task.acceptance],
-    ["Evidence", task.evidence],
-    ["Dependencies", task.requires],
-    ["References", task.references],
-  ];
-  for (const [label, values] of sections) {
-    if (!values?.length) continue;
-    lines.push("", `${label}:`, ...values.map(value => `• ${value}`));
+function appendDetailSection(container, label, values) {
+  const section = document.createElement("section");
+  section.className = "task-detail-section";
+  const heading = document.createElement("h5");
+  heading.textContent = label;
+  const list = document.createElement("ul");
+  values.forEach(value => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    list.append(item);
+  });
+  section.append(heading, list);
+  container.append(section);
+}
+
+function createTaskDetailRow(task, detailId) {
+  const detailRow = document.createElement("tr");
+  detailRow.id = detailId;
+  detailRow.className = "task-detail-row";
+  detailRow.hidden = !expandedTaskIds.has(task.id);
+
+  const detailCell = document.createElement("td");
+  detailCell.colSpan = 7;
+  const panel = document.createElement("div");
+  panel.className = "task-detail-panel";
+
+  const heading = document.createElement("h4");
+  heading.textContent = `${task.title} details`;
+  panel.append(heading);
+
+  if (task.description) {
+    const description = document.createElement("section");
+    description.className = "task-detail-description";
+    const label = document.createElement("h5");
+    label.textContent = "Description";
+    const copy = document.createElement("p");
+    copy.textContent = task.description;
+    description.append(label, copy);
+    panel.append(description);
   }
-  lines.push(
-    "",
-    `Status: ${task.status.replaceAll("_", " ")} · Priority: ${task.priority} · Revision: ${task.revision}`,
-    `Created: ${task.created_at} · Updated: ${task.updated_at}`,
-  );
-  return lines.join("\n");
+
+  const sections = document.createElement("div");
+  sections.className = "task-detail-sections";
+  taskDetailSections(task).forEach(section => {
+    appendDetailSection(sections, section.label, section.values);
+  });
+  panel.append(sections);
+
+  const metadata = document.createElement("p");
+  metadata.className = "task-detail-metadata";
+  metadata.textContent = [
+    `Status: ${task.status.replaceAll("_", " ")}`,
+    `Priority: ${task.priority}`,
+    `Revision: ${task.revision}`,
+    `Created: ${task.created_at}`,
+    `Updated: ${task.updated_at}`,
+  ].join(" · ");
+  panel.append(metadata);
+  detailCell.append(panel);
+  detailRow.append(detailCell);
+  return detailRow;
+}
+function updateExpansion(button, summaryRow, detailRow, task, expanded) {
+  button.setAttribute("aria-expanded", String(expanded));
+  button.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} details for ${task.title}`);
+  button.textContent = expanded ? "−" : "+";
+  summaryRow.classList.toggle("expanded", expanded);
+  detailRow.hidden = !expanded;
 }
 
-function showTaskTooltip(anchor, task) {
-  taskTooltip.textContent = drilldownText(task);
-  taskTooltip.classList.add("visible");
-  const anchorRect = anchor.getBoundingClientRect();
-  const tooltipRect = taskTooltip.getBoundingClientRect();
-  const left = Math.min(
-    Math.max(12, anchorRect.left),
-    window.innerWidth - tooltipRect.width - 12,
-  );
-  const below = anchorRect.bottom + 10;
-  const top = below + tooltipRect.height <= window.innerHeight - 12
-    ? below
-    : Math.max(12, anchorRect.top - tooltipRect.height - 10);
-  taskTooltip.style.left = `${left}px`;
-  taskTooltip.style.top = `${top}px`;
-}
-
-function hideTaskTooltip() {
-  taskTooltip.classList.remove("visible");
-}
-
-window.addEventListener("scroll", hideTaskTooltip, true);
-window.addEventListener("keydown", event => {
-  if (event.key === "Escape") hideTaskTooltip();
-});
 
 
 function renderRows() {
@@ -382,6 +400,7 @@ function renderRows() {
   body.replaceChildren();
   visible.forEach(task => {
     const row = document.createElement("tr");
+    row.className = "task-summary-row";
     const statusCell = document.createElement("td");
     const statusPill = document.createElement("span");
     statusPill.className = `status-pill status-${task.status}`;
@@ -389,30 +408,36 @@ function renderRows() {
     statusCell.append(statusPill);
     row.append(statusCell);
 
+    const detailId = `task-detail-${task.id}`;
+    const detailRow = createTaskDetailRow(task, detailId);
     const taskCell = document.createElement("td");
-    taskCell.className = "task-drilldown";
-    taskCell.tabIndex = 0;
-    taskCell.setAttribute("aria-describedby", taskTooltip.id);
-    taskCell.setAttribute("aria-label", `${task.title}. Focus or hover for drilldown detail.`);
+    taskCell.className = "task-summary";
     const title = document.createElement("strong");
     title.textContent = task.title;
     const id = document.createElement("small");
     id.textContent = task.id;
-    const detailHint = document.createElement("span");
-    detailHint.className = "detail-hint";
-    detailHint.textContent = "DETAIL";
-    taskCell.append(title, id, detailHint);
-    taskCell.addEventListener("mouseenter", () => showTaskTooltip(taskCell, task));
-    taskCell.addEventListener("mouseleave", hideTaskTooltip);
-    taskCell.addEventListener("focus", () => showTaskTooltip(taskCell, task));
-    taskCell.addEventListener("blur", hideTaskTooltip);
+    const expandButton = document.createElement("button");
+    expandButton.type = "button";
+    expandButton.className = "task-expand";
+    expandButton.setAttribute("aria-controls", detailId);
+    updateExpansion(expandButton, row, detailRow, task, expandedTaskIds.has(task.id));
+    expandButton.addEventListener("click", () => {
+      updateExpansion(expandButton, row, detailRow, task, toggleExpandedTask(expandedTaskIds, task.id));
+    });
+    expandButton.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !expandedTaskIds.has(task.id)) return;
+      event.preventDefault();
+      expandedTaskIds.delete(task.id);
+      updateExpansion(expandButton, row, detailRow, task, false);
+    });
+    taskCell.append(title, id, expandButton);
     row.append(taskCell);
     row.append(cell(task.stream, "mono-cell"));
     row.append(cell(task.due_date ?? "Unscheduled", task.due_bucket === "overdue" ? "due-overdue" : ""));
     row.append(cell(task.priority, `priority priority-${task.priority}`));
     row.append(cell(task.assignee ?? "Unassigned"));
     row.append(cell(String(task.revision), "revision-cell"));
-    body.append(row);
+    body.append(row, detailRow);
   });
   byId("row-count").textContent = `${visible.length} / ${tasks.length} tasks`;
   byId("empty-state").classList.toggle("hidden", visible.length !== 0);
