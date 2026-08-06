@@ -12,11 +12,11 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | --- | --- |
 | Customer administrator | Supplies approved upstream/BYOK information through the protected onboarding path and accepts the activated instance. |
 | Commercial/control-plane owner | Verifies entitlement and creates the authorized provisioning intent. #545 owns this durable customer job. |
-| Platform operator | Uses the shipped local safe-contract CLI for registry, schema-observation, fake quota-admission, and bounded status work. Live deploy/promote/rollback primitives remain disabled until the reviewed runtime profile and human policy gates are complete. |
+| Platform operator | Uses the shipped safe-contract CLI for inventory/schema/quota records and the #555 deterministic local fake lifecycle. Live AWS/EKS/RDS/DNS/Secret/license/provider adapters, promotion, rollback, and customer handoff remain disabled until the reviewed profile, disposable EKS E2E, and human policy gates are complete. |
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
-Issue #581 owns the reusable operator primitives and RDS lifecycle contract. Its shipped slice is limited to the local safe contract documented in [Multi-environment deployment CLI safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md); it does not perform live cloud or runtime mutations. Issue #555 consumes the eventual live primitives inside customer provisioning and remains responsible for the customer job, license, secrets/BYOK, DNS/TLS, namespace/Linkerd/ingress, compensation, and handoff. The #507 migration ledger remains the per-database source of truth.
+Issue #581 owns reusable operator primitives and the RDS lifecycle contract. Issue #555 now consumes those boundaries through one strict reference-only manifest, one normalized deployment-job registry, and typed fake adapters in the shipped `metrum-smartrouterctl`. The fake-first slice performs no live cloud or runtime mutation. It proves deterministic plan, idempotent create/resume, classified state, activation-before-hostname, bounded status, explicit retention, and exact-job deletion behavior. The #507 migration ledger remains the per-database source of truth.
 
 ## Before any live action
 
@@ -38,7 +38,18 @@ RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is di
 
 ## Onboard a new customer router instance
 
-This is the target workflow for the future live control plane. The shipped `metrum-smartrouterctl` safe slice does not implement this workflow: it records a non-secret local tenant-instance contract, accepts an independently observed schema version, performs fake-adapter-only quota admission, and reports bounded local registry drift. Follow [Multi-environment deployment CLI safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) for current command behavior. The checklist below remains the live-control-plane contract until the remaining #581 interfaces and policy gates ship.
+The shipped command implements the complete local fake-first lifecycle but not
+the live control plane. Use a mode-`0600` `file://` non-production profile and
+the reference-only manifest documented in [Multi-environment deployment CLI
+safe contract](MULTI_ENVIRONMENT_DEPLOYMENT_CLI.md) to run `plan`, `deploy`,
+exact-job `status`, and approved `delete`. Those commands mutate only a private
+local SQLite job registry and deterministic fake adapters.
+Each plan separates the desired instance identity from the lifecycle job. A
+new intent and config revision reconcile the same customer/stage resources in
+place; a superseded job cannot delete resources now owned by the newer job.
+
+
+The live workflow remains:
 
 1. Verify the commercial entitlement and record an explicit, authorized provision intent. Select an approved account+region, environment, customer instance alias, domain policy, and deployment template. Do not put customer identifiers, provider keys, licenses, or full config in GitHub evidence.
 2. Create or resume the #555 durable provisioning job. Its first read-only status must identify the selected profile revision and safe intent reference.
@@ -48,7 +59,9 @@ This is the target workflow for the future live control plane. The shipped `metr
 6. Run the protected sandbox/activation path. #554 must produce passing, versioned activation evidence before the job becomes `ready`, before public ingress is enabled, or before a caller credential is handed off.
 7. Notify the customer administrator with the approved instance URL and protected credential-delivery path. Do not include raw credentials, provider keys, license files, or complete configuration in notification or status output.
 
-On any failure, stop the customer handoff. Retry only the classified safe stage. Compensation or cleanup is separately authorized and must not delete an RDS instance, snapshot, or customer data by default.
+On any live failure, stop customer handoff. Retry only the classified safe
+stage. Compensation or cleanup is separately authorized and must not delete an
+RDS instance, snapshot, PVC, or customer data by default.
 
 ## Update configuration or release
 
@@ -88,15 +101,15 @@ Store policy, requests, attempts, immutable artifact references, restore approva
 
 ## Inspect status and verify service
 
-The shipped `metrum-smartrouterctl status` command is read-only, bounded to
-1–100 rows, and local-registry-only. It reports tenant/stage identity, expected
-and independently observed schema versions, desired release digest, placement,
-RDS Proxy mode, and safe drift status. It does not probe router health,
+The shipped command has two read-only status modes. Inventory `status` remains
+bounded to 1–100 local rows and reports tenant/stage identity, schema drift,
+release digest, and dedicated placement. Deployment `status --profile-ref
+<file-ref> --job <exact-job>` opens the existing local job registry read-only
+and returns one safe lifecycle record. Neither mode probes Router health,
 Kubernetes, AWS, RDS, DNS, credentials, or customer databases.
 
-The future live status surface must also be authorized and scoped to an
-explicit profile/environment/instance. It must answer the following without
-probing or mutating every customer database:
+The future live status adapter must also be authorized and scoped to an
+explicit profile/environment/instance. It must answer:
 
 
 | Question | Safe status/evidence |

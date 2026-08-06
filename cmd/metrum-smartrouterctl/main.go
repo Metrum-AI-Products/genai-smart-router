@@ -30,9 +30,19 @@ func main() {
 	case "quota-reserve":
 		quotaReserve(os.Args[2:])
 	case "status":
-		status(os.Args[2:])
-	case "plan", "deploy", "delete", "promote", "rollback":
-		die("%s is disabled: ADR-0012 human endpoint, encryption, TLS, durability, HA, network, and DNS gates remain open", os.Args[1])
+		if isDeploymentStatus(os.Args[2:]) {
+			deploymentStatus(os.Args[2:])
+		} else {
+			localRegistryStatus(os.Args[2:])
+		}
+	case "plan":
+		deploymentPlan(os.Args[2:])
+	case "deploy":
+		deploymentDeploy(os.Args[2:])
+	case "delete":
+		deploymentDelete(os.Args[2:])
+	case "promote", "rollback":
+		die("%s is disabled: live ADR-0012 endpoint, encryption, TLS, durability, HA, network, and DNS gates remain open", os.Args[1])
 	default:
 		die("unsupported command %q", os.Args[1])
 	}
@@ -132,7 +142,7 @@ func quotaReserve(args []string) {
 	writeJSON(result)
 }
 
-func status(args []string) {
+func localRegistryStatus(args []string) {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	path := fs.String("registry", "tenant-instances.sqlite", "local non-secret tenant registry SQLite path")
 	limit := fs.Int("limit", 25, "bounded number of tenant instances to inspect (1-100)")

@@ -90,11 +90,23 @@ sudo install -m 0640 -o router -g router config/env.json /etc/smart-llmrouter/en
 sudo install -m 0640 -o router -g router license.json /etc/smart-llmrouter/license.json
 ```
 
-`metrum-smartrouterctl` is not a live deployment driver. Its shipped commands
-maintain a non-secret local tenant registry, record independent schema
-observations, perform fake-adapter-only quota admission, and return bounded
-registry status. `deploy`, `promote`, and `rollback` fail closed while cloud,
-Kubernetes, DNS, durability, and network policy gates remain disabled. See the
+`metrum-smartrouterctl` is not a live cloud deployment driver. It includes a
+credential-free local fake lifecycle for validating a strict reference-only
+manifest before live adapters are approved. With a protected mode-`0600`
+`file://` non-production profile, `plan` returns deterministic JSON without
+creating state; `deploy` creates or resumes one normalized local job; exact-job
+`status` is read-only; and `delete` requires an expiring mode-`0600` approval
+that explicitly selects database and state-PVC retention. These commands do
+not contact AWS, Kubernetes, RDS, DNS, a provider, or a production host.
+The plan returns a stable instance ID separately from its intent-bound job ID.
+New config revisions reconcile that instance in place, and superseded jobs
+cannot delete resources managed by a newer lifecycle.
+
+
+The CLI also maintains its established non-secret tenant inventory, independent
+schema observations, fake quota admission, and bounded inventory status.
+`promote`, `rollback`, protected-profile resolution, and all live adapters fail
+closed until deployment policy and validation gates pass. See the
 [multi-environment operator contract](../operations/deployment-patterns#multi-environment-operator-contract)
 before installing or invoking this optional administration-host CLI.
 
