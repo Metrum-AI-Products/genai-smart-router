@@ -90,9 +90,12 @@ Resources:
       KubernetesGroups:
         - genai-smart-router-eks-staging-delivery
       Tags:
-        application: genai-smart-router
-        purpose: eks-staging-delivery
-        environment: non-production
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-delivery
+        - Key: environment
+          Value: non-production
 
 Outputs:
   DeliveryRoleArn:

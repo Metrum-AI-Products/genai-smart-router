@@ -154,6 +154,20 @@ def main() -> int:
     ):
         if required not in staging_identity:
             raise SystemExit(f"staging identity stack lacks required boundary: {required}")
+    access_entry_tags = re.search(
+        r"StagingDeliveryAccessEntry:\n(?:.*\n)*?      Tags:\n"
+        r"        - Key: application\n"
+        r"          Value: genai-smart-router\n"
+        r"        - Key: purpose\n"
+        r"          Value: eks-staging-delivery\n"
+        r"        - Key: environment\n"
+        r"          Value: non-production\n",
+        staging_identity,
+    )
+    if access_entry_tags is None:
+        raise SystemExit(
+            "staging delivery AccessEntry tags must use the CloudFormation tag array schema"
+        )
     for forbidden_value in (
         "arn:aws:iam::${AWS::AccountId}:root",
         "Action: \"*\"",
