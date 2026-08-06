@@ -30,13 +30,14 @@ runtime Secret or any approved image, delete the old attestation. After the
 reviewed inputs are ready, create a fresh immutable ConfigMap with exactly
 `schema_version: v2`, `secret_name`, `secret_uid`,
 `secret_resource_version`, `approved_router_image`,
-`approved_linkerd_proxy_image`, and `approved_linkerd_init_image` in `data`,
-no `binaryData`, and one same-namespace `v1` `Secret` owner reference matching
-the attested name and UID. Use `none` for the Linkerd init image only with
-Linkerd CNI. Server-side dry-run and apply the admission policy before granting
-the delivery RBAC. Missing parameters, evaluation failures, unapproved router
-or Linkerd images, extra containers, unsafe mounts, and pod-spec drift deny
-human delivery mutations.
+`approved_linkerd_proxy_image`, `approved_linkerd_init_image`, and the exact
+observed ReplicaSet-controller `approved_pod_creator_username` in `data`, no
+`binaryData`, and one same-namespace `v1` `Secret` owner reference matching the
+attested name and UID. Use `none` for the Linkerd initializer only with Linkerd
+CNI; the native `linkerd-proxy` sidecar remains mandatory. Server-side dry-run
+and apply the admission policy before granting the delivery RBAC. Missing
+parameters, evaluation failures, unapproved router or Linkerd images, extra
+containers, unsafe mounts, and pod-spec drift deny human delivery mutations.
 
 The delivery role can read the exact attestation, admission policy, and binding
 for preflight but cannot mutate them. It has no Secret access, no other

@@ -180,7 +180,7 @@ def main() -> int:
         "kind: Group\n",
         "name: genai-smart-router-eks-staging-delivery",
         'resourceNames: ["smartrouter-staging-runtime-attestation"]',
-        'resourceNames: ["genai-smart-router-eks-staging-delivery"]',
+        "genai-smart-router-eks-staging-linkerd-pod",
         'resources: ["deployments"]',
         'resources: ["replicasets"]',
         'resources: ["ingresses", "networkpolicies"]',
@@ -229,7 +229,7 @@ def main() -> int:
         "kubernetes.io/metadata.name: smart-llmrouter-staging",
         "c.image == params.data.approved_router_image",
         "c.image == params.data.approved_linkerd_proxy_image",
-        "object.spec.template.spec.initContainers[0].image == params.data.approved_linkerd_init_image",
+        "c.image == params.data.approved_linkerd_init_image",
         "capabilities.add == ['NET_ADMIN', 'NET_RAW']",
         "validationActions: [Deny, Audit]",
         "name: smartrouter-staging-runtime-attestation",
@@ -250,10 +250,10 @@ def main() -> int:
             raise SystemExit(
                 f"staging delivery admission policy contains forbidden boundary: {forbidden_value}"
             )
-    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicy\n") != 1:
-        raise SystemExit("staging delivery admission policy definition must be unique")
-    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicyBinding\n") != 1:
-        raise SystemExit("staging delivery admission binding definition must be unique")
+    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicy\n") != 2:
+        raise SystemExit("staging delivery admission policies must protect Deployment and injected Pod stages")
+    if staging_delivery_admission.count("kind: ValidatingAdmissionPolicyBinding\n") != 2:
+        raise SystemExit("staging delivery admission policy bindings must be unique")
 
     policy = json.loads(TRUST.read_text(encoding="utf-8"))
     condition = policy["Statement"][0]["Condition"]["StringEquals"]

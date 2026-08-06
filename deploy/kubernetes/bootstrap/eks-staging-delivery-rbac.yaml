@@ -57,11 +57,15 @@ metadata:
 rules:
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingadmissionpolicies"]
-    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    resourceNames:
+      - genai-smart-router-eks-staging-delivery
+      - genai-smart-router-eks-staging-linkerd-pod
     verbs: ["get"]
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingadmissionpolicybindings"]
-    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    resourceNames:
+      - genai-smart-router-eks-staging-delivery
+      - genai-smart-router-eks-staging-linkerd-pod
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

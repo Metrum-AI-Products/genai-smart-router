@@ -413,6 +413,7 @@ def runtime_secret_attestation(
     approved_router_image: str = DIGEST,
     approved_linkerd_proxy_image: str = LINKERD_PROXY_IMAGE,
     approved_linkerd_init_image: str = LINKERD_INIT_IMAGE,
+    approved_pod_creator_username: str = "system:serviceaccount:kube-system:replicaset-controller",
 ) -> str:
     """A bootstrap-owned immutable, non-secret version attestation fixture."""
 
@@ -444,6 +445,7 @@ def runtime_secret_attestation(
                 "approved_router_image": approved_router_image,
                 "approved_linkerd_proxy_image": approved_linkerd_proxy_image,
                 "approved_linkerd_init_image": approved_linkerd_init_image,
+                "approved_pod_creator_username": approved_pod_creator_username,
             },
         }
     )
@@ -525,43 +527,39 @@ def replica_sets_object(
 def admission_policy_objects() -> str:
     """Minimal fake objects used to prove exact live/checked-in spec matching."""
 
-    return json.dumps(
-        {
-            "apiVersion": "v1",
-            "kind": "List",
-            "items": [
+    items: list[dict[str, object]] = []
+    for name, api_groups, resource in (
+        (EKS_DELIVERY.DELIVERY_ADMISSION_NAMES[0], ["apps"], "deployments"),
+        (EKS_DELIVERY.DELIVERY_ADMISSION_NAMES[1], [""], "pods"),
+    ):
+        items.extend(
+            (
                 {
                     "apiVersion": "admissionregistration.k8s.io/v1",
                     "kind": "ValidatingAdmissionPolicy",
-                    "metadata": {
-                        "name": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
-                    },
+                    "metadata": {"name": name},
                     "spec": {
                         "failurePolicy": "Fail",
                         "matchConstraints": {
                             "resourceRules": [
                                 {
-                                    "apiGroups": ["apps"],
+                                    "apiGroups": api_groups,
                                     "apiVersions": ["v1"],
                                     "operations": ["CREATE", "UPDATE"],
-                                    "resources": ["deployments"],
+                                    "resources": [resource],
                                     "scope": "Namespaced",
                                 }
                             ]
                         },
-                        "validations": [
-                            {"expression": "object.spec.replicas == 1"},
-                        ],
+                        "validations": [{"expression": "object.metadata.name != ''"}],
                     },
                 },
                 {
                     "apiVersion": "admissionregistration.k8s.io/v1",
                     "kind": "ValidatingAdmissionPolicyBinding",
-                    "metadata": {
-                        "name": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
-                    },
+                    "metadata": {"name": name},
                     "spec": {
-                        "policyName": EKS_DELIVERY.DELIVERY_ADMISSION_NAME,
+                        "policyName": name,
                         "validationActions": ["Deny", "Audit"],
                         "paramRef": {
                             "name": TARGET_POLICY[
@@ -572,25 +570,26 @@ def admission_policy_objects() -> str:
                         },
                     },
                 },
-            ],
-        }
-    )
+            )
+        )
+    return json.dumps({"apiVersion": "v1", "kind": "List", "items": items})
+
+
+def admission_environment_variables(payload: str) -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for item in json.loads(payload)["items"]:
+        kind = "POLICY" if item["kind"] == "ValidatingAdmissionPolicy" else "BINDING"
+        name = item["metadata"]["name"].split("-")[-1].upper()
+        environment[f"FAKE_LIVE_ADMISSION_{kind}_{name}"] = json.dumps(item)
+    return environment
 
 
 def fake_admission_environment() -> dict[str, str]:
     payload = admission_policy_objects()
-    by_kind = {
-        item["kind"]: item for item in json.loads(payload)["items"]
-    }
     return {
         "FAKE_ADMISSION_RBAC": "no",
         "FAKE_ADMISSION_POLICY_OBJECTS": payload,
-        "FAKE_LIVE_ADMISSION_POLICY": json.dumps(
-            by_kind["ValidatingAdmissionPolicy"]
-        ),
-        "FAKE_LIVE_ADMISSION_BINDING": json.dumps(
-            by_kind["ValidatingAdmissionPolicyBinding"]
-        ),
+        **admission_environment_variables(payload),
     }
 
 def fake_tools(directory: Path) -> None:
@@ -617,8 +616,10 @@ case "$0" in
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
     *"apply --server-side --dry-run=server"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}" ;;
-    *"get validatingadmissionpolicy/"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_POLICY" ;;
-    *"get validatingadmissionpolicybinding/"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_BINDING" ;;
+    *"get validatingadmissionpolicy/genai-smart-router-eks-staging-linkerd-pod"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_POLICY_POD" ;;
+    *"get validatingadmissionpolicy/genai-smart-router-eks-staging-delivery"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_POLICY_DELIVERY" ;;
+    *"get validatingadmissionpolicybinding/genai-smart-router-eks-staging-linkerd-pod"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_BINDING_POD" ;;
+    *"get validatingadmissionpolicybinding/genai-smart-router-eks-staging-delivery"*) printf '%s\n' "$FAKE_LIVE_ADMISSION_BINDING_DELIVERY" ;;
     *"get deployments,ingresses,networkpolicies,persistentvolumeclaims,poddisruptionbudgets,services,serviceaccounts"*) cat "$FAKE_LIVE_INVENTORY_FILE" ;;
     *"get replicasets"*) printf '%s\\n' "$FAKE_REPLICA_SETS" ;;
     *"get secret"*) echo "unexpected Secret read" >&2; exit 46 ;;
@@ -695,9 +696,6 @@ def run(
     live_admission_payload = json.loads(
         live_admission_objects or expected_admission_payload
     )
-    live_admission_by_kind = {
-        item["kind"]: item for item in live_admission_payload["items"]
-    }
     command = [
         "python3",
         str(SCRIPT),
@@ -751,12 +749,7 @@ def run(
         "FAKE_ADMISSION_RBAC": admission_rbac,
         "FAKE_MANAGED_DELETE_RBAC": managed_delete_rbac,
         "FAKE_ADMISSION_POLICY_OBJECTS": expected_admission_payload,
-        "FAKE_LIVE_ADMISSION_POLICY": json.dumps(
-            live_admission_by_kind["ValidatingAdmissionPolicy"]
-        ),
-        "FAKE_LIVE_ADMISSION_BINDING": json.dumps(
-            live_admission_by_kind["ValidatingAdmissionPolicyBinding"]
-        ),
+        **admission_environment_variables(json.dumps(live_admission_payload)),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
         "FAKE_RENDER_OBJECTS": render_objects or rendered_objects(),
         "FAKE_SERVER_NORMALIZED_OBJECTS": server_normalized_inventory or render_objects or rendered_objects(),

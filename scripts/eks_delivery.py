@@ -32,7 +32,10 @@ TARGET_POLICY_PATH = REPO_ROOT / "deploy" / "aws" / "genai-smart-router-eks-stag
 DELIVERY_ADMISSION_PATH = (
     REPO_ROOT / "deploy" / "kubernetes" / "bootstrap" / "eks-staging-delivery-admission.yaml"
 )
-DELIVERY_ADMISSION_NAME = "genai-smart-router-eks-staging-delivery"
+DELIVERY_ADMISSION_NAMES = (
+    "genai-smart-router-eks-staging-delivery",
+    "genai-smart-router-eks-staging-linkerd-pod",
+)
 TARGET_POLICY_SCHEMA_VERSION = 6
 SECRET_PATTERNS = (
     # Keep the key/header name for useful diagnostics while replacing the
@@ -427,6 +430,7 @@ class RuntimeSecretAttestation:
     approved_router_image: str
     approved_linkerd_proxy_image: str
     approved_linkerd_init_image: str
+    approved_pod_creator_username: str
 
 
 @dataclass(frozen=True, order=True)
@@ -1152,7 +1156,7 @@ class Delivery:
         return target
 
     def verify_delivery_admission_policy(self, env: dict[str, str]) -> tuple[int, int]:
-        """Require the bootstrap-owned admission boundary before delivery."""
+        """Require every bootstrap-owned admission boundary before delivery."""
 
         expected_payload = command(
             [
@@ -1170,97 +1174,126 @@ class Delivery:
         expected_objects = self._json_objects(
             expected_payload, source="checked-in delivery admission policy"
         )
-        expected_by_kind = {
-            item.get("kind"): item
-            for item in expected_objects
-            if item.get("kind")
-            in {"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"}
+        expected_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for item in expected_objects:
+            kind = item.get("kind")
+            metadata = item.get("metadata")
+            if (
+                kind not in {"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"}
+                or not isinstance(metadata, dict)
+                or metadata.get("name") not in DELIVERY_ADMISSION_NAMES
+            ):
+                continue
+            key = (kind, metadata["name"])
+            if key in expected_by_key:
+                fail("checked-in delivery admission policy contains a duplicate object")
+            expected_by_key[key] = item
+
+        expected_keys = {
+            (kind, name)
+            for name in DELIVERY_ADMISSION_NAMES
+            for kind in ("ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")
         }
-        if set(expected_by_kind) != {
-            "ValidatingAdmissionPolicy",
-            "ValidatingAdmissionPolicyBinding",
-        }:
+        if set(expected_by_key) != expected_keys:
             fail("checked-in delivery admission policy is incomplete")
 
         resources = (
             ("validatingadmissionpolicy", "ValidatingAdmissionPolicy"),
             ("validatingadmissionpolicybinding", "ValidatingAdmissionPolicyBinding"),
         )
-        live_by_kind: dict[str, dict[str, Any]] = {}
+        live_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         denied = 0
         for resource, kind in resources:
-            named_resource = f"{resource}/{DELIVERY_ADMISSION_NAME}"
-            allowed = command(
-                ["kubectl", "auth", "can-i", "get", named_resource], env
-            ).strip()
-            if allowed != "yes":
-                fail(f"Kubernetes RBAC does not allow get on the approved {resource}")
-            for verb in ("list", "watch", "create", "update", "patch", "delete", "deletecollection"):
-                permission_resource = (
-                    resource
-                    if verb in {"list", "watch", "create", "deletecollection"}
-                    else named_resource
-                )
-                permission = command(
-                    ["kubectl", "auth", "can-i", verb, permission_resource], env
+            for name in DELIVERY_ADMISSION_NAMES:
+                named_resource = f"{resource}/{name}"
+                allowed = command(
+                    ["kubectl", "auth", "can-i", "get", named_resource], env
                 ).strip()
-                if permission != "no":
+                if allowed != "yes":
                     fail(
-                        "Kubernetes RBAC grants forbidden delivery admission-policy mutation"
+                        f"Kubernetes RBAC does not allow get on the approved {resource}"
                     )
-                denied += 1
-            payload = command(
-                ["kubectl", "get", named_resource, "-o", "json"], env, raw=True
-            )
-            try:
-                live = json.loads(payload)
-            except json.JSONDecodeError as exc:
-                raise RuntimeError(f"live {resource} lookup returned invalid JSON") from exc
-            metadata = live.get("metadata") if isinstance(live, dict) else None
-            if (
-                not isinstance(metadata, dict)
-                or live.get("apiVersion") != "admissionregistration.k8s.io/v1"
-                or live.get("kind") != kind
-                or metadata.get("name") != DELIVERY_ADMISSION_NAME
-                or metadata.get("deletionTimestamp") is not None
-                or not isinstance(live.get("spec"), dict)
-            ):
-                fail(f"live {resource} does not match the approved admission boundary")
-            live_by_kind[kind] = live
+                for verb in (
+                    "list",
+                    "watch",
+                    "create",
+                    "update",
+                    "patch",
+                    "delete",
+                    "deletecollection",
+                ):
+                    permission_resource = (
+                        resource
+                        if verb in {"list", "watch", "create", "deletecollection"}
+                        else named_resource
+                    )
+                    permission = command(
+                        ["kubectl", "auth", "can-i", verb, permission_resource], env
+                    ).strip()
+                    if permission != "no":
+                        fail(
+                            "Kubernetes RBAC grants forbidden delivery admission-policy mutation"
+                        )
+                    denied += 1
+                payload = command(
+                    ["kubectl", "get", named_resource, "-o", "json"], env, raw=True
+                )
+                try:
+                    live = json.loads(payload)
+                except json.JSONDecodeError as exc:
+                    raise RuntimeError(
+                        f"live {resource} lookup returned invalid JSON"
+                    ) from exc
+                metadata = live.get("metadata") if isinstance(live, dict) else None
+                if (
+                    not isinstance(metadata, dict)
+                    or live.get("apiVersion") != "admissionregistration.k8s.io/v1"
+                    or live.get("kind") != kind
+                    or metadata.get("name") != name
+                    or metadata.get("deletionTimestamp") is not None
+                    or not isinstance(live.get("spec"), dict)
+                ):
+                    fail(
+                        f"live {resource} does not match the approved admission boundary"
+                    )
+                live_by_key[(kind, name)] = live
 
-        for kind, expected in expected_by_kind.items():
+        for key, expected in expected_by_key.items():
             expected_spec = expected.get("spec")
-            live_spec = copy.deepcopy(live_by_kind[kind]["spec"])
+            live_spec = copy.deepcopy(live_by_key[key]["spec"])
             if not isinstance(expected_spec, dict):
                 fail("checked-in delivery admission policy has an invalid spec")
             for parent in ("matchConstraints", "matchResources"):
                 expected_match = expected_spec.get(parent)
                 live_match = live_spec.get(parent)
                 if isinstance(expected_match, dict) and isinstance(live_match, dict):
-                    for key, default in (
+                    for match_key, default in (
                         ("matchPolicy", "Equivalent"),
                         ("namespaceSelector", {}),
                         ("objectSelector", {}),
                     ):
-                        if key not in expected_match and live_match.get(key) == default:
-                            live_match.pop(key)
+                        if (
+                            match_key not in expected_match
+                            and live_match.get(match_key) == default
+                        ):
+                            live_match.pop(match_key)
             if live_spec != expected_spec:
                 fail("live delivery admission policy differs from the reviewed contract")
 
+        policy_specs = {
+            f"{kind}/{name}": live_by_key[(kind, name)]["spec"]
+            for kind, name in sorted(live_by_key)
+        }
         self.event(
             "delivery_admission_policy",
-            result="reviewed-policy-and-binding-verified",
-            policy_spec_sha256=hashlib.sha256(
-                canonical_json_bytes(live_by_kind["ValidatingAdmissionPolicy"]["spec"])
-            ).hexdigest(),
-            binding_spec_sha256=hashlib.sha256(
-                canonical_json_bytes(
-                    live_by_kind["ValidatingAdmissionPolicyBinding"]["spec"]
-                )
+            result="reviewed-policies-and-bindings-verified",
+            policy_object_count=len(live_by_key),
+            specs_sha256=hashlib.sha256(
+                canonical_json_bytes(policy_specs)
             ).hexdigest(),
             denied_mutation_probes=denied,
         )
-        return len(resources), denied
+        return len(live_by_key), denied
 
     @staticmethod
     def _json_objects(
@@ -2034,12 +2067,19 @@ class Delivery:
             "approved_router_image",
             "approved_linkerd_proxy_image",
             "approved_linkerd_init_image",
+            "approved_pod_creator_username",
         }
         if not isinstance(data, dict) or set(data) != expected_data_keys:
             fail("runtime Secret attestation has an unexpected data schema")
         if any(
             not isinstance(data[key], str) or not SAFE_ATTESTATION_VALUE.fullmatch(data[key])
-            for key in ("schema_version", "secret_name", "secret_uid", "secret_resource_version")
+            for key in (
+                "schema_version",
+                "secret_name",
+                "secret_uid",
+                "secret_resource_version",
+                "approved_pod_creator_username",
+            )
         ):
             fail("runtime Secret attestation has unsafe scalar values")
         if (
@@ -2080,6 +2120,7 @@ class Delivery:
             approved_router_image=data["approved_router_image"],
             approved_linkerd_proxy_image=data["approved_linkerd_proxy_image"],
             approved_linkerd_init_image=data["approved_linkerd_init_image"],
+            approved_pod_creator_username=data["approved_pod_creator_username"],
         )
         self.evidence.update(
             {

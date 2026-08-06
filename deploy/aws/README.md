@@ -136,10 +136,12 @@ after it creates or updates the Secret and after release approval resolves the
 exact router and Linkerd images. Its `data` must contain exactly
 `schema_version: v2`, `secret_name`, `secret_uid`,
 `secret_resource_version`, `approved_router_image`,
-`approved_linkerd_proxy_image`, and `approved_linkerd_init_image`. The router
+`approved_linkerd_proxy_image`, `approved_linkerd_init_image`, and the exact
+observed ReplicaSet-controller `approved_pod_creator_username`. The router
 value must be the approved immutable ECR `@sha256:` reference. Linkerd values
-must be the exact injector-owned images; use the literal `none` for the init
-image only when the cluster uses Linkerd CNI and injects no init container.
+must be the exact injector-owned images; use the literal `none` for the
+initializer only with Linkerd CNI—the native `linkerd-proxy` sidecar remains
+required.
 The ConfigMap must have no `binaryData` and exactly one same-namespace `v1`
 `Secret` owner reference matching the attested name and UID.
 

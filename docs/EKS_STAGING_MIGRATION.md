@@ -305,12 +305,13 @@ attestation. After the reviewed inputs are ready, bootstrap creates a fresh
 `immutable: true` ConfigMap with exactly these non-secret `data` keys:
 `schema_version: v2`, `secret_name`, `secret_uid`,
 `secret_resource_version`, `approved_router_image`,
-`approved_linkerd_proxy_image`, and `approved_linkerd_init_image`. The router
-image is an approved immutable ECR digest. Linkerd images are the exact
+`approved_linkerd_proxy_image`, `approved_linkerd_init_image`, and the exact
+`approved_pod_creator_username` observed for the ReplicaSet controller. The
+router image is an approved immutable ECR digest. Linkerd images are the exact
 injector-owned values; `approved_linkerd_init_image: none` is valid only when
-Linkerd CNI injects no init container. The ConfigMap has no `binaryData` and
-exactly one same-namespace `v1` `Secret` owner reference matching the attested
-name and UID.
+Linkerd CNI removes the `linkerd-init` initializer—the native `linkerd-proxy`
+sidecar remains required. The ConfigMap has no `binaryData` and exactly one
+same-namespace `v1` `Secret` owner reference matching the attested name and UID.
 
 Bootstrap server-side dry-runs and applies
 `deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml` before
