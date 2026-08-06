@@ -32,6 +32,8 @@ IDENTITY_BOOTSTRAP = ROOT / "docs/EKS_IDENTITY_BOOTSTRAP.md"
 DISCOVERY_NAMESPACE_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-namespace-rbac.example.yaml"
 DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linkerd-namespace-rbac.example.yaml"
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
+STAGING_IDENTITY_STACK = ROOT / "deploy/aws/genai-smart-router-eks-staging-identity.yaml"
+STAGING_DELIVERY_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml"
 
 
 def main() -> int:
@@ -134,6 +136,72 @@ def main() -> int:
     ecr = next(statement for statement in discovery if statement["Sid"] == "EcrReadOnlyDiscovery")
     if set(ecr["Action"]) != {"ecr:DescribeRepositories", "ecr:GetRepositoryPolicy"} or ecr["Resource"] == "*":
         raise SystemExit("discovery ECR access must be exactly the required reads on the approved repository")
+
+    staging_identity = STAGING_IDENTITY_STACK.read_text(encoding="utf-8")
+    for required in (
+        "RoleName: genai-smart-router-eks-staging-delivery",
+        "AuthorizedOperatorRoleArn:",
+        "AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/",
+        "AWS: !Ref AuthorizedOperatorRoleArn",
+        "Action: eks:DescribeCluster",
+        "Action: ssm:GetParameter",
+        "Name: /metrum/genai-smart-router/staging-delivery-target",
+        "Type: AWS::EKS::AccessEntry",
+        "- genai-smart-router-eks-staging-delivery",
+    ):
+        if required not in staging_identity:
+            raise SystemExit(f"staging identity stack lacks required boundary: {required}")
+    for forbidden_value in (
+        "arn:aws:iam::${AWS::AccountId}:root",
+        "Action: \"*\"",
+        "Resource: \"*\"",
+        "eks:AssociateAccessPolicy",
+        "secretsmanager:",
+        "iam:PassRole",
+        "Default: smartrouter",
+        "AWS::IAM::UserPolicy",
+        ":user/",
+    ):
+        if forbidden_value in staging_identity:
+            raise SystemExit(f"staging identity stack contains forbidden authority: {forbidden_value}")
+    if staging_identity.count("Action: sts:AssumeRole") != 1:
+        raise SystemExit("staging identity stack must trust one exact authorized operator role")
+
+    staging_delivery_rbac = STAGING_DELIVERY_RBAC.read_text(encoding="utf-8")
+    for required in (
+        "kind: Role\n",
+        "kind: RoleBinding\n",
+        "namespace: smart-llmrouter-staging",
+        "kind: Group\n",
+        "name: genai-smart-router-eks-staging-delivery",
+        'resourceNames: ["smartrouter-staging-runtime-attestation"]',
+        'resources: ["deployments"]',
+        'resources: ["replicasets"]',
+        'resources: ["ingresses", "networkpolicies"]',
+        'resources: ["poddisruptionbudgets"]',
+        'resources: ["services", "serviceaccounts", "persistentvolumeclaims"]',
+    ):
+        if required not in staging_delivery_rbac:
+            raise SystemExit(f"staging delivery RBAC lacks required boundary: {required}")
+    for forbidden_value in (
+        "kind: ClusterRole",
+        "kind: ClusterRoleBinding",
+        '"secrets"',
+        "pods/log",
+        "pods/exec",
+        'verbs: ["*"]',
+        "deletecollection",
+    ):
+        if forbidden_value in staging_delivery_rbac:
+            raise SystemExit(f"staging delivery RBAC contains forbidden authority: {forbidden_value}")
+    configmap_rule = re.search(
+        r'  - apiGroups: \[""\]\n    resources: \["configmaps"\]\n'
+        r'    resourceNames: \["smartrouter-staging-runtime-attestation"\]\n'
+        r'    verbs: \["get"\]\n',
+        staging_delivery_rbac,
+    )
+    if configmap_rule is None or staging_delivery_rbac.count('resources: ["configmaps"]') != 1:
+        raise SystemExit("staging delivery RBAC must permit only named attestation ConfigMap get")
 
     policy = json.loads(TRUST.read_text(encoding="utf-8"))
     condition = policy["Statement"][0]["Condition"]["StringEquals"]

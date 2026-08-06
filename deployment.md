@@ -101,21 +101,29 @@ resynced from the live configuration.
 
 ## EKS Staging Migration Status
 
-As of 2026-07-14, the EKS validation router is live at
-`https://smartrouter.apps.metrum.ai`. It runs image
-`f52a918-linux-amd64` from the Metrum ECR repository in namespace
-`smart-llmrouter-staging`, with one replica, a `smartrouter-gp3` state PVC, a
-dedicated staging caller, and a fresh encrypted private single-AZ RDS
-PostgreSQL 18.3 `db.t4g.medium` database. The caller token is stored only in
-AWS Secrets Manager under `smartrouter/staging/caller-token`.
-The staging-only HTTP Basic browser-admin credential is stored separately as
+The EKS validation router was originally activated on 2026-07-14 at
+`https://smartrouter.apps.metrum.ai` with image
+`f52a918-linux-amd64`, one replica in namespace
+`smart-llmrouter-staging`, a `smartrouter-gp3` state PVC, a dedicated staging
+caller, and a fresh encrypted private single-AZ RDS PostgreSQL 18.3
+`db.t4g.medium` database. The caller token is stored only in AWS Secrets
+Manager under `smartrouter/staging/caller-token`. The staging-only HTTP Basic
+browser-admin credential is stored separately as
 `smartrouter/staging/basic-admin`; its bcrypt hash is present only in the
 namespace runtime Secret. The EKS config trusts nginx forwarded HTTPS headers
 from `192.168.0.0/16`, not the legacy Compose proxy subnet.
 
-Validation passed for `/readyz`, caller `/v1/models`, OpenAI Chat with a
-realistic output budget, OpenAI Responses, and tool-bearing Anthropic Messages.
-The normal staging caller receives `403 metrics-forbidden` from `/metrics`.
+The 2026-07-14 activation evidence passed `/readyz`, caller `/v1/models`,
+OpenAI Chat, OpenAI Responses, tool-bearing Anthropic Messages, and ordinary
+caller `/metrics` isolation. That result is historical, not current readiness
+evidence. On 2026-08-06, fresh public probes for `/healthz`, `/readyz`,
+`/docs/`, and `/version` all returned HTTP 503. Protected repair is blocked
+until issue #792 provisions the missing
+`genai-smart-router-eks-staging-delivery` identity, protected target boundary,
+EKS access entry, and least-privilege namespace RBAC. Follow the complete
+repair, validation, evidence, rollback, and cleanup lifecycle in
+`docs/EKS_STAGING_MIGRATION.md`; do not use the ambient AWS profile or current
+kubeconfig as a substitute.
 
 The Docker Compose router at `https://llm-api-engg.metrum.ai` remains the
 production authority; no usage data or ordinary caller traffic has moved to

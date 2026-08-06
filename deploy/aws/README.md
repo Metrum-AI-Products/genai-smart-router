@@ -1,10 +1,11 @@
 # AWS EKS Delivery Identity Templates
 
-These are reviewed examples, not deployable account infrastructure. Replace
-only the clearly marked account, repository, environment, region, and approved
-resource identifiers through an approved infrastructure-as-code system. Never
-put AWS keys, cluster endpoints, repository policies, secret values, or actual
-role ARNs in this directory.
+Files ending in `.example.json` are reviewed examples, not deployable account
+infrastructure. `genai-smart-router-eks-staging-identity.yaml` is the single
+deployable non-production identity stack for the checked-in Metrum staging
+target. Supply its exact authorized federated operator-role ARN only as a
+protected deployment parameter; never commit that principal, AWS keys, cluster
+endpoints, repository policies, secret values, session data, or credentials.
 
 `github-oidc-trust-policy.example.json` is a staging-role trust template. Give
 production promotion its own role and replace the subject with the exact
@@ -44,6 +45,52 @@ Require ECR tag immutability, private repository access, retention lifecycle,
 scan visibility, and digest retrieval before a deployment pipeline consumes an
 image. The pipeline story owns provenance, SBOM, signature enforcement, and the
 shared command contract.
+
+## Deployable Staging Delivery Identity
+
+`genai-smart-router-eks-staging-identity.yaml` is the deployable
+CloudFormation definition for the single reviewed Metrum staging target. It
+creates the exact delivery role, its minimal `eks:DescribeCluster` and
+name-scoped `ssm:GetParameter` policy, the protected non-secret target
+Parameter, and an EKS access entry mapped to the
+`genai-smart-router-eks-staging-delivery` Kubernetes group.
+
+The stack does not authorize a named human or create credentials. Its required
+`AuthorizedOperatorRoleArn` is one exact organization-controlled federated or
+SSO role. Any user who is authorized by the identity provider to use that role,
+and whose source role policy permits `sts:AssumeRole` on the delivery role, may
+use the lifecycle CLI through a local AWS profile. Users without both grants
+fail before cluster selection. Do not pass an IAM user ARN, account root,
+wildcard principal, access key, session token, or MFA value.
+
+Deploy or update it only from the approved platform-IaC identity:
+
+```bash
+aws cloudformation deploy \
+  --profile <approved-platform-iac-profile> \
+  --region us-east-1 \
+  --stack-name genai-smart-router-eks-staging-identity \
+  --template-file deploy/aws/genai-smart-router-eks-staging-identity.yaml \
+  --parameter-overrides \
+    AuthorizedOperatorRoleArn=<exact-federated-operator-role-arn> \
+    ClusterName=metrum \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --no-fail-on-empty-changeset
+```
+
+The separately reviewed cluster-bootstrap identity must apply
+`deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml` with an explicit
+temporary kubeconfig. That Role/RoleBinding grants namespace-scoped desired
+state reconciliation plus named read-only access to the runtime Secret
+attestation ConfigMap. It grants no Secret access, other ConfigMap access, Pod
+logs/exec, cluster role, wildcard verb, or cross-namespace authority. The
+delivery stack deliberately cannot bootstrap its own Kubernetes authorization.
+
+Run `python3 scripts/validate_eks_bootstrap_assets.py` before deploying the
+stack or RBAC. Review the CloudFormation change set and Kubernetes server-side
+dry-run before either apply. Stack deletion revokes the delivery role and
+access entry but does not delete the Router workload, RDS, PVC, runtime Secret,
+or customer data; those resources retain their own reviewed lifecycle.
 
 ## EKS Staging Target Bootstrap
 

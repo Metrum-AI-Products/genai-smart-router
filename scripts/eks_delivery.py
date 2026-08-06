@@ -59,7 +59,7 @@ KUSTOMIZE_IMAGE_NAME = re.compile(
 SUPPORTED_IMAGE_ARCHITECTURES = frozenset({"linux/amd64", "linux/arm64"})
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 SAFE_ATTESTATION_VALUE = re.compile(r"^[A-Za-z0-9._:-]{1,255}$")
-PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+PROFILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_+=,.@-]{0,127}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
 REGION = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 SSM_PARAMETER_ARN = re.compile(

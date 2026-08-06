@@ -7,15 +7,22 @@ separately approved cutover.
 
 ## Current Staging State
 
-The validation deployment is live as of 2026-07-14. It uses one
+The validation deployment was originally activated on 2026-07-14 with one
 `f52a918-linux-amd64` router replica, the private `smartrouter-gp3` EBS-backed
 state PVC, a fresh encrypted single-AZ PostgreSQL 18.3 `db.t4g.medium` RDS
 instance, and a dedicated staging caller token stored in AWS Secrets Manager
-as `smartrouter/staging/caller-token`. The image is in the Metrum ECR
-repository and the runtime Secret remains Kubernetes-only. No customer traffic
-or EC2 usage history has moved. The staging browser-admin Basic credential is
-stored separately as `smartrouter/staging/basic-admin`; retain only its bcrypt
-hash in the runtime Secret.
+as `smartrouter/staging/caller-token`. On 2026-08-06, public probes for
+`/healthz`, `/readyz`, `/docs/`, and `/version` all returned HTTP 503. Treat
+staging as unavailable until the repair lifecycle below completes and new
+evidence supersedes that observation. The required
+`genai-smart-router-eks-staging-delivery` IAM role was also absent at that
+checkpoint; issue #792 tracks the reviewed IAM/EKS RBAC prerequisite.
+
+The image remains in the Metrum ECR repository and the runtime Secret remains
+Kubernetes-only. No customer traffic or EC2 usage history has moved. The
+staging browser-admin Basic credential is stored separately as
+`smartrouter/staging/basic-admin`; retain only its bcrypt hash in the runtime
+Secret.
 
 ## Current And Target Topology
 
@@ -26,6 +33,143 @@ hash in the runtime Secret.
 | Usage database | Compose Postgres | Fresh private RDS PostgreSQL 18 |
 | Caller access | Existing production callers | Dedicated staging caller only |
 | Traffic authority | Production | Validation only |
+
+## Staging Repair And Validation Lifecycle
+
+Use this sequence for every staging repair. A prior successful deployment does
+not authorize reuse of an expired identity, stale evidence, ambient kubeconfig,
+or a different image digest.
+
+### One-time authorization bootstrap
+
+The platform-IaC owner deploys
+`deploy/aws/genai-smart-router-eks-staging-identity.yaml` with one exact
+federated/SSO operator-role ARN, reviews the CloudFormation change set, and
+applies it with `CAPABILITY_NAMED_IAM`. The separately authorized
+cluster-bootstrap owner server-side dry-runs and applies
+`deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml` through an explicit
+mode-`0600` temporary kubeconfig. These actions create authority, not a Router
+release; repeat them only when the authorized operator role or delivery policy
+changes. Complete commands and revocation behavior are documented in
+[`deploy/aws/README.md`](../deploy/aws/README.md#deployable-staging-delivery-identity).
+
+Every authorized operator uses their own federated source profile and a local
+role profile. The local names are operator-selected and contain no credentials:
+
+```ini
+[profile <operator-delivery-profile>]
+role_arn = arn:aws:iam::121701826775:role/genai-smart-router-eks-staging-delivery
+source_profile = <operator-federated-profile>
+region = us-east-1
+role_session_name = <operator-change-id>
+```
+
+The source role must be the exact principal trusted by the stack and must allow
+`sts:AssumeRole` on the delivery role. Identity-provider membership decides
+which users may obtain the source role. The lifecycle tools accept any simple
+local AWS profile name—including `-`, `_`, `.`, `@`, `+`, `=`, and `,`—but
+never accept credentials as flags or configuration content. Before lifecycle
+work, the operator runs `aws sso login` or the organization's equivalent
+federated login for the source profile, then verifies:
+
+```bash
+aws sts get-caller-identity \
+  --profile <operator-delivery-profile> \
+  --query '{Account:Account,Arn:Arn}' \
+  --output json
+```
+
+The account must be `121701826775` and the ARN must have
+`assumed-role/genai-smart-router-eks-staging-delivery/` as its role/session
+path. Record only the pass/fail classification and change ID; do not copy cache
+files, access keys, session tokens, SSO device codes, MFA values, or the full
+identity response into tickets, casts, or shared logs.
+
+1. **Open the change record.** Record the incident or validation issue, intended
+   immutable image digest, previous known-good digest and pod-template
+   fingerprint, runtime Secret attestation reference, RDS/PVC retention
+   decision, rollback owner, and evidence directory. Never put credentials,
+   tokens, Secret data, DSNs, license payloads, prompts, or full configuration
+   in the record.
+2. **Establish the approved identity.** Authenticate the operator's federated
+   source profile, then use any local AWS profile that assumes
+   `genai-smart-router-eks-staging-delivery`. Verify the exact account and
+   assumed-role name. The role, protected target Parameter, EKS access entry,
+   and namespace RBAC must already exist through reviewed infrastructure-as-code.
+   Do not substitute `default`, a direct IAM-user profile, account root, or the
+   operator's current kubeconfig. Authorization belongs to the federated role
+   and its identity-provider membership, never to a hardcoded human username.
+3. **Capture the pre-repair baseline.** Record UTC time and only safe scalar
+   results for public `/healthz`, `/readyz`, `/docs/`, and `/version`. Record
+   workload readiness class, restart-count bucket, desired/available replica
+   counts, current image digest, PVC phase, and RDS availability/TLS class
+   through approved read-only paths. Keep raw Pod logs, events, configuration,
+   and database output outside asciinema and shared evidence.
+4. **Run protected preflight and plan.** Use the exact approved digest and a new
+   private evidence directory:
+
+   ```bash
+   make eks-preflight eks-plan \
+     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     IMAGE_DIGEST='<approved-ecr-repository>@sha256:<64-hex>' \
+     EKS_EVIDENCE_DIR='/protected/evidence/<change-id>/preflight'
+   ```
+
+   Stop if the target-policy hashes differ, the runtime Secret attestation is
+   stale, supply-chain evidence is missing, namespace permissions are broader
+   than the contract, live inventory contains an unmanaged field/object, or
+   RDS/PVC ownership is uncertain.
+5. **Classify the failure before mutation.** Separate image/config/license,
+   database/TLS/migration, PVC, scheduling, ingress/Linkerd/NetworkPolicy, and
+   upstream activation failures. Preserve RDS and PVC by default. A Secret or
+   license repair belongs to the privileged bootstrap owner; delete the old
+   attestation before the Secret change and create a fresh immutable
+   attestation afterward. The delivery identity must never read or mutate the
+   Secret.
+6. **Apply only reviewed desired state.** After reviewing the plan and
+   supply-chain bundle, run:
+
+   ```bash
+   make eks-apply-staging \
+     EKS_CONFIRM=STAGING_APPLY \
+     EKS_DELIVERY_AWS_PROFILE='genai-smart-router-eks-staging-delivery' \
+     IMAGE_DIGEST='<same-approved-digest>' \
+     EKS_SUPPLY_CHAIN_DIR='/protected/evidence/<change-id>/supply-chain' \
+     EKS_EVIDENCE_DIR='/protected/evidence/<change-id>/delivery'
+   ```
+
+   The apply may reconcile only fields represented by the reviewed manifest.
+   Do not hand-patch the Deployment, delete the Pod to hide a configuration
+   failure, or broaden RBAC/NetworkPolicy to make the check pass.
+7. **Restore the selected network boundary.** Rerun explicit-target discovery
+   after Pods are Ready, render the selected ingress and optional Linkerd
+   policies, validate them against the exact kubeconfig/context, then apply
+   them with the separate network-policy confirmation described below.
+8. **Run the protected smoke.** Use an owner-only mode-`0600` script referenced
+   by `EKS_SMOKE_COMMAND_FILE`. Validate Service and public paths for health,
+   readiness, docs, and version; then validate authenticated `/v1/models`,
+   OpenAI Chat, OpenAI Responses, Anthropic Messages, promised streaming/tool/
+   image shapes, ordinary-caller `/metrics` denial, authorized metrics, and
+   fresh relational usage/report rows. Record request IDs and safe scalar
+   outcomes only.
+9. **Capture post-repair evidence.** Record a sanitized asciinema session that
+   contains commands without credentials and bounded scalar results without
+   model output or raw payloads. Parse the cast for credential/token/Secret/
+   DSN/webhook patterns before upload, retain a mode-`0600` protected copy and
+   SHA-256, and treat an anonymous expiring URL as presentation evidence only.
+10. **Review and announce.** Run `eks-promotion-plan` only after the accepted
+    apply and smoke evidence match the same digest, target, attestation, live
+    generation, and configuration fingerprints. Update the issue and
+    `deployment.md`; post only the endpoint, safe version/digest, high-signal
+    checks, evidence URL/checksum, and rollback state to Google Workspace.
+11. **Rollback on failed acceptance.** Do not announce success or enable
+    ordinary traffic. Preserve RDS/PVC, then use `eks-rollback-staging` with the
+    reviewed prior digest and exact prior pod-template SHA-256. Repeat
+    preflight, network, smoke, evidence, and announcement steps after rollback.
+12. **Clean up authority and temporary data.** Delete temporary kubeconfigs,
+    smoke scripts, unprotected cast copies, source access keys, and expired
+    session profiles. Keep only intentional protected evidence and approved
+    timestamped backups. Confirm Compose production health remains unchanged.
 
 The existing router host is `ubuntu@100.30.225.66`, using
 `~/.ssh/chetan-jun-2026.pem`. Its Compose directory is

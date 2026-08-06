@@ -16,6 +16,17 @@ At launch, one customer router instance maps to one isolated runtime identity an
 | Infra/Security approver | Approves account/region, network, KMS, IAM, durability, quota, DNS, and change-control policy before live execution. |
 | Release approver | Owns protected production-like rehearsal, change window, canary/cutover, and recovery authorization under #518. |
 
+Human authorization is role-based rather than username-based. Any user whose
+organization-controlled federated identity is assigned the approved operator
+role may configure a local AWS profile that assumes the protected deployment
+role and use the same lifecycle commands. The CLI accepts the profile name, not
+credentials, and independently verifies the exact account, assumed-role name,
+protected target policy, EKS access entry, and namespace RBAC before cluster
+selection or mutation. Removing the user's identity-provider assignment or the
+source role's exact `sts:AssumeRole` grant revokes access without changing the
+CLI or customer instance. See the credential-free profile and verification
+procedure in [EKS staging migration](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap).
+
 Issue #581 owns reusable operator primitives and the RDS lifecycle contract. Issue #555 now consumes those boundaries through one strict reference-only manifest, one normalized deployment-job registry, and typed fake adapters in the shipped `metrum-smartrouterctl`. The fake-first slice performs no live cloud or runtime mutation. It proves deterministic plan, idempotent create/resume, classified state, activation-before-hostname, bounded status, explicit retention, and exact-job deletion behavior. The #507 migration ledger remains the per-database source of truth.
 
 ## Before any live action
@@ -35,6 +46,26 @@ The following are mandatory fail-closed preflight conditions. An absent conditio
 | Public/customer traffic | #13 security remediation and the approved public/customer release gate. |
 
 RDS Proxy is disabled at launch. Cross-region backup is never implicit: it is disabled at launch and requires a later approved destination account/region profile, destination-region KMS policy, copy grant, account-wide capacity reservation, retention, and recovery evidence. A future proxy or shared database placement also requires an approved ADR, policy, adapter tests, and a separate rollout decision.
+
+## Existing EKS staging repair lifecycle
+
+The current Metrum staging deployment is an integration target, not a customer
+instance provisioned by the fake-first #555 CLI. Its canonical live repair
+procedure is [EKS staging migration runbook: Staging Repair And Validation
+Lifecycle](EKS_STAGING_MIGRATION.md#staging-repair-and-validation-lifecycle).
+Use that procedure in order: open a change record; establish the exact
+MFA/federated assumed role; capture the pre-repair baseline; run protected
+preflight and plan; classify the failure; reconcile only reviewed desired
+state; restore the selected ingress/Linkerd boundary; run authenticated API,
+CLI, metrics-isolation, and relational-usage smokes; sanitize and preserve
+asciinema evidence; review and announce; then roll back or clean up.
+
+Do not use a previously successful smoke as present readiness evidence. As of
+2026-08-06, staging public health, readiness, docs, and version probes returned
+HTTP 503, and issue #792 tracks the missing approved delivery identity and
+namespace RBAC. Until that prerequisite and the complete repair lifecycle pass,
+do not mark staging ready, hand off a caller credential, or treat it as
+disposable EKS proof for #555.
 
 ## Onboard a new customer router instance
 

@@ -1655,6 +1655,11 @@ def main() -> int:
         replacement_promotion = run("promotion-plan", root)
         assert replacement_promotion.returncode == 0, replacement_promotion.stderr
         assert safe_promotion_path.exists()
+        authorized_profile = run(
+            "promotion-plan", root, aws_profile="authorized.user@example.com"
+        )
+        assert authorized_profile.returncode == 0, authorized_profile.stderr
+        assert safe_promotion_path.exists()
         invalid_profile_after_success = run(
             "promotion-plan", root, aws_profile="invalid profile"
         )

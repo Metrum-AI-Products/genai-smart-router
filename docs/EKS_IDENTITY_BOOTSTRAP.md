@@ -37,6 +37,24 @@ source_profile = smartrouter
 region = <approved-region>
 ```
 
+The dedicated `smartrouter` user and macOS bootstrap below are a legacy local
+path for the read-only discovery role only. They are not the authorization
+model for staging delivery or customer lifecycle operations. Delivery uses the
+exact organization-controlled federated/SSO operator role supplied to
+`deploy/aws/genai-smart-router-eks-staging-identity.yaml`. Any user assigned to
+that federated role may use an operator-selected local source profile and a
+role profile that assumes `genai-smart-router-eks-staging-delivery`; no human
+username is compiled into the CLI or stored in the protected target policy.
+The source role must separately allow the exact `sts:AssumeRole`, and the
+delivery process verifies the resulting account and assumed-role name before
+selecting EKS. Removing the identity-provider assignment or source-role grant
+revokes that user without changing deployment state.
+
+See [EKS staging migration: One-time authorization
+bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the
+credential-free profile shape, verification command, CloudFormation/RBAC
+bootstrap, and complete repair lifecycle.
+
 Run the canonical bootstrap target. Before it creates a one-time source key,
 it atomically reserves the mode-0600 recovery-record path. It then exchanges
 the key with the macOS Keychain MFA seed for a one-hour STS session, verifies
