@@ -66,9 +66,12 @@ observed current version differs from expected. A later `observe-schema` call
 can return the status to `current`. Status remains read-only and makes no live
 health, Kubernetes, RDS, DNS, or credential calls.
 
-`deploy`, `promote`, and `rollback` fail closed. Live resource creation,
-updates, deletion, configuration changes, and RDS Proxy remain disabled while
-the endpoint, encryption, TLS, durability/backup, HA, network/subnet/security
+`plan`, `deploy`, `delete`, `promote`, and `rollback` fail closed. The
+future #555 lifecycle reserves `plan` for a deterministic read-only intent
+review and `delete` for exact-job, separately approved cleanup; neither is
+implemented by this local registry slice. Live resource creation, updates,
+deletion, configuration changes, and RDS Proxy remain disabled while the
+endpoint, encryption, TLS, durability/backup, HA, network/subnet/security
 group, and DNS policies require human approval. Cleanup remains a separately
 confirmed future operation.
 
