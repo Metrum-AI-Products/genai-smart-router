@@ -140,13 +140,13 @@ def normalized_guard_spec(spec: dict[str, Any]) -> dict[str, Any]:
     normalized = json.loads(json.dumps(spec))
     for key in ("matchConstraints", "matchResources"):
         value = normalized.get(key)
-        if isinstance(value, dict) and value.get("matchPolicy") == "Equivalent":
+        if not isinstance(value, dict):
+            continue
+        if value.get("matchPolicy") == "Equivalent":
             del value["matchPolicy"]
-    match_resources = normalized.get("matchResources")
-    if isinstance(match_resources, dict):
-        for key in ("namespaceSelector", "objectSelector"):
-            if match_resources.get(key) == {}:
-                del match_resources[key]
+        for selector in ("namespaceSelector", "objectSelector"):
+            if value.get(selector) == {}:
+                del value[selector]
     return normalized
 
 
