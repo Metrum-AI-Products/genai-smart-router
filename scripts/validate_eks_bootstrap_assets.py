@@ -34,6 +34,7 @@ DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linke
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
 STAGING_IDENTITY_STACK = ROOT / "deploy/aws/genai-smart-router-eks-staging-identity.yaml"
 STAGING_DELIVERY_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml"
+STAGING_BOOTSTRAP_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml"
 STAGING_DELIVERY_ADMISSION = (
     ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml"
 )
@@ -143,6 +144,7 @@ def main() -> int:
     staging_identity = STAGING_IDENTITY_STACK.read_text(encoding="utf-8")
     for required in (
         "RoleName: genai-smart-router-eks-staging-delivery",
+        "RoleName: genai-smart-router-eks-staging-bootstrap",
         "AuthorizedOperatorRoleArn:",
         "AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/",
         "AWS: !Ref AuthorizedOperatorRoleArn",
@@ -151,6 +153,7 @@ def main() -> int:
         "Name: /metrum/genai-smart-router/staging-delivery-target",
         "Type: AWS::EKS::AccessEntry",
         "- genai-smart-router-eks-staging-delivery",
+        "- genai-smart-router-eks-staging-bootstrap",
     ):
         if required not in staging_identity:
             raise SystemExit(f"staging identity stack lacks required boundary: {required}")
@@ -192,10 +195,52 @@ def main() -> int:
     ):
         if forbidden_value in staging_identity:
             raise SystemExit(f"staging identity stack contains forbidden authority: {forbidden_value}")
-    if staging_identity.count("Action: sts:AssumeRole") != 2:
+    if staging_identity.count("Action: sts:AssumeRole") != 3:
         raise SystemExit("staging identity stack must trust the exact authorized operator role for each reusable role")
     if staging_identity.count('Resource: "*"') != 1 or "Action: ecr:GetAuthorizationToken" not in staging_identity:
         raise SystemExit("only the required ECR authorization token action may use wildcard resource scope")
+    bootstrap_role_match = re.search(
+        r"(?ms)^  StagingBootstrapRole:\n(?P<body>.*?)(?=^  \w|\Z)",
+        staging_identity,
+    )
+    if bootstrap_role_match is None:
+        raise SystemExit("staging identity stack lacks the reusable bootstrap role")
+    bootstrap_role = bootstrap_role_match.group("body")
+    if bootstrap_role.count("Action: eks:DescribeCluster") != 1 or any(
+        value in bootstrap_role
+        for value in ("ssm:", "ecr:", "eks:AssociateAccessPolicy", 'Resource: "*"')
+    ):
+        raise SystemExit("staging bootstrap role must only describe the approved cluster")
+
+
+    staging_bootstrap_rbac = STAGING_BOOTSTRAP_RBAC.read_text(encoding="utf-8")
+    for required in (
+        "kind: Role\n",
+        "kind: RoleBinding\n",
+        "namespace: smart-llmrouter-staging",
+        "kind: Group\n",
+        "name: genai-smart-router-eks-staging-bootstrap",
+        'resources: ["roles"]',
+        'resources: ["rolebindings"]',
+        'resourceNames: ["genai-smart-router-eks-staging-delivery"]',
+        'verbs: ["get", "patch", "update"]',
+    ):
+        if required not in staging_bootstrap_rbac:
+            raise SystemExit(f"staging bootstrap RBAC lacks required boundary: {required}")
+    for forbidden_value in (
+        '"secrets"',
+        '"deployments"',
+        "pods/log",
+        "pods/exec",
+        "kind: ClusterRole",
+        "kind: ClusterRoleBinding",
+        'verbs: ["*"]',
+        '"create"',
+        '"delete"',
+        "deletecollection",
+    ):
+        if forbidden_value in staging_bootstrap_rbac:
+            raise SystemExit(f"staging bootstrap RBAC contains forbidden authority: {forbidden_value}")
 
     staging_delivery_rbac = STAGING_DELIVERY_RBAC.read_text(encoding="utf-8")
     for required in (

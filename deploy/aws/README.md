@@ -50,20 +50,22 @@ shared command contract.
 
 `genai-smart-router-eks-staging-identity.yaml` is the deployable
 CloudFormation definition for the single reviewed Metrum staging target. It
-creates the exact delivery role, a separate reusable staging image-publisher
-role, the private `smart-llmrouter` ECR repository, the protected non-secret
-target Parameter, and an EKS access entry mapped to the
-`genai-smart-router-eks-staging-delivery` Kubernetes group. The repository has
-immutable tags, scan-on-push, retained resource deletion policy, seven-day
+creates exact delivery and bootstrap roles, a separate reusable staging
+image-publisher role, the private `smart-llmrouter` ECR repository, the
+protected non-secret target Parameter, and EKS access entries mapped to the
+`genai-smart-router-eks-staging-delivery` and
+`genai-smart-router-eks-staging-bootstrap` Kubernetes groups. The repository
+has immutable tags, scan-on-push, retained resource deletion policy, seven-day
 untagged cleanup, and a thirty-image `staging-` tag retention window.
 
 The stack does not authorize a named human or create credentials. Its required
 `AuthorizedOperatorRoleArn` is one exact organization-controlled federated or
 SSO role. Any user who is authorized by the identity provider to use that role,
-and whose source role policy permits `sts:AssumeRole` on the delivery role, may
-use the lifecycle CLI through a local AWS profile. Users without both grants
-fail before cluster selection. Do not pass an IAM user ARN, account root,
-wildcard principal, access key, session token, or MFA value.
+and whose source role policy permits `sts:AssumeRole` on the appropriate
+reviewed role, may use the lifecycle CLI or recovery path through a local AWS
+profile. Users without both grants fail before cluster selection. Do not pass an
+IAM user ARN, account root, wildcard principal, access key, session token, or
+MFA value.
 
 Deploy or update it only from the approved platform-IaC identity:
 
@@ -78,6 +80,42 @@ aws cloudformation deploy \
     ClusterName=metrum \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset
+```
+
+### Scoped Bootstrap Recovery
+
+The bootstrap role has one AWS permission: describe the reviewed cluster. Its
+Kubernetes group receives only the namespace-scoped `get`, `patch`, and
+`update` rights on the exact named delivery `Role` and `RoleBinding` in
+`eks-staging-bootstrap-rbac.yaml`. It cannot read Secrets or other ConfigMaps,
+read Pod logs, execute Pods, create resources, delete resources, mutate
+workloads, or act outside `smart-llmrouter-staging`.
+
+The platform/bootstrap owner must install this bootstrap RBAC once through an
+explicit temporary kubeconfig after the identity stack creates the access
+entry. Afterwards an authorized federated operator can assume
+`genai-smart-router-eks-staging-bootstrap` and reconcile only the reviewed
+delivery RBAC without new cluster-admin access. The bootstrap role cannot
+create its own binding or broaden its rights; replacement of its own manifest
+remains a platform/bootstrap-owner action.
+
+```bash
+aws eks update-kubeconfig \
+  --profile <staging-bootstrap-profile> \
+  --region us-east-1 \
+  --name metrum \
+  --kubeconfig <explicit-temporary-kubeconfig>
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml
+```
+
+The initial platform-owned installation is:
+
+```bash
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml
 ```
 
 ### Staging Image Publisher
@@ -105,9 +143,10 @@ aws ecr describe-images --profile <staging-publisher-profile> --region us-east-1
 
 The separately reviewed cluster-bootstrap identity must first create the
 immutable version-2 runtime/admission attestation described below, then apply
-`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`, and only then
-apply `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`, all through
-an explicit temporary kubeconfig. The admission policy denies human delivery
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`. After the
+identity stack and one-time bootstrap RBAC installation, the scoped bootstrap
+role applies `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`
+through an explicit kubeconfig. The admission policy denies human delivery
 requests unless the final Deployment uses the bootstrap-approved router and
 Linkerd images plus the reviewed pod security, process, environment, mount, and
 host-isolation contract. Its missing parameter and evaluation failures deny.
@@ -120,10 +159,10 @@ cross-namespace authority.
 
 Run `python3 scripts/validate_eks_bootstrap_assets.py` before deploying the
 stack, policy, or RBAC. Review the CloudFormation change set and Kubernetes
-server-side dry-runs before apply. Stack deletion revokes the delivery role and
-access entry but does not delete the Router workload, RDS, PVC, runtime Secret,
-or customer data; those resources retain their own reviewed lifecycle.
-
+server-side dry-runs before apply. Stack deletion revokes the delivery,
+bootstrap, and image-publisher roles with their EKS access entries but does not
+delete the Router workload, RDS, PVC, runtime Secret, or customer data; those
+resources retain their own reviewed lifecycle.
 ## EKS Staging Target Bootstrap
 
 `genai-smart-router-eks-staging-target.json` is a checked-in bootstrap policy
