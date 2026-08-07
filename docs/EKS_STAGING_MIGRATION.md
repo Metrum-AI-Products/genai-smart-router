@@ -91,22 +91,59 @@ region = us-east-1
 role_session_name = <operator-change-id>
 ```
 
+For a permanent IAM user admitted through the fixed lifecycle-operators group,
+chain through the intermediary role before selecting the target role:
+
+```ini
+[profile <operator-lifecycle-profile>]
+role_arn = arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-lifecycle-operator
+source_profile = <operator-iam-user-profile>
+region = us-east-1
+role_session_name = <operator-change-id>
+
+[profile <operator-delivery-profile>]
+role_arn = arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-delivery
+source_profile = <operator-lifecycle-profile>
+region = us-east-1
+role_session_name = <operator-change-id>
+
+[profile <operator-bootstrap-profile>]
+role_arn = arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-bootstrap
+source_profile = <operator-lifecycle-profile>
+region = us-east-1
+role_session_name = <operator-change-id>
+```
+
+The platform-IaC owner permanently manages membership in
+`genai-smart-router-eks-staging-lifecycle-operators` outside this repository.
+Each member must be an IAM user under `/smart-router-lifecycle/` with the
+principal tag `GenAISmartRouterLifecycle=true`; the group can only enter the
+intermediary lifecycle role, which can only delegate to the three reviewed
+target roles. Do not add an individual user to a target-role trust policy or
+grant it EKS, Kubernetes, Secret, or direct target-role authority.
+
 Use `<operator-bootstrap-profile>` only with
 `scripts/reconcile_staging_delivery_rbac.py` after the cluster-bootstrap owner
 has installed the bootstrap admission guard and binding. The normal delivery CLI
 continues to use `<operator-delivery-profile>`.
 
-The source role must be the exact principal trusted by the stack and must allow
-`sts:AssumeRole` on the delivery, bootstrap, and image-publisher roles.
-Identity-provider membership decides who may use that source role; the stack
-neither creates nor names individual human users.
+The federated source role must be the exact principal trusted by the stack and
+must separately allow `sts:AssumeRole` on the target roles it uses. A permanent
+group member needs the fixed group policy, required IAM-user path, required
+principal tag, and only the first hop to the lifecycle-operator role; that
+intermediary grants the second hop to delivery, bootstrap, or image-publisher.
+Identity-provider and IAM-group membership decide who may use each path; the
+stack neither creates nor names individual human users.
 
 #### Fixed lifecycle roles and source authorization
 
-The deployment owns three fixed target roles:
+The deployment owns three fixed target roles plus an intermediary and permanent
+membership group:
 
-| Role | Allowed lifecycle surface | Explicit boundary |
+| Identity | Allowed lifecycle surface | Explicit boundary |
 | --- | --- | --- |
+| `genai-smart-router-eks-staging-lifecycle-operators` | Permanent IAM-user membership to begin a lifecycle session | May only assume the intermediary role; users must have the required IAM path |
+| `genai-smart-router-eks-staging-lifecycle-operator` | Delegates a validated lifecycle session to a reviewed target role | May only assume delivery, bootstrap, or image-publisher; no EKS, Secret, ECR, or direct workload authority |
 | `genai-smart-router-eks-staging-delivery` | Reviewed staging workload create, update, and patch through the checked-in delivery contract | No delete, Secret read, wildcard, cluster-wide, or admission-policy mutation authority |
 | `genai-smart-router-eks-staging-bootstrap` | Exact reviewed delivery `Role` and `RoleBinding` recovery after its admission guard is installed | No workload, Secret, arbitrary RBAC, or cluster-scoped mutation authority |
 | `genai-smart-router-eks-staging-image-publisher` | Immutable image publication to the reviewed staging ECR repository | No EKS, Secret, or deployment authority |
@@ -135,6 +172,27 @@ grant only:
   }]
 }
 ```
+
+For the permanent IAM-user path, the fixed group policy grants only the first
+hop:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": "arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-lifecycle-operator"
+  }]
+}
+```
+
+The intermediary trust additionally requires the IAM-user path
+`/smart-router-lifecycle/` and the principal tag
+`GenAISmartRouterLifecycle=true`; group membership, path, and tag are all
+required. The intermediary's own policy contains the exact three target-role
+ARNs. Never grant a permanent IAM user a direct target-role policy, Kubernetes
+permission, or runtime-secret access.
 
 The organization attaches that policy to the source role or its permission set,
 not to an individual user and not to the router roles themselves. Before any

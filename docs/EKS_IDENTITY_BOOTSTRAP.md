@@ -39,25 +39,32 @@ region = <approved-region>
 
 The dedicated `smartrouter` user and macOS bootstrap below are a legacy local
 path for the read-only discovery role only. They are not the authorization
-model for staging delivery or customer lifecycle operations. Delivery uses the
-exact organization-controlled federated/SSO operator role supplied to
-`deploy/aws/genai-smart-router-eks-staging-identity.yaml`. Any user assigned to
-that federated role may use an operator-selected local source profile and role
-profiles that assume `genai-smart-router-eks-staging-delivery` and the
-separate `genai-smart-router-eks-staging-bootstrap`; no human username is
-compiled into the CLI or stored in the protected target policy. The source role
-must separately allow the exact `sts:AssumeRole` actions. The bootstrap role
-uses Kubernetes `bind` and `escalate` only on the exact named delivery Role,
-and only after the platform owner installs a fail-closed admission guard that
-requires the full reviewed Role/RoleBinding specification. The recovery CLI
-server-side dry-runs and readbacks those two namespace objects; it cannot read
-Secrets, mutate workloads or admission policy, create resources, delete
-resources, or broaden its own authority. The delivery process verifies the
-resulting account and
+model for staging delivery or customer lifecycle operations. Delivery supports
+two reviewed source paths:
+
+- An exact organization-controlled federated/SSO role supplied as
+  `AuthorizedOperatorRoleArn`, with separately reviewed `sts:AssumeRole`
+  permission for the target role it uses.
+- A permanent IAM user under `/smart-router-lifecycle/` with the principal tag
+  `GenAISmartRouterLifecycle=true` that the platform owner has added to
+  `genai-smart-router-eks-staging-lifecycle-operators`. Its group policy grants
+  only entry to `genai-smart-router-eks-staging-lifecycle-operator`; that
+  intermediary alone can assume the delivery, bootstrap, or image-publisher
+  target roles.
+
+No individual user is compiled into the CLI or stored in the protected target
+policy. The lifecycle intermediary has no EKS, Kubernetes, Secret, ECR, or
+workload authority. The bootstrap role uses Kubernetes `bind` and `escalate`
+only on the exact named delivery Role, and only after the cluster-bootstrap
+owner installs a fail-closed admission guard that requires the full reviewed
+Role/RoleBinding specification. The recovery CLI server-side dry-runs and
+readbacks those two namespace objects; it cannot read Secrets, mutate
+workloads or admission policy, create resources, delete resources, or broaden
+its own authority. The delivery process verifies the resulting account and
 assumed-role name, protected target, immutable version-2 runtime/image
 attestation, exact fail-closed admission policy/binding, and non-destructive
-RBAC before selecting or mutating EKS. Removing the identity-provider
-assignment or source-role grant revokes that user without changing deployment
+RBAC before selecting or mutating EKS. Removing the federated assignment or
+the IAM-group membership revokes operator entry without changing deployment
 state.
 
 See [EKS staging migration: One-time authorization

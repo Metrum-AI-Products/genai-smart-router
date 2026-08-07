@@ -154,6 +154,8 @@ def main() -> int:
     for required in (
         "RoleName: genai-smart-router-eks-staging-delivery",
         "RoleName: genai-smart-router-eks-staging-bootstrap",
+        "RoleName: genai-smart-router-eks-staging-lifecycle-operator",
+        "GroupName: genai-smart-router-eks-staging-lifecycle-operators",
         "AuthorizedOperatorRoleArn:",
         "AllowedPattern: ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/",
         "AWS: !Ref AuthorizedOperatorRoleArn",
@@ -193,19 +195,70 @@ def main() -> int:
             "staging delivery AccessEntry tags must use the CloudFormation tag array schema"
         )
     for forbidden_value in (
-        "arn:aws:iam::${AWS::AccountId}:root",
         "Action: \"*\"",
         "eks:AssociateAccessPolicy",
         "secretsmanager:",
         "iam:PassRole",
         "Default: smartrouter",
         "AWS::IAM::UserPolicy",
-        ":user/",
     ):
         if forbidden_value in staging_identity:
             raise SystemExit(f"staging identity stack contains forbidden authority: {forbidden_value}")
-    if staging_identity.count("Action: sts:AssumeRole") != 3:
-        raise SystemExit("staging identity stack must trust the exact authorized operator role for each reusable role")
+    if len(re.findall(r"^\s+Action: sts:AssumeRole$", staging_identity, re.MULTILINE)) != 10:
+        raise SystemExit(
+            "staging identity stack must grant the fixed group only entry to the "
+            "lifecycle operator role and retain direct federated plus delegated "
+            "target-role access"
+        )
+    lifecycle_operator_match = re.search(
+        r"(?ms)^  StagingLifecycleOperatorRole:\n(?P<body>.*?)(?=^  \w|\Z)",
+        staging_identity,
+    )
+    if lifecycle_operator_match is None:
+        raise SystemExit("staging identity stack lacks the permanent lifecycle operator role")
+    lifecycle_operator = lifecycle_operator_match.group("body")
+    for required in (
+        "arn:${AWS::Partition}:iam::${AWS::AccountId}:root",
+        "aws:PrincipalArn:",
+        "user/smart-router-lifecycle/*",
+        "aws:PrincipalTag/GenAISmartRouterLifecycle: \"true\"",
+        "Resource:",
+        "- !GetAtt StagingDeliveryRole.Arn",
+        "- !GetAtt StagingBootstrapRole.Arn",
+        "- !GetAtt StagingImagePublisherRole.Arn",
+    ):
+        if required not in lifecycle_operator:
+            raise SystemExit(f"lifecycle operator role lacks required boundary: {required}")
+    if any(value in lifecycle_operator for value in ("secretsmanager:", "eks:", "ecr:", 'Resource: "*"')):
+        raise SystemExit("lifecycle operator role may only delegate to the reviewed target roles")
+    lifecycle_group_match = re.search(
+        r"(?ms)^  LifecycleOperatorGroup:\n(?P<body>.*?)(?=^  \w|\Z)",
+        staging_identity,
+    )
+    for target_name in ("StagingDeliveryRole", "StagingBootstrapRole", "StagingImagePublisherRole"):
+        target_match = re.search(
+            rf"(?ms)^  {target_name}:\n(?P<body>.*?)(?=^  \w|\Z)",
+            staging_identity,
+        )
+        if target_match is None:
+            raise SystemExit(f"staging identity stack lacks {target_name}")
+        target_role = target_match.group("body")
+        if (
+            "AWS: !Ref AuthorizedOperatorRoleArn" not in target_role
+            or "AWS: !GetAtt StagingLifecycleOperatorRole.Arn" not in target_role
+            or "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" in target_role
+        ):
+            raise SystemExit(
+                f"{target_name} must trust only the exact federated source and "
+                "the fixed lifecycle operator role"
+            )
+    if lifecycle_group_match is None:
+        raise SystemExit("staging identity stack lacks the permanent lifecycle operator group")
+    lifecycle_group = lifecycle_group_match.group("body")
+    if "Resource: !GetAtt StagingLifecycleOperatorRole.Arn" not in lifecycle_group or any(
+        value in lifecycle_group for value in ("iam:", "eks:", "ecr:", "secretsmanager:", 'Resource: "*"')
+    ):
+        raise SystemExit("lifecycle operator group may only enter the lifecycle operator role")
     if staging_identity.count('Resource: "*"') != 1 or "Action: ecr:GetAuthorizationToken" not in staging_identity:
         raise SystemExit("only the required ECR authorization token action may use wildcard resource scope")
     bootstrap_role_match = re.search(
