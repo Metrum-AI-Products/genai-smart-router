@@ -92,8 +92,8 @@ role_session_name = <operator-change-id>
 ```
 
 Use `<operator-bootstrap-profile>` only with
-`scripts/reconcile_staging_delivery_rbac.py` after the platform owner has
-installed the bootstrap admission guard and binding. The normal delivery CLI
+`scripts/reconcile_staging_delivery_rbac.py` after the cluster-bootstrap owner
+has installed the bootstrap admission guard and binding. The normal delivery CLI
 continues to use `<operator-delivery-profile>`.
 
 The source role must be the exact principal trusted by the stack and must allow
@@ -112,12 +112,14 @@ The deployment owns three fixed target roles:
 | `genai-smart-router-eks-staging-image-publisher` | Immutable image publication to the reviewed staging ECR repository | No EKS, Secret, or deployment authority |
 
 The platform-IaC owner is a separately approved non-root organization role. It
-deploys the identity stack and creates the one-time Kubernetes bootstrap
-objects; it is not a runtime delivery identity and is not named by this
-repository. An individual operator, including an IAM-user-backed operator,
-never appears in the stack trust policy. Instead, the organization's
-federated/SSO source role is the exact value supplied as
-`AuthorizedOperatorRoleArn`, and its reviewed permission set must grant only:
+deploys the identity stack and its AWS infrastructure; it is not a runtime
+delivery identity and is not named by this repository. The separately
+authorized cluster-bootstrap owner creates the one-time Kubernetes admission
+and RBAC objects described in the bootstrap sequence. An individual operator,
+including an IAM-user-backed operator, never appears in the stack trust policy.
+Instead, the organization's federated/SSO source role is the exact value
+supplied as `AuthorizedOperatorRoleArn`, and its reviewed permission set must
+grant only:
 
 ```json
 {
