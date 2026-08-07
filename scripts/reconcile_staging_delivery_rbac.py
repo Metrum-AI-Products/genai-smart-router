@@ -142,6 +142,11 @@ def normalized_guard_spec(spec: dict[str, Any]) -> dict[str, Any]:
         value = normalized.get(key)
         if isinstance(value, dict) and value.get("matchPolicy") == "Equivalent":
             del value["matchPolicy"]
+    match_resources = normalized.get("matchResources")
+    if isinstance(match_resources, dict):
+        for key in ("namespaceSelector", "objectSelector"):
+            if match_resources.get(key) == {}:
+                del match_resources[key]
     return normalized
 
 

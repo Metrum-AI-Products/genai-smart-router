@@ -46,28 +46,44 @@ class RecoveryCLITest(unittest.TestCase):
         payload["subjects"] = [{"apiGroup": "rbac.authorization.k8s.io", "kind": "Group", "name": MODULE.FIELD_MANAGER}]
         self.assertFalse(MODULE.expected_rolebinding(payload))
 
-    def test_guard_normalization_removes_only_equivalent_match_policy(self) -> None:
+    def test_guard_normalization_removes_only_server_defaults(self) -> None:
         spec = {
             "matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []},
-            "matchResources": {"matchPolicy": "Equivalent", "namespaceSelector": {}},
+            "matchResources": {
+                "matchPolicy": "Equivalent",
+                "namespaceSelector": {},
+                "objectSelector": {},
+            },
             "failurePolicy": "Fail",
         }
         self.assertEqual(
             MODULE.normalized_guard_spec(spec),
             {
                 "matchConstraints": {"resourceRules": []},
-                "matchResources": {"namespaceSelector": {}},
+                "matchResources": {},
                 "failurePolicy": "Fail",
             },
         )
 
     def test_guard_digest_accepts_only_defaulted_live_spec(self) -> None:
-        reviewed = {"matchConstraints": {"resourceRules": []}, "failurePolicy": "Fail"}
+        reviewed = {
+            "matchConstraints": {"resourceRules": []},
+            "matchResources": {},
+            "failurePolicy": "Fail",
+        }
         digest = hashlib.sha256(json.dumps(reviewed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        live = {"matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []}, "failurePolicy": "Fail"}
+        live = {
+            "matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []},
+            "matchResources": {
+                "matchPolicy": "Equivalent",
+                "namespaceSelector": {},
+                "objectSelector": {},
+            },
+            "failurePolicy": "Fail",
+        }
         payload = {"metadata": {"name": MODULE.GUARD_NAME}, "spec": live}
         self.assertTrue(MODULE.expected_guard(payload, digest=digest))
-        live["failurePolicy"] = "Ignore"
+        live["matchResources"]["objectSelector"] = {"matchLabels": {"unexpected": "drift"}}
         self.assertFalse(MODULE.expected_guard(payload, digest=digest))
 
     def test_apply_uses_reviewed_namespace_manifests_only(self) -> None:
