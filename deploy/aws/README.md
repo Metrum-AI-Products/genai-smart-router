@@ -51,21 +51,28 @@ shared command contract.
 `genai-smart-router-eks-staging-identity.yaml` is the deployable
 CloudFormation definition for the single reviewed Metrum staging target. It
 creates exact delivery and bootstrap roles, a separate reusable staging
-image-publisher role, the private `smart-llmrouter` ECR repository, the
-protected non-secret target Parameter, and EKS access entries mapped to the
+image-publisher role, a fixed lifecycle-operator role, and the permanent
+`genai-smart-router-eks-staging-lifecycle-operators` IAM group. It also creates
+the private `smart-llmrouter` ECR repository, protected non-secret target
+Parameter, and EKS access entries mapped to the
 `genai-smart-router-eks-staging-delivery` and
 `genai-smart-router-eks-staging-bootstrap` Kubernetes groups. The repository
 has immutable tags, scan-on-push, retained resource deletion policy, seven-day
 untagged cleanup, and a thirty-image `staging-` tag retention window.
 
-The stack does not authorize a named human or create credentials. Its required
-`AuthorizedOperatorRoleArn` is one exact organization-controlled federated or
-SSO role. Any user who is authorized by the identity provider to use that role,
-and whose source role policy permits `sts:AssumeRole` on the appropriate
-reviewed role, may use the lifecycle CLI or recovery path through a local AWS
-profile. Users without both grants fail before cluster selection. Do not pass an
-IAM user ARN, account root, wildcard principal, access key, session token, or
-MFA value.
+The required `AuthorizedOperatorRoleArn` remains one exact
+organization-controlled federated or SSO role. It may assume the target roles
+directly through its separately reviewed source-role policy. The permanent IAM
+user path is separate: a platform owner permanently adds users created under
+`/smart-router-lifecycle/` to the fixed lifecycle-operators group. That group
+may only assume `genai-smart-router-eks-staging-lifecycle-operator`; the
+intermediary may only assume the three reviewed target roles. The IAM-user
+path, required `GenAISmartRouterLifecycle=true` principal tag, and group policy
+are all required. The template names no individual user, creates no user, and
+creates no credentials. Users outside that path, missing the tag, or outside
+the group cannot enter the lifecycle role. Do not pass an IAM user ARN, account
+root, wildcard principal, access key, session token, or MFA value as the
+federated-role parameter.
 
 Deploy or update it only from the approved platform-IaC identity:
 

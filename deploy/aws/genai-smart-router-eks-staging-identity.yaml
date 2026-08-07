@@ -12,6 +12,66 @@ Parameters:
     AllowedPattern: ^metrum$
 
 Resources:
+  # The fixed IAM group is a permanent membership boundary. A platform owner
+  # manages users and their required /smart-router-lifecycle/ IAM path outside
+  # this stack; no individual identity appears in this template.
+  LifecycleOperatorGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: genai-smart-router-eks-staging-lifecycle-operators
+      Policies:
+        - PolicyName: GenAISmartRouterEKSStagingLifecycleOperatorEntry
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EnterStagingLifecycleOperatorOnly
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !GetAtt StagingLifecycleOperatorRole.Arn
+
+  StagingLifecycleOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: genai-smart-router-eks-staging-lifecycle-operator
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AuthorizedFederatedOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+          - Sid: DedicatedLifecycleIAMUsers
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:user/smart-router-lifecycle/*
+              StringEquals:
+                aws:PrincipalTag/GenAISmartRouterLifecycle: "true"
+      Policies:
+        - PolicyName: GenAISmartRouterEKSStagingLifecycleDelegation
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AssumeReviewedStagingTargetRolesOnly
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource:
+                  - !GetAtt StagingDeliveryRole.Arn
+                  - !GetAtt StagingBootstrapRole.Arn
+                  - !GetAtt StagingImagePublisherRole.Arn
+      Tags:
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-lifecycle-operator
+        - Key: environment
+          Value: non-production
+
   StagingDeliveryRole:
     Type: AWS::IAM::Role
     Properties:
@@ -24,6 +84,11 @@ Resources:
             Effect: Allow
             Principal:
               AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+          - Sid: PermanentLifecycleOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingDelivery
@@ -58,6 +123,11 @@ Resources:
             Effect: Allow
             Principal:
               AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+          - Sid: PermanentLifecycleOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingBootstrap
@@ -137,6 +207,11 @@ Resources:
             Effect: Allow
             Principal:
               AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+          - Sid: PermanentLifecycleOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingImagePublisher
@@ -230,6 +305,10 @@ Resources:
           Value: non-production
 
 Outputs:
+  LifecycleOperatorRoleArn:
+    Value: !GetAtt StagingLifecycleOperatorRole.Arn
+  LifecycleOperatorGroupName:
+    Value: !Ref LifecycleOperatorGroup
   DeliveryRoleArn:
     Value: !GetAtt StagingDeliveryRole.Arn
   BootstrapRoleArn:
