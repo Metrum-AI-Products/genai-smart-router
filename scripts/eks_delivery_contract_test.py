@@ -597,6 +597,12 @@ def fake_tools(directory: Path) -> None:
     for name in ("aws", "kubectl", "kustomize"):
         body = f'''#!/bin/sh
 echo "$0 $* KUBECONFIG=$KUBECONFIG" >> "{log}"
+emit_can_i() {{
+  printf '%s\n' "$1"
+  if test "$1" = no && test "${{FAKE_KUBECTL_CAN_I_NO_EXIT:-0}}" = 1; then
+    return 1
+  fi
+}}
 case "$0" in
   *aws) case "$*" in
     *"ssm get-parameter"*) printf '{{"Parameter":{{"Type":"String","Value":%s}}}}\\n' "$FAKE_TARGET_POLICY_VALUE" ;;
@@ -604,14 +610,14 @@ case "$0" in
     *describe-cluster*) printf '{{"cluster":{{"status":"ACTIVE","arn":"arn:aws:eks:%s:%s:cluster/%s"}}}}\\n' "$FAKE_AWS_REGION" "$FAKE_AWS_ACCOUNT" "$FAKE_EKS_CLUSTER" ;;
   esac ;;
   *kubectl) case "$*" in
-    *"auth can-i get validatingadmissionpolicy/"*) echo yes ;;
-    *"auth can-i get validatingadmissionpolicybinding/"*) echo yes ;;
-    *"auth can-i"*validatingadmission*) echo "$FAKE_ADMISSION_RBAC" ;;
-    *"auth can-i"*secret*) echo "$FAKE_SECRET_RBAC" ;;
-    *"auth can-i get configmap/$FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) echo yes ;;
-    *"auth can-i"*configmap*) echo "$FAKE_CONFIGMAP_RBAC" ;;
-    *"auth can-i delete "*|*"auth can-i deletecollection "*) echo "${{FAKE_MANAGED_DELETE_RBAC:-no}}" ;;
-    *"auth can-i"*) echo yes ;;
+    *"auth can-i get validatingadmissionpolicy/"*) emit_can_i yes ;;
+    *"auth can-i get validatingadmissionpolicybinding/"*) emit_can_i yes ;;
+    *"auth can-i"*validatingadmission*) emit_can_i "$FAKE_ADMISSION_RBAC" ;;
+    *"auth can-i"*secret*) emit_can_i "$FAKE_SECRET_RBAC" ;;
+    *"auth can-i get configmap/$FAKE_RUNTIME_SECRET_ATTESTATION_NAME"*) emit_can_i yes ;;
+    *"auth can-i"*configmap*) emit_can_i "$FAKE_CONFIGMAP_RBAC" ;;
+    *"auth can-i delete "*|*"auth can-i deletecollection "*) emit_can_i "${{FAKE_MANAGED_DELETE_RBAC:-no}}" ;;
+    *"auth can-i"*) emit_can_i yes ;;
     *"create --dry-run=client"*"eks-staging-delivery-admission.yaml"*) printf '%s\n' "$FAKE_ADMISSION_POLICY_OBJECTS" ;;
     *"apply --dry-run=client"*) printf '%s\\n' "$FAKE_RENDER_OBJECTS" ;;
     *"--dry-run=server"*" -o json"*) previous=''; for arg; do if [ "$previous" = '-f' ]; then manifest="$arg"; break; fi; previous="$arg"; done; printf 'manifest-bytes=' >> "{log}"; wc -c < "$manifest" >> "{log}"; printf '%s\\n' "$FAKE_SERVER_NORMALIZED_OBJECTS" ;;
@@ -679,6 +685,7 @@ def run(
     configmap_rbac: str = "no",
     admission_rbac: str = "no",
     managed_delete_rbac: str = "no",
+    kubectl_can_i_no_exit: bool = False,
     live_admission_objects: str | None = None,
     replica_sets: str | None = None,
     rollback_pod_template_sha256: str | None = None,
@@ -748,6 +755,7 @@ def run(
         "FAKE_CONFIGMAP_RBAC": configmap_rbac,
         "FAKE_ADMISSION_RBAC": admission_rbac,
         "FAKE_MANAGED_DELETE_RBAC": managed_delete_rbac,
+        "FAKE_KUBECTL_CAN_I_NO_EXIT": "1" if kubectl_can_i_no_exit else "0",
         "FAKE_ADMISSION_POLICY_OBJECTS": expected_admission_payload,
         **admission_environment_variables(json.dumps(live_admission_payload)),
         "FAKE_TARGET_POLICY_VALUE": target_value(policy),
@@ -955,7 +963,7 @@ def main() -> int:
         bindir.mkdir()
         fake_tools(bindir)
 
-        assert run("preflight", root).returncode == 0
+        assert run("preflight", root, kubectl_can_i_no_exit=True).returncode == 0
         result = run("plan", root)
         assert result.returncode == 0, result.stderr
 

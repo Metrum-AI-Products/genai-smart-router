@@ -245,6 +245,11 @@ def open_protected_smoke_command_file(value: str) -> int:
 def command(args: list[str], env: dict[str, str], *, quiet: bool = False, raw: bool = False) -> str:
     proc = subprocess.run(args, env=env, text=True, capture_output=True)
     if proc.returncode:
+        # kubectl auth can-i reports a legitimate denied authorization as
+        # stdout "no" with exit status 1. Preflight must inspect that denied
+        # result rather than mistake it for a command transport failure.
+        if args[:3] == ["kubectl", "auth", "can-i"] and proc.stdout.strip() == "no":
+            return "no\n"
         detail = scrub(proc.stderr or proc.stdout)
         fail(f"{args[0]} failed (exit {proc.returncode}): {detail}")
     return "" if quiet else (proc.stdout if raw else scrub(proc.stdout))
