@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import contextlib
 import importlib.util
 import io
@@ -44,6 +45,30 @@ class RecoveryCLITest(unittest.TestCase):
         payload = rolebinding_payload()
         payload["subjects"] = [{"apiGroup": "rbac.authorization.k8s.io", "kind": "Group", "name": MODULE.FIELD_MANAGER}]
         self.assertFalse(MODULE.expected_rolebinding(payload))
+
+    def test_guard_normalization_removes_only_equivalent_match_policy(self) -> None:
+        spec = {
+            "matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []},
+            "matchResources": {"matchPolicy": "Equivalent", "namespaceSelector": {}},
+            "failurePolicy": "Fail",
+        }
+        self.assertEqual(
+            MODULE.normalized_guard_spec(spec),
+            {
+                "matchConstraints": {"resourceRules": []},
+                "matchResources": {"namespaceSelector": {}},
+                "failurePolicy": "Fail",
+            },
+        )
+
+    def test_guard_digest_accepts_only_defaulted_live_spec(self) -> None:
+        reviewed = {"matchConstraints": {"resourceRules": []}, "failurePolicy": "Fail"}
+        digest = hashlib.sha256(json.dumps(reviewed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        live = {"matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []}, "failurePolicy": "Fail"}
+        payload = {"metadata": {"name": MODULE.GUARD_NAME}, "spec": live}
+        self.assertTrue(MODULE.expected_guard(payload, digest=digest))
+        live["failurePolicy"] = "Ignore"
+        self.assertFalse(MODULE.expected_guard(payload, digest=digest))
 
     def test_apply_uses_reviewed_namespace_manifests_only(self) -> None:
         commands: list[list[str]] = []
