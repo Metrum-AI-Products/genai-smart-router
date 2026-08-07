@@ -401,6 +401,7 @@ secret-check:
 	python3 scripts/eks_discover_test.py
 	python3 scripts/validate_eks_make_args_test.py
 	python3 scripts/validate_eks_bootstrap_assets.py
+	python3 scripts/reconcile_staging_delivery_rbac_test.py
 	python3 scripts/render_tenant_ingress_network_policy_test.py
 	python3 scripts/render_tenant_linkerd_policy_test.py
 	python3 scripts/apply_tenant_network_policies_test.py

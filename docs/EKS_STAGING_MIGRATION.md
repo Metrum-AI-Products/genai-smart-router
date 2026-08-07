@@ -47,13 +47,17 @@ The platform-IaC owner deploys
 federated/SSO operator-role ARN, reviews the CloudFormation change set, and
 applies it with `CAPABILITY_NAMED_IAM`. That stack creates a persistent
 least-privilege bootstrap role and EKS access entry. The separately authorized
-cluster-bootstrap owner then applies
-`deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml` once through an
-explicit mode-`0600` temporary kubeconfig. Thereafter an authorized operator
-assumes the bootstrap role to apply only the exact named delivery `Role` and
-`RoleBinding`; it cannot create resources, read Secrets, mutate workloads, or
-broaden itself. The cluster-bootstrap owner still creates the immutable
-version-2 runtime/admission attestation and server-side dry-runs and applies
+cluster-bootstrap owner installs the fail-closed
+`deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml`, then
+applies `eks-staging-bootstrap-rbac.yaml` once through an explicit mode-`0600`
+temporary kubeconfig. Thereafter an authorized operator runs
+`scripts/reconcile_staging_delivery_rbac.py`, which server-side dry-runs and
+readbacks only the exact named namespace delivery `Role` and `RoleBinding`.
+The admission guard makes its required `bind` and `escalate` authorization
+usable only for that exact known specification; it cannot create resources,
+read Secrets, mutate workloads, or broaden itself. The cluster-bootstrap owner
+still creates the immutable version-2 runtime/admission attestation and
+server-side dry-runs and applies
 `deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`. This order
 keeps missing parameters and policy failures deny-by-default before a human
 receives Deployment write authority. Complete commands, image-approval
@@ -79,10 +83,10 @@ region = us-east-1
 role_session_name = <operator-change-id>
 ```
 
-Use `<operator-bootstrap-profile>` only to reconcile
-`eks-staging-delivery-rbac.yaml` after the platform owner has installed the
-bootstrap binding. The normal delivery CLI continues to use
-`<operator-delivery-profile>`.
+Use `<operator-bootstrap-profile>` only with
+`scripts/reconcile_staging_delivery_rbac.py` after the platform owner has
+installed the bootstrap admission guard and binding. The normal delivery CLI
+continues to use `<operator-delivery-profile>`.
 
 The source role must be the exact principal trusted by the stack and must allow
 `sts:AssumeRole` on the delivery and bootstrap roles. Identity-provider

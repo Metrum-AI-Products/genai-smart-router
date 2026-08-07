@@ -85,19 +85,24 @@ aws cloudformation deploy \
 ### Scoped Bootstrap Recovery
 
 The bootstrap role has one AWS permission: describe the reviewed cluster. Its
-Kubernetes group receives only the namespace-scoped `get`, `patch`, and
-`update` rights on the exact named delivery `Role` and `RoleBinding` in
-`eks-staging-bootstrap-rbac.yaml`. It cannot read Secrets or other ConfigMaps,
-read Pod logs, execute Pods, create resources, delete resources, mutate
-workloads, or act outside `smart-llmrouter-staging`.
+Kubernetes group has namespace-scoped `get`, `patch`, and `update` rights on
+the exact named delivery `Role` and `RoleBinding`, plus the Kubernetes `bind`
+and `escalate` checks needed to restore that known role. The separately owned
+`eks-staging-bootstrap-rbac-admission.yaml` denies every bootstrap request
+except the exact reviewed delivery objects, so those verbs cannot authorize
+arbitrary rules, subjects, names, namespaces, workload mutation, or privilege
+expansion. The role cannot read Secrets or other ConfigMaps, read Pod logs,
+execute Pods, create resources, delete resources, or act outside
+`smart-llmrouter-staging`.
 
-The platform/bootstrap owner must install this bootstrap RBAC once through an
-explicit temporary kubeconfig after the identity stack creates the access
-entry. Afterwards an authorized federated operator can assume
-`genai-smart-router-eks-staging-bootstrap` and reconcile only the reviewed
-delivery RBAC without new cluster-admin access. The bootstrap role cannot
-create its own binding or broaden its rights; replacement of its own manifest
-remains a platform/bootstrap-owner action.
+The platform/bootstrap owner must install the fail-closed admission guard and
+bootstrap RBAC once through an explicit temporary kubeconfig after the identity
+stack creates the access entry. Afterwards an authorized federated operator can
+assume `genai-smart-router-eks-staging-bootstrap` and use the guarded recovery
+CLI to reconcile only the reviewed namespace delivery RBAC. The CLI server-side
+dry-runs both objects before mutation and emits a bounded exact-object readback
+after every outcome; it never submits the separately owned cluster-scoped
+admission-read RBAC.
 
 ```bash
 aws eks update-kubeconfig \
@@ -105,14 +110,17 @@ aws eks update-kubeconfig \
   --region us-east-1 \
   --name metrum \
   --kubeconfig <explicit-temporary-kubeconfig>
-KUBECONFIG=<explicit-temporary-kubeconfig> \
-  kubectl apply --server-side \
-  -f deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml
+python3 scripts/reconcile_staging_delivery_rbac.py \
+  --kubeconfig <explicit-temporary-kubeconfig> \
+  --confirm RECOVER_STAGING_DELIVERY_RBAC
 ```
 
 The initial platform-owned installation is:
 
 ```bash
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml
 KUBECONFIG=<explicit-temporary-kubeconfig> \
   kubectl apply --server-side \
   -f deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml
@@ -143,19 +151,21 @@ aws ecr describe-images --profile <staging-publisher-profile> --region us-east-1
 
 The separately reviewed cluster-bootstrap identity must first create the
 immutable version-2 runtime/admission attestation described below, then apply
-`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`. After the
-identity stack and one-time bootstrap RBAC installation, the scoped bootstrap
-role applies `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`
-through an explicit kubeconfig. The admission policy denies human delivery
-requests unless the final Deployment uses the bootstrap-approved router and
-Linkerd images plus the reviewed pod security, process, environment, mount, and
-host-isolation contract. Its missing parameter and evaluation failures deny.
-The namespace Role grants non-destructive desired-state reconciliation and
-name-scoped attestation reads. The separate ClusterRole grants `get` only on
-the named policy and binding so preflight can verify the live admission
-contract; it grants no mutation. There is no Secret access, other ConfigMap
-access, Pod logs/exec, resource deletion, wildcard verb, broad cluster role, or
-cross-namespace authority.
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml` and
+`deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml`.
+After the identity stack and one-time bootstrap RBAC installation, the scoped
+bootstrap role runs `scripts/reconcile_staging_delivery_rbac.py` through an
+explicit kubeconfig. The delivery-admission policy denies human requests unless
+the final Deployment uses the bootstrap-approved router and Linkerd images plus
+the reviewed pod security, process, environment, mount, and host-isolation
+contract. Its missing parameter and evaluation failures deny. The namespace
+Role grants non-destructive desired-state reconciliation and name-scoped
+attestation reads. The separate cluster-scoped
+`eks-staging-delivery-rbac.yaml` grants `get` only on named policies and
+bindings so preflight can verify the live admission contract; it grants no
+mutation. There is no Secret access, other ConfigMap access, Pod logs/exec,
+resource deletion, wildcard verb, broad cluster role, or cross-namespace
+authority.
 
 Run `python3 scripts/validate_eks_bootstrap_assets.py` before deploying the
 stack, policy, or RBAC. Review the CloudFormation change set and Kubernetes
