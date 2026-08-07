@@ -154,6 +154,18 @@ def main() -> int:
     ):
         if required not in staging_identity:
             raise SystemExit(f"staging identity stack lacks required boundary: {required}")
+    for required in (
+        "Type: AWS::ECR::Repository",
+        "RepositoryName: smart-llmrouter",
+        "ImageTagMutability: IMMUTABLE",
+        "ScanOnPush: true",
+        "RoleName: genai-smart-router-eks-staging-image-publisher",
+        "PolicyName: GenAISmartRouterEKSStagingImagePublisher",
+        "Action: ecr:GetAuthorizationToken",
+        "Resource: !GetAtt SmartRouterStagingImageRepository.Arn",
+    ):
+        if required not in staging_identity:
+            raise SystemExit(f"staging image publisher lacks required boundary: {required}")
     access_entry_tags = re.search(
         r"StagingDeliveryAccessEntry:\n(?:.*\n)*?      Tags:\n"
         r"        - Key: application\n"
@@ -171,7 +183,6 @@ def main() -> int:
     for forbidden_value in (
         "arn:aws:iam::${AWS::AccountId}:root",
         "Action: \"*\"",
-        "Resource: \"*\"",
         "eks:AssociateAccessPolicy",
         "secretsmanager:",
         "iam:PassRole",
@@ -181,8 +192,10 @@ def main() -> int:
     ):
         if forbidden_value in staging_identity:
             raise SystemExit(f"staging identity stack contains forbidden authority: {forbidden_value}")
-    if staging_identity.count("Action: sts:AssumeRole") != 1:
-        raise SystemExit("staging identity stack must trust one exact authorized operator role")
+    if staging_identity.count("Action: sts:AssumeRole") != 2:
+        raise SystemExit("staging identity stack must trust the exact authorized operator role for each reusable role")
+    if staging_identity.count('Resource: "*"') != 1 or "Action: ecr:GetAuthorizationToken" not in staging_identity:
+        raise SystemExit("only the required ECR authorization token action may use wildcard resource scope")
 
     staging_delivery_rbac = STAGING_DELIVERY_RBAC.read_text(encoding="utf-8")
     for required in (

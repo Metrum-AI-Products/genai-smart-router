@@ -50,6 +50,92 @@ Resources:
   # StagingDeliveryRole. Keep that permission in its reviewed federation/SSO
   # assignment rather than mutating an arbitrary human identity from this stack.
 
+  SmartRouterStagingImageRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: smart-llmrouter
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged image manifests after seven days.",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": {"type": "expire"}
+              },
+              {
+                "rulePriority": 2,
+                "description": "Retain the newest thirty immutable tagged images.",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["staging-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": {"type": "expire"}
+              }
+            ]
+          }
+      Tags:
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-image
+        - Key: environment
+          Value: non-production
+
+  StagingImagePublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: genai-smart-router-eks-staging-image-publisher
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AuthorizedFederatedOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GenAISmartRouterEKSStagingImagePublisher
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AuthenticateToECR
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: PushApprovedStagingRepositoryOnly
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !GetAtt SmartRouterStagingImageRepository.Arn
+      Tags:
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-image-publisher
+        - Key: environment
+          Value: non-production
+
   ProtectedStagingTarget:
     Type: AWS::SSM::Parameter
     Properties:
@@ -100,5 +186,9 @@ Resources:
 Outputs:
   DeliveryRoleArn:
     Value: !GetAtt StagingDeliveryRole.Arn
+  StagingImagePublisherRoleArn:
+    Value: !GetAtt StagingImagePublisherRole.Arn
+  StagingImageRepositoryUri:
+    Value: !GetAtt SmartRouterStagingImageRepository.RepositoryUri
   ProtectedTargetParameterName:
     Value: !Ref ProtectedStagingTarget
