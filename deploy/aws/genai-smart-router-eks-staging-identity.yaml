@@ -50,6 +50,47 @@ Resources:
   # StagingDeliveryRole. Keep that permission in its reviewed federation/SSO
   # assignment rather than mutating an arbitrary human identity from this stack.
 
+  StagingImagePublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: genai-smart-router-eks-staging-image-publisher
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AuthorizedFederatedOperatorRole
+            Effect: Allow
+            Principal:
+              AWS: !Ref AuthorizedOperatorRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GenAISmartRouterEKSStagingImagePublisher
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AuthenticateToECR
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: PushApprovedStagingRepositoryOnly
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/smart-llmrouter
+      Tags:
+        - Key: application
+          Value: genai-smart-router
+        - Key: purpose
+          Value: eks-staging-image-publisher
+        - Key: environment
+          Value: non-production
+
   ProtectedStagingTarget:
     Type: AWS::SSM::Parameter
     Properties:
