@@ -284,23 +284,33 @@ def main() -> int:
     for required in (
         "kind: Role\n",
         "kind: RoleBinding\n",
+        "kind: ClusterRole\n",
+        "kind: ClusterRoleBinding\n",
         "namespace: smart-llmrouter-staging",
         "kind: Group\n",
         "name: genai-smart-router-eks-staging-bootstrap",
+        "name: genai-smart-router-eks-staging-bootstrap-admission-read",
         'resources: ["roles"]',
         'resources: ["rolebindings"]',
+        'resources: ["validatingadmissionpolicies"]',
+        'resources: ["validatingadmissionpolicybindings"]',
         'resourceNames: ["genai-smart-router-eks-staging-delivery"]',
+        'resourceNames: ["genai-smart-router-eks-staging-bootstrap-rbac"]',
         'verbs: ["bind", "escalate", "get", "patch", "update"]',
     ):
         if required not in staging_bootstrap_rbac:
             raise SystemExit(f"staging bootstrap RBAC lacks required boundary: {required}")
+    if (
+        staging_bootstrap_rbac.count("kind: ClusterRole\nmetadata:") != 1
+        or staging_bootstrap_rbac.count("kind: ClusterRoleBinding\nmetadata:") != 1
+        or staging_bootstrap_rbac.count('verbs: ["get"]') != 2
+    ):
+        raise SystemExit("staging bootstrap admission reads must remain exact and read-only")
     for forbidden_value in (
         '"secrets"',
         '"deployments"',
         "pods/log",
         "pods/exec",
-        "kind: ClusterRole",
-        "kind: ClusterRoleBinding",
         'verbs: ["*"]',
         '"create"',
         '"delete"',

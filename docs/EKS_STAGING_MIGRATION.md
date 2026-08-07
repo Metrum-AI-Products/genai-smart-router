@@ -58,9 +58,10 @@ server-side dry-runs, applies, and reads back
 `eks-staging-delivery-rolebinding.yaml`; that final binding is the first point
 at which the delivery group gains Deployment mutation authority. Thereafter an
 authorized operator runs `scripts/reconcile_staging_delivery_rbac.py`, which
-server-side dry-runs, force-claims drifted fields only behind the exact-spec
-admission guard, and readbacks only the exact named namespace delivery `Role`
-and `RoleBinding`.
+uses only its name-scoped namespace RBAC and read-only access to the exact
+bootstrap admission policy and binding, server-side dry-runs, force-claims
+drifted fields only behind the exact-spec admission guard, and readbacks only
+the exact named namespace delivery `Role` and `RoleBinding`.
 The admission guard makes its required `bind` and `escalate` authorization
 usable only for that exact known specification; it cannot create resources,
 read Secrets, mutate workloads, or broaden itself. The cluster-bootstrap owner
