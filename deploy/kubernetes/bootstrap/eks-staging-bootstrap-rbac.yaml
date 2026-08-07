@@ -32,3 +32,37 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: genai-smart-router-eks-staging-bootstrap
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: genai-smart-router-eks-staging-bootstrap-admission-read
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: bootstrap-identity
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicies"]
+    resourceNames: ["genai-smart-router-eks-staging-bootstrap-rbac"]
+    verbs: ["get"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicybindings"]
+    resourceNames: ["genai-smart-router-eks-staging-bootstrap-rbac"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: genai-smart-router-eks-staging-bootstrap-admission-read
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: bootstrap-identity
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: genai-smart-router-eks-staging-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: genai-smart-router-eks-staging-bootstrap-admission-read
