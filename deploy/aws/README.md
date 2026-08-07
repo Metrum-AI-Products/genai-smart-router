@@ -95,13 +95,16 @@ expansion. The role cannot read Secrets or other ConfigMaps, read Pod logs,
 execute Pods, create resources, delete resources, or act outside
 `smart-llmrouter-staging`.
 
-The platform/bootstrap owner must install the fail-closed admission guard and
-bootstrap RBAC once through an explicit temporary kubeconfig after the identity
-stack creates the access entry. Afterwards an authorized federated operator can
-assume `genai-smart-router-eks-staging-bootstrap` and use the guarded recovery
-CLI to reconcile only the reviewed namespace delivery RBAC. The CLI server-side
-dry-runs both objects before mutation and emits a bounded exact-object readback
-after every outcome; it never submits the separately owned cluster-scoped
+The platform/bootstrap owner must install the fail-closed admission guard,
+bootstrap RBAC, and exact namespace delivery RBAC once through an explicit
+temporary kubeconfig after the identity stack creates the access entry.
+Afterwards an authorized federated operator can assume
+`genai-smart-router-eks-staging-bootstrap` and use the guarded recovery CLI
+to reconcile only the reviewed namespace delivery RBAC. The CLI server-side
+dry-runs both objects and force-claims their fields before mutation, then emits
+a bounded exact-object readback after every outcome. Forced ownership is safe
+only because the separately owned admission policy denies every divergent
+result. The CLI never submits the separately owned cluster-scoped
 admission-read RBAC.
 
 ```bash
@@ -124,6 +127,9 @@ KUBECONFIG=<explicit-temporary-kubeconfig> \
 KUBECONFIG=<explicit-temporary-kubeconfig> \
   kubectl apply --server-side \
   -f deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml
 ```
 
 ### Staging Image Publisher

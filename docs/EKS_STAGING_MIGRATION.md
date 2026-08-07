@@ -49,9 +49,11 @@ applies it with `CAPABILITY_NAMED_IAM`. That stack creates a persistent
 least-privilege bootstrap role and EKS access entry. The separately authorized
 cluster-bootstrap owner installs the fail-closed
 `deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml`, then
-applies `eks-staging-bootstrap-rbac.yaml` once through an explicit mode-`0600`
+applies `eks-staging-bootstrap-rbac.yaml` and
+`eks-staging-delivery-namespace-rbac.yaml` once through an explicit mode-`0600`
 temporary kubeconfig. Thereafter an authorized operator runs
-`scripts/reconcile_staging_delivery_rbac.py`, which server-side dry-runs and
+`scripts/reconcile_staging_delivery_rbac.py`, which server-side dry-runs,
+force-claims drifted fields only behind the exact-spec admission guard, and
 readbacks only the exact named namespace delivery `Role` and `RoleBinding`.
 The admission guard makes its required `bind` and `escalate` authorization
 usable only for that exact known specification; it cannot create resources,

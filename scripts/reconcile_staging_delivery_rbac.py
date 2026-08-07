@@ -149,6 +149,7 @@ def apply(kubeconfig: Path, *, dry_run: bool) -> None:
     command = [
         "apply",
         "--server-side",
+        "--force-conflicts",
         f"--field-manager={FIELD_MANAGER}",
         "--validate=true",
         "-f",
