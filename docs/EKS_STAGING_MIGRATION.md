@@ -49,7 +49,8 @@ applies it with `CAPABILITY_NAMED_IAM`. That stack creates a persistent
 least-privilege bootstrap role and EKS access entry. The separately authorized
 cluster-bootstrap owner installs the fail-closed
 `deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml`, then
-applies `eks-staging-bootstrap-rbac.yaml` and the unbound
+applies `eks-staging-bootstrap-rbac.yaml`, the separately owned named-only
+admission-read `eks-staging-delivery-rbac.yaml`, and the unbound
 `eks-staging-delivery-namespace-rbac.yaml` once through an explicit mode-`0600`
 temporary kubeconfig. The owner creates the immutable runtime attestation and
 server-side dry-runs, applies, and reads back

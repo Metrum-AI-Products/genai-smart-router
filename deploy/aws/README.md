@@ -135,6 +135,9 @@ KUBECONFIG=<explicit-temporary-kubeconfig> \
   -f deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml
 KUBECONFIG=<explicit-temporary-kubeconfig> \
   kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
   -f deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml
 ```
 

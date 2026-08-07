@@ -135,12 +135,22 @@ def readback(kubeconfig: Path) -> dict[str, bool]:
             states[resource] = False
     return states
 
+
+def normalized_guard_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    normalized = json.loads(json.dumps(spec))
+    for key in ("matchConstraints", "matchResources"):
+        value = normalized.get(key)
+        if isinstance(value, dict) and value.get("matchPolicy") == "Equivalent":
+            del value["matchPolicy"]
+    return normalized
+
+
 def expected_guard(payload: dict[str, Any], *, digest: str) -> bool:
     metadata = payload.get("metadata")
     spec = payload.get("spec")
     if not isinstance(metadata, dict) or metadata.get("name") != GUARD_NAME or not isinstance(spec, dict):
         return False
-    canonical_spec = json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
+    canonical_spec = json.dumps(normalized_guard_spec(spec), sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(canonical_spec).hexdigest() == digest
 
 
