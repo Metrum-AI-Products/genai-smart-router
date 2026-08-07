@@ -97,9 +97,50 @@ installed the bootstrap admission guard and binding. The normal delivery CLI
 continues to use `<operator-delivery-profile>`.
 
 The source role must be the exact principal trusted by the stack and must allow
-`sts:AssumeRole` on the delivery and bootstrap roles. Identity-provider
-membership decides who may use that source role; the stack neither creates nor
-names individual human users.
+`sts:AssumeRole` on the delivery, bootstrap, and image-publisher roles.
+Identity-provider membership decides who may use that source role; the stack
+neither creates nor names individual human users.
+
+#### Fixed lifecycle roles and source authorization
+
+The deployment owns three fixed target roles:
+
+| Role | Allowed lifecycle surface | Explicit boundary |
+| --- | --- | --- |
+| `genai-smart-router-eks-staging-delivery` | Reviewed staging workload create, update, and patch through the checked-in delivery contract | No delete, Secret read, wildcard, cluster-wide, or admission-policy mutation authority |
+| `genai-smart-router-eks-staging-bootstrap` | Exact reviewed delivery `Role` and `RoleBinding` recovery after its admission guard is installed | No workload, Secret, arbitrary RBAC, or cluster-scoped mutation authority |
+| `genai-smart-router-eks-staging-image-publisher` | Immutable image publication to the reviewed staging ECR repository | No EKS, Secret, or deployment authority |
+
+The platform-IaC owner is a separately approved non-root organization role. It
+deploys the identity stack and creates the one-time Kubernetes bootstrap
+objects; it is not a runtime delivery identity and is not named by this
+repository. An individual operator, including an IAM-user-backed operator,
+never appears in the stack trust policy. Instead, the organization's
+federated/SSO source role is the exact value supplied as
+`AuthorizedOperatorRoleArn`, and its reviewed permission set must grant only:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": [
+      "arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-delivery",
+      "arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-bootstrap",
+      "arn:aws:iam::<account-id>:role/genai-smart-router-eks-staging-image-publisher"
+    ]
+  }]
+}
+```
+
+The organization attaches that policy to the source role or its permission set,
+not to an individual user and not to the router roles themselves. Before any
+target action, prove the intended assumed role with
+`aws sts get-caller-identity`; an `AccessDenied` result from `AssumeRole` is a
+source-authorization defect, not a reason to use root credentials or widen the
+delivery role.
+
 The role profile may use any local AWS profile name—including `-`, `_`, `.`,
 `@`, `+`, `=`, and `,`—but never accept credentials as flags or configuration
 content. Before lifecycle work, the operator runs `aws sso login` or the
