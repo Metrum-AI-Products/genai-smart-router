@@ -34,7 +34,13 @@ DISCOVERY_LINKERD_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-linke
 DISCOVERY_INGRESS_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-discovery-ingress-namespace-rbac.example.yaml"
 STAGING_IDENTITY_STACK = ROOT / "deploy/aws/genai-smart-router-eks-staging-identity.yaml"
 STAGING_DELIVERY_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml"
+STAGING_DELIVERY_NAMESPACE_RBAC = (
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml"
+)
 STAGING_BOOTSTRAP_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml"
+STAGING_BOOTSTRAP_ADMISSION = (
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml"
+)
 STAGING_DELIVERY_ADMISSION = (
     ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml"
 )
@@ -223,7 +229,7 @@ def main() -> int:
         'resources: ["roles"]',
         'resources: ["rolebindings"]',
         'resourceNames: ["genai-smart-router-eks-staging-delivery"]',
-        'verbs: ["get", "patch", "update"]',
+        'verbs: ["bind", "escalate", "get", "patch", "update"]',
     ):
         if required not in staging_bootstrap_rbac:
             raise SystemExit(f"staging bootstrap RBAC lacks required boundary: {required}")
@@ -242,52 +248,67 @@ def main() -> int:
         if forbidden_value in staging_bootstrap_rbac:
             raise SystemExit(f"staging bootstrap RBAC contains forbidden authority: {forbidden_value}")
 
-    staging_delivery_rbac = STAGING_DELIVERY_RBAC.read_text(encoding="utf-8")
+    staging_bootstrap_admission = STAGING_BOOTSTRAP_ADMISSION.read_text(encoding="utf-8")
+    for required in (
+        "kind: ValidatingAdmissionPolicy\n",
+        "kind: ValidatingAdmissionPolicyBinding\n",
+        "failurePolicy: Fail",
+        "'genai-smart-router-eks-staging-bootstrap' in request.userInfo.groups",
+        "object.rules.size() == 7",
+        "object.subjects.size() == 1",
+        "The bootstrap role may reconcile only the exact reviewed staging delivery RBAC objects.",
+        "validationActions: [Deny, Audit]",
+        "resources: [\"roles\", \"rolebindings\"]",
+        "kubernetes.io/metadata.name: smart-llmrouter-staging",
+    ):
+        if required not in staging_bootstrap_admission:
+            raise SystemExit(f"staging bootstrap admission lacks required boundary: {required}")
+    for forbidden_value in ('resources: ["*"]', 'operations: ["*"]', "failurePolicy: Ignore"):
+        if forbidden_value in staging_bootstrap_admission:
+            raise SystemExit(f"staging bootstrap admission contains forbidden boundary: {forbidden_value}")
+
+    staging_delivery_namespace_rbac = STAGING_DELIVERY_NAMESPACE_RBAC.read_text(encoding="utf-8")
     for required in (
         "kind: Role\n",
         "kind: RoleBinding\n",
-        "kind: ClusterRole\n",
-        "kind: ClusterRoleBinding\n",
         "namespace: smart-llmrouter-staging",
         "kind: Group\n",
         "name: genai-smart-router-eks-staging-delivery",
         'resourceNames: ["smartrouter-staging-runtime-attestation"]',
-        "genai-smart-router-eks-staging-linkerd-pod",
         'resources: ["deployments"]',
         'resources: ["replicasets"]',
         'resources: ["ingresses", "networkpolicies"]',
         'resources: ["poddisruptionbudgets"]',
         'resources: ["services", "serviceaccounts", "persistentvolumeclaims"]',
-        'resources: ["validatingadmissionpolicies"]',
-        'resources: ["validatingadmissionpolicybindings"]',
     ):
-        if required not in staging_delivery_rbac:
-            raise SystemExit(f"staging delivery RBAC lacks required boundary: {required}")
-    for forbidden_value in (
-        '"secrets"',
-        "pods/log",
-        "pods/exec",
-        'verbs: ["*"]',
-        '"delete"',
-        "deletecollection",
-    ):
-        if forbidden_value in staging_delivery_rbac:
-            raise SystemExit(f"staging delivery RBAC contains forbidden authority: {forbidden_value}")
-    if (
-        len(re.findall(r"(?m)^kind: ClusterRole$", staging_delivery_rbac)) != 1
-        or len(re.findall(r"(?m)^kind: ClusterRoleBinding$", staging_delivery_rbac)) != 1
-        or staging_delivery_rbac.count('resources: ["validatingadmissionpolicies"]') != 1
-        or staging_delivery_rbac.count('resources: ["validatingadmissionpolicybindings"]') != 1
-    ):
-        raise SystemExit("staging delivery RBAC must expose only the named admission-policy reads")
+        if required not in staging_delivery_namespace_rbac:
+            raise SystemExit(f"staging delivery namespace RBAC lacks required boundary: {required}")
+    if "kind: ClusterRole" in staging_delivery_namespace_rbac or "kind: ClusterRoleBinding" in staging_delivery_namespace_rbac:
+        raise SystemExit("scoped recovery manifest must not include cluster-scoped RBAC")
     configmap_rule = re.search(
         r'  - apiGroups: \[""\]\n    resources: \["configmaps"\]\n'
         r'    resourceNames: \["smartrouter-staging-runtime-attestation"\]\n'
         r'    verbs: \["get"\]\n',
-        staging_delivery_rbac,
+        staging_delivery_namespace_rbac,
     )
-    if configmap_rule is None or staging_delivery_rbac.count('resources: ["configmaps"]') != 1:
-        raise SystemExit("staging delivery RBAC must permit only named attestation ConfigMap get")
+    if configmap_rule is None or staging_delivery_namespace_rbac.count('resources: ["configmaps"]') != 1:
+        raise SystemExit("staging delivery namespace RBAC must permit only named attestation ConfigMap get")
+
+    staging_delivery_rbac = STAGING_DELIVERY_RBAC.read_text(encoding="utf-8")
+    for required in (
+        "kind: ClusterRole\n",
+        "kind: ClusterRoleBinding\n",
+        "genai-smart-router-eks-staging-linkerd-pod",
+        'resources: ["validatingadmissionpolicies"]',
+        'resources: ["validatingadmissionpolicybindings"]',
+    ):
+        if required not in staging_delivery_rbac:
+            raise SystemExit(f"staging delivery admission-read RBAC lacks required boundary: {required}")
+    if "kind: Role\n" in staging_delivery_rbac or "kind: RoleBinding\n" in staging_delivery_rbac:
+        raise SystemExit("delivery admission-read RBAC must not include namespace recovery objects")
+    for forbidden_value in ('"secrets"', "pods/log", "pods/exec", 'verbs: ["*"]', '"delete"', "deletecollection"):
+        if forbidden_value in staging_delivery_rbac:
+            raise SystemExit(f"staging delivery admission-read RBAC contains forbidden authority: {forbidden_value}")
 
     staging_delivery_admission = STAGING_DELIVERY_ADMISSION.read_text(encoding="utf-8")
     for required in (

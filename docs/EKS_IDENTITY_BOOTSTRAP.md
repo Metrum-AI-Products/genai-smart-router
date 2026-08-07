@@ -47,10 +47,13 @@ profiles that assume `genai-smart-router-eks-staging-delivery` and the
 separate `genai-smart-router-eks-staging-bootstrap`; no human username is
 compiled into the CLI or stored in the protected target policy. The source role
 must separately allow the exact `sts:AssumeRole` actions. The bootstrap role
-can reconcile only the exact named delivery `Role` and `RoleBinding` after the
-platform owner installs its binding once; it cannot read Secrets, mutate
-workloads or admission policy, create resources, delete resources, or broaden
-its own authority. The delivery process verifies the resulting account and
+uses Kubernetes `bind` and `escalate` only on the exact named delivery Role,
+and only after the platform owner installs a fail-closed admission guard that
+requires the full reviewed Role/RoleBinding specification. The recovery CLI
+server-side dry-runs and readbacks those two namespace objects; it cannot read
+Secrets, mutate workloads or admission policy, create resources, delete
+resources, or broaden its own authority. The delivery process verifies the
+resulting account and
 assumed-role name, protected target, immutable version-2 runtime/image
 attestation, exact fail-closed admission policy/binding, and non-destructive
 RBAC before selecting or mutating EKS. Removing the identity-provider

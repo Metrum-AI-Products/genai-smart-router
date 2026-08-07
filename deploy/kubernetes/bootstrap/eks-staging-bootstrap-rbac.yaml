@@ -10,7 +10,7 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles"]
     resourceNames: ["genai-smart-router-eks-staging-delivery"]
-    verbs: ["get", "patch", "update"]
+    verbs: ["bind", "escalate", "get", "patch", "update"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     resourceNames: ["genai-smart-router-eks-staging-delivery"]
