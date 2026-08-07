@@ -45,15 +45,19 @@ or a different image digest.
 The platform-IaC owner deploys
 `deploy/aws/genai-smart-router-eks-staging-identity.yaml` with one exact
 federated/SSO operator-role ARN, reviews the CloudFormation change set, and
-applies it with `CAPABILITY_NAMED_IAM`. The separately authorized
-cluster-bootstrap owner then creates the immutable version-2 runtime/admission
-attestation, server-side dry-runs and applies
-`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`, and only
-then applies `deploy/kubernetes/bootstrap/eks-staging-delivery-rbac.yaml`
-through an explicit mode-`0600` temporary kubeconfig. This order keeps missing
-parameters and policy failures deny-by-default before a human receives
-Deployment write authority. Complete commands, image-approval requirements,
-and revocation behavior are in
+applies it with `CAPABILITY_NAMED_IAM`. That stack creates a persistent
+least-privilege bootstrap role and EKS access entry. The separately authorized
+cluster-bootstrap owner then applies
+`deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml` once through an
+explicit mode-`0600` temporary kubeconfig. Thereafter an authorized operator
+assumes the bootstrap role to apply only the exact named delivery `Role` and
+`RoleBinding`; it cannot create resources, read Secrets, mutate workloads, or
+broaden itself. The cluster-bootstrap owner still creates the immutable
+version-2 runtime/admission attestation and server-side dry-runs and applies
+`deploy/kubernetes/bootstrap/eks-staging-delivery-admission.yaml`. This order
+keeps missing parameters and policy failures deny-by-default before a human
+receives Deployment write authority. Complete commands, image-approval
+requirements, and revocation behavior are in
 [`deploy/aws/README.md`](../deploy/aws/README.md#deployable-staging-delivery-identity).
 
 Every authorized operator uses their own federated source profile and a local
@@ -67,13 +71,27 @@ region = us-east-1
 role_session_name = <operator-change-id>
 ```
 
+```ini
+[profile <operator-bootstrap-profile>]
+role_arn = arn:aws:iam::121701826775:role/genai-smart-router-eks-staging-bootstrap
+source_profile = <operator-federated-profile>
+region = us-east-1
+role_session_name = <operator-change-id>
+```
+
+Use `<operator-bootstrap-profile>` only to reconcile
+`eks-staging-delivery-rbac.yaml` after the platform owner has installed the
+bootstrap binding. The normal delivery CLI continues to use
+`<operator-delivery-profile>`.
+
 The source role must be the exact principal trusted by the stack and must allow
-`sts:AssumeRole` on the delivery role. Identity-provider membership decides
-which users may obtain the source role. The lifecycle tools accept any simple
-local AWS profile name—including `-`, `_`, `.`, `@`, `+`, `=`, and `,`—but
-never accept credentials as flags or configuration content. Before lifecycle
-work, the operator runs `aws sso login` or the organization's equivalent
-federated login for the source profile, then verifies:
+`sts:AssumeRole` on the delivery and bootstrap roles. Identity-provider
+membership decides who may use that source role; the stack neither creates nor
+names individual human users.
+The role profile may use any local AWS profile name—including `-`, `_`, `.`,
+`@`, `+`, `=`, and `,`—but never accept credentials as flags or configuration
+content. Before lifecycle work, the operator runs `aws sso login` or the
+organization's equivalent federated login for the source profile, then verifies:
 
 
 ```bash

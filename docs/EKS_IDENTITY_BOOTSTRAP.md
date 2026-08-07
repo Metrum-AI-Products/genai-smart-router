@@ -42,16 +42,20 @@ path for the read-only discovery role only. They are not the authorization
 model for staging delivery or customer lifecycle operations. Delivery uses the
 exact organization-controlled federated/SSO operator role supplied to
 `deploy/aws/genai-smart-router-eks-staging-identity.yaml`. Any user assigned to
-that federated role may use an operator-selected local source profile and a
-role profile that assumes `genai-smart-router-eks-staging-delivery`; no human
-username is compiled into the CLI or stored in the protected target policy.
-The source role must separately allow the exact `sts:AssumeRole`, and the
-delivery process verifies the resulting account and assumed-role name, the
-protected target, immutable version-2 runtime/image attestation, exact
-fail-closed admission policy/binding, and non-destructive RBAC before selecting
-or mutating EKS. The role cannot read Secrets, mutate its admission boundary,
-or delete workload/PVC resources. Removing the identity-provider assignment or
-source-role grant revokes that user without changing deployment state.
+that federated role may use an operator-selected local source profile and role
+profiles that assume `genai-smart-router-eks-staging-delivery` and the
+separate `genai-smart-router-eks-staging-bootstrap`; no human username is
+compiled into the CLI or stored in the protected target policy. The source role
+must separately allow the exact `sts:AssumeRole` actions. The bootstrap role
+can reconcile only the exact named delivery `Role` and `RoleBinding` after the
+platform owner installs its binding once; it cannot read Secrets, mutate
+workloads or admission policy, create resources, delete resources, or broaden
+its own authority. The delivery process verifies the resulting account and
+assumed-role name, protected target, immutable version-2 runtime/image
+attestation, exact fail-closed admission policy/binding, and non-destructive
+RBAC before selecting or mutating EKS. Removing the identity-provider
+assignment or source-role grant revokes that user without changing deployment
+state.
 
 See [EKS staging migration: One-time authorization
 bootstrap](EKS_STAGING_MIGRATION.md#one-time-authorization-bootstrap) for the

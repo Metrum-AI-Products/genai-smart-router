@@ -1,0 +1,34 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: genai-smart-router-eks-staging-bootstrap
+  namespace: smart-llmrouter-staging
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: bootstrap-identity
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles"]
+    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    resourceNames: ["genai-smart-router-eks-staging-delivery"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: genai-smart-router-eks-staging-bootstrap
+  namespace: smart-llmrouter-staging
+  labels:
+    app.kubernetes.io/name: smart-llmrouter
+    app.kubernetes.io/component: bootstrap-identity
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: genai-smart-router-eks-staging-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: genai-smart-router-eks-staging-bootstrap
