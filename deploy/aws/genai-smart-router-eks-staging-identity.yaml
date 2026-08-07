@@ -18,6 +18,7 @@ Resources:
   # Fixed role names are rendered as ARNs below so target-role trust and
   # lifecycle delegation do not create a CloudFormation dependency cycle.
   LifecycleOperatorGroup:
+    DependsOn: StagingLifecycleOperatorRole
     Type: AWS::IAM::Group
     Properties:
       GroupName: genai-smart-router-eks-staging-lifecycle-operators
@@ -75,6 +76,7 @@ Resources:
           Value: non-production
 
   StagingDeliveryRole:
+    DependsOn: StagingLifecycleOperatorRole
     Type: AWS::IAM::Role
     Properties:
       RoleName: genai-smart-router-eks-staging-delivery
@@ -114,6 +116,7 @@ Resources:
           Value: non-production
 
   StagingBootstrapRole:
+    DependsOn: StagingLifecycleOperatorRole
     Type: AWS::IAM::Role
     Properties:
       RoleName: genai-smart-router-eks-staging-bootstrap
@@ -198,6 +201,7 @@ Resources:
           Value: non-production
 
   StagingImagePublisherRole:
+    DependsOn: StagingLifecycleOperatorRole
     Type: AWS::IAM::Role
     Properties:
       RoleName: genai-smart-router-eks-staging-image-publisher

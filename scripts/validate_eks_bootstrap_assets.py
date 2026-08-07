@@ -244,7 +244,8 @@ def main() -> int:
             raise SystemExit(f"staging identity stack lacks {target_name}")
         target_role = target_match.group("body")
         if (
-            "AWS: !Ref AuthorizedOperatorRoleArn" not in target_role
+            "DependsOn: StagingLifecycleOperatorRole" not in target_role
+            or "AWS: !Ref AuthorizedOperatorRoleArn" not in target_role
             or "role/genai-smart-router-eks-staging-lifecycle-operator" not in target_role
             or "!GetAtt StagingLifecycleOperatorRole.Arn" in target_role
             or "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" in target_role
@@ -257,7 +258,8 @@ def main() -> int:
         raise SystemExit("staging identity stack lacks the permanent lifecycle operator group")
     lifecycle_group = lifecycle_group_match.group("body")
     if (
-        "role/genai-smart-router-eks-staging-lifecycle-operator" not in lifecycle_group
+        "DependsOn: StagingLifecycleOperatorRole" not in lifecycle_group
+        or "role/genai-smart-router-eks-staging-lifecycle-operator" not in lifecycle_group
         or "!GetAtt StagingLifecycleOperatorRole.Arn" in lifecycle_group
         or any(value in lifecycle_group for value in ("Action: iam:", "Action: eks:", "Action: ecr:", "Action: secretsmanager:", 'Resource: "*"'))
     ):
