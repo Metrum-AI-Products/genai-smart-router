@@ -55,6 +55,7 @@ class RecoveryCLITest(unittest.TestCase):
             MODULE.run = original_run
         command = commands[0]
         self.assertIn("--dry-run=server", command)
+        self.assertIn("--force-conflicts", command)
         self.assertIn(str(MODULE.MANIFEST), command)
         self.assertNotIn("eks-staging-delivery-rbac.yaml", " ".join(command))
 
