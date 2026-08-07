@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import stat
@@ -16,9 +17,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 NAMESPACE = "smart-llmrouter-staging"
 ROLE_NAME = "genai-smart-router-eks-staging-delivery"
-MANIFEST = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml"
+MANIFESTS = (
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml",
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rolebinding.yaml",
+)
 FIELD_MANAGER = "genai-smart-router-eks-staging-bootstrap"
 CONFIRMATION = "RECOVER_STAGING_DELIVERY_RBAC"
+GUARD_NAME = "genai-smart-router-eks-staging-bootstrap-rbac"
+GUARD_POLICY_DIGEST = "33477d2999148bd1831b9a8d2f818029d89529d076af638e5c500b0f4f4fd213"
+GUARD_BINDING_DIGEST = "07a7b140864e4af6137a60d84aabc8a9e79ff0c24a86ab9b81090997625dd749"
 
 ROLE_RULES: list[dict[str, Any]] = [
     {"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list", "watch"]},
@@ -128,6 +135,28 @@ def readback(kubeconfig: Path) -> dict[str, bool]:
             states[resource] = False
     return states
 
+def expected_guard(payload: dict[str, Any], *, digest: str) -> bool:
+    metadata = payload.get("metadata")
+    spec = payload.get("spec")
+    if not isinstance(metadata, dict) or metadata.get("name") != GUARD_NAME or not isinstance(spec, dict):
+        return False
+    canonical_spec = json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(canonical_spec).hexdigest() == digest
+
+
+def assert_admission_guard(kubeconfig: Path) -> None:
+    resources = (
+        ("validatingadmissionpolicy", GUARD_POLICY_DIGEST),
+        ("validatingadmissionpolicybinding", GUARD_BINDING_DIGEST),
+    )
+    for resource, digest in resources:
+        try:
+            payload = json.loads(kubectl(kubeconfig, ["get", resource, GUARD_NAME, "-o", "json"]))
+        except (RecoveryError, json.JSONDecodeError) as exc:
+            raise RecoveryError("reviewed bootstrap admission guard is unavailable") from exc
+        if not expected_guard(payload, digest=digest):
+            raise RecoveryError("reviewed bootstrap admission guard does not match its exact specification")
+
 
 def assert_authorized(kubeconfig: Path) -> None:
     checks = (
@@ -152,8 +181,7 @@ def apply(kubeconfig: Path, *, dry_run: bool) -> None:
         "--force-conflicts",
         f"--field-manager={FIELD_MANAGER}",
         "--validate=true",
-        "-f",
-        str(MANIFEST),
+        *[value for manifest in MANIFESTS for value in ("-f", str(manifest))],
     ]
     if dry_run:
         command.insert(3, "--dry-run=server")
@@ -168,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.confirm != CONFIRMATION:
         raise RecoveryError("confirmation must equal RECOVER_STAGING_DELIVERY_RBAC")
     kubeconfig = safe_kubeconfig(args.kubeconfig)
+    assert_admission_guard(kubeconfig)
     assert_authorized(kubeconfig)
     apply(kubeconfig, dry_run=True)
     try:

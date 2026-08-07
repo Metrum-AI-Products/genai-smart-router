@@ -45,7 +45,7 @@ class RecoveryCLITest(unittest.TestCase):
         payload["subjects"] = [{"apiGroup": "rbac.authorization.k8s.io", "kind": "Group", "name": MODULE.FIELD_MANAGER}]
         self.assertFalse(MODULE.expected_rolebinding(payload))
 
-    def test_apply_uses_namespace_only_manifest(self) -> None:
+    def test_apply_uses_reviewed_namespace_manifests_only(self) -> None:
         commands: list[list[str]] = []
         original_run = MODULE.run
         try:
@@ -56,7 +56,10 @@ class RecoveryCLITest(unittest.TestCase):
         command = commands[0]
         self.assertIn("--dry-run=server", command)
         self.assertIn("--force-conflicts", command)
-        self.assertIn(str(MODULE.MANIFEST), command)
+        self.assertEqual(
+            [value for value in command if value in {str(manifest) for manifest in MODULE.MANIFESTS}],
+            [str(manifest) for manifest in MODULE.MANIFESTS],
+        )
         self.assertNotIn("eks-staging-delivery-rbac.yaml", " ".join(command))
 
     def test_main_reports_exact_readback_only(self) -> None:
@@ -64,11 +67,13 @@ class RecoveryCLITest(unittest.TestCase):
             kubeconfig = Path(directory) / "config"
             kubeconfig.touch(mode=0o600)
             original_authorized = MODULE.assert_authorized
+            original_guard = MODULE.assert_admission_guard
             original_apply = MODULE.apply
             original_readback = MODULE.readback
             try:
                 calls: list[bool] = []
                 MODULE.assert_authorized = lambda _: None  # type: ignore[method-assign]
+                MODULE.assert_admission_guard = lambda _: None  # type: ignore[method-assign]
                 MODULE.apply = lambda _, *, dry_run: calls.append(dry_run)  # type: ignore[method-assign]
                 MODULE.readback = lambda _: {"role": True, "rolebinding": True}  # type: ignore[method-assign]
                 output = io.StringIO()
@@ -77,6 +82,7 @@ class RecoveryCLITest(unittest.TestCase):
             finally:
                 MODULE.assert_authorized = original_authorized
                 MODULE.apply = original_apply
+                MODULE.assert_admission_guard = original_guard
                 MODULE.readback = original_readback
         self.assertEqual(result, 0)
         self.assertEqual(calls, [True, False])

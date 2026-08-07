@@ -95,17 +95,19 @@ expansion. The role cannot read Secrets or other ConfigMaps, read Pod logs,
 execute Pods, create resources, delete resources, or act outside
 `smart-llmrouter-staging`.
 
-The platform/bootstrap owner must install the fail-closed admission guard,
-bootstrap RBAC, and exact namespace delivery RBAC once through an explicit
-temporary kubeconfig after the identity stack creates the access entry.
+The platform/bootstrap owner must install the fail-closed admission guard and
+bootstrap RBAC once through an explicit temporary kubeconfig after the identity
+stack creates the access entry. It creates the unbound delivery Role at this
+stage and delays its RoleBinding until workload admission is active.
 Afterwards an authorized federated operator can assume
 `genai-smart-router-eks-staging-bootstrap` and use the guarded recovery CLI
-to reconcile only the reviewed namespace delivery RBAC. The CLI server-side
-dry-runs both objects and force-claims their fields before mutation, then emits
-a bounded exact-object readback after every outcome. Forced ownership is safe
-only because the separately owned admission policy denies every divergent
-result. The CLI never submits the separately owned cluster-scoped
-admission-read RBAC.
+to reconcile only the reviewed namespace delivery RBAC. The CLI first
+reads the two named admission-guard objects and compares their exact canonical
+specifications, then server-side dry-runs both objects and force-claims their
+fields before mutation. It emits a bounded exact-object readback after every
+outcome. Forced ownership is safe only because the separately owned admission
+policy denies every divergent result. The CLI never applies the separately
+owned cluster-scoped admission-read RBAC.
 
 ```bash
 aws eks update-kubeconfig \
@@ -118,7 +120,11 @@ python3 scripts/reconcile_staging_delivery_rbac.py \
   --confirm RECOVER_STAGING_DELIVERY_RBAC
 ```
 
-The initial platform-owned installation is:
+The initial platform-owned installation creates the recovery guard and
+bootstrap RBAC, then follows the attestation and workload-admission sequence
+in [Staging Image Admission](#staging-image-admission) **before** it grants the
+delivery group any RoleBinding. The platform owner may create the unbound Role
+at this stage:
 
 ```bash
 KUBECONFIG=<explicit-temporary-kubeconfig> \
@@ -130,6 +136,16 @@ KUBECONFIG=<explicit-temporary-kubeconfig> \
 KUBECONFIG=<explicit-temporary-kubeconfig> \
   kubectl apply --server-side \
   -f deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml
+```
+
+Only after the immutable runtime attestation exists and the delivery admission
+policy and binding have passed server-side dry-run and live readback may the
+platform owner bind the delivery group:
+
+```bash
+KUBECONFIG=<explicit-temporary-kubeconfig> \
+  kubectl apply --server-side \
+  -f deploy/kubernetes/bootstrap/eks-staging-delivery-rolebinding.yaml
 ```
 
 ### Staging Image Publisher

@@ -49,12 +49,17 @@ applies it with `CAPABILITY_NAMED_IAM`. That stack creates a persistent
 least-privilege bootstrap role and EKS access entry. The separately authorized
 cluster-bootstrap owner installs the fail-closed
 `deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml`, then
-applies `eks-staging-bootstrap-rbac.yaml` and
+applies `eks-staging-bootstrap-rbac.yaml` and the unbound
 `eks-staging-delivery-namespace-rbac.yaml` once through an explicit mode-`0600`
-temporary kubeconfig. Thereafter an authorized operator runs
-`scripts/reconcile_staging_delivery_rbac.py`, which server-side dry-runs,
-force-claims drifted fields only behind the exact-spec admission guard, and
-readbacks only the exact named namespace delivery `Role` and `RoleBinding`.
+temporary kubeconfig. The owner creates the immutable runtime attestation and
+server-side dry-runs, applies, and reads back
+`eks-staging-delivery-admission.yaml` before applying
+`eks-staging-delivery-rolebinding.yaml`; that final binding is the first point
+at which the delivery group gains Deployment mutation authority. Thereafter an
+authorized operator runs `scripts/reconcile_staging_delivery_rbac.py`, which
+server-side dry-runs, force-claims drifted fields only behind the exact-spec
+admission guard, and readbacks only the exact named namespace delivery `Role`
+and `RoleBinding`.
 The admission guard makes its required `bind` and `escalate` authorization
 usable only for that exact known specification; it cannot create resources,
 read Secrets, mutate workloads, or broaden itself. The cluster-bootstrap owner

@@ -9,12 +9,14 @@ rules:
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingadmissionpolicies"]
     resourceNames:
+      - genai-smart-router-eks-staging-bootstrap-rbac
       - genai-smart-router-eks-staging-delivery
       - genai-smart-router-eks-staging-linkerd-pod
     verbs: ["get"]
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingadmissionpolicybindings"]
     resourceNames:
+      - genai-smart-router-eks-staging-bootstrap-rbac
       - genai-smart-router-eks-staging-delivery
       - genai-smart-router-eks-staging-linkerd-pod
     verbs: ["get"]
@@ -30,6 +32,9 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: genai-smart-router-eks-staging-delivery
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: genai-smart-router-eks-staging-bootstrap
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

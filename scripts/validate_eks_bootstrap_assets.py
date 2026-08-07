@@ -37,6 +37,9 @@ STAGING_DELIVERY_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery
 STAGING_DELIVERY_NAMESPACE_RBAC = (
     ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-namespace-rbac.yaml"
 )
+STAGING_DELIVERY_ROLEBINDING = (
+    ROOT / "deploy/kubernetes/bootstrap/eks-staging-delivery-rolebinding.yaml"
+)
 STAGING_BOOTSTRAP_RBAC = ROOT / "deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac.yaml"
 STAGING_BOOTSTRAP_ADMISSION = (
     ROOT / "deploy/kubernetes/bootstrap/eks-staging-bootstrap-rbac-admission.yaml"
@@ -267,7 +270,10 @@ def main() -> int:
         if forbidden_value in staging_bootstrap_admission:
             raise SystemExit(f"staging bootstrap admission contains forbidden boundary: {forbidden_value}")
 
-    staging_delivery_namespace_rbac = STAGING_DELIVERY_NAMESPACE_RBAC.read_text(encoding="utf-8")
+    staging_delivery_namespace_rbac = (
+        STAGING_DELIVERY_NAMESPACE_RBAC.read_text(encoding="utf-8")
+        + STAGING_DELIVERY_ROLEBINDING.read_text(encoding="utf-8")
+    )
     for required in (
         "kind: Role\n",
         "kind: RoleBinding\n",
@@ -298,6 +304,7 @@ def main() -> int:
     for required in (
         "kind: ClusterRole\n",
         "kind: ClusterRoleBinding\n",
+        "genai-smart-router-eks-staging-bootstrap-rbac",
         "genai-smart-router-eks-staging-linkerd-pod",
         'resources: ["validatingadmissionpolicies"]',
         'resources: ["validatingadmissionpolicybindings"]',
