@@ -223,9 +223,9 @@ def main() -> int:
         "user/smart-router-lifecycle/*",
         "aws:PrincipalTag/GenAISmartRouterLifecycle: \"true\"",
         "Resource:",
-        "- !GetAtt StagingDeliveryRole.Arn",
-        "- !GetAtt StagingBootstrapRole.Arn",
-        "- !GetAtt StagingImagePublisherRole.Arn",
+        "role/genai-smart-router-eks-staging-delivery",
+        "role/genai-smart-router-eks-staging-bootstrap",
+        "role/genai-smart-router-eks-staging-image-publisher",
     ):
         if required not in lifecycle_operator:
             raise SystemExit(f"lifecycle operator role lacks required boundary: {required}")
@@ -245,20 +245,23 @@ def main() -> int:
         target_role = target_match.group("body")
         if (
             "AWS: !Ref AuthorizedOperatorRoleArn" not in target_role
-            or "AWS: !GetAtt StagingLifecycleOperatorRole.Arn" not in target_role
+            or "role/genai-smart-router-eks-staging-lifecycle-operator" not in target_role
+            or "!GetAtt StagingLifecycleOperatorRole.Arn" in target_role
             or "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" in target_role
         ):
             raise SystemExit(
                 f"{target_name} must trust only the exact federated source and "
-                "the fixed lifecycle operator role"
+                "the fixed lifecycle operator role without a dependency cycle"
             )
     if lifecycle_group_match is None:
         raise SystemExit("staging identity stack lacks the permanent lifecycle operator group")
     lifecycle_group = lifecycle_group_match.group("body")
-    if "Resource: !GetAtt StagingLifecycleOperatorRole.Arn" not in lifecycle_group or any(
-        value in lifecycle_group for value in ("iam:", "eks:", "ecr:", "secretsmanager:", 'Resource: "*"')
+    if (
+        "role/genai-smart-router-eks-staging-lifecycle-operator" not in lifecycle_group
+        or "!GetAtt StagingLifecycleOperatorRole.Arn" in lifecycle_group
+        or any(value in lifecycle_group for value in ("Action: iam:", "Action: eks:", "Action: ecr:", "Action: secretsmanager:", 'Resource: "*"'))
     ):
-        raise SystemExit("lifecycle operator group may only enter the lifecycle operator role")
+        raise SystemExit("lifecycle operator group may only enter the lifecycle operator role without a dependency cycle")
     if staging_identity.count('Resource: "*"') != 1 or "Action: ecr:GetAuthorizationToken" not in staging_identity:
         raise SystemExit("only the required ECR authorization token action may use wildcard resource scope")
     bootstrap_role_match = re.search(

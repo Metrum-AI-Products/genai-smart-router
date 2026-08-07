@@ -15,6 +15,8 @@ Resources:
   # The fixed IAM group is a permanent membership boundary. A platform owner
   # manages users and their required /smart-router-lifecycle/ IAM path outside
   # this stack; no individual identity appears in this template.
+  # Fixed role names are rendered as ARNs below so target-role trust and
+  # lifecycle delegation do not create a CloudFormation dependency cycle.
   LifecycleOperatorGroup:
     Type: AWS::IAM::Group
     Properties:
@@ -27,7 +29,7 @@ Resources:
               - Sid: EnterStagingLifecycleOperatorOnly
                 Effect: Allow
                 Action: sts:AssumeRole
-                Resource: !GetAtt StagingLifecycleOperatorRole.Arn
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-lifecycle-operator
 
   StagingLifecycleOperatorRole:
     Type: AWS::IAM::Role
@@ -61,9 +63,9 @@ Resources:
                 Effect: Allow
                 Action: sts:AssumeRole
                 Resource:
-                  - !GetAtt StagingDeliveryRole.Arn
-                  - !GetAtt StagingBootstrapRole.Arn
-                  - !GetAtt StagingImagePublisherRole.Arn
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-delivery
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-bootstrap
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-image-publisher
       Tags:
         - Key: application
           Value: genai-smart-router
@@ -88,7 +90,7 @@ Resources:
           - Sid: PermanentLifecycleOperatorRole
             Effect: Allow
             Principal:
-              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-lifecycle-operator
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingDelivery
@@ -127,7 +129,7 @@ Resources:
           - Sid: PermanentLifecycleOperatorRole
             Effect: Allow
             Principal:
-              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-lifecycle-operator
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingBootstrap
@@ -211,7 +213,7 @@ Resources:
           - Sid: PermanentLifecycleOperatorRole
             Effect: Allow
             Principal:
-              AWS: !GetAtt StagingLifecycleOperatorRole.Arn
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/genai-smart-router-eks-staging-lifecycle-operator
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GenAISmartRouterEKSStagingImagePublisher
