@@ -50,10 +50,12 @@ shared command contract.
 
 `genai-smart-router-eks-staging-identity.yaml` is the deployable
 CloudFormation definition for the single reviewed Metrum staging target. It
-creates the exact delivery role, its minimal `eks:DescribeCluster` and
-name-scoped `ssm:GetParameter` policy, the protected non-secret target
-Parameter, and an EKS access entry mapped to the
-`genai-smart-router-eks-staging-delivery` Kubernetes group.
+creates the exact delivery role, a separate reusable staging image-publisher
+role, the private `smart-llmrouter` ECR repository, the protected non-secret
+target Parameter, and an EKS access entry mapped to the
+`genai-smart-router-eks-staging-delivery` Kubernetes group. The repository has
+immutable tags, scan-on-push, retained resource deletion policy, seven-day
+untagged cleanup, and a thirty-image `staging-` tag retention window.
 
 The stack does not authorize a named human or create credentials. Its required
 `AuthorizedOperatorRoleArn` is one exact organization-controlled federated or
@@ -76,6 +78,29 @@ aws cloudformation deploy \
     ClusterName=metrum \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset
+```
+
+### Staging Image Publisher
+
+The publisher role trusts the same `AuthorizedOperatorRoleArn`; it does not
+name an individual user. Assign operators to that federated/SSO role and grant
+its source role `sts:AssumeRole` for
+`genai-smart-router-eks-staging-image-publisher`. The publisher can request an
+ECR authorization token and upload, inspect, and resolve images only in the
+stack-owned `smart-llmrouter` repository. It cannot mutate EKS, Secrets,
+parameters, or any other repository.
+
+Publish a reviewed current commit under an immutable staging tag, then resolve
+the resulting `@sha256:` digest before creating the runtime attestation:
+
+```bash
+aws ecr get-login-password --profile <staging-publisher-profile> --region us-east-1 \
+  | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
+docker buildx build --platform linux/amd64 --load \
+  -t <account>.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter:staging-<commit> .
+docker push <account>.dkr.ecr.us-east-1.amazonaws.com/smart-llmrouter:staging-<commit>
+aws ecr describe-images --profile <staging-publisher-profile> --region us-east-1 \
+  --repository-name smart-llmrouter --image-ids imageTag=staging-<commit>
 ```
 
 The separately reviewed cluster-bootstrap identity must first create the
