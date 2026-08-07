@@ -48,7 +48,12 @@ class RecoveryCLITest(unittest.TestCase):
 
     def test_guard_normalization_removes_only_server_defaults(self) -> None:
         spec = {
-            "matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []},
+            "matchConstraints": {
+                "matchPolicy": "Equivalent",
+                "namespaceSelector": {},
+                "objectSelector": {},
+                "resourceRules": [],
+            },
             "matchResources": {
                 "matchPolicy": "Equivalent",
                 "namespaceSelector": {},
@@ -73,7 +78,12 @@ class RecoveryCLITest(unittest.TestCase):
         }
         digest = hashlib.sha256(json.dumps(reviewed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         live = {
-            "matchConstraints": {"matchPolicy": "Equivalent", "resourceRules": []},
+            "matchConstraints": {
+                "matchPolicy": "Equivalent",
+                "namespaceSelector": {},
+                "objectSelector": {},
+                "resourceRules": [],
+            },
             "matchResources": {
                 "matchPolicy": "Equivalent",
                 "namespaceSelector": {},
@@ -83,6 +93,9 @@ class RecoveryCLITest(unittest.TestCase):
         }
         payload = {"metadata": {"name": MODULE.GUARD_NAME}, "spec": live}
         self.assertTrue(MODULE.expected_guard(payload, digest=digest))
+        live["matchConstraints"]["namespaceSelector"] = {"matchLabels": {"unexpected": "drift"}}
+        self.assertFalse(MODULE.expected_guard(payload, digest=digest))
+        live["matchConstraints"]["namespaceSelector"] = {}
         live["matchResources"]["objectSelector"] = {"matchLabels": {"unexpected": "drift"}}
         self.assertFalse(MODULE.expected_guard(payload, digest=digest))
 
