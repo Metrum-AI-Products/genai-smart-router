@@ -1556,6 +1556,18 @@ class Delivery:
             live_pod_spec = cls._mapping_at(normalized, ("spec", "template", "spec"))
             expected_pod_spec = cls._mapping_at(expected, ("spec", "template", "spec"))
             if live_pod_spec is not None and expected_pod_spec is not None:
+                if (
+                    "serviceAccount" not in expected_pod_spec
+                    and isinstance(expected_pod_spec.get("serviceAccountName"), str)
+                    and live_pod_spec.get("serviceAccount")
+                    == expected_pod_spec["serviceAccountName"]
+                ):
+                    # Kubernetes serves this deprecated alias alongside the
+                    # reviewed serviceAccountName. It carries no independent
+                    # authority and must not make an otherwise exact dry-run
+                    # fingerprint fail.
+                    live_pod_spec.pop("serviceAccount")
+
                 # Keep this list deliberately small and exact.  These are API
                 # defaults for nested Container/Probe fields; an unlisted
                 # field, a non-default value, or an additional list item still
@@ -1649,6 +1661,11 @@ class Delivery:
                     default_policy_types.append("Egress")
                 if live_spec.get("policyTypes") == default_policy_types:
                     live_spec.pop("policyTypes")
+            for direction in ("ingress", "egress"):
+                if expected_spec.get(direction) == [] and live_spec.get(direction) is None:
+                    # The API may serialize an explicitly empty policy list as
+                    # null. Both forms preserve the reviewed deny-all rule.
+                    live_spec[direction] = []
 
         return normalized
 

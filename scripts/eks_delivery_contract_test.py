@@ -51,6 +51,7 @@ def rendered_objects(namespace: str | None = None) -> str:
                     "spec": {
                         "template": {
                             "spec": {
+                        "serviceAccountName": "smart-llmrouter",
                                 "containers": [
                                     {
                                         "name": "router",
@@ -210,6 +211,7 @@ def inventory_with_server_defaulted_deployment() -> str:
 
     payload = json.loads(rendered_objects())
     container = payload["items"][0]["spec"]["template"]["spec"]["containers"][0]
+    payload["items"][0]["spec"]["template"]["spec"]["serviceAccount"] = "smart-llmrouter"
     container["ports"][0]["protocol"] = "TCP"
     for probe_name in ("readinessProbe", "livenessProbe", "startupProbe"):
         probe = container[probe_name]
@@ -1114,6 +1116,31 @@ def main() -> int:
         nested_default_plan = run(
             "plan", root, server_normalized_inventory=server_defaulted_deployment
         )
+        # Kubernetes may serve an explicit empty ingress list as null. The
+        # normalization keeps the reviewed deny-all policy semantically exact.
+        empty_ingress_policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": "empty-ingress",
+                "namespace": TARGET_POLICY["k8s_namespace"],
+                "labels": {"app.kubernetes.io/name": "smart-llmrouter"},
+            },
+            "spec": {
+                "podSelector": {"matchLabels": {"app.kubernetes.io/name": "smart-llmrouter"}},
+                "policyTypes": ["Ingress"],
+                "ingress": [],
+            },
+        }
+        server_empty_ingress_policy = json.loads(json.dumps(empty_ingress_policy))
+        server_empty_ingress_policy["spec"]["ingress"] = None
+        normalized_empty_ingress_policy = EKS_DELIVERY.Delivery.normalized_live_managed_resource(
+            server_empty_ingress_policy,
+            EKS_DELIVERY.ManagedResource(kind="NetworkPolicy", name="empty-ingress"),
+            empty_ingress_policy,
+            source="server default",
+        )
+        assert normalized_empty_ingress_policy["spec"]["ingress"] == []
         assert nested_default_plan.returncode == 0, nested_default_plan.stderr
         nondefault_nested_deployment = json.loads(server_defaulted_deployment)
         nondefault_nested_deployment["items"][0]["spec"]["template"]["spec"]["containers"][0][
