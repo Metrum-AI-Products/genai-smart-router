@@ -1,140 +1,70 @@
-# Customer EKS lifecycle CLI
+# Fleet deployment lifecycle CLI
 
-`metrum-smartrouterctl` is the only customer EKS lifecycle surface. It uses
-typed AWS SDK and Kubernetes API clients; it never invokes `aws`, `kubectl`,
-Helm, Terraform, Make, or a shell command.
+`metrum-fleetctl` is the only #555 deployment authority. It uses typed AWS and
+Kubernetes clients; it never invokes `aws`, `kubectl`, Helm, Terraform, Make,
+or a shell command. It owns one normalized deployment-job registry and only
+the deterministic `plan`, idempotent `deploy`, exact-job `status`, and
+separately approved `delete` operations.
 
-- the #555 deployment job registry used by deterministic `plan`, idempotent
-  `deploy`, exact-job `status`, and approved `delete`.
+`metrum-smartrouterctl` is a one-release compatibility binary. It reports the
+rename to `metrum-fleetctl` and exits; it has no lifecycle behavior. Customer
+operators use the separate `smartrouterctl` local operations CLI described in
+the customer runbook.
 
-Both registries contain normalized scalar records only. They do not store
-credentials, DSNs, Router tokens or hashes, provider keys, license payloads,
-full configuration, kubeconfigs, or raw adapter errors. The CLI is shipped in
-binary tarballs and is not included in the standard Docker or Docker Compose
-image. Docker-based operators run it from an extracted binary package on a
-separate trusted administration host.
+Fleet commands are shipped in binary tarballs only. They are intentionally
+absent from standard Router Docker/Compose images. Run them on a separate
+trusted administration host.
 
-## Real deployment lifecycle
+## Authority and secret boundary
 
-`deploy` resolves a protected `aws-ssm:///` profile, verifies the selected
-non-production EKS cluster, and uses an IAM-authenticated Kubernetes client.
-It creates or resumes only resources labelled with its derived instance owner.
-It refuses production profiles, foreign ownership, HPA, any replica count
-other than one, and PVC modes other than `ReadWriteOnce`.
+The manifest is reference-only. It never accepts or emits provider keys, raw
+Router tokens or hashes, license payloads, DSNs, kubeconfigs, full
+configuration, secret values, or raw adapter errors. Protected profiles carry
+non-secret policy: account/region/cluster, immutable release digest, approved
+profiles, storage or RDS sizing, and ingress policy. Profile files are
+mode-`0600`; a live profile is resolved only from `aws-ssm:///`.
 
-The protected local profile must be a regular mode-`0600` YAML or JSON file. It
-names the exact non-production account alias, region, cluster alias, namespace
-prefix, hostname suffix, approved immutable release digest, resource profile,
-and database profile. It contains policy, not credentials:
+Every Fleet status is bounded scalar evidence: job/instance/profile IDs,
+environment, region/cluster, namespace, release/config revision, lifecycle
+state, safe error class, retryability, action progress, and hostname only once
+activation succeeds. It never contains DSNs, endpoints other than the
+activated caller hostname, credentials, references, or configuration.
 
-```yaml
-api_version: metrum.ai/smartrouter-profile/v1
-profile_id: approved-local
-environment: nonproduction
-account_alias: test-account
-region: us-west-2
-cluster_alias: test-cluster
-namespace_prefix: router
-hostname_suffix: apps.example.test
-approved_release_digest: registry.example.test/router@sha256:<64-lowercase-hex>
-approved_resource_profile: small
-  approved_state_profile: sqlite-rwo-small
-  storage_class: gp3
-  state_storage_gib: 20
-  ingress_class_name: nginx
-  ingress_namespace: ingress-nginx
-  tls_secret_name: shared-wildcard-tls
-```
-
-Caller intent is a strict reference-only YAML or JSON manifest. Unknown fields,
-multiple documents, oversized documents, mutable image tags, unapproved
-profiles, malformed references, and credential-shaped content are rejected.
-Secret-manager references are accepted as inputs but are never copied into the
-plan, job, attempts, resources, status, or CLI errors:
-
-```yaml
-api_version: metrum.ai/smartrouter-deployment/v1
-customer_id: customer-a
-stage: test
-release: latest-approved
-resource_profile: small
-state_profile: sqlite-rwo-small
-upstream_config_ref: aws-secretsmanager:///smart-router/test/customer-a/upstreams
-config_revision: revision-17
-license:
-  request_ref: aws-ssm:///smart-router/test/customer-a/license-request
-  validity: 168h
-```
-
-Review a deterministic plan without creating the registry or applying DDL:
+## Non-production lifecycle
 
 ```bash
-metrum-smartrouterctl plan \
+metrum-fleetctl plan \
   --profile-ref file:///protected/profile.yaml \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --output json
-```
 
-Create or resume the same EKS job:
-
-```bash
-metrum-smartrouterctl deploy \
+metrum-fleetctl deploy \
   --profile-ref file:///protected/profile.yaml \
   --manifest deployment.yaml \
   --intent-id intent-a \
   --registry /protected/tenant-deployments.sqlite \
   --output json
-```
 
-The deterministic lifecycle is `requested -> provisioning -> validating ->
-ready`. A classified safe failure is `failed` and retryable from its exact
-stage. An unknown outcome after the PVC exists becomes `operator_required`; it
-cannot resume until an operator establishes ownership. Exact safe retries use
-normalized resource evidence instead of recreating completed resources. The
-ordered adapter contract is namespace, network policy, runtime-secret binding,
-license binding, PVC, one-replica Router workload, activation, then hostname.
-Hostname publication cannot run until activation passes.
-The plan exposes both a job ID and an instance ID. The job ID binds one intent
-and desired manifest. The instance ID, namespace, hostname, and resource
-ownership are derived from the protected profile, customer, and stage, so a new
-config revision with a new intent reconciles the same isolated instance instead
-of allocating a second namespace, database, or PVC. A superseded job cannot
-delete resources now managed by a newer lifecycle.
-
-
-Inspect exactly one job. This opens the existing registry read-only and never
-creates an absent file:
-
-```bash
-metrum-smartrouterctl status \
+metrum-fleetctl status \
   --profile-ref file:///protected/profile.yaml \
   --job job-<opaque-id> \
   --registry /protected/tenant-deployments.sqlite \
   --output json
 ```
 
-Deletion requires the same manifest and intent plus a regular mode-`0600`
-approval file bound to the exact job, expiring within 24 hours, and explicitly
-choosing PVC retention:
-The approval is recorded before cleanup begins, remains resumable while cleanup
-is incomplete, and is consumed only after every non-retained resource reaches
-`deleted`. A completed delete is an idempotent exact-job read.
+The ordered lifecycle is namespace, network policy, runtime-secret binding,
+license binding, state backend, one-replica Router, activation, then hostname.
+Hostname publication is impossible before activation. Reuse the same intent to
+resume; use a new immutable config revision/intent to reconcile the same
+instance. Unknown durable outcomes require operator reconciliation.
 
-
-```json
-{
-  "api_version": "metrum.ai/smartrouter-delete-approval/v1",
-  "job_id": "job-<opaque-id>",
-  "action": "delete",
-  "expires_at": "<RFC3339 time within the next 24 hours>",
-  "retain_pvc": true,
-  "nonce": "approval-a"
-}
-```
+Deletion requires the matching manifest, intent, and a mode-`0600`, expiring,
+job-bound approval. `retain_pvc` controls PVC retention; `retain_database`
+controls dedicated-RDS retention. Deletion never guesses ownership.
 
 ```bash
-metrum-smartrouterctl delete \
+metrum-fleetctl delete \
   --profile-ref file:///protected/profile.yaml \
   --manifest deployment.yaml \
   --intent-id intent-a \
@@ -143,27 +73,32 @@ metrum-smartrouterctl delete \
   --output json
 ```
 
-The hostname is disabled first. Resources are then removed in reverse order;
-the state PVC is retained when the approval says so. A failed
-delete becomes `operator_required` and never guesses ownership.
+## Dedicated RDS contract
 
-`plan` is read-only. `deploy` creates the namespace, policy, runtime and
-license Secret bindings, a one-replica SQLite `ReadWriteOnce` PVC-backed
-Deployment, then validates readiness before publishing the exact hostname
-Ingress. `status` opens the job store read-only. `delete` requires a fresh,
-job-bound approval and removes only owned resources; a PVC is retained unless
-the approval explicitly opts out. There is no RDS provisioning, DSN, RDS proxy,
-or quota lifecycle in this command.
+A protected non-production profile can select `database_mode: dedicated-rds`
+with an approved database profile, instance class, storage, and backup
+retention. The plan exposes only a deterministic `database_id` and
+`database_profile`; it never stores or emits a DSN or credential. Fake-adapter
+tests cover plan, retry, retention, and safe status behavior.
 
-## Validation and rollout
-
-Run all credential-free local lifecycle suites:
+The typed live EKS adapter currently fails closed with
+`rds_live_admission_required`. It cannot provision RDS until independent
+non-production RDS credential-binding, ownership, activation, disposable E2E,
+security, and operations evidence is approved. Production profiles remain
+rejected until #518.
 
 ```bash
-rtk go test ./internal/router ./cmd/metrum-smartrouterctl -run TenantDeployment -count=1
+metrum-fleetctl databases status --profile-ref file:///protected/profile.yaml \
+  --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
+metrum-fleetctl smoke run activation --profile-ref file:///protected/profile.yaml \
+  --job job-<opaque-id> --registry /protected/tenant-deployments.sqlite
 ```
 
-The EKS E2E is intentionally opt-in and runs the packaged CLI against a
-disposable non-production profile. It must be performed by an independently
-authorized operator and record only resource IDs, states, and safe error
-classes. The deployment registry remains separate from Router usage persistence.
+Both commands are bounded status readbacks; they do not create resources or
+activate configuration.
+
+## Validation
+
+```bash
+rtk go test ./internal/router ./cmd/metrum-fleetctl -run TenantDeployment -count=1
+```

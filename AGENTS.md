@@ -412,6 +412,27 @@ rtk rg -n "MiniMax-Text-01|text-01|big-coder.*failover|failover route|does not y
 rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspeed" config.example.yaml README.md docs deployment.md scripts || true
 ```
 
+## Fleet And Customer CLI Boundary
+
+- `metrum-fleetctl` is the only #555 Fleet lifecycle authority. It owns
+  `plan`, `deploy`, `status`, and approved `delete` through the one normalized
+  lifecycle registry. `metrum-smartrouterctl` is a one-release rename notice
+  only; it MUST NOT retain lifecycle behavior.
+- `smartrouterctl` is customer-local. It MAY validate/diff local config,
+  generate a caller token into a new mode-`0600` file exactly once, and read
+  safe local config/license/model/aggregate-usage status. It MUST NOT access
+  AWS/EKS/RDS/DNS, Fleet state, cross-customer state, config activation, key
+  rotation, or license signing.
+- Fleet binaries belong only in binary packages. Customer Docker images MAY
+  contain `smartrouterctl` but MUST NOT contain `metrum-fleetctl` or the
+  compatibility command.
+- Dedicated-RDS plans MUST retain only deterministic safe scalar identity and
+  profile evidence—NEVER a DSN, endpoint, credential, secret reference, or
+  raw adapter response. The fake lifecycle is the executable contract. The
+  typed live adapter MUST fail closed until independent non-production RDS
+  credential-binding, activation, disposable E2E, security, and operations
+  gates are approved. Production profiles remain rejected until #518.
+
 ## References
 
 - Codex AGENTS.md guidance: https://developers.openai.com/codex/guides/agents-md
