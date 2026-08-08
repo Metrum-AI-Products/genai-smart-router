@@ -29,11 +29,14 @@ A protected non-production profile may select `database_mode: dedicated-rds`.
 The plan contains only deterministic database identity and profile scalars—no
 DSN, hostname, port, credentials, secret reference, or database response.
 The normalized lifecycle records retries and ownership-safe retention exactly
-as for the PVC path. The fake adapter is the executable contract. The typed
-live EKS adapter rejects RDS mutation with `rds_live_admission_required` until
-independent non-production RDS adapter, credential-binding, activation, and
-security review evidence is accepted. Production profiles remain rejected
-until #518.
+as for the PVC path. `tenant_deployment_rds.go` provides the typed AWS RDS
+adapter for a private, encrypted PostgreSQL instance with ownership tags,
+RDS-Proxy-disabled policy, final-snapshot deletion, and scalar-only evidence.
+It is unattached by the default EKS constructor: only a separate, validated,
+time-bounded non-production RDS admission can attach it. The shipped Fleet CLI
+does not create that admission, so RDS mutation remains fail-closed pending
+independent credential-binding, activation, disposable E2E, security, and
+operations evidence. Production profiles remain rejected until #518.
 
 ## Consequences
 

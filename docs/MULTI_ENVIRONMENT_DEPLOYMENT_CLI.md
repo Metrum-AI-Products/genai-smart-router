@@ -53,11 +53,12 @@ metrum-fleetctl status \
   --output json
 ```
 
-The ordered lifecycle is namespace, network policy, runtime-secret binding,
-license binding, state backend, one-replica Router, activation, then hostname.
-Hostname publication is impossible before activation. Reuse the same intent to
-resume; use a new immutable config revision/intent to reconcile the same
-instance. Unknown durable outcomes require operator reconciliation.
+The ordered lifecycle is namespace, network policy, dedicated private RDS
+(when selected), runtime-secret/DSN-reference binding, license binding, state
+PVC, one-replica Router, activation, then hostname. Hostname publication is
+impossible before activation. Reuse the same intent to resume; use a new
+immutable config revision/intent to reconcile the same instance. Unknown RDS
+or PVC outcomes require operator reconciliation.
 
 Deletion requires the matching manifest, intent, and a mode-`0600`, expiring,
 job-bound approval. `retain_pvc` controls PVC retention; `retain_database`
@@ -76,16 +77,20 @@ metrum-fleetctl delete \
 ## Dedicated RDS contract
 
 A protected non-production profile can select `database_mode: dedicated-rds`
-with an approved database profile, instance class, storage, and backup
-retention. The plan exposes only a deterministic `database_id` and
-`database_profile`; it never stores or emits a DSN or credential. Fake-adapter
-tests cover plan, retry, retention, and safe status behavior.
+with an approved database profile, private subnet/security-group policy,
+RDS-Proxy disabled, instance class, storage, backup retention, and managed
+master-credential policy. The plan exposes only a deterministic `database_id`
+and `database_profile`; it never stores or emits a DSN or credential.
+`tenant_deployment_rds.go` uses typed AWS RDS calls to observe ownership tags
+and policy, provision only private encrypted PostgreSQL, and delete only
+owned instances with a final snapshot. It returns scalar evidence only.
 
-The typed live EKS adapter currently fails closed with
-`rds_live_admission_required`. It cannot provision RDS until independent
-non-production RDS credential-binding, ownership, activation, disposable E2E,
-security, and operations evidence is approved. Production profiles remain
-rejected until #518.
+The typed adapter is unreachable from the default EKS constructor. It can be
+attached only through a validated, time-bounded non-production RDS admission;
+the shipped Fleet CLI does not create an admission. RDS mutation therefore
+remains fail-closed pending independent credential-binding, ownership,
+activation, disposable E2E, security, and operations evidence. Production
+profiles remain rejected until #518.
 
 ```bash
 metrum-fleetctl databases status --profile-ref file:///protected/profile.yaml \

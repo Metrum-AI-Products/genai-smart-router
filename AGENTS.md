@@ -428,10 +428,15 @@ rtk rg -n "openai/gpt|anthropic/claude|claude-sonnet|MiniMax-M2\\.7|m27-highspee
   compatibility command.
 - Dedicated-RDS plans MUST retain only deterministic safe scalar identity and
   profile evidence—NEVER a DSN, endpoint, credential, secret reference, or
-  raw adapter response. The fake lifecycle is the executable contract. The
-  typed live adapter MUST fail closed until independent non-production RDS
-  credential-binding, activation, disposable E2E, security, and operations
-  gates are approved. Production profiles remain rejected until #518.
+  raw adapter response. `tenant_deployment_rds.go` is a typed AWS adapter for
+  private, encrypted, RDS-Proxy-disabled instances with ownership-safe final
+  snapshots. It MUST stay unattached unless a validated, time-bounded
+  non-production admission is supplied; the shipped CLI MUST NOT create that
+  admission. Production profiles remain rejected until #518.
+- Every `metrum-smartrouterctl` occurrence outside its compatibility command
+  and package validation MUST explicitly say `one-release compatibility` or
+  `one-release rename notice`; treat those occurrences as intentional until
+  the compatibility release is removed, not as ambiguous stale references.
 
 ## References
 
